@@ -377,7 +377,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
+import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml, industryLabel, industryTitleLabel, buildingTypeLabel } from './js/utils.js';
 
 // Monogram fallback for a corp with no custom logo (first letters of the
 // first two words, e.g. "Advanced Composites" → "AC").
@@ -904,7 +904,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         sel.innerHTML = `<option value="">(no eligible corps — needs ${escapeHtml(bbSector)} industry)</option>`;
       } else {
         sel.innerHTML = eligible.map(c =>
-          `<option value="${c.id}">${escapeHtml(c.name)}${c.industry ? ' (' + (c.industry === 'real_estate' ? 'Real Estate' : titleCase(c.industry)) + ')' : ''}</option>`
+          `<option value="${c.id}">${escapeHtml(c.name)}${c.industry ? ' (' + industryTitleLabel(c.industry) + ')' : ''}</option>`
         ).join('');
       }
       document.getElementById('bb-overlay').classList.add('open');
@@ -980,7 +980,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         sel.innerHTML = '<option value="">(no corps — found one first)</option>';
       } else {
         sel.innerHTML = myCorps.map(c =>
-          `<option value="${c.id}">${escapeHtml(c.name)}${c.industry ? ' (' + (c.industry === 'real_estate' ? 'Real Estate' : titleCase(c.industry)) + ')' : ''}</option>`
+          `<option value="${c.id}">${escapeHtml(c.name)}${c.industry ? ' (' + industryTitleLabel(c.industry) + ')' : ''}</option>`
         ).join('');
       }
       document.getElementById('po-overlay').classList.add('open');

@@ -32,32 +32,41 @@
 .mod-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
   color:#7a7468; font-weight:600; padding-bottom:8px; margin-bottom:12px;
   border-bottom:0.5px solid rgba(255,255,255,0.06); }
+/* Two-up grid for the cards within a category: first card sits on the
+   left half, the next on the right; subsequent rows wrap the same way.
+   The grid gap replaces the per-card bottom margin so spacing is even
+   in both directions; .mod-card keeps its 10px margin for any
+   non-gridded reuse. Single column on phone. */
+.mod-section__grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.mod-section__grid > .mod-card { margin-bottom:0; }
 
-/* Modifier card */
+/* Modifier card — every dimension here is scaled 1.5x from the
+   pre-resize baseline (padding, accent bar, gaps, type, chip sizing).
+   Mobile breakpoint below scales the padding the same way. */
 .mod-card { background:#0f1212; border:0.5px solid rgba(255,255,255,0.05);
-  border-left:4px solid var(--sev, #5aafa5);
-  border-radius:6px; padding:14px 18px; margin-bottom:10px; }
+  border-left:6px solid var(--sev, #5aafa5);
+  border-radius:8px; padding:21px 27px; margin-bottom:10px; }
 .mod-card[data-sev="green"]  { --sev:#4ec98a; }
 .mod-card[data-sev="yellow"] { --sev:#c8a64e; }
 .mod-card[data-sev="red"]    { --sev:#d97070; }
 
 .mod-card__top { display:flex; justify-content:space-between; align-items:baseline;
-  gap:12px; flex-wrap:wrap; }
-.mod-card__name { font-size:15px; color:#fff; font-weight:600; letter-spacing:0.01em; }
-.mod-card__sev { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
-  font-weight:700; color:var(--sev); padding:2px 8px;
-  border:0.5px solid var(--sev); border-radius:3px;
+  gap:18px; flex-wrap:wrap; }
+.mod-card__name { font-size:22px; color:#fff; font-weight:600; letter-spacing:0.01em; }
+.mod-card__sev { font-size:13px; letter-spacing:0.14em; text-transform:uppercase;
+  font-weight:700; color:var(--sev); padding:3px 12px;
+  border:0.5px solid var(--sev); border-radius:4px;
   background:rgba(255,255,255,0.02); }
-.mod-card__desc { font-style:italic; font-size:12px; color:#888; line-height:1.55;
-  margin-top:8px; }
+.mod-card__desc { font-style:italic; font-size:18px; color:#888; line-height:1.55;
+  margin-top:12px; }
 
-.mod-effects { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;
-  padding-top:10px; border-top:0.5px dashed rgba(255,255,255,0.05); }
-.mod-effects__label { font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
-  color:#5a5a5a; font-weight:600; align-self:center; margin-right:4px; }
-.mod-chip { font-size:11px; color:var(--sev, #cfcabf); background:rgba(255,255,255,0.03);
-  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
-  padding:3px 9px; letter-spacing:0.01em; }
+.mod-effects { display:flex; flex-wrap:wrap; gap:9px; margin-top:15px;
+  padding-top:15px; border-top:0.5px dashed rgba(255,255,255,0.05); }
+.mod-effects__label { font-size:13px; letter-spacing:0.14em; text-transform:uppercase;
+  color:#5a5a5a; font-weight:600; align-self:center; margin-right:6px; }
+.mod-chip { font-size:16px; color:var(--sev, #cfcabf); background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+  padding:5px 14px; letter-spacing:0.01em; }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940;
   text-align:center; padding:80px 20px; }
@@ -67,7 +76,8 @@
 @media (max-width:700px) {
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
-  .mod-card { padding:12px 14px; }
+  .mod-card { padding:18px 21px; }
+  .mod-section__grid { grid-template-columns:1fr; }
 }
 </style>
 </head>
@@ -95,6 +105,18 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+
+// Severity chip text. The DB schema stores 'green' / 'yellow' / 'red'
+// (modifier_templates.severity CHECK constraint, plus all existing
+// rows); the player-facing surface renders the design's preferred
+// "positive / neutral / negative" framing on the card. Same colour
+// keying — only the label changes. Unknown severities fall back to
+// the raw key so a future schema add lands visibly rather than blank.
+const SEVERITY_LABELS = {
+  green:  'Positive',
+  yellow: 'Neutral',
+  red:    'Negative',
+};
 
 // Fixed category order — matches the CHECK constraint on
 // modifier_templates.category. Sections render in this order;
@@ -201,7 +223,9 @@ function renderSection(category, mods) {
   return (
     `<div class="mod-section">` +
       `<div class="mod-section__head">${escapeHtml(category)}</div>` +
-      mods.map(renderCard).join('') +
+      `<div class="mod-section__grid">` +
+        mods.map(renderCard).join('') +
+      `</div>` +
     `</div>`
   );
 }
@@ -220,7 +244,7 @@ function renderCard(m) {
     `<div class="mod-card" data-sev="${sev}">` +
       `<div class="mod-card__top">` +
         `<div class="mod-card__name">${escapeHtml(m.name)}</div>` +
-        `<div class="mod-card__sev">${sev}</div>` +
+        `<div class="mod-card__sev">${escapeHtml(SEVERITY_LABELS[sev] || sev)}</div>` +
       `</div>` +
       (desc ? `<div class="mod-card__desc">${escapeHtml(desc)}</div>` : '') +
       effectsHtml +

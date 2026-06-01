@@ -50,6 +50,7 @@
   .ec-pill.shipping     { background:#2a2419; color:#c89e6e; }
   .ec-pill.real_estate  { background:#2a1f2a; color:#aa7aaa; }
   .ec-pill.airline      { background:#16242e; color:#7ab8d0; }
+  .ec-pill.oil_and_gas  { background:#2a1612; color:#c87a6a; }
   .ec-pill.founder      { background:#1f2a1a; color:#8aaa6a; }
   .ec-pill.director     { background:#2a2419; color:#c89e6e; }
   .ec-pill.shareholder  { background:#1a2535; color:#7a9aab; }
@@ -100,6 +101,9 @@
   .ec-cap { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
   .ec-cap .amt { color:#8aaa6a; font-size:30px; font-weight:500; }
   .ec-cap .aft { color:#888; font-size:12px; }
+  .ec-fbreak { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
+    font-size:11px; color:#888; }
+  .ec-fbreak b { color:#cfcabf; font-variant-numeric:tabular-nums; font-weight:500; }
   .ec-range { width:100%; accent-color:#8aaa6a; }
   .ec-rl { display:flex; justify-content:space-between; font-size:9px; color:#555; letter-spacing:0.1em; margin-top:6px; }
   .ec-ipo { margin-top:12px; font-size:11px; color:#888; line-height:1.6;
@@ -139,6 +143,7 @@
   .ec-jr .sub.shipping     { color:#c89e6e; }
   .ec-jr .sub.real_estate  { color:#aa7aaa; }
   .ec-jr .sub.airline      { color:#7ab8d0; }
+  .ec-jr .sub.oil_and_gas  { color:#c87a6a; }
   .ec-jr .tp { display:inline-block; padding:3px 8px; border-radius:3px;
     font-size:9px; letter-spacing:0.12em; font-weight:500; }
   .ec-jr .tp.public  { background:#1a2535; color:#7a9aab; }
@@ -256,6 +261,7 @@
     <div class="ec-filter" data-f="shipping">SHIPPING</div>
     <div class="ec-filter" data-f="real_estate">REAL ESTATE</div>
     <div class="ec-filter" data-f="airline">AIRLINE</div>
+    <div class="ec-filter" data-f="oil_and_gas">OIL &amp; GAS</div>
   </div>
   <div class="ec-pos" id="ec-pos"><div class="ec-empty">Loading…</div></div>
 
@@ -281,6 +287,16 @@
         <div class="ec-pick" data-ind="real_estate"><div class="pn">Real Estate</div><div class="pd">Acquire finished buildings from Construction corps and collect rent. Steady tenant revenue; scales with Reputation.</div></div>
         <div class="ec-pick" data-ind="airline"><div class="pn">Airline</div><div class="pd">Buy aircraft, claim terminals, and fly passenger routes. Demand scales with each nation's standard of living. Capital-intensive — founds with two regional jets and two starter terminals.</div></div>
         <div class="ec-pick" data-ind="aviation_manufacturing"><div class="pn">Aviation Manufacturing</div><div class="pd">Build aircraft and engines. Founds with one Assembly Plant in your HQ nation — a 1D6 roll: 1-5 a Light Assembly Plant, 6 the rarer Engine Assembly Plant.</div></div>
+        <div class="ec-pick" data-ind="oil_and_gas"><div class="pn">Oil &amp; Gas</div><div class="pd">Drill pump jacks for crude oil into reserve, refine through small/regular/large refineries, retail through gas stations. Vertical integration captures the full $20k → $130k spread per barrel; specialists sell crude or refined to spot market manually. $30M flat founding fee covers a 1D3 starter (Pump Jack / Small Refinery / 3 Gas Stations) — outcome is rolled once and locked.</div></div>
+      </div>
+      <!-- Oil & Gas starter notice — populated by oil_and_gas_starter_roll
+           RPC the first time the player picks Oil & Gas. Roll is saved
+           on the faction server-side, so closing this modal doesn't
+           reroll — every reopen shows the same starter. -->
+      <div id="ec-og-starter-wrap" style="display:none;margin-top:14px;padding:12px 14px;background:#1a0f08;border:0.5px solid #4a2418;border-radius:5px;">
+        <div style="font-size:10px;letter-spacing:0.12em;color:#c87a6a;font-weight:600;margin-bottom:6px;">YOUR STARTER ROLL</div>
+        <div style="font-size:14px;color:#cfcabf;margin-bottom:4px;"><b id="ec-og-starter-label">—</b> in your HQ nation</div>
+        <div style="font-size:11px;color:#8a8680;">Locked the first time you considered Oil &amp; Gas — closing this modal won't reroll. Founding this corp consumes the roll; the next Oil &amp; Gas founding rolls fresh.</div>
       </div>
 
       <div class="ec-h">II. <em>Headquarters</em></div>
@@ -303,6 +319,12 @@
       </div>
       <input type="range" class="ec-range" id="ec-cap" min="5" max="500" step="1" value="20" />
       <div class="ec-rl"><span>MIN · $5M</span><span>MAX · $500M</span></div>
+      <div class="ec-fbreak" id="ec-fbreak">
+        <span>Founding fee (5%): <b id="ec-f-fee">—</b></span>
+        <span>Starter building: <b id="ec-f-bld">—</b></span>
+        <span id="ec-f-fleet-wrap" style="display:none;">Starter fleet: <b id="ec-f-fleet">—</b></span>
+        <span>Total at founding: <b id="ec-f-total">—</b></span>
+      </div>
 
       <div class="ec-h">V. Listing <em>Structure</em></div>
       <div class="ec-grid3" id="ec-listing">
@@ -317,7 +339,7 @@
       <div class="st">STATUS: <b>READY TO INCORPORATE</b></div>
       <span class="ec-err" id="ec-err"></span>
       <button class="ec-btn sec" id="ec-cancel">CANCEL</button>
-      <button class="ec-btn pri" id="ec-found">FOUND CORPORATION — $21M →</button>
+      <button class="ec-btn pri" id="ec-found">FOUND CORPORATION →</button>
     </div>
   </div>
 </div>
@@ -406,10 +428,14 @@ async function attachCorpBookAggregates(corps) {
   return corps;
 }
 
-const FEE = 1_000_000;
+// Founding cost breakdown comes from public.entrepreneur_corp_founding_cost
+// (20270425) — single source for capital + 5% fee + nation-scaled
+// starter building cost. The breakdown is cached per (industry, nation)
+// and the per-cap fee is recomputed client-side (cap × 5/100, mirror of
+// the SQL) since refetching on every slider tick is wasteful.
+const FEE_PCT = 5;
 // Shares issued when a corp lists public. The authoritative value lives
-// in found_entrepreneur_corp (20270144); this is the modal-preview
-// mirror, same convention as FEE ↔ the RPC's v_fee. Keep in sync.
+// in found_entrepreneur_corp; this is the modal-preview mirror.
 const IPO_SHARES = 20;
 let entFunds = 0;
 let sel = { industry: 'construction', hqNationId: null, listing: 'private' };
@@ -466,11 +492,88 @@ function selectPick(containerId, e) {
   return card;
 }
 
-function refreshCost() {
-  const cap = capRaw();
-  const cost = cap + FEE;
+// Cached (industry, nation) → { bld, fleet } in dollars. Refreshed by
+// fetchFoundingCost when the picker changes. Null = "not fetched yet"
+// (UI shows em-dash placeholders until the round-trip completes).
+// fleet is non-zero only for airline (1 regional jet at the price
+// entrepreneur_aircraft_class_price('regional') returns — see
+// airline_starter_fleet_cost in 20270442).
+let _foundingCostCache = new Map(); // key: `${industry}|${nationId}` → { bld, fleet }
+function foundingCacheKey() { return `${sel.industry}|${sel.hqNationId || ''}`; }
+async function fetchFoundingCost() {
+  const key = foundingCacheKey();
+  if (_foundingCostCache.has(key)) return _foundingCostCache.get(key);
+  if (!sel.industry || !sel.hqNationId) return null;
+  // Capital passes through unchanged from the slider since the per-cap
+  // fee math is mirrored client-side; we only need building_cost +
+  // fleet_cost from the preview RPC. Any cap value works for those.
+  const { data, error } = await _supabase.rpc('entrepreneur_corp_founding_cost', {
+    p_industry: sel.industry, p_hq_nation_id: sel.hqNationId, p_capital: capRaw(),
+  });
+  if (error) {
+    console.warn('[entrepreneur-corporations] founding-cost preview failed:', error.message);
+    return null;
+  }
+  const entry = {
+    bld:   Number(data?.building_cost) || 0,
+    fleet: Number(data?.fleet_cost)    || 0,
+  };
+  _foundingCostCache.set(key, entry);
+  return entry;
+}
+function feeFor(cap) { return Math.floor((cap * FEE_PCT) / 100); }
+
+// Oil & Gas starter roll — fetched once per page load, then replayed
+// from cache. The server-side RPC is itself idempotent (returns the
+// saved faction roll, only generates one if NULL), so re-calls are
+// safe; the cache just avoids round-tripping when the player
+// switches industries back and forth.
+let _ogStarter = null; // { roll, label, fresh, rolled_at_tick } | null
+async function maybeShowOilGasStarter() {
+  const wrap = document.getElementById('ec-og-starter-wrap');
+  if (!wrap) return;
+  if (sel.industry !== 'oil_and_gas') { wrap.style.display = 'none'; return; }
+  if (_ogStarter == null) {
+    const { data, error } = await _supabase.rpc('oil_and_gas_starter_roll');
+    if (error) {
+      console.warn('[entrepreneur-corporations] oil_and_gas_starter_roll failed:', error.message);
+      wrap.style.display = 'none';
+      return;
+    }
+    if (!data?.success) {
+      console.warn('[entrepreneur-corporations] oil_and_gas_starter_roll rejected:', data?.reason);
+      wrap.style.display = 'none';
+      return;
+    }
+    _ogStarter = data;
+  }
+  const labelEl = document.getElementById('ec-og-starter-label');
+  if (labelEl) labelEl.textContent = _ogStarter.label || '—';
+  wrap.style.display = '';
+}
+
+async function refreshCost() {
+  const cap     = capRaw();
+  const fee     = feeFor(cap);
+  const costs   = await fetchFoundingCost();
+  const bld     = costs?.bld   ?? null;
+  const fleet   = costs?.fleet ?? 0;
+  const total   = cap + fee + (bld || 0) + fleet;
   document.getElementById('ec-cap-amt').textContent = fmtM(cap);
-  document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - cost));
+  document.getElementById('ec-cap-aft').textContent = fmtM(Math.max(0, entFunds - total));
+  document.getElementById('ec-f-fee').textContent   = fmtM(fee);
+  document.getElementById('ec-f-bld').textContent   = bld == null ? '—' : fmtM(bld);
+  // Starter fleet line only renders when the industry charges one
+  // (airline today; any future industry that returns fleet_cost > 0
+  // automatically picks up the line).
+  const fleetWrap = document.getElementById('ec-f-fleet-wrap');
+  if (fleet > 0) {
+    document.getElementById('ec-f-fleet').textContent = fmtM(fleet);
+    fleetWrap.style.display = '';
+  } else {
+    fleetWrap.style.display = 'none';
+  }
+  document.getElementById('ec-f-total').textContent = fmtM(total);
   const ipo = document.getElementById('ec-ipo');
   if (sel.listing === 'public') {
     ipo.style.display = 'block';
@@ -480,11 +583,19 @@ function refreshCost() {
     ipo.style.display = 'none';
   }
   const btn = document.getElementById('ec-found');
-  btn.textContent = `FOUND CORPORATION — ${fmtM(cost)} →`;
-  btn.disabled = cost > entFunds;
+  btn.textContent = `FOUND CORPORATION — ${fmtM(total)} →`;
+  // Disable only when the building cost has resolved AND we know the
+  // total exceeds funds. While the preview is still in flight (bld
+  // null) leave the button enabled — the server-side gate is the
+  // final word and any race is corrected by the alert path.
+  btn.disabled = bld != null && total > entFunds;
   const err = document.getElementById('ec-err');
-  if (cost > entFunds) { err.textContent = 'Insufficient cash for this capital + $1M fee.'; err.style.display = 'inline'; }
-  else err.style.display = 'none';
+  if (bld != null && total > entFunds) {
+    err.textContent = `Insufficient cash — need ${fmtM(total)} (capital ${fmtM(cap)} + ${FEE_PCT}% fee ${fmtM(fee)} + starter building ${fmtM(bld)}).`;
+    err.style.display = 'inline';
+  } else {
+    err.style.display = 'none';
+  }
 }
 
 function renderPositions(corps, filter) {
@@ -905,7 +1016,12 @@ function renderPositions(corps, filter) {
       const card = selectPick('ec-ind', e);
       if (!card || !card.dataset.ind) return;
       sel.industry = card.dataset.ind;
+      // Oil & Gas: fetch the saved starter roll (or generate one). The
+      // RPC is idempotent — closing this modal and re-opening replays
+      // the same outcome, only the actual founding consumes it.
+      maybeShowOilGasStarter();
       renderHqList();   // per-nation count is industry-specific
+      refreshCost();    // starter building cost depends on industry
     });
     document.getElementById('ec-conts').addEventListener('click', (e) => {
       const t = e.target.closest('.ec-cont');
@@ -919,6 +1035,7 @@ function renderPositions(corps, filter) {
       const card = selectPick('ec-hq', e);
       if (!card || !card.dataset.nid) return;
       sel.hqNationId = card.dataset.nid;
+      refreshCost();    // building cost is nation-scaled
     });
     document.getElementById('ec-listing').addEventListener('click', (e) => {
       const card = selectPick('ec-listing', e);
@@ -949,6 +1066,9 @@ function renderPositions(corps, filter) {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
             not_home_nation: 'You can only found corporations in your home nation. Expand to other nations by building a Regional HQ there first.',
             delinquent_debt: 'You owe personal debt from a bankrupt corporation. Settle it on your Character page before founding a new corporation.',
+            insufficient_funds: data?.have != null && data?.need != null
+              ? `Insufficient cash — need ${fmtM(data.need)}, have ${fmtM(data.have)}.`
+              : 'Insufficient cash for this founding.',
           };
           err.textContent = FRIENDLY[data?.reason] || ('Could not found: ' + ((data && data.reason) || 'unknown'));
           err.style.display = 'inline';

@@ -2147,16 +2147,24 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         }
     }
 
-    // Pick a random element from a non-empty array, or '' if empty.
+    // Officer auto-fill formula — JS mirror of the SQL helpers in
+    // 20270415 (pick_random_pool_name + roll_officer_age). The two
+    // sites can't literally share a function across runtimes, so any
+    // change to the pool-pick rule or age range must land in both:
+    // here AND in 20270415's helper bodies. Inline here keeps the
+    // pre-fill local to the admin form; SQL is what every backend
+    // caller (admin_create_party today, future RPCs / backfills
+    // tomorrow) reads from.
     function _apPick(pool) {
         if (!pool || !pool.length) return '';
         return pool[Math.floor(Math.random() * pool.length)];
     }
+    function _apRollOfficerAge() {
+        return 35 + Math.floor(Math.random() * 31);   // 35..65 inclusive
+    }
 
     // Pre-fill Deputy Leader + Party Whip name + age fields from the chosen
     // nation's culture pool (js/game/political-actions.js getNationNames).
-    // Age range 35–65 inclusive — wide enough to vary across regenerations
-    // but tight enough that the picks always read like senior party officers.
     // Always overwrites whatever's in the fields: a nation switch implies a
     // culture switch, and stale Hajjaran names on an Avelian movement would
     // be confusing.
@@ -2167,13 +2175,12 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         if (!nationName) return;
         const pool = getNationNames(nationName);
         const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-        const randAge = () => 35 + Math.floor(Math.random() * 31);   // 35..65 inclusive
         setVal('ap-deputy-first', _apPick(pool.firstNames));
         setVal('ap-deputy-last',  _apPick(pool.lastNames));
-        setVal('ap-deputy-age',   String(randAge()));
+        setVal('ap-deputy-age',   String(_apRollOfficerAge()));
         setVal('ap-whip-first',   _apPick(pool.firstNames));
         setVal('ap-whip-last',    _apPick(pool.lastNames));
-        setVal('ap-whip-age',     String(randAge()));
+        setVal('ap-whip-age',     String(_apRollOfficerAge()));
     }
 
     async function createParty(btn) {
@@ -2565,12 +2572,23 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     ];
     // Legacy corp pages removed (corp-cull Phase 2). No corp inspector pages.
     const _INSPECTOR_CORP_PAGES = [];
+    // Entrepreneur pages — nation-agnostic (entrepreneurs have no nation_id),
+    // inspected via ?faction_id= alone (see js/entrepreneur-topbar.js).
+    const _INSPECTOR_ENTREPRENEUR_PAGES = [
+        ['entrepreneur-dashboard.html',    '🏢 Home / Dashboard'],
+        ['entrepreneur-corporations.html', '🏭 Corporations'],
+        ['entrepreneur-markets.html',      '📈 Markets'],
+        ['entrepreneur-assets.html',       '👤 Character / Assets'],
+        ['entrepreneur-lobbying.html',     '🤝 Lobbying'],
+    ];
 
     function _renderInspectorPageOptions(type) {
         const sel = document.getElementById('inspector-page-select');
         if (!sel) return;
         const previousValue = sel.value;
-        const list = type === 'corp' ? _INSPECTOR_CORP_PAGES : _INSPECTOR_PARTY_PAGES;
+        const list = type === 'corp'         ? _INSPECTOR_CORP_PAGES
+                   : type === 'entrepreneur' ? _INSPECTOR_ENTREPRENEUR_PAGES
+                   : _INSPECTOR_PARTY_PAGES;
         sel.innerHTML = list.map(([val, label]) =>
             `<option value="${val}">${label}</option>`
         ).join('');
@@ -2583,6 +2601,30 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const select = document.getElementById('inspector-faction-select');
         select.innerHTML = '<option value="">— Default (your account) —</option>';
         _renderInspectorPageOptions('party');
+
+        // Entrepreneurs are nation-agnostic, so they're listed regardless of
+        // (and before) the chosen nation. Loaded every call so they're always
+        // available — including with no nation selected.
+        try {
+            const { data: ents, error: entError } = await _supabase.from('factions')
+                .select('id, faction_name, leader_first_name, leader_last_name, status')
+                .eq('faction_type', 'entrepreneur')
+                .is('abandoned_at', null)
+                .order('faction_name');
+            if (entError) throw entError;
+            if ((ents || []).length > 0) {
+                select.innerHTML += '<optgroup label="Entrepreneurs">';
+                ents.forEach(f => {
+                    const nm = f.faction_name
+                        || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()
+                        || 'Entrepreneur';
+                    const tag = String(f.status || '').toLowerCase() === 'arrested' ? ' 🔒 ARRESTED' : '';
+                    select.innerHTML += `<option value="${esc(f.id)}" data-type="entrepreneur">[Entrepreneur] ${esc(nm)}${tag}</option>`;
+                });
+                select.innerHTML += '</optgroup>';
+            }
+        } catch (error) { console.error('Inspector entrepreneurs error:', error); }
+
         if (!nationId) return;
         try {
             // Pull BOTH parties and corporations in parallel. The dropdown
@@ -2647,15 +2689,25 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                 const type = opt?.getAttribute('data-type') || 'party';
                 _renderInspectorPageOptions(type);
             });
+            // Populate the nation-agnostic Entrepreneurs group up front so they
+            // can be inspected without first choosing a nation.
+            loadInspectorFactions();
         };
         document.addEventListener('admin-panel-loaded', attach);
     })();
 
+    function _inspectorSelectedFactionType() {
+        const sel = document.getElementById('inspector-faction-select');
+        return sel?.options[sel.selectedIndex]?.getAttribute('data-type') || '';
+    }
+
     function buildInspectorUrl(page) {
         const nationId = document.getElementById('inspector-nation-select').value;
         const factionId = document.getElementById('inspector-faction-select').value;
+        const isEnt = _inspectorSelectedFactionType() === 'entrepreneur';
         const params = [];
-        if (nationId) params.push('nation_id=' + nationId);
+        // Entrepreneurs are nation-agnostic — inspected by faction_id alone.
+        if (nationId && !isEnt) params.push('nation_id=' + nationId);
         if (factionId) params.push('faction_id=' + factionId);
         return page + (params.length ? '?' + params.join('&') : '');
     }
@@ -2664,28 +2716,33 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         const nationId = document.getElementById('inspector-nation-select').value;
         const page = document.getElementById('inspector-page-select').value;
         const factionId = document.getElementById('inspector-faction-select').value;
+        const isEnt = _inspectorSelectedFactionType() === 'entrepreneur';
 
-        if (!nationId) { alert('Select a nation first.'); return; }
+        if (!nationId && !isEnt) { alert('Select a nation first (or pick an entrepreneur).'); return; }
 
-        inspectorNationId = nationId;
+        // Entrepreneurs are nation-agnostic — don't carry a nation context for them.
+        inspectorNationId = isEnt ? '' : nationId;
         inspectorFactionId = factionId;
         inspectorPage = page;
 
         // Get names from dropdowns
         const nationSelect = document.getElementById('inspector-nation-select');
-        const nationName = nationSelect.options[nationSelect.selectedIndex].text;
+        const nationName = nationSelect.value ? nationSelect.options[nationSelect.selectedIndex].text : '';
         const factionSelect = document.getElementById('inspector-faction-select');
         const factionLabel = factionId ? ' as ' + factionSelect.options[factionSelect.selectedIndex].text : '';
 
         // Set localStorage so the embedded page reads the correct nation
-        localStorage.setItem('nation_id', nationId);
-        localStorage.setItem('nation_name', nationName);
+        // (skipped for entrepreneurs — they have no nation context).
+        if (nationId && !isEnt) {
+            localStorage.setItem('nation_id', nationId);
+            localStorage.setItem('nation_name', nationName);
+        }
 
         const frame = document.getElementById('inspector-frame');
         frame.src = buildInspectorUrl(page);
 
         document.getElementById('inspector-current-label').textContent =
-            nationName + factionLabel + '  →  ' + page;
+            ((nationName ? nationName : 'Entrepreneur') + factionLabel + '  →  ' + page);
         document.getElementById('inspector-current').classList.remove('hidden');
         document.getElementById('inspector-frame-container').classList.remove('hidden');
     }
@@ -2693,24 +2750,25 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     function openInspectorNewTab() {
         const nationId = document.getElementById('inspector-nation-select').value;
         const page = document.getElementById('inspector-page-select').value;
-        if (!nationId) { alert('Select a nation first.'); return; }
+        const isEnt = _inspectorSelectedFactionType() === 'entrepreneur';
+        if (!nationId && !isEnt) { alert('Select a nation first (or pick an entrepreneur).'); return; }
 
-        // Set localStorage so the page reads it on open
-        const nationSelect = document.getElementById('inspector-nation-select');
-        const nationName = nationSelect.options[nationSelect.selectedIndex].text;
-        localStorage.setItem('nation_id', nationId);
-        localStorage.setItem('nation_name', nationName);
+        // Set localStorage so the page reads it on open (nation pages only).
+        if (nationId && !isEnt) {
+            const nationSelect = document.getElementById('inspector-nation-select');
+            localStorage.setItem('nation_id', nationId);
+            localStorage.setItem('nation_name', nationSelect.options[nationSelect.selectedIndex].text);
+        }
 
         window.open(buildInspectorUrl(page), '_blank');
     }
 
     function reloadInspector() {
         const frame = document.getElementById('inspector-frame');
-        if (frame.src && inspectorNationId) {
-            // Re-set localStorage in case another tab changed it
-            localStorage.setItem('nation_id', inspectorNationId);
-            frame.contentWindow.location.reload();
-        }
+        if (!frame.src) return;
+        // Re-set localStorage in case another tab changed it (nation pages).
+        if (inspectorNationId) localStorage.setItem('nation_id', inspectorNationId);
+        frame.contentWindow.location.reload();
     }
 
     function resizeInspector(height) {
@@ -4695,9 +4753,8 @@ document.addEventListener('admin-panel-loaded', () => {
 // admin_set_hub_ranges) since these tables have no client write policy.
 let hubNations = [];     // [{id,name,population}]
 let hubNationPop = {};   // nation id -> population
-let hubsAll = [];        // [{id,nation_id,name,population_pct,terminal_count,runway_type,is_capital,nation_name}]
-let hubRangeMap = {};    // "aId|bId" (both directions) -> range_units
-const HUB_RUNWAYS = [['short', 'Short Runway'], ['standard', 'Standard'], ['international', 'International']];
+let hubsAll = [];        // [{id,nation_id,name,population_pct,is_capital,nation_name}]
+let hubRangeMap = {};    // "aId|bId" (both directions) -> distance
 const HUB_INPUT = 'background:#1a1a1a; border:1px solid #333; color:#eee; padding:4px; border-radius:2px;';
 
 async function initHubsTab() {
@@ -4737,8 +4794,8 @@ function onHubNationSelect() {
 async function loadHubs() {
     try {
         const [cityRes, rangeRes] = await Promise.all([
-            _supabase.from('airline_cities').select('id, nation_id, name, population_pct, terminal_count, runway_type, is_capital'),
-            _supabase.from('airline_city_ranges').select('city_a_id, city_b_id, range_units'),
+            _supabase.from('airline_cities').select('id, nation_id, name, population_pct, is_capital'),
+            _supabase.from('airline_city_ranges').select('city_a_id, city_b_id, distance'),
         ]);
         if (cityRes.error) throw cityRes.error;
         if (rangeRes.error) throw rangeRes.error;
@@ -4747,8 +4804,8 @@ async function loadHubs() {
         hubsAll.sort((a, b) => a.nation_name.localeCompare(b.nation_name) || a.name.localeCompare(b.name));
         hubRangeMap = {};
         (rangeRes.data || []).forEach(r => {
-            hubRangeMap[`${r.city_a_id}|${r.city_b_id}`] = r.range_units;
-            hubRangeMap[`${r.city_b_id}|${r.city_a_id}`] = r.range_units;
+            hubRangeMap[`${r.city_a_id}|${r.city_b_id}`] = r.distance;
+            hubRangeMap[`${r.city_b_id}|${r.city_a_id}`] = r.distance;
         });
         renderHubList();
         renderHubMatrix();
@@ -4770,19 +4827,15 @@ function renderHubList() {
     let html = `<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
         <thead><tr style="background:#252525; color:#ffcc00; text-transform:uppercase; font-size:0.7rem; letter-spacing:1px;">
             <th style="${th}">Nation</th><th style="${th}">Name</th>
-            <th style="${th} width:90px;">Weight</th><th style="${th} width:150px;">Runway</th>
-            <th style="${th} width:90px;">Terminals</th><th style="${th} width:70px;">Capital</th>
+            <th style="${th} width:90px;">Weight</th>
+            <th style="${th} width:70px;">Capital</th>
             <th style="${th} width:150px;">Actions</th>
         </tr></thead><tbody>`;
     hubsAll.forEach(h => {
-        const runwayOpts = HUB_RUNWAYS.map(([v, l]) =>
-            `<option value="${v}"${h.runway_type === v ? ' selected' : ''}>${l}</option>`).join('');
         html += `<tr data-hub-row="${h.id}" style="border-bottom:1px solid #2a2a2a;">
             <td style="padding:8px; color:#9aa;">${escHtml(h.nation_name)}</td>
             <td style="padding:8px;"><input type="text" maxlength="80" data-hf="name" value="${escapeAttr(h.name)}" style="width:140px; ${HUB_INPUT}"></td>
-            <td style="padding:8px;"><input type="number" min="1" max="15" step="1" data-hf="weight" value="${Number(h.population_pct)}" style="width:60px; text-align:center; ${HUB_INPUT}"></td>
-            <td style="padding:8px;"><select data-hf="runway" style="${HUB_INPUT}">${runwayOpts}</select></td>
-            <td style="padding:8px;"><input type="number" min="1" max="10" step="1" data-hf="terminals" value="${Number(h.terminal_count)}" style="width:56px; text-align:center; ${HUB_INPUT}"></td>
+            <td style="padding:8px;"><input type="number" min="0" max="100" step="0.01" data-hf="weight" value="${Number(h.population_pct)}" style="width:70px; text-align:center; ${HUB_INPUT}"></td>
             <td style="padding:8px; text-align:center;"><input type="checkbox" data-hf="capital"${h.is_capital ? ' checked' : ''}></td>
             <td style="padding:8px;">
                 <button class="btn btn-success" style="padding:3px 10px; font-size:0.75rem;" onclick="saveHub('${h.id}', this)">Save</button>
@@ -4835,18 +4888,14 @@ async function addHub(btn) {
     statusEl.textContent = '';
     if (!nationId) return setErr('Select a nation first.');
     const name = (document.getElementById('hub-new-name').value || '').trim();
-    const weight = parseInt(document.getElementById('hub-new-weight').value, 10);
-    const runway = document.getElementById('hub-new-runway').value;
-    const terminals = parseInt(document.getElementById('hub-new-terminals').value, 10);
+    const weight = parseFloat(document.getElementById('hub-new-weight').value);
     const isCapital = document.getElementById('hub-new-capital').checked;
     if (name.length < 2) return setErr('Hub name must be at least 2 characters.');
-    if (!Number.isFinite(weight) || weight < 1 || weight > 15) return setErr('Weight must be 1–15.');
-    if (!Number.isFinite(terminals) || terminals < 1 || terminals > 10) return setErr('Terminals must be 1–10.');
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100) return setErr('Weight must be 0–100.');
     await withButtonLock(btn, async () => {
         try {
             const { data, error } = await _supabase.rpc('admin_create_hub', {
-                p_nation_id: nationId, p_name: name, p_weight: weight,
-                p_runway: runway, p_terminals: terminals, p_is_capital: isCapital,
+                p_nation_id: nationId, p_name: name, p_weight: weight, p_is_capital: isCapital,
             });
             if (error) throw error;
             if (!data || !data.success) {
@@ -4869,25 +4918,21 @@ async function saveHub(hubId, btn) {
     if (!row) return;
     const get = f => row.querySelector(`[data-hf="${f}"]`);
     const name = (get('name').value || '').trim();
-    const weight = parseInt(get('weight').value, 10);
-    const runway = get('runway').value;
-    const terminals = parseInt(get('terminals').value, 10);
+    const weight = parseFloat(get('weight').value);
     const isCapital = get('capital').checked;
     if (name.length < 2) return alert('Hub name must be at least 2 characters.');
-    if (!Number.isFinite(weight) || weight < 1 || weight > 15) return alert('Weight must be 1–15.');
-    if (!Number.isFinite(terminals) || terminals < 1 || terminals > 10) return alert('Terminals must be 1–10.');
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100) return alert('Weight must be 0–100.');
     await withButtonLock(btn, async () => {
         try {
             const { data, error } = await _supabase.rpc('admin_update_hub', {
-                p_hub_id: hubId, p_name: name, p_weight: weight,
-                p_runway: runway, p_terminals: terminals, p_is_capital: isCapital,
+                p_hub_id: hubId, p_name: name, p_weight: weight, p_is_capital: isCapital,
             });
             if (error) throw error;
             if (!data || !data.success) {
                 const REASON = {
-                    terminals_below_owned: `Can't shrink below owned slots (${data?.owned ?? '?'} owned).`,
                     name_exists: 'Another hub in this nation already has that name.',
                     hub_not_found: 'Hub no longer exists.',
+                    capital_exists: 'This nation already has a capital.',
                 };
                 return alert(REASON[data?.reason] || ('Could not save: ' + (data?.reason || 'unknown')));
             }

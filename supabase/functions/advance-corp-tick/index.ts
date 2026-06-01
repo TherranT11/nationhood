@@ -262,6 +262,44 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
             console.warn('[EntrepreneurAirlines] allocator threw:', airThrow?.message || airThrow);
         }
 
+        // Apartment Complex rents — per-tick rent allocator (migration
+        // 20270438). One global call: computes gross × occupancy −
+        // maintenance per owned apartment, credits owner treasury,
+        // stamps corp_buildings.last_processed_tick. Idempotent within
+        // a tick. Net can go negative when nation stats sour — that's
+        // the landlord-risk lever the Phase 2 design ships.
+        try {
+            const { data: aptRes, error: aptErr } = await supabase.rpc(
+                'process_apartment_rents', { p_tick: currentTick });
+            if (aptErr) {
+                console.warn('[ApartmentRents] allocator RPC failed:', aptErr.message);
+            } else if (aptRes && aptRes.success && Number(aptRes.apartments_run) > 0) {
+                summary.apartmentRents = aptRes;
+                console.log(`[ApartmentRents] tick ${currentTick}: ${aptRes.apartments_run} apartments, $${aptRes.total_net_rent} net rent`);
+            }
+        } catch (aptThrow) {
+            console.warn('[ApartmentRents] allocator threw:', aptThrow?.message || aptThrow);
+        }
+
+        // Oil & Gas production loop — per-tick equipment runner
+        // (migration 20270443). Pumps → crude_reserve, refineries
+        // crude → refined, gas stations refined → treasury at retail.
+        // No automatic spot sales — player fires sell_crude_to_spot /
+        // sell_refined_to_spot manually. Idempotent within a tick via
+        // entrepreneur_corps.oil_last_processed_tick.
+        try {
+            const { data: ogRes, error: ogErr } = await supabase.rpc(
+                'process_oil_and_gas', { p_tick: currentTick });
+            if (ogErr) {
+                console.warn('[OilAndGas] production RPC failed:', ogErr.message);
+            } else if (ogRes && ogRes.success && Number(ogRes.corps_processed) > 0) {
+                summary.oilAndGas = ogRes;
+                console.log(`[OilAndGas] tick ${currentTick}: ${ogRes.corps_processed} corps, ${ogRes.crude_produced} crude produced, ${ogRes.refined_produced} refined produced, $${ogRes.retail_revenue} retail`);
+            }
+        } catch (ogThrow) {
+            console.warn('[OilAndGas] production threw:', ogThrow?.message || ogThrow);
+        }
+
     } catch (shipErr) {
         console.error('[advance-corp-tick] FAILED shipping route processor:', shipErr);
         summary.errors.push({ scope: 'shipping_routes', error: String(shipErr) });

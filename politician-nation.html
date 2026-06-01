@@ -94,43 +94,6 @@
 .sec-cta .cta-title { font-size:14px; font-weight:600; color:#fff; letter-spacing:0.02em; }
 .sec-cta .cta-sub   { font-size:11px; color:#888; margin-top:5px; line-height:1.5; }
 
-/* Corporations list — one row per entrepreneur corp HQ'd in this nation.
-   Logo (industry-coloured 2-letter badge) · name + sector · listing pill ·
-   CEO · valuation. Valuation uses the same computeEntrepreneurValuation
-   helper the entrepreneur-corporations page does — one source. */
-.corp-list { display:flex; flex-direction:column; }
-.corp-head { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
-  align-items:center; gap:14px; padding:0 4px 8px;
-  border-bottom:0.5px solid rgba(255,255,255,0.10);
-  font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
-  color:#666; font-weight:600; }
-.corp-head .right { text-align:right; }
-.corp-row  { display:grid; grid-template-columns:44px 2fr 90px 1.3fr 110px;
-  align-items:center; gap:14px; padding:11px 4px;
-  border-bottom:0.5px solid rgba(255,255,255,0.05); }
-.corp-row:last-child { border-bottom:none; }
-.corp-badge { width:36px; height:36px; border-radius:4px;
-  display:flex; align-items:center; justify-content:center;
-  font-family:monospace; font-size:13px; font-weight:600; letter-spacing:0.05em;
-  color:#cfcabf; background:rgba(255,255,255,0.06); }
-.corp-badge.construction            { background:#1a2218; color:#8aaa6a; }
-.corp-badge.banking                 { background:#171f28; color:#7a9aab; }
-.corp-badge.shipping                { background:#221d14; color:#c89e6e; }
-.corp-badge.real_estate             { background:#211a21; color:#aa7aaa; }
-.corp-badge.airline                 { background:#152028; color:#7ab8d0; }
-.corp-badge.aviation_manufacturing  { background:#221615; color:#c88a8a; }
-.corp-name { font-size:13px; color:#fff; font-weight:500; line-height:1.2; }
-.corp-sub  { font-size:9px; letter-spacing:0.1em; text-transform:uppercase;
-  color:#888; margin-top:3px; font-weight:500; }
-.corp-listing { display:inline-block; font-size:10px; letter-spacing:0.08em;
-  text-transform:uppercase; padding:3px 9px; border-radius:3px;
-  font-weight:500; text-align:center; }
-.corp-listing.public  { background:#1a2535; color:#7a9aab; }
-.corp-listing.private { background:#1f1f1f; color:#888; }
-.corp-ceo { font-size:12px; color:#d4d4d4; }
-.corp-val { font-size:13px; color:#cfcabf; font-family:monospace;
-  text-align:right; font-variant-numeric:tabular-nums; }
-
 /* Government & Politics — parliament block. Reads movement_party rows
    for the nation and renders an SVG arc (one seat per circle, coloured
    by party), a three-card strip (governing party / PM / opposition
@@ -189,11 +152,160 @@
 .party-seats .ps-of { font-size:9px; color:#888; margin-top:3px; }
 .party-seats .ps-l  { font-size:8px; letter-spacing:0.11em; color:#666; margin-top:5px; }
 
+/* Special-election row — one row per politician_active_election in
+   this nation, surfaced under "Upcoming Special Elections". Border-
+   left accent comes from the politician's party_color (inline style);
+   .sp-elec-tier badge tints by race tier so MP races read at a
+   glance against community ones. */
+.sp-elec-row { display:flex; align-items:center; gap:14px; padding:13px 14px;
+  border-radius:6px; border:0.5px solid rgba(255,255,255,0.07);
+  border-left-width:3px; background:#0a0a0a; margin-bottom:8px;
+  transition:background 0.12s, border-color 0.12s; }
+.sp-elec-row:hover { background:#101010; border-color:rgba(255,255,255,0.14); }
+.sp-elec-row:last-child { margin-bottom:0; }
+.sp-elec-tier { font-size:8px; letter-spacing:0.13em; font-weight:700;
+  text-transform:uppercase; padding:3px 8px; border-radius:3px;
+  flex-shrink:0; white-space:nowrap; }
+.sp-elec-row.sp-elec-parl     .sp-elec-tier { background:#161208; color:#c89e6e;
+  border:0.5px solid rgba(200,158,110,0.35); }
+.sp-elec-row.sp-elec-community .sp-elec-tier { background:#0e1416; color:#5aafa5;
+  border:0.5px solid rgba(90,175,165,0.40); }
+.sp-elec-main { flex:1; min-width:0; }
+.sp-elec-name { font-size:13px; color:#fff; font-weight:500;
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.sp-elec-name strong { font-weight:600; }
+.sp-elec-party { font-size:10px; font-weight:600; letter-spacing:0.04em; }
+.sp-elec-desc { font-size:10.5px; color:#888; margin-top:4px; line-height:1.5; }
+.sp-elec-desc strong { color:#cfcabf; font-weight:500; }
+.sp-elec-opp-party { color:#666; font-size:10px; }
+.sp-elec-when { font-size:10px; color:#7a9aab; letter-spacing:0.04em;
+  text-align:right; flex-shrink:0; min-width:110px;
+  font-variant-numeric:tabular-nums; }
+
 .govt-empty { padding:24px 8px; text-align:center; }
 .govt-empty .head { font-size:14px; color:#fff; font-weight:500; margin-bottom:8px; }
 .govt-empty .head .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c89e6e; }
 .govt-empty .note { font-size:11px; color:#888; line-height:1.6; font-style:italic;
   max-width:540px; margin:0 auto; }
+
+/* Committee card — one row per Assembly committee. Title + short
+   description + requirement chip + Apply CTA. CTA enabled only when
+   the viewer's politician_office matches the requirement. */
+.comm-card { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:6px; padding:16px 18px; margin-bottom:8px; }
+.comm-card:last-child { margin-bottom:0; }
+.comm-head { display:flex; align-items:baseline; justify-content:space-between;
+  gap:14px; margin-bottom:8px; }
+.comm-name { font-size:14px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
+.comm-name .serif { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c89e6e; }
+.comm-desc { font-size:11.5px; color:#888; line-height:1.55; margin-bottom:12px; }
+.comm-req  { font-size:9px; letter-spacing:0.13em; text-transform:uppercase;
+  font-weight:600; padding:3px 8px; border-radius:3px; white-space:nowrap; }
+.comm-req.met     { background:#0e1611; color:#8aaa6a; border:0.5px solid rgba(122,170,106,0.35); }
+.comm-req.not-met { background:#161208; color:#c89e6e; border:0.5px solid rgba(200,158,110,0.35); }
+.comm-foot { display:flex; justify-content:flex-end; align-items:center; gap:9px;
+  padding-top:10px; border-top:0.5px solid rgba(255,255,255,0.05); }
+.comm-view { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#888; text-decoration:none;
+  padding:7px 10px; transition:color 0.15s; }
+.comm-view:hover { color:#bbb; }
+.comm-apply { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#5aafa5; background:transparent;
+  border:0.5px solid rgba(90,175,165,0.4); border-radius:3px;
+  padding:7px 14px; cursor:pointer; transition:all 0.15s; }
+.comm-apply:hover:not(:disabled) { background:rgba(90,175,165,0.08);
+  border-color:rgba(90,175,165,0.7); color:#7ec5bd; }
+.comm-apply:disabled { color:#555; border-color:rgba(255,255,255,0.06);
+  cursor:not-allowed; }
+
+/* Voting panel — committee-admission vote cards. v1 ships a single
+   shape (admission), but the design tokens are intentionally generic
+   so bill-votes and treaty-ratification votes can reuse it later. */
+.vote-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:7px; overflow:hidden; border-left:3px solid #a0c0d0;
+  margin-bottom:10px; }
+.vote-card:last-child { margin-bottom:0; }
+.vote-head { padding:14px 18px; background:#0c1418;
+  border-bottom:0.5px solid #3a5466; display:flex; align-items:flex-start;
+  gap:14px; }
+.vote-head-info { flex:1; min-width:0; }
+.vote-eyebrow { font-size:8.5px; letter-spacing:0.14em; color:#a0c0d0;
+  font-weight:600; margin-bottom:4px; }
+.vote-title { font-size:15px; font-weight:600; color:#fff;
+  letter-spacing:-0.005em; line-height:1.25; }
+.vote-title .serif { font-family:Georgia,'Times New Roman',serif;
+  font-style:italic; color:#c0d8e8; }
+.vote-clock { padding:9px 12px; background:#0a0a0a;
+  border:0.5px solid #3a5466; border-radius:5px; text-align:center;
+  flex-shrink:0; min-width:108px; }
+.vote-clock-lab { font-size:8px; letter-spacing:0.14em; color:#666;
+  font-weight:600; margin-bottom:4px; }
+.vote-clock-val { font-size:15px; font-weight:700; color:#a0c0d0;
+  font-variant-numeric:tabular-nums; line-height:1; }
+.vote-clock-sub { font-size:8.5px; color:#888; margin-top:3px; font-style:italic; }
+
+.vote-applicant { padding:12px 18px; background:#0a0a0a;
+  border-bottom:0.5px solid rgba(255,255,255,0.05);
+  display:flex; align-items:center; gap:12px; }
+.vote-app-badge { width:36px; height:36px; border-radius:50%;
+  background:#1a1a1a; color:#fff; display:flex; align-items:center;
+  justify-content:center; font-size:12px; font-weight:700; flex-shrink:0; }
+.vote-app-name { font-size:12px; font-weight:600; color:#fff;
+  letter-spacing:-0.005em; line-height:1.3; }
+.vote-app-meta { font-size:10px; color:#888; margin-top:3px; }
+.vote-app-meta strong { color:#bbb; }
+
+.vote-tally { padding:14px 18px;
+  border-bottom:0.5px solid rgba(255,255,255,0.05); }
+.vote-tl-nums { display:grid; grid-template-columns:repeat(4,1fr); gap:8px;
+  margin-bottom:11px; }
+.vote-tl-box { padding:11px 12px; background:#0a0a0a;
+  border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
+  text-align:center; }
+.vote-tl-box.yes { border-color:#3a5a42; background:#0e1611; }
+.vote-tl-box.no  { border-color:#5a3030; background:#160e0e; }
+.vote-tl-box.abs { border-color:#5a4d2e; background:#161208; }
+.vote-tl-key { font-size:8px; letter-spacing:0.14em; font-weight:700;
+  margin-bottom:5px; color:#888; }
+.vote-tl-box.yes .vote-tl-key { color:#6ab07a; }
+.vote-tl-box.no  .vote-tl-key { color:#c87a7a; }
+.vote-tl-box.abs .vote-tl-key { color:#d4b87a; }
+.vote-tl-big { font-size:24px; font-weight:700; color:#fff;
+  font-variant-numeric:tabular-nums; line-height:1; }
+.vote-tl-of  { font-size:10px; color:#888; margin-top:4px; }
+.vote-tl-pct { font-size:9px; color:#666; margin-top:3px; letter-spacing:0.05em; }
+
+.vote-threshold { display:flex; align-items:center; gap:11px;
+  font-size:10px; color:#888; padding-top:8px; }
+.vote-th-lab { letter-spacing:0.06em; font-weight:600; color:#bbb;
+  flex-shrink:0; }
+.vote-th-bar { flex:1; height:7px; background:#1a1a1a; border-radius:3px;
+  overflow:hidden; position:relative; }
+.vote-th-fill { height:100%; background:#6ab07a; transition:width 0.3s; }
+.vote-th-mark { position:absolute; left:51%; top:-2px; bottom:-2px; width:1px;
+  background:#c0d8e8; }
+.vote-th-val { color:#fff; font-variant-numeric:tabular-nums; font-weight:600;
+  flex-shrink:0; }
+
+.vote-factions { padding:14px 18px;
+  border-top:0.5px solid rgba(255,255,255,0.05); }
+.vote-fc-lab { font-size:8.5px; letter-spacing:0.14em; color:#666;
+  font-weight:600; margin-bottom:10px; }
+.vote-fc-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+.vote-fc-row { display:flex; align-items:center; gap:9px; padding:7px 11px;
+  background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:4px; font-size:10px; }
+.vote-fc-flag { width:22px; height:16px; border-radius:2px; font-size:8px;
+  font-weight:700; color:#fff; display:flex; align-items:center;
+  justify-content:center; flex-shrink:0; }
+.vote-fc-name { font-size:10.5px; color:#fff; font-weight:600; flex:1;
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vote-fc-vote { font-size:8px; letter-spacing:0.13em; font-weight:700;
+  padding:2px 7px; border-radius:2px; flex-shrink:0; }
+.vote-fc-vote.yes { background:#0e1611; color:#6ab07a; border:0.5px solid #3a5a42; }
+.vote-fc-vote.no  { background:#160e0e; color:#c87a7a; border:0.5px solid #5a3030; }
+.vote-fc-seats { font-size:9px; color:#888; flex-shrink:0;
+  font-variant-numeric:tabular-nums; }
 
 .loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
 
@@ -216,13 +328,11 @@
   .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
   .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
   .sec-body { padding:14px; }
-  .corp-row, .corp-head { grid-template-columns:36px 1fr auto; gap:10px; }
-  .corp-row { padding:10px 2px; }
-  .corp-head .col-type, .corp-head .col-ceo,
-  .corp-row .corp-listing, .corp-row .corp-ceo { display:none; }
   .gov-strip { grid-template-columns:1fr; gap:8px; }
   .party-row { flex-wrap:wrap; }
   .party-meta { padding-left:0; min-width:0; width:100%; flex-direction:row; gap:14px; }
+  .sp-elec-row { flex-wrap:wrap; }
+  .sp-elec-when { min-width:0; text-align:left; padding-top:4px; }
 }
 @media (max-width:420px) {
   .info-grid, .stats-grid { grid-template-columns:1fr; }
@@ -271,12 +381,11 @@
   <nav class="jump-nav" id="jump-nav">
     <button data-target="sec-nation">Nation</button>
     <button data-target="sec-govt">Govt</button>
+    <button data-target="sec-voting">Voting</button>
     <button data-target="sec-elections">Elections</button>
     <button data-target="sec-committees">Committees</button>
     <button data-target="sec-laws">Laws</button>
-    <button data-target="sec-parties">Parties</button>
     <button data-target="sec-economy">Economy</button>
-    <button data-target="sec-corp">Corporations</button>
     <button data-target="sec-military">Military</button>
     <button data-target="sec-conflicts">Conflicts</button>
     <button data-target="sec-world">World Orgs</button>
@@ -304,6 +413,13 @@
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
+  <details id="sec-voting" class="sec">
+    <summary>Voting</summary>
+    <div class="sec-body" id="sec-voting-body">
+      <div class="sec-empty">No active votes.</div>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
   <details id="sec-elections" class="sec">
     <summary>Elections</summary>
     <div class="sec-body" id="sec-elections-body">
@@ -313,36 +429,44 @@
   </details>
   <details id="sec-committees" class="sec">
     <summary>Committees</summary>
-    <div class="sec-body">
-      <div class="sec-empty">No committees recorded yet.</div>
+    <div class="sec-body" id="sec-committees-body">
+      <div class="comm-card" data-committee="defense_foreign_affairs">
+        <div class="comm-head">
+          <div class="comm-name">Defence &amp; Foreign Affairs <span class="serif">Committee</span></div>
+          <span class="comm-req" data-req-chip>Member of Parliament required</span>
+        </div>
+        <div class="comm-desc">Description of this committee here.</div>
+        <div class="comm-foot">
+          <a class="comm-view" href="committee.html?key=defense_foreign_affairs">View Committee</a>
+          <button class="comm-apply" type="button" data-apply data-committee-key="defense_foreign_affairs" disabled>Apply for Committee</button>
+        </div>
+      </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
   <details id="sec-laws" class="sec">
     <summary>Laws</summary>
     <div class="sec-body">
-      <div class="sec-empty">No laws recorded yet.</div>
-      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
-    </div>
-  </details>
-  <details id="sec-parties" class="sec">
-    <summary>Political Parties</summary>
-    <div class="sec-body">
-      <div class="sec-empty">No parties listed yet.</div>
+      <a class="sec-cta" href="politician-laws.html">
+        <div class="cta-arrow">&rsaquo;</div>
+        <div>
+          <div class="cta-title">Open Laws</div>
+          <div class="cta-sub">Active laws and policy positions in force in this nation &mdash; the codebook the chamber works from.</div>
+        </div>
+      </a>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
   <details id="sec-economy" class="sec">
-    <summary>Economy &amp; Trade</summary>
+    <summary>Economy &amp; Industry</summary>
     <div class="sec-body">
-      <div class="sec-empty">Nothing recorded yet.</div>
-      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
-    </div>
-  </details>
-  <details id="sec-corp" class="sec">
-    <summary>Corporations</summary>
-    <div class="sec-body" id="sec-corp-body">
-      <div class="sec-empty">Loading…</div>
+      <a class="sec-cta" href="politician-economy.html">
+        <div class="cta-arrow">&rsaquo;</div>
+        <div>
+          <div class="cta-title">Open Economy &amp; Industry</div>
+          <div class="cta-sub">Sectors of the economy ranked by strength &mdash; industries operating in this nation and the corporations behind them.</div>
+        </div>
+      </a>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -388,10 +512,9 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { industryLabel, ownerDisplayName, fmtValuation, safeHexColor, factionInitials, tickToYear, fmtMoney } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, fmtMoney } from './js/utils.js';
+import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
-import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
-import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -525,12 +648,58 @@ async function init() {
 
   renderCard(nation, pmMinistry);
   bindJumpNav();
+
+  // Resolve any due admission votes for this nation before reading the
+  // committee + voting surfaces. Lazy resolver mirrors the election
+  // resolve-on-view pattern from politician-career.html. Soft-fail —
+  // resolution is best-effort; the panels render off the latest state
+  // regardless.
+  try {
+    const { error } = await _supabase.rpc('resolve_due_admission_votes', { p_nation_id: nation.id });
+    if (error) console.warn('politician-nation: resolve_due_admission_votes failed', error);
+  } catch (err) {
+    console.warn('politician-nation: resolve_due_admission_votes threw', err);
+  }
+
+  // Viewer's current committee memberships gate the Apply buttons
+  // (already-member / 2-committee cap) and feed the Voting panel's
+  // applicant resolution. The single SELECT covers both surfaces.
+  const polId = ctx.faction?.id || null;
+  let viewerMemberships = [];
+  if (polId) {
+    const { data, error } = await _supabase.from('committee_members')
+      .select('committee_id, committee:committees!committee_id(committee_key)')
+      .eq('politician_faction_id', polId);
+    if (error) console.warn('politician-nation: committee_members fetch failed', error);
+    viewerMemberships = data || [];
+  }
+
+  // Viewer's pending admission votes — gates Apply against re-submission.
+  let pendingVoteKeys = new Set();
+  if (polId) {
+    const { data, error } = await _supabase.from('committee_admission_votes')
+      .select('committee_id, committee:committees!committee_id(committee_key)')
+      .eq('applicant_faction_id', polId)
+      .eq('status', 'active');
+    if (error) console.warn('politician-nation: admission_votes fetch failed', error);
+    pendingVoteKeys = new Set((data || []).map(v => v.committee?.committee_key).filter(Boolean));
+  }
+
+  renderCommittees(ctx.faction?.politician_office || null, viewerMemberships, pendingVoteKeys);
+  try {
+    await loadVoting(nation.id, Number(ctx.shard?.current_tick) || 0);
+  } catch (err) {
+    console.warn('politician-nation: loadVoting threw', err);
+  }
+
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
-  // Side-panel data is lazy: Corporations skips the fetch entirely
-  // until the user expands its section; Government keeps the parties
-  // + admin fetch eager (so patchHeadOfGov can update the nation
-  // header's Head of Gov't cell on initial load) but defers the DOM
+  // Hash-deep-link runs AFTER content shows so scrollIntoView lands
+  // on a visible element rather than the hidden loader.
+  openHashSection();
+  // Side-panel data: Government keeps the parties + admin fetch
+  // eager (so patchHeadOfGov can update the nation header's Head
+  // of Gov't cell on initial load) but defers the DOM
   // build until expand. Both fire-and-forget — failures render an
   // empty state in their own section without blocking the page.
   _viewerMyPartyId = ctx.faction?.politician_party_id || null;
@@ -538,7 +707,7 @@ async function init() {
   _viewerPm        = pmMinistry;
   renderElections(nation, Number(ctx.shard?.current_tick) || 0);
   loadParliament(nation, pmMinistry);
-  bindLazySections(nation);
+  bindLazySections();
 }
 
 // Elections — eager render because everything we need (next_election_tick,
@@ -576,44 +745,115 @@ function renderElections(n, currentTick) {
 
   body.innerHTML = `
     <div class="gov-strip" style="grid-template-columns:1fr;">
-      <div class="gov-card gov">
-        <div class="gck">NEXT GENERAL ELECTION</div>
+      <a class="gov-card gov" href="election.html?nation=${encodeURIComponent(n.id)}"
+         style="text-decoration:none; cursor:pointer;">
+        <div class="gck">NEXT GENERAL ELECTION &mdash; click for full breakdown</div>
         <div class="gcv">${year}</div>
         <div class="gcd">${countdown} &middot; ${stake}</div>
-      </div>
+      </a>
     </div>
     <div class="parties-lab">Upcoming Special Elections</div>
-    <div class="sec-empty">No special elections scheduled.</div>
+    <div id="special-elections-host" class="sec-empty">Loading special elections…</div>
   ` + footer;
+
+  // Async patch — pull every active race in this nation and replace
+  // the loading placeholder. Errors fall back to an empty-state line
+  // so a failed fetch never blanks the rest of the Elections section.
+  loadSpecialElections(n, currentTick);
 }
 
-// One-shot fetch guards keyed off the section's <details> toggle.
-// Corporations defers everything; Government re-renders the body on
-// open (the eager loadParliament call may finish before or after, so
-// the body falls back to a Loading placeholder until data settles).
+// Special Elections list — every politician_active_election row for a
+// politician whose nation_id matches this page's nation. Includes the
+// viewer's own race; the Pressing Issues card on the home page is the
+// primary surface for the viewer, but listing them here keeps the
+// nation-level picture honest. Sorted by resolve_tick so the next
+// race to resolve sits at the top.
+async function loadSpecialElections(n, currentTick) {
+  const host = document.getElementById('special-elections-host');
+  if (!host) return;
+  try {
+    // Two-stage filter: PostgREST embeds don't filter parents by an
+    // embedded column, so we fetch faction ids in this nation first,
+    // then pull active races whose politician_id is in that set.
+    const { data: polRows, error: polErr } = await _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, politician_party_id')
+      .eq('faction_type', 'politician')
+      .eq('nation_id', n.id)
+      .is('abandoned_at', null);
+    if (polErr) throw polErr;
+    const polIds = (polRows || []).map(p => p.id);
+    if (!polIds.length) {
+      host.outerHTML = '<div class="sec-empty">No special elections in progress.</div>';
+      return;
+    }
+
+    const { data: races, error: raceErr } = await _supabase.from('politician_active_election')
+      .select('politician_id, race_tier, district, opp_first, opp_last, opp_party_name, resolve_tick')
+      .in('politician_id', polIds)
+      .order('resolve_tick', { ascending: true });
+    if (raceErr) throw raceErr;
+    if (!races || !races.length) {
+      host.outerHTML = '<div class="sec-empty">No special elections in progress.</div>';
+      return;
+    }
+
+    // Per-politician lookup for the row render: name + party colour.
+    const polById = new Map((polRows || []).map(p => [p.id, p]));
+    const partyIds = [...new Set((polRows || []).map(p => p.politician_party_id).filter(Boolean))];
+    let partyById = new Map();
+    if (partyIds.length) {
+      const { data: partyRows } = await _supabase.from('factions')
+        .select('id, faction_name, abbreviation, party_color')
+        .in('id', partyIds);
+      partyById = new Map((partyRows || []).map(p => [p.id, p]));
+    }
+
+    host.outerHTML = races.map(r =>
+      renderSpecialElectionRow(r, polById.get(r.politician_id), partyById, Number(currentTick) || 0)
+    ).join('');
+  } catch (err) {
+    console.warn('politician-nation: special elections fetch failed', err);
+    host.outerHTML = '<div class="sec-empty">Could not load special elections.</div>';
+  }
+}
+
+function renderSpecialElectionRow(race, pol, partyById, currentTick) {
+  const tierLabel = race.race_tier === 'parliament' ? 'MP RACE' : 'COMMUNITY RACE';
+  const tierClass = race.race_tier === 'parliament' ? 'parl'      : 'community';
+  const polName = pol
+    ? [pol.leader_first_name, pol.leader_last_name].filter(Boolean).join(' ').trim() || 'A politician'
+    : 'A politician';
+  const party   = pol?.politician_party_id ? partyById.get(pol.politician_party_id) : null;
+  const partyName  = party?.faction_name || 'Independent';
+  const partyAccent = safeHexColor(party?.party_color);
+  const oppName = [race.opp_first, race.opp_last].filter(Boolean).join(' ').trim() || 'an opponent';
+  const oppParty = race.opp_party_name || 'Independent';
+  const ticks = Math.max(0, Number(race.resolve_tick) - currentTick);
+  const when  = ticks === 0 ? 'resolves this tick' : `resolves in ${ticks} tick${ticks === 1 ? '' : 's'}`;
+  return `<div class="sp-elec-row sp-elec-${tierClass}" style="border-left-color:${partyAccent || 'rgba(255,255,255,0.10)'};">
+    <div class="sp-elec-tier">${tierLabel}</div>
+    <div class="sp-elec-main">
+      <div class="sp-elec-name"><strong>${escHtml(polName)}</strong> <span class="sp-elec-party" style="color:${partyAccent};">${escHtml(partyName)}</span></div>
+      <div class="sp-elec-desc">${escHtml(race.district)} &middot; vs <strong>${escHtml(oppName)}</strong> <span class="sp-elec-opp-party">(${escHtml(oppParty)})</span></div>
+    </div>
+    <div class="sp-elec-when">${escHtml(when)}</div>
+  </div>`;
+}
+
+// One-shot fetch guard keyed off the section's <details> toggle.
+// Government re-renders the body on open (the eager loadParliament
+// call may finish before or after, so the body falls back to a
+// Loading placeholder until data settles).
 let _viewerMyPartyId = null;
 let _viewerNation    = null;
 let _viewerPm        = null;
-let _corpsLoaded     = false;
-function bindLazySections(nation) {
-  const govSec  = document.getElementById('sec-govt');
-  const corpSec = document.getElementById('sec-corp');
+function bindLazySections() {
+  const govSec = document.getElementById('sec-govt');
   if (govSec) {
     govSec.addEventListener('toggle', () => {
       if (govSec.open) renderParliamentBody();
     });
     if (govSec.open) renderParliamentBody();
-  }
-  if (corpSec) {
-    corpSec.addEventListener('toggle', () => {
-      if (!corpSec.open || _corpsLoaded) return;
-      _corpsLoaded = true;
-      renderCorporations(nation.id);
-    });
-    if (corpSec.open && !_corpsLoaded) {
-      _corpsLoaded = true;
-      renderCorporations(nation.id);
-    }
   }
 }
 
@@ -637,6 +877,216 @@ function bindJumpNav() {
     const target = document.getElementById(btn.dataset.target);
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
+}
+
+// Render the Committees panel. Tints the requirement chip on each
+// card based on viewer's politician_office, and gates the Apply
+// button on the MP + 2-committee cap + already-member + vote-pending
+// rules. View link stays universally clickable.
+function renderCommittees(office, viewerMemberships, pendingVoteKeys) {
+  const isMP = office === 'member_of_parliament';
+  const membershipCount = viewerMemberships.length;
+  const memberKeys = new Set(viewerMemberships.map(m => m.committee?.committee_key).filter(Boolean));
+  document.querySelectorAll('#sec-committees-body .comm-card').forEach(card => {
+    const chip = card.querySelector('[data-req-chip]');
+    if (chip) {
+      chip.classList.toggle('met', isMP);
+      chip.classList.toggle('not-met', !isMP);
+      chip.textContent = isMP ? 'Member of Parliament' : 'Member of Parliament required';
+    }
+    const btn = card.querySelector('[data-apply]');
+    if (!btn) return;
+    const key = btn.dataset.committeeKey;
+    let reason = null;
+    if (!isMP)                          reason = 'Member of Parliament required';
+    else if (memberKeys.has(key))       reason = 'Already a member';
+    else if (membershipCount >= 2)      reason = '2-committee cap reached';
+    else if (pendingVoteKeys.has(key))  reason = 'Admission vote pending';
+    btn.disabled = !!reason;
+    btn.title    = reason || 'Apply for committee membership';
+    btn.onclick  = reason ? null : () => submitCommitteeApplication(card, btn, key);
+  });
+}
+
+async function submitCommitteeApplication(card, btn, committeeKey) {
+  // Resolves committee_id via ensure_committee (idempotent — returns
+  // the existing id), then calls the shared apply helper. UI state
+  // (disable/restore + reload) is managed here; rules + error
+  // mapping live in js/committees.js.
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  let committeeId = null;
+  try {
+    const ensureRes = await _supabase.rpc('ensure_committee', {
+      p_nation_id: _viewerNation?.id || null,
+      p_committee_key: committeeKey,
+    });
+    if (ensureRes.error || !ensureRes.data?.success) {
+      throw new Error(ensureRes.data?.reason || ensureRes.error?.message || 'committee_lookup_failed');
+    }
+    committeeId = ensureRes.data.committee_id;
+  } catch (err) {
+    console.warn('politician-nation: ensure_committee failed', err);
+    alert('Could not look up the committee. Try again.');
+    btn.disabled = false; btn.textContent = originalLabel;
+    return;
+  }
+  const res = await applyForCommittee(committeeId);
+  if (!res.success) {
+    alert(res.humanError);
+    btn.disabled = false; btn.textContent = originalLabel;
+    return;
+  }
+  location.reload();
+}
+
+// Hash-deep-link — opens the matching <details id="..."> section when
+// arriving from a #sec-X link (e.g. careers' Apply to Committee CTA
+// lands at politician-nation.html#sec-committees).
+function openHashSection() {
+  const id = (location.hash || '').replace(/^#/, '');
+  if (!id) return;
+  const det = document.getElementById(id);
+  if (det && det.tagName === 'DETAILS') {
+    det.open = true;
+    det.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }
+}
+
+async function loadVoting(nationId, currentTick) {
+  const host = document.getElementById('sec-voting-body');
+  if (!host) return;
+  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+  const { data, error } = await _supabase
+    .from('committee_admission_votes')
+    .select('id, committee_id, applicant_party_id, started_at_tick, resolve_at_tick, yes_seats, no_seats, chamber_size, threshold_pct, applicant:factions!applicant_faction_id(leader_first_name, leader_last_name, politician_office, politician_party_id), party:factions!applicant_party_id(faction_name, abbreviation, party_color), committee:committees!committee_id(committee_key)')
+    .eq('nation_id', nationId)
+    .eq('status', 'active')
+    .order('resolve_at_tick', { ascending: true });
+  if (error) {
+    console.warn('politician-nation: voting fetch failed', error);
+    host.innerHTML = `<div class="sec-empty">Could not load active votes.</div>${footer}`;
+    return;
+  }
+  const votes = data || [];
+  if (!votes.length) {
+    host.innerHTML = `<div class="sec-empty">No active votes.</div>${footer}`;
+    return;
+  }
+
+  // Parties in this nation — used for the faction breakdown row in
+  // each vote card. One fetch is shared across all rendered votes;
+  // the party-line rule is the same across all admission votes.
+  const { data: parties, error: pErr } = await _supabase
+    .from('factions')
+    .select('id, faction_name, abbreviation, party_color, seats')
+    .eq('nation_id', nationId)
+    .eq('faction_type', 'movement_party')
+    .is('abandoned_at', null)
+    .order('seats', { ascending: false, nullsFirst: false });
+  if (pErr) console.warn('politician-nation: parties for voting fetch failed', pErr);
+  const partyRows = parties || [];
+
+  host.innerHTML = votes.map(v => renderVoteCard(v, partyRows, currentTick)).join('') + footer;
+}
+
+function renderVoteCard(v, partyRows, currentTick) {
+  const committeeName = COMMITTEES[v.committee?.committee_key]?.fullName || 'Committee';
+  const applicantFull = [v.applicant?.leader_first_name, v.applicant?.leader_last_name]
+    .filter(Boolean).join(' ') || 'Unknown';
+  const partyName  = v.party?.faction_name || 'Independent';
+  const partyColor = safeHexColor(v.party?.party_color);
+  const applicantInitials = factionInitials(applicantFull, null);
+  const ticksRemaining = Math.max(0, Number(v.resolve_at_tick) - currentTick);
+  const yes = Number(v.yes_seats) || 0;
+  const no  = Number(v.no_seats)  || 0;
+  const cast = yes + no;
+  const chamber = Number(v.chamber_size) || 0;
+  const abstain = 0;
+  const unvoted = Math.max(0, chamber - cast - abstain);
+  const threshold = Number(v.threshold_pct) || 51;
+  const yesPctOfCast = cast > 0 ? Math.round((yes * 100) / cast) : 0;
+  const noPctOfCast  = cast > 0 ? Math.round((no  * 100) / cast) : 0;
+  const aboveOrBelow = yesPctOfCast - threshold;
+  return `
+    <div class="vote-card">
+      <div class="vote-head">
+        <div class="vote-head-info">
+          <div class="vote-eyebrow">CHAMBER VOTE &middot; COMMITTEE ADMISSION</div>
+          <div class="vote-title">Vote: ${escHtml(applicantFull)} for <span class="serif">${escHtml(committeeName)}</span></div>
+        </div>
+        <div class="vote-clock">
+          <div class="vote-clock-lab">RESOLVES</div>
+          <div class="vote-clock-val">${ticksRemaining} TICK${ticksRemaining === 1 ? '' : 'S'}</div>
+          <div class="vote-clock-sub">${ticksRemaining === 0 ? 'next refresh' : `at tick ${v.resolve_at_tick}`}</div>
+        </div>
+      </div>
+      <div class="vote-applicant">
+        <div class="vote-app-badge" style="background:${partyColor};">${escHtml(applicantInitials)}</div>
+        <div>
+          <div class="vote-app-name">${escHtml(applicantFull)}</div>
+          <div class="vote-app-meta"><strong>${escHtml(partyName)}</strong> &middot; applying for ${escHtml(committeeName)}</div>
+        </div>
+      </div>
+      <div class="vote-tally">
+        <div class="vote-tl-nums">
+          <div class="vote-tl-box yes">
+            <div class="vote-tl-key">YES</div>
+            <div class="vote-tl-big">${yes}</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">${yesPctOfCast}% of cast</div>
+          </div>
+          <div class="vote-tl-box no">
+            <div class="vote-tl-key">NO</div>
+            <div class="vote-tl-big">${no}</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">${noPctOfCast}% of cast</div>
+          </div>
+          <div class="vote-tl-box abs">
+            <div class="vote-tl-key">ABSTAIN</div>
+            <div class="vote-tl-big">${abstain}</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">not counted</div>
+          </div>
+          <div class="vote-tl-box">
+            <div class="vote-tl-key">UNVOTED</div>
+            <div class="vote-tl-big">${unvoted}</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">${chamber > 0 ? Math.round((unvoted * 100) / chamber) : 0}% of chamber</div>
+          </div>
+        </div>
+        <div class="vote-threshold">
+          <span class="vote-th-lab">YES OF CAST</span>
+          <div class="vote-th-bar">
+            <div class="vote-th-fill" style="width:${Math.min(100, yesPctOfCast)}%;"></div>
+            <div class="vote-th-mark"></div>
+          </div>
+          <span class="vote-th-val">${yesPctOfCast}% &middot; ${aboveOrBelow >= 0 ? '+' : ''}${aboveOrBelow} vs ${threshold}%</span>
+        </div>
+      </div>
+      <div class="vote-factions">
+        <div class="vote-fc-lab">HOW THE PARTIES ARE VOTING</div>
+        <div class="vote-fc-grid">${renderVoteFactionRows(partyRows, v.applicant_party_id)}</div>
+      </div>
+    </div>`;
+}
+
+function renderVoteFactionRows(partyRows, applicantPartyId) {
+  if (!partyRows.length) return '<div class="sec-empty">No parties.</div>';
+  return partyRows.map(p => {
+    const isYes  = p.id === applicantPartyId;
+    const seats  = Number(p.seats) || 0;
+    const color  = safeHexColor(p.party_color);
+    const label  = p.abbreviation || p.faction_name?.slice(0, 2) || '—';
+    return `
+      <div class="vote-fc-row">
+        <div class="vote-fc-flag" style="background:${color};">${escHtml(label.toUpperCase().slice(0, 3))}</div>
+        <div class="vote-fc-name">${escHtml(p.faction_name || '—')}</div>
+        <span class="vote-fc-seats">${seats}</span>
+        <span class="vote-fc-vote ${isYes ? 'yes' : 'no'}">${isYes ? 'YES' : 'NO'}</span>
+      </div>`;
+  }).join('');
 }
 
 function renderCard(n, pm) {
@@ -721,65 +1171,6 @@ function renderCard(n, pm) {
   }).join('');
 }
 
-
-// Corporations section — every entrepreneur corp HQ'd in this nation.
-// Logo (industry-colored 2-letter badge) · name + sector · listing pill ·
-// CEO · valuation. computeEntrepreneurValuation is the single source for
-// the valuation figure — same helper the entrepreneur-corporations page
-// uses, so the number reads identically on both surfaces.
-async function renderCorporations(nationId) {
-  const body = document.getElementById('sec-corp-body');
-  if (!body) return;
-  const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
-  try {
-    const { data, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, industry, listing, owner_faction_id, share_price, shares_outstanding, starting_capital, treasury_cash, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)')
-      .eq('hq_nation_id', nationId)
-      .order('name');
-    if (error) throw error;
-    const corps = data || [];
-    if (!corps.length) {
-      body.innerHTML = '<div class="sec-empty">No corporations headquartered here yet.</div>' + footer;
-      return;
-    }
-    // Every corp needs building/debt aggregates for the book-value path
-    // inside computeEntrepreneurValuation, regardless of listing. Public
-    // corps used to skip this fetch (they surfaced as market cap), now
-    // included so leaderboard-style directories like this one can't be
-    // gamed by self-pumping a public corp's share_price.
-    const bookAgg = await fetchCorpBookAggregates(corps.map(c => c.id));
-    for (const c of corps) {
-      c.bookAgg = bookAgg.get(c.id) || { buildingCostPaid: 0, outstandingDebt: 0 };
-    }
-    const header = `<div class="corp-head">
-      <div></div>
-      <div>Corporation</div>
-      <div class="col-type">Type</div>
-      <div class="col-ceo">CEO</div>
-      <div class="right">Valuation</div>
-    </div>`;
-    body.innerHTML = `<div class="corp-list">${header}${corps.map(renderCorpRow).join('')}</div>` + footer;
-  } catch (err) {
-    console.error('politician-nation: corporations fetch failed', err);
-    body.innerHTML = '<div class="sec-empty">Could not load corporations.</div>' + footer;
-  }
-}
-
-function renderCorpRow(c) {
-  const val = computeEntrepreneurValuation(c, c.bookAgg);
-  const ind = (c.industry || '').toLowerCase();
-  const listing = (c.listing || 'private').toLowerCase();
-  return `<div class="corp-row">
-    <div class="corp-badge ${escHtml(ind)}">${escHtml(factionInitials(c.name))}</div>
-    <div>
-      <div class="corp-name">${escHtml(c.name || 'Corporation')}</div>
-      <div class="corp-sub">${escHtml(industryLabel(c.industry))}</div>
-    </div>
-    <div><span class="corp-listing ${escHtml(listing)}">${escHtml(listing.toUpperCase())}</span></div>
-    <div class="corp-ceo">${escHtml(ownerDisplayName(c.owner))}</div>
-    <div class="corp-val">${escHtml(fmtValuation(val.amount))}</div>
-  </div>`;
-}
 
 // Government & Politics — gate is "no parties" rather than gov_type,
 // since Absolute Monarchies still have parties + a chamber, they just

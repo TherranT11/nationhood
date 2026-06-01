@@ -171,6 +171,39 @@
   .ap-meta { display:flex; justify-content:space-between; font-size:10px; color:#666;
     letter-spacing:0.08em; }
   .ap-meta .done { color:#8aaa6a; }
+  /* Apartment per-tick rent line — only renders on apartment_* rows. */
+  .ap-rent { display:flex; flex-wrap:wrap; gap:14px; align-items:center; font-size:10.5px;
+    color:#999; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06);
+    border-radius:3px; padding:7px 10px; margin-top:8px; letter-spacing:0.04em; }
+  .ap-rent b { color:#cfcabf; font-weight:600; }
+  .ap-rent .pos b      { color:#8aaa6a; }
+  .ap-rent .neg b      { color:#c87a6a; }
+  .ap-rent .occ-good b { color:#8aaa6a; }
+  .ap-rent .occ-warn b { color:#c89e6e; }
+  .ap-rent .occ-bad  b { color:#c87a6a; }
+  /* Phase 3 occupancy sparkline — tiny 12-tick trend SVG sitting
+     next to the Occupancy badge. Stroke colour follows the latest
+     occupancy band so a glance tells current state + direction. */
+  .ap-spark { display:inline-block; width:56px; height:14px; vertical-align:middle;
+    margin-left:-6px; }
+  .ap-spark polyline { fill:none; stroke-width:1.2; stroke-linejoin:round; stroke-linecap:round; }
+  .ap-spark.occ-good polyline { stroke:#8aaa6a; }
+  .ap-spark.occ-warn polyline { stroke:#c89e6e; }
+  .ap-spark.occ-bad  polyline { stroke:#c87a6a; }
+  /* Rental Portfolio summary — one-line aggregate above the holdings
+     list for Real Estate corps with apartments. */
+  .rental-summary { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06);
+    border-radius:4px; padding:10px 14px; margin-bottom:10px; }
+  .rental-summary .rs-lab { font-size:9px; letter-spacing:0.14em; color:#666;
+    font-weight:600; text-transform:uppercase; margin-bottom:6px; }
+  .rental-summary .rs-stats { display:flex; flex-wrap:wrap; gap:18px;
+    font-size:11px; color:#999; letter-spacing:0.04em; }
+  .rental-summary b           { color:#cfcabf; font-weight:600; }
+  .rental-summary .pos b      { color:#8aaa6a; }
+  .rental-summary .neg b      { color:#c87a6a; }
+  .rental-summary .occ-good b { color:#8aaa6a; }
+  .rental-summary .occ-warn b { color:#c89e6e; }
+  .rental-summary .occ-bad  b { color:#c87a6a; }
   .ap-empty { background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
     padding:24px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6;
     letter-spacing:0.03em; }
@@ -474,6 +507,32 @@
   .ap-btype.real_estate_office { background:#2a1f2a; color:#aa7aaa; }
   .ap-btype.engine_assembly_plant { background:#2a1a1a; color:#c88a8a; }
   .ap-btype.light_assembly_plant  { background:#2a261a; color:#c8b06e; }
+  /* Residential — slate-to-gold gradient by tier (Basic → Modest → Luxury). */
+  .ap-btype.apartment_basic    { background:#1c1d20; color:#8a98a8; }
+  .ap-btype.apartment_modest   { background:#1f1e1a; color:#b0a890; }
+  .ap-btype.apartment_luxury   { background:#26221a; color:#c8b878; }
+  /* Oil & Gas — shared deep-oil palette across the five building types. */
+  .ap-btype.pump_jack          { background:#2a1612; color:#c87a6a; }
+  .ap-btype.refinery_small     { background:#2a1612; color:#c87a6a; }
+  .ap-btype.refinery_regular   { background:#2a1612; color:#c87a6a; }
+  .ap-btype.refinery_large     { background:#2a1612; color:#c87a6a; }
+  .ap-btype.gas_station        { background:#2a1612; color:#c87a6a; }
+  /* Oil & Gas Operations panel — reserves, capacity, sell-to-spot. */
+  .og-panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+    border-radius:5px; padding:14px 16px; margin-bottom:10px; }
+  .og-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:14px; margin-bottom:12px; }
+  .og-stat .lab { font-size:9px; letter-spacing:0.14em; color:#666;
+    font-weight:600; text-transform:uppercase; margin-bottom:3px; }
+  .og-stat .val { font-size:18px; font-weight:600; color:#cfcabf;
+    font-variant-numeric:tabular-nums; line-height:1.15; }
+  .og-stat .val .unit { font-size:10px; font-weight:400; color:#888;
+    margin-left:4px; letter-spacing:0.04em; }
+  .og-prices { font-size:11px; color:#999; letter-spacing:0.04em;
+    border-top:0.5px solid rgba(255,255,255,0.06); padding-top:10px; margin-bottom:10px; }
+  .og-prices b { color:#cfcabf; font-variant-numeric:tabular-nums; }
+  .og-sell-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .og-sell-row .ap-btn-small:disabled { opacity:0.4; cursor:not-allowed; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -512,25 +571,35 @@
   .bm-btn.pri:hover { background:#243a1f; }
   .bm-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
 
-  @media (max-width:900px) { .main-grid { grid-template-columns:1fr; } .financials { grid-template-columns:repeat(2,1fr); } }
+  /* ── Tablet (≤900px): main grid stacks; financials go 2-up; and the
+     corp-header collapses so the ownership block can't squeeze the
+     identity row at a tablet-portrait width. */
+  @media (max-width:900px) {
+    .main-grid { grid-template-columns:1fr; }
+    .financials { grid-template-columns:repeat(2,1fr); }
+    .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
+    .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
+      border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
+    /* The conditional header-inline controls (Withdraw / Put Up for Sale /
+       Acquire / Bankrupt / Director Actions) go full-width once the
+       header stacks; otherwise they cluster in a narrow center column. */
+    #cp-withdraw, #cp-forsale, #cp-acquire, #cp-bankrupt, #cp-director-actions {
+      min-width:0; width:100%; align-self:stretch;
+    }
+  }
 
-  /* ── Mobile (≤700px): stack header vertically, collapse financials
-     to one column, narrow modals + tighter modal padding. */
+  /* ── Mobile (≤700px): tighten padding, stack grid-row layouts,
+     wrap long-content elements so nothing overflows the column. */
   @media (max-width:700px) {
     .ent-content { padding-left:12px; padding-right:12px; }
     .breadcrumb { margin:-28px -12px 16px; padding:10px 12px; }
-    .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
     .corp-body .title { font-size:26px; }
-    .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
-      border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
-    /* Sidebar stacks below the main column; financials go 2-up instead of
-       one tall column per card. */
-    .main-grid { grid-template-columns:1fr; gap:18px; }
-    .financials { grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; }
+    .main-grid { gap:18px; }
+    .financials { gap:8px; margin-bottom:20px; }
     .fin-card { padding:12px 14px; }
-    /* Header-inline owner controls (Withdraw / Put Up for Sale) go full-width
-       once the header stacks. */
-    #cp-withdraw, #cp-forsale { min-width:0; width:100%; }
+    /* Long monetary values (e.g. $840M debt) can shrink rather than
+       overflow the card. */
+    .fin-card .val { overflow-wrap:anywhere; word-break:break-word; }
     /* All modals: full-width with smaller padding */
     .bm-overlay, .ls-overlay, .rl-overlay { padding:12px; }
     .bm-overlay { padding:12px; }
@@ -547,37 +616,65 @@
     .ap-offer { grid-template-columns:1fr 1fr; gap:8px; padding:8px; }
     .ap-loan { grid-template-columns:1fr; gap:8px; }
     .mk-row { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
+    /* Active Projects row head: building name + tier tag stack instead of
+       overflowing right when the district name is long. */
+    .ap-row-head { flex-wrap:wrap; }
+    /* Shipping/Airline fleet grid: 5 cells across is illegible on phone;
+       go 2-up so each cell keeps its label + value readable. */
+    .sh-fleet { grid-template-columns:1fr 1fr; padding:12px 14px; }
+    /* Price-history event row: tighter columns + smaller type so the
+       tick / desc / price / delta stay on one line at narrow widths. */
+    .pc-event { grid-template-columns:38px 1fr auto 50px; font-size:11px; gap:8px; }
+    /* Board roster row: don't double-indent the green left border. */
+    .board-row { padding:11px 14px; padding-left:14px; gap:8px; }
+    /* Corp Details rows: when label + value won't fit on one line, the
+       value drops underneath rather than overflowing right. */
+    .ds-row { flex-wrap:wrap; gap:4px 14px; }
+    .ds-row .val { text-align:left; flex-basis:auto; }
+    /* Share-price card padding matches the others on mobile. */
+    .price-card { padding:14px 16px; }
   }
 
-  /* Mobile refresh — phone-class viewport. The 900px + 700px rules above
-     stack main-grid / financials / modal contents; this block enforces
-     44px tap targets on every button class in the page, shrinks the
-     hero title to fit a 375px column, and uses 16px inputs so iOS
-     doesn't auto-zoom on focus. */
+  /* ── Mobile UX (≤640px): 44px tap-target floor + 16px inputs so iOS
+     doesn't auto-zoom on focus. Pure UX hardening; no layout changes. */
   @media (max-width:640px) {
     .corp-body .title { font-size:22px; }
     .corp-body .eyebrow { font-size:9px; }
     .pills { gap:6px; flex-wrap:wrap; }
-    /* Buttons: 44px floor on every button class used in this page. */
     .tc-btn, .bm-btn, .ap-btn, .cf-btn, .mo-btn, .rl-btn, .sh-buy-btn {
       min-height:44px; padding:12px 16px; font-size:11px;
     }
-    /* Inputs: 16px so iOS Safari doesn't zoom the viewport on focus. */
     .tc-qty, .bm-input, .mo-input, .rl-input, .bm-select, .cb-bid-amt {
       font-size:16px; min-height:44px;
     }
-    /* Active-projects offer grid keeps 2-up at 640px so accept/decline
-       pair stays paired; at 360px it stacks. */
     .ap-row { padding:14px 14px; }
   }
-  @media (max-width:360px) {
-    /* .ent-content padding tightens via topbar.js (the rule's owner). */
-    .breadcrumb { margin:-28px -10px 14px; padding:10px 10px; }
+
+  /* ── Phone-class (≤480px): single-column everything, smaller hero +
+     stake type, and tighter cards so the layout breathes. */
+  @media (max-width:480px) {
+    .breadcrumb { margin:-28px -10px 14px; padding:10px 10px; font-size:9px; }
     .corp-body .title { font-size:20px; }
+    .role-block .stake { font-size:32px; }
+    .role-block .stake .pct { font-size:15px; }
     .financials { grid-template-columns:1fr; }
+    .fin-card { padding:11px 13px; }
+    .fin-card .val { font-size:18px; }
+    .sh-fleet { grid-template-columns:1fr; gap:8px; padding:10px 12px; }
+    .pc-event { font-size:10px; gap:6px; grid-template-columns:32px 1fr auto 46px; }
+    .pc-tick { font-size:9px; }
+    .pc-cur-val { font-size:16px; }
+    .board-row { padding:10px 12px; padding-left:12px; gap:8px; }
+    .board-info .bname { font-size:11px; }
+    .ap-name { font-size:13px; }
+    .ap-row { padding:12px; }
     .ap-offer { grid-template-columns:1fr; }
     .bm-overlay, .ls-overlay, .rl-overlay { padding:8px; }
     .bm-body, .rl-body { padding:14px; }
+    /* Reduce the corp crest so it doesn't dominate the row when the
+       title shrinks underneath it. */
+    .corp-crest { width:56px; height:56px; font-size:18px; }
+    .corp-id { gap:14px; }
   }
 </style>
 </head>
@@ -613,12 +710,16 @@
           </div>
         </div>
       </div>
-      <!-- Founder-only withdrawal (private corps): pull corp treasury into
-           personal Cash on Hand. Shown by JS for the owner of a private corp. -->
-      <div id="cp-withdraw" style="display:none;align-self:center;min-width:200px;">
-        <div class="role-eyebrow" style="text-align:center;">WITHDRAW TO CASH ON HAND</div>
+      <!-- Founder-only treasury pump (private corps): WITHDRAW pulls corp
+           treasury into personal Cash on Hand; INVEST pushes personal Cash
+           on Hand into corp treasury. Shared amount input; the button
+           clicked picks the direction. Shown by JS for the owner of a
+           private corp. -->
+      <div id="cp-withdraw" style="display:none;align-self:center;min-width:260px;">
+        <div class="role-eyebrow" style="text-align:center;">PERSONAL FUNDS &harr; TREASURY</div>
         <div class="tc-row" style="margin-top:8px;justify-content:center;">
           <input id="cp-wd-amt" class="tc-qty" type="number" min="1" step="1" placeholder="Amount" />
+          <button id="cp-iv-btn" class="tc-btn">INVEST</button>
           <button id="cp-wd-btn" class="tc-btn">WITHDRAW</button>
         </div>
         <div class="tc-msg" id="cp-wd-msg" style="text-align:center;"></div>
@@ -789,7 +890,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -805,7 +906,7 @@ function initials(s, n) {
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
 
     const { data: c, error } = await _supabase.from('entrepreneur_corps')
-      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
+      .select('id, name, ticker, custom_logo_url, rebrand_cooldown_until_tick, industry, starting_capital, founding_fee, listing, founded_tick, owner_faction_id, hq_nation_id, treasury_cash, freighters_owned, crude_reserve, refined_reserve, shares_outstanding, share_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name, continent)')
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -1875,45 +1976,80 @@ function initials(s, n) {
 
     // [Withdraw to Cash on Hand] — header action for the founder of a PRIVATE
     // corp. Pulls corp treasury_cash → personal party_funds via
-    // withdraw_corp_treasury. Public corps distribute via the dividend card.
+    // withdraw_corp_treasury + invest_into_corp — the founder-only
+    // treasury pump on a private corp. Two buttons share one amount
+    // input; a single `busy` flag prevents either action from firing
+    // while the other is in flight (otherwise a fast double-click
+    // could race against the same number with both directions).
+    // Public corps distribute via the dividend card / float, not
+    // this box — both RPCs reject listing='public'.
     const cpWd = document.getElementById('cp-withdraw');
     if (cpWd && !isPublic && isOwner) {
       cpWd.style.display = 'block';
       const wdBtn = document.getElementById('cp-wd-btn');
+      const ivBtn = document.getElementById('cp-iv-btn');
       const wdAmt = document.getElementById('cp-wd-amt');
       const wdMsg = document.getElementById('cp-wd-msg');
-      let withdrawing = false;
-      wdBtn.addEventListener('click', async () => {
-        if (withdrawing) return;
+      let busy = false;
+      const runTreasuryAction = async (button, rpcName, buildReasonMap, fallbackMsg) => {
+        if (busy) return;
         const amount = parseInt(wdAmt.value, 10);
-        if (!Number.isFinite(amount) || amount < 1) { wdMsg.textContent = 'Enter an amount of at least 1.'; return; }
-        withdrawing = true; wdBtn.disabled = true; const prev = wdBtn.textContent;
-        wdBtn.textContent = '…'; wdMsg.textContent = '';
+        if (!Number.isFinite(amount) || amount < 1) {
+          wdMsg.textContent = 'Enter an amount of at least 1.';
+          return;
+        }
+        busy = true;
+        wdBtn.disabled = true; ivBtn.disabled = true;
+        const prev = button.textContent;
+        button.textContent = '…'; wdMsg.textContent = '';
         try {
-          const { data, error: rpcErr } = await _supabase.rpc('withdraw_corp_treasury', { p_corp_id: id, p_amount: amount });
+          const { data, error: rpcErr } = await _supabase.rpc(rpcName, { p_corp_id: id, p_amount: amount });
           if (rpcErr) throw rpcErr;
           if (!data || !data.success) {
-            const REASON = {
-              not_authenticated:     'You are not signed in.',
-              no_entrepreneur:       'No entrepreneur faction found.',
-              corp_not_found:        'Corporation not found.',
-              not_owner:             'Only the founder can withdraw from this corporation.',
-              use_dividend:          'Public corps pay out via dividends, not direct withdrawals.',
-              invalid_amount:        'Enter a valid amount.',
-              exceeds_withdrawable:  `Only $${data && data.have != null ? data.have : '?'} is withdrawable — the treasury holds $${data && data.treasury != null ? data.treasury : '?'} but $${data && data.debt != null ? data.debt : '?'} is owed on active loans.`,
-            };
-            wdMsg.textContent = REASON[data && data.reason] || 'Withdrawal failed.';
+            const REASON = buildReasonMap(data || {});
+            wdMsg.textContent = REASON[data && data.reason] || fallbackMsg;
             return;
           }
-          // Success — reload so the corp treasury + top-bar Cash on Hand both
-          // repaint from the DB (mirrors the Go Public reload convention).
+          // Success — reload so corp treasury + top-bar Cash on Hand
+          // both repaint from the DB (mirrors the Go Public + dividend
+          // reload convention).
           location.reload();
         } catch (e) {
-          wdMsg.textContent = e?.message || 'Withdrawal failed.';
+          wdMsg.textContent = e?.message || fallbackMsg;
         } finally {
-          withdrawing = false; wdBtn.disabled = false; wdBtn.textContent = prev;
+          busy = false;
+          wdBtn.disabled = false; ivBtn.disabled = false;
+          button.textContent = prev;
         }
-      });
+      };
+
+      wdBtn.addEventListener('click', () => runTreasuryAction(
+        wdBtn, 'withdraw_corp_treasury',
+        (data) => ({
+          not_authenticated:    'You are not signed in.',
+          no_entrepreneur:      'No entrepreneur faction found.',
+          corp_not_found:       'Corporation not found.',
+          not_owner:            'Only the founder can withdraw from this corporation.',
+          use_dividend:         'Public corps pay out via dividends, not direct withdrawals.',
+          invalid_amount:       'Enter a valid amount.',
+          exceeds_withdrawable: `Only $${data.have != null ? data.have : '?'} is withdrawable — the treasury holds $${data.treasury != null ? data.treasury : '?'} but $${data.debt != null ? data.debt : '?'} is owed on active loans.`,
+        }),
+        'Withdrawal failed.'
+      ));
+
+      ivBtn.addEventListener('click', () => runTreasuryAction(
+        ivBtn, 'invest_into_corp',
+        (data) => ({
+          not_authenticated:   'You are not signed in.',
+          no_entrepreneur:     'No entrepreneur faction found.',
+          corp_not_found:      'Corporation not found.',
+          not_owner:           'Only the founder can invest in this corporation.',
+          use_share_issuance:  'Public corps raise capital by issuing shares, not founder injections.',
+          invalid_amount:      'Enter a valid amount.',
+          insufficient_funds:  `You have $${data.have != null ? data.have : '?'} on hand — $${data.need != null ? data.need : '?'} required.`,
+        }),
+        'Investment failed.'
+      ));
     }
 
     // ── Put Up for Sale / Make Offer (private corps only) ──
@@ -2951,6 +3087,20 @@ function initials(s, n) {
     };
     const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
 
+    // Apartment Complex type definitions are imported from utils.js as
+    // APARTMENT_DEFS — single JS-side source paired with the server
+    // copies in corp_building_cost_profile (cost + sensitivity) and
+    // process_apartment_rents (baseRent). Cost preview here uses the
+    // Pattern-B exponent: cost = base × mult × (1 + (sens-1)(100-inf)/100).
+    // Basic (sensitivity 1.0) collapses to base × mult; Modest 6-24%
+    // premium; Luxury 14-56% premium scaled by missing infrastructure.
+    const isApartmentType = (t) => t === 'apartment_basic' || t === 'apartment_modest' || t === 'apartment_luxury';
+    // Oil & Gas building types (Phase 2, 20270443). Same modal pattern as
+    // apartments — pinned eff_tier, fixed per-type cost, hide the tier
+    // picker in the Request Construction modal.
+    const isOilGasType = (t) => t === 'pump_jack' || t === 'refinery_small'
+      || t === 'refinery_regular' || t === 'refinery_large' || t === 'gas_station';
+
     // Nation-aware cost / duration scaling (mirrors begin_construction
     // formula in 20270172/20270180). multiplier = (0.5 + col/100) ×
     // (0.5 + (100 - inf)/100). NULL stats → 50 (neutral, multiplier
@@ -2970,6 +3120,18 @@ function initials(s, n) {
     function scaledDuration(base, nation) {
       return Math.max(1, Math.round(base * nationCostMult(nation)));
     }
+    // Apartment cost preview: base × mult × infrastructure-penalty.
+    // Mirrors the v_apt_premium branch in corp_building_cost_profile
+    // (20270437). premium = 1 + (sensitivity - 1) × (100 - inf) / 100,
+    // so sensitivity = 1.0 collapses to base × mult (linear) — safe
+    // to call on any building type; Basic apartments + every existing
+    // building uses that linear path. Modest and Luxury get a 6-24%
+    // and 14-56% premium respectively, scaled by missing infrastructure.
+    function patternBCost(base, nation, sensitivity) {
+      const inf = Number(nation?.infrastructure ?? 50);
+      const premium = 1 + (sensitivity - 1) * (100 - inf) / 100;
+      return Math.round(base * nationCostMult(nation) * premium);
+    }
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
     const ALL_TIERS = ['small', 'medium', 'large', 'major', 'monumental'];
@@ -2988,6 +3150,7 @@ function initials(s, n) {
     const isConstructionCorp = (c.industry === 'construction');
     const isRealEstateCorp   = (c.industry === 'real_estate');
     const isShippingCorp     = (c.industry === 'shipping');
+    const isOilGasCorp       = (c.industry === 'oil_and_gas');
 
     // Shipping economy constants — mirror entrepreneur_buy_freighter
     // ($2M per freighter, fleet cap = completed Ports × 4).
@@ -3009,9 +3172,9 @@ function initials(s, n) {
     // per-class ceiling in range_units; terminal fee matches
     // entrepreneur_claim_terminal ($5M + $2M × population_pct).
     const AIRCRAFT = {
-      regional:   { label: 'Regional',   cost: 60_000_000,  seats: 10, ops: 500,  range: 20 },
-      narrowbody: { label: 'Narrowbody', cost: 90_000_000,  seats: 25, ops: 1200, range: 60 },
-      widebody:   { label: 'Widebody',   cost: 120_000_000, seats: 60, ops: 2500, range: Infinity },
+      regional:   { label: 'Regional',   cost: 60_000_000,  seats: 10, ops: 500 },
+      narrowbody: { label: 'Narrowbody', cost: 90_000_000,  seats: 25, ops: 1200 },
+      widebody:   { label: 'Widebody',   cost: 120_000_000, seats: 60, ops: 2500 },
     };
     const AIRCRAFT_CLASSES = ['regional', 'narrowbody', 'widebody'];
     const terminalClaimFee = (popPct) => 5_000_000 + 2_000_000 * (Number(popPct) || 0);
@@ -3076,7 +3239,7 @@ function initials(s, n) {
         .select('id, name, tier, building_type, nation_id, cost_paid, ambition_granted, status, '
               + 'started_at_tick, completes_at_tick, completed_at_tick, '
               + 'owner_corp_id, list_price, brokerage_offered, broker_corp_id, '
-              + 'nation:nations!nation_id(name), '
+              + 'nation:nations!nation_id(name, standard_of_living, infrastructure, politician_stability), '
               + 'offers:building_offers!building_id(id, amount, status, placed_at_tick, '
                 + 'buyer:entrepreneur_corps!buyer_corp_id(id, name, '
                   + 'owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)))')
@@ -3085,6 +3248,32 @@ function initials(s, n) {
       if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
       const rows = bldgs || [];
       ownedBuildings = rows; // shared with renderAssets (section III)
+
+      // Phase 3 — apartment occupancy history for sparkline + trend.
+      // Fetches last 12 ticks of nation stability for every nation the
+      // corp has apartments in. One query, scoped to the nations we
+      // actually need; skipped entirely when the corp owns zero
+      // apartments (every other corp type pays nothing).
+      const aptRows = rows.filter(b =>
+        b.status === 'completed' &&
+        (b.building_type === 'apartment_basic'  ||
+         b.building_type === 'apartment_modest' ||
+         b.building_type === 'apartment_luxury'));
+      const nationHistory = new Map();   // nation_id → [{tick, politician_stability}, …]
+      if (aptRows.length) {
+        const aptNationIds = [...new Set(aptRows.map(a => a.nation_id))];
+        const lookback = 12;
+        const { data: hist, error: hErr } = await _supabase.from('nations_history')
+          .select('nation_id, tick, politician_stability')
+          .in('nation_id', aptNationIds)
+          .gte('tick', currentTick - lookback)
+          .order('tick', { ascending: true });
+        if (hErr) console.warn('[entrepreneur-corp] nations_history fetch error:', hErr.message);
+        for (const h of (hist || [])) {
+          if (!nationHistory.has(h.nation_id)) nationHistory.set(h.nation_id, []);
+          nationHistory.get(h.nation_id).push(h);
+        }
+      }
 
       let launchBtn = '';
       if (isOwner && isConstructionCorp) {
@@ -3097,6 +3286,53 @@ function initials(s, n) {
              <div class="lab">Real Estate corp — browse completed buildings on the market.</div>
              <button class="ap-btn" id="cp-browse-market">Browse Market</button>
            </div>`;
+      }
+
+      // Phase 3 helpers — occupancy color tint + 12-tick sparkline.
+      // Bands: ≥85% healthy (green), 70-84% caution (amber), <70% bleed
+      // (red). Same palette as the existing .ap-rent .pos / .neg.
+      // Sparkline reads stability history per nation; the same clamp
+      // (0.4–1.0) computeApartmentRent uses keeps the visual band
+      // consistent with the actual occupancy floor.
+      const occClass = (occ) => occ >= 0.85 ? 'occ-good' : (occ >= 0.70 ? 'occ-warn' : 'occ-bad');
+      const renderOccSparkline = (history) => {
+        if (!history || history.length < 2) return '';
+        const W = 56, H = 14;
+        const points = history.map((h, i) => {
+          const x = (i / (history.length - 1)) * (W - 2) + 1;
+          const occ = apartmentOccupancyFromStability(h.politician_stability);
+          const y = (H - 2) - (occ - 0.4) / 0.6 * (H - 4);
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        const lastOcc = apartmentOccupancyFromStability(history[history.length - 1].politician_stability);
+        return `<svg class="ap-spark ${occClass(lastOcc)}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Occupancy trend, last ${history.length} ticks"><polyline points="${points}" /></svg>`;
+      };
+
+      // Rental Portfolio summary — one-line aggregate above the
+      // properties list. Only renders for Real Estate corps holding
+      // ≥1 apartment; everything else gets no panel. Occupancy is
+      // gross-rent-weighted so larger holdings dominate the headline.
+      let portfolioHtml = '';
+      if (isOwner && isRealEstateCorp && aptRows.length) {
+        let pNet = 0, pOccW = 0, pOccTot = 0;
+        for (const apt of aptRows) {
+          const r = computeApartmentRent(apt.building_type, apt.nation);
+          if (!r) continue;
+          pNet    += r.net;
+          pOccW   += r.gross;
+          pOccTot += r.occupancy * r.gross;
+        }
+        const avgOcc = pOccW > 0 ? pOccTot / pOccW : 0;
+        const nationCount = new Set(aptRows.map(a => a.nation_id)).size;
+        portfolioHtml = `<div class="rental-summary">
+          <div class="rs-lab">Rental Portfolio</div>
+          <div class="rs-stats">
+            <span><b>${aptRows.length}</b> ${aptRows.length === 1 ? 'apartment' : 'apartments'}</span>
+            <span><b>${nationCount}</b> ${nationCount === 1 ? 'nation' : 'nations'}</span>
+            <span>Avg occupancy <b class="${occClass(avgOcc)}">${Math.round(avgOcc * 100)}%</b></span>
+            <span class="${pNet < 0 ? 'neg' : 'pos'}">Net rent <b>${pNet < 0 ? '−' : ''}${fmtUsd(Math.abs(pNet))}</b>/tick</span>
+          </div>
+        </div>`;
       }
 
       const listHtml = rows.length
@@ -3166,6 +3402,20 @@ function initials(s, n) {
                      }).join('')}
                    </div>`
                 : '';
+              // Apartment rent breakdown — live forecast against current
+              // nation stats. Mirrors process_apartment_rents (20270438);
+              // computeApartmentRent in utils.js is the JS-side single
+              // source. Negative net is shown red — that's the design's
+              // signal that holding this property is bleeding cash.
+              const rent = computeApartmentRent(b.building_type, b.nation);
+              const rentRow = rent
+                ? `<div class="ap-rent">
+                     <span class="${occClass(rent.occupancy)}">Occupancy <b>${Math.round(rent.occupancy * 100)}%</b></span>${renderOccSparkline(nationHistory.get(b.nation_id))}
+                     <span>Gross <b>${fmtUsd(rent.gross)}</b>/tick</span>
+                     <span>Maintenance <b>${fmtUsd(rent.maintenance)}</b>/tick</span>
+                     <span class="${rent.net < 0 ? 'neg' : 'pos'}">Net <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick</span>
+                   </div>`
+                : '';
               return `
                 <div class="ap-row completed">
                   <div class="ap-row-head">
@@ -3179,6 +3429,7 @@ function initials(s, n) {
                     <span>Cost ${fmtUsd(Number(b.cost_paid))}</span>
                     <span class="done">✓ +0.2 GDP Growth applied</span>
                   </div>
+                  ${rentRow}
                   ${actionRow}
                   ${offersRow}
                 </div>`;
@@ -3501,6 +3752,12 @@ function initials(s, n) {
       // server-side in offer_loan, 20270392). The floor is computed here
       // at render time and stamped onto each Make Offer button so the
       // modal can surface it without an extra round-trip.
+      // Hoisted to the outer scope because both this corp-loan block
+      // and the personal-loan block below read it. Previously declared
+      // inside the corp-loan if, which broke the personal-loan block's
+      // reference (localOfficeNations is not defined).
+      let localOfficeNations = new Set();
+      let officeFetchFailed  = false;
       let loanRequestsHtml = '';
       if (c.industry === 'banking' && canView) {
         // This bank corp's completed Banking Offices — drives the
@@ -3522,8 +3779,8 @@ function initials(s, n) {
           .eq('building_type', 'banking_office')
           .eq('status', 'completed');
         if (officeErr) console.warn('[entrepreneur-corp] banking offices fetch error:', officeErr.message);
-        const localOfficeNations = new Set((officeRows || []).map(o => o.nation_id));
-        const officeFetchFailed  = !!officeErr;
+        localOfficeNations = new Set((officeRows || []).map(o => o.nation_id));
+        officeFetchFailed  = !!officeErr;
 
         const { data: reqsData, error: reqsErr } = await _supabase.from('corp_loan_requests')
           .select('id, principal, term_ticks, expires_at_tick, '
@@ -3574,6 +3831,54 @@ function initials(s, n) {
         }
       }
 
+      // Personal loan requests — pending bids on personal_loan_requests
+      // from entrepreneurs whose home nation matches one of this bank's
+      // completed banking_office locations (20270448). Bank-corps only,
+      // owner-visible. Make Offer opens a small modal that calls
+      // offer_personal_loan; the panel also surfaces any pending offers
+      // this bank already has on a request, with a Withdraw button.
+      let personalLoanReqsHtml = '';
+      if (c.industry === 'banking' && canView) {
+        // Lazy expiry sweep so we don't display stale pending rows.
+        await _supabase.rpc('expire_stale_personal_loan_requests');
+        const { data: pReqs, error: pErr } = await _supabase.from('personal_loan_requests')
+          .select('id, principal, term_ticks, placed_at_tick, expires_at_tick, borrower_faction_id, '
+                + 'borrower:factions!borrower_faction_id(leader_first_name, leader_last_name, faction_name, nation, nation_id), '
+                + 'offers:personal_loan_offers!request_id(id, bank_corp_id, apr, status)')
+          .eq('status', 'pending')
+          .order('placed_at_tick', { ascending: false });
+        if (pErr) console.warn('[entrepreneur-corp] personal loan requests fetch:', pErr.message);
+        // Filter to requests where the borrower's home nation matches one
+        // of this bank's banking_office locations. Same `localOfficeNations`
+        // Set the corp loan panel above already built.
+        const pReqsEligible = (pReqs || []).filter(r =>
+          r.borrower?.nation_id && localOfficeNations.has(r.borrower.nation_id));
+        if (pReqsEligible.length) {
+          personalLoanReqsHtml = `
+            <div class="ap-loans-head">Personal Loan Requests &middot; ${pReqsEligible.length}</div>
+            ` + pReqsEligible.map(r => {
+              const who = [r.borrower?.leader_first_name, r.borrower?.leader_last_name]
+                .filter(Boolean).join(' ').trim() || r.borrower?.faction_name || 'Unknown';
+              const myOffer = (r.offers || []).find(o => o.bank_corp_id === id && o.status === 'pending');
+              const offerLine = myOffer
+                ? `<div class="ap-loan-mybid">Your offer: ${(Number(myOffer.apr) * 100).toFixed(2)}% APR</div>`
+                : '';
+              const action = myOffer
+                ? `<button class="ap-btn-small delist cp-withdraw-poffer" data-oid="${myOffer.id}">Withdraw</button>`
+                : `<button class="ap-btn-small accept cp-make-poffer" data-rid="${r.id}" data-principal="${r.principal}" data-term="${r.term_ticks}" data-who="${escapeHtml(who)}">Make Offer</button>`;
+              return `
+                <div class="ap-loan">
+                  <div class="ap-loan-info">
+                    <div class="ap-loan-who">${escapeHtml(who)} requests ${fmtUsd(Number(r.principal))}</div>
+                    <div class="ap-loan-sub">${r.term_ticks}t term · expires T${r.expires_at_tick}${offerLine ? '' : ''}</div>
+                    ${offerLine}
+                  </div>
+                  ${ownerOnly(action)}
+                </div>`;
+            }).join('');
+        }
+      }
+
       // Airline Operations panel (Airline corps only, owner-only).
       // Fleet (owned + idle per class) · Terminals (claimed slots) ·
       // Routes (active, with last-tick performance). Aircraft come from
@@ -3590,23 +3895,23 @@ function initials(s, n) {
             .eq('owner_corp_id', id),
           _supabase.from('airline_routes')
             .select(`id, ticket_price, route_type, origin_city_id, dest_city_id,
-                     aircraft_regional, aircraft_narrowbody, aircraft_widebody,
+                     aircraft_class,
                      last_tick_pax, last_tick_revenue, last_tick_spend,
                      origin:airline_cities!origin_city_id(name),
                      dest:airline_cities!dest_city_id(name)`)
             .eq('airline_corp_id', id).eq('status', 'active')
             .order('opened_at_tick', { ascending: true }),
           _supabase.from('airline_cities')
-            .select('id, name, population_pct, is_capital').order('name'),
+            .select('id, name, population_pct, is_capital, nation:nations!nation_id(name)').order('name'),
           _supabase.from('corp_aircraft')
-            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id')
+            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id, design:ent_aircraft_designs!ent_design_id(range_nm)')
             .eq('entrepreneur_corp_id', id)
             .order('aircraft_class', { ascending: true })
             .order('created_at', { ascending: true }),
           // Every active route, lane-wide, for the competitor breakdown on
           // each of this corp's routes (lanes are shared across airlines).
           _supabase.from('airline_routes')
-            .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name), faction:factions!airline_faction_id(faction_name)')
+            .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name)')
             .eq('status', 'active'),
         ]);
         if (termRes.error)     console.warn('[entrepreneur-corp] terminals fetch error:', termRes.error.message);
@@ -3621,6 +3926,22 @@ function initials(s, n) {
         const aircraft  = aircraftRes.data || [];
         const corpCash  = getEntrepreneurCorpCash(c);
 
+        // Distance matrix for all loaded cities. Keyed both directions
+        // for easy lookup regardless of which city is "a" vs "b" in
+        // the canonical pair. Used by route cards (display) and the
+        // aircraft list (range badge vs route distance).
+        const distanceMap = new Map();
+        if (allCities.length > 0) {
+          const { data: dist } = await _supabase
+            .from('airline_city_ranges')
+            .select('city_a_id, city_b_id, distance');
+          for (const r of (dist || [])) {
+            distanceMap.set(`${r.city_a_id}|${r.city_b_id}`, r.distance);
+            distanceMap.set(`${r.city_b_id}|${r.city_a_id}`, r.distance);
+          }
+        }
+        const distFor = (oId, dId) => distanceMap.get(`${oId}|${dId}`) ?? null;
+
         // Lane → { total pax, per-airline pax } across every active route on
         // the city pair (shared lanes). Drives the competitor breakdown.
         const laneMap = new Map();
@@ -3631,7 +3952,7 @@ function initials(s, n) {
           const pax = Number(lr.last_tick_pax) || 0;
           lane.total += pax;
           const cname = lr.airline_corp_id === id ? 'You'
-            : (lr.airline?.name || lr.faction?.faction_name || 'Unknown airline');
+            : (lr.airline?.name || 'Unknown airline');
           lane.byCorp.set(cname, (lane.byCorp.get(cname) || 0) + pax);
         }
 
@@ -3662,6 +3983,7 @@ function initials(s, n) {
               const cls  = AIRCRAFT[a.aircraft_class];
               const cond = Math.round(Number(a.condition) || 0);
               const condCls = cond < 30 ? 'red' : cond < 60 ? 'dim' : 'accent';
+              const range = Math.round(Number(a.design?.range_nm) || 0);
               const assign = a.is_overhauling
                 ? '<span class="dim">In overhaul</span>'
                 : a.route_id
@@ -3674,7 +3996,8 @@ function initials(s, n) {
                 <div class="sh-row">
                   <div class="sh-row-info">
                     <div class="sh-row-name">${cls?.label || a.aircraft_class}
-                      <span class="al-cond ${condCls}">${cond}%</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
+                      <span class="al-cond ${condCls}">${cond}%</span>
+                      <span class="dim">· range ${range}</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
                     <div class="sh-row-sub">${assign}</div>
                   </div>
                   ${ownerOnly(`<div class="sh-row-actions">
@@ -3712,7 +4035,7 @@ function initials(s, n) {
               </div>`).join('')
           : `<div class="sh-empty">No terminals. Claim slots in two cities to open your first route.</div>`;
         const claimOpts = allCities.filter(c2 => !ownedCityIds.has(c2.id))
-          .map(c2 => `<option value="${c2.id}" data-pop="${Number(c2.population_pct) || 0}">${escapeHtml(c2.name)} — ${fmtUsd(terminalClaimFee(c2.population_pct))}</option>`).join('');
+          .map(c2 => `<option value="${c2.id}" data-pop="${Number(c2.population_pct) || 0}">${escapeHtml(c2.name)} · ${escapeHtml(c2.nation?.name || '?')} — ${fmtUsd(terminalClaimFee(c2.population_pct))}</option>`).join('');
         const claimForm = claimOpts
           ? `<div class="al-form">
                <select id="al-claim-city">${claimOpts}</select>
@@ -3721,11 +4044,17 @@ function initials(s, n) {
           : `<div class="al-hint">You hold a terminal in every city.</div>`;
 
         // ── Routes: active list + open form ──
+        // Routes are single-class (20270417). Plane count comes from the
+        // aircraft list — each plane with route_id = this route counts.
+        const planeCountByRoute = new Map();
+        for (const a of aircraft) {
+          if (a.route_id) planeCountByRoute.set(a.route_id, (planeCountByRoute.get(a.route_id) || 0) + 1);
+        }
         const routeRowsHtml = routes.length
           ? routes.map(r => {
-              const planes = AIRCRAFT_CLASSES
-                .filter(k => Number(r['aircraft_' + k]) > 0)
-                .map(k => `${r['aircraft_' + k]}× ${AIRCRAFT[k].label}`).join(', ') || '—';
+              const cnt   = planeCountByRoute.get(r.id) || 0;
+              const label = AIRCRAFT[r.aircraft_class]?.label || r.aircraft_class || '—';
+              const planes = cnt > 0 ? `${cnt}× ${label}` : '—';
               const net = (Number(r.last_tick_revenue) || 0) - (Number(r.last_tick_spend) || 0);
               const netCls = net > 0 ? 'accent' : net < 0 ? 'red' : 'dim';
               // Lane competition: total passengers + per-airline last-tick pax
@@ -3735,11 +4064,13 @@ function initials(s, n) {
                 [...lane.byCorp.entries()].sort((a, b) => b[1] - a[1])
                   .map(([n, p]) => `<span class="${n === 'You' ? 'accent' : 'dim'}">${escapeHtml(n)} ${p}</span>`).join(' · ')
               }</div>` : '';
+              const rDist = distFor(r.origin_city_id, r.dest_city_id);
+              const distBadge = rDist != null ? ` <span class="dim">· distance ${rDist}</span>` : '';
               return `
                 <div class="sh-row">
                   <div class="sh-row-info">
                     <div class="sh-row-name">${escapeHtml(r.origin?.name || '?')} ↔ ${escapeHtml(r.dest?.name || '?')}
-                      <span class="al-tag">${r.route_type === 'international' ? 'INT’L' : 'DOM'}</span></div>
+                      <span class="al-tag">${r.route_type === 'international' ? 'INT’L' : 'DOM'}</span>${distBadge}</div>
                     <div class="sh-row-sub">
                       ${planes} · ticket <span class="accent">${fmtUsd(Number(r.ticket_price) || 0)}</span> ·
                       last tick: <span class="accent">${Number(r.last_tick_pax) || 0}</span> pax,
@@ -3759,17 +4090,18 @@ function initials(s, n) {
         // owns a terminal (open_route requires a terminal at both ends).
         const endpointOpts = terminals
           .map(t => `<option value="${t.city_id}">${escapeHtml(t.city?.name || 'City')}</option>`).join('');
+        const classOpts = AIRCRAFT_CLASSES
+          .map(k => `<option value="${k}">${escapeHtml(AIRCRAFT[k].label)}</option>`).join('');
         const openForm = terminals.length >= 2
           ? `<div class="al-form al-form-route">
                <label>From <select id="al-route-origin">${endpointOpts}</select></label>
                <label>To <select id="al-route-dest">${endpointOpts}</select></label>
-               <label>Ticket $<input type="number" id="al-route-ticket" min="0" max="500" value="200" /></label>
-               <label>Reg <input type="number" id="al-route-reg" min="0" value="0" /></label>
-               <label>Narrow <input type="number" id="al-route-nar" min="0" value="0" /></label>
-               <label>Wide <input type="number" id="al-route-wide" min="0" value="0" /></label>
+               <label>Ticket $<input type="number" id="al-route-ticket" min="0" value="200" /></label>
+               <label>Class <select id="al-route-class">${classOpts}</select></label>
+               <label>Aircraft <input type="number" id="al-route-count" min="1" value="1" /></label>
                <button class="sh-buy-btn" id="al-open-route">Open Route</button>
              </div>
-             <div class="al-hint">Regional/Narrowbody serve short lanes only; cross-nation routes need Widebodies. Ticket 0–500.</div>`
+             <div class="al-hint">One class per route. Each aircraft's range must be ≥ the route distance. Cheaper tickets win a bigger share of the lane's passengers.</div>`
           : `<div class="al-hint">Claim a terminal in at least two cities to open a route.</div>`;
 
         // Aircraft RFPs this airline has posted (open = taking bids,
@@ -4000,7 +4332,7 @@ function initials(s, n) {
       let requestPanelHtml = '';
       if (canView) {
         const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, budget, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), winner:entrepreneur_corps!winner_corp_id(name)')
+          .select('id, name, building_type, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), winner:entrepreneur_corps!winner_corp_id(name)')
           .eq('issuer_corp_id', id).not('building_type', 'is', null)
           .in('status', ['open', 'active']).order('created_at_tick', { ascending: false });
         if (mrErr) console.warn('[entrepreneur-corp] my requests fetch error:', mrErr.message);
@@ -4029,7 +4361,7 @@ function initials(s, n) {
           const builderNote = (r.status !== 'open' && r.winner?.name)
             ? ` · built by ${escapeHtml(r.winner.name)}` : '';
           const head = (badge) => `<div class="cf-row"><div><div class="who">${escapeHtml(buildingTypeLabel(r.building_type))} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · budget ${fmtUsd(Number(r.budget) || 0)} · local-build cost ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · local-build cost ${fmtUsd(Number(r.build_cost) || 0)}</div></div>${badge}</div>`;
           if (r.status !== 'open') {
             return head(`<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_bid ? ` · ${fmtUsd(Number(r.winning_bid))}` : ''}</span>`);
           }
@@ -4065,7 +4397,7 @@ function initials(s, n) {
         // formula mirrors construction_distance_multiplier() in
         // 20270369 and the SQL settlement is the canonical source.
         const { data: openReqs, error: orErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, budget, build_cost, issuer_name, nation_id, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
+          .select('id, name, building_type, build_cost, issuer_name, nation_id, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
           .eq('status', 'open').not('building_type', 'is', null)
           .neq('issuer_corp_id', id).order('bidding_closes_tick', { ascending: true });
         if (orErr) console.warn('[entrepreneur-corp] open requests fetch error:', orErr.message);
@@ -4093,16 +4425,118 @@ function initials(s, n) {
           const label = buildingTypeLabel(r.building_type);
           const base = Number(r.build_cost) || 0;
           const yourCost = Math.ceil(base * costMultiplierFor(r.nation_id, myHq, proxByNation));
-          const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-cost="${yourCost}" data-budget="${Number(r.budget) || 0}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
+          const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-cost="${yourCost}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
           return `<div class="cf-row"><div><div class="who">${escapeHtml(label)} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · your cost ${fmtUsd(yourCost)} · budget ${fmtUsd(Number(r.budget) || 0)}</div></div>
+            <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · your cost ${fmtUsd(yourCost)}</div></div>
             ${bidBtn}</div>`;
         };
         const openHtml = open.length ? open.map(orRow).join('') : '<div class="sh-empty">No open construction requests.</div>';
         requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
+
+        // Active Builds — contracts WHERE this corp is the winner. The
+        // bidder-side mirror of the issuer's Construction Requests panel
+        // above. Without this, a builder whose bid was accepted had no
+        // visibility on their own work-in-progress (the issuer's page
+        // shows it; the builder's didn't). Progress advances each tick
+        // in process_ent_construction_contracts (20270369).
+        const { data: myBuilds, error: mbErr } = await _supabase.from('ent_construction_contracts')
+          .select('name, building_type, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(name)')
+          .eq('winner_corp_id', id)
+          .eq('status', 'active')
+          .order('started_at_tick', { ascending: true });
+        if (mbErr) console.warn('[entrepreneur-corp] active builds fetch error:', mbErr.message);
+        const builds = myBuilds || [];
+        const buildRow = (b) => {
+          const total = Number(b.timeline_ticks) || 0;
+          const done  = Math.max(0, Math.min(total, Number(b.progress_ticks) || 0));
+          const left  = total - done;
+          return `<div class="cf-row">
+            <div>
+              <div class="who">${escapeHtml(buildingTypeLabel(b.building_type))} &middot; ${escapeHtml(b.name)}</div>
+              <div class="sub">${escapeHtml(b.nation?.name || '—')} &middot; for ${escapeHtml(b.issuer?.name || 'unknown client')} &middot; bid ${fmtUsd(Number(b.winning_bid) || 0)}</div>
+            </div>
+            <span class="num green">building ${done}/${total}${left > 0 ? ` &middot; ${left} tick${left === 1 ? '' : 's'} left` : ''}</span>
+          </div>`;
+        };
+        const buildsHtml = builds.length
+          ? builds.map(buildRow).join('')
+          : '<div class="sh-empty">No active builds. Win a bid above to start construction.</div>';
+        requestPanelHtml += `<div class="section-heading"><span class="sans">Active</span><span class="serif">Builds</span></div>${buildsHtml}`;
       }
 
-      pj.innerHTML = launchBtn + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + airlinePanelHtml + aviationPanelHtml + ordersPanelHtml + requestPanelHtml;
+      // Oil & Gas Operations panel — reserves + sell-to-spot buttons +
+      // capacity readout. Renders for oil_and_gas corps only. Reserves
+      // read straight off `c` (the corp fetch above includes
+      // crude_reserve / refined_reserve). Per-building output/capacity
+      // numbers come from OIL_GAS_DEFS so the panel and the SQL
+      // processor share a single JS-side source for those values.
+      let oilGasPanelHtml = '';
+      if (isOilGasCorp && canView) {
+        const completed = (b) => b.status === 'completed';
+        const pumpCount = rows.filter(b => completed(b) && b.building_type === 'pump_jack').length;
+        const refineCap = rows.filter(completed).reduce((sum, b) =>
+          sum + (OIL_GAS_DEFS[b.building_type]?.capacity || 0), 0);
+        const gasDemand = rows.filter(b => completed(b) && b.building_type === 'gas_station')
+          .reduce((sum, b) => {
+            const sol = Number(b.nation?.standard_of_living ?? 50);
+            const inf = Number(b.nation?.infrastructure    ?? 50);
+            return sum + Math.floor((sol + inf) / 20);
+          }, 0);
+        const crude   = Number(c.crude_reserve   ?? 0);
+        const refined = Number(c.refined_reserve ?? 0);
+        const pumpOutput = OIL_GAS_DEFS.pump_jack.output;
+        const ownerCtrls = isOwner ? `
+          <div class="og-sell-row">
+            <button class="ap-btn-small" id="og-sell-crude"   ${crude   > 0 ? '' : 'disabled'}>Sell All Crude → $${(crude   * OIL_GAS_PRICES.crudeSpot).toLocaleString()}</button>
+            <button class="ap-btn-small" id="og-sell-refined" ${refined > 0 ? '' : 'disabled'}>Sell All Refined → $${(refined * OIL_GAS_PRICES.refinedSpot).toLocaleString()}</button>
+          </div>` : '';
+        oilGasPanelHtml = `
+          <div class="section-heading"><span class="sans">Oil &amp; Gas</span><span class="serif">Operations</span></div>
+          <div class="og-panel">
+            <div class="og-stats">
+              <div class="og-stat"><div class="lab">Crude Reserve</div><div class="val">${crude.toLocaleString()} <span class="unit">bbl</span></div></div>
+              <div class="og-stat"><div class="lab">Refined Reserve</div><div class="val">${refined.toLocaleString()} <span class="unit">bbl</span></div></div>
+              <div class="og-stat"><div class="lab">Pumps</div><div class="val">${pumpCount} <span class="unit">× ${pumpOutput} bbl/tick</span></div></div>
+              <div class="og-stat"><div class="lab">Refining Capacity</div><div class="val">${refineCap} <span class="unit">bbl/tick</span></div></div>
+              <div class="og-stat"><div class="lab">Gas Station Demand</div><div class="val">${gasDemand} <span class="unit">bbl/tick</span></div></div>
+            </div>
+            <div class="og-prices">
+              Spot prices: crude <b>${fmtUsd(OIL_GAS_PRICES.crudeSpot)}</b>/bbl · refined <b>${fmtUsd(OIL_GAS_PRICES.refinedSpot)}</b>/bbl · retail (gas station) <b>${fmtUsd(OIL_GAS_PRICES.retail)}</b>/bbl
+            </div>
+            ${ownerCtrls}
+          </div>`;
+      }
+
+      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + ordersPanelHtml + requestPanelHtml;
+
+      // Wire the Oil & Gas sell buttons.
+      if (isOilGasCorp && isOwner) {
+        const sellCrude = document.getElementById('og-sell-crude');
+        const sellRefined = document.getElementById('og-sell-refined');
+        const fireSell = async (rpc, btn) => {
+          if (btn.disabled) return;
+          btn.disabled = true;
+          const original = btn.textContent;
+          btn.textContent = 'Selling…';
+          try {
+            const { data, error } = await _supabase.rpc(rpc, { p_corp_id: c.id, p_quantity: null });
+            if (error) throw error;
+            if (!data?.success) {
+              alert(`Sale failed: ${data?.reason || 'unknown'}`);
+              btn.disabled = false;
+              btn.textContent = original;
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            alert(`Sale failed: ${e?.message || e}`);
+            btn.disabled = false;
+            btn.textContent = original;
+          }
+        };
+        if (sellCrude)   sellCrude.addEventListener('click',   () => fireSell('sell_crude_to_spot',   sellCrude));
+        if (sellRefined) sellRefined.addEventListener('click', () => fireSell('sell_refined_to_spot', sellRefined));
+      }
 
       if (isOwner && isConstructionCorp) {
         document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
@@ -4133,7 +4567,7 @@ function initials(s, n) {
         const rcBtn = document.getElementById('rc-open-btn');
         if (rcBtn) rcBtn.addEventListener('click', openRequestModal);
         pj.querySelectorAll('.rc-bid-btn').forEach(btn => btn.addEventListener('click', () =>
-          openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.cost), Number(btn.dataset.budget))));
+          openBidModal(btn.dataset.cid, btn.dataset.label, Number(btn.dataset.cost))));
         pj.querySelectorAll('.cb-accept-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('accept', btn)));
         pj.querySelectorAll('.cb-reject-btn').forEach(btn => btn.addEventListener('click', () => handleConstructionBid('reject', btn)));
         pj.querySelectorAll('.cr-cancel-btn').forEach(btn => btn.addEventListener('click', () => handleCancelConstructionRequest(btn)));
@@ -4167,6 +4601,13 @@ function initials(s, n) {
         });
         pj.querySelectorAll('.cp-make-offer').forEach(btn => {
           btn.addEventListener('click', () => openMakeOfferModal(btn));
+        });
+        // Personal loan offer / withdraw (20270448).
+        pj.querySelectorAll('.cp-make-poffer').forEach(btn => {
+          btn.addEventListener('click', () => openMakePersonalOfferModal(btn));
+        });
+        pj.querySelectorAll('.cp-withdraw-poffer').forEach(btn => {
+          btn.addEventListener('click', () => handleWithdrawPersonalOffer(btn));
         });
         // Shipping-corp handlers (sh-*).
         const buyBtn = document.getElementById('sh-buy-freighter');
@@ -4235,7 +4676,7 @@ function initials(s, n) {
     let buildSubmitting = false;
     let selectedBuildType = 'regional_hq';
     let corpRhqNationIds = new Set();    // owned RHQs (for non-RHQ filtering)
-    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure }
+    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure, standard_of_living, politician_stability }
 
     const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
 
@@ -4367,7 +4808,7 @@ function initials(s, n) {
       // open. Two tiny queries; result is reused across modal opens.
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure')
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability')
           .not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
@@ -4426,14 +4867,23 @@ function initials(s, n) {
       construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
       light_assembly_plant: 'aviation_manufacturing',
+      apartment_basic: 'real_estate', apartment_modest: 'real_estate', apartment_luxury: 'real_estate',
+      pump_jack: 'oil_and_gas', refinery_small: 'oil_and_gas',
+      refinery_regular: 'oil_and_gas', refinery_large: 'oil_and_gas',
+      gas_station: 'oil_and_gas',
     };
     const requestableTypes = ['regional_hq'].concat(
       Object.keys(SECTOR_OF_TYPE).filter(t => SECTOR_OF_TYPE[t] === c.industry));
-    const reqBase  = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.cost  || 0) : (TIER_TABLE[tier]?.cost  || 0);
-    const reqTicks = (t, tier) => isPlantType(t) ? (PLANT_PROFILE[t]?.ticks || 0) : (TIER_TABLE[tier]?.ticks || 0);
+    const reqBase  = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.cost  || 0)
+                                 : isApartmentType(t) ? (APARTMENT_DEFS[t]?.cost || 0)
+                                 : isOilGasType(t)    ? (OIL_GAS_DEFS[t]?.cost  || 0)
+                                 : (TIER_TABLE[tier]?.cost  || 0);
+    const reqTicks = (t, tier) => isPlantType(t)     ? (PLANT_PROFILE[t]?.ticks || 0)
+                                 : isApartmentType(t) ? (APARTMENT_DEFS[t]?.ticks || 0)
+                                 : isOilGasType(t)    ? (OIL_GAS_DEFS[t]?.ticks || 0)
+                                 : (TIER_TABLE[tier]?.ticks || 0);
     const RC_REASON = {
       wrong_sector: 'Your corp can’t own this building type.',
-      budget_below_floor: 'Budget must cover the construction cost.',
       insufficient_funds: 'Your treasury can’t cover the construction cost.',
       invalid_tier: 'Pick a valid tier.', invalid_rhq_tier: 'Regional HQs are Small/Medium/Large only.',
       nation_not_found: 'That nation no longer exists.', not_owner: 'Only the corp owner can request.',
@@ -4445,6 +4895,10 @@ function initials(s, n) {
       not_open: 'Bidding has closed.', contract_not_found: 'Request not found.',
       not_owner: 'Only the corp owner can bid.', invalid_amount: 'Enter a bid amount.',
       rejected: 'The issuer rejected your bid — you can’t bid on this request again.',
+      // Building requests posted after 20270429 have budget IS NULL so
+      // over_budget can't fire on them. Kept here as defensive coverage
+      // in case a legacy row (pre-backfill) or admin tooling sets one.
+      over_budget: 'That bid exceeds this request’s budget cap.',
     };
 
     // Per-bidder cost multiplier mirroring construction_distance_multiplier()
@@ -4465,7 +4919,7 @@ function initials(s, n) {
       if (!ov) return;
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure').not('continent', 'is', null).order('name');
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability').not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
       }
@@ -4485,8 +4939,6 @@ function initials(s, n) {
             <select class="bm-select" id="rc-nation">${natOpts || '<option value="">No nations</option>'}</select>
             <div class="bm-label" id="rc-tier-label">Tier</div>
             <select class="bm-select" id="rc-tier"></select>
-            <div class="bm-label">Budget cap ($)</div>
-            <input type="number" class="bm-input" id="rc-budget" min="0" step="1000000">
             <div class="bm-label">Bidding window (ticks)</div>
             <input type="number" class="bm-input" id="rc-bidding" min="1" max="48" value="6">
             <div id="rc-preview" style="font-size:12px;color:#8aaa6a;margin:12px 0 0;line-height:1.5;"></div>
@@ -4504,11 +4956,14 @@ function initials(s, n) {
       const typeEl = document.getElementById('rc-type');
       const tierEl = document.getElementById('rc-tier');
       const tierLabel = document.getElementById('rc-tier-label');
-      const budgetEl = document.getElementById('rc-budget');
       const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
       const renderTier = () => {
         const t = typeEl.value;
-        if (isPlantType(t)) {
+        // Apartments + plants + oil-and-gas types all pin their own
+        // effective tier server-side (corp_building_cost_profile maps
+        // the type → eff_tier), so the tier selector is hidden for all
+        // three families.
+        if (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) {
           tierEl.innerHTML = ''; tierEl.style.display = 'none'; tierLabel.style.display = 'none';
         } else {
           const keys = t === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
@@ -4518,14 +4973,29 @@ function initials(s, n) {
       };
       const upd = () => {
         const t = typeEl.value;
-        const tier = isPlantType(t) ? null : tierEl.value;
+        const tier = (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) ? null : tierEl.value;
         const nation = curNation();
-        const baseCost = scaledCost(reqBase(t, tier), nation);
+        // Apartments use Pattern B cost (base × multiplier × infrastructure
+        // premium); oil & gas + every other type use linear scaledCost
+        // (base × multiplier). Pattern-B with sensitivity 1.0 collapses
+        // to the linear path, so oil & gas types fall through cleanly.
+        const baseCost = isApartmentType(t)
+          ? patternBCost(reqBase(t, null), nation, APARTMENT_DEFS[t].sensitivity)
+          : scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
-        if (!budgetEl.value || Number(budgetEl.value) < baseCost) budgetEl.value = baseCost;
-        budgetEl.min = baseCost;
+        // Apartment-only forecast line: projected occupancy + net rent
+        // at the picked nation's current stats. Same single-source
+        // helper the property card reads from, so the prediction in
+        // the modal matches the number shown after delivery.
+        let forecastLine = '';
+        if (isApartmentType(t)) {
+          const rent = computeApartmentRent(t, nation);
+          if (rent) {
+            forecastLine = `<br>Projected occupancy <b>${Math.round(rent.occupancy * 100)}%</b> · net rent <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick at current nation stats.`;
+          }
+        }
         document.getElementById('rc-preview').innerHTML =
-          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b><br>Every construction corp can bid; distant builders pay more (cost scales with proximity from their HQ). Any bid ≤ your budget is valid — bidders can bid at a loss if they want the work. Lowest qualifying bid wins at close.`;
+          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b>${forecastLine}<br>Every construction corp can bid at any positive price — even below their own distance-adjusted cost. Lowest accepted bid wins at close (you can accept manually before then).`;
       };
       typeEl.onchange = () => { renderTier(); upd(); };
       tierEl.onchange = upd;
@@ -4539,20 +5009,17 @@ function initials(s, n) {
         const nationId = document.getElementById('rc-nation').value;
         if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
         const t = typeEl.value;
-        const tier = isPlantType(t) ? 'small' : tierEl.value;   // server pins plant tier
-        const budget = Math.round(Number(budgetEl.value) || 0);
+        const tier = (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) ? 'small' : tierEl.value;   // server pins plant + apartment + oil-and-gas tier
         const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
         submitting = true;
         const btn = document.getElementById('rc-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';
         try {
           const { data, error } = await _supabase.rpc('request_building_construction', {
             p_corp_id: id, p_name: name, p_building_type: t, p_nation_id: nationId,
-            p_tier: tier, p_budget: budget, p_bidding_ticks: bidding });
+            p_tier: tier, p_bidding_ticks: bidding });
           if (error) throw error;
           if (!data || !data.success) {
-            errEl.textContent = data?.reason === 'budget_below_floor'
-              ? `Budget must be at least ${fmtUsd(Number(data.floor) || 0)} (the construction cost).`
-              : (RC_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            errEl.textContent = RC_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
             submitting = false; btn.disabled = false; btn.textContent = 'Post Request'; return;
           }
           btn.textContent = 'POSTED ✓'; setTimeout(() => location.reload(), 600);
@@ -4616,20 +5083,20 @@ const handleCancelConstructionRequest = async (btn) => {
   }
 };
 
-const openBidModal = (contractId, label, yourCost, budget) => {
+const openBidModal = (contractId, label, yourCost) => {
   const ov = document.getElementById('rcb-overlay');
   if (!ov) return;
   let submitting = false;
-      // Bids can sit anywhere from $1 to the issuer's budget cap. Below
-      // your cost = loss (treasury absorbs the shortfall); above = profit.
-      // Live preview of bid − cost so the player sees the margin sign.
+      // Bids accept any positive amount — bidders may go above (profit),
+      // at (breakeven), or below (loss) their own distance-adjusted cost.
+      // Live preview shows the margin sign.
       ov.innerHTML = `
         <div class="bm-modal" style="max-width:420px;">
           <div class="bm-head"><div class="ti">Bid on <em>${escapeHtml(label)}</em></div><div class="bm-x" id="rcb-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Your cost to deliver: <b style="color:#cfcabf;">${fmtUsd(yourCost)}</b> (scales with distance from your HQ). Issuer budget cap: <b style="color:#cfcabf;">${fmtUsd(budget)}</b>. Bidding below your cost is allowed — the loss is real. Issuer may Accept any bid directly; otherwise the lowest qualifying bid wins at close.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Your cost to deliver: <b style="color:#cfcabf;">${fmtUsd(yourCost)}</b> (scales with distance from your HQ). Bid any positive amount — above your cost is profit, below is a real loss the treasury absorbs. Issuer may Accept your bid directly; otherwise the lowest accepted bid wins at close.</div>
             <div class="bm-label">Your bid ($)</div>
-            <input type="number" class="bm-input" id="rcb-amount" min="1" max="${budget}" step="1000000" value="${yourCost}">
+            <input type="number" class="bm-input" id="rcb-amount" min="1" step="1000000" value="${yourCost}">
             <div id="rcb-margin" style="font-size:11px;margin-top:6px;line-height:1.4;"></div>
             <div class="bm-err" id="rcb-err"></div>
           </div>
@@ -4662,9 +5129,7 @@ const openBidModal = (contractId, label, yourCost, budget) => {
             p_corp_id: id, p_contract_id: contractId, p_bid_amount: amount });
           if (error) throw error;
           if (!data || !data.success) {
-            errEl.textContent = data?.reason === 'over_budget'
-              ? `Bid exceeds the budget cap (${fmtUsd(Number(data.budget) || 0)}).`
-              : (RB_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+            errEl.textContent = RB_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
             submitting = false; btn.disabled = false; btn.textContent = 'Place Bid'; return;
           }
           btn.textContent = 'BID PLACED ✓'; setTimeout(() => location.reload(), 600);
@@ -5747,6 +6212,83 @@ const openBidModal = (contractId, label, yourCost, budget) => {
     };
     const closeMakeOfferModal = () => document.getElementById('mo-overlay').classList.remove('open');
     document.getElementById('mo-close').addEventListener('click', closeMakeOfferModal);
+
+    // Personal loan offers (20270448) — simpler than corp loans: prompt
+    // for APR, validate, fire offer_personal_loan against THIS corp.
+    // No remote-lender penalty modal because the personal-loan flow
+    // gates on the bank's banking_office being IN the borrower's nation
+    // (no cross-nation offers exist by design).
+    async function openMakePersonalOfferModal(btn) {
+      const requestId = btn.dataset.rid;
+      const principal = Number(btn.dataset.principal) || 0;
+      const term      = Number(btn.dataset.term) || 0;
+      const who       = btn.dataset.who || 'borrower';
+      const raw = prompt(
+        `Make personal loan offer to ${who}\n`
+        + `Principal ${fmtUsd(principal)} · ${term}t term.\n\n`
+        + `Enter APR % (e.g. 6.5)`,
+        '8'
+      );
+      if (raw == null) return;
+      const aprPct = Number(raw);
+      if (!Number.isFinite(aprPct) || aprPct < 0 || aprPct > 50) {
+        alert('APR must be between 0% and 50%.');
+        return;
+      }
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'OFFERING…';
+      try {
+        const { data, error } = await _supabase.rpc('offer_personal_loan', {
+          p_request_id: requestId, p_bank_corp_id: id, p_apr: aprPct / 100,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const R = {
+            not_authenticated:       'Sign in to offer.',
+            invalid_apr:             'APR must be 0–50%.',
+            bank_corp_not_found:     'Bank corp lookup failed — reload.',
+            not_banking_corp:        'This corp is not a banking corp.',
+            not_owner:               'Only the CEO can post offers.',
+            request_not_found:       'Request no longer exists — reload.',
+            request_not_pending:     'Request is no longer pending.',
+            request_expired:         'Request has expired.',
+            nation_mismatch:         "Borrower's home nation doesn't match this bank's HQ.",
+            no_banking_office:       'This bank has no completed Banking Office in the borrower nation.',
+            bank_insufficient_funds: `Your party_funds can't cover the principal (need ${fmtUsd(data.need)}, have ${fmtUsd(data.have)}).`,
+          };
+          alert(R[data?.reason] || ('Offer failed: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = original;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = original;
+      }
+    }
+
+    async function handleWithdrawPersonalOffer(btn) {
+      const oid = btn.dataset.oid;
+      if (!oid) { alert('Offer id missing — reload.'); return; }
+      if (!confirm('Withdraw this pending personal loan offer?')) return;
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'WITHDRAWING…';
+      try {
+        const { data, error } = await _supabase.rpc('withdraw_personal_loan_offer', { p_offer_id: oid });
+        if (error) throw error;
+        if (!data?.success) {
+          alert('Withdraw failed: ' + (data?.reason || 'unknown'));
+          btn.disabled = false; btn.textContent = original;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = original;
+      }
+    }
     document.getElementById('mo-cancel').addEventListener('click', closeMakeOfferModal);
     document.getElementById('mo-overlay').addEventListener('click', (e) => {
       if (e.target.id === 'mo-overlay') closeMakeOfferModal();
@@ -6010,35 +6552,34 @@ const openBidModal = (contractId, label, yourCost, budget) => {
       const origin = document.getElementById('al-route-origin')?.value;
       const dest   = document.getElementById('al-route-dest')?.value;
       const ticket = parseInt(document.getElementById('al-route-ticket')?.value, 10);
-      const reg    = parseInt(document.getElementById('al-route-reg')?.value, 10) || 0;
-      const nar    = parseInt(document.getElementById('al-route-nar')?.value, 10) || 0;
-      const wide   = parseInt(document.getElementById('al-route-wide')?.value, 10) || 0;
+      const klass  = document.getElementById('al-route-class')?.value;
+      const count  = parseInt(document.getElementById('al-route-count')?.value, 10);
       if (!origin || !dest) { alert('Pick both endpoints.'); return; }
       if (origin === dest)  { alert('Origin and destination must differ.'); return; }
-      if (!Number.isFinite(ticket) || ticket < 0 || ticket > 500) { alert('Ticket price must be 0–500.'); return; }
-      if (reg + nar + wide < 1) { alert('Assign at least one aircraft.'); return; }
+      if (!Number.isFinite(ticket) || ticket < 0) { alert('Ticket price must be ≥ 0.'); return; }
+      if (!klass) { alert('Pick an aircraft class.'); return; }
+      if (!Number.isFinite(count) || count < 1) { alert('Assign at least one aircraft.'); return; }
       airlineInFlight = true;
       const prev = btn.textContent; btn.disabled = true; btn.textContent = 'OPENING…';
       try {
         const { data, error: rpcErr } = await _supabase.rpc('entrepreneur_open_route', {
           p_corp_id: id, p_origin_city_id: origin, p_dest_city_id: dest,
-          p_ticket_price: ticket, p_regional: reg, p_narrowbody: nar, p_widebody: wide,
+          p_ticket_price: ticket, p_class: klass, p_count: count,
         });
         if (rpcErr) throw rpcErr;
         if (!data || !data.success) {
           const REASON = {
             same_city:                 'Origin and destination must differ.',
-            invalid_ticket_price:      'Ticket price must be 0–500.',
-            no_aircraft_assigned:      'Assign at least one aircraft.',
-            no_terminal_origin:        'You need a terminal at the origin city.',
-            no_terminal_dest:          'You need a terminal at the destination city.',
-            route_exists:              'You already run an active route on this lane.',
-            no_range_data:             'No distance data for that city pair.',
-            regional_out_of_range:     data?.range != null ? `Too far for Regional (range ${data.range} > ${data.class_max}). Use Narrowbody/Widebody.` : 'Regional aircraft cannot fly that far.',
-            narrowbody_out_of_range:   data?.range != null ? `Too far for Narrowbody (range ${data.range} > ${data.class_max}). Use Widebody.` : 'Narrowbody aircraft cannot fly that far.',
-            insufficient_idle_aircraft:`Not enough idle aircraft — idle R${data?.idle_regional ?? 0}/N${data?.idle_narrowbody ?? 0}/W${data?.idle_widebody ?? 0}.`,
-            not_airline_corp:          'Only Airline corps can open routes.',
-            not_owner:                 'Only the corp owner can do that.',
+            invalid_ticket_price:      'Ticket price must be ≥ 0.',
+            invalid_class:             'Pick a valid aircraft class.',
+            no_aircraft_assigned:        'Assign at least one aircraft.',
+            no_terminal_origin:          'You need a terminal at the origin city.',
+            no_terminal_dest:            'You need a terminal at the destination city.',
+            route_exists:                'You already run an active route on this lane.',
+            no_distance_data:            'No distance data for that city pair.',
+            insufficient_range_aircraft: `Not enough ${data?.class || 'aircraft'} with range ≥ ${data?.route_distance ?? '?'}. Available: ${data?.available_with_range ?? 0}, requested: ${data?.requested ?? 0}. Buy planes with longer range or pick a shorter route.`,
+            not_airline_corp:            'Only Airline corps can open routes.',
+            not_owner:                   'Only the corp owner can do that.',
           };
           alert(REASON[data?.reason] || ('Could not open route: ' + (data?.reason || 'unknown')));
           airlineInFlight = false; btn.disabled = false; btn.textContent = prev; return;
