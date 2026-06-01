@@ -2009,12 +2009,18 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
         document.querySelectorAll('.nn-prox').forEach(inp => { inp.value = v; });
     }
 
+    // Canonical continents — surfaced in the Add Nation picker even
+    // when no nation has been seeded there yet. Unioned with whatever
+    // values already exist on nations.continent so historical entries
+    // never drop out.
+    const NN_CANONICAL_CONTINENTS = ['Al-Makir', 'Crucera', 'Faresia', 'Meridian', 'Serranthia'];
     async function loadAddNationContinents() {
         try {
             const { data } = await _supabase.from('nations').select('continent');
             const dl = document.getElementById('nn-continent-list');
             if (!dl) return;
-            const seen = [...new Set((data || []).map(n => n.continent).filter(Boolean))].sort();
+            const fromDb = (data || []).map(n => n.continent).filter(Boolean);
+            const seen = [...new Set([...NN_CANONICAL_CONTINENTS, ...fromDb])].sort();
             dl.innerHTML = seen.map(c => `<option value="${c}">`).join('');
         } catch (_) { /* non-fatal */ }
     }
