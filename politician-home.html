@@ -276,6 +276,7 @@
 .affil.var-party { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
 .affil.var-local { --acc:#9aab7a; --acc-bg:#13160e; --acc-dim:#4a5a3a; --acc-bright:#b9c898; }
 .affil.var-leg   { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
+.affil.var-civ   { --acc:#ab9a7a; --acc-bg:#181410; --acc-dim:#605040; --acc-bright:#d0c0a5; }
 
 .ah-row { display:flex; align-items:flex-start; gap:14px; padding:16px 20px;
   border-bottom:0.5px solid rgba(255,255,255,0.07); background:var(--acc-bg); }
@@ -805,6 +806,14 @@ const LEGISLATURE_ACTIONS = [
   { ic: '⚛',         name: 'HOLD A RALLY',       cost: '−$10K party funds', desc: 'Hold a rally with local party members to build support.',                             action: 'hold-rally' },
   { ic: '\u{1F377}', name: 'FUNDRAISING DINNER', cost: 'no cost',           desc: 'Work the room at a donor-class fundraiser. Court the wallets that matter.',          action: 'fundraising-dinner' },
 ];
+// Civil Servant action placeholders — no `action` key means the
+// existing render logic at renderAffiliation treats them as disabled.
+// RPCs will land later; the slots show the upcoming surface.
+const CIVIL_SERVANT_ACTIONS = [
+  { ic: '✉', name: 'REPORT TO MINISTER',  cost: 'no cost', desc: 'Brief the Minister on a live case. Trade access for visibility.' },
+  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Draft a memo that lands on the right desk inside the ministry.' },
+  { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.' },
+];
 
 const AFFIL_VARIANTS = {
   party_member: {
@@ -854,20 +863,44 @@ const AFFIL_VARIANTS = {
     actions: LEGISLATURE_ACTIONS,
     actionsEnabled: true,  // Tier-2 MP keeps the same action set
   },
+  // Triggered when politician_office is NULL but politician_ministry is
+  // set — no elected seat, but a confirmed bureaucrat. descFn picks up
+  // the ministry slug from ctx so the copy reads "Ministry of X".
+  civil_servant: {
+    variant: 'var-civ',
+    eyebrow: 'CIVIL SERVICE · TIER 1',
+    badge:   '⚒',
+    name:    'Civil Servant',
+    descFn:  (ctx) => `You serve in the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. You process cases, handle paperwork, and learn how the state actually works from the inside.`,
+    actions: CIVIL_SERVANT_ACTIONS,
+    // actionsEnabled left undefined → existing render logic greys
+    // every action out (no `action` key on the entries anyway).
+  },
 };
 
 function renderAffiliation(ctx) {
   const host = document.getElementById('affiliation-host');
   if (!host) return;
-  const office  = ctx.faction?.politician_office || null;
-  const variant = office && AFFIL_VARIANTS[office] ? AFFIL_VARIANTS[office] : AFFIL_VARIANTS.party_member;
+  const office   = ctx.faction?.politician_office   || null;
+  const ministry = ctx.faction?.politician_ministry || null;
+  // Variant fallback ladder: elected office → civil-servant (ministry
+  // set, no office) → party-member default. Each tier is mutually
+  // exclusive in practice; the sit-the-exam gate blocks ministry
+  // assignment while an office is held, and resigning an office
+  // doesn't touch ministry.
+  const variant = (office && AFFIL_VARIANTS[office])
+    ? AFFIL_VARIANTS[office]
+    : (ministry ? AFFIL_VARIANTS.civil_servant : AFFIL_VARIANTS.party_member);
   const partyName = ctx.party?.faction_name || '';
 
-  // Description: variant-specific descriptors, with Party Member
-  // falling back to "no party" copy when politician_party_id is unset.
-  const descHtml = office
-    ? variant.desc
-    : (partyName ? variant.descIfPartyName(partyName) : variant.descIfNoParty());
+  // Description: variants with a static `desc` use it; variants with
+  // a `descFn(ctx)` (civil_servant) pull dynamic context; the legacy
+  // party-member shape uses `descIfPartyName` / `descIfNoParty`.
+  const descHtml = variant.descFn
+    ? variant.descFn(ctx)
+    : (office
+        ? variant.desc
+        : (partyName ? variant.descIfPartyName(partyName) : variant.descIfNoParty()));
 
   // Term-end pill (top-right). Single source for term length is
   // termEndTickFor() in utils.js — legislature seats reseat at the
