@@ -533,6 +533,71 @@
   .og-prices b { color:#cfcabf; font-variant-numeric:tabular-nums; }
   .og-sell-row { display:flex; gap:8px; flex-wrap:wrap; }
   .og-sell-row .ap-btn-small:disabled { opacity:0.4; cursor:not-allowed; }
+  /* Surveys table — one row per oil plot in the corp's home nation. */
+  .surv-table { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:0;
+    border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; overflow:hidden; }
+  .surv-row { display:contents; }
+  .surv-cell { padding:11px 14px; font-size:11px; color:#cfcabf;
+    border-bottom:0.5px solid rgba(255,255,255,0.05); display:flex; align-items:center; }
+  .surv-row:last-child .surv-cell { border-bottom:none; }
+  .surv-head .surv-cell { font-size:9px; letter-spacing:0.13em; color:#666; font-weight:600;
+    text-transform:uppercase; background:#0a0a0a; }
+  .surv-name { font-weight:600; color:#fff; }
+  .surv-status { color:#888; }
+  .surv-status.surveyed { color:#8aaa6a; }
+  .surv-crude { font-variant-numeric:tabular-nums; }
+  .surv-crude .unit { color:#888; font-size:10px; margin-left:4px; }
+  .surv-tier { display:inline-block; padding:1px 6px; border-radius:3px; font-size:9px;
+    letter-spacing:0.06em; font-weight:600; margin-left:6px; text-transform:uppercase; }
+  .surv-tier-dry          { background:rgba(120,120,120,0.14); color:#888; }
+  .surv-tier-small        { background:rgba(170,160,100,0.14); color:#c8b870; }
+  .surv-tier-moderate     { background:rgba(140,170,120,0.14); color:#a0c878; }
+  .surv-tier-large        { background:rgba(120,180,100,0.18); color:#8aca6a; }
+  .surv-tier-generational { background:rgba(220,180,80,0.22); color:#e0c060; }
+  .surv-action { justify-content:flex-end; }
+  /* Survey modal — confirm + bonus picker, sits on top of the page. */
+  #surveyModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
+    display:none; align-items:center; justify-content:center; padding:30px 22px;
+    z-index:220; overflow-y:auto; }
+  #surveyModal.open { display:flex; }
+  #surveyModal .sv-modal { width:100%; max-width:520px; background:#0d0d0d;
+    border:0.5px solid rgba(255,255,255,0.1); border-radius:10px; overflow:hidden;
+    box-shadow:0 24px 80px rgba(0,0,0,0.6); }
+  #surveyModal .sv-head { display:flex; justify-content:space-between; align-items:center;
+    padding:16px 22px; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+  #surveyModal .sv-eyebrow { font-size:9px; letter-spacing:0.16em; color:#c8b870;
+    font-weight:600; margin-bottom:4px; }
+  #surveyModal .sv-title { font-size:18px; font-weight:500; color:#fff; }
+  #surveyModal .sv-title .name { font-family:Georgia,serif; font-style:italic; color:#c8b870; }
+  #surveyModal .sv-close { width:28px; height:28px; border:0.5px solid rgba(255,255,255,0.07);
+    border-radius:5px; background:transparent; color:#888; font-size:18px; cursor:pointer; line-height:1; }
+  #surveyModal .sv-close:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
+  #surveyModal .sv-body { padding:18px 22px; }
+  #surveyModal .sv-copy { font-size:11.5px; color:#cfcabf; line-height:1.6; margin-bottom:14px; }
+  #surveyModal .sv-bonus-row { display:flex; align-items:center; gap:10px; margin-bottom:14px;
+    padding:10px 12px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:5px; }
+  #surveyModal .sv-bonus-lab { font-size:9.5px; letter-spacing:0.12em; color:#888; font-weight:600;
+    text-transform:uppercase; flex-shrink:0; }
+  #surveyModal .sv-bonus-controls { display:flex; align-items:center; gap:8px; flex:1; justify-content:flex-end; }
+  #surveyModal .sv-bonus-btn { width:24px; height:24px; border-radius:3px; background:#1a1a1a;
+    border:0.5px solid rgba(255,255,255,0.15); color:#d4d4d4; font-size:14px; cursor:pointer; line-height:1; padding:0; }
+  #surveyModal .sv-bonus-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  #surveyModal .sv-bonus-val { min-width:32px; text-align:center; font-variant-numeric:tabular-nums;
+    font-weight:600; color:#fff; }
+  #surveyModal .sv-cost-line { font-size:12px; color:#cfcabf; font-variant-numeric:tabular-nums; }
+  #surveyModal .sv-cost-line b { color:#fff; }
+  #surveyModal .sv-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+  #surveyModal .sv-btn { font-family:inherit; font-size:11px; letter-spacing:0.06em;
+    padding:9px 16px; border-radius:4px; cursor:pointer; font-weight:600;
+    border:0.5px solid rgba(255,255,255,0.15); background:#1a1a1a; color:#d4d4d4; }
+  #surveyModal .sv-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  #surveyModal .sv-btn--cancel { color:#aaa; }
+  #surveyModal .sv-btn--cancel:hover:not(:disabled) { color:#fff; border-color:rgba(255,255,255,0.3); }
+  #surveyModal .sv-btn--primary { background:rgba(200,184,112,0.16); border-color:#c8b870; color:#e0c878; }
+  #surveyModal .sv-btn--primary:hover:not(:disabled) { background:rgba(200,184,112,0.26); }
+  #surveyModal .sv-result__title { font-size:14px; font-weight:600; margin-bottom:8px; letter-spacing:0.02em; }
+  #surveyModal .sv-result__body  { font-size:12px; color:#cfcabf; line-height:1.6; }
+  #surveyModal .sv-result__body strong { color:#fff; }
   .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
   .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
     padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
@@ -2356,6 +2421,142 @@ function initials(s, n) {
       });
     }
 
+    // ── Survey Oil Plot: confirm cost + paid-bonus picker, then fire
+    //    survey_oil_plot RPC. Modal renders the roll result on success
+    //    then closes-and-reloads so the table row flips to Surveyed.
+    function openSurveyModal({ plotId, plotName }) {
+      let ov = document.getElementById('surveyModal');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'surveyModal';
+        ov.innerHTML = `
+          <div class="sv-modal" role="dialog" aria-modal="true">
+            <div class="sv-head">
+              <div>
+                <div class="sv-eyebrow">— OIL &amp; GAS · SURVEY —</div>
+                <div class="sv-title">Survey <span class="name" id="sv-plot-name">—</span></div>
+              </div>
+              <button class="sv-close" type="button" aria-label="Close" data-sv-close>&times;</button>
+            </div>
+            <div class="sv-body" id="sv-body"></div>
+          </div>`;
+        document.body.appendChild(ov);
+        ov.querySelector('[data-sv-close]').addEventListener('click', () => closeSurveyModal(false));
+      }
+      ov.querySelector('#sv-plot-name').textContent = plotName || '—';
+      renderSurveyConfirm(ov, plotId);
+      ov.classList.add('open');
+    }
+    function closeSurveyModal(reload) {
+      const ov = document.getElementById('surveyModal');
+      if (!ov) return;
+      ov.classList.remove('open');
+      if (reload) location.reload();
+    }
+    function renderSurveyConfirm(ov, plotId) {
+      let bonus = 0;
+      const body = ov.querySelector('#sv-body');
+      const paint = () => {
+        const cost = 5000000 + (bonus * 10000000);
+        body.innerHTML = `
+          <div class="sv-copy">
+            Roll <strong>1d20 − 5</strong> + bonus. Tier mapping:
+            <strong>dry</strong> ≤ −2 · <strong>small</strong> −1..+2 ·
+            <strong>moderate</strong> +3..+8 · <strong>large</strong> +9..+13 ·
+            <strong>generational</strong> ≥ +14.
+          </div>
+          <div class="sv-bonus-row">
+            <span class="sv-bonus-lab">Bonus to roll</span>
+            <div class="sv-bonus-controls">
+              <button class="sv-bonus-btn" id="sv-bonus-dec" ${bonus === 0 ? 'disabled' : ''}>−</button>
+              <span class="sv-bonus-val" id="sv-bonus-val">+${bonus}</span>
+              <button class="sv-bonus-btn" id="sv-bonus-inc">+</button>
+            </div>
+          </div>
+          <div class="sv-cost-line">Cost: <b>${fmtUsd(cost)}</b> from corp treasury.</div>
+          <div class="sv-actions">
+            <button type="button" class="sv-btn sv-btn--cancel" id="sv-cancel">Cancel</button>
+            <button type="button" class="sv-btn sv-btn--primary" id="sv-confirm">Confirm Survey</button>
+          </div>`;
+        body.querySelector('#sv-bonus-dec').addEventListener('click', () => { if (bonus > 0) { bonus -= 1; paint(); } });
+        body.querySelector('#sv-bonus-inc').addEventListener('click', () => { bonus += 1; paint(); });
+        body.querySelector('#sv-cancel').addEventListener('click', () => closeSurveyModal(false));
+        body.querySelector('#sv-confirm').addEventListener('click', () => fireSurvey(ov, plotId, bonus));
+      };
+      paint();
+    }
+    async function fireSurvey(ov, plotId, bonus) {
+      const confirmBtn = ov.querySelector('#sv-confirm');
+      const cancelBtn  = ov.querySelector('#sv-cancel');
+      if (!confirmBtn) return;
+      confirmBtn.disabled = true;
+      if (cancelBtn) cancelBtn.disabled = true;
+      const prev = confirmBtn.textContent;
+      confirmBtn.textContent = 'Surveying…';
+      try {
+        const { data, error } = await _supabase.rpc('survey_oil_plot', {
+          p_plot_id: plotId, p_extra_bonus: bonus,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:    'Sign in first.',
+            no_oil_corp:          'You don’t own an Oil &amp; Gas corp.',
+            plot_not_found:       'That plot doesn’t exist.',
+            plot_outside_nation:  'That plot isn’t in your corp’s home nation.',
+            already_surveyed:     'Someone already surveyed that plot.',
+            insufficient_funds:   `Insufficient treasury cash. Need ${fmtUsd(data.need || 0)}, have ${fmtUsd(data.have || 0)}.`,
+            no_shard:             'Game state unavailable.',
+          };
+          renderSurveyResult(ov, {
+            kind: 'bad',
+            title: 'Survey blocked',
+            body: REASON[data?.reason] || ('Could not survey: ' + (data?.reason || 'unknown')),
+            reload: false,
+          });
+          return;
+        }
+        const TIER_COPY = {
+          dry:          'a dry hole. No crude.',
+          small:        'a small deposit.',
+          moderate:     'a moderate deposit.',
+          large:        'a large deposit.',
+          generational: 'a generational discovery.',
+        };
+        renderSurveyResult(ov, {
+          kind: data.tier === 'dry' ? 'bad' : 'good',
+          title: `Rolled ${data.roll_d20} (modified ${data.modified_roll >= 0 ? '+' : ''}${data.modified_roll})`,
+          body: `Survey of <strong>${escapeHtml(data.plot_name)}</strong> reveals ${TIER_COPY[data.tier] || data.tier} <strong>${(data.crude_present || 0).toLocaleString()} bbl</strong> of crude present. ${fmtUsd(data.cost_paid)} debited from corp treasury.`,
+          reload: true,
+        });
+      } catch (err) {
+        console.warn('[entrepreneur-corp] survey_oil_plot failed', err);
+        renderSurveyResult(ov, {
+          kind: 'bad',
+          title: 'Failed',
+          body: 'Could not complete the survey: ' + (err?.message || err),
+          reload: false,
+        });
+      } finally {
+        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = prev; }
+        if (cancelBtn)  { cancelBtn.disabled = false; }
+      }
+    }
+    function renderSurveyResult(ov, { kind, title, body, reload }) {
+      const root = ov.querySelector('#sv-body');
+      if (!root) return;
+      const accent = kind === 'good' ? '#8aaa6a' : '#c87a7a';
+      root.innerHTML = `
+        <div style="margin-bottom:18px;">
+          <div class="sv-result__title" style="color:${accent};">${escapeHtml(title)}</div>
+          <div class="sv-result__body">${body}</div>
+        </div>
+        <div class="sv-actions">
+          <button type="button" class="sv-btn sv-btn--primary" id="sv-close">Close</button>
+        </div>`;
+      root.querySelector('#sv-close').addEventListener('click', () => closeSurveyModal(!!reload));
+    }
+
     // ── Debt Payment (manual servicing): pay an amount toward an active corp
     //    loan from treasury → lender. Interest accrues per tick; no auto-pay. ──
     async function openDebtPaymentModal() {
@@ -3248,6 +3449,19 @@ function initials(s, n) {
       if (bErr) console.warn('[entrepreneur-corp] buildings fetch error:', bErr.message);
       const rows = bldgs || [];
       ownedBuildings = rows; // shared with renderAssets (section III)
+
+      // Oil plots — fetched for oil_and_gas corps only. Shared across
+      // every O&G corp in the nation (race to survey), so the filter is
+      // by hq_nation_id, not by corp_id.
+      let oilPlots = [];
+      if (c.industry === 'oil_and_gas' && c.hq_nation_id) {
+        const { data: plotRows, error: pErr } = await _supabase.from('nation_oil_plots')
+          .select('id, slot_index, name, surveyed, surveyed_at_tick, surveyed_by_faction, tier, crude_present')
+          .eq('nation_id', c.hq_nation_id)
+          .order('slot_index', { ascending: true });
+        if (pErr) console.warn('[entrepreneur-corp] oil plots fetch error:', pErr.message);
+        oilPlots = plotRows || [];
+      }
 
       // Phase 3 — apartment occupancy history for sparkline + trend.
       // Fetches last 12 ticks of nation stability for every nation the
@@ -4507,7 +4721,67 @@ function initials(s, n) {
           </div>`;
       }
 
-      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + ordersPanelHtml + requestPanelHtml;
+      // Surveys panel — renders for oil_and_gas corps only. One row per
+      // oil plot in the corp's home nation; the SURVEY button is enabled
+      // for the owner on unsurveyed plots. Plots are nation-shared (the
+      // first O&G corp to survey wins; everyone sees the result).
+      let surveysPanelHtml = '';
+      if (isOilGasCorp && canView) {
+        const TIER_LABELS = {
+          dry:          'Dry hole',
+          small:        'Small',
+          moderate:     'Moderate',
+          large:        'Large',
+          generational: 'Generational',
+        };
+        const plotRowsHtml = oilPlots.map(p => {
+          if (p.surveyed) {
+            const tierLabel = TIER_LABELS[p.tier] || p.tier || '—';
+            const tierClass = `surv-tier surv-tier-${p.tier || 'dry'}`;
+            const crude = p.crude_present > 0
+              ? `${p.crude_present.toLocaleString()} <span class="unit">bbl</span>`
+              : '<span class="surv-status">—</span>';
+            return `<div class="surv-row">
+              <div class="surv-cell surv-name">${escapeHtml(p.name)}</div>
+              <div class="surv-cell surv-status surveyed">Surveyed <span class="${tierClass}">${escapeHtml(tierLabel)}</span></div>
+              <div class="surv-cell surv-crude">${crude}</div>
+              <div class="surv-cell surv-action"><span style="color:#666;font-size:10px;">—</span></div>
+            </div>`;
+          }
+          const actionBtn = isOwner
+            ? `<button class="ap-btn-small" data-survey-plot="${escapeHtml(p.id)}" data-plot-name="${escapeHtml(p.name)}">Survey</button>`
+            : '<span style="color:#666;font-size:10px;">—</span>';
+          return `<div class="surv-row">
+            <div class="surv-cell surv-name">${escapeHtml(p.name)}</div>
+            <div class="surv-cell surv-status">Unsurveyed</div>
+            <div class="surv-cell surv-crude"><span style="color:#666;">—</span></div>
+            <div class="surv-cell surv-action">${actionBtn}</div>
+          </div>`;
+        }).join('');
+        const emptyMsg = oilPlots.length === 0
+          ? '<div class="og-prices" style="border-top:none;padding-top:0;margin-bottom:0;">No oil plots seeded for this nation yet.</div>'
+          : '';
+        surveysPanelHtml = `
+          <div class="section-heading"><span class="sans">Oil &amp; Gas</span><span class="serif">Surveys</span></div>
+          <div class="og-panel">
+            ${emptyMsg}
+            ${oilPlots.length > 0 ? `
+              <div class="surv-table">
+                <div class="surv-row surv-head">
+                  <div class="surv-cell">Name</div>
+                  <div class="surv-cell">Status</div>
+                  <div class="surv-cell">Crude Oil Present</div>
+                  <div class="surv-cell surv-action">Action</div>
+                </div>
+                ${plotRowsHtml}
+              </div>
+              <div class="og-prices" style="margin-top:10px;">
+                Surveying costs <b>${fmtUsd(5000000)}</b> base, +<b>${fmtUsd(10000000)}</b> per +1 to the roll. Roll = <b>1d20 − 5</b> + bonus. Tiers: dry ≤ −2 · small −1..+2 · moderate +3..+8 · large +9..+13 · generational ≥ +14.
+              </div>` : ''}
+          </div>`;
+      }
+
+      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + surveysPanelHtml + ordersPanelHtml + requestPanelHtml;
 
       // Wire the Oil & Gas sell buttons.
       if (isOilGasCorp && isOwner) {
@@ -4536,6 +4810,16 @@ function initials(s, n) {
         };
         if (sellCrude)   sellCrude.addEventListener('click',   () => fireSell('sell_crude_to_spot',   sellCrude));
         if (sellRefined) sellRefined.addEventListener('click', () => fireSell('sell_refined_to_spot', sellRefined));
+
+        // Wire the [Survey] buttons on every unsurveyed plot row. The
+        // modal owns the bonus picker + RPC call; reload-on-success so
+        // the row flips to Surveyed + the treasury debit shows up.
+        document.querySelectorAll('[data-survey-plot]').forEach(btn => {
+          btn.addEventListener('click', () => openSurveyModal({
+            plotId:   btn.dataset.surveyPlot,
+            plotName: btn.dataset.plotName,
+          }));
+        });
       }
 
       if (isOwner && isConstructionCorp) {
