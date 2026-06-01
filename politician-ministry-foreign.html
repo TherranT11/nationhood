@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Ministry of Foreign Affairs &amp; Trade</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. Per-page
+   styles match the section-card chrome used on politician-nation /
+   politician-economy. */
+.content { max-width:1200px; margin:18px auto; padding:0 20px; }
+
+.mn-num { color:#888; font-size:10px; font-weight:600; margin-right:8px;
+  font-family:monospace; letter-spacing:0.08em; }
+.mn-head { display:flex; align-items:baseline; gap:10px; margin:24px 0 10px; }
+.mn-head .lab { color:#fff; font-size:18px; font-weight:600; letter-spacing:0.02em; }
+.mn-head .ital { font-family:Georgia, serif; font-style:italic; color:#5aafa5; margin-left:6px; }
+
+/* Overview card — phone badge + title + description on the left, stats on the right. */
+.mof-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:7px;
+  border-left:3px solid #5aafa5; padding:18px 22px; display:flex; gap:20px; align-items:flex-start; }
+.mof-badge { width:48px; height:48px; flex-shrink:0; border-radius:6px;
+  background:rgba(90,175,165,0.08); border:0.5px solid rgba(90,175,165,0.4);
+  display:flex; align-items:center; justify-content:center; color:#5aafa5; font-size:22px; }
+.mof-info { flex:1; min-width:0; }
+.mof-eyebrow { font-size:9px; letter-spacing:0.16em; color:#5aafa5; font-weight:600; margin-bottom:5px; }
+.mof-title { font-size:20px; font-weight:600; color:#fff; line-height:1.2; }
+.mof-title .ital { font-family:Georgia, serif; font-style:italic; color:#a5c0d0; }
+.mof-desc { color:#cfcabf; font-size:11.5px; line-height:1.6; margin-top:10px; }
+.mof-desc b { color:#fff; font-weight:600; }
+.mof-stats { display:flex; gap:30px; flex-shrink:0; padding-top:4px; }
+.mof-stat { text-align:right; }
+.mof-stat .lab { font-size:9px; letter-spacing:0.13em; color:#666; font-weight:600; margin-bottom:4px; }
+.mof-stat .val { font-size:17px; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; }
+
+/* Section cards (ACTORS / AGENCIES / ASSETS / ASSIGNMENTS) — blank-state today. */
+.mn-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
+  padding:24px 22px; color:#666; font-size:11px; font-style:italic; text-align:center; }
+
+@media (max-width:700px) {
+  .mof-card { flex-direction:column; }
+  .mof-stats { width:100%; justify-content:space-between; gap:14px; padding-top:8px;
+    border-top:0.5px solid rgba(255,255,255,0.07); }
+  .mof-stat { text-align:left; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+
+  <!-- Overview -->
+  <div class="mn-head">
+    <span class="mn-num">I.</span>
+    <span class="lab">Overview</span>
+  </div>
+  <div class="mof-card">
+    <div class="mof-badge">&#9742;</div>
+    <div class="mof-info">
+      <div class="mof-eyebrow">EXECUTIVE BRANCH · CABINET MINISTRY</div>
+      <div class="mof-title">Ministry of Foreign Affairs <span class="ital">&amp; Trade</span></div>
+      <div class="mof-desc">
+        Conducts the Republic's foreign relations, negotiates treaties and trade agreements,
+        manages embassies and consulates, and represents the nation before international
+        bodies. <b>Located at Palacio San Martín, Cruceros.</b>
+      </div>
+    </div>
+    <div class="mof-stats">
+      <div class="mof-stat"><div class="lab">ANNUAL BUDGET</div><div class="val">$0</div></div>
+      <div class="mof-stat"><div class="lab">POSTS</div><div class="val">0</div></div>
+      <div class="mof-stat"><div class="lab">STAFF</div><div class="val">0</div></div>
+    </div>
+  </div>
+
+  <!-- I. Actors -->
+  <div class="mn-head"><span class="mn-num">I.</span><span class="lab">Actors</span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- II. Agencies -->
+  <div class="mn-head"><span class="mn-num">II.</span><span class="lab">Agencies</span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- III. Assets -->
+  <div class="mn-head"><span class="mn-num">III.</span><span class="lab">Assets</span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- IV. Assignments -->
+  <div class="mn-head"><span class="mn-num">IV.</span><span class="lab">Assignments</span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+
+(async () => {
+  try { await bootstrapPolitician('nation'); }
+  catch (e) { console.warn('[politician-ministry-foreign] bootstrap failed:', e?.message || e); return; }
+  document.getElementById('content').style.display = 'block';
+})();
+</script>
+
+</body>
+</html>
