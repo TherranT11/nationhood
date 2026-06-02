@@ -25,5 +25,12 @@ export const LITIGATION_BY_TYPE = {
   ],
 };
 
-export const BEAT_TYPES = ['evid', 'law', 'fact', 'app'];
-export const BEAT_TYPE_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
+export const BEAT_TYPES = ['evid', 'law', 'fact', 'app', 'eyewit', 'expert'];
+export const BEAT_TYPE_LABEL = {
+    evid:   'EVIDENCE',
+    law:    'LAW',
+    fact:   'FACT',
+    app:    'APPEAL',
+    eyewit: 'EYEWITNESS',
+    expert: 'EXPERT WITNESS',
+};

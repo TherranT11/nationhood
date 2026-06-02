@@ -200,6 +200,9 @@
 .offer-reject-btn { border:0.5px solid #5a3030; color:#d49a9a; }
 .offer-reject-btn:hover { background:#160e0e; border-color:#c87a7a; color:#fff; }
 .offer-accept-btn:disabled, .offer-reject-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.offer-pending-pill { font-size:9px; letter-spacing:0.13em; font-weight:700; padding:7px 11px;
+  border-radius:3px; background:#161208; color:#dcb88a; border:0.5px solid #5a4630;
+  text-transform:uppercase; }
 @media (max-width: 720px) {
   .offer-card { flex-direction:column; }
   .offer-icon-wrap { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.06); padding:9px; }
@@ -621,19 +624,23 @@
 .trial-beat { background:#1a1612; border:0.5px solid #2a2218; border-radius:5px;
   overflow:hidden; border-top:3px solid rgba(255,255,255,0.07);
   display:flex; flex-direction:column; }
-.trial-beat.evid { border-top-color:#d4b87a; }
-.trial-beat.law  { border-top-color:#9aab7a; }
-.trial-beat.fact { border-top-color:#7a9aab; }
-.trial-beat.app  { border-top-color:#c87a7a; }
+.trial-beat.evid   { border-top-color:#d4b87a; }
+.trial-beat.law    { border-top-color:#9aab7a; }
+.trial-beat.fact   { border-top-color:#7a9aab; }
+.trial-beat.app    { border-top-color:#c87a7a; }
+.trial-beat.eyewit { border-top-color:#a87aab; }
+.trial-beat.expert { border-top-color:#7abcaa; }
 .trial-beat.played { opacity:0.4; }
 .trial-beat-head { padding:7px 9px; background:#1e1916;
   border-bottom:0.5px solid #2a2218; display:flex; align-items:center; gap:5px; }
 .trial-beat-type { font-size:6.5px; letter-spacing:0.16em; font-weight:700;
   padding:2px 5px; border-radius:2px; background:#0a0807; }
-.trial-beat-type.evid { color:#d4b87a; background:#16120a; border:0.5px solid #5a4a2e; }
-.trial-beat-type.law  { color:#9aab7a; background:#10130a; border:0.5px solid #4a5a3a; }
-.trial-beat-type.fact { color:#7a9aab; background:#0e1318; border:0.5px solid #3a5060; }
-.trial-beat-type.app  { color:#c87a7a; background:#160e0e; border:0.5px solid #5a3030; }
+.trial-beat-type.evid   { color:#d4b87a; background:#16120a; border:0.5px solid #5a4a2e; }
+.trial-beat-type.law    { color:#9aab7a; background:#10130a; border:0.5px solid #4a5a3a; }
+.trial-beat-type.fact   { color:#7a9aab; background:#0e1318; border:0.5px solid #3a5060; }
+.trial-beat-type.app    { color:#c87a7a; background:#160e0e; border:0.5px solid #5a3030; }
+.trial-beat-type.eyewit { color:#a87aab; background:#14081a; border:0.5px solid #5a3050; }
+.trial-beat-type.expert { color:#7abcaa; background:#0a1614; border:0.5px solid #3a5a55; }
 .trial-beat-num { font-family:Georgia,serif; font-size:9px; color:#c8a26e; font-weight:600;
   font-style:italic; margin-left:auto; }
 .trial-beat-name { padding:8px 9px 4px; font-family:Georgia,serif; font-size:10.5px;
@@ -666,16 +673,20 @@
 .trial-msg-beat { margin-top:8px; padding:7px 10px; background:#0a0807;
   border:0.5px solid #2a2218; border-radius:4px; border-left:2.5px solid;
   display:flex; align-items:center; gap:8px; }
-.trial-msg-beat.evid { border-left-color:#d4b87a; }
-.trial-msg-beat.law  { border-left-color:#9aab7a; }
-.trial-msg-beat.fact { border-left-color:#7a9aab; }
-.trial-msg-beat.app  { border-left-color:#c87a7a; }
+.trial-msg-beat.evid   { border-left-color:#d4b87a; }
+.trial-msg-beat.law    { border-left-color:#9aab7a; }
+.trial-msg-beat.fact   { border-left-color:#7a9aab; }
+.trial-msg-beat.app    { border-left-color:#c87a7a; }
+.trial-msg-beat.eyewit { border-left-color:#a87aab; }
+.trial-msg-beat.expert { border-left-color:#7abcaa; }
 .trial-msg-beat-type { font-size:7px; letter-spacing:0.14em; font-weight:700;
   padding:2px 6px; border-radius:2px; }
-.trial-msg-beat-type.evid { background:#16120a; color:#d4b87a; border:0.5px solid #5a4a2e; }
-.trial-msg-beat-type.law  { background:#10130a; color:#9aab7a; border:0.5px solid #4a5a3a; }
-.trial-msg-beat-type.fact { background:#0e1318; color:#7a9aab; border:0.5px solid #3a5060; }
-.trial-msg-beat-type.app  { background:#160e0e; color:#c87a7a; border:0.5px solid #5a3030; }
+.trial-msg-beat-type.evid   { background:#16120a; color:#d4b87a; border:0.5px solid #5a4a2e; }
+.trial-msg-beat-type.law    { background:#10130a; color:#9aab7a; border:0.5px solid #4a5a3a; }
+.trial-msg-beat-type.fact   { background:#0e1318; color:#7a9aab; border:0.5px solid #3a5060; }
+.trial-msg-beat-type.app    { background:#160e0e; color:#c87a7a; border:0.5px solid #5a3030; }
+.trial-msg-beat-type.eyewit { background:#14081a; color:#a87aab; border:0.5px solid #5a3050; }
+.trial-msg-beat-type.expert { background:#0a1614; color:#7abcaa; border:0.5px solid #3a5a55; }
 .trial-msg-beat-name { font-family:Georgia,serif; font-size:10.5px;
   color:#d8cfb8; font-weight:500; flex:1; }
 
@@ -1808,12 +1819,26 @@ function bindActiveTrialActions() {
 }
 
 function renderPretrialCard(p) {
-  const openSide   = p.open_side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
-  const caseTag    = `${(p.case_type || '').toUpperCase()} · ${escHtml((p.litigation_type || '').toUpperCase())}`;
-  const ticksLeft  = Number(p.ticks_remaining);
-  const ticksHtml  = Number.isFinite(ticksLeft)
+  const openSide      = p.open_side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+  const caseTag       = `${(p.case_type || '').toUpperCase()} · ${escHtml((p.litigation_type || '').toUpperCase())}`;
+  const ticksLeft     = Number(p.ticks_remaining);
+  const ticksHtml     = Number.isFinite(ticksLeft)
     ? `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} remaining`
     : 'pre-trial window';
+  // Corp-side cases route through OFFER → owner accepts. Person-side
+  // cases still direct-claim via REPRESENT (no player on the other
+  // end to accept). 20270519's list_pretrial_cases_for_advocate
+  // exposes open_party_type + offer_status to drive both bits.
+  const isCorp        = p.open_party_type === 'corporation';
+  const alreadyOffered = p.offer_status === 'pending';
+  let actionHtml;
+  if (alreadyOffered) {
+    actionHtml = '<span class="offer-pending-pill">OFFER SENT</span>';
+  } else if (isCorp) {
+    actionHtml = `<button type="button" class="offer-accept-btn pretrial-offer">&#9874; OFFER TO REPRESENT</button>`;
+  } else {
+    actionHtml = `<button type="button" class="offer-accept-btn pretrial-join">&#9874; REPRESENT ${openSide}</button>`;
+  }
   return `
     <div class="offer-card pretrial-card" data-trial-id="${escHtml(p.trial_id)}">
       <div class="offer-icon-wrap">
@@ -1828,31 +1853,36 @@ function renderPretrialCard(p) {
           <span class="oi-rep">${escHtml(ticksHtml)}</span>
         </div>
       </div>
-      <div class="offer-right">
-        <button type="button" class="offer-accept-btn pretrial-join">&#9874; REPRESENT ${openSide}</button>
-      </div>
+      <div class="offer-right">${actionHtml}</div>
     </div>`;
 }
 
 function bindPretrialActions() {
   document.querySelectorAll('.pretrial-join').forEach(btn => {
-    btn.addEventListener('click', () => joinPretrial(btn));
+    btn.addEventListener('click', () => resolvePretrial(btn, 'join'));
+  });
+  document.querySelectorAll('.pretrial-offer').forEach(btn => {
+    btn.addEventListener('click', () => resolvePretrial(btn, 'offer'));
   });
 }
 
-async function joinPretrial(btn) {
+// Person-side → represent_pretrial (direct claim).
+// Corp-side  → offer_trial_counsel (queued for corp owner to accept).
+async function resolvePretrial(btn, mode) {
   const card = btn.closest('.pretrial-card');
   if (!card) return;
   const trialId = card.dataset.trialId;
   if (!trialId) return;
   card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  const rpc = mode === 'offer' ? 'offer_trial_counsel' : 'represent_pretrial';
   try {
-    const { data, error } = await _supabase.rpc('represent_pretrial', {
+    const { data, error } = await _supabase.rpc(rpc, {
       p_faction_id: politician.id, p_trial_id: trialId,
     });
     if (error) throw error;
     if (!data?.success) {
-      alert('Could not join pre-trial: ' + (data?.reason || 'unknown'));
+      alert((mode === 'offer' ? 'Could not send offer: ' : 'Could not join pre-trial: ')
+            + (data?.reason || 'unknown'));
       card.querySelectorAll('button').forEach(b => { b.disabled = false; });
       return;
     }
