@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nationhood — File a Court Case</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#0a0a0a; color:#d4d4d4; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height:100vh; }
+
+.chrome { padding:16px 24px; border-bottom:0.5px solid rgba(255,255,255,0.05);
+  display:flex; align-items:center; justify-content:space-between; }
+.chrome .wordmark { font-family:Georgia,'Times New Roman',serif; font-size:14px; color:#888;
+  letter-spacing:0.04em; }
+.chrome .wordmark .ital { font-style:italic; color:#c8a26e; }
+.chrome a { color:#888; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+  text-decoration:none; transition:color 0.15s; }
+.chrome a:hover { color:#c8a26e; }
+
+.content { padding:32px 24px 24px; max-width:920px; margin:0 auto; }
+
+/* Header card — mirrors politician-career.html's career-card vocabulary
+   so the page reads as part of the Judiciary surface. */
+.matter-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
+  border-radius:6px; padding:24px; margin-bottom:24px; display:flex; gap:18px;
+  align-items:flex-start; }
+.matter-card__icon { width:48px; height:48px; flex-shrink:0;
+  background:linear-gradient(135deg, #2a2a25, #1a1a17);
+  border:0.5px solid rgba(200,166,78,0.3); border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  color:#c8a26e; font-size:22px; }
+.matter-card__text { flex:1; min-width:0; }
+.matter-card__eyebrow { color:#c8a26e; font-size:10px; letter-spacing:0.18em; margin-bottom:8px;
+  text-transform:uppercase; }
+.matter-card__title { font-size:26px; font-weight:500; color:#fff; line-height:1.1; margin-bottom:8px;
+  letter-spacing:-0.01em; }
+.matter-card__title .tail { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c8a26e; }
+.matter-card__subtitle { font-size:12px; color:#888; line-height:1.55; }
+.matter-card__subtitle strong { color:#d4d4d4; font-weight:500; }
+.matter-card__subtitle em { font-style:italic; color:#999; }
+
+/* Form panels — each form section gets its own panel so the visual rhythm
+   matches the affiliation card stack on politician-home.html. */
+.panel { background:#0d0d0c; border:0.5px solid rgba(255,255,255,0.06);
+  border-radius:6px; padding:20px; margin-bottom:14px; }
+.panel__eyebrow { color:#666; font-size:9px; letter-spacing:0.18em; text-transform:uppercase;
+  margin-bottom:14px; }
+.panel__row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+.panel__row:last-child { margin-bottom:0; }
+.panel__row.single { grid-template-columns:1fr; }
+
+.field label { display:block; font-size:10px; letter-spacing:0.13em; color:#888;
+  text-transform:uppercase; margin-bottom:6px; }
+.field input, .field textarea, .field select {
+  width:100%; padding:9px 11px; background:#0a0a0a; color:#e0e0e0;
+  border:0.5px solid rgba(255,255,255,0.12); border-radius:3px;
+  font-family:inherit; font-size:13px; transition:border-color 0.15s; }
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline:none; border-color:rgba(200,162,110,0.5); }
+.field textarea { resize:vertical; min-height:60px; line-height:1.5; }
+
+/* Beats — ten numbered rows. Visually compact so the whole stack fits
+   without scroll on desktop. */
+.beats { display:flex; flex-direction:column; gap:8px; }
+.beat-row { display:flex; gap:10px; align-items:flex-start; }
+.beat-row__num { width:24px; flex-shrink:0; padding-top:9px;
+  font-family:Georgia,'Times New Roman',serif; font-style:italic;
+  color:#c8a26e; font-size:13px; text-align:right; }
+.beat-row__input { flex:1; }
+.beat-row__input input { width:100%; padding:8px 10px; background:#0a0a0a; color:#e0e0e0;
+  border:0.5px solid rgba(255,255,255,0.10); border-radius:3px;
+  font-family:inherit; font-size:12px; }
+.beat-row__input input:focus { outline:none; border-color:rgba(200,162,110,0.4); }
+
+/* Submit row — brass-bordered primary, transparent secondary; same vocab
+   as the bar exam modal buttons. */
+.submit-row { display:flex; gap:12px; justify-content:flex-end; padding:8px 0 24px; }
+.btn { padding:10px 22px; background:transparent; color:#c8a26e;
+  border:0.5px solid rgba(200,162,110,0.5); border-radius:3px;
+  font-family:inherit; font-size:11px; letter-spacing:0.16em; text-transform:uppercase;
+  cursor:pointer; transition:background 0.15s, border-color 0.15s; }
+.btn:hover { background:rgba(200,162,110,0.06); border-color:rgba(200,162,110,0.8); }
+.btn--secondary { color:#888; border-color:rgba(255,255,255,0.15); }
+.btn--secondary:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.3); }
+.btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+.status { font-size:11px; padding:10px 14px; border-radius:3px; margin-bottom:14px;
+  display:none; }
+.status.show { display:block; }
+.status.ok  { background:rgba(120,180,140,0.08); border:0.5px solid rgba(120,180,140,0.3); color:#a5d4b5; }
+.status.bad { background:rgba(200,120,120,0.08); border:0.5px solid rgba(200,120,120,0.3); color:#d4a5a5; }
+
+@media (max-width: 640px) {
+  .content { padding:20px 14px; }
+  .panel__row { grid-template-columns:1fr; }
+  .matter-card { flex-direction:column; }
+}
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <div class="wordmark">Nationhood <span class="ital">Judiciary</span></div>
+  <a href="dashboard.html">← Dashboard</a>
+</div>
+
+<div class="content" id="content" style="visibility:hidden;">
+
+  <!-- Header card — verbatim from the spec mock. -->
+  <div class="matter-card">
+    <div class="matter-card__icon">⚖</div>
+    <div class="matter-card__text">
+      <div class="matter-card__eyebrow">— Judiciary · File a New Matter —</div>
+      <h1 class="matter-card__title">Create a <span class="tail">Court Case</span></h1>
+      <div class="matter-card__subtitle">
+        Compose a case for trial. Fill in the parties, the nature of the dispute, and <strong>ten beats</strong> that will form the shared draft pool. <em>Once filed, the case enters the docket and may be drawn by advocates from the bar.</em>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <form id="case-form" autocomplete="off">
+
+    <!-- Parties -->
+    <div class="panel">
+      <div class="panel__eyebrow">— I · Parties —</div>
+      <div class="panel__row">
+        <div class="field">
+          <label for="plaintiff">Plaintiff / Prosecution</label>
+          <input id="plaintiff" name="plaintiff" type="text" maxlength="120" placeholder="e.g. The Crown · Mariana Estrada">
+        </div>
+        <div class="field">
+          <label for="defendant">Defendant</label>
+          <input id="defendant" name="defendant" type="text" maxlength="120" placeholder="e.g. Rafael Núñez · United Trading Co.">
+        </div>
+      </div>
+    </div>
+
+    <!-- Nature of the dispute -->
+    <div class="panel">
+      <div class="panel__eyebrow">— II · Nature of the Dispute —</div>
+      <div class="panel__row">
+        <div class="field">
+          <label for="court-type">Court</label>
+          <select id="court-type" name="court_type">
+            <option value="criminal">Criminal</option>
+            <option value="civil">Civil</option>
+            <option value="commercial">Commercial</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="case-title">Case Title</label>
+          <input id="case-title" name="title" type="text" maxlength="140" placeholder="e.g. The Bridgewater Affair">
+        </div>
+      </div>
+      <div class="panel__row single">
+        <div class="field">
+          <label for="case-summary">Summary</label>
+          <textarea id="case-summary" name="summary" rows="3" maxlength="600" placeholder="One paragraph framing the dispute. What happened, who's accused of what, what's at stake."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ten beats -->
+    <div class="panel">
+      <div class="panel__eyebrow">— III · Ten Beats —</div>
+      <div class="beats" id="beats"></div>
+    </div>
+
+    <div class="submit-row">
+      <button type="button" class="btn btn--secondary" id="cancel-btn">Cancel</button>
+      <button type="submit" class="btn" id="submit-btn">File the Matter ›</button>
+    </div>
+
+  </form>
+</div>
+
+<script type="module">
+import { _supabase, requireAuth } from './js/supabase-client.js';
+
+const user = await requireAuth();
+if (!user) {
+  // requireAuth already redirected; bail.
+} else {
+  document.getElementById('content').style.visibility = 'visible';
+  renderBeats();
+  wireForm();
+}
+
+function renderBeats() {
+  const host = document.getElementById('beats');
+  let html = '';
+  for (let i = 1; i <= 10; i++) {
+    html += `
+      <div class="beat-row">
+        <div class="beat-row__num">${i}.</div>
+        <div class="beat-row__input">
+          <input type="text" name="beat_${i}" maxlength="180" placeholder="A beat in the case — a moment the advocate works through.">
+        </div>
+      </div>`;
+  }
+  host.innerHTML = html;
+}
+
+function wireForm() {
+  const form = document.getElementById('case-form');
+  const status = document.getElementById('status');
+  document.getElementById('cancel-btn').addEventListener('click', () => {
+    window.location.href = 'dashboard.html';
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    status.className = 'status';
+    status.textContent = '';
+
+    const fd = new FormData(form);
+    const beats = [];
+    for (let i = 1; i <= 10; i++) {
+      const v = (fd.get(`beat_${i}`) || '').toString().trim();
+      if (v) beats.push(v);
+    }
+    const payload = {
+      court_type:  (fd.get('court_type') || '').toString(),
+      title:       (fd.get('title')      || '').toString().trim(),
+      summary:     (fd.get('summary')    || '').toString().trim(),
+      plaintiff:   (fd.get('plaintiff')  || '').toString().trim(),
+      defendant:   (fd.get('defendant')  || '').toString().trim(),
+      beats,
+    };
+
+    if (!payload.title || !payload.summary || !payload.plaintiff || !payload.defendant) {
+      status.className = 'status bad show';
+      status.textContent = 'Fill in the parties, a title, and a summary before filing.';
+      return;
+    }
+    if (beats.length < 10) {
+      status.className = 'status bad show';
+      status.textContent = `All ten beats are required to file. You have ${beats.length}.`;
+      return;
+    }
+
+    // TODO: persist to a court_case_drafts table. Schema + RPC land in a
+    // follow-up migration; for now we surface the payload so the form
+    // round-trip is verifiable end-to-end.
+    console.log('[courtcase] filed (stub):', payload);
+    status.className = 'status ok show';
+    status.textContent = 'Matter drafted (stub) — persistence wires up in the next pass.';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+</script>
+</body>
+</html>
