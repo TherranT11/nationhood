@@ -99,7 +99,14 @@ export function getFactionTypeBadge(factionType) {
  */
 export function getPoliticianRoleLabel(faction) {
     if (!faction || faction.faction_type !== 'politician') return null;
-    if (faction.bar_admitted_nation_id) return 'Advocate';
+    if (faction.bar_admitted_nation_id) {
+        // 20270529: stepping up replaces the Advocate suffix with the
+        // higher rung. The tick column is set once and never cleared,
+        // so any non-null value means the politician has stepped up.
+        return faction.politician_experienced_advocate_at_tick
+            ? 'Experienced Advocate'
+            : 'Advocate';
+    }
     if (faction.politician_office === 'member_of_parliament') return 'MP';
     if (faction.politician_ministry) return 'Civil Servant';
     return null;

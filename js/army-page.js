@@ -34,7 +34,7 @@ export async function bootstrapArmyPage({ activeTab, factionSelect = DEFAULT_FAC
   const [nationRes, shardRes, allFactionsRes] = await Promise.all([
     _supabase.from('nations').select('name, capital, flag_url, nation_profiles(flag_url)').eq('id', faction.nation_id).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
-    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+    _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick').or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
   if (nationRes.error)      console.warn('Nation lookup failed:', nationRes.error.message);
   if (shardRes.error)       console.warn('Shard lookup failed:', shardRes.error.message);
