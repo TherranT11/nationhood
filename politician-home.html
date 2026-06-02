@@ -182,6 +182,7 @@
 .oi-headline { font-family:Georgia,serif; font-size:14px; color:#fff; font-weight:500;
   letter-spacing:-0.005em; line-height:1.25; margin-bottom:5px; }
 .oi-headline em { font-style:italic; color:#dcb88a; }
+.oi-headline .v { font-family:Georgia,serif; font-style:italic; color:#c8a26e; margin:0 4px; }
 .oi-meta { display:flex; align-items:center; gap:10px; font-size:9.5px; color:#7a7a7a; flex-wrap:wrap; }
 .oi-corp { padding:2px 8px; border-radius:3px; font-size:8.5px; letter-spacing:0.1em;
   font-weight:700; background:#10130a; color:#9ac99a; border:0.5px solid #3a5a3a; }
@@ -706,6 +707,7 @@ let evCurrentTab = 'politics';
 let careerRows = [];   // persistent rows from politician_career_events; merged with the derived founding event at render time.
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 let counselOffers = []; // pending corp_advocate_offers for this politician (20270512/13). Surfaces as Pressing Issues cards.
+let pretrialCases = []; // active pre-trials in this politician's bar nation awaiting a counterparty (20270514).
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -739,7 +741,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes, offersRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -761,21 +763,28 @@ async function init() {
       // bar nation. RPC returns offers:[] for non-advocates so it's
       // safe to call unconditionally.
       _supabase.rpc('list_counsel_offers_for_advocate', { p_faction_id: politician.id }),
+      // Active pre-trials in the advocate's bar nation awaiting a
+      // counterparty. Same defensive shape: pretrials:[] for non-
+      // advocates so the fetch is robust for every politician type.
+      _supabase.rpc('list_pretrial_cases_for_advocate', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
     if (raceRes.error) console.error('politician-home: active_election fetch failed', raceRes.error);
     if (offersRes.error) console.error('politician-home: counsel offers fetch failed', offersRes.error);
+    if (pretrialRes.error) console.error('politician-home: pretrial cases fetch failed', pretrialRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
     counselOffers = (offersRes.data?.success ? offersRes.data.offers : []) || [];
+    pretrialCases = (pretrialRes.data?.success ? pretrialRes.data.pretrials : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
     careerRows = [];
     activeRace = null;
     counselOffers = [];
+    pretrialCases = [];
   }
 
   renderHero(ctx.shard);
@@ -1413,6 +1422,7 @@ function renderPressingIssues(ctx) {
   const blocks = [];
   if (activeRace) blocks.push(renderCampaignCard(ctx));
   counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
+  pretrialCases.forEach(p => blocks.push(renderPretrialCard(p)));
   if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
     return;
@@ -1420,6 +1430,63 @@ function renderPressingIssues(ctx) {
   host.innerHTML = blocks.join('');
   if (activeRace) bindCampaignActions(ctx);
   bindCounselOfferActions();
+  bindPretrialActions();
+}
+
+function renderPretrialCard(p) {
+  const openSide   = p.open_side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+  const caseTag    = `${(p.case_type || '').toUpperCase()} · ${escHtml((p.litigation_type || '').toUpperCase())}`;
+  const ticksLeft  = Number(p.ticks_remaining);
+  const ticksHtml  = Number.isFinite(ticksLeft)
+    ? `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} remaining`
+    : 'pre-trial window';
+  return `
+    <div class="offer-card pretrial-card" data-trial-id="${escHtml(p.trial_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9878;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">PRE-TRIAL &middot; CASE SEEKING ${openSide} COUNSEL</div>
+        <div class="oi-headline">${escHtml(p.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(p.defendant_name || '—')}</div>
+        <div class="oi-meta">
+          <span class="oi-corp">${escHtml(caseTag)}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-rep">${escHtml(ticksHtml)}</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn pretrial-join">&#9874; REPRESENT ${openSide}</button>
+      </div>
+    </div>`;
+}
+
+function bindPretrialActions() {
+  document.querySelectorAll('.pretrial-join').forEach(btn => {
+    btn.addEventListener('click', () => joinPretrial(btn));
+  });
+}
+
+async function joinPretrial(btn) {
+  const card = btn.closest('.pretrial-card');
+  if (!card) return;
+  const trialId = card.dataset.trialId;
+  if (!trialId) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('represent_pretrial', {
+      p_faction_id: politician.id, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not join pre-trial: ' + (data?.reason || 'unknown'));
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
 }
 
 function renderCounselOfferCard(o) {
@@ -2062,7 +2129,7 @@ function renderTryCaseModal(d, factionId) {
     </div>`;
 
   document.querySelectorAll('.tc-take-btn').forEach(btn => {
-    btn.addEventListener('click', () => commitSide(factionId, d.case_id, btn.dataset.side));
+    btn.addEventListener('click', () => commitSide(factionId, d.case_id, btn.dataset.side, d.plaintiff_name, d.defendant_name));
   });
   document.getElementById('tc-refuse').addEventListener('click', () => refuseCase(factionId, d.case_id));
 }
@@ -2076,11 +2143,17 @@ function unlockTryCaseChoices() {
   document.querySelectorAll('.tc-take-btn, #tc-refuse').forEach(b => { b.disabled = false; });
 }
 
-async function commitSide(factionId, caseId, side) {
+async function commitSide(factionId, caseId, side, plaintiffName, defendantName) {
   lockTryCaseChoices();
   try {
+    // p_plaintiff_name / p_defendant_name snapshot the parties the
+    // lawyer saw in the draw modal so the pre-trial row carries the
+    // same names every joining advocate will see. The server uses
+    // these verbatim (with btrim) — randomised names from the modal
+    // become the canonical trial names.
     const { data, error } = await _supabase.rpc('represent_drawn_case', {
       p_faction_id: factionId, p_case_id: caseId, p_side: side,
+      p_plaintiff_name: plaintiffName, p_defendant_name: defendantName,
     });
     if (error) throw error;
     if (!data?.success) {
