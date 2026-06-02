@@ -506,6 +506,90 @@
   color:#888; font-size:10px; letter-spacing:0.14em; font-weight:700;
   cursor:pointer; font-family:inherit; }
 .tc-status-close:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
+
+/* ── Trial modal (Phase 2 shell) ──────────────────────────────────
+   Read-only view of an in-progress trial. The .trial-* vocab is
+   self-contained so it doesn't collide with the .tc-* (Try a Case)
+   or .offer-* (Pressing Issues) namespaces above. */
+.trial-back { position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:9100;
+  display:none; align-items:center; justify-content:center; padding:18px; }
+.trial-back.open { display:flex; }
+.trial-modal { position:relative; width:100%; max-width:920px;
+  background:linear-gradient(180deg, #0e0a0c 0%, #080608 100%);
+  border:0.5px solid #3a242c; border-radius:9px;
+  box-shadow:0 0 0 1px rgba(138,88,104,0.05), 0 25px 60px rgba(0,0,0,0.85);
+  overflow:hidden; max-height:96vh; display:flex; flex-direction:column;
+  color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; }
+.trial-close { position:absolute; top:14px; right:18px; font-size:14px; color:#888;
+  cursor:pointer; background:transparent; border:none; padding:4px 6px; z-index:5; }
+.trial-close:hover { color:#fff; }
+#trial-content { display:flex; flex-direction:column; max-height:96vh; }
+
+.trial-head { padding:18px 24px 14px; border-bottom:0.5px solid #3a242c;
+  background:linear-gradient(180deg, rgba(138,88,104,0.05) 0%, transparent 100%);
+  display:flex; align-items:flex-start; gap:14px; flex-shrink:0; }
+.trial-head-info { flex:1; min-width:0; }
+.trial-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e; font-weight:700; }
+.trial-eyebrow::before { content:"\2696  "; color:#dcb88a; }
+.trial-title { font-family:Georgia,serif; font-size:18px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; margin-top:5px; line-height:1.2; }
+.trial-title .v { font-family:Georgia,serif; font-style:italic; color:#c8a26e; margin:0 4px; }
+.trial-meta { font-size:10px; color:#888; margin-top:5px; }
+.trial-meta strong { color:#dcb88a; font-weight:600; }
+
+.trial-turn-pill { padding:6px 13px; border-radius:4px; font-size:9px; letter-spacing:0.13em;
+  font-weight:700; flex-shrink:0; display:flex; align-items:center; gap:6px; }
+.trial-turn-pill.your   { background:#161208; color:#dcb88a; border:0.5px solid #c8a26e; }
+.trial-turn-pill.theirs { background:#0a0a0a; color:#888;     border:0.5px solid rgba(255,255,255,0.15); }
+.trial-turn-pill .dot { width:6px; height:6px; border-radius:50%; background:#dcb88a;
+  box-shadow:0 0 6px rgba(220,184,138,0.6); }
+
+.trial-overview { padding:13px 24px; background:#1a1612;
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  font-family:Georgia,serif; font-size:11.5px; line-height:1.6; color:#d8cfb8; flex-shrink:0; }
+
+.trial-chat { flex:1; overflow-y:auto; padding:24px; background:#080606;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); min-height:120px; }
+
+.trial-status { padding:30px 22px; text-align:center; color:#888;
+  font-style:italic; font-size:11.5px; }
+.trial-status.bad { color:#c87a7a; }
+
+.trial-hand { padding:14px 24px 18px; background:#0a0807; flex-shrink:0; }
+.trial-hand-lab { font-size:8.5px; letter-spacing:0.16em; color:#c8a26e; font-weight:700; margin-bottom:11px; }
+.trial-hand-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; }
+@media (max-width: 720px) { .trial-hand-grid { grid-template-columns:repeat(2, 1fr); } }
+
+.trial-beat { background:#1a1612; border:0.5px solid #2a2218; border-radius:5px;
+  overflow:hidden; border-top:3px solid rgba(255,255,255,0.07);
+  display:flex; flex-direction:column; }
+.trial-beat.evid { border-top-color:#d4b87a; }
+.trial-beat.law  { border-top-color:#9aab7a; }
+.trial-beat.fact { border-top-color:#7a9aab; }
+.trial-beat.app  { border-top-color:#c87a7a; }
+.trial-beat.played { opacity:0.4; }
+.trial-beat-head { padding:7px 9px; background:#1e1916;
+  border-bottom:0.5px solid #2a2218; display:flex; align-items:center; gap:5px; }
+.trial-beat-type { font-size:6.5px; letter-spacing:0.16em; font-weight:700;
+  padding:2px 5px; border-radius:2px; background:#0a0807; }
+.trial-beat-type.evid { color:#d4b87a; background:#16120a; border:0.5px solid #5a4a2e; }
+.trial-beat-type.law  { color:#9aab7a; background:#10130a; border:0.5px solid #4a5a3a; }
+.trial-beat-type.fact { color:#7a9aab; background:#0e1318; border:0.5px solid #3a5060; }
+.trial-beat-type.app  { color:#c87a7a; background:#160e0e; border:0.5px solid #5a3030; }
+.trial-beat-num { font-family:Georgia,serif; font-size:9px; color:#c8a26e; font-weight:600;
+  font-style:italic; margin-left:auto; }
+.trial-beat-name { padding:8px 9px 4px; font-family:Georgia,serif; font-size:10.5px;
+  color:#d8cfb8; font-weight:500; line-height:1.3; flex:1; }
+.trial-beat-desc { padding:0 9px 8px; font-family:Georgia,serif; font-size:8.5px;
+  color:#888; line-height:1.4; font-style:italic; }
+.trial-beat-foot { padding:5px 9px; background:#181410; border-top:0.5px solid #2a2218;
+  font-size:7px; letter-spacing:0.14em; font-weight:700; text-align:center; }
+.trial-beat-foot.favors-you  { color:#9ac99a; }
+.trial-beat-foot.favors-them { color:#c87a7a; }
+
+.trial-hand-hint { font-size:8.5px; color:#888; text-align:center; margin-top:11px;
+  line-height:1.5; font-style:italic; }
+.trial-hand-hint em { color:#dcb88a; font-style:italic; }
 </style>
 </head>
 <body>
@@ -708,6 +792,7 @@ let careerRows = [];   // persistent rows from politician_career_events; merged 
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 let counselOffers = []; // pending corp_advocate_offers for this politician (20270512/13). Surfaces as Pressing Issues cards.
 let pretrialCases = []; // active pre-trials in this politician's bar nation awaiting a counterparty (20270514).
+let activeTrials = [];  // in-progress trials this politician is on either side of (20270515). Surfaces as Pressing Issues + opens the trial modal.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -741,7 +826,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -767,17 +852,23 @@ async function init() {
       // counterparty. Same defensive shape: pretrials:[] for non-
       // advocates so the fetch is robust for every politician type.
       _supabase.rpc('list_pretrial_cases_for_advocate', { p_faction_id: politician.id }),
+      // In-progress trials this advocate is on either side of.
+      // trials:[] for non-advocates and for advocates without
+      // active matches.
+      _supabase.rpc('list_active_trials_for_advocate', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
     if (raceRes.error) console.error('politician-home: active_election fetch failed', raceRes.error);
     if (offersRes.error) console.error('politician-home: counsel offers fetch failed', offersRes.error);
     if (pretrialRes.error) console.error('politician-home: pretrial cases fetch failed', pretrialRes.error);
+    if (trialsRes.error) console.error('politician-home: active trials fetch failed', trialsRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
     counselOffers = (offersRes.data?.success ? offersRes.data.offers : []) || [];
     pretrialCases = (pretrialRes.data?.success ? pretrialRes.data.pretrials : []) || [];
+    activeTrials  = (trialsRes.data?.success  ? trialsRes.data.trials    : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -785,6 +876,7 @@ async function init() {
     activeRace = null;
     counselOffers = [];
     pretrialCases = [];
+    activeTrials  = [];
   }
 
   renderHero(ctx.shard);
@@ -1422,6 +1514,10 @@ function renderPressingIssues(ctx) {
   const blocks = [];
   if (activeRace) blocks.push(renderCampaignCard(ctx));
   counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
+  // Active trials surface above pre-trial broadcasts — the lawyer's
+  // own in-progress courtrooms outrank any "case looking for counsel"
+  // broadcasts they could join.
+  activeTrials.forEach(t => blocks.push(renderActiveTrialCard(t)));
   pretrialCases.forEach(p => blocks.push(renderPretrialCard(p)));
   if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
@@ -1431,6 +1527,41 @@ function renderPressingIssues(ctx) {
   if (activeRace) bindCampaignActions(ctx);
   bindCounselOfferActions();
   bindPretrialActions();
+  bindActiveTrialActions();
+}
+
+function renderActiveTrialCard(t) {
+  const yourTurn   = !!t.your_turn;
+  const sideLabel  = (t.side || '').toUpperCase();
+  const caseTag    = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
+  const roundLabel = `ROUND ${t.current_round || 1} OF IV`;
+  const eyebrow    = yourTurn
+    ? `TRIAL IN SESSION &middot; YOUR TURN &middot; ${roundLabel}`
+    : `TRIAL IN SESSION &middot; OPPOSING COUNSEL'S TURN &middot; ${roundLabel}`;
+  return `
+    <div class="offer-card trial-card" data-trial-id="${escHtml(t.trial_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9876;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">${eyebrow}</div>
+        <div class="oi-headline">${escHtml(t.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(t.defendant_name || '—')}</div>
+        <div class="oi-meta">
+          <span class="oi-corp">${escHtml(caseTag)}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-ceo">FOR THE <strong>${escHtml(sideLabel)}</strong></span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn trial-enter">&#9874; ENTER COURTROOM</button>
+      </div>
+    </div>`;
+}
+
+function bindActiveTrialActions() {
+  document.querySelectorAll('.trial-enter').forEach(btn => {
+    btn.addEventListener('click', () => openTrialModal(btn.closest('.trial-card')?.dataset.trialId));
+  });
 }
 
 function renderPretrialCard(p) {
@@ -2189,8 +2320,117 @@ async function refuseCase(factionId, caseId) {
   }
 }
 
+// ── Trial modal (Phase 2 shell) ─────────────────────────────────────
+// Read-only view of an in-progress trial. Pulls the caller's hand,
+// the opponent name, round, and turn from get_trial_state. No message
+// chat yet (Phase 3); the chat area renders an empty placeholder.
+async function openTrialModal(trialId) {
+  if (!trialId) return;
+  document.getElementById('trial-back').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('trial-content').innerHTML =
+    '<div class="trial-status">Loading trial…</div>';
+  try {
+    const { data, error } = await _supabase.rpc('get_trial_state', {
+      p_faction_id: politician.id, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      document.getElementById('trial-content').innerHTML =
+        `<div class="trial-status bad">${escHtml(trialReasonText(data?.reason))}</div>`;
+      return;
+    }
+    renderTrialModal(data);
+  } catch (err) {
+    document.getElementById('trial-content').innerHTML =
+      `<div class="trial-status bad">Failed to load: ${escHtml(err?.message || 'network error')}</div>`;
+  }
+}
+function closeTrialModal() {
+  document.getElementById('trial-back').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function trialReasonText(reason) {
+  return ({
+    not_authenticated: 'Sign in to view this trial.',
+    no_politician:     'No active politician on this account.',
+    trial_not_found:   'Trial no longer exists.',
+    not_in_trial:      "You're not counsel on this trial.",
+    case_not_found:    'Case record missing.',
+  })[reason] || ('Could not load trial: ' + (reason || 'unknown'));
+}
+
+function renderTrialModal(d) {
+  const BEAT_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
+  const caseTag    = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
+  const roundLabel = `ROUND ${d.current_round || 1} OF IV`;
+  const yourSide   = (d.side || 'plaintiff').toUpperCase();
+  const turnPill   = d.your_turn
+    ? '<span class="trial-turn-pill your"><span class="dot"></span> YOUR TURN</span>'
+    : '<span class="trial-turn-pill theirs">OPPOSING TURN</span>';
+
+  const hand = Array.isArray(d.hand) ? d.hand : [];
+  const handHtml = hand.length
+    ? hand.map((b, i) => {
+        const t = b?.type || '';
+        const played = b?.played_at_round != null;
+        const favorsYou = b?.support === d.side;
+        const cls = ['trial-beat', t, played ? 'played' : ''].filter(Boolean).join(' ');
+        return `
+          <div class="${cls}">
+            <div class="trial-beat-head">
+              ${t ? `<span class="trial-beat-type ${t}">${BEAT_LABEL[t] || ''}</span>` : ''}
+              <span class="trial-beat-num">&sect; ${i + 1}</span>
+            </div>
+            <div class="trial-beat-name">${escHtml(b?.name || '—')}</div>
+            <div class="trial-beat-desc">${escHtml(b?.description || '')}</div>
+            <div class="trial-beat-foot ${favorsYou ? 'favors-you' : 'favors-them'}">
+              ${played
+                ? `PLAYED &middot; ROUND ${b.played_at_round}`
+                : (favorsYou ? 'FAVORS YOUR SIDE' : 'FAVORS OPPONENT')}
+            </div>
+          </div>`;
+      }).join('')
+    : '<div class="trial-status">No beats dealt yet.</div>';
+
+  document.getElementById('trial-content').innerHTML = `
+    <div class="trial-head">
+      <div class="trial-head-info">
+        <div class="trial-eyebrow">${escHtml(caseTag)} &middot; ${roundLabel}</div>
+        <div class="trial-title">${escHtml(d.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(d.defendant_name || '—')}</div>
+        <div class="trial-meta">Representing <strong>${yourSide}</strong> &middot; vs. <strong>${escHtml(d.opponent_name || 'Opposing Counsel')}</strong></div>
+      </div>
+      ${turnPill}
+    </div>
+
+    <div class="trial-overview">${escHtml(d.overview || '')}</div>
+
+    <div class="trial-chat">
+      <div class="trial-status">Argument log will appear here once messages are exchanged.</div>
+    </div>
+
+    <div class="trial-hand">
+      <div class="trial-hand-lab">YOUR HAND &middot; ${hand.length} BEATS DRAWN FROM THE POOL</div>
+      <div class="trial-hand-grid">${handHtml}</div>
+      <div class="trial-hand-hint">
+        Phase 3 will activate the input bar &mdash; arm a beat, send your message, advance the turn. <em>For now, the shell is read-only.</em>
+      </div>
+    </div>`;
+}
+
 init();
 </script>
+
+<!-- Trial modal (Phase 2 shell). Opened from a "TRIAL IN SESSION"
+     Pressing Issues card; pulls the caller's hand, round, and turn
+     from get_trial_state. Phase 3 wires the chat + input + beat
+     plays + objections + settle. -->
+<div class="trial-back" id="trial-back">
+  <div class="trial-modal">
+    <button type="button" class="trial-close" onclick="document.getElementById('trial-back').classList.remove('open');document.body.style.overflow='';" title="Close">&#10005;</button>
+    <div id="trial-content"></div>
+  </div>
+</div>
 
 <!-- Try a Case modal — Advocate docket draw + choose-a-side. Hidden
      until openTryCaseModal() sets .open. No close X in the success
