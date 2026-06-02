@@ -377,7 +377,11 @@ let submitInFlight = false;
   }
 
   wireModalChrome();
-  await renderEnactedLaws(ctx.nation?.id || null);
+  // Defensive try/catch — the renderer already null-guards every
+  // host element and bucket, but an unexpected DOM throw here
+  // shouldn't take down the whole page.
+  try { await renderEnactedLaws(ctx.nation?.id || null); }
+  catch (e) { console.warn('[politician-statutes] enacted-laws render failed:', e?.message || e); }
 })();
 
 // Pull every enacted law for this nation and render them into the five
