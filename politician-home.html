@@ -726,10 +726,57 @@
 .trial-endturn-btn:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
 .trial-send-btn:disabled, .trial-endturn-btn:disabled { opacity:0.5; cursor:not-allowed; }
 
+/* ── Trial modal: mobile (≤720px) ────────────────────────────────
+   Desktop layout was 920px-wide centred modal. On a phone the
+   header, hand grid, chat, and input bar all overflowed
+   horizontally. These overrides re-flow the whole surface into a
+   ~95vw vertical stack with thumb-sized hit targets. */
 @media (max-width: 720px) {
-  .trial-input-row { flex-direction:column; }
-  .trial-input-actions { flex-direction:row; }
-  .trial-input-actions button { flex:1; }
+  /* Frame: nearly full-bleed, minimal gutter */
+  .trial-back  { padding:8px; }
+  .trial-modal { border-radius:6px; max-height:calc(100vh - 16px); }
+
+  /* Header — stack info above the turn pill so neither truncates */
+  .trial-head { padding:13px 14px 11px; gap:9px; flex-wrap:wrap; }
+  .trial-head-info { flex:1 1 100%; min-width:0; }
+  .trial-eyebrow { font-size:8px; }
+  .trial-title { font-size:15px; line-height:1.2; }
+  .trial-meta { font-size:9.5px; }
+  .trial-turn-pill { font-size:8.5px; padding:5px 10px; }
+
+  /* Overview + chat: tighter padding, wider bubbles */
+  .trial-overview { padding:11px 14px; font-size:11px; line-height:1.55; }
+  .trial-chat { padding:14px 12px; min-height:130px; }
+  .trial-msg-bubble { max-width:86%; padding:9px 11px; }
+  .trial-msg-text { font-size:11px; line-height:1.55; }
+  .trial-round-marker { font-size:7.5px; padding:3px 10px; }
+
+  /* Hand: keep the 2-col grid the existing override gives us;
+     shrink internal padding so cards fit two abreast cleanly. */
+  .trial-hand { padding:11px 12px 14px; }
+  .trial-hand-lab { font-size:8px; margin-bottom:9px; }
+  .trial-hand-grid { gap:6px; }
+  .trial-beat-head { padding:6px 8px; }
+  .trial-beat-name { padding:7px 8px 4px; font-size:11px; }
+  .trial-beat-desc { padding:0 8px 7px; font-size:9px; }
+  .trial-beat-foot { padding:5px 8px; font-size:7px; }
+  .trial-hand-hint { font-size:8.5px; line-height:1.5; }
+
+  /* Input bar — stack input below meta, actions go horizontal so
+     SEND + END TURN sit side-by-side under the textarea. Bigger
+     textarea (16px font) so iOS won't auto-zoom on focus. */
+  .trial-input-bar { padding:11px 12px; }
+  .trial-input-meta { gap:7px; flex-wrap:wrap; font-size:7.5px; }
+  .trial-input-remaining { margin-left:auto; }
+  .trial-armed-tag { font-size:8px; padding:5px 8px; }
+  .trial-input-row { flex-direction:column; gap:7px; }
+  .trial-input-field { font-size:16px; padding:10px 11px;
+    min-height:60px; max-height:140px; line-height:1.45; }
+  .trial-input-actions { flex-direction:row; gap:7px; }
+  .trial-input-actions button { flex:1; padding:11px 8px; font-size:9.5px; }
+
+  /* "Wait for your turn" hint */
+  .trial-input-hint { padding:6px 0; font-size:11px; }
 }
 </style>
 </head>
@@ -1378,6 +1425,11 @@ const AFFIL_VARIANTS = {
     // logic enables that one and greys the other two (Statute Books
     // and Brief the Press — RPCs land later).
     actionsEnabled: true,
+    // 3-tick cooldown stamped by draw_court_case on success
+    // (20270520). Shared by all three action buttons via the
+    // existing renderAffiliation cooldown branch, but only TRY A
+    // CASE is enabled, so only it visibly cools down.
+    cooldownColumn: 'try_case_cooldown_until_tick',
   },
   // Triggered when politician_office is NULL but politician_ministry is
   // set — no elected seat, but a confirmed bureaucrat. descFn picks up
@@ -2333,6 +2385,7 @@ function tryCaseReasonText(reason) {
     no_name_pool:        'Your nation has no name pool seeded yet.',
     no_cases_available:  'No new cases on the docket. Check back later.',
     no_viable_case:      'No case on the docket could find the right parties in your nation right now.',
+    cooldown:            'You drew a case recently. Wait a few ticks before drawing again.',
   })[reason] || ('Could not draw a case: ' + (reason || 'unknown'));
 }
 
