@@ -329,11 +329,17 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
     END IF;
 
+    -- FOR UPDATE: serialise concurrent submits on this politician
+    -- row so two tabs can't both pass the cooldown check, both
+    -- UPDATE political_capital, and double-apply the -2 penalty (or
+    -- double-grant admission). Matches the lock pattern used by
+    -- found_entrepreneur_corp / process_corp_loans elsewhere.
     SELECT * INTO v_pol FROM factions
      WHERE (id = v_uid OR linked_user_id = v_uid)
        AND faction_type = 'politician'
        AND abandoned_at IS NULL
-     ORDER BY created_at ASC LIMIT 1;
+     ORDER BY created_at ASC LIMIT 1
+     FOR UPDATE;
     IF v_pol.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_politician');
     END IF;
