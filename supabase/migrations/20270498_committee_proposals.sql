@@ -112,7 +112,12 @@ BEGIN
     IF v_comm.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'committee_not_found');
     END IF;
-    IF v_comm.nation_id <> v_pol.nation_id THEN
+    -- Orphaned politicians (NULL nation_id) can't propose. Otherwise
+    -- v_comm.nation_id <> NULL evaluates to NULL → IF skips → an
+    -- orphan could submit to any committee. IS DISTINCT FROM closes
+    -- the NULL-bypass; the explicit NULL check returns the same
+    -- wrong_nation reason so the client doesn't need a new branch.
+    IF v_pol.nation_id IS NULL OR v_comm.nation_id IS DISTINCT FROM v_pol.nation_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'wrong_nation');
     END IF;
 
