@@ -470,11 +470,12 @@
 
       <!-- Reputation-on-victory uses the INVERSE of the support split:
            the lawyer who wins for side X gains reputation proportional
-           to the strength of the beats that argued AGAINST them. A
-           one-sided case pays the underdog handsomely if they pull off
-           the upset, and pays the favorite very little. Updates live as
-           beats are edited; only counts beats with both a strength and
-           a Supports pick. -->
+           to the strength of the beats that argued AGAINST them, then
+           divided by 10. A one-sided case pays the underdog if they
+           pull off the upset, and pays the favorite very little.
+           Max possible (10 beats × strength 10 all stacked against one
+           side) = 10 rep. Updates live as beats are edited; only counts
+           beats with both a strength and a Supports pick. -->
       <div class="payout">
         <div class="payout-lab">REPUTATION ON VICTORY</div>
         <div class="payout-grid">
@@ -880,11 +881,12 @@ function recalcBalance() {
     `avg strength so far · ${avgStr}`;
 
   // Payout per side = (sum of hidden strengths of beats supporting the
-  // OPPOSING side) / 3. Winning against the stacked evidence is the
+  // OPPOSING side) / 10. Winning against the stacked evidence is the
   // impressive feat, so the side that the beats argue AGAINST pays out
-  // the higher reputation if its lawyer pulls off the upset.
-  const payoutP = defendantSum ? (defendantSum / 3).toFixed(1) : null;
-  const payoutD = plaintiffSum ? (plaintiffSum / 3).toFixed(1) : null;
+  // the higher reputation if its lawyer pulls off the upset. The /10
+  // ceiling caps a perfect-storm case at 10 rep on the upset.
+  const payoutP = defendantSum ? (defendantSum / 10).toFixed(1) : null;
+  const payoutD = plaintiffSum ? (plaintiffSum / 10).toFixed(1) : null;
   document.getElementById('payout-plaintiff').innerHTML = payoutP == null ? '&mdash;' : payoutP;
   document.getElementById('payout-defendant').innerHTML = payoutD == null ? '&mdash;' : payoutD;
 
