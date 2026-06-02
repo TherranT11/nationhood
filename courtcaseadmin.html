@@ -105,15 +105,21 @@
   .beat-type-pill.selected.law{background:var(--law-bg);color:var(--law);border-color:var(--law-dim);}
   .beat-type-pill.selected.fact{background:var(--fact-bg);color:var(--fact);border-color:var(--fact-dim);}
   .beat-type-pill.selected.app{background:var(--app-bg);color:var(--app);border-color:var(--app-dim);}
-  .beat-body{padding:9px 12px;}
+  .beat-body{padding:9px 12px;display:flex;flex-direction:column;gap:7px;}
+  .beat-name{width:100%;background:transparent;border:none;border-bottom:0.5px solid var(--paper-line);color:var(--brass-bright);font-family:Georgia,serif;font-size:12px;font-weight:600;letter-spacing:-0.005em;padding:0 0 4px;}
+  .beat-name:focus{outline:none;border-bottom-color:var(--brass);}
   .beat-desc{width:100%;background:transparent;border:none;color:var(--paper-text);font-family:Georgia,serif;font-size:11px;line-height:1.55;resize:vertical;min-height:34px;padding:0;font-style:italic;}
   .beat-desc:focus{outline:none;}
-  .beat-strength{padding:7px 12px;background:#181410;border-top:0.5px solid var(--paper-line);display:flex;align-items:center;gap:11px;}
+  .beat-strength{padding:7px 12px;background:#181410;border-top:0.5px solid var(--paper-line);display:flex;align-items:center;gap:11px;flex-wrap:wrap;}
   .bs-lab{font-size:8px;letter-spacing:0.14em;color:var(--brass);font-weight:700;flex-shrink:0;}
   .bs-select{padding:5px 24px 5px 9px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:var(--brass-bright);font-family:Georgia,serif;font-size:12px;font-weight:700;cursor:pointer;appearance:none;
     background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
     background-position:calc(100% - 10px) 50%, calc(100% - 5px) 50%;
     background-size:4px 4px, 4px 4px; background-repeat:no-repeat; min-width:54px;}
+  .bs-support{padding:5px 24px 5px 9px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:#fff;font-family:inherit;font-size:10px;font-weight:600;letter-spacing:0.06em;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 10px) 50%, calc(100% - 5px) 50%;
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat;}
 
   /* pill groups (re-used from courtcase.html) */
   .pill-row{display:flex;gap:5px;flex-wrap:wrap;}
@@ -421,8 +427,9 @@ function renderPartySection(num, side, partyType, corpType) {
 
 function renderBeat(b, i) {
   const t = b?.type || '';
+  const support = b?.support || '';
   return `
-    <div class="beat ${t}" data-beat-type="${t}" data-strength="${b?.strength ?? ''}">
+    <div class="beat ${t}" data-beat-type="${t}" data-strength="${b?.strength ?? ''}" data-support="${support}">
       <div class="beat-head">
         <span class="beat-num">§ ${i + 1}</span>
         <div class="beat-type-row">
@@ -431,6 +438,7 @@ function renderBeat(b, i) {
         </div>
       </div>
       <div class="beat-body">
+        <input class="beat-name" type="text" maxlength="80" placeholder="Name of the beat" value="${escapeAttr(b?.name || '')}">
         <textarea class="beat-desc">${escapeHtml(b?.description || '')}</textarea>
       </div>
       <div class="beat-strength">
@@ -441,6 +449,12 @@ function renderBeat(b, i) {
             const n = j + 1;
             return `<option value="${n}" ${Number(b?.strength) === n ? 'selected' : ''}>${n}</option>`;
           }).join('')}
+        </select>
+        <span class="bs-lab">SUPPORTS</span>
+        <select class="bs-support">
+          <option value="">—</option>
+          <option value="plaintiff" ${support === 'plaintiff' ? 'selected' : ''}>PLAINTIFF</option>
+          <option value="defendant" ${support === 'defendant' ? 'selected' : ''}>DEFENDANT</option>
         </select>
       </div>
     </div>`;
@@ -473,6 +487,9 @@ function wirePillGroups() {
     beat.querySelector('.bs-select').addEventListener('change', (e) => {
       beat.dataset.strength = e.target.value || '';
     });
+    beat.querySelector('.bs-support').addEventListener('change', (e) => {
+      beat.dataset.support = e.target.value || '';
+    });
   });
 }
 
@@ -499,9 +516,11 @@ function selectedPill(groupName) {
 
 function collectEditorPayload() {
   const beats = Array.from(document.querySelectorAll('#ed-beats .beat')).map(b => ({
+    name:        (b.querySelector('.beat-name').value || '').trim(),
     type:        b.dataset.beatType || '',
     description: (b.querySelector('.beat-desc').value || '').trim(),
     strength:    Number(b.dataset.strength) || null,
+    support:     b.dataset.support || '',
   }));
   const ppt = selectedPill('plaintiff_party_type');
   const dpt = selectedPill('defendant_party_type');
@@ -529,8 +548,10 @@ function validateAcceptPayload(p) {
   if (!p.overview) return 'Fill in the case overview.';
   const filled = p.beats.filter(b => b.description.length > 0);
   if (filled.length < 10) return `All ten beats need descriptions. You have ${filled.length}.`;
+  if (filled.some(b => !b.name)) return 'Every beat needs a short name.';
   if (filled.some(b => !b.type)) return 'Every beat needs a type (Evidence, Law, Fact, or Appeal).';
   if (filled.some(b => !b.strength)) return 'Every beat needs a hidden strength (1-10).';
+  if (filled.some(b => !b.support)) return 'Every beat needs to mark whether it supports plaintiff or defendant.';
   return null;
 }
 
