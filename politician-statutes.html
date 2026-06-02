@@ -30,11 +30,32 @@
 .mof-desc { color:#cfcabf; font-size:11.5px; line-height:1.6; margin-top:10px; }
 .mof-desc b { color:#fff; font-weight:600; }
 
+/* Top-right action — Propose New Law button. MP-gated: visible to
+   everyone but disabled unless the viewing politician holds
+   politician_office IN ('member_of_parliament','senior_mp'), matching
+   the gate used by the existing MP-actions RPCs (20270485 etc.). */
+.mof-action { flex-shrink:0; padding-top:4px; }
+.statute-action { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#5aafa5; background:transparent;
+  border:0.5px solid rgba(90,175,165,0.4); border-radius:3px;
+  padding:8px 14px; cursor:pointer; transition:all 0.15s; }
+.statute-action:hover:not(:disabled) { background:rgba(90,175,165,0.08);
+  border-color:rgba(90,175,165,0.7); color:#7ec5bd; }
+.statute-action:disabled { color:#555; border-color:rgba(255,255,255,0.06);
+  cursor:not-allowed; }
+
 /* Section cards — blank-state today. Each code is its own card with a
    header (code name + tagline) and a blank-state body that will be
    replaced by §-numbered law rows once seeded. */
 .mn-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
   padding:24px 22px; color:#666; font-size:11px; font-style:italic; text-align:center; }
+
+@media (max-width:700px) {
+  .mof-card { flex-direction:column; }
+  .mof-action { width:100%; padding-top:8px;
+    border-top:0.5px solid rgba(255,255,255,0.07); }
+  .statute-action { width:100%; }
+}
 </style>
 </head>
 <body>
@@ -58,6 +79,10 @@
         and every judgment of the courts ultimately traces back to one of these books — and the
         Advocate is expected to know them cold.
       </div>
+    </div>
+    <div class="mof-action">
+      <button class="statute-action" id="propose-law-btn" type="button" disabled
+              title="Member of Parliament required">Propose New Law</button>
     </div>
   </div>
 
@@ -92,6 +117,18 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
   catch (e) { console.warn('[politician-statutes] bootstrap failed:', e?.message || e); return; }
   if (!ctx) return;
   document.getElementById('content').style.display = 'block';
+
+  // MP gate on the Propose New Law button. Same office set the
+  // MP-actions RPCs (20270485 / _mp_action_check) allow: regular MPs
+  // and Senior MPs both qualify. Anyone else sees the button but
+  // can't click it; tooltip explains why.
+  const office = ctx.faction?.politician_office || null;
+  const isMP = office === 'member_of_parliament' || office === 'senior_mp';
+  const proposeBtn = document.getElementById('propose-law-btn');
+  if (proposeBtn) {
+    proposeBtn.disabled = !isMP;
+    proposeBtn.title = isMP ? '' : 'Member of Parliament required';
+  }
 })();
 </script>
 

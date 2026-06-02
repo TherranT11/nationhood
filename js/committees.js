@@ -13,6 +13,30 @@ export const COMMITTEES = {
     icon:     '⚔',
     desc:     'Oversees the military, foreign policy, and treaties. Reviews the Defence Ministry’s budget, scrutinises press claims, and ratifies settlements with foreign powers.',
   },
+  finance_budget: {
+    name:     'Finance and Budget',
+    fullName: 'Finance and Budget Committee',
+    icon:     '$',
+    desc:     'Reviews the national budget, scrutinises ministry spending, and shapes tax policy. Confirms the Finance Minister and signs off on the annual revenue and appropriations bills.',
+  },
+  judiciary_constitutional: {
+    name:     'Judiciary & Constitutional Affairs',
+    fullName: 'Judiciary & Constitutional Affairs Committee',
+    icon:     '⚖',
+    desc:     'Oversees the courts, confirms judicial appointments, and reviews proposed amendments to the Constitutional Charter. The first stop for any bill touching the Criminal or Civil Codes.',
+  },
+  industry_trade_labor: {
+    name:     'Industry, Trade and Labor',
+    fullName: 'Industry, Trade and Labor Committee',
+    icon:     '⚒',
+    desc:     'Sets industrial policy, regulates inter-corporate trade, and arbitrates labour standards. Confirms the Trade and Labour Ministers and reviews tariff schedules.',
+  },
+  interior_public_welfare: {
+    name:     'Interior & Public Welfare',
+    fullName: 'Interior & Public Welfare Committee',
+    icon:     '⌂',
+    desc:     'Oversees domestic affairs, immigration, social welfare, health, and education. Confirms the Interior, Health, and Education Ministers and reviews funding for public services.',
+  },
 };
 
 // Human messages for apply_for_committee rejection reasons. Server
