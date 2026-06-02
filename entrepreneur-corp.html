@@ -220,6 +220,10 @@
   .ap-btn-small.delist:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
   .ap-btn-small.accept { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
   .ap-btn-small.accept:hover { background:#243a1f; }
+  /* Brass variant for judiciary-flavored actions (e.g., LEGAL COUNSEL · RETAIN). */
+  .ap-btn-small.counsel { background:transparent; border:0.5px solid #c8a26e; color:#c8a26e; font-weight:500; letter-spacing:0.12em; }
+  .ap-btn-small.counsel:hover { background:#161208; color:#dcb88a; }
+  .ap-btn-small.counsel:disabled { opacity:0.5; cursor:not-allowed; }
   .ap-btn-small.reject { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
   .ap-btn-small.reject:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
   .ap-btn-small:disabled { opacity:0.45; cursor:not-allowed; }
@@ -946,6 +950,17 @@
             <button id="cp-chat-send" class="ap-btn-small list">Send</button>
           </div>
           <div id="cp-chat-note" style="color:#c98a8a;font-size:11px;margin-top:6px;min-height:1em;"></div>
+        </div>
+
+        <!-- Legal Counsel — appears under Corp Chat for every corp. The
+             Retain button is not wired yet; the surface is shipping
+             ahead of the represent-a-corp flow. -->
+        <div class="details-card" id="cp-counsel-card">
+          <div class="lab">LEGAL COUNSEL</div>
+          <div class="ds-row" style="margin-bottom:0;">
+            <span class="key" style="font-style:italic;" id="cp-counsel-current">None retained</span>
+            <button type="button" class="ap-btn-small counsel" id="cp-counsel-btn">RETAIN COUNSEL</button>
+          </div>
         </div>
       </div>
     </div>
