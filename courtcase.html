@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Create a Court Case</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --bg:#080808; --panel:#0d0d0d; --panel2:#101010;
+    --green:#6ab07a; --green-dim:#3a5a42; --green-bg:#0e1611;
+    --amber:#d4b87a; --amber-dim:#5a4d2e; --amber-bg:#161208;
+    --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
+    --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
+    /* legal: maroon + brass */
+    --jud:#8a5868; --jud-dim:#3a242c; --jud-bg:#180c10; --jud-bright:#b8869a;
+    --brass:#c8a26e; --brass-bright:#dcb88a; --brass-dim:#5a4630; --brass-bg:#161208;
+    /* card types */
+    --evid:#d4b87a; --evid-dim:#5a4a2e; --evid-bg:#16120a;
+    --law:#9aab7a; --law-dim:#4a5a3a; --law-bg:#10130a;
+    --fact:#7a9aab; --fact-dim:#3a5060; --fact-bg:#0e1318;
+    --app:#c87a7a; --app-dim:#5a3030; --app-bg:#160e0e;
+    /* parchment */
+    --paper:#1a1612; --paper-line:#2a2218; --paper-text:#d8cfb8;
+  }
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,sans-serif;min-height:100vh;padding:24px 22px;}
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  .crumb{font-size:9px;letter-spacing:0.13em;color:var(--faint);margin-bottom:14px;}
+  .crumb a{color:var(--mut);text-decoration:none;}
+  .crumb a:hover{color:var(--brass-bright);}
+  .crumb .sep{margin:0 7px;color:#3a3a3a;}
+  .crumb .here{color:var(--brass-bright);}
+
+  /* ============ PAGE HEADER ============ */
+  .page-head{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;overflow:hidden;border-left:3px solid var(--brass);margin-bottom:18px;}
+  .ph-row{padding:16px 22px;display:flex;align-items:flex-start;gap:18px;}
+  .ph-icon{width:40px;height:40px;border-radius:5px;background:var(--brass-bg);border:0.5px solid var(--brass-dim);color:var(--brass-bright);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+  .ph-info{flex:1;}
+  .ph-eyebrow{font-size:8.5px;letter-spacing:0.18em;color:var(--brass);font-weight:700;margin-bottom:4px;}
+  .ph-name{font-family:Georgia,serif;font-size:21px;font-weight:500;color:#fff;letter-spacing:-0.005em;line-height:1.2;}
+  .ph-name em{font-style:italic;color:var(--brass-bright);}
+  .ph-meta{font-size:10px;color:var(--mut);margin-top:6px;line-height:1.5;}
+  .ph-meta strong{color:#bbb;}
+
+  /* ============ SECTION ============ */
+  .section{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;overflow:hidden;margin-bottom:14px;}
+  .sec-head{padding:13px 22px;background:#0a0a0a;border-bottom:0.5px solid var(--line);display:flex;align-items:baseline;gap:11px;}
+  .sec-num{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--brass-bg);border:0.5px solid var(--brass-dim);color:var(--brass-bright);font-size:10px;font-weight:700;font-family:Georgia,serif;flex-shrink:0;}
+  .sec-title{font-size:13px;font-weight:600;color:#fff;letter-spacing:-0.005em;}
+  .sec-title .serif{font-family:Georgia,serif;font-style:italic;color:var(--brass-bright);}
+  .sec-sub{margin-left:auto;font-size:9.5px;color:var(--mut);font-style:italic;}
+  .sec-body{padding:18px 22px;}
+
+  /* ============ FIELDS ============ */
+  .fields{display:flex;flex-direction:column;gap:14px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+  .field-row.three{grid-template-columns:1fr 1fr 1fr;}
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .field.wide{grid-column:1 / -1;}
+  .field-lab{font-size:8.5px;letter-spacing:0.14em;color:var(--brass);font-weight:700;}
+  .field-lab .req{color:var(--red);margin-left:3px;}
+  .field-hint{font-size:9px;color:var(--faint);font-style:italic;line-height:1.5;margin-top:-2px;}
+
+  .field-input{padding:9px 12px;background:#0a0807;border:0.5px solid var(--line);border-radius:4px;color:#fff;font-size:11px;font-family:inherit;}
+  .field-input::placeholder{color:var(--faint);font-style:italic;}
+  .field-input:focus{outline:none;border-color:var(--brass-dim);}
+  .field-select{padding:9px 12px;background:#0a0807;border:0.5px solid var(--line);border-radius:4px;color:#fff;font-size:11px;cursor:pointer;font-family:inherit;width:100%;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size:5px 5px, 5px 5px; background-repeat:no-repeat; padding-right:30px;}
+  .field-select:hover{border-color:#2a2a2a;}
+  .field-select:focus{outline:none;border-color:var(--brass-dim);}
+  .field-textarea{padding:11px 13px;background:var(--paper);border:0.5px solid var(--paper-line);border-radius:5px;color:var(--paper-text);font-family:Georgia,serif;font-size:11.5px;line-height:1.65;resize:vertical;min-height:80px;width:100%;}
+  .field-textarea::placeholder{color:var(--faint);font-style:italic;}
+  .field-textarea:focus{outline:none;border-color:var(--brass-dim);}
+
+  /* pill selectors */
+  .pill-row{display:flex;gap:6px;flex-wrap:wrap;}
+  .pill{flex:1;min-width:88px;padding:8px 10px;background:#0a0807;border:0.5px solid var(--line);border-radius:4px;color:var(--mut);font-size:9.5px;font-weight:600;letter-spacing:0.06em;text-align:center;cursor:pointer;font-family:inherit;}
+  .pill:hover{color:#fff;border-color:#3a3a3a;}
+  .pill.selected{background:var(--brass-bg);border-color:var(--brass-dim);color:var(--brass-bright);border-left:2px solid var(--brass);padding-left:9px;}
+
+  /* conditional reveal */
+  .conditional{padding:11px 13px;background:#0a0807;border:0.5px dashed var(--brass-dim);border-radius:5px;margin-top:4px;}
+  .conditional.hidden{display:none;}
+
+  /* ============ BEATS LIST ============ */
+  .beats-banner{padding:11px 14px;background:var(--brass-bg);border:0.5px solid var(--brass-dim);border-radius:5px;margin-bottom:14px;font-size:10px;color:#bbb;line-height:1.55;}
+  .beats-banner strong{color:var(--brass-bright);font-weight:600;}
+  .beats-banner em{font-style:italic;color:#fff;}
+
+  .beats-list{display:flex;flex-direction:column;gap:9px;}
+
+  .beat{background:var(--paper);border:0.5px solid var(--paper-line);border-radius:6px;overflow:hidden;border-left:3px solid var(--line);}
+  .beat.evid{border-left-color:var(--evid);}
+  .beat.law{border-left-color:var(--law);}
+  .beat.fact{border-left-color:var(--fact);}
+  .beat.app{border-left-color:var(--app);}
+
+  /* example beats: dashed, dimmed, clearly marked */
+  .beat.example{border:0.5px dashed var(--brass-dim);border-left:3px dashed;opacity:0.78;background:#15110d;}
+  .beat.example.evid{border-left-color:var(--evid-dim);}
+  .beat.example.app{border-left-color:var(--app-dim);}
+  .beat.example .beat-head{background:#1a1612;}
+  .beat.example .beat-desc{color:#aaa;cursor:default;}
+  .beat.example .beat-type-pill{cursor:default;}
+  .beat.example .beat-delete{display:none;}
+  .beat.example select{cursor:default;pointer-events:none;}
+  .example-pill{font-size:7px;letter-spacing:0.18em;font-weight:700;padding:2px 7px;border-radius:2px;background:var(--brass-bg);color:var(--brass-bright);border:0.5px solid var(--brass-dim);font-family:-apple-system,system-ui,sans-serif;flex-shrink:0;}
+
+  .examples-divider{display:flex;align-items:center;gap:10px;margin:12px 0;}
+  .examples-divider-line{flex:1;height:0;border-top:0.5px dashed var(--line);}
+  .examples-divider-text{font-size:8.5px;letter-spacing:0.16em;color:var(--faint);font-weight:600;}
+
+  .examples-lab{font-size:8px;letter-spacing:0.16em;color:var(--faint);font-weight:600;margin-bottom:8px;font-style:italic;}
+
+  .beat-head{padding:10px 14px;background:#1e1916;border-bottom:0.5px solid var(--paper-line);display:flex;align-items:center;gap:9px;}
+  .beat-num{font-family:Georgia,serif;font-size:12px;color:var(--brass-bright);font-weight:700;letter-spacing:-0.005em;flex-shrink:0;width:30px;}
+  .beat-type-row{display:flex;gap:4px;flex:1;flex-wrap:wrap;}
+  .beat-type-pill{font-size:7.5px;letter-spacing:0.13em;padding:3px 8px;border-radius:2px;background:#0a0807;border:0.5px solid var(--line);color:var(--mut);font-weight:700;cursor:pointer;font-family:-apple-system,system-ui,sans-serif;}
+  .beat-type-pill:hover{color:#fff;border-color:#3a3a3a;}
+  .beat-type-pill.selected.evid{background:var(--evid-bg);color:var(--evid);border-color:var(--evid-dim);}
+  .beat-type-pill.selected.law{background:var(--law-bg);color:var(--law);border-color:var(--law-dim);}
+  .beat-type-pill.selected.fact{background:var(--fact-bg);color:var(--fact);border-color:var(--fact-dim);}
+  .beat-type-pill.selected.app{background:var(--app-bg);color:var(--app);border-color:var(--app-dim);}
+
+  .beat-delete{width:22px;height:22px;border-radius:3px;background:transparent;border:0.5px solid var(--line);color:var(--mut);font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .beat-delete:hover{color:var(--red);border-color:var(--red-dim);background:var(--red-bg);}
+
+  .beat-body{padding:11px 14px;}
+
+  .beat-desc{width:100%;background:transparent;border:none;color:var(--paper-text);font-family:Georgia,serif;font-size:11px;line-height:1.6;resize:vertical;min-height:38px;padding:0;font-style:italic;}
+  .beat-desc::placeholder{color:var(--faint);}
+  .beat-desc:focus{outline:none;}
+
+  .beat-strength{padding:9px 14px;background:#181410;border-top:0.5px solid var(--paper-line);display:flex;align-items:center;gap:13px;font-family:-apple-system,system-ui,sans-serif;}
+  .bs-lab{font-size:8.5px;letter-spacing:0.14em;color:var(--brass);font-weight:700;flex-shrink:0;}
+  .bs-select{padding:6px 28px 6px 11px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:var(--brass-bright);font-family:Georgia,serif;font-size:13px;font-weight:700;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 12px) 50%, calc(100% - 7px) 50%;
+    background-size:5px 5px, 5px 5px; background-repeat:no-repeat; min-width:62px;}
+  .bs-select:hover{border-color:var(--brass-dim);}
+  .bs-select:focus{outline:none;border-color:var(--brass);}
+  .bs-hint{font-size:8.5px;color:var(--mut);font-style:italic;flex:1;}
+
+  /* add beat button + counter */
+  .beats-actions{margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .add-beat{padding:10px 18px;background:#0a0807;border:0.5px dashed var(--brass-dim);border-radius:5px;color:var(--brass-bright);font-size:9.5px;letter-spacing:0.13em;font-weight:700;cursor:pointer;font-family:inherit;}
+  .add-beat:hover{background:var(--brass-bg);border-style:solid;border-color:var(--brass);color:#fff;}
+  .add-beat:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .beat-counter{font-family:Georgia,serif;font-size:13px;color:#fff;font-weight:600;}
+  .beat-counter em{font-style:italic;color:var(--brass-bright);}
+  .beat-counter.complete em{color:var(--green);}
+  .beat-counter .sub{color:var(--mut);font-family:inherit;font-size:9.5px;font-weight:normal;font-style:italic;}
+  .beat-stat-mini{font-size:8.5px;color:var(--mut);margin-left:auto;font-family:monospace;letter-spacing:0.04em;}
+
+  /* balance panel */
+  .balance{margin-top:14px;padding:13px 16px;background:#0a0807;border:0.5px solid var(--line);border-radius:6px;}
+  .bal-lab{font-size:8.5px;letter-spacing:0.16em;color:var(--brass);font-weight:700;margin-bottom:11px;}
+  .bal-grid{display:grid;grid-template-columns:repeat(4,1fr) 1px 1fr;gap:11px;align-items:center;}
+  .bal-block{text-align:center;}
+  .bal-type{font-size:8px;letter-spacing:0.14em;font-weight:700;margin-bottom:3px;}
+  .bal-type.evid{color:var(--evid);}
+  .bal-type.law{color:var(--law);}
+  .bal-type.fact{color:var(--fact);}
+  .bal-type.app{color:var(--app);}
+  .bal-count{font-family:Georgia,serif;font-size:16px;color:#fff;font-weight:600;line-height:1;}
+  .bal-count em{font-style:italic;color:var(--brass-bright);}
+  .bal-sep{height:30px;background:var(--line);}
+  .bal-avg{text-align:center;}
+  .bal-avg-lab{font-size:8px;letter-spacing:0.14em;color:var(--faint);font-weight:700;margin-bottom:3px;}
+  .bal-avg-val{font-family:Georgia,serif;font-size:16px;color:var(--brass-bright);font-weight:600;line-height:1;}
+  .bal-avg-val em{font-style:italic;}
+
+  /* ============ FOOTER ============ */
+  .foot{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;padding:14px 22px;display:flex;align-items:center;gap:14px;border-left:3px solid var(--brass);}
+  .foot-note{flex:1;font-size:10px;color:var(--mut);line-height:1.55;}
+  .foot-note strong{color:#bbb;}
+  .foot-note em{color:var(--brass-bright);font-style:italic;}
+  .btn{padding:11px 22px;border-radius:4px;font-size:10px;letter-spacing:0.14em;font-weight:700;cursor:pointer;font-family:inherit;}
+  .btn-save{background:var(--brass-bg);border:0.5px solid var(--brass);color:var(--brass-bright);}
+  .btn-save:hover{background:#251710;color:#fff;}
+  .btn-draft{background:transparent;border:0.5px solid var(--line);color:var(--mut);}
+  .btn-draft:hover{color:#fff;border-color:#3a3a3a;}
+
+  @media (max-width: 720px){
+    .field-row, .field-row.three{grid-template-columns:1fr;}
+    .bal-grid{grid-template-columns:repeat(2,1fr);}
+    .bal-sep{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap" style="visibility:hidden;">
+
+  <div class="crumb">
+    <a href="dashboard.html">JUDICIARY</a><span class="sep">&rsaquo;</span><a href="dashboard.html">COURT CASES</a><span class="sep">&rsaquo;</span><span class="here">CREATE A NEW CASE</span>
+  </div>
+
+  <!-- PAGE HEADER -->
+  <div class="page-head">
+    <div class="ph-row">
+      <div class="ph-icon">&#9878;</div>
+      <div class="ph-info">
+        <div class="ph-eyebrow">JUDICIARY &middot; FILE A NEW MATTER</div>
+        <div class="ph-name">Create a <em>Court Case</em></div>
+        <div class="ph-meta">Compose a case for trial. Fill in the parties, the nature of the dispute, and <strong>ten beats</strong> that will form the shared draft pool. <em>Once filed, the case enters the docket and may be drawn by advocates from the bar.</em></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ I. CASE TYPE ============ -->
+  <div class="section">
+    <div class="sec-head">
+      <span class="sec-num">I</span>
+      <span class="sec-title">Case <span class="serif">type</span></span>
+      <span class="sec-sub">what kind of matter this is &middot; <em style="color:var(--mut);">may occur in any nation</em></span>
+    </div>
+    <div class="sec-body">
+      <div class="fields">
+
+        <div class="field wide">
+          <label class="field-lab">CASE TYPE<span class="req">*</span></label>
+          <div class="pill-row" data-pill-group="case_type">
+            <span class="pill" data-val="civil">CIVIL</span>
+            <span class="pill" data-val="criminal">CRIMINAL</span>
+            <span class="pill selected" data-val="commercial">COMMERCIAL</span>
+          </div>
+        </div>
+
+        <div class="field wide">
+          <label class="field-lab">TYPE OF LITIGATION<span class="req">*</span></label>
+          <select id="litigation-type" class="field-select"></select>
+          <div class="field-hint" id="litigation-hint"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ II. PLAINTIFF ============ -->
+  <div class="section">
+    <div class="sec-head">
+      <span class="sec-num">II</span>
+      <span class="sec-title">The <span class="serif">plaintiff</span></span>
+      <span class="sec-sub">the party bringing the action &middot; <em style="color:var(--mut);">name auto-generated</em></span>
+    </div>
+    <div class="sec-body">
+      <div class="fields">
+
+        <div class="field wide">
+          <label class="field-lab">PARTY TYPE<span class="req">*</span></label>
+          <div class="pill-row" data-pill-group="plaintiff_party_type">
+            <span class="pill" data-val="person">PERSON</span>
+            <span class="pill selected" data-val="corporation">CORPORATION</span>
+          </div>
+        </div>
+
+        <div class="conditional" id="plaintiff-corp-cond">
+          <div class="field">
+            <label class="field-lab">CORPORATION TYPE<span class="req">*</span></label>
+            <div class="pill-row" data-pill-group="plaintiff_corp_type">
+              <span class="pill selected" data-val="shipping">SHIPPING</span>
+              <span class="pill" data-val="construction">CONSTRUCTION</span>
+              <span class="pill" data-val="airline">AIRLINE</span>
+              <span class="pill" data-val="aviation">AVIATION</span>
+              <span class="pill" data-val="real_estate">REAL ESTATE</span>
+            </div>
+            <div class="field-hint">Sets baseline reputational posture; juries may read corporations differently by industry. <strong>Name and details auto-generated on save.</strong></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ III. DEFENDANT ============ -->
+  <div class="section">
+    <div class="sec-head">
+      <span class="sec-num">III</span>
+      <span class="sec-title">The <span class="serif">defendant</span></span>
+      <span class="sec-sub">the party defending &middot; <em style="color:var(--mut);">name auto-generated</em></span>
+    </div>
+    <div class="sec-body">
+      <div class="fields">
+
+        <div class="field wide">
+          <label class="field-lab">PARTY TYPE<span class="req">*</span></label>
+          <div class="pill-row" data-pill-group="defendant_party_type">
+            <span class="pill" data-val="person">PERSON</span>
+            <span class="pill selected" data-val="corporation">CORPORATION</span>
+          </div>
+        </div>
+
+        <div class="conditional" id="defendant-corp-cond">
+          <div class="field">
+            <label class="field-lab">CORPORATION TYPE<span class="req">*</span></label>
+            <div class="pill-row" data-pill-group="defendant_corp_type">
+              <span class="pill" data-val="shipping">SHIPPING</span>
+              <span class="pill" data-val="construction">CONSTRUCTION</span>
+              <span class="pill" data-val="airline">AIRLINE</span>
+              <span class="pill" data-val="aviation">AVIATION</span>
+              <span class="pill" data-val="real_estate">REAL ESTATE</span>
+            </div>
+            <div class="field-hint">An oil major or other industry not listed? Choose the closest match &mdash; <strong>name and details are auto-generated on save</strong>.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ IV. OVERVIEW ============ -->
+  <div class="section">
+    <div class="sec-head">
+      <span class="sec-num">IV</span>
+      <span class="sec-title">Case <span class="serif">overview</span></span>
+      <span class="sec-sub">what's at stake &middot; what the parties claim</span>
+    </div>
+    <div class="sec-body">
+      <div class="fields">
+        <div class="field wide">
+          <label class="field-lab">OVERVIEW<span class="req">*</span></label>
+          <div class="field-hint">A neutral statement of the dispute. Both lawyers will see this at trial open.</div>
+          <textarea id="overview" class="field-textarea" placeholder="State the dispute neutrally&hellip;"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ V. BEATS ============ -->
+  <div class="section">
+    <div class="sec-head">
+      <span class="sec-num">V</span>
+      <span class="sec-title">The <span class="serif">beats</span></span>
+      <span class="sec-sub">ten arguments drawn from the case &middot; both sides will draft from these</span>
+    </div>
+    <div class="sec-body">
+
+      <div class="beats-banner">
+        <strong>The beats are the shared pool.</strong> At trial, both lawyers will alternate picks from these ten until each has five in hand. Strong beats favor whoever drafts them, so <em>balance matters</em>. The hidden strength is visible to the judge only.
+      </div>
+
+      <div class="beats-list" id="beats-list">
+
+        <div class="examples-lab">&#9758; EXAMPLES &middot; FOR REFERENCE ONLY &middot; THESE DO NOT COUNT TOWARD YOUR TEN</div>
+
+        <!-- EXAMPLE BEAT 1: EVIDENCE -->
+        <div class="beat example evid">
+          <div class="beat-head">
+            <span class="beat-num" style="color:var(--brass-dim);">EX</span>
+            <div class="beat-type-row">
+              <span class="beat-type-pill">EVIDENCE</span>
+              <span class="beat-type-pill">LAW</span>
+              <span class="beat-type-pill">FACT</span>
+              <span class="beat-type-pill">APPEAL</span>
+            </div>
+            <span class="example-pill">EXAMPLE</span>
+          </div>
+          <div class="beat-body">
+            <textarea class="beat-desc" readonly>The signed waiver: defendant produced a one-page document, signed and witnessed three days before the incident, expressly releasing the plaintiff from liability for the activity in question.</textarea>
+          </div>
+          <div class="beat-strength">
+            <span class="bs-lab">HIDDEN STRENGTH</span>
+            <select class="bs-select" disabled><option>8</option></select>
+            <span class="bs-hint">documentary &middot; hard to refute</span>
+          </div>
+        </div>
+
+        <!-- EXAMPLE BEAT 2: APPEAL -->
+        <div class="beat example app">
+          <div class="beat-head">
+            <span class="beat-num" style="color:var(--brass-dim);">EX</span>
+            <div class="beat-type-row">
+              <span class="beat-type-pill">EVIDENCE</span>
+              <span class="beat-type-pill">LAW</span>
+              <span class="beat-type-pill">FACT</span>
+              <span class="beat-type-pill">APPEAL</span>
+            </div>
+            <span class="example-pill">EXAMPLE</span>
+          </div>
+          <div class="beat-body">
+            <textarea class="beat-desc" readonly>What kind of community: the defendant has lived in this town for thirty-one years, raised four children here, and never been the subject of a complaint. The plaintiff moved to the district nine months ago.</textarea>
+          </div>
+          <div class="beat-strength">
+            <span class="bs-lab">HIDDEN STRENGTH</span>
+            <select class="bs-select" disabled><option>5</option></select>
+            <span class="bs-hint">judge-dependent &middot; moves a jury</span>
+          </div>
+        </div>
+
+        <div class="examples-divider">
+          <span class="examples-divider-line"></span>
+          <span class="examples-divider-text" id="examples-divider-text">YOUR BEATS &middot; 0 OF 10</span>
+          <span class="examples-divider-line"></span>
+        </div>
+
+        <!-- User beats inserted dynamically before #beats-anchor -->
+        <span id="beats-anchor" style="display:none;"></span>
+
+      </div>
+
+      <!-- add beat + counter -->
+      <div class="beats-actions">
+        <button type="button" class="add-beat" id="add-beat-btn">&#43; ADD BEAT</button>
+        <span class="beat-counter" id="beat-counter">0 of <em>10</em> beats added &middot; <span class="sub">10 more required</span></span>
+        <span class="beat-stat-mini" id="beat-avg-mini">avg strength so far &middot; &mdash;</span>
+      </div>
+
+      <!-- balance panel -->
+      <div class="balance">
+        <div class="bal-lab" id="balance-lab">CARD-TYPE BALANCE &middot; 0 OF 10</div>
+        <div class="bal-grid">
+          <div class="bal-block">
+            <div class="bal-type evid">EVIDENCE</div>
+            <div class="bal-count"><em id="bal-evid">0</em></div>
+          </div>
+          <div class="bal-block">
+            <div class="bal-type law">LAW</div>
+            <div class="bal-count"><em id="bal-law">0</em></div>
+          </div>
+          <div class="bal-block">
+            <div class="bal-type fact">FACT</div>
+            <div class="bal-count"><em id="bal-fact">0</em></div>
+          </div>
+          <div class="bal-block">
+            <div class="bal-type app">APPEAL</div>
+            <div class="bal-count"><em id="bal-app">0</em></div>
+          </div>
+          <div class="bal-sep"></div>
+          <div class="bal-avg">
+            <div class="bal-avg-lab">AVG STRENGTH</div>
+            <div class="bal-avg-val"><em id="bal-avg">&mdash;</em></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="foot">
+    <div class="foot-note">
+      <strong>Save as draft</strong> to continue later, or <strong>submit the case for approval</strong>. Submitted cases enter the moderation queue; once approved, they appear on the docket for advocates to draw via [Take a Case]. <em>You cannot edit beats after a case is approved.</em>
+    </div>
+    <button type="button" class="btn btn-draft" id="save-draft-btn">SAVE DRAFT</button>
+    <button type="button" class="btn btn-save" id="submit-btn">&#9999; SUBMIT FOR APPROVAL</button>
+  </div>
+
+</div>
+
+<script type="module">
+import { _supabase, requireAuth } from './js/supabase-client.js';
+
+const user = await requireAuth();
+if (user) {
+  document.getElementById('wrap').style.visibility = 'visible';
+  init();
+}
+
+// Litigation types per case category — the user-supplied taxonomy.
+const LITIGATION_BY_TYPE = {
+  civil: [
+    'Tenancy & Habitation', 'Personal Injury', 'Defamation', 'Family Law',
+    'Inheritance & Estates', 'Property Title', 'Civil Rights', 'Wrongful Termination',
+  ],
+  criminal: [
+    'Bribery & Corruption', 'Embezzlement', 'Fraud', 'Tax Evasion',
+    'Money Laundering', 'Assault', 'Homicide', 'Drug Offenses',
+  ],
+  commercial: [
+    'Contract Dispute', 'Breach of Warranty', 'Force Majeure', 'Intellectual Property',
+    'Antitrust', 'Securities', 'Shareholder Dispute', 'Maritime',
+  ],
+};
+
+const BEAT_TYPES = ['evid', 'law', 'fact', 'app'];
+const BEAT_TYPE_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
+const MAX_BEATS = 10;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const DRAFT_KEY = 'courtcase_draft_v1';
+
+function init() {
+  wirePillGroups();
+  populateLitigation();
+  updateConditional('plaintiff');
+  updateConditional('defendant');
+  // Restore a saved draft from this browser if one exists; otherwise
+  // seed three blank beat rows so the surface isn't empty on first load.
+  if (!restoreDraft()) {
+    for (let i = 0; i < 3; i++) addBeat();
+  }
+  document.getElementById('add-beat-btn').addEventListener('click', () => addBeat());
+  document.getElementById('save-draft-btn').addEventListener('click', onSaveDraft);
+  document.getElementById('submit-btn').addEventListener('click', onSubmitForApproval);
+}
+
+function restoreDraft() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch (_) { return false; }
+  if (!raw) return false;
+  let p;
+  try { p = JSON.parse(raw); } catch (_) { return false; }
+  if (!p || typeof p !== 'object') return false;
+
+  selectPill('case_type', p.case_type);
+  populateLitigation();
+  const lit = document.getElementById('litigation-type');
+  if (p.litigation_type && lit.querySelector(`option[value="${CSS.escape(p.litigation_type)}"]`)) {
+    lit.value = p.litigation_type;
+  }
+  selectPill('plaintiff_party_type', p.plaintiff_party_type);
+  selectPill('defendant_party_type', p.defendant_party_type);
+  updateConditional('plaintiff');
+  updateConditional('defendant');
+  if (p.plaintiff_corp_type) selectPill('plaintiff_corp_type', p.plaintiff_corp_type);
+  if (p.defendant_corp_type) selectPill('defendant_corp_type', p.defendant_corp_type);
+  document.getElementById('overview').value = p.overview || '';
+  const beats = Array.isArray(p.beats) ? p.beats : [];
+  beats.forEach(b => addBeat(b));
+  if (beats.length < 3) {
+    for (let i = beats.length; i < 3; i++) addBeat();
+  }
+  return true;
+}
+
+function selectPill(groupName, val) {
+  if (!val) return;
+  const group = document.querySelector(`[data-pill-group="${groupName}"]`);
+  if (!group) return;
+  const pill = group.querySelector(`.pill[data-val="${val}"]`);
+  if (!pill) return;
+  group.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+  pill.classList.add('selected');
+}
+
+// Collect the form into the payload shape submit_court_case_draft expects.
+function collectPayload() {
+  const beats = Array.from(document.querySelectorAll('#beats-list .beat:not(.example)'))
+    .map(b => ({
+      type:        b.dataset.beatType || '',
+      description: (b.querySelector('.beat-desc').value || '').trim(),
+      strength:    Number(b.dataset.strength) || null,
+    }));
+  return {
+    case_type:            selectedPill('case_type'),
+    litigation_type:      document.getElementById('litigation-type').value,
+    plaintiff_party_type: selectedPill('plaintiff_party_type'),
+    plaintiff_corp_type:  selectedPill('plaintiff_party_type') === 'corporation'
+                            ? selectedPill('plaintiff_corp_type') : null,
+    defendant_party_type: selectedPill('defendant_party_type'),
+    defendant_corp_type:  selectedPill('defendant_party_type') === 'corporation'
+                            ? selectedPill('defendant_corp_type') : null,
+    overview:             (document.getElementById('overview').value || '').trim(),
+    beats,
+  };
+}
+
+function validatePayload(p) {
+  if (!p.case_type) return 'Pick a case type.';
+  if (!p.litigation_type) return 'Pick a type of litigation.';
+  if (!p.plaintiff_party_type) return 'Pick a plaintiff party type.';
+  if (p.plaintiff_party_type === 'corporation' && !p.plaintiff_corp_type)
+    return 'Pick a corporation industry for the plaintiff.';
+  if (!p.defendant_party_type) return 'Pick a defendant party type.';
+  if (p.defendant_party_type === 'corporation' && !p.defendant_corp_type)
+    return 'Pick a corporation industry for the defendant.';
+  if (!p.overview) return 'Fill in the case overview.';
+  const filledBeats = p.beats.filter(b => b.description.length > 0);
+  if (filledBeats.length < 10) return `All ten beats are required. You have ${filledBeats.length}.`;
+  if (filledBeats.some(b => !b.type)) return 'Every beat needs a type (Evidence, Law, Fact, or Appeal).';
+  if (filledBeats.some(b => !b.strength)) return 'Every beat needs a hidden strength (1-10).';
+  return null;
+}
+
+function flash(kind, msg) {
+  // Light-touch banner — re-uses the brass color vocab. Slides into
+  // view at the top of the page so it's hard to miss.
+  let host = document.getElementById('cc-flash');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'cc-flash';
+    host.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);' +
+      'padding:11px 18px;border-radius:5px;font-size:11px;font-weight:600;letter-spacing:0.08em;' +
+      'z-index:1000;font-family:inherit;border:0.5px solid;';
+    document.body.appendChild(host);
+  }
+  const ok = kind === 'ok';
+  host.style.background = ok ? 'rgba(106,176,122,0.12)' : 'rgba(200,122,122,0.12)';
+  host.style.borderColor = ok ? 'rgba(106,176,122,0.5)' : 'rgba(200,122,122,0.5)';
+  host.style.color = ok ? '#a5d4b5' : '#d4a5a5';
+  host.textContent = msg;
+  clearTimeout(host._t);
+  host._t = setTimeout(() => host.remove(), 4500);
+}
+
+async function onSubmitForApproval() {
+  const btn = document.getElementById('submit-btn');
+  const payload = collectPayload();
+  const err = validatePayload(payload);
+  if (err) { flash('bad', err); return; }
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = 'FILING…';
+  try {
+    const { data, error } = await _supabase.rpc('submit_court_case_draft', { p_payload: payload });
+    if (error) throw error;
+    if (!data?.success) {
+      flash('bad', 'Could not file: ' + (data?.reason || 'unknown'));
+      btn.disabled = false; btn.innerHTML = orig;
+      return;
+    }
+    // The matter is now on the moderation queue — drop the local draft
+    // so a refresh doesn't show stale state from the just-filed case.
+    try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
+    flash('ok', 'Matter filed. Awaiting moderation.');
+    setTimeout(() => { window.location.href = 'dashboard.html'; }, 1500);
+  } catch (e) {
+    flash('bad', 'Filing failed: ' + (e?.message || 'unknown'));
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+function onSaveDraft() {
+  // Local-only draft (browser localStorage). restoreDraft() reads this
+  // on the next page load. The moderation queue stores only filed
+  // cases; a persistent server-side draft store can land later.
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(collectPayload()));
+    flash('ok', 'Draft saved to this browser.');
+  } catch (_) {
+    flash('bad', 'Draft save failed.');
+  }
+}
+
+// Pills: single-select within a group identified by data-pill-group.
+// Case-type pill change re-populates the litigation dropdown; party-type
+// pill change toggles the corp-type conditional reveal.
+function wirePillGroups() {
+  document.querySelectorAll('[data-pill-group]').forEach(group => {
+    group.addEventListener('click', (e) => {
+      const pill = e.target.closest('.pill');
+      if (!pill || pill.parentElement !== group) return;
+      group.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+      pill.classList.add('selected');
+      const groupName = group.dataset.pillGroup;
+      if (groupName === 'case_type') populateLitigation();
+      if (groupName === 'plaintiff_party_type') updateConditional('plaintiff');
+      if (groupName === 'defendant_party_type') updateConditional('defendant');
+    });
+  });
+}
+
+function selectedPill(groupName) {
+  const group = document.querySelector(`[data-pill-group="${groupName}"]`);
+  const sel = group?.querySelector('.pill.selected');
+  return sel?.dataset.val || null;
+}
+
+function populateLitigation() {
+  const caseType = selectedPill('case_type') || 'commercial';
+  const list = LITIGATION_BY_TYPE[caseType] || [];
+  const sel = document.getElementById('litigation-type');
+  const prev = sel.value;
+  sel.innerHTML = list.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+  if (list.includes(prev)) sel.value = prev;
+  document.getElementById('litigation-hint').innerHTML =
+    `Auto-populated based on case type. Choices include: <strong>${list.join(', ')}</strong>.`;
+}
+
+function updateConditional(side) {
+  const cond = document.getElementById(`${side}-corp-cond`);
+  const type = selectedPill(`${side}_party_type`);
+  cond.classList.toggle('hidden', type !== 'corporation');
+}
+
+// ── Beats ───────────────────────────────────────────────────────────
+// `prefill` is optional: { type, description, strength }. Used by
+// restoreDraft() to rehydrate a beat from localStorage; addBeat()
+// without an argument creates a blank row.
+function addBeat(prefill) {
+  const userBeats = document.querySelectorAll('#beats-list .beat:not(.example)');
+  if (userBeats.length >= MAX_BEATS) return;
+  const node = document.createElement('div');
+  const t = prefill?.type || '';
+  node.className = t ? `beat ${t}` : 'beat';
+  node.dataset.beatType = t;
+  node.dataset.strength = prefill?.strength ?? '';
+  const desc = prefill?.description || '';
+  const strength = Number(prefill?.strength) || null;
+  node.innerHTML = `
+    <div class="beat-head">
+      <span class="beat-num"></span>
+      <div class="beat-type-row">
+        ${BEAT_TYPES.map(x => `<span class="beat-type-pill ${x} ${t === x ? 'selected' : ''}" data-type="${x}">${BEAT_TYPE_LABEL[x]}</span>`).join('')}
+      </div>
+      <button type="button" class="beat-delete" title="Delete this beat">&#10005;</button>
+    </div>
+    <div class="beat-body">
+      <textarea class="beat-desc" placeholder="Describe this beat&hellip; (a piece of evidence, a statute, a circumstance, an appeal to principle)">${escapeHtml(desc)}</textarea>
+    </div>
+    <div class="beat-strength">
+      <span class="bs-lab">HIDDEN STRENGTH</span>
+      <select class="bs-select">
+        <option value="">—</option>
+        ${Array.from({ length: MAX_BEATS }, (_, i) => {
+          const n = i + 1;
+          return `<option value="${n}" ${strength === n ? 'selected' : ''}>${n}</option>`;
+        }).join('')}
+      </select>
+      <span class="bs-hint">only the judge sees this</span>
+    </div>`;
+  // Insert before the anchor so beats live in their canonical position.
+  const anchor = document.getElementById('beats-anchor');
+  anchor.parentElement.insertBefore(node, anchor);
+
+  // Wire type pills (single-select within this beat).
+  node.querySelectorAll('.beat-type-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      node.querySelectorAll('.beat-type-pill').forEach(p => p.classList.remove('selected'));
+      pill.classList.add('selected');
+      const t = pill.dataset.type;
+      node.dataset.beatType = t;
+      // Re-apply border-left color class on the beat container.
+      BEAT_TYPES.forEach(x => node.classList.remove(x));
+      node.classList.add(t);
+      recalcBalance();
+    });
+  });
+
+  node.querySelector('.beat-delete').addEventListener('click', () => {
+    node.remove();
+    renumberBeats();
+    recalcBalance();
+  });
+  node.querySelector('.beat-desc').addEventListener('input', () => recalcBalance());
+  node.querySelector('.bs-select').addEventListener('change', (e) => {
+    node.dataset.strength = e.target.value || '';
+    recalcBalance();
+  });
+
+  renumberBeats();
+  recalcBalance();
+}
+
+function renumberBeats() {
+  const beats = document.querySelectorAll('#beats-list .beat:not(.example)');
+  beats.forEach((b, i) => {
+    b.querySelector('.beat-num').textContent = `§ ${i + 1}`;
+  });
+}
+
+function recalcBalance() {
+  const beats = Array.from(document.querySelectorAll('#beats-list .beat:not(.example)'));
+  const filled = beats.filter(b => (b.querySelector('.beat-desc').value || '').trim().length > 0);
+  const filledCount = filled.length;
+
+  const counter = document.getElementById('beat-counter');
+  const remaining = Math.max(0, MAX_BEATS - filledCount);
+  counter.innerHTML = `${filledCount} of <em>${MAX_BEATS}</em> beats added &middot; <span class="sub">${
+    remaining === 0 ? 'ready to file' : `${remaining} more required`
+  }</span>`;
+  counter.classList.toggle('complete', filledCount >= MAX_BEATS);
+
+  document.getElementById('examples-divider-text').textContent =
+    `YOUR BEATS · ${filledCount} OF ${MAX_BEATS}`;
+  document.getElementById('balance-lab').textContent =
+    `CARD-TYPE BALANCE · ${filledCount} OF ${MAX_BEATS}`;
+
+  const counts = { evid: 0, law: 0, fact: 0, app: 0 };
+  let sum = 0, withStrength = 0;
+  filled.forEach(b => {
+    const t = b.dataset.beatType;
+    if (t && counts[t] !== undefined) counts[t] += 1;
+    const s = Number(b.dataset.strength);
+    if (Number.isFinite(s) && s > 0) { sum += s; withStrength += 1; }
+  });
+  document.getElementById('bal-evid').textContent = counts.evid;
+  document.getElementById('bal-law').textContent  = counts.law;
+  document.getElementById('bal-fact').textContent = counts.fact;
+  document.getElementById('bal-app').textContent  = counts.app;
+
+  const avg = withStrength ? (sum / withStrength) : null;
+  const avgStr = avg == null ? '—' : avg.toFixed(1);
+  document.getElementById('bal-avg').innerHTML = avgStr === '—' ? '&mdash;' : avgStr;
+  document.getElementById('beat-avg-mini').textContent =
+    `avg strength so far · ${avgStr}`;
+
+  // Disable Add Beat at the cap so the player can't add more rows than
+  // the ten the trial draft needs.
+  const totalRows = beats.length;
+  document.getElementById('add-beat-btn').disabled = totalRows >= MAX_BEATS;
+}
+</script>
+</body>
+</html>
