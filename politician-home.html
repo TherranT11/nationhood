@@ -432,10 +432,26 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
-// Dispatch bucket categories for the World Events panel — mirrors
-// entrepreneur-dashboard.html so the same event_log row falls into the
-// same bucket on both surfaces.
-const POLITICS_CATEGORIES  = ['politics','political','government','crisis','diplomatic','diplomacy','international','economy','executive_order','protest','bill','new_party'];
+// Dispatch bucket categories for the World Events panel.
+//
+// POLITICS_CATEGORIES on this surface is intentionally NARROW: only
+// rows that come from a politician faction's actions land in the
+// Politics tab. Party fundraisers / coalition-formation events /
+// nation-level political news fire with broader categories like
+// 'politics' or 'political' and are filtered out here — they belong
+// on the Nation / World tabs, not on the politician's career feed.
+//
+// The entrepreneur-dashboard.html mirror does NOT narrow the same way
+// because entrepreneurs care about the broader political ticker;
+// these two surfaces are intentionally divergent.
+//
+// First populater of this category: committee_propose_law dispatches
+// category='politician' on every successful Propose New Law. As more
+// politician actions add their own event_log dispatches (sit_exam,
+// resign_office, join/leave/found_party, won/lost_election currently
+// only write to politician_career_events) they should use the same
+// 'politician' category.
+const POLITICS_CATEGORIES  = ['politician'];
 const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 
 // Career-log templates — keyed by politician_career_events.event_type. Adding
@@ -474,6 +490,12 @@ const CAREER_EVENT_TEMPLATES = {
     `${name}'s civil service exam application to the Ministry of ${target || 'a ministry'} was rejected.`,
   resigned_office: (name, target) =>
     `${name} resigns from their office as ${target || 'an elected official'}.`,
+  // Propose New Law — written by committee_propose_law (20270500).
+  // target_name is the proposal's section (acts as a stand-in title
+  // until a dedicated title field lands on the modal).
+  // metadata.committee_name carries the formal committee display name.
+  proposed_law: (name, target, meta = {}) =>
+    `${name} has submitted a law proposal titled: ${target || 'a proposal'}, that has been sent to the ${meta.committee_name || 'a committee'}.`,
 };
 
 let politician = null;
