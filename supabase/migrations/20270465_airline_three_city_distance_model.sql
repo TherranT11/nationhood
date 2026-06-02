@@ -45,16 +45,17 @@ BEGIN;
 ALTER TABLE airline_cities DROP COLUMN IF EXISTS terminal_count;
 ALTER TABLE airline_cities DROP COLUMN IF EXISTS runway_type;
 
--- ── 2. airline_city_ranges → distance, CHECK 1-10 ───────────────────
+-- ── 2. airline_city_ranges → distance ───────────────────────────────
+-- Drop the old range_units_check (old class-tier model went up to 20)
+-- and rename the column. The new distance_check (1-10) is added AFTER
+-- step 5's TRUNCATE+reseed so it doesn't trip on legacy rows that
+-- still hold the old range_units values.
 ALTER TABLE airline_city_ranges
     RENAME COLUMN range_units TO distance;
 ALTER TABLE airline_city_ranges
     DROP CONSTRAINT IF EXISTS airline_city_ranges_range_units_check;
 ALTER TABLE airline_city_ranges
     DROP CONSTRAINT IF EXISTS airline_city_ranges_distance_check;
-ALTER TABLE airline_city_ranges
-    ADD CONSTRAINT airline_city_ranges_distance_check
-    CHECK (distance >= 1 AND distance <= 10);
 
 COMMENT ON COLUMN airline_city_ranges.distance IS
     'Lane distance 1-10. Within-nation pairs default to 2; cross-nation pairs derived from diplomatic_relations.proximity (20270465). Aircraft range gate: ent_aircraft_designs.range_nm >= distance.';
@@ -179,6 +180,14 @@ SELECT DISTINCT
   LEFT JOIN diplomatic_relations dr
     ON (dr.nation_a_id = a.nation_id AND dr.nation_b_id = b.nation_id)
     OR (dr.nation_b_id = a.nation_id AND dr.nation_a_id = b.nation_id);
+
+-- Now that the reseed clamped every distance into [1,10], it's safe
+-- to install the CHECK constraint. Moved here from step 2 to avoid
+-- the workflow-failure pattern where the bare ADD CONSTRAINT trips
+-- on legacy range_units values still in the table at that point.
+ALTER TABLE airline_city_ranges
+    ADD CONSTRAINT airline_city_ranges_distance_check
+    CHECK (distance >= 1 AND distance <= 10);
 
 -- ── 6. process_entrepreneur_airline_routes — lane-local formula ─────
 -- demand = (origin_pop% + dest_pop%) × (SoL/100) × (capital? 1.5 : 1.0) × 0.5
