@@ -339,15 +339,19 @@ BEGIN
                          THEN 'representing_plaintiff'
                        ELSE 'representing_defendant' END;
 
-    INSERT INTO public.politician_court_case_attempts (politician_id, case_id, decision)
-    VALUES (v_pol.id, p_case_id, v_decision)
-    ON CONFLICT (politician_id, case_id) DO NOTHING;
-    GET DIAGNOSTICS v_inserted = ROW_COUNT;
-    IF v_inserted = 0 THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'already_decided');
-    END IF;
-
+    -- Attempts INSERT lives INSIDE the BEGIN/EXCEPTION so it rolls
+    -- back with the trial INSERT on the partial-UNIQUE race — without
+    -- this, a race-loser would be stuck with an attempts row but no
+    -- trial and could never re-attempt this case.
     BEGIN
+        INSERT INTO public.politician_court_case_attempts (politician_id, case_id, decision)
+        VALUES (v_pol.id, p_case_id, v_decision)
+        ON CONFLICT (politician_id, case_id) DO NOTHING;
+        GET DIAGNOSTICS v_inserted = ROW_COUNT;
+        IF v_inserted = 0 THEN
+            RETURN jsonb_build_object('success', false, 'reason', 'already_decided');
+        END IF;
+
         INSERT INTO public.court_case_trials (
             case_draft_id, nation_id,
             plaintiff_advocate_id, defendant_advocate_id,
@@ -383,15 +387,10 @@ BEGIN
        SET cooldown_until_tick = EXCLUDED.cooldown_until_tick;
 
     -- 60-tick party cooldown on the OWNER entrepreneur(s) of any
-    -- corp party. The trial row stores the corp name, so look up
-    -- by (name, nation) — same matching strategy
-    -- _corp_owner_for_party uses on the offer flow.
+    -- corp party. Reuse _corp_owner_for_party (20270519) — same
+    -- match strategy the offer flow uses, one source of truth.
     IF v_case.plaintiff_party_type = 'corporation' THEN
-        SELECT c.owner_faction_id INTO v_p_owner_id
-          FROM public.entrepreneur_corps c
-         WHERE c.name = v_p_name_clean
-           AND c.hq_nation_id = v_pol.bar_admitted_nation_id
-         ORDER BY c.id LIMIT 1;
+        v_p_owner_id := public._corp_owner_for_party(v_p_name_clean, v_pol.bar_admitted_nation_id);
         IF v_p_owner_id IS NOT NULL THEN
             UPDATE public.factions
                SET party_cooldown_until_tick = v_tick + 60
@@ -399,11 +398,7 @@ BEGIN
         END IF;
     END IF;
     IF v_case.defendant_party_type = 'corporation' THEN
-        SELECT c.owner_faction_id INTO v_d_owner_id
-          FROM public.entrepreneur_corps c
-         WHERE c.name = v_d_name_clean
-           AND c.hq_nation_id = v_pol.bar_admitted_nation_id
-         ORDER BY c.id LIMIT 1;
+        v_d_owner_id := public._corp_owner_for_party(v_d_name_clean, v_pol.bar_admitted_nation_id);
         IF v_d_owner_id IS NOT NULL THEN
             UPDATE public.factions
                SET party_cooldown_until_tick = v_tick + 60
