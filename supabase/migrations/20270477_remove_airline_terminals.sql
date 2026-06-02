@@ -416,7 +416,15 @@ $$;
 GRANT EXECUTE ON FUNCTION found_entrepreneur_corp(text, uuid, text, bigint, text) TO authenticated;
 
 -- ── 4. Clean up corp_properties rows pointing at airline_terminals ──
-DELETE FROM corp_properties WHERE role = 'airline_terminal';
+-- corp_properties was dropped in sql/migrations/20270251, which never
+-- reached supabase/migrations / prod. Guard with to_regclass so the
+-- DELETE is a no-op where the table doesn't exist.
+DO $$
+BEGIN
+    IF to_regclass('public.corp_properties') IS NOT NULL THEN
+        EXECUTE 'DELETE FROM corp_properties WHERE role = ''airline_terminal''';
+    END IF;
+END $$;
 
 -- ── 5. Drop the table ───────────────────────────────────────────────
 DROP TABLE IF EXISTS airline_terminals CASCADE;
