@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Court Case · Moderation</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --bg:#080808; --panel:#0d0d0d;
+    --green:#6ab07a; --green-dim:#3a5a42; --green-bg:#0e1611;
+    --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
+    --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
+    --brass:#c8a26e; --brass-bright:#dcb88a; --brass-dim:#5a4630; --brass-bg:#161208;
+    --evid:#d4b87a; --evid-dim:#5a4a2e; --evid-bg:#16120a;
+    --law:#9aab7a; --law-dim:#4a5a3a; --law-bg:#10130a;
+    --fact:#7a9aab; --fact-dim:#3a5060; --fact-bg:#0e1318;
+    --app:#c87a7a; --app-dim:#5a3030; --app-bg:#160e0e;
+    --paper:#1a1612; --paper-line:#2a2218; --paper-text:#d8cfb8;
+  }
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,sans-serif;min-height:100vh;padding:24px 22px;}
+  .wrap{max-width:1180px;margin:0 auto;}
+
+  .crumb{font-size:9px;letter-spacing:0.13em;color:var(--faint);margin-bottom:14px;}
+  .crumb a{color:var(--mut);text-decoration:none;}
+  .crumb a:hover{color:var(--brass-bright);}
+  .crumb .sep{margin:0 7px;color:#3a3a3a;}
+  .crumb .here{color:var(--brass-bright);}
+
+  .page-head{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;overflow:hidden;border-left:3px solid var(--red);margin-bottom:18px;}
+  .ph-row{padding:16px 22px;display:flex;align-items:flex-start;gap:18px;}
+  .ph-icon{width:40px;height:40px;border-radius:5px;background:var(--red-bg);border:0.5px solid var(--red-dim);color:#d4a5a5;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+  .ph-info{flex:1;}
+  .ph-eyebrow{font-size:8.5px;letter-spacing:0.18em;color:#d4a5a5;font-weight:700;margin-bottom:4px;}
+  .ph-name{font-family:Georgia,serif;font-size:21px;font-weight:500;color:#fff;letter-spacing:-0.005em;line-height:1.2;}
+  .ph-name em{font-style:italic;color:var(--brass-bright);}
+  .ph-meta{font-size:10px;color:var(--mut);margin-top:6px;line-height:1.5;}
+
+  /* layout: list left, editor right */
+  .grid{display:grid;grid-template-columns:280px 1fr;gap:14px;align-items:flex-start;}
+  @media (max-width: 880px){ .grid{grid-template-columns:1fr;} }
+
+  .list-pane{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;overflow:hidden;}
+  .list-head{padding:11px 16px;background:#0a0a0a;border-bottom:0.5px solid var(--line);display:flex;align-items:center;gap:8px;}
+  .list-head .lh-title{font-size:10px;letter-spacing:0.16em;color:var(--brass);font-weight:700;}
+  .list-head .lh-count{margin-left:auto;font-family:Georgia,serif;font-size:13px;color:#fff;font-weight:600;}
+  .list-head .lh-count em{font-style:italic;color:var(--brass-bright);}
+
+  .filter-row{padding:8px 12px;background:#0a0a0a;border-bottom:0.5px solid var(--line);display:flex;gap:5px;}
+  .filter-pill{flex:1;padding:5px 7px;background:transparent;border:0.5px solid var(--line);border-radius:3px;color:var(--mut);font-size:8.5px;font-weight:700;letter-spacing:0.08em;text-align:center;cursor:pointer;font-family:inherit;}
+  .filter-pill:hover{color:#fff;border-color:#3a3a3a;}
+  .filter-pill.selected{background:var(--brass-bg);border-color:var(--brass-dim);color:var(--brass-bright);}
+
+  .list-body{max-height:70vh;overflow-y:auto;}
+  .list-item{padding:12px 16px;border-bottom:0.5px solid var(--line);cursor:pointer;}
+  .list-item:hover{background:#0f0f0f;}
+  .list-item.selected{background:#13110d;border-left:2px solid var(--brass);padding-left:14px;}
+  .list-item .li-title{font-size:11.5px;color:#fff;font-weight:500;margin-bottom:3px;}
+  .list-item .li-meta{font-size:9px;color:var(--mut);letter-spacing:0.04em;}
+  .list-item .li-meta .pill{display:inline-block;padding:1px 6px;border-radius:2px;background:#1a1a1a;border:0.5px solid var(--line);font-size:7.5px;font-weight:700;letter-spacing:0.1em;color:var(--brass-bright);margin-right:5px;}
+  .list-item .li-meta .pill.approved{background:var(--green-bg);border-color:var(--green-dim);color:var(--green);}
+  .list-item .li-meta .pill.pending{background:var(--brass-bg);border-color:var(--brass-dim);color:var(--brass-bright);}
+  .list-empty{padding:24px 16px;text-align:center;color:var(--faint);font-style:italic;font-size:11px;}
+
+  .editor-pane{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;overflow:hidden;}
+  .ed-empty{padding:60px 24px;text-align:center;color:var(--faint);font-style:italic;font-size:12px;}
+
+  /* form bits — share vocab with courtcase.html so muscle memory holds */
+  .section{border-bottom:0.5px solid var(--line);}
+  .section:last-of-type{border-bottom:none;}
+  .sec-head{padding:11px 18px;background:#0a0a0a;border-bottom:0.5px solid var(--line);display:flex;align-items:baseline;gap:11px;}
+  .sec-num{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--brass-bg);border:0.5px solid var(--brass-dim);color:var(--brass-bright);font-size:9px;font-weight:700;font-family:Georgia,serif;flex-shrink:0;}
+  .sec-title{font-size:12px;font-weight:600;color:#fff;letter-spacing:-0.005em;}
+  .sec-title .serif{font-family:Georgia,serif;font-style:italic;color:var(--brass-bright);}
+  .sec-sub{margin-left:auto;font-size:9px;color:var(--mut);font-style:italic;}
+  .sec-body{padding:14px 18px;}
+
+  .fields{display:flex;flex-direction:column;gap:11px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field.wide{grid-column:1 / -1;}
+  .field-lab{font-size:8px;letter-spacing:0.14em;color:var(--brass);font-weight:700;}
+
+  .field-input{padding:8px 11px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:#fff;font-size:11px;font-family:inherit;}
+  .field-input:focus{outline:none;border-color:var(--brass-dim);}
+  .field-select{padding:8px 28px 8px 11px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:#fff;font-size:11px;cursor:pointer;font-family:inherit;width:100%;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+    background-size:5px 5px, 5px 5px; background-repeat:no-repeat;}
+  .field-textarea{padding:10px 12px;background:var(--paper);border:0.5px solid var(--paper-line);border-radius:4px;color:var(--paper-text);font-family:Georgia,serif;font-size:11.5px;line-height:1.6;resize:vertical;min-height:70px;width:100%;}
+  .field-textarea:focus{outline:none;border-color:var(--brass-dim);}
+
+  .beats{display:flex;flex-direction:column;gap:7px;}
+  .beat{background:var(--paper);border:0.5px solid var(--paper-line);border-radius:5px;overflow:hidden;border-left:3px solid var(--line);}
+  .beat.evid{border-left-color:var(--evid);}
+  .beat.law{border-left-color:var(--law);}
+  .beat.fact{border-left-color:var(--fact);}
+  .beat.app{border-left-color:var(--app);}
+  .beat-head{padding:8px 12px;background:#1e1916;border-bottom:0.5px solid var(--paper-line);display:flex;align-items:center;gap:8px;}
+  .beat-num{font-family:Georgia,serif;font-size:11px;color:var(--brass-bright);font-weight:700;width:28px;flex-shrink:0;}
+  .beat-type-row{display:flex;gap:3px;flex:1;flex-wrap:wrap;}
+  .beat-type-pill{font-size:7px;letter-spacing:0.13em;padding:2px 6px;border-radius:2px;background:#0a0807;border:0.5px solid var(--line);color:var(--mut);font-weight:700;cursor:pointer;font-family:-apple-system,system-ui,sans-serif;}
+  .beat-type-pill:hover{color:#fff;border-color:#3a3a3a;}
+  .beat-type-pill.selected.evid{background:var(--evid-bg);color:var(--evid);border-color:var(--evid-dim);}
+  .beat-type-pill.selected.law{background:var(--law-bg);color:var(--law);border-color:var(--law-dim);}
+  .beat-type-pill.selected.fact{background:var(--fact-bg);color:var(--fact);border-color:var(--fact-dim);}
+  .beat-type-pill.selected.app{background:var(--app-bg);color:var(--app);border-color:var(--app-dim);}
+  .beat-body{padding:9px 12px;}
+  .beat-desc{width:100%;background:transparent;border:none;color:var(--paper-text);font-family:Georgia,serif;font-size:11px;line-height:1.55;resize:vertical;min-height:34px;padding:0;font-style:italic;}
+  .beat-desc:focus{outline:none;}
+  .beat-strength{padding:7px 12px;background:#181410;border-top:0.5px solid var(--paper-line);display:flex;align-items:center;gap:11px;}
+  .bs-lab{font-size:8px;letter-spacing:0.14em;color:var(--brass);font-weight:700;flex-shrink:0;}
+  .bs-select{padding:5px 24px 5px 9px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:var(--brass-bright);font-family:Georgia,serif;font-size:12px;font-weight:700;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 10px) 50%, calc(100% - 5px) 50%;
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat; min-width:54px;}
+
+  /* pill groups (re-used from courtcase.html) */
+  .pill-row{display:flex;gap:5px;flex-wrap:wrap;}
+  .pill{flex:1;min-width:78px;padding:7px 9px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:var(--mut);font-size:9px;font-weight:600;letter-spacing:0.06em;text-align:center;cursor:pointer;font-family:inherit;}
+  .pill:hover{color:#fff;border-color:#3a3a3a;}
+  .pill.selected{background:var(--brass-bg);border-color:var(--brass-dim);color:var(--brass-bright);border-left:2px solid var(--brass);padding-left:8px;}
+
+  .conditional{padding:10px 12px;background:#0a0807;border:0.5px dashed var(--brass-dim);border-radius:4px;margin-top:3px;}
+  .conditional.hidden{display:none;}
+
+  /* footer */
+  .ed-foot{padding:14px 18px;display:flex;align-items:center;gap:12px;border-top:0.5px solid var(--line);background:#0a0a0a;}
+  .ed-foot-note{flex:1;font-size:10px;color:var(--mut);line-height:1.55;}
+  .ed-foot-note strong{color:#bbb;}
+  .ed-foot-note em{color:var(--green);font-style:italic;}
+  .btn{padding:10px 20px;border-radius:4px;font-size:10px;letter-spacing:0.14em;font-weight:700;cursor:pointer;font-family:inherit;border:0.5px solid;}
+  .btn-accept{background:var(--green-bg);border-color:var(--green);color:var(--green);}
+  .btn-accept:hover{background:#0e1b13;color:#fff;border-color:#86c697;}
+  .btn-accept:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .approved-banner{padding:11px 14px;background:var(--green-bg);border:0.5px solid var(--green-dim);border-radius:4px;margin:14px 18px 0;color:var(--green);font-size:10.5px;line-height:1.55;}
+  .approved-banner strong{color:#fff;}
+
+  .auth-gate{max-width:420px;margin:80px auto;padding:30px;background:var(--panel);border:0.5px solid var(--red-dim);border-left:3px solid var(--red);border-radius:7px;text-align:center;}
+  .auth-gate h2{font-family:Georgia,serif;font-size:18px;color:#fff;margin-bottom:10px;}
+  .auth-gate p{font-size:11px;color:var(--mut);line-height:1.6;margin-bottom:18px;}
+  .auth-gate a{color:var(--brass-bright);text-decoration:none;font-size:10px;letter-spacing:0.14em;font-weight:700;}
+
+  .submitter-meta{font-size:10px;color:var(--mut);margin-top:6px;line-height:1.5;font-family:monospace;}
+  .submitter-meta strong{color:#bbb;font-weight:600;}
+</style>
+</head>
+<body>
+
+<div id="boot" style="padding:60px 24px;text-align:center;color:var(--faint);font-size:11px;">Checking access…</div>
+
+<div class="wrap" id="wrap" style="display:none;">
+  <div class="crumb">
+    <a href="dashboard.html">JUDICIARY</a><span class="sep">&rsaquo;</span><a href="dashboard.html">COURT CASES</a><span class="sep">&rsaquo;</span><span class="here">MODERATION QUEUE</span>
+  </div>
+
+  <div class="page-head">
+    <div class="ph-row">
+      <div class="ph-icon">&#9881;</div>
+      <div class="ph-info">
+        <div class="ph-eyebrow">JUDICIARY &middot; MODERATION QUEUE</div>
+        <div class="ph-name">Submitted <em>Court Cases</em></div>
+        <div class="ph-meta">Review filed matters. Edit any field before accepting. <strong>On Accept, the submitting player's entrepreneur faction is credited $1M</strong> and the case enters the docket.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="list-pane">
+      <div class="list-head">
+        <span class="lh-title">QUEUE</span>
+        <span class="lh-count"><em id="queue-count">0</em></span>
+      </div>
+      <div class="filter-row" id="filter-row">
+        <button class="filter-pill selected" data-status="pending">PENDING</button>
+        <button class="filter-pill" data-status="approved">APPROVED</button>
+        <button class="filter-pill" data-status="all">ALL</button>
+      </div>
+      <div class="list-body" id="list-body">
+        <div class="list-empty">Loading…</div>
+      </div>
+    </div>
+
+    <div class="editor-pane" id="editor-pane">
+      <div class="ed-empty">Select a case from the queue to review.</div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase, requireAuth } from './js/supabase-client.js';
+
+const LITIGATION_BY_TYPE = {
+  civil: [
+    'Tenancy & Habitation', 'Personal Injury', 'Defamation', 'Family Law',
+    'Inheritance & Estates', 'Property Title', 'Civil Rights', 'Wrongful Termination',
+  ],
+  criminal: [
+    'Bribery & Corruption', 'Embezzlement', 'Fraud', 'Tax Evasion',
+    'Money Laundering', 'Assault', 'Homicide', 'Drug Offenses',
+  ],
+  commercial: [
+    'Contract Dispute', 'Breach of Warranty', 'Force Majeure', 'Intellectual Property',
+    'Antitrust', 'Securities', 'Shareholder Dispute', 'Maritime',
+  ],
+};
+const BEAT_TYPES = ['evid', 'law', 'fact', 'app'];
+const BEAT_TYPE_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
+
+const state = {
+  filter: 'pending',
+  drafts: [],
+  selectedId: null,
+};
+
+bootstrap();
+
+async function bootstrap() {
+  const user = await requireAuth();
+  if (!user) return;
+  // Admin check lives ONLY server-side (no email string in the JS).
+  const { data: adminData, error: adminErr } = await _supabase.rpc('is_court_admin');
+  if (adminErr || adminData !== true) {
+    document.getElementById('boot').outerHTML = `
+      <div class="auth-gate">
+        <h2>Access Denied</h2>
+        <p>This page is restricted to the court moderator.</p>
+        <a href="dashboard.html">← Back to Game</a>
+      </div>`;
+    return;
+  }
+  document.getElementById('boot').style.display = 'none';
+  document.getElementById('wrap').style.display = 'block';
+  wireFilters();
+  await refresh();
+}
+
+function wireFilters() {
+  document.getElementById('filter-row').addEventListener('click', (e) => {
+    const pill = e.target.closest('.filter-pill');
+    if (!pill) return;
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('selected'));
+    pill.classList.add('selected');
+    state.filter = pill.dataset.status;
+    refresh();
+  });
+}
+
+async function refresh() {
+  const list = document.getElementById('list-body');
+  list.innerHTML = '<div class="list-empty">Loading…</div>';
+  const { data, error } = await _supabase.rpc('list_court_case_drafts', { p_status_filter: state.filter });
+  if (error || !data?.success) {
+    list.innerHTML = `<div class="list-empty">Could not load queue${error ? ': ' + error.message : ''}.</div>`;
+    return;
+  }
+  state.drafts = data.drafts || [];
+  renderList();
+}
+
+function renderList() {
+  const list = document.getElementById('list-body');
+  document.getElementById('queue-count').textContent = state.drafts.length;
+  if (!state.drafts.length) {
+    list.innerHTML = '<div class="list-empty">No matters here.</div>';
+    return;
+  }
+  list.innerHTML = state.drafts.map(d => {
+    const t = `${d.case_type?.toUpperCase() || '?'} · ${d.litigation_type || '—'}`;
+    const sub = (d.submitter_email || 'unknown').replace(/</g, '&lt;');
+    const when = d.created_at ? new Date(d.created_at).toLocaleString() : '';
+    const isSel = d.id === state.selectedId;
+    return `
+      <div class="list-item ${isSel ? 'selected' : ''}" data-id="${d.id}">
+        <div class="li-title">${escapeHtml(t)}</div>
+        <div class="li-meta">
+          <span class="pill ${d.status}">${(d.status || '').toUpperCase()}</span>
+          ${escapeHtml(sub)}<br>
+          <span style="color:var(--faint);font-size:8.5px;">${escapeHtml(when)}</span>
+        </div>
+      </div>`;
+  }).join('');
+  list.querySelectorAll('.list-item').forEach(item => {
+    item.addEventListener('click', () => selectDraft(item.dataset.id));
+  });
+}
+
+function selectDraft(id) {
+  state.selectedId = id;
+  document.querySelectorAll('.list-item').forEach(i => i.classList.toggle('selected', i.dataset.id === id));
+  const d = state.drafts.find(x => x.id === id);
+  if (!d) return;
+  renderEditor(d);
+}
+
+function renderEditor(d) {
+  const isApproved = d.status === 'approved';
+  const litList = LITIGATION_BY_TYPE[d.case_type] || [];
+  const beats = Array.isArray(d.beats) ? d.beats : [];
+
+  document.getElementById('editor-pane').innerHTML = `
+    ${isApproved ? `<div class="approved-banner">
+      <strong>Already approved</strong> on ${new Date(d.accepted_at).toLocaleString()}.
+      Entrepreneur credit: <strong>${d.entrepreneur_credited ? '$1,000,000 paid' : 'skipped (no entrepreneur)'}</strong>.
+    </div>` : ''}
+
+    <div class="section">
+      <div class="sec-head">
+        <span class="sec-num">·</span>
+        <span class="sec-title"><span class="serif">submitted</span> by</span>
+      </div>
+      <div class="sec-body">
+        <div class="submitter-meta">
+          <strong>${escapeHtml(d.submitter_email || 'unknown')}</strong><br>
+          user_id: ${escapeHtml(d.submitted_by_user_id || '—')}<br>
+          filed: ${escapeHtml(d.created_at ? new Date(d.created_at).toLocaleString() : '—')}
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-head">
+        <span class="sec-num">I</span>
+        <span class="sec-title">Case <span class="serif">type</span></span>
+      </div>
+      <div class="sec-body">
+        <div class="fields">
+          <div class="field wide">
+            <label class="field-lab">CASE TYPE</label>
+            <div class="pill-row" data-pill-group="case_type">
+              ${['civil','criminal','commercial'].map(v =>
+                `<span class="pill ${d.case_type === v ? 'selected' : ''}" data-val="${v}">${v.toUpperCase()}</span>`).join('')}
+            </div>
+          </div>
+          <div class="field wide">
+            <label class="field-lab">TYPE OF LITIGATION</label>
+            <select id="ed-litigation" class="field-select">
+              ${litList.map(opt => `<option value="${escapeAttr(opt)}" ${opt === d.litigation_type ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    ${renderPartySection('II', 'plaintiff', d.plaintiff_party_type, d.plaintiff_corp_type)}
+    ${renderPartySection('III', 'defendant', d.defendant_party_type, d.defendant_corp_type)}
+
+    <div class="section">
+      <div class="sec-head">
+        <span class="sec-num">IV</span>
+        <span class="sec-title">Case <span class="serif">overview</span></span>
+      </div>
+      <div class="sec-body">
+        <textarea id="ed-overview" class="field-textarea">${escapeHtml(d.overview || '')}</textarea>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="sec-head">
+        <span class="sec-num">V</span>
+        <span class="sec-title">The <span class="serif">beats</span></span>
+        <span class="sec-sub">${beats.length} of 10</span>
+      </div>
+      <div class="sec-body">
+        <div class="beats" id="ed-beats">
+          ${beats.map((b, i) => renderBeat(b, i)).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="ed-foot">
+      <div class="ed-foot-note">
+        ${isApproved
+          ? '<strong>Already approved.</strong> Edits here will not re-trigger a credit.'
+          : 'On Accept, the submitter\'s entrepreneur faction is credited <em>$1,000,000</em> and the case enters the docket.'}
+      </div>
+      <button type="button" class="btn btn-accept" id="accept-btn" ${isApproved ? 'disabled' : ''}>
+        ${isApproved ? 'APPROVED' : '✓ ACCEPT'}
+      </button>
+    </div>`;
+
+  wirePillGroups();
+  updateCorpConditional('plaintiff');
+  updateCorpConditional('defendant');
+  document.getElementById('case_type-group')?.addEventListener('click', repopulateLitigation);
+  if (!isApproved) {
+    document.getElementById('accept-btn').addEventListener('click', () => onAccept(d.id));
+  }
+}
+
+function renderPartySection(num, side, partyType, corpType) {
+  const sideCap = side[0].toUpperCase() + side.slice(1);
+  const corpOptions = ['shipping','construction','airline','aviation','real_estate'];
+  return `
+    <div class="section">
+      <div class="sec-head">
+        <span class="sec-num">${num}</span>
+        <span class="sec-title">The <span class="serif">${side}</span></span>
+      </div>
+      <div class="sec-body">
+        <div class="fields">
+          <div class="field wide">
+            <label class="field-lab">PARTY TYPE</label>
+            <div class="pill-row" data-pill-group="${side}_party_type">
+              ${['person','corporation'].map(v =>
+                `<span class="pill ${partyType === v ? 'selected' : ''}" data-val="${v}">${v.toUpperCase()}</span>`).join('')}
+            </div>
+          </div>
+          <div class="conditional ${partyType === 'corporation' ? '' : 'hidden'}" id="${side}-corp-cond">
+            <div class="field">
+              <label class="field-lab">CORPORATION TYPE</label>
+              <div class="pill-row" data-pill-group="${side}_corp_type">
+                ${corpOptions.map(v =>
+                  `<span class="pill ${corpType === v ? 'selected' : ''}" data-val="${v}">${v.replace('_',' ').toUpperCase()}</span>`).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderBeat(b, i) {
+  const t = b?.type || '';
+  return `
+    <div class="beat ${t}" data-beat-type="${t}" data-strength="${b?.strength ?? ''}">
+      <div class="beat-head">
+        <span class="beat-num">§ ${i + 1}</span>
+        <div class="beat-type-row">
+          ${BEAT_TYPES.map(x =>
+            `<span class="beat-type-pill ${x} ${t === x ? 'selected' : ''}" data-type="${x}">${BEAT_TYPE_LABEL[x]}</span>`).join('')}
+        </div>
+      </div>
+      <div class="beat-body">
+        <textarea class="beat-desc">${escapeHtml(b?.description || '')}</textarea>
+      </div>
+      <div class="beat-strength">
+        <span class="bs-lab">HIDDEN STRENGTH</span>
+        <select class="bs-select">
+          <option value="">—</option>
+          ${Array.from({length:10}, (_, j) => {
+            const n = j + 1;
+            return `<option value="${n}" ${Number(b?.strength) === n ? 'selected' : ''}>${n}</option>`;
+          }).join('')}
+        </select>
+      </div>
+    </div>`;
+}
+
+function wirePillGroups() {
+  document.querySelectorAll('#editor-pane [data-pill-group]').forEach(group => {
+    group.addEventListener('click', (e) => {
+      const pill = e.target.closest('.pill');
+      if (!pill || pill.parentElement !== group) return;
+      group.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+      pill.classList.add('selected');
+      const name = group.dataset.pillGroup;
+      if (name === 'case_type') repopulateLitigation();
+      if (name === 'plaintiff_party_type') updateCorpConditional('plaintiff');
+      if (name === 'defendant_party_type') updateCorpConditional('defendant');
+    });
+  });
+  document.querySelectorAll('#ed-beats .beat').forEach(beat => {
+    beat.querySelectorAll('.beat-type-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        beat.querySelectorAll('.beat-type-pill').forEach(p => p.classList.remove('selected'));
+        pill.classList.add('selected');
+        const t = pill.dataset.type;
+        beat.dataset.beatType = t;
+        BEAT_TYPES.forEach(x => beat.classList.remove(x));
+        beat.classList.add(t);
+      });
+    });
+    beat.querySelector('.bs-select').addEventListener('change', (e) => {
+      beat.dataset.strength = e.target.value || '';
+    });
+  });
+}
+
+function updateCorpConditional(side) {
+  const partyType = selectedPill(`${side}_party_type`);
+  document.getElementById(`${side}-corp-cond`).classList.toggle('hidden', partyType !== 'corporation');
+}
+
+function repopulateLitigation() {
+  const t = selectedPill('case_type');
+  const sel = document.getElementById('ed-litigation');
+  if (!sel) return;
+  const list = LITIGATION_BY_TYPE[t] || [];
+  const prev = sel.value;
+  sel.innerHTML = list.map(opt =>
+    `<option value="${escapeAttr(opt)}" ${opt === prev ? 'selected' : ''}>${escapeHtml(opt)}</option>`).join('');
+}
+
+function selectedPill(groupName) {
+  const group = document.querySelector(`#editor-pane [data-pill-group="${groupName}"]`);
+  const sel = group?.querySelector('.pill.selected');
+  return sel?.dataset.val || null;
+}
+
+function collectEditorPayload() {
+  const beats = Array.from(document.querySelectorAll('#ed-beats .beat')).map(b => ({
+    type:        b.dataset.beatType || '',
+    description: (b.querySelector('.beat-desc').value || '').trim(),
+    strength:    Number(b.dataset.strength) || null,
+  }));
+  const ppt = selectedPill('plaintiff_party_type');
+  const dpt = selectedPill('defendant_party_type');
+  return {
+    case_type:            selectedPill('case_type'),
+    litigation_type:      document.getElementById('ed-litigation').value,
+    plaintiff_party_type: ppt,
+    plaintiff_corp_type:  ppt === 'corporation' ? selectedPill('plaintiff_corp_type') : null,
+    defendant_party_type: dpt,
+    defendant_corp_type:  dpt === 'corporation' ? selectedPill('defendant_corp_type') : null,
+    overview:             (document.getElementById('ed-overview').value || '').trim(),
+    beats,
+  };
+}
+
+async function onAccept(draftId) {
+  const btn = document.getElementById('accept-btn');
+  const payload = collectEditorPayload();
+  if (payload.beats.filter(b => b.description).length < 10) {
+    alert('All ten beats need descriptions before accepting.');
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'ACCEPTING…';
+  const { data, error } = await _supabase.rpc('accept_court_case_draft', {
+    p_draft_id: draftId, p_payload: payload,
+  });
+  if (error || !data?.success) {
+    alert('Accept failed: ' + (error?.message || data?.reason || 'unknown'));
+    btn.disabled = false;
+    btn.textContent = '✓ ACCEPT';
+    return;
+  }
+  const credited = data.entrepreneur_credited;
+  alert(`Case approved. ${credited ? 'Entrepreneur credited $1,000,000.' : 'No entrepreneur found — credit skipped.'}`);
+  await refresh();
+  selectDraft(draftId);
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
+</script>
+</body>
+</html>

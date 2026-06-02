@@ -488,14 +488,104 @@ function init() {
   // Start with three blank beats so the surface isn't empty on first load.
   for (let i = 0; i < 3; i++) addBeat();
   document.getElementById('add-beat-btn').addEventListener('click', () => addBeat());
-  document.getElementById('save-draft-btn').addEventListener('click', () => {
-    // Intentionally inert — next pass.
-    console.log('[courtcase] SAVE DRAFT clicked (stub)');
-  });
-  document.getElementById('submit-btn').addEventListener('click', () => {
-    // Intentionally inert — next pass.
-    console.log('[courtcase] SUBMIT FOR APPROVAL clicked (stub)');
-  });
+  document.getElementById('save-draft-btn').addEventListener('click', onSaveDraft);
+  document.getElementById('submit-btn').addEventListener('click', onSubmitForApproval);
+}
+
+// Collect the form into the payload shape submit_court_case_draft expects.
+function collectPayload() {
+  const beats = Array.from(document.querySelectorAll('#beats-list .beat:not(.example)'))
+    .map(b => ({
+      type:        b.dataset.beatType || '',
+      description: (b.querySelector('.beat-desc').value || '').trim(),
+      strength:    Number(b.dataset.strength) || null,
+    }));
+  return {
+    case_type:            selectedPill('case_type'),
+    litigation_type:      document.getElementById('litigation-type').value,
+    plaintiff_party_type: selectedPill('plaintiff_party_type'),
+    plaintiff_corp_type:  selectedPill('plaintiff_party_type') === 'corporation'
+                            ? selectedPill('plaintiff_corp_type') : null,
+    defendant_party_type: selectedPill('defendant_party_type'),
+    defendant_corp_type:  selectedPill('defendant_party_type') === 'corporation'
+                            ? selectedPill('defendant_corp_type') : null,
+    overview:             (document.getElementById('overview').value || '').trim(),
+    beats,
+  };
+}
+
+function validatePayload(p) {
+  if (!p.case_type) return 'Pick a case type.';
+  if (!p.litigation_type) return 'Pick a type of litigation.';
+  if (!p.plaintiff_party_type) return 'Pick a plaintiff party type.';
+  if (p.plaintiff_party_type === 'corporation' && !p.plaintiff_corp_type)
+    return 'Pick a corporation industry for the plaintiff.';
+  if (!p.defendant_party_type) return 'Pick a defendant party type.';
+  if (p.defendant_party_type === 'corporation' && !p.defendant_corp_type)
+    return 'Pick a corporation industry for the defendant.';
+  if (!p.overview) return 'Fill in the case overview.';
+  const filledBeats = p.beats.filter(b => b.description.length > 0);
+  if (filledBeats.length < 10) return `All ten beats are required. You have ${filledBeats.length}.`;
+  if (filledBeats.some(b => !b.type)) return 'Every beat needs a type (Evidence, Law, Fact, or Appeal).';
+  if (filledBeats.some(b => !b.strength)) return 'Every beat needs a hidden strength (1-10).';
+  return null;
+}
+
+function flash(kind, msg) {
+  // Light-touch banner — re-uses the brass color vocab. Slides into
+  // view at the top of the page so it's hard to miss.
+  let host = document.getElementById('cc-flash');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'cc-flash';
+    host.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);' +
+      'padding:11px 18px;border-radius:5px;font-size:11px;font-weight:600;letter-spacing:0.08em;' +
+      'z-index:1000;font-family:inherit;border:0.5px solid;';
+    document.body.appendChild(host);
+  }
+  const ok = kind === 'ok';
+  host.style.background = ok ? 'rgba(106,176,122,0.12)' : 'rgba(200,122,122,0.12)';
+  host.style.borderColor = ok ? 'rgba(106,176,122,0.5)' : 'rgba(200,122,122,0.5)';
+  host.style.color = ok ? '#a5d4b5' : '#d4a5a5';
+  host.textContent = msg;
+  clearTimeout(host._t);
+  host._t = setTimeout(() => host.remove(), 4500);
+}
+
+async function onSubmitForApproval() {
+  const btn = document.getElementById('submit-btn');
+  const payload = collectPayload();
+  const err = validatePayload(payload);
+  if (err) { flash('bad', err); return; }
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = 'FILING…';
+  try {
+    const { data, error } = await _supabase.rpc('submit_court_case_draft', { p_payload: payload });
+    if (error) throw error;
+    if (!data?.success) {
+      flash('bad', 'Could not file: ' + (data?.reason || 'unknown'));
+      btn.disabled = false; btn.innerHTML = orig;
+      return;
+    }
+    flash('ok', 'Matter filed. Awaiting moderation.');
+    setTimeout(() => { window.location.href = 'dashboard.html'; }, 1500);
+  } catch (e) {
+    flash('bad', 'Filing failed: ' + (e?.message || 'unknown'));
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+}
+
+function onSaveDraft() {
+  // Local-only draft for now — the moderation queue stores only
+  // submitted (filed) cases. A persistent server-side draft store
+  // can land later if there's demand.
+  try {
+    localStorage.setItem('courtcase_draft_v1', JSON.stringify(collectPayload()));
+    flash('ok', 'Draft saved to this browser.');
+  } catch (e) {
+    flash('bad', 'Draft save failed.');
+  }
 }
 
 // Pills: single-select within a group identified by data-pill-group.
