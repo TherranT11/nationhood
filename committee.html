@@ -111,6 +111,22 @@
     margin-bottom:11px; }
   .up-empty { font-size:11px; color:var(--faint); font-style:italic; text-align:center;
     padding:18px 0; }
+
+  /* Proposed-law row in Upcoming Agenda. Brass-on-deep matches the
+     drafting modal so a proposal looks like the same artifact in
+     either place. */
+  .up-row { background:#0d0a07; border:0.5px solid #2a2218; border-left:2px solid #c8a26e;
+    border-radius:4px; padding:10px 14px; margin-bottom:8px; display:flex; align-items:center; gap:14px; }
+  .up-row:last-child { margin-bottom:0; }
+  .up-cat { font-size:8px; letter-spacing:0.14em; color:#dcb88a; font-weight:700;
+    padding:2px 7px; border-radius:2px; background:#161208; border:0.5px solid #5a4630; flex-shrink:0; }
+  .up-row-body { flex:1; min-width:0; }
+  .up-section { color:#fff; font-size:11.5px; font-weight:600; letter-spacing:-0.005em; }
+  .up-section .sep { color:#666; margin:0 6px; font-weight:400; }
+  .up-section .snippet { color:#cfcabf; font-weight:400; font-family:Georgia,serif;
+    font-style:italic; font-size:11px; }
+  .up-meta { color:#666; font-size:9.5px; margin-top:3px; letter-spacing:0.02em; }
+  .up-meta b { color:#888; font-weight:600; }
 </style>
 </head>
 <body>
@@ -182,8 +198,18 @@ async function init() {
     .order('slot_idx', { ascending: true });
   if (memErr) console.warn('committee: members fetch failed', memErr);
 
+  // Queued proposals → render in Upcoming Agenda. Joined to the
+  // author faction so we can render "Proposed by …" off real names.
+  const { data: proposals, error: propErr } = await _supabase
+    .from('committee_proposals')
+    .select('id, category, section, articles, proposed_at_tick, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .eq('committee_id', committeeId)
+    .eq('status', 'queued')
+    .order('created_at', { ascending: false });
+  if (propErr) console.warn('committee: proposals fetch failed', propErr);
+
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId);
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || []);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -205,7 +231,7 @@ function renderCrumb(ctx, meta) {
     <span class="here">${escHtml(meta.name.toUpperCase())}</span>`;
 }
 
-function renderCommittee(ctx, meta, members, committeeId) {
+function renderCommittee(ctx, meta, members, committeeId, proposals) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -260,7 +286,7 @@ function renderCommittee(ctx, meta, members, committeeId) {
 
     <div class="upcoming">
       <div class="up-lab">UPCOMING AGENDA</div>
-      <div class="up-empty">No upcoming items.</div>
+      ${renderProposals(proposals || [])}
     </div>`;
 
   // Delegated click handler. Apply CTA fires the apply RPC; action
@@ -348,6 +374,32 @@ function renderActions(onCommittee) {
       </div>
       <div class="act-desc">${escHtml(a.desc)}</div>
     </button>`).join('');
+}
+
+// Queued proposals rendered as compact rows. Category pill on the
+// left, "Section · first-article snippet" on top, "Proposed by …
+// at tick N" on bottom. First article's text is truncated to ~120
+// chars for the snippet so long bills don't blow up the layout.
+function renderProposals(proposals) {
+  if (!proposals.length) return '<div class="up-empty">No upcoming items.</div>';
+  return proposals.map(p => {
+    const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
+    const snippet = firstArticle?.text
+        ? escHtml(firstArticle.text.length > 120 ? firstArticle.text.slice(0, 117).trim() + '…' : firstArticle.text)
+        : '';
+    const a = p.author || {};
+    const authorName = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+    const nick = (a.nickname || '').trim();
+    const who = nick ? `${authorName} (${nick})` : authorName;
+    const cat = (p.category || '').toUpperCase();
+    return `<div class="up-row">
+      <span class="up-cat">${escHtml(cat)}</span>
+      <div class="up-row-body">
+        <div class="up-section">${escHtml(p.section || '')}${snippet ? `<span class="sep">·</span><span class="snippet">${snippet}</span>` : ''}</div>
+        <div class="up-meta">Proposed by <b>${escHtml(who)}</b> &middot; tick ${escHtml(String(p.proposed_at_tick ?? '?'))}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 init();
