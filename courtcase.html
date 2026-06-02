@@ -480,16 +480,65 @@ const BEAT_TYPES = ['evid', 'law', 'fact', 'app'];
 const BEAT_TYPE_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
 const MAX_BEATS = 10;
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+const DRAFT_KEY = 'courtcase_draft_v1';
+
 function init() {
   wirePillGroups();
   populateLitigation();
   updateConditional('plaintiff');
   updateConditional('defendant');
-  // Start with three blank beats so the surface isn't empty on first load.
-  for (let i = 0; i < 3; i++) addBeat();
+  // Restore a saved draft from this browser if one exists; otherwise
+  // seed three blank beat rows so the surface isn't empty on first load.
+  if (!restoreDraft()) {
+    for (let i = 0; i < 3; i++) addBeat();
+  }
   document.getElementById('add-beat-btn').addEventListener('click', () => addBeat());
   document.getElementById('save-draft-btn').addEventListener('click', onSaveDraft);
   document.getElementById('submit-btn').addEventListener('click', onSubmitForApproval);
+}
+
+function restoreDraft() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch (_) { return false; }
+  if (!raw) return false;
+  let p;
+  try { p = JSON.parse(raw); } catch (_) { return false; }
+  if (!p || typeof p !== 'object') return false;
+
+  selectPill('case_type', p.case_type);
+  populateLitigation();
+  const lit = document.getElementById('litigation-type');
+  if (p.litigation_type && lit.querySelector(`option[value="${CSS.escape(p.litigation_type)}"]`)) {
+    lit.value = p.litigation_type;
+  }
+  selectPill('plaintiff_party_type', p.plaintiff_party_type);
+  selectPill('defendant_party_type', p.defendant_party_type);
+  updateConditional('plaintiff');
+  updateConditional('defendant');
+  if (p.plaintiff_corp_type) selectPill('plaintiff_corp_type', p.plaintiff_corp_type);
+  if (p.defendant_corp_type) selectPill('defendant_corp_type', p.defendant_corp_type);
+  document.getElementById('overview').value = p.overview || '';
+  const beats = Array.isArray(p.beats) ? p.beats : [];
+  beats.forEach(b => addBeat(b));
+  if (beats.length < 3) {
+    for (let i = beats.length; i < 3; i++) addBeat();
+  }
+  return true;
+}
+
+function selectPill(groupName, val) {
+  if (!val) return;
+  const group = document.querySelector(`[data-pill-group="${groupName}"]`);
+  if (!group) return;
+  const pill = group.querySelector(`.pill[data-val="${val}"]`);
+  if (!pill) return;
+  group.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+  pill.classList.add('selected');
 }
 
 // Collect the form into the payload shape submit_court_case_draft expects.
@@ -568,6 +617,9 @@ async function onSubmitForApproval() {
       btn.disabled = false; btn.innerHTML = orig;
       return;
     }
+    // The matter is now on the moderation queue — drop the local draft
+    // so a refresh doesn't show stale state from the just-filed case.
+    try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
     flash('ok', 'Matter filed. Awaiting moderation.');
     setTimeout(() => { window.location.href = 'dashboard.html'; }, 1500);
   } catch (e) {
@@ -577,13 +629,13 @@ async function onSubmitForApproval() {
 }
 
 function onSaveDraft() {
-  // Local-only draft for now — the moderation queue stores only
-  // submitted (filed) cases. A persistent server-side draft store
-  // can land later if there's demand.
+  // Local-only draft (browser localStorage). restoreDraft() reads this
+  // on the next page load. The moderation queue stores only filed
+  // cases; a persistent server-side draft store can land later.
   try {
-    localStorage.setItem('courtcase_draft_v1', JSON.stringify(collectPayload()));
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(collectPayload()));
     flash('ok', 'Draft saved to this browser.');
-  } catch (e) {
+  } catch (_) {
     flash('bad', 'Draft save failed.');
   }
 }
@@ -630,32 +682,38 @@ function updateConditional(side) {
 }
 
 // ── Beats ───────────────────────────────────────────────────────────
-let beatSeq = 0;
-
-function addBeat() {
+// `prefill` is optional: { type, description, strength }. Used by
+// restoreDraft() to rehydrate a beat from localStorage; addBeat()
+// without an argument creates a blank row.
+function addBeat(prefill) {
   const userBeats = document.querySelectorAll('#beats-list .beat:not(.example)');
   if (userBeats.length >= MAX_BEATS) return;
-  beatSeq += 1;
   const node = document.createElement('div');
-  node.className = 'beat';
-  node.dataset.beatType = '';
-  node.dataset.strength = '';
+  const t = prefill?.type || '';
+  node.className = t ? `beat ${t}` : 'beat';
+  node.dataset.beatType = t;
+  node.dataset.strength = prefill?.strength ?? '';
+  const desc = prefill?.description || '';
+  const strength = Number(prefill?.strength) || null;
   node.innerHTML = `
     <div class="beat-head">
       <span class="beat-num"></span>
       <div class="beat-type-row">
-        ${BEAT_TYPES.map(t => `<span class="beat-type-pill ${t}" data-type="${t}">${BEAT_TYPE_LABEL[t]}</span>`).join('')}
+        ${BEAT_TYPES.map(x => `<span class="beat-type-pill ${x} ${t === x ? 'selected' : ''}" data-type="${x}">${BEAT_TYPE_LABEL[x]}</span>`).join('')}
       </div>
       <button type="button" class="beat-delete" title="Delete this beat">&#10005;</button>
     </div>
     <div class="beat-body">
-      <textarea class="beat-desc" placeholder="Describe this beat&hellip; (a piece of evidence, a statute, a circumstance, an appeal to principle)"></textarea>
+      <textarea class="beat-desc" placeholder="Describe this beat&hellip; (a piece of evidence, a statute, a circumstance, an appeal to principle)">${escapeHtml(desc)}</textarea>
     </div>
     <div class="beat-strength">
       <span class="bs-lab">HIDDEN STRENGTH</span>
       <select class="bs-select">
         <option value="">—</option>
-        ${Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('')}
+        ${Array.from({ length: MAX_BEATS }, (_, i) => {
+          const n = i + 1;
+          return `<option value="${n}" ${strength === n ? 'selected' : ''}>${n}</option>`;
+        }).join('')}
       </select>
       <span class="bs-hint">only the judge sees this</span>
     </div>`;
@@ -706,15 +764,15 @@ function recalcBalance() {
 
   const counter = document.getElementById('beat-counter');
   const remaining = Math.max(0, MAX_BEATS - filledCount);
-  counter.innerHTML = `${filledCount} of <em>10</em> beats added &middot; <span class="sub">${
+  counter.innerHTML = `${filledCount} of <em>${MAX_BEATS}</em> beats added &middot; <span class="sub">${
     remaining === 0 ? 'ready to file' : `${remaining} more required`
   }</span>`;
   counter.classList.toggle('complete', filledCount >= MAX_BEATS);
 
   document.getElementById('examples-divider-text').textContent =
-    `YOUR BEATS · ${filledCount} OF 10`;
+    `YOUR BEATS · ${filledCount} OF ${MAX_BEATS}`;
   document.getElementById('balance-lab').textContent =
-    `CARD-TYPE BALANCE · ${filledCount} OF 10`;
+    `CARD-TYPE BALANCE · ${filledCount} OF ${MAX_BEATS}`;
 
   const counts = { evid: 0, law: 0, fact: 0, app: 0 };
   let sum = 0, withStrength = 0;

@@ -383,14 +383,12 @@ function renderEditor(d) {
   wirePillGroups();
   updateCorpConditional('plaintiff');
   updateCorpConditional('defendant');
-  document.getElementById('case_type-group')?.addEventListener('click', repopulateLitigation);
   if (!isApproved) {
     document.getElementById('accept-btn').addEventListener('click', () => onAccept(d.id));
   }
 }
 
 function renderPartySection(num, side, partyType, corpType) {
-  const sideCap = side[0].toUpperCase() + side.slice(1);
   const corpOptions = ['shipping','construction','airline','aviation','real_estate'];
   return `
     <div class="section">
@@ -519,28 +517,49 @@ function collectEditorPayload() {
   };
 }
 
+function validateAcceptPayload(p) {
+  if (!p.case_type) return 'Pick a case type.';
+  if (!p.litigation_type) return 'Pick a type of litigation.';
+  if (!p.plaintiff_party_type) return 'Pick a plaintiff party type.';
+  if (p.plaintiff_party_type === 'corporation' && !p.plaintiff_corp_type)
+    return 'Pick a corporation industry for the plaintiff.';
+  if (!p.defendant_party_type) return 'Pick a defendant party type.';
+  if (p.defendant_party_type === 'corporation' && !p.defendant_corp_type)
+    return 'Pick a corporation industry for the defendant.';
+  if (!p.overview) return 'Fill in the case overview.';
+  const filled = p.beats.filter(b => b.description.length > 0);
+  if (filled.length < 10) return `All ten beats need descriptions. You have ${filled.length}.`;
+  if (filled.some(b => !b.type)) return 'Every beat needs a type (Evidence, Law, Fact, or Appeal).';
+  if (filled.some(b => !b.strength)) return 'Every beat needs a hidden strength (1-10).';
+  return null;
+}
+
 async function onAccept(draftId) {
   const btn = document.getElementById('accept-btn');
   const payload = collectEditorPayload();
-  if (payload.beats.filter(b => b.description).length < 10) {
-    alert('All ten beats need descriptions before accepting.');
-    return;
-  }
+  const err = validateAcceptPayload(payload);
+  if (err) { alert(err); return; }
   btn.disabled = true;
   btn.textContent = 'ACCEPTING…';
-  const { data, error } = await _supabase.rpc('accept_court_case_draft', {
-    p_draft_id: draftId, p_payload: payload,
-  });
-  if (error || !data?.success) {
-    alert('Accept failed: ' + (error?.message || data?.reason || 'unknown'));
+  try {
+    const { data, error } = await _supabase.rpc('accept_court_case_draft', {
+      p_draft_id: draftId, p_payload: payload,
+    });
+    if (error || !data?.success) {
+      alert('Accept failed: ' + (error?.message || data?.reason || 'unknown'));
+      btn.disabled = false;
+      btn.textContent = '✓ ACCEPT';
+      return;
+    }
+    const credited = data.entrepreneur_credited;
+    alert(`Case approved. ${credited ? 'Entrepreneur credited $1,000,000.' : 'No entrepreneur found — credit skipped.'}`);
+    await refresh();
+    selectDraft(draftId);
+  } catch (e) {
+    alert('Accept failed: ' + (e?.message || 'network or server error'));
     btn.disabled = false;
     btn.textContent = '✓ ACCEPT';
-    return;
   }
-  const credited = data.entrepreneur_credited;
-  alert(`Case approved. ${credited ? 'Entrepreneur credited $1,000,000.' : 'No entrepreneur found — credit skipped.'}`);
-  await refresh();
-  selectDraft(draftId);
 }
 
 function escapeHtml(s) {
