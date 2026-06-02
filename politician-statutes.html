@@ -56,6 +56,131 @@
     border-top:0.5px solid rgba(255,255,255,0.07); }
   .statute-action { width:100%; }
 }
+
+/* ───────────────── Propose New Law modal ─────────────────
+   Brass-on-deep treatment to set it apart from the teal Statutes
+   chrome — this is a legislative drafting surface, not a browsing
+   one. CSS variables scoped via .pnl-* so nothing leaks into the
+   parent page. */
+.pnl-overlay { position:fixed; inset:0; z-index:600; display:none;
+  align-items:flex-start; justify-content:center; padding:48px 24px 24px;
+  background:rgba(0,0,0,0.78); overflow-y:auto; }
+.pnl-overlay.show { display:flex; }
+.pnl-modal { --leg:#c8a26e; --leg-bright:#dcb88a; --leg-dim:#5a4630; --leg-bg:#161208;
+  --paper:#1a1612; --paper-line:#2a2218; --paper-text:#d8cfb8;
+  --mut:#888; --faint:#666; --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
+  --line:rgba(255,255,255,0.07);
+  position:relative; width:100%; max-width:720px;
+  background:linear-gradient(180deg,#0d0a07 0%,#080605 100%);
+  border:0.5px solid var(--leg-dim); border-radius:9px;
+  box-shadow:0 0 0 1px rgba(200,162,110,0.05), 0 25px 60px rgba(0,0,0,0.8), 0 0 50px rgba(200,162,110,0.04);
+  overflow:hidden; font-family:-apple-system,system-ui,sans-serif; color:#d4d4d4; }
+
+.pnl-head { padding:20px 28px 16px; border-bottom:0.5px solid var(--leg-dim);
+  background:linear-gradient(180deg, rgba(200,162,110,0.04) 0%, transparent 100%); position:relative; }
+.pnl-eyebrow { font-size:9px; letter-spacing:0.2em; color:var(--leg); font-weight:700; text-align:center; margin-bottom:7px; }
+.pnl-title { font-family:Georgia,serif; font-size:22px; color:#fff; font-weight:500;
+  letter-spacing:-0.01em; line-height:1.2; text-align:center; }
+.pnl-title em { font-style:italic; color:var(--leg-bright); }
+.pnl-sub { font-size:10px; color:var(--mut); text-align:center; margin-top:7px; line-height:1.55; }
+.pnl-sub strong { color:#bbb; }
+.pnl-close { position:absolute; top:18px; right:20px; font-size:14px; color:var(--mut);
+  cursor:pointer; background:transparent; border:none; }
+.pnl-close:hover { color:#fff; }
+
+.pnl-body { padding:20px 28px; display:flex; flex-direction:column; gap:18px; }
+
+.pnl-fg { display:flex; flex-direction:column; gap:7px; }
+.pnl-fg-lab { font-size:8.5px; letter-spacing:0.16em; color:var(--leg); font-weight:700; }
+.pnl-fg-lab .req { color:var(--red); margin-left:3px; }
+.pnl-fg-hint { font-size:9px; color:var(--faint); font-style:italic; line-height:1.5; margin-top:-2px; }
+
+.pnl-cat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; }
+.pnl-cat { padding:9px 12px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
+  color:var(--mut); font-size:10px; font-weight:600; letter-spacing:0.06em; text-align:center;
+  cursor:pointer; font-family:inherit; }
+.pnl-cat:hover { color:#fff; border-color:#3a3a3a; }
+.pnl-cat.selected { background:var(--leg-bg); border-color:var(--leg-dim); color:var(--leg-bright);
+  border-left:2px solid var(--leg); padding-left:11px; }
+
+.pnl-section-input { width:100%; padding:10px 14px; background:#0a0807;
+  border:0.5px solid var(--line); border-radius:4px; color:#fff; font-size:11px;
+  font-family:inherit; letter-spacing:-0.005em; }
+.pnl-section-input::placeholder { color:var(--faint); font-style:italic; }
+.pnl-section-input:focus { outline:none; border-color:var(--leg-dim); }
+
+.pnl-ss { margin-top:7px; display:flex; flex-wrap:wrap; gap:5px; }
+.pnl-ss-lab { font-size:8px; letter-spacing:0.13em; color:var(--faint); font-weight:600;
+  width:100%; margin-bottom:2px; }
+.pnl-ss-chip { font-size:9px; padding:3px 9px; border-radius:3px; background:#0a0807;
+  border:0.5px solid var(--line); color:var(--mut); cursor:pointer; font-weight:600; letter-spacing:0.02em;
+  font-family:inherit; }
+.pnl-ss-chip:hover { color:var(--leg-bright); border-color:var(--leg-dim); background:var(--leg-bg); }
+
+.pnl-comm-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.pnl-comm { padding:10px 13px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
+  cursor:pointer; display:flex; align-items:flex-start; gap:9px; font-family:inherit; text-align:left; color:#d4d4d4; }
+.pnl-comm:hover { background:#101010; border-color:#3a3a3a; }
+.pnl-comm.selected { background:var(--leg-bg); border-color:var(--leg); border-left:3px solid var(--leg);
+  padding-left:11px; }
+.pnl-comm-ic { font-size:13px; color:var(--leg-bright); flex-shrink:0; margin-top:1px; }
+.pnl-comm-name { font-size:10.5px; font-weight:600; color:#fff; letter-spacing:-0.005em; line-height:1.35; }
+.pnl-comm.selected .pnl-comm-name { color:var(--leg-bright); }
+
+.pnl-articles { display:flex; flex-direction:column; gap:9px; }
+.pnl-article { background:var(--paper); border:0.5px solid var(--paper-line); border-radius:5px; overflow:hidden; }
+.pnl-art-head { padding:8px 14px; background:#1e1916; border-bottom:0.5px solid var(--paper-line);
+  display:flex; align-items:center; gap:11px; }
+.pnl-art-num { font-family:Georgia,serif; font-size:12.5px; color:var(--leg-bright); font-weight:600; letter-spacing:-0.005em; }
+.pnl-art-tag { font-size:7.5px; letter-spacing:0.14em; color:var(--leg); font-weight:700;
+  padding:2px 7px; border-radius:2px; background:var(--leg-bg); border:0.5px solid var(--leg-dim); }
+.pnl-art-delete { margin-left:auto; width:22px; height:22px; border-radius:3px; background:transparent;
+  border:0.5px solid var(--line); color:var(--mut); font-size:11px; cursor:pointer; font-family:inherit;
+  display:flex; align-items:center; justify-content:center; }
+.pnl-art-delete:hover { color:var(--red); border-color:var(--red-dim); background:var(--red-bg); }
+.pnl-art-delete:disabled { opacity:0.4; cursor:not-allowed; }
+.pnl-art-text { width:100%; min-height:70px; padding:11px 14px; background:transparent; border:none;
+  color:var(--paper-text); font-family:Georgia,serif; font-size:11.5px; line-height:1.65; resize:vertical;
+  letter-spacing:-0.002em; }
+.pnl-art-text::placeholder { color:var(--faint); font-style:italic; }
+.pnl-art-text:focus { outline:none; }
+
+.pnl-art-actions { margin-top:11px; display:flex; align-items:center; gap:12px; }
+.pnl-art-add { padding:8px 14px; background:#0a0807; border:0.5px dashed var(--leg-dim); border-radius:4px;
+  color:var(--leg-bright); font-size:9px; letter-spacing:0.13em; font-weight:700; cursor:pointer; font-family:inherit; }
+.pnl-art-add:hover:not(:disabled) { background:var(--leg-bg); border-style:solid; border-color:var(--leg); color:#fff; }
+.pnl-art-add:disabled { opacity:0.4; cursor:not-allowed; }
+.pnl-art-counter { margin-left:auto; font-size:8.5px; color:var(--faint); font-family:monospace; letter-spacing:0.04em; }
+.pnl-art-counter.warn { color:#d4b87a; }
+.pnl-art-counter.over { color:var(--red); }
+
+.pnl-foot { padding:14px 28px; background:#0a0807; border-top:0.5px solid var(--leg-dim);
+  display:flex; align-items:center; gap:14px; }
+.pnl-foot-note { flex:1; font-size:9.5px; color:var(--mut); line-height:1.55; }
+.pnl-foot-note strong { color:#bbb; }
+.pnl-foot-note em { color:var(--leg-bright); font-style:italic; }
+.pnl-submit { padding:11px 22px; border-radius:4px; font-size:10px; letter-spacing:0.14em; font-weight:700;
+  cursor:pointer; font-family:inherit; background:var(--leg-bg); border:0.5px solid var(--leg); color:var(--leg-bright); }
+.pnl-submit:hover:not(:disabled) { background:#251710; color:#fff; }
+.pnl-submit:disabled { opacity:0.4; cursor:not-allowed; }
+.pnl-err { padding:0 28px 12px; color:var(--red); font-size:10px; display:none; }
+.pnl-err.show { display:block; }
+
+/* Phone-class viewport. Category pills fall to a 2×2 grid so the
+   COMMERCIAL label has room; committee picker stacks single-column;
+   modal padding trims back so the form isn't choked by chrome. */
+@media (max-width:520px) {
+  .pnl-overlay { padding:24px 12px 12px; }
+  .pnl-head { padding:18px 18px 14px; }
+  .pnl-body { padding:18px 18px; gap:16px; }
+  .pnl-foot { padding:14px 18px; flex-direction:column; align-items:stretch; gap:10px; }
+  .pnl-foot-note { font-size:9px; }
+  .pnl-submit { width:100%; }
+  .pnl-cat-row    { grid-template-columns:repeat(2,1fr); }
+  .pnl-comm-grid  { grid-template-columns:1fr; }
+  .pnl-art-actions { flex-wrap:wrap; }
+  .pnl-art-counter { margin-left:0; width:100%; text-align:right; }
+}
 </style>
 </head>
 <body>
@@ -108,28 +233,382 @@
 
 </div>
 
+<!-- Propose New Law modal — overlay + content. Hidden until the
+     Propose New Law button opens it. -->
+<div class="pnl-overlay" id="pnl-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="pnl-modal" id="pnl-modal">
+    <div class="pnl-head">
+      <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
+      <div class="pnl-title">Propose a <em>New Law</em></div>
+      <div class="pnl-sub">Draft a bill for referral to the appropriate standing committee. <strong>Once submitted</strong>, the committee will set the proposal on its agenda when calendar permits.</div>
+      <button class="pnl-close" id="pnl-close" type="button" title="Cancel">&#10005;</button>
+    </div>
+
+    <div class="pnl-body">
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">CATEGORY<span class="req">*</span></div>
+        <div class="pnl-cat-row" id="pnl-cat-row">
+          <button type="button" class="pnl-cat" data-cat="civil">CIVIL</button>
+          <button type="button" class="pnl-cat" data-cat="criminal">CRIMINAL</button>
+          <button type="button" class="pnl-cat" data-cat="commercial">COMMERCIAL</button>
+          <button type="button" class="pnl-cat" data-cat="electoral">ELECTORAL</button>
+        </div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">SECTION<span class="req">*</span></div>
+        <div class="pnl-fg-hint">Existing section, or new heading (first letter must be capitalized).</div>
+        <input type="text" id="pnl-section" class="pnl-section-input" maxlength="80"
+               placeholder="e.g. Tenancy &amp; Habitation, Family Law, Property Title&hellip;" />
+        <div class="pnl-ss" id="pnl-ss-host">
+          <span class="pnl-ss-lab" id="pnl-ss-lab">EXISTING SECTIONS</span>
+        </div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">REFER TO COMMITTEE<span class="req">*</span></div>
+        <div class="pnl-comm-grid" id="pnl-comm-grid"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">ARTICLES<span class="req">*</span></div>
+        <div class="pnl-fg-hint">Each article is one operative clause. Section numbers auto-generate once the law is reported out. <strong>600 characters total across all articles.</strong></div>
+        <div class="pnl-articles" id="pnl-articles"></div>
+        <div class="pnl-art-actions">
+          <button type="button" class="pnl-art-add" id="pnl-art-add">&#43; ADD ARTICLE</button>
+          <span class="pnl-art-counter" id="pnl-art-counter">0 articles · 0 / 600 characters</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="pnl-err" id="pnl-err"></div>
+
+    <div class="pnl-foot">
+      <div class="pnl-foot-note">
+        Once submitted, your proposal enters the committee's <em>queue</em> &mdash; it may be marked up, tabled, or reported out. <strong>You retain authorship</strong>; amendments are tracked separately.
+      </div>
+      <button type="button" class="pnl-submit" id="pnl-submit">&#9999; SUBMIT TO COMMITTEE</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { COMMITTEES } from './js/committees.js';
+
+// Article tag suggestions cycle by position; user can't pick yet (v1
+// keeps the modal narrow). 4+ falls back to operative so big bills
+// don't get weird tags.
+const ART_TAGS = ['operative', 'remedy', 'administration', 'definition', 'exception'];
+function tagFor(i) { return ART_TAGS[i] || 'operative'; }
+
+// Section suggestion bank by category. Pure UI convenience — the
+// server doesn't validate against this list, so adding to or trimming
+// these arrays is safe and doesn't need a migration.
+const SECTION_SUGGESTIONS = {
+  civil:      ['Tenancy & Habitation', 'Family Law', 'Property Title', 'Inheritance & Estates', 'Personal Injury', 'Contracts'],
+  criminal:   ['Theft & Robbery', 'Violent Crime', 'Fraud & Embezzlement', 'Public Order', 'Drug Offenses', 'Sentencing'],
+  commercial: ['Incorporation', 'Securities', 'Bankruptcy', 'Antitrust', 'Banking', 'Consumer Protection'],
+  electoral:  ['Voter Eligibility', 'Campaign Finance', 'Ballot Access', 'Party Registration', 'Election Officials', 'Term Limits'],
+};
+
+// Mapping from committee_key → ordering in the modal. Defense is
+// rarely the right home for legislation by category, but list it
+// first to match the committee panel order on politician-nation.
+const COMMITTEE_ORDER = [
+  'defense_foreign_affairs',
+  'finance_budget',
+  'judiciary_constitutional',
+  'industry_trade_labor',
+  'interior_public_welfare',
+];
+
+// In-memory draft state.
+const draft = {
+  category: 'civil',
+  section: '',
+  committeeKey: null,
+  articles: [{ text: '' }],
+};
+
+// Lookup of committee_key → committee row id for the active nation,
+// populated on modal open.
+const committeeIdByKey = new Map();
+
+let politicianCtx = null;   // result of bootstrapPolitician
+let submitInFlight = false;
 
 (async () => {
   let ctx;
   try { ctx = await bootstrapPolitician('nation'); }
   catch (e) { console.warn('[politician-statutes] bootstrap failed:', e?.message || e); return; }
   if (!ctx) return;
+  politicianCtx = ctx;
   document.getElementById('content').style.display = 'block';
 
-  // MP gate on the Propose New Law button. Same office set the
-  // MP-actions RPCs (20270485 / _mp_action_check) allow: regular MPs
-  // and Senior MPs both qualify. Anyone else sees the button but
-  // can't click it; tooltip explains why.
   const office = ctx.faction?.politician_office || null;
   const isMP = office === 'member_of_parliament' || office === 'senior_mp';
   const proposeBtn = document.getElementById('propose-law-btn');
   if (proposeBtn) {
     proposeBtn.disabled = !isMP;
     proposeBtn.title = isMP ? '' : 'Member of Parliament required';
+    if (isMP) proposeBtn.addEventListener('click', openModal);
   }
+
+  wireModalChrome();
 })();
+
+function wireModalChrome() {
+  document.getElementById('pnl-close').addEventListener('click', closeModal);
+  document.getElementById('pnl-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'pnl-overlay') closeModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('pnl-overlay').classList.contains('show')) {
+      closeModal();
+    }
+  });
+
+  // Category pills
+  document.getElementById('pnl-cat-row').addEventListener('click', (e) => {
+    const btn = e.target.closest('.pnl-cat');
+    if (!btn) return;
+    draft.category = btn.dataset.cat;
+    renderCategory();
+    renderSectionSuggestions();
+  });
+
+  // Section input
+  document.getElementById('pnl-section').addEventListener('input', (e) => {
+    draft.section = e.target.value;
+    refreshSubmitState();
+  });
+
+  // Add article
+  document.getElementById('pnl-art-add').addEventListener('click', () => {
+    if (draft.articles.length >= 10) return;
+    draft.articles.push({ text: '' });
+    renderArticles();
+  });
+
+  // Submit
+  document.getElementById('pnl-submit').addEventListener('click', submit);
+}
+
+async function openModal() {
+  if (!politicianCtx?.nation?.id) {
+    alert('No nation associated with this politician.');
+    return;
+  }
+
+  // Load committees for this nation so we have committee_id for each
+  // key. Builds the committee picker tiles as a side effect.
+  committeeIdByKey.clear();
+  const { data, error } = await _supabase.from('committees')
+    .select('id, committee_key')
+    .eq('nation_id', politicianCtx.nation.id);
+  if (error) { alert('Could not load committees: ' + (error.message || 'unknown')); return; }
+  for (const row of (data || [])) committeeIdByKey.set(row.committee_key, row.id);
+
+  // Reset draft, render, open.
+  draft.category = 'civil';
+  draft.section  = '';
+  draft.committeeKey = null;
+  draft.articles = [{ text: '' }];
+
+  document.getElementById('pnl-section').value = '';
+  document.getElementById('pnl-err').classList.remove('show');
+  document.getElementById('pnl-err').textContent = '';
+
+  renderCategory();
+  renderSectionSuggestions();
+  renderCommittees();
+  renderArticles();
+  refreshSubmitState();
+
+  const ov = document.getElementById('pnl-overlay');
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden', 'false');
+}
+
+function closeModal() {
+  if (submitInFlight) return;
+  const ov = document.getElementById('pnl-overlay');
+  ov.classList.remove('show');
+  ov.setAttribute('aria-hidden', 'true');
+}
+
+function renderCategory() {
+  document.querySelectorAll('#pnl-cat-row .pnl-cat').forEach(b => {
+    b.classList.toggle('selected', b.dataset.cat === draft.category);
+  });
+}
+
+function renderSectionSuggestions() {
+  const host = document.getElementById('pnl-ss-host');
+  const lab  = document.getElementById('pnl-ss-lab');
+  lab.textContent = `EXISTING SECTIONS UNDER ${draft.category.toUpperCase()}`;
+  // Remove any existing chips, keep the label
+  host.querySelectorAll('.pnl-ss-chip').forEach(n => n.remove());
+  const sugg = SECTION_SUGGESTIONS[draft.category] || [];
+  for (const s of sugg) {
+    const chip = document.createElement('span');
+    chip.className = 'pnl-ss-chip';
+    chip.textContent = s;
+    chip.addEventListener('click', () => {
+      draft.section = s;
+      document.getElementById('pnl-section').value = s;
+      refreshSubmitState();
+    });
+    host.appendChild(chip);
+  }
+}
+
+function renderCommittees() {
+  const grid = document.getElementById('pnl-comm-grid');
+  grid.replaceChildren();
+  for (const key of COMMITTEE_ORDER) {
+    const meta = COMMITTEES[key]; if (!meta) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pnl-comm';
+    btn.dataset.key = key;
+    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
+                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
+    btn.addEventListener('click', () => {
+      draft.committeeKey = key;
+      grid.querySelectorAll('.pnl-comm').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
+      refreshSubmitState();
+    });
+    grid.appendChild(btn);
+  }
+}
+
+function renderArticles() {
+  const host = document.getElementById('pnl-articles');
+  host.replaceChildren();
+  draft.articles.forEach((art, idx) => {
+    const tag = tagFor(idx);
+    const row = document.createElement('div');
+    row.className = 'pnl-article';
+    row.innerHTML = `
+      <div class="pnl-art-head">
+        <span class="pnl-art-num">&sect; ${idx + 1}</span>
+        <span class="pnl-art-tag">${escapeHtml(tag.toUpperCase())}</span>
+        <button type="button" class="pnl-art-delete" title="Delete this article" ${draft.articles.length <= 1 ? 'disabled' : ''}>&#10005;</button>
+      </div>
+      <textarea class="pnl-art-text" placeholder="An Act to&hellip;"></textarea>`;
+    const ta = row.querySelector('.pnl-art-text');
+    ta.value = art.text;
+    ta.addEventListener('input', () => {
+      art.text = ta.value;
+      refreshCounter();
+      refreshSubmitState();
+    });
+    row.querySelector('.pnl-art-delete').addEventListener('click', () => {
+      if (draft.articles.length <= 1) return;
+      draft.articles.splice(idx, 1);
+      renderArticles();
+    });
+    host.appendChild(row);
+  });
+  refreshCounter();
+  refreshSubmitState();
+}
+
+function refreshCounter() {
+  const total = draft.articles.reduce((s, a) => s + (a.text || '').length, 0);
+  const el = document.getElementById('pnl-art-counter');
+  el.textContent = `${draft.articles.length} article${draft.articles.length === 1 ? '' : 's'} · ${total} / 600 characters`;
+  el.classList.toggle('warn', total > 480 && total <= 600);
+  el.classList.toggle('over', total > 600);
+  document.getElementById('pnl-art-add').disabled = draft.articles.length >= 10;
+}
+
+function refreshSubmitState() {
+  const total = draft.articles.reduce((s, a) => s + (a.text || '').length, 0);
+  const allText = draft.articles.every(a => (a.text || '').trim().length > 0);
+  const sectionLen = (draft.section || '').trim().length;
+  const ok = !!draft.category
+          && sectionLen >= 1 && sectionLen <= 80    // server CHECK matches
+          && !!draft.committeeKey
+          && committeeIdByKey.has(draft.committeeKey)
+          && draft.articles.length >= 1 && draft.articles.length <= 10
+          && allText
+          && total > 0 && total <= 600;
+  document.getElementById('pnl-submit').disabled = !ok || submitInFlight;
+}
+
+const REASON_HUMAN = {
+  not_authenticated:    'You are not signed in.',
+  no_politician:        'No politician faction found.',
+  not_mp:               'Only Members of Parliament may propose laws.',
+  committee_not_found:  'Committee not found.',
+  wrong_nation:         'That committee is not in your nation.',
+  invalid_category:     'Pick a category.',
+  invalid_section:      'Section name must be 1–80 characters.',
+  invalid_articles:     'Need between 1 and 10 articles.',
+  empty_article:        'Every article needs some text.',
+  articles_too_long:    'Articles total over 600 characters — trim before submitting.',
+};
+
+async function submit() {
+  if (submitInFlight) return;
+  const err = document.getElementById('pnl-err');
+  err.classList.remove('show'); err.textContent = '';
+
+  const committeeId = committeeIdByKey.get(draft.committeeKey);
+  if (!committeeId) {
+    err.textContent = 'That committee has no row in your nation yet — open the committee page once to seed it, then retry.';
+    err.classList.add('show');
+    return;
+  }
+
+  const articlesPayload = draft.articles.map((a, i) => ({
+    ordinal: i + 1,
+    tag:     tagFor(i),
+    text:    (a.text || '').trim(),
+  }));
+
+  submitInFlight = true;
+  refreshSubmitState();
+
+  try {
+    const { data, error } = await _supabase.rpc('committee_propose_law', {
+      p_committee_id: committeeId,
+      p_category:     draft.category,
+      p_section:      draft.section.trim(),
+      p_articles:     articlesPayload,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const reason = data?.reason || 'unknown';
+      err.textContent = REASON_HUMAN[reason] || `Could not submit (${reason}).`;
+      err.classList.add('show');
+      submitInFlight = false;
+      refreshSubmitState();
+      return;
+    }
+    // Success — send the user to the receiving committee so they see
+    // their proposal in Upcoming Agenda immediately.
+    const goKey = data.committee_key || draft.committeeKey;
+    window.location.href = `committee.html?key=${encodeURIComponent(goKey)}`;
+  } catch (e) {
+    err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    submitInFlight = false;
+    refreshSubmitState();
+  }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
 </script>
 
 </body>

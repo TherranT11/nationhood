@@ -111,6 +111,150 @@
     margin-bottom:11px; }
   .up-empty { font-size:11px; color:var(--faint); font-style:italic; text-align:center;
     padding:18px 0; }
+
+  /* Proposed-law row in Upcoming Agenda. Brass-on-deep matches the
+     drafting modal so a proposal looks like the same artifact in
+     either place. */
+  .up-row { background:#0d0a07; border:0.5px solid #2a2218; border-left:2px solid #c8a26e;
+    border-radius:4px; padding:10px 14px; margin-bottom:8px; display:flex; align-items:center; gap:14px; }
+  .up-row:last-child { margin-bottom:0; }
+  .up-cat { font-size:8px; letter-spacing:0.14em; color:#dcb88a; font-weight:700;
+    padding:2px 7px; border-radius:2px; background:#161208; border:0.5px solid #5a4630; flex-shrink:0; }
+  .up-row-body { flex:1; min-width:0; }
+  .up-section { color:#fff; font-size:11.5px; font-weight:600; letter-spacing:-0.005em; }
+  .up-section .sep { color:#666; margin:0 6px; font-weight:400; }
+  .up-section .snippet { color:#cfcabf; font-weight:400; font-family:Georgia,serif;
+    font-style:italic; font-size:11px; }
+  .up-meta { color:#666; font-size:9.5px; margin-top:3px; letter-spacing:0.02em; }
+  .up-meta b { color:#888; font-weight:600; }
+
+  /* Monthly Agenda bill card — the proposal currently in hearing. */
+  .ag-bill { background:#0d0a07; border:0.5px solid #2a2218; border-left:3px solid #c8a26e;
+    border-radius:5px; padding:14px 18px; }
+  .ag-bill .b-meta { display:flex; align-items:center; gap:10px; margin-bottom:6px;
+    font-size:8.5px; letter-spacing:0.14em; }
+  .ag-bill .b-cat { color:#dcb88a; font-weight:700; padding:2px 7px; background:#161208;
+    border:0.5px solid #5a4630; border-radius:2px; }
+  .ag-bill .b-section { color:#888; font-weight:600; }
+  .ag-bill .b-title { color:#fff; font-size:14px; font-weight:600; line-height:1.35;
+    margin-bottom:5px; letter-spacing:-0.005em; }
+  .ag-bill .b-sub { color:#888; font-size:10px; line-height:1.5; }
+  .ag-bill .b-sub b { color:#bbb; font-weight:600; }
+  .ag-bill .b-articles { margin-top:10px; padding-top:10px; border-top:0.5px solid #2a2218; }
+  .ag-bill .b-art { color:#cfcabf; font-family:Georgia,serif; font-size:11px; line-height:1.6;
+    padding:6px 0; display:flex; gap:11px; }
+  .ag-bill .b-art .num { color:#dcb88a; font-weight:600; font-size:11.5px; flex-shrink:0; }
+  .ag-bill .b-art .tag { color:#c8a26e; font-size:7.5px; letter-spacing:0.14em; font-weight:700;
+    padding:1px 6px; border:0.5px solid #5a4630; border-radius:2px; align-self:flex-start;
+    background:#161208; margin-top:1px; flex-shrink:0; }
+  .ag-window { margin-top:11px; padding-top:11px; border-top:0.5px solid #2a2218;
+    display:flex; align-items:center; gap:14px; font-size:9.5px; color:#888; }
+  .ag-window b { color:#dcb88a; font-family:monospace; }
+  .ag-close-btn { margin-left:auto; padding:6px 12px; background:transparent;
+    border:0.5px solid #5a4630; border-radius:3px; color:#dcb88a; font-size:9px;
+    letter-spacing:0.13em; font-weight:700; cursor:pointer; font-family:inherit; }
+  .ag-close-btn:hover:not(:disabled) { background:#161208; color:#fff; border-color:#c8a26e; }
+  .ag-close-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* Hearing Record — testimony rows. Accepted = brass border-left,
+     pending = grey. */
+  .tr-row { background:#0d0a07; border:0.5px solid #2a2218; border-left:2px solid #2a2218;
+    border-radius:4px; padding:11px 14px; margin-bottom:8px; }
+  .tr-row.accepted { border-left-color:#c8a26e; }
+  .tr-row:last-child { margin-bottom:0; }
+  .tr-head { display:flex; align-items:center; gap:9px; margin-bottom:6px; }
+  .tr-name { color:#fff; font-size:11.5px; font-weight:600; letter-spacing:-0.005em; }
+  .tr-title { color:#dcb88a; font-size:9.5px; font-style:italic; font-family:Georgia,serif; }
+  .tr-aff { color:#666; font-size:9.5px; }
+  .tr-aff::before { content:"·"; margin:0 5px; color:#444; }
+  .tr-badge { font-size:7.5px; letter-spacing:0.14em; color:#666; font-weight:700;
+    padding:2px 7px; border-radius:2px; border:0.5px solid #2a2218; background:#0a0807;
+    margin-left:auto; }
+  .tr-row.accepted .tr-badge { color:#dcb88a; border-color:#5a4630; background:#161208; }
+  .tr-text { color:#cfcabf; font-family:Georgia,serif; font-size:11.5px; line-height:1.65;
+    letter-spacing:-0.002em; }
+  .tr-foot { display:flex; align-items:center; gap:12px; margin-top:8px; font-size:9px;
+    color:#555; letter-spacing:0.02em; }
+  .tr-submitter { color:#777; font-style:italic; }
+  .tr-submitter b { color:#999; font-style:normal; }
+  .tr-accept-btn { margin-left:auto; padding:5px 11px; background:transparent;
+    border:0.5px solid #5a4630; border-radius:3px; color:#dcb88a; font-size:8.5px;
+    letter-spacing:0.14em; font-weight:700; cursor:pointer; font-family:inherit; }
+  .tr-accept-btn:hover:not(:disabled) { background:#161208; color:#fff; border-color:#c8a26e; }
+  .tr-accept-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* "Sign Up as Witness" CTA replaces the observer banner during an
+     open hearing. */
+  .witness-cta { display:flex; align-items:center; gap:14px; padding:11px 14px;
+    background:#0d0a07; border:0.5px solid #5a4630; border-radius:4px; }
+  .witness-cta .wn-msg { flex:1; font-size:10.5px; color:#cfcabf; line-height:1.5; }
+  .witness-cta .wn-msg b { color:#dcb88a; font-weight:600; }
+  .witness-cta .wn-btn { padding:7px 14px; background:#161208; border:0.5px solid #c8a26e;
+    border-radius:3px; color:#dcb88a; font-size:9px; letter-spacing:0.14em; font-weight:700;
+    cursor:pointer; font-family:inherit; }
+  .witness-cta .wn-btn:hover:not(:disabled) { background:#251710; color:#fff; }
+  .witness-cta .wn-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* Hold-a-Hearing button (chair-only enable) — same act-btn shape
+     used elsewhere but slot-aware. */
+  .act-btn.act-hold { /* uses inherited .act-btn styles + .enabled */ }
+
+  /* ───────────── Witness testimony modal ─────────────
+     Smaller sibling of the Propose New Law modal. Persona dropdown +
+     400-char textarea + submit. */
+  .wit-overlay { position:fixed; inset:0; z-index:600; display:none; align-items:flex-start;
+    justify-content:center; padding:48px 24px 24px; background:rgba(0,0,0,0.78); overflow-y:auto; }
+  .wit-overlay.show { display:flex; }
+  .wit-modal { --leg:#c8a26e; --leg-bright:#dcb88a; --leg-dim:#5a4630; --leg-bg:#161208;
+    --paper:#1a1612; --paper-line:#2a2218; --paper-text:#d8cfb8;
+    --mut:#888; --faint:#666; --red:#c87a7a; --line:rgba(255,255,255,0.07);
+    position:relative; width:100%; max-width:560px;
+    background:linear-gradient(180deg,#0d0a07 0%,#080605 100%);
+    border:0.5px solid var(--leg-dim); border-radius:9px;
+    box-shadow:0 0 0 1px rgba(200,162,110,0.05), 0 25px 60px rgba(0,0,0,0.8);
+    overflow:hidden; font-family:-apple-system,system-ui,sans-serif; color:#d4d4d4; }
+  .wit-head { padding:18px 22px 14px; border-bottom:0.5px solid var(--leg-dim);
+    background:linear-gradient(180deg, rgba(200,162,110,0.04) 0%, transparent 100%); position:relative; }
+  .wit-eyebrow { font-size:9px; letter-spacing:0.2em; color:var(--leg); font-weight:700;
+    text-align:center; margin-bottom:6px; }
+  .wit-title { font-family:Georgia,serif; font-size:18px; color:#fff; text-align:center; line-height:1.2; }
+  .wit-title em { font-style:italic; color:var(--leg-bright); }
+  .wit-sub { font-size:10px; color:var(--mut); text-align:center; margin-top:6px; line-height:1.5; }
+  .wit-close { position:absolute; top:14px; right:18px; font-size:14px; color:var(--mut);
+    background:transparent; border:none; cursor:pointer; }
+  .wit-close:hover { color:#fff; }
+  .wit-body { padding:18px 22px; display:flex; flex-direction:column; gap:14px; }
+  .wit-fg-lab { font-size:8.5px; letter-spacing:0.16em; color:var(--leg); font-weight:700; margin-bottom:6px; }
+  .wit-select { width:100%; padding:9px 12px; background:#0a0807; border:0.5px solid var(--line);
+    border-radius:4px; color:#fff; font-size:11px; font-family:inherit; }
+  .wit-select:focus { outline:none; border-color:var(--leg-dim); }
+  .wit-persona-meta { margin-top:6px; font-size:9.5px; color:var(--mut); font-style:italic; min-height:14px; }
+  .wit-persona-meta b { color:#bbb; font-weight:600; font-style:normal; }
+  .wit-textarea { width:100%; min-height:120px; padding:11px 14px; background:var(--paper);
+    border:0.5px solid var(--paper-line); border-radius:5px; color:var(--paper-text);
+    font-family:Georgia,serif; font-size:11.5px; line-height:1.65; resize:vertical; letter-spacing:-0.002em; }
+  .wit-textarea::placeholder { color:var(--faint); font-style:italic; }
+  .wit-textarea:focus { outline:none; border-color:var(--leg-dim); }
+  .wit-counter { margin-top:6px; font-size:8.5px; color:var(--faint); font-family:monospace;
+    letter-spacing:0.04em; text-align:right; }
+  .wit-counter.warn { color:#d4b87a; }
+  .wit-counter.over { color:var(--red); }
+  .wit-foot { padding:13px 22px; background:#0a0807; border-top:0.5px solid var(--leg-dim);
+    display:flex; align-items:center; gap:12px; }
+  .wit-foot-note { flex:1; font-size:9px; color:var(--mut); line-height:1.5; }
+  .wit-submit { padding:10px 18px; border-radius:4px; font-size:9.5px; letter-spacing:0.14em;
+    font-weight:700; cursor:pointer; font-family:inherit; background:var(--leg-bg);
+    border:0.5px solid var(--leg); color:var(--leg-bright); }
+  .wit-submit:hover:not(:disabled) { background:#251710; color:#fff; }
+  .wit-submit:disabled { opacity:0.4; cursor:not-allowed; }
+  .wit-err { padding:0 22px 10px; color:var(--red); font-size:10px; display:none; }
+  .wit-err.show { display:block; }
+
+  @media (max-width:520px) {
+    .wit-overlay { padding:24px 12px; }
+    .wit-foot { flex-direction:column; align-items:stretch; }
+    .wit-submit { width:100%; }
+  }
 </style>
 </head>
 <body>
@@ -122,12 +266,44 @@
   <div class="comm-card" id="comm-host"></div>
 </div>
 
+<!-- Witness testimony modal — opened by [Sign Up as Witness] when a
+     hearing is in session. Hidden until needed. -->
+<div class="wit-overlay" id="wit-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="wit-modal">
+    <div class="wit-head">
+      <div class="wit-eyebrow">SWORN TESTIMONY</div>
+      <div class="wit-title">Sign Up as <em>Witness</em></div>
+      <div class="wit-sub">Choose a persona to speak as &mdash; not your own character.
+        The committee sees who submitted; the public record shows only the persona.</div>
+      <button type="button" class="wit-close" id="wit-close" title="Cancel">&#10005;</button>
+    </div>
+    <div class="wit-body">
+      <div>
+        <div class="wit-fg-lab">PERSONA<span style="color:#c87a7a;margin-left:3px;">*</span></div>
+        <select id="wit-persona" class="wit-select"><option value="">Pick a witness persona…</option></select>
+        <div class="wit-persona-meta" id="wit-persona-meta"></div>
+      </div>
+      <div>
+        <div class="wit-fg-lab">TESTIMONY<span style="color:#c87a7a;margin-left:3px;">*</span></div>
+        <textarea id="wit-text" class="wit-textarea" maxlength="400"
+                  placeholder="Speak in the voice of your chosen persona&hellip;"></textarea>
+        <div class="wit-counter" id="wit-counter">0 / 400 characters</div>
+      </div>
+    </div>
+    <div class="wit-err" id="wit-err"></div>
+    <div class="wit-foot">
+      <div class="wit-foot-note">Once submitted, your testimony enters the committee&rsquo;s pool. Acceptance promotes it to the public Hearing Record.</div>
+      <button type="button" class="wit-submit" id="wit-submit">&#9999; SUBMIT</button>
+    </div>
+  </div>
+</div>
+
 <div id="loading" class="loading">LOADING…</div>
 
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { safeHexColor, factionInitials, displayName } from './js/utils.js';
+import { safeHexColor, factionInitials, displayName, truncate } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 
 const ROLE_LABEL = {
@@ -182,8 +358,51 @@ async function init() {
     .order('slot_idx', { ascending: true });
   if (memErr) console.warn('committee: members fetch failed', memErr);
 
+  // Queued proposals → render in Upcoming Agenda. Joined to the
+  // author faction so we can render "Proposed by …" off real names.
+  const { data: proposals, error: propErr } = await _supabase
+    .from('committee_proposals')
+    .select('id, category, section, articles, proposed_at_tick, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .eq('committee_id', committeeId)
+    .eq('status', 'queued')
+    .order('created_at', { ascending: false });
+  if (propErr) console.warn('committee: proposals fetch failed', propErr);
+
+  // Active hearing for this committee (status='open'), if any. Joined
+  // to the proposal so we can render the bill card on Monthly Agenda
+  // in one round trip.
+  const { data: hearings, error: hearErr } = await _supabase
+    .from('committee_hearings')
+    .select('id, proposal_id, opened_at_tick, closes_at_tick, status, proposal:committee_proposals!proposal_id(id, category, section, articles, proposed_at_tick, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname))')
+    .eq('committee_id', committeeId)
+    .eq('status', 'open')
+    .limit(1);
+  if (hearErr) console.warn('committee: hearings fetch failed', hearErr);
+  const activeHearing = (hearings || [])[0] || null;
+
+  // Personas + testimonies for the active hearing (only fetch if
+  // there is one — saves a round trip when nothing's in session).
+  let personas = [];
+  let testimonies = [];
+  if (activeHearing) {
+    const [perRes, tesRes] = await Promise.all([
+      _supabase.from('committee_hearing_personas')
+        .select('id, slug, name, title, affiliation, claimed_by_faction_id')
+        .eq('hearing_id', activeHearing.id)
+        .order('slug', { ascending: true }),
+      _supabase.from('committee_hearing_testimonies')
+        .select('id, persona_id, submitter_faction_id, text, accepted, created_at_tick, submitter:factions!submitter_faction_id(leader_first_name, leader_last_name, faction_name, faction_type)')
+        .eq('hearing_id', activeHearing.id)
+        .order('created_at', { ascending: true }),
+    ]);
+    if (perRes.error) console.warn('committee: personas fetch failed', perRes.error);
+    if (tesRes.error) console.warn('committee: testimonies fetch failed', tesRes.error);
+    personas    = perRes.data || [];
+    testimonies = tesRes.data || [];
+  }
+
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId);
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx));
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -205,10 +424,19 @@ function renderCrumb(ctx, meta) {
     <span class="here">${escHtml(meta.name.toUpperCase())}</span>`;
 }
 
-function renderCommittee(ctx, meta, members, committeeId) {
+// Pull current_tick out of the bootstrap context. Defensive 0 fallback
+// — used to compute "ticks remaining" on an open hearing window.
+function ctxShardTick(ctx) {
+  return Number(ctx?.shard?.current_tick) || 0;
+}
+
+function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
+  const isChair = members.some(m => m.role === 'chair' && m.politician_faction_id === viewerPolId);
+  const viewerFactionId = ctx.faction?.id || null;
+  const alreadyTestified = !!(activeHearing && testimonies.some(t => t.submitter_faction_id && t.submitter_faction_id === viewerFactionId));
 
   document.getElementById('comm-host').innerHTML = `
     <div class="ch-row">
@@ -231,9 +459,9 @@ function renderCommittee(ctx, meta, members, committeeId) {
     <div class="agenda">
       <div class="ag-head">
         <span class="ag-lab">MONTHLY AGENDA</span>
-        <span class="ag-status">NO ACTIVE WORK</span>
+        <span class="ag-status">${activeHearing ? 'HEARING IN SESSION' : 'NO ACTIVE WORK'}</span>
       </div>
-      <div class="ag-empty">No current work item.</div>
+      ${renderMonthlyAgenda(activeHearing, currentTick, isChair)}
     </div>
 
     <div class="testimony">
@@ -242,15 +470,15 @@ function renderCommittee(ctx, meta, members, committeeId) {
       </div>
       <div class="chat">
         <div class="chat-feed">
-          <div class="chat-empty">No testimony recorded.</div>
+          ${renderHearingRecord(testimonies, personas, onCommittee, !!activeHearing)}
         </div>
-        <div class="chat-input">${renderInputBanner(isMP, onCommittee)}</div>
+        <div class="chat-input">${renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified)}</div>
       </div>
     </div>
 
     <div class="actions">
       <div class="ac-lab">COMMITTEE ACTIONS${onCommittee ? '' : ' &middot; MEMBERS ONLY'}</div>
-      <div class="ac-grid">${renderActions(onCommittee)}</div>
+      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0)}</div>
     </div>
 
     <div class="activities">
@@ -260,23 +488,95 @@ function renderCommittee(ctx, meta, members, committeeId) {
 
     <div class="upcoming">
       <div class="up-lab">UPCOMING AGENDA</div>
-      <div class="up-empty">No upcoming items.</div>
+      ${renderProposals(proposals || [])}
     </div>`;
 
-  // Delegated click handler. Apply CTA fires the apply RPC; action
-  // buttons are still stub-alerted until hearing/vote/markup flows land.
-  document.getElementById('comm-host').addEventListener('click', (e) => {
+  // Delegated click handler.
+  document.getElementById('comm-host').addEventListener('click', async (e) => {
     const apply = e.target.closest('#comm-apply-cta');
     if (apply) {
       e.preventDefault();
       submitApplication(apply, committeeId);
       return;
     }
-    const action = e.target.closest('.act-btn.enabled');
-    if (action) {
-      alert('Committee action is not yet wired up.');
+    const witCta = e.target.closest('#witness-signup-cta');
+    if (witCta) {
+      e.preventDefault();
+      if (witCta.dataset.disabled === '1') return;
+      openWitnessModal(activeHearing, personas);
+      return;
+    }
+    const hold = e.target.closest('[data-act="hold"].enabled');
+    if (hold) {
+      e.preventDefault();
+      if (hold.dataset.busy === '1') return;
+      const next = (proposals || [])[0];
+      if (!next) { alert('No queued proposals to hear.'); return; }
+      hold.dataset.busy = '1';
+      hold.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('committee_hold_hearing', {
+          p_committee_id: committeeId, p_proposal_id: next.id,
+        });
+        if (error) throw error;
+        if (!data?.success) { alert('Could not open hearing: ' + (data?.reason || 'unknown')); return; }
+        location.reload();
+      } catch (err) {
+        alert('Could not open hearing: ' + (err?.message || 'unknown error'));
+      } finally {
+        hold.dataset.busy = '0';
+        hold.disabled = false;
+      }
+      return;
+    }
+    const close = e.target.closest('#ag-close-hearing');
+    if (close) {
+      e.preventDefault();
+      if (close.dataset.busy === '1' || !activeHearing) return;
+      if (!confirm('Close this hearing? Unaccepted testimony will be discarded.')) return;
+      close.dataset.busy = '1';
+      close.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('close_committee_hearing', { p_hearing_id: activeHearing.id });
+        if (error) throw error;
+        if (!data?.success) { alert('Could not close hearing: ' + (data?.reason || 'unknown')); return; }
+        location.reload();
+      } catch (err) {
+        alert('Could not close hearing: ' + (err?.message || 'unknown error'));
+      } finally {
+        close.dataset.busy = '0';
+        close.disabled = false;
+      }
+      return;
+    }
+    const acc = e.target.closest('.tr-accept-btn');
+    if (acc) {
+      e.preventDefault();
+      if (acc.dataset.busy === '1') return;
+      const tid = acc.dataset.testimony;
+      if (!tid) return;
+      acc.dataset.busy = '1';
+      acc.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('accept_hearing_testimony', { p_testimony_id: tid });
+        if (error) throw error;
+        if (!data?.success) { alert('Could not accept: ' + (data?.reason || 'unknown')); return; }
+        location.reload();
+      } catch (err) {
+        alert('Could not accept: ' + (err?.message || 'unknown error'));
+      } finally {
+        acc.dataset.busy = '0';
+        acc.disabled = false;
+      }
+      return;
+    }
+    const stubAct = e.target.closest('.act-btn.enabled[data-act-stub]');
+    if (stubAct) {
+      alert('This committee action is not yet wired up.');
     }
   });
+
+  wireWitnessModal(activeHearing, personas);
 }
 
 async function submitApplication(link, committeeId) {
@@ -324,7 +624,22 @@ function renderMembers(members, viewerPolId) {
   }).join('');
 }
 
-function renderInputBanner(isMP, onCommittee) {
+function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified) {
+  // During an open hearing: any faction can submit (one-per-faction).
+  // Members get their own banner once they've testified or if they've
+  // not yet — but their primary entry point is the accept controls.
+  if (activeHearing) {
+    if (onCommittee) {
+      return `<div class="input-disabled"><strong>Hearing in session.</strong> &middot; Accept submissions from the pool below to promote them to the public record.</div>`;
+    }
+    if (alreadyTestified) {
+      return `<div class="input-disabled"><strong>You have testified.</strong> &middot; One submission per faction per hearing — wait for the committee to rule on it.</div>`;
+    }
+    return `<div class="witness-cta">
+      <div class="wn-msg"><b>Hearing in session.</b> Pick a witness persona and submit testimony before the window closes.</div>
+      <button type="button" class="wn-btn" id="witness-signup-cta">&#9999; SIGN UP AS WITNESS</button>
+    </div>`;
+  }
   if (onCommittee) {
     return `<div class="input-disabled"><strong>You are a member.</strong> &middot; The testimony interface will open here once a hearing is in session.</div>`;
   }
@@ -334,20 +649,259 @@ function renderInputBanner(isMP, onCommittee) {
   return `<div class="input-disabled"><strong>Observer access.</strong> &middot; Members of Parliament may apply for committee membership.</div>`;
 }
 
-function renderActions(onCommittee) {
+function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued) {
+  // [Hold a Hearing] is CHAIR-ONLY per the 20270499 RPC gate. We
+  // mirror the gate client-side: enabled iff chair AND no hearing
+  // currently open AND at least one queued proposal exists.
+  // Tooltip explains the disable.
+  const holdDisabledReason = !onCommittee
+    ? 'Members only'
+    : !isChair
+      ? 'Committee chair only'
+      : hasOpenHearing
+        ? 'A hearing is already in session'
+        : !hasQueued
+          ? 'No queued proposals'
+          : '';
+  const holdEnabled = holdDisabledReason === '';
   const actions = [
-    { ic: '☞', name: 'HOLD A HEARING',        desc: 'Call witnesses, take public testimony. The chamber and the press both watch.' },
-    { ic: '☇', name: 'VOTE ON APPROPRIATIONS', desc: 'Approve, modify, or deny funding for ministries and programs in the committee’s remit.' },
-    { ic: '✎', name: 'AMEND A PROPOSAL',      desc: 'Modify a bill clause-by-clause before it goes to the chamber floor.' },
+    { act: 'hold',  ic: '☞', name: 'HOLD A HEARING',
+      desc: 'Bring the top queued proposal onto the monthly agenda — opens a 3-tick testimony window for witnesses.',
+      enabled: holdEnabled,
+      title: holdDisabledReason || '',
+      stub: false },
+    { ic: '☇', name: 'VOTE ON APPROPRIATIONS', desc: 'Approve, modify, or deny funding for ministries and programs in the committee’s remit.',
+      enabled: onCommittee, title: onCommittee ? '' : 'Members only', stub: true },
+    { ic: '✎', name: 'AMEND A PROPOSAL',      desc: 'Modify a bill clause-by-clause before it goes to the chamber floor.',
+      enabled: onCommittee, title: onCommittee ? '' : 'Members only', stub: true },
   ];
   return actions.map(a => `
-    <button class="act-btn${onCommittee ? ' enabled' : ''}" type="button"${onCommittee ? '' : ' disabled'}>
+    <button class="act-btn${a.enabled ? ' enabled' : ''}" type="button"${a.enabled ? '' : ' disabled'}${a.title ? ` title="${escHtml(a.title)}"` : ''}${a.act ? ` data-act="${a.act}"` : ''}${a.stub && a.enabled ? ' data-act-stub' : ''}>
       <div class="act-head">
         <span class="act-ic">${a.ic}</span>
         <span class="act-name">${escHtml(a.name)}</span>
       </div>
       <div class="act-desc">${escHtml(a.desc)}</div>
     </button>`).join('');
+}
+
+// Monthly Agenda — the bill currently in hearing. Empty state when
+// no open hearing exists. Chair gets a [Close Hearing] button on the
+// agenda card; everyone sees the ticks-remaining countdown.
+function renderMonthlyAgenda(activeHearing, currentTick, isChair) {
+  if (!activeHearing) return '<div class="ag-empty">No current work item.</div>';
+  const p = activeHearing.proposal || {};
+  const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
+  const ticksLeft = Math.max(0, Number(activeHearing.closes_at_tick) - Number(currentTick));
+  const articlesHtml = (p.articles || []).map((art, idx) => `
+    <div class="b-art">
+      <span class="num">&sect; ${idx + 1}</span>
+      <span class="tag">${escHtml(String(art.tag || 'operative').toUpperCase())}</span>
+      <span>${escHtml(art.text || '')}</span>
+    </div>`).join('');
+  const a = p.author || {};
+  const author = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+  return `<div class="ag-bill">
+    <div class="b-meta">
+      <span class="b-cat">${escHtml((p.category || '').toUpperCase())}</span>
+      <span class="b-section">${escHtml(p.section || '')}</span>
+    </div>
+    <div class="b-title">${escHtml(firstArticle?.text ? truncate(firstArticle.text, 80) : 'Proposal under hearing')}</div>
+    <div class="b-sub">Sponsor <b>${escHtml(author)}</b> &middot; opened tick ${escHtml(String(activeHearing.opened_at_tick ?? '?'))}</div>
+    ${articlesHtml ? `<div class="b-articles">${articlesHtml}</div>` : ''}
+    <div class="ag-window">
+      <span>Testimony window <b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'} remaining (closes at tick <b>${escHtml(String(activeHearing.closes_at_tick))}</b>).</span>
+      ${isChair ? `<button type="button" class="ag-close-btn" id="ag-close-hearing">CLOSE HEARING</button>` : ''}
+    </div>
+  </div>`;
+}
+
+// Hearing Record — testimonies for the active hearing. Members see
+// the full pool with accept buttons on unaccepted rows; non-members
+// see only accepted ones (the "public record" view). Persona name +
+// title + affiliation are always visible; submitter is only shown
+// to members.
+function renderHearingRecord(testimonies, personas, onCommittee, hasOpenHearing) {
+  if (!testimonies.length) {
+    return `<div class="chat-empty">${hasOpenHearing ? 'No testimony submitted yet.' : 'No testimony recorded.'}</div>`;
+  }
+  const personaById = new Map(personas.map(p => [p.id, p]));
+  const filtered = onCommittee ? testimonies : testimonies.filter(t => t.accepted);
+  if (!filtered.length) {
+    return '<div class="chat-empty">No accepted testimony yet.</div>';
+  }
+  return filtered.map(t => {
+    const p = personaById.get(t.persona_id) || {};
+    const s = t.submitter || {};
+    const submitterName = [s.leader_first_name, s.leader_last_name].filter(Boolean).join(' ')
+                       || s.faction_name || 'Unknown';
+    return `<div class="tr-row${t.accepted ? ' accepted' : ''}">
+      <div class="tr-head">
+        <span class="tr-name">${escHtml(p.name || '—')}</span>
+        <span class="tr-title">${escHtml(p.title || '')}</span>
+        <span class="tr-aff">${escHtml(p.affiliation || '')}</span>
+        <span class="tr-badge">${t.accepted ? 'ACCEPTED' : 'PENDING'}</span>
+      </div>
+      <div class="tr-text">${escHtml(t.text || '')}</div>
+      ${onCommittee ? `<div class="tr-foot">
+        <span class="tr-submitter">submitted by <b>${escHtml(submitterName)}</b> &middot; tick ${escHtml(String(t.created_at_tick ?? '?'))}</span>
+        ${t.accepted ? '' : `<button type="button" class="tr-accept-btn" data-testimony="${escHtml(t.id)}">ACCEPT</button>`}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Witness modal ──────────────────────────────────────────────
+// Persona dropdown + 400-char textarea + submit. Lives at the bottom
+// of the document (the <div id="wit-overlay"> block); this wires the
+// per-render state. Open via [Sign Up as Witness] CTA.
+const REASON_HUMAN_TESTIMONY = {
+  not_authenticated:     'You are not signed in.',
+  no_faction:            'No faction associated with your account.',
+  hearing_not_found:     'Hearing not found.',
+  hearing_closed:        'This hearing has closed.',
+  hearing_window_passed: 'The testimony window has passed.',
+  invalid_text:          'Testimony must be 1–400 characters.',
+  persona_claimed:       'Another witness just took that persona — pick a different one.',
+  already_testified:     'You have already submitted testimony in this hearing.',
+};
+
+let _witnessSubmitInFlight = false;
+let _escapeBound = false;   // document-level Escape handler binds once
+
+function wireWitnessModal(activeHearing, personas) {
+  const closeBtn = document.getElementById('wit-close');
+  const overlay  = document.getElementById('wit-overlay');
+  if (!closeBtn || !overlay) return;
+
+  closeBtn.onclick = closeWitnessModal;
+  overlay.onclick = (e) => { if (e.target === overlay) closeWitnessModal(); };
+
+  const ta = document.getElementById('wit-text');
+  const sel = document.getElementById('wit-persona');
+  if (ta) {
+    ta.oninput = () => {
+      const len = ta.value.length;
+      const c = document.getElementById('wit-counter');
+      c.textContent = `${len} / 400 characters`;
+      c.classList.toggle('warn', len > 320 && len <= 400);
+      c.classList.toggle('over', len > 400);
+      refreshWitnessSubmit();
+    };
+  }
+  if (sel) sel.onchange = () => {
+    const pid = sel.value;
+    const meta = document.getElementById('wit-persona-meta');
+    const p = personas.find(x => x.id === pid);
+    meta.innerHTML = p ? `<b>${escHtml(p.name)}</b> &middot; ${escHtml(p.title)} &middot; ${escHtml(p.affiliation)}` : '';
+    refreshWitnessSubmit();
+  };
+
+  document.getElementById('wit-submit').onclick = () => submitWitnessTestimony(activeHearing);
+
+  // addEventListener bound once (guarded by _escapeBound) so we don't
+  // stomp any other document-level keydown handler and we don't
+  // accumulate duplicates if wireWitnessModal is ever called twice.
+  if (!_escapeBound) {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('show')) closeWitnessModal();
+    });
+    _escapeBound = true;
+  }
+}
+
+function openWitnessModal(activeHearing, personas) {
+  if (!activeHearing) return;
+  const ov = document.getElementById('wit-overlay');
+  const sel = document.getElementById('wit-persona');
+  const ta  = document.getElementById('wit-text');
+  const err = document.getElementById('wit-err');
+  // Reset
+  ta.value = '';
+  ta.dispatchEvent(new Event('input'));
+  err.classList.remove('show'); err.textContent = '';
+  // Populate dropdown with unclaimed personas only
+  sel.innerHTML = '<option value="">Pick a witness persona…</option>'
+    + personas.filter(p => !p.claimed_by_faction_id)
+       .map(p => `<option value="${escHtml(p.id)}">${escHtml(p.name)} — ${escHtml(p.title)}</option>`).join('');
+  document.getElementById('wit-persona-meta').innerHTML = '';
+  refreshWitnessSubmit();
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden', 'false');
+}
+
+function closeWitnessModal() {
+  if (_witnessSubmitInFlight) return;
+  const ov = document.getElementById('wit-overlay');
+  ov.classList.remove('show');
+  ov.setAttribute('aria-hidden', 'true');
+}
+
+function refreshWitnessSubmit() {
+  const sel = document.getElementById('wit-persona');
+  const ta  = document.getElementById('wit-text');
+  const btn = document.getElementById('wit-submit');
+  const len = (ta?.value || '').trim().length;
+  const ok = !!sel?.value && len >= 1 && len <= 400 && !_witnessSubmitInFlight;
+  btn.disabled = !ok;
+}
+
+async function submitWitnessTestimony(activeHearing) {
+  if (_witnessSubmitInFlight) return;
+  const sel = document.getElementById('wit-persona');
+  const ta  = document.getElementById('wit-text');
+  const err = document.getElementById('wit-err');
+  err.classList.remove('show'); err.textContent = '';
+  if (!sel.value || !activeHearing) return;
+  _witnessSubmitInFlight = true;
+  refreshWitnessSubmit();
+  try {
+    const { data, error } = await _supabase.rpc('submit_hearing_testimony', {
+      p_hearing_id: activeHearing.id,
+      p_persona_id: sel.value,
+      p_text:       ta.value.trim(),
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      err.textContent = REASON_HUMAN_TESTIMONY[data?.reason] || `Could not submit (${data?.reason || 'unknown'}).`;
+      err.classList.add('show');
+      _witnessSubmitInFlight = false;
+      refreshWitnessSubmit();
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    _witnessSubmitInFlight = false;
+    refreshWitnessSubmit();
+  }
+}
+
+// Queued proposals rendered as compact rows. Category pill on the
+// left, "Section · first-article snippet" on top, "Proposed by …
+// at tick N" on bottom. First article's text is truncated to ~120
+// chars for the snippet so long bills don't blow up the layout.
+function renderProposals(proposals) {
+  if (!proposals.length) return '<div class="up-empty">No upcoming items.</div>';
+  return proposals.map(p => {
+    const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
+    const snippet = firstArticle?.text
+        ? escHtml(firstArticle.text.length > 120 ? firstArticle.text.slice(0, 117).trim() + '…' : firstArticle.text)
+        : '';
+    const a = p.author || {};
+    const authorName = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+    const nick = (a.nickname || '').trim();
+    const who = nick ? `${authorName} (${nick})` : authorName;
+    const cat = (p.category || '').toUpperCase();
+    return `<div class="up-row">
+      <span class="up-cat">${escHtml(cat)}</span>
+      <div class="up-row-body">
+        <div class="up-section">${escHtml(p.section || '')}${snippet ? `<span class="sep">·</span><span class="snippet">${snippet}</span>` : ''}</div>
+        <div class="up-meta">Proposed by <b>${escHtml(who)}</b> &middot; tick ${escHtml(String(p.proposed_at_tick ?? '?'))}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 init();
