@@ -206,6 +206,64 @@
   .offer-right { border-left:none; border-top:0.5px solid rgba(255,255,255,0.06); justify-content:flex-end; }
 }
 
+/* ─── Trial / pre-trial card (Pressing Issues) ─────────────────────
+   Richer than .offer-card. In-progress shows side pill (plaintiff
+   green / defendant blue), Round X of IV in italic serif, judge
+   name, and a YOUR TURN / OPPOSING TURN pill (your-turn pulses).
+   Pre-trial shows the same parties + a WAITING pill — no round /
+   judge / resume button since the trial hasn't started. */
+.ti-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:6px; overflow:hidden; border-left:3px solid #c8a26e;
+  display:flex; align-items:stretch; transition:background 0.15s; }
+.ti-card:hover { background:#101010; }
+#pressing-issues > .ti-card + .ti-card,
+#pressing-issues > .offer-card + .ti-card,
+#pressing-issues > .ci-camp + .ti-card { margin-top:10px; }
+#pressing-issues > .ti-card + .offer-card { margin-top:10px; }
+.ti-icon-wrap { display:flex; align-items:center; justify-content:center;
+  padding:13px 18px; border-right:0.5px solid rgba(255,255,255,0.07);
+  background:#0a0807; flex-shrink:0; }
+.ti-icon { width:38px; height:38px; border-radius:5px; background:#161208;
+  border:0.5px solid #5a4630; color:#dcb88a; display:flex; align-items:center;
+  justify-content:center; font-size:18px; }
+.ti-info { flex:1; padding:13px 18px; min-width:0; }
+.ti-eyebrow { font-size:7.5px; letter-spacing:0.16em; color:#c8a26e;
+  font-weight:700; margin-bottom:4px; }
+.ti-caption { font-family:Georgia,serif; font-size:14px; color:#fff;
+  font-weight:500; letter-spacing:-0.005em; line-height:1.25; margin-bottom:5px; }
+.ti-caption .v { font-style:italic; color:#c8a26e; margin:0 4px; }
+.ti-meta { display:flex; align-items:center; gap:10px; font-size:9.5px;
+  color:#888; flex-wrap:wrap; }
+.ti-side { padding:2px 8px; border-radius:3px; font-size:8.5px;
+  letter-spacing:0.1em; font-weight:700; }
+.ti-side.plaintiff { background:#10130a; color:#b8cf90; border:0.5px solid #4a5a3a; }
+.ti-side.defendant { background:#0e1318; color:#9ab8c8; border:0.5px solid #3a5060; }
+.ti-sep { color:#3a3a3a; }
+.ti-round { color:#bbb; }
+.ti-round strong { color:#fff; font-family:Georgia,serif; font-style:italic; }
+.ti-judge { color:#888; font-style:italic; }
+.ti-right { display:flex; align-items:center; gap:12px; padding:13px 18px;
+  background:#0a0807; border-left:0.5px solid rgba(255,255,255,0.07); flex-shrink:0; }
+.ti-status { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+.ti-status-lab { font-size:7.5px; letter-spacing:0.16em; color:#666; font-weight:700; }
+.ti-pill { padding:5px 11px; border-radius:4px; font-size:9px;
+  letter-spacing:0.13em; font-weight:700; display:flex; align-items:center; gap:6px; }
+.ti-pill.your-turn  { background:#161208; color:#dcb88a; border:0.5px solid #c8a26e; }
+.ti-pill.their-turn { background:#1a1a1a; color:#888; border:0.5px solid rgba(255,255,255,0.07); }
+.ti-pill.waiting    { background:#0e1611; color:#9ac99a; border:0.5px solid #3a5a3a; }
+.ti-pill-dot { width:6px; height:6px; border-radius:50%; background:currentColor;
+  box-shadow:0 0 6px rgba(220,184,138,0.7); animation:ti-pulse 1.6s ease-in-out infinite; }
+@keyframes ti-pulse { 0%, 100% { opacity:1; } 50% { opacity:0.4; } }
+.ti-resume-btn { padding:10px 17px; font-size:9px; letter-spacing:0.14em;
+  font-weight:700; border-radius:4px; background:#161208; border:0.5px solid #c8a26e;
+  color:#dcb88a; cursor:pointer; font-family:inherit; }
+.ti-resume-btn:hover { background:#251710; color:#fff; }
+@media (max-width: 720px) {
+  .ti-card { flex-direction:column; }
+  .ti-icon-wrap { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.07); padding:9px; }
+  .ti-right { border-left:none; border-top:0.5px solid rgba(255,255,255,0.07); justify-content:flex-end; }
+}
+
 /* Career log — one date-prefixed row per event, listed newest-first. */
 /* ─── Active Campaign card (Pressing Issues) ─────────────────────────
    Rendered when politician_active_election has a row for the current
@@ -864,6 +922,11 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} has successfully passed the Bar Exam of ${target || 'their nation'} and has been admitted as a judicial advocate.`,
   failed_bar_exam: (name, target) =>
     `${name} has failed the Bar Exam of ${target || 'their nation'}; it is unknown if they will re-attempt it in the future.`,
+  // Court case — written by represent_drawn_case + represent_pretrial
+  // (20270518). target_name is the case caption ("Plaintiff v.
+  // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.
+  took_case: (name, target, meta = {}) =>
+    `${name} has taken the case of ${target || 'a matter'} representing the ${meta.side || 'one side'}.`,
 };
 
 let politician = null;
@@ -1618,37 +1681,77 @@ function renderPressingIssues(ctx) {
   bindActiveTrialActions();
 }
 
+// Roman numerals 1-4 for round display.
+const TRIAL_ROUND_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+
 function renderActiveTrialCard(t) {
-  const yourTurn   = !!t.your_turn;
-  const sideLabel  = (t.side || '').toUpperCase();
+  const isPretrial = t.status === 'pre_trial';
+  const side       = t.side || 'plaintiff';
   const caseTag    = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
-  const roundLabel = `ROUND ${t.current_round || 1} OF IV`;
-  const eyebrow    = yourTurn
-    ? `TRIAL IN SESSION &middot; YOUR TURN &middot; ${roundLabel}`
-    : `TRIAL IN SESSION &middot; OPPOSING COUNSEL'S TURN &middot; ${roundLabel}`;
+  const sideLabel  = side === 'plaintiff' ? 'FOR THE PLAINTIFF' : 'FOR THE DEFENDANT';
+
+  // Pre-trial-self variant: side filled, waiting for opposing counsel.
+  if (isPretrial) {
+    const ticks = Number.isFinite(t.pre_trial_expires_at_tick)
+      ? Math.max(0, t.pre_trial_expires_at_tick - currentTick) : null;
+    const waiting = ticks == null ? 'pre-trial window'
+                  : `${ticks} tick${ticks === 1 ? '' : 's'} for opposing counsel`;
+    return `
+      <div class="ti-card pretrial" data-trial-id="${escHtml(t.trial_id)}">
+        <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
+        <div class="ti-info">
+          <div class="ti-eyebrow">PRE-TRIAL &middot; WAITING FOR OPPOSING COUNSEL</div>
+          <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
+          <div class="ti-meta">
+            <span class="ti-side ${side}">${escHtml(sideLabel)}</span>
+            <span class="ti-sep">&middot;</span>
+            <span class="ti-round">${escHtml(caseTag)}</span>
+            <span class="ti-sep">&middot;</span>
+            <span class="ti-judge">${escHtml(waiting)}</span>
+          </div>
+        </div>
+        <div class="ti-right">
+          <div class="ti-status">
+            <span class="ti-status-lab">STATUS</span>
+            <span class="ti-pill waiting">&#x231B; WAITING</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // In-progress variant: full mockup design.
+  const roundRoman = TRIAL_ROUND_ROMAN[t.current_round] || (t.current_round || 1);
+  const judge      = t.judge_name ? `Hon. ${t.judge_name} presiding` : 'court convened';
+  const turnPill   = t.your_turn
+    ? '<span class="ti-pill your-turn"><span class="ti-pill-dot"></span> YOUR TURN</span>'
+    : '<span class="ti-pill their-turn">OPPOSING TURN</span>';
   return `
-    <div class="offer-card trial-card" data-trial-id="${escHtml(t.trial_id)}">
-      <div class="offer-icon-wrap">
-        <div class="offer-icon">&#9876;</div>
-      </div>
-      <div class="offer-info">
-        <div class="oi-eyebrow">${eyebrow}</div>
-        <div class="oi-headline">${escHtml(t.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(t.defendant_name || '—')}</div>
-        <div class="oi-meta">
-          <span class="oi-corp">${escHtml(caseTag)}</span>
-          <span class="oi-sep">&middot;</span>
-          <span class="oi-ceo">FOR THE <strong>${escHtml(sideLabel)}</strong></span>
+    <div class="ti-card in-progress trial-enter-card" data-trial-id="${escHtml(t.trial_id)}">
+      <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
+      <div class="ti-info">
+        <div class="ti-eyebrow">ONGOING TRIAL &middot; ${escHtml(caseTag)}</div>
+        <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
+        <div class="ti-meta">
+          <span class="ti-side ${side}">${escHtml(sideLabel)}</span>
+          <span class="ti-sep">&middot;</span>
+          <span class="ti-round">Round <strong>${roundRoman}</strong> of IV</span>
+          <span class="ti-sep">&middot;</span>
+          <span class="ti-judge">${escHtml(judge)}</span>
         </div>
       </div>
-      <div class="offer-right">
-        <button type="button" class="offer-accept-btn trial-enter">&#9874; ENTER COURTROOM</button>
+      <div class="ti-right">
+        <div class="ti-status">
+          <span class="ti-status-lab">STATUS</span>
+          ${turnPill}
+        </div>
+        <button type="button" class="ti-resume-btn trial-enter">RESUME TRIAL &rsaquo;</button>
       </div>
     </div>`;
 }
 
 function bindActiveTrialActions() {
   document.querySelectorAll('.trial-enter').forEach(btn => {
-    btn.addEventListener('click', () => openTrialModal(btn.closest('.trial-card')?.dataset.trialId));
+    btn.addEventListener('click', () => openTrialModal(btn.closest('.ti-card')?.dataset.trialId));
   });
 }
 
