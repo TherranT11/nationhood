@@ -232,6 +232,14 @@ BEGIN
     IF v_trial.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'trial_not_found');
     END IF;
+    -- Defensive: a trial that's flipped to resolved / settled / expired
+    -- between page load and the user clicking ENTER COURTROOM should
+    -- not render as if play continues. The Phase 3 trial-history
+    -- surface can call a different RPC; this one is for live trials.
+    IF v_trial.status <> 'in_progress' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'trial_not_active',
+            'status', v_trial.status);
+    END IF;
 
     IF v_trial.plaintiff_advocate_id = v_pol.id THEN
         v_side := 'plaintiff';

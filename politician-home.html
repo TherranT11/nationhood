@@ -699,6 +699,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName } from './js/utils.js';
+import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
@@ -881,6 +882,10 @@ async function init() {
 
   renderHero(ctx.shard);
   renderStats();
+  // Trial modal X close — wired once at init since the modal element
+  // is static (the body of the modal re-renders on each open).
+  const trialCloseBtn = document.getElementById('trial-close');
+  if (trialCloseBtn) trialCloseBtn.addEventListener('click', closeTrialModal);
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
   renderCareer();
@@ -2355,13 +2360,13 @@ function trialReasonText(reason) {
     not_authenticated: 'Sign in to view this trial.',
     no_politician:     'No active politician on this account.',
     trial_not_found:   'Trial no longer exists.',
+    trial_not_active:  'This trial is no longer in session.',
     not_in_trial:      "You're not counsel on this trial.",
     case_not_found:    'Case record missing.',
   })[reason] || ('Could not load trial: ' + (reason || 'unknown'));
 }
 
 function renderTrialModal(d) {
-  const BEAT_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
   const caseTag    = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
   const roundLabel = `ROUND ${d.current_round || 1} OF IV`;
   const yourSide   = (d.side || 'plaintiff').toUpperCase();
@@ -2379,7 +2384,7 @@ function renderTrialModal(d) {
         return `
           <div class="${cls}">
             <div class="trial-beat-head">
-              ${t ? `<span class="trial-beat-type ${t}">${BEAT_LABEL[t] || ''}</span>` : ''}
+              ${t ? `<span class="trial-beat-type ${t}">${BEAT_TYPE_LABEL[t] || ''}</span>` : ''}
               <span class="trial-beat-num">&sect; ${i + 1}</span>
             </div>
             <div class="trial-beat-name">${escHtml(b?.name || '—')}</div>
@@ -2423,11 +2428,12 @@ init();
 
 <!-- Trial modal (Phase 2 shell). Opened from a "TRIAL IN SESSION"
      Pressing Issues card; pulls the caller's hand, round, and turn
-     from get_trial_state. Phase 3 wires the chat + input + beat
-     plays + objections + settle. -->
+     from get_trial_state. The X close button is wired via
+     addEventListener at init (see closeTrialModal). Phase 3 wires
+     the chat + input + beat plays + objections + settle. -->
 <div class="trial-back" id="trial-back">
   <div class="trial-modal">
-    <button type="button" class="trial-close" onclick="document.getElementById('trial-back').classList.remove('open');document.body.style.overflow='';" title="Close">&#10005;</button>
+    <button type="button" class="trial-close" id="trial-close" title="Close">&#10005;</button>
     <div id="trial-content"></div>
   </div>
 </div>
