@@ -496,6 +496,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName } from './js/utils.js';
+import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
@@ -1768,7 +1769,6 @@ function showTryCaseStatus(msg, isBad) {
 }
 
 function renderTryCaseModal(d, factionId) {
-  const beatTypeLabel = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
   const beats = Array.isArray(d.beats) ? d.beats : [];
   const partyHtml = (label, name, partyType, corpType) => `
     <div class="tc-party">
@@ -1804,7 +1804,7 @@ function renderTryCaseModal(d, factionId) {
               <div class="tc-beat-head">
                 <span class="tc-beat-num">§ ${i + 1}</span>
                 <span class="tc-beat-name">${escHtml(b?.name || '—')}</span>
-                ${t ? `<span class="tc-beat-type ${t}">${beatTypeLabel[t] || ''}</span>` : ''}
+                ${t ? `<span class="tc-beat-type ${t}">${BEAT_TYPE_LABEL[t] || ''}</span>` : ''}
                 ${sup ? `<span class="tc-beat-support">SUPPORTS ${sup.toUpperCase()}</span>` : ''}
               </div>
               <div class="tc-beat-desc">${escHtml(b?.description || '')}</div>
