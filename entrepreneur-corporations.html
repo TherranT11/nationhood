@@ -718,11 +718,16 @@ function renderPositions(corps, filter) {
     for (const n of (natRes.data || [])) {
       (nationsByCont[n.continent] = nationsByCont[n.continent] || []).push(n);
     }
-    // Founding is HOME-NATION ONLY (server-enforced in found_entrepreneur_corp).
-    // Restrict the HQ picker to the home nation; corps expand to other nations
-    // per-corp via Regional HQs, not new foreign foundings. Falls back to the
-    // full picker if the home nation can't be resolved (server gate backstops).
-    const homeNation = (natRes.data || []).find(n => n.name === ctx.faction?.nation);
+    // Founding is HOME-NATION ONLY (server-enforced in found_entrepreneur_corp,
+    // 20270490). Home = ent_origin_nation (birthplace, immutable); current
+    // location can drift via entrepreneur_travel and the server gate rejects
+    // founding from abroad with reason 'not_at_home_nation'. Restrict the
+    // picker to home; corps expand to other nations per-corp via Regional HQs.
+    // Falls back to current nation if origin isn't set, then to the full
+    // picker if neither resolves — the server gate is the backstop.
+    const homeName = ctx.faction?.ent_origin_nation || ctx.faction?.nation;
+    const homeNation = (natRes.data || []).find(n => n.name === homeName);
+    const isAbroad = homeName && ctx.faction?.nation && ctx.faction.nation !== homeName;
     if (homeNation) {
       nationsByCont = { [homeNation.continent]: [homeNation] };
       activeCont = homeNation.continent;
@@ -730,7 +735,11 @@ function renderPositions(corps, filter) {
       const conts = document.getElementById('ec-conts');
       if (conts) conts.style.display = 'none';
       const note = document.getElementById('ec-hq-note');
-      if (note) note.textContent = `Corps are founded in your home nation, ${homeNation.name}. Expand to other nations per-corp by building a Regional HQ there.`;
+      if (note) {
+        note.textContent = isAbroad
+          ? `Your home nation is ${homeNation.name} — you must travel back from ${ctx.faction.nation} before founding. Expand to other nations per-corp via Regional HQs.`
+          : `Corps are founded in your home nation, ${homeNation.name}. Expand to other nations per-corp by building a Regional HQ there.`;
+      }
     }
     entCorpCounts = {};
     for (const r of (cntRes.data || [])) {
@@ -1074,7 +1083,8 @@ function renderPositions(corps, filter) {
         if (!data || !data.success) {
           const FRIENDLY = {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
-            not_home_nation: 'You can only found corporations in your home nation. Expand to other nations by building a Regional HQ there first.',
+            not_home_nation: `You can only found corporations in your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''}. Expand to other nations by building a Regional HQ there first.`,
+            not_at_home_nation: `You must travel back to your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''} to found a corporation${data?.current_location ? ' — you are currently in ' + data.current_location : ''}.`,
             delinquent_debt: 'You owe personal debt from a bankrupt corporation. Settle it on your Character page before founding a new corporation.',
             insufficient_funds: data?.have != null && data?.need != null
               ? `Insufficient cash — need ${fmtM(data.need)}, have ${fmtM(data.have)}.`

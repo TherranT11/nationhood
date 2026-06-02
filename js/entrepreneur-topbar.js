@@ -316,7 +316,7 @@ async function getAdminFactionOverride() {
 }
 
 const ENT_FACTION_COLS =
-  'id, faction_name, leader_first_name, leader_last_name, leader_age, nation, ' +
+  'id, faction_name, leader_first_name, leader_last_name, leader_age, nation, ent_origin_nation, ' +
   'entrepreneur_archetype, ent_ambition, ent_cunning, ent_reputation, ent_vision, party_funds, status';
 
 export async function bootstrapEntrepreneur(activeTab) {
