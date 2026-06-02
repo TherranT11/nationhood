@@ -54,5 +54,14 @@ jobs:
       - name: Apply pending migrations
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        # --include-all lets supabase apply migrations whose timestamp
+        # is earlier than the latest already-recorded one. We need it
+        # because the project has been back-filling sql-only migrations
+        # that pre-date prod's most recent ledger entry — without the
+        # flag, supabase exits 1 with "Found local migration files to
+        # be inserted before the last migration on remote database".
+        # All our migrations are idempotent (IF EXISTS / IF NOT EXISTS
+        # / CREATE OR REPLACE) so re-running an earlier-dated file is
+        # safe.
         run: |
-          supabase db push --linked --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
+          supabase db push --linked --include-all --password "${{ secrets.SUPABASE_DB_PASSWORD }}"
