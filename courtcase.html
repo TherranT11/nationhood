@@ -152,6 +152,11 @@
     background-size:5px 5px, 5px 5px; background-repeat:no-repeat;}
   .bs-support:hover{border-color:var(--brass-dim);}
   .bs-support:focus{outline:none;border-color:var(--brass);}
+  /* Static read-only values used by the example beats. Matches the
+     disabled-select visual so the examples read the same as a filled-in
+     user beat without the browser's grey-out-disabled-input quirks. */
+  .bs-value{padding:6px 11px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:var(--brass-bright);font-family:Georgia,serif;font-size:13px;font-weight:700;min-width:62px;text-align:center;}
+  .bs-value--text{color:#fff;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:0.06em;min-width:auto;}
   .bs-hint{font-size:8.5px;color:var(--mut);font-style:italic;flex:1;}
 
   /* add beat button + counter */
@@ -385,9 +390,9 @@
           </div>
           <div class="beat-strength">
             <span class="bs-lab">HIDDEN STRENGTH</span>
-            <select class="bs-select" disabled><option>8</option></select>
+            <span class="bs-value">8</span>
             <span class="bs-lab">SUPPORTS</span>
-            <select class="bs-support" disabled><option>DEFENDANT</option></select>
+            <span class="bs-value bs-value--text">DEFENDANT</span>
             <span class="bs-hint">documentary &middot; hard to refute</span>
           </div>
         </div>
@@ -410,9 +415,9 @@
           </div>
           <div class="beat-strength">
             <span class="bs-lab">HIDDEN STRENGTH</span>
-            <select class="bs-select" disabled><option>5</option></select>
+            <span class="bs-value">5</span>
             <span class="bs-lab">SUPPORTS</span>
-            <select class="bs-support" disabled><option>DEFENDANT</option></select>
+            <span class="bs-value bs-value--text">DEFENDANT</span>
             <span class="bs-hint">judge-dependent &middot; moves a jury</span>
           </div>
         </div>
@@ -814,6 +819,9 @@ function addBeat(prefill) {
   });
   node.querySelector('.bs-support').addEventListener('change', (e) => {
     node.dataset.support = e.target.value || '';
+    // Recalc so the REPUTATION ON VICTORY numbers refresh — the
+    // (sum / 3) totals depend on which side each beat supports.
+    recalcBalance();
   });
 
   renumberBeats();

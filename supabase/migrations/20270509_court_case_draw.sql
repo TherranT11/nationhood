@@ -226,6 +226,7 @@ DECLARE
     v_pol         factions%ROWTYPE;
     v_case_status text;
     v_standing    numeric;
+    v_inserted    int;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -255,10 +256,17 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'case_not_approved');
     END IF;
 
-    -- Idempotent: UNIQUE(politician_id, case_id) blocks a double-fire.
+    -- Gate the stat award on the INSERT actually landing. UNIQUE
+    -- (politician_id, case_id) means a double-fire / replay only
+    -- inserts once; v_inserted = 0 on the second try, and we bail
+    -- before applying +0.2 again.
     INSERT INTO public.politician_court_case_attempts (politician_id, case_id, decision)
     VALUES (v_pol.id, p_case_id, 'accepted')
     ON CONFLICT (politician_id, case_id) DO NOTHING;
+    GET DIAGNOSTICS v_inserted = ROW_COUNT;
+    IF v_inserted = 0 THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_decided');
+    END IF;
 
     UPDATE public.factions
        SET politician_standing = COALESCE(politician_standing, 0) + 0.2
@@ -287,6 +295,7 @@ DECLARE
     v_pol         factions%ROWTYPE;
     v_case_status text;
     v_reputation  int;
+    v_inserted    int;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -316,9 +325,15 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'case_not_approved');
     END IF;
 
+    -- Same idempotency gate as accept_drawn_case: skip the -1 penalty
+    -- if this case was already decided by this politician.
     INSERT INTO public.politician_court_case_attempts (politician_id, case_id, decision)
     VALUES (v_pol.id, p_case_id, 'rejected')
     ON CONFLICT (politician_id, case_id) DO NOTHING;
+    GET DIAGNOSTICS v_inserted = ROW_COUNT;
+    IF v_inserted = 0 THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_decided');
+    END IF;
 
     UPDATE public.factions
        SET politician_reputation = GREATEST(0, COALESCE(politician_reputation, 0) - 1)
