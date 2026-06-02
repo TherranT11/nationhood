@@ -1155,6 +1155,13 @@ function populateRequiresBeatSelect(selectEl, selectedIdx) {
     optsHtml += `<option value="${i}" ${isSel ? 'selected' : ''}>§ ${i + 1} · ${escapeHtml(name)}</option>`;
   });
   selectEl.innerHTML = optsHtml;
+  // If the previously-selected index no longer exists in the current
+  // beats list (a beat was deleted), the select falls back to the
+  // placeholder. Clear the dataset so a stale index doesn't quietly
+  // re-resolve to a different beat later if the list grows back.
+  if (selectEl.value === '' && effective !== '') {
+    selectEl.dataset.requiresBeat = '';
+  }
   selectEl.classList.toggle('empty', !selectEl.value);
 }
 
@@ -1220,6 +1227,9 @@ function validateWitnesses(witnesses) {
   for (let i = 0; i < witnesses.length; i++) {
     const w = witnesses[i];
     if (!w.name) return `Witness ${i + 1} needs a name.`;
+    if (w.direct.length === 0 && w.cross.length === 0) {
+      return `${w.name}: a witness needs at least one direct or cross question.`;
+    }
     for (const phase of ['direct', 'cross']) {
       for (let j = 0; j < w[phase].length; j++) {
         const qa = w[phase][j];
