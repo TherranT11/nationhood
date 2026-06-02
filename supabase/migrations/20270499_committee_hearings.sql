@@ -479,11 +479,19 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
+    -- Conditional UPDATE so two members racing to accept the same
+    -- testimony don't both fire the stat reward. The first writer wins;
+    -- the second's UPDATE matches zero rows and the function returns
+    -- without granting a second +1.
     UPDATE committee_hearing_testimonies
        SET accepted               = true,
            accepted_by_faction_id = v_pol.id,
            accepted_at_tick       = v_tick
-     WHERE id = v_test.id;
+     WHERE id = v_test.id
+       AND accepted = false;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', true, 'testimony_id', v_test.id, 'already_accepted', true);
+    END IF;
 
     -- Submitter reward. Skipped silently if the submitter faction is
     -- gone (ON DELETE SET NULL would have nulled submitter_faction_id).

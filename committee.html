@@ -303,7 +303,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { safeHexColor, factionInitials, displayName } from './js/utils.js';
+import { safeHexColor, factionInitials, displayName, truncate } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 
 const ROLE_LABEL = {
@@ -751,11 +751,6 @@ function renderHearingRecord(testimonies, personas, onCommittee, hasOpenHearing)
   }).join('');
 }
 
-function truncate(s, n) {
-  const str = String(s || '');
-  return str.length > n ? str.slice(0, n - 1).trim() + '…' : str;
-}
-
 // ── Witness modal ──────────────────────────────────────────────
 // Persona dropdown + 400-char textarea + submit. Lives at the bottom
 // of the document (the <div id="wit-overlay"> block); this wires the
@@ -772,6 +767,7 @@ const REASON_HUMAN_TESTIMONY = {
 };
 
 let _witnessSubmitInFlight = false;
+let _escapeBound = false;   // document-level Escape handler binds once
 
 function wireWitnessModal(activeHearing, personas) {
   const closeBtn = document.getElementById('wit-close');
@@ -803,11 +799,15 @@ function wireWitnessModal(activeHearing, personas) {
 
   document.getElementById('wit-submit').onclick = () => submitWitnessTestimony(activeHearing);
 
-  // Single document-level Escape handler; safe to re-bind per render
-  // because we keep replacing onkeydown rather than addEventListener.
-  document.onkeydown = (e) => {
-    if (e.key === 'Escape' && overlay.classList.contains('show')) closeWitnessModal();
-  };
+  // addEventListener bound once (guarded by _escapeBound) so we don't
+  // stomp any other document-level keydown handler and we don't
+  // accumulate duplicates if wireWitnessModal is ever called twice.
+  if (!_escapeBound) {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('show')) closeWitnessModal();
+    });
+    _escapeBound = true;
+  }
 }
 
 function openWitnessModal(activeHearing, personas) {
