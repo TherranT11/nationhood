@@ -590,6 +590,89 @@
 .trial-hand-hint { font-size:8.5px; color:#888; text-align:center; margin-top:11px;
   line-height:1.5; font-style:italic; }
 .trial-hand-hint em { color:#dcb88a; font-style:italic; }
+
+/* ── Trial chat (Phase 3a) ───────────────────────────────────── */
+.trial-round-marker { align-self:center; text-align:center; font-size:8px;
+  letter-spacing:0.16em; color:#888; padding:4px 12px; background:#0a0807;
+  border:0.5px solid rgba(255,255,255,0.06); border-radius:14px;
+  font-weight:600; margin:8px auto; max-width:200px; }
+.trial-msg { display:flex; gap:9px; margin-bottom:10px; }
+.trial-msg.you   { flex-direction:row-reverse; }
+.trial-msg.them  { flex-direction:row; }
+.trial-msg-bubble { max-width:78%; padding:10px 13px; border-radius:7px;
+  border:0.5px solid rgba(255,255,255,0.07); }
+.trial-msg.you  .trial-msg-bubble { background:rgba(200,144,112,0.05);
+  border-color:#5a4630; }
+.trial-msg.them .trial-msg-bubble { background:#0d0a08; }
+.trial-msg-text { font-size:11px; line-height:1.6; color:#ddd; }
+.trial-msg-beat { margin-top:8px; padding:7px 10px; background:#0a0807;
+  border:0.5px solid #2a2218; border-radius:4px; border-left:2.5px solid;
+  display:flex; align-items:center; gap:8px; }
+.trial-msg-beat.evid { border-left-color:#d4b87a; }
+.trial-msg-beat.law  { border-left-color:#9aab7a; }
+.trial-msg-beat.fact { border-left-color:#7a9aab; }
+.trial-msg-beat.app  { border-left-color:#c87a7a; }
+.trial-msg-beat-type { font-size:7px; letter-spacing:0.14em; font-weight:700;
+  padding:2px 6px; border-radius:2px; }
+.trial-msg-beat-type.evid { background:#16120a; color:#d4b87a; border:0.5px solid #5a4a2e; }
+.trial-msg-beat-type.law  { background:#10130a; color:#9aab7a; border:0.5px solid #4a5a3a; }
+.trial-msg-beat-type.fact { background:#0e1318; color:#7a9aab; border:0.5px solid #3a5060; }
+.trial-msg-beat-type.app  { background:#160e0e; color:#c87a7a; border:0.5px solid #5a3030; }
+.trial-msg-beat-name { font-family:Georgia,serif; font-size:10.5px;
+  color:#d8cfb8; font-weight:500; flex:1; }
+
+/* ── Beat hand: armed / armable / played states ─────────────── */
+.trial-beat.armable { cursor:pointer; transition:transform 0.15s, box-shadow 0.15s; }
+.trial-beat.armable:hover { transform:translateY(-2px);
+  box-shadow:0 6px 14px rgba(0,0,0,0.5); }
+.trial-beat.armed { transform:translateY(-3px);
+  box-shadow:0 0 0 1px #c8a26e, 0 6px 14px rgba(200,162,110,0.25); }
+.trial-beat-foot.armed      { background:#161208; color:#dcb88a;
+  border-top-color:#c8a26e; }
+.trial-beat-foot.played-foot { color:#888; }
+
+/* ── Input bar (Phase 3a) ──────────────────────────────────── */
+.trial-input-bar { padding:12px 24px 14px; background:#0a0807;
+  border-top:0.5px solid rgba(255,255,255,0.06);
+  border-bottom:0.5px solid rgba(255,255,255,0.06); flex-shrink:0; }
+.trial-input-bar.disabled { background:#080606; }
+.trial-input-hint { font-size:10.5px; color:#888; font-style:italic; text-align:center; padding:8px 0; }
+.trial-input-hint em { color:#dcb88a; font-style:italic; }
+.trial-input-meta { display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:8px;
+  letter-spacing:0.13em; color:#888; }
+.trial-input-meta-lab { color:#c8a26e; font-weight:700; }
+.trial-msg-dots { display:flex; gap:5px; }
+.trial-msg-dot { width:11px; height:11px; border-radius:50%;
+  background:#0a0807; border:0.5px solid rgba(255,255,255,0.12); }
+.trial-msg-dot.used { background:#c8a26e; border-color:#c8a26e; }
+.trial-input-remaining { margin-left:auto; font-family:monospace; letter-spacing:0.04em; color:#888; }
+
+.trial-armed-tag { font-size:8.5px; letter-spacing:0.13em; color:#dcb88a; font-weight:700;
+  background:#161208; border:0.5px solid #5a4630; border-radius:3px;
+  padding:5px 9px; margin-bottom:9px; text-align:center; }
+
+.trial-input-row { display:flex; gap:9px; align-items:stretch; }
+.trial-input-field { flex:1; padding:9px 12px; background:#080606;
+  border:0.5px solid #5a4630; border-radius:5px; color:#fff; font-size:11.5px;
+  font-family:inherit; line-height:1.55; resize:none; min-height:44px; max-height:100px; }
+.trial-input-field::placeholder { color:#5a5a5a; font-style:italic; }
+.trial-input-field:focus { outline:none; border-color:#c8a26e; }
+.trial-input-actions { display:flex; flex-direction:column; gap:5px; }
+.trial-send-btn, .trial-endturn-btn { padding:8px 14px; border-radius:4px;
+  font-size:9px; letter-spacing:0.13em; font-weight:700; cursor:pointer;
+  font-family:inherit; }
+.trial-send-btn { background:#161208; border:0.5px solid #c8a26e; color:#dcb88a; }
+.trial-send-btn:hover { background:#251710; color:#fff; }
+.trial-endturn-btn { background:transparent;
+  border:0.5px solid rgba(255,255,255,0.12); color:#888; }
+.trial-endturn-btn:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
+.trial-send-btn:disabled, .trial-endturn-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+@media (max-width: 720px) {
+  .trial-input-row { flex-direction:column; }
+  .trial-input-actions { flex-direction:row; }
+  .trial-input-actions button { flex:1; }
+}
 </style>
 </head>
 <body>
@@ -2325,16 +2408,60 @@ async function refuseCase(factionId, caseId) {
   }
 }
 
-// ── Trial modal (Phase 2 shell) ─────────────────────────────────────
-// Read-only view of an in-progress trial. Pulls the caller's hand,
-// the opponent name, round, and turn from get_trial_state. No message
-// chat yet (Phase 3); the chat area renders an empty placeholder.
+// ── Trial modal (Phase 3a) ──────────────────────────────────────────
+// Renders an in-progress trial: case header, chat log, hand grid,
+// and an input bar that lets the active lawyer arm a beat + send
+// up to 4 messages per turn. Polls every 4s while open so messages
+// from the opposing counsel appear without a manual refresh.
+let _trialPoll = null;
+let _trialState = { trialId: null, armedBeatIndex: null, sending: false };
+
 async function openTrialModal(trialId) {
   if (!trialId) return;
+  _trialState.trialId = trialId;
+  _trialState.armedBeatIndex = null;
+  _trialState.sending = false;
   document.getElementById('trial-back').classList.add('open');
   document.body.style.overflow = 'hidden';
   document.getElementById('trial-content').innerHTML =
     '<div class="trial-status">Loading trial…</div>';
+  await refreshTrial();
+  // Light-touch polling: only while the modal is open. Stops on close
+  // or when the trial leaves in_progress.
+  if (_trialPoll) clearInterval(_trialPoll);
+  _trialPoll = setInterval(() => {
+    if (!_trialState.sending) refreshTrial();
+  }, 4000);
+}
+function closeTrialModal() {
+  document.getElementById('trial-back').classList.remove('open');
+  document.body.style.overflow = '';
+  if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
+  _trialState.trialId = null;
+  _trialState.armedBeatIndex = null;
+}
+function trialReasonText(reason) {
+  return ({
+    not_authenticated:           'Sign in to view this trial.',
+    no_politician:               'No active politician on this account.',
+    trial_not_found:             'Trial no longer exists.',
+    trial_not_active:            'This trial is no longer in session.',
+    not_in_trial:                "You're not counsel on this trial.",
+    case_not_found:              'Case record missing.',
+    not_your_turn:               "It's the opposing counsel's turn.",
+    turn_message_cap:            'You have already sent 4 messages this turn.',
+    empty_text:                  'Type a message before sending.',
+    text_too_long:               'Messages are capped at 240 characters.',
+    invalid_beat_index:          'That beat is not part of this case.',
+    beat_already_played_this_turn: 'You have already played a beat this round.',
+    beat_not_in_hand:            'That beat is no longer in your hand.',
+    beat_favours_opponent:       'You can only play beats that favour your side as argument.',
+  })[reason] || ('Action failed: ' + (reason || 'unknown'));
+}
+
+async function refreshTrial() {
+  const trialId = _trialState.trialId;
+  if (!trialId) return;
   try {
     const { data, error } = await _supabase.rpc('get_trial_state', {
       p_faction_id: politician.id, p_trial_id: trialId,
@@ -2343,30 +2470,35 @@ async function openTrialModal(trialId) {
     if (!data?.success) {
       document.getElementById('trial-content').innerHTML =
         `<div class="trial-status bad">${escHtml(trialReasonText(data?.reason))}</div>`;
+      if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
       return;
     }
     renderTrialModal(data);
   } catch (err) {
     document.getElementById('trial-content').innerHTML =
       `<div class="trial-status bad">Failed to load: ${escHtml(err?.message || 'network error')}</div>`;
+    if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
   }
-}
-function closeTrialModal() {
-  document.getElementById('trial-back').classList.remove('open');
-  document.body.style.overflow = '';
-}
-function trialReasonText(reason) {
-  return ({
-    not_authenticated: 'Sign in to view this trial.',
-    no_politician:     'No active politician on this account.',
-    trial_not_found:   'Trial no longer exists.',
-    trial_not_active:  'This trial is no longer in session.',
-    not_in_trial:      "You're not counsel on this trial.",
-    case_not_found:    'Case record missing.',
-  })[reason] || ('Could not load trial: ' + (reason || 'unknown'));
 }
 
 function renderTrialModal(d) {
+  // If a beat we'd previously armed got consumed (e.g., a stale tab
+  // played it), drop the arm.
+  if (_trialState.armedBeatIndex != null) {
+    const armedBeat = (d.hand || []).find(b => b.beat_index === _trialState.armedBeatIndex);
+    if (!armedBeat || armedBeat.played_at_round != null || armedBeat.objected_at_round != null) {
+      _trialState.armedBeatIndex = null;
+    }
+  }
+
+  // Save the in-flight textarea state so the polling re-render doesn't
+  // wipe what the lawyer is typing.
+  const prevInput = document.getElementById('trial-input');
+  const carryText = prevInput ? prevInput.value : '';
+  const carryFocus = prevInput === document.activeElement;
+  const carrySelStart = prevInput && carryFocus ? prevInput.selectionStart : null;
+  const carrySelEnd   = prevInput && carryFocus ? prevInput.selectionEnd   : null;
+
   const caseTag    = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
   const roundLabel = `ROUND ${d.current_round || 1} OF IV`;
   const yourSide   = (d.side || 'plaintiff').toUpperCase();
@@ -2374,30 +2506,7 @@ function renderTrialModal(d) {
     ? '<span class="trial-turn-pill your"><span class="dot"></span> YOUR TURN</span>'
     : '<span class="trial-turn-pill theirs">OPPOSING TURN</span>';
 
-  const hand = Array.isArray(d.hand) ? d.hand : [];
-  const handHtml = hand.length
-    ? hand.map((b, i) => {
-        const t = b?.type || '';
-        const played = b?.played_at_round != null;
-        const favorsYou = b?.support === d.side;
-        const cls = ['trial-beat', t, played ? 'played' : ''].filter(Boolean).join(' ');
-        return `
-          <div class="${cls}">
-            <div class="trial-beat-head">
-              ${t ? `<span class="trial-beat-type ${t}">${BEAT_TYPE_LABEL[t] || ''}</span>` : ''}
-              <span class="trial-beat-num">&sect; ${i + 1}</span>
-            </div>
-            <div class="trial-beat-name">${escHtml(b?.name || '—')}</div>
-            <div class="trial-beat-desc">${escHtml(b?.description || '')}</div>
-            <div class="trial-beat-foot ${favorsYou ? 'favors-you' : 'favors-them'}">
-              ${played
-                ? `PLAYED &middot; ROUND ${b.played_at_round}`
-                : (favorsYou ? 'FAVORS YOUR SIDE' : 'FAVORS OPPONENT')}
-            </div>
-          </div>`;
-      }).join('')
-    : '<div class="trial-status">No beats dealt yet.</div>';
-
+  const messages = Array.isArray(d.messages) ? d.messages : [];
   document.getElementById('trial-content').innerHTML = `
     <div class="trial-head">
       <div class="trial-head-info">
@@ -2410,17 +2519,206 @@ function renderTrialModal(d) {
 
     <div class="trial-overview">${escHtml(d.overview || '')}</div>
 
-    <div class="trial-chat">
-      <div class="trial-status">Argument log will appear here once messages are exchanged.</div>
-    </div>
+    <div class="trial-chat" id="trial-chat">${renderTrialChat(messages, d.side)}</div>
+
+    ${renderTrialInputBar(d)}
 
     <div class="trial-hand">
-      <div class="trial-hand-lab">YOUR HAND &middot; ${hand.length} BEATS DRAWN FROM THE POOL</div>
-      <div class="trial-hand-grid">${handHtml}</div>
-      <div class="trial-hand-hint">
-        Phase 3 will activate the input bar &mdash; arm a beat, send your message, advance the turn. <em>For now, the shell is read-only.</em>
+      <div class="trial-hand-lab">YOUR HAND &middot; ${(d.hand || []).length} BEATS DRAWN FROM THE POOL</div>
+      <div class="trial-hand-grid">${renderTrialHand(d)}</div>
+    </div>`;
+
+  // Scroll chat to bottom on every render so the latest message is visible.
+  const chat = document.getElementById('trial-chat');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+
+  // Restore typed text + selection / focus carried over from the
+  // previous render (otherwise the 4s poll wipes the textarea).
+  const newInput = document.getElementById('trial-input');
+  if (newInput && carryText) newInput.value = carryText;
+  if (newInput && carryFocus) {
+    newInput.focus();
+    if (carrySelStart != null) newInput.setSelectionRange(carrySelStart, carrySelEnd);
+  }
+
+  bindTrialControls(d);
+}
+
+function renderTrialChat(messages, yourSide) {
+  if (!messages.length) {
+    return '<div class="trial-status">Argument log will appear here once messages are exchanged.</div>';
+  }
+  // Group by round: insert a "ROUND N" divider when round changes.
+  let lastRound = null;
+  return messages.map(m => {
+    let divider = '';
+    if (m.round !== lastRound) {
+      divider = `<div class="trial-round-marker">&mdash; ROUND ${m.round} &mdash;</div>`;
+      lastRound = m.round;
+    }
+    const mine = m.side === yourSide;
+    const cls  = mine ? 'trial-msg you' : 'trial-msg them';
+    const beat = m.beat_played_index != null
+      ? `<div class="trial-msg-beat ${escHtml(m.beat_type || '')}">
+           <span class="trial-msg-beat-type ${escHtml(m.beat_type || '')}">${escHtml((BEAT_TYPE_LABEL[m.beat_type] || '').toUpperCase())}</span>
+           <span class="trial-msg-beat-name">${escHtml(m.beat_name || '—')}</span>
+         </div>` : '';
+    return divider + `
+      <div class="${cls}">
+        <div class="trial-msg-bubble">
+          <div class="trial-msg-text">${escHtml(m.text)}</div>
+          ${beat}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderTrialHand(d) {
+  const hand = Array.isArray(d.hand) ? d.hand : [];
+  if (!hand.length) return '<div class="trial-status">No beats dealt yet.</div>';
+  const armedIndex = _trialState.armedBeatIndex;
+  return hand.map((b, i) => {
+    const t = b?.type || '';
+    const played = b?.played_at_round != null;
+    const objected = b?.objected_at_round != null;
+    const consumed = played || objected;
+    const favorsYou = b?.support === d.side;
+    const armed = (armedIndex === b.beat_index) && !consumed;
+    const armable = d.your_turn && favorsYou && !consumed;
+    const cls = ['trial-beat', t,
+      consumed ? 'played' : '',
+      armed ? 'armed' : '',
+      armable ? 'armable' : '',
+    ].filter(Boolean).join(' ');
+    let footText;
+    if (played) footText = `PLAYED &middot; ROUND ${b.played_at_round}`;
+    else if (objected) footText = `USED &middot; OBJECTION`;
+    else if (armed) footText = '&#9876; ARMED';
+    else if (favorsYou) footText = 'FAVORS YOUR SIDE';
+    else footText = 'FAVORS OPPONENT';
+    const footCls = armed
+      ? 'armed'
+      : (consumed ? 'played-foot' : (favorsYou ? 'favors-you' : 'favors-them'));
+    return `
+      <div class="${cls}" data-beat-index="${b.beat_index}"${armable ? '' : ' aria-disabled="true"'}>
+        <div class="trial-beat-head">
+          ${t ? `<span class="trial-beat-type ${t}">${escHtml(BEAT_TYPE_LABEL[t] || '')}</span>` : ''}
+          <span class="trial-beat-num">&sect; ${i + 1}</span>
+        </div>
+        <div class="trial-beat-name">${escHtml(b?.name || '—')}</div>
+        <div class="trial-beat-desc">${escHtml(b?.description || '')}</div>
+        <div class="trial-beat-foot ${footCls}">${footText}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderTrialInputBar(d) {
+  if (!d.your_turn) {
+    return `
+      <div class="trial-input-bar disabled">
+        <div class="trial-input-hint">Opposing counsel is speaking. <em>Wait for your turn.</em></div>
+      </div>`;
+  }
+  const sent = Number(d.messages_sent_this_turn) || 0;
+  const remaining = Math.max(0, 4 - sent);
+  const dotsHtml = Array.from({ length: 4 }, (_, i) =>
+    `<span class="trial-msg-dot${i < sent ? ' used' : ''}"></span>`).join('');
+  const armedHtml = _trialState.armedBeatIndex != null
+    ? `<div class="trial-armed-tag">&#9876; BEAT ARMED &middot; will play with next message</div>`
+    : '';
+  return `
+    <div class="trial-input-bar">
+      <div class="trial-input-meta">
+        <span class="trial-input-meta-lab">MESSAGES THIS TURN</span>
+        <span class="trial-msg-dots">${dotsHtml}</span>
+        <span class="trial-input-remaining">${remaining} of 4 remaining</span>
+      </div>
+      ${armedHtml}
+      <div class="trial-input-row">
+        <textarea class="trial-input-field" id="trial-input" maxlength="240"
+                  placeholder="Address the Court. (240 character limit)"></textarea>
+        <div class="trial-input-actions">
+          <button type="button" class="trial-send-btn" id="trial-send">SEND</button>
+          <button type="button" class="trial-endturn-btn" id="trial-endturn">END TURN</button>
+        </div>
       </div>
     </div>`;
+}
+
+function bindTrialControls(d) {
+  // Arm / disarm beats.
+  document.querySelectorAll('#trial-content .trial-beat.armable').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = Number(card.dataset.beatIndex);
+      _trialState.armedBeatIndex =
+        _trialState.armedBeatIndex === idx ? null : idx;
+      renderTrialModal(d);
+    });
+  });
+  // Send + End Turn.
+  const sendBtn   = document.getElementById('trial-send');
+  const endBtn    = document.getElementById('trial-endturn');
+  if (sendBtn)   sendBtn.addEventListener('click', () => sendTrialMessage(d.trial_id));
+  if (endBtn)    endBtn.addEventListener('click',  () => endTrialTurn(d.trial_id));
+}
+
+async function sendTrialMessage(trialId) {
+  if (_trialState.sending) return;
+  const input = document.getElementById('trial-input');
+  if (!input) return;
+  const text = (input.value || '').trim();
+  if (!text) { input.focus(); return; }
+  if (text.length > 240) { alert('Messages are capped at 240 characters.'); return; }
+
+  _trialState.sending = true;
+  const sendBtn = document.getElementById('trial-send');
+  const endBtn  = document.getElementById('trial-endturn');
+  if (sendBtn) sendBtn.disabled = true;
+  if (endBtn)  endBtn.disabled  = true;
+  try {
+    const { data, error } = await _supabase.rpc('send_trial_message', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+      p_text:       text,
+      p_beat_index: _trialState.armedBeatIndex,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    input.value = '';
+    _trialState.armedBeatIndex = null;
+    await refreshTrial();
+  } catch (err) {
+    alert('Send failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (endBtn)  endBtn.disabled  = false;
+  }
+}
+
+async function endTrialTurn(trialId) {
+  if (_trialState.sending) return;
+  if (!confirm('End your turn now? You can still send up to your remaining messages.')) return;
+  _trialState.sending = true;
+  try {
+    const { data, error } = await _supabase.rpc('end_turn', {
+      p_faction_id: politician.id, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    _trialState.armedBeatIndex = null;
+    await refreshTrial();
+  } catch (err) {
+    alert('End turn failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+  }
 }
 
 init();
