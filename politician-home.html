@@ -565,7 +565,6 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName } from './js/utils.js';
-import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
@@ -1864,6 +1863,42 @@ function assessmentText(pSum, dSum) {
     : 'favors <em>the defendant</em> on the beats';
 }
 
+// Render one of the two side cards. Both sides are structurally
+// identical — only the side slug, the party data, and the
+// favored/uphill state vary. `isFavored` and `isUphill` are mutually
+// exclusive; both false means the case is evenly weighed.
+function tcSideCard(side, name, partyType, corpType, rep, count, sum, isFavored, isUphill) {
+  const tag = isFavored ? '<span class="tc-favored-tag">FAVORED</span>'
+            : (isUphill ? '<span class="tc-uphill-tag">UPHILL</span>' : '');
+  const note = isFavored
+    ? 'An easier win, a smaller reward. <em>The case is on your side.</em>'
+    : (isUphill
+        ? 'A hard fight, a larger purse. <em>You\'ll have to outwork the file.</em>'
+        : 'The case is evenly weighed. <em>Either side is winnable.</em>');
+  const label = side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+  return `
+    <div class="tc-choice ${side}">
+      <div class="tc-ch-head">
+        ${tag}
+        <div class="tc-ch-side-lab">FOR THE ${label}</div>
+        <div class="tc-ch-party">${escHtml(name || '—')}</div>
+        <div class="tc-ch-party-meta">${escHtml(partyMeta(partyType, corpType))}</div>
+      </div>
+      <div class="tc-ch-body">
+        <div class="tc-rep-row">
+          <span class="tc-rep-lab">REPUTATION ON WIN</span>
+          <span class="tc-rep-val">+${rep.toFixed(1)}</span>
+        </div>
+        <div class="tc-st-row">
+          <span class="tc-st-lab">Beats favoring this side</span>
+          <span class="tc-st-val ${isFavored ? 'high' : 'low'}">${count} of 10 &middot; total ${sum}</span>
+        </div>
+        <button type="button" class="tc-take-btn" data-side="${side}">&#9874; REPRESENT THE ${label}</button>
+        <div class="tc-ch-note">${note}</div>
+      </div>
+    </div>`;
+}
+
 function renderTryCaseModal(d, factionId) {
   const pSum   = Number(d.plaintiff_strength_sum) || 0;
   const dSum   = Number(d.defendant_strength_sum) || 0;
@@ -1871,12 +1906,8 @@ function renderTryCaseModal(d, factionId) {
   const dCount = Number(d.defendant_beat_count) || 0;
   const pRep   = Number(d.plaintiff_rep_on_win) || 0;
   const dRep   = Number(d.defendant_rep_on_win) || 0;
-  const plaintiffFavored = pSum > dSum;
-  const defendantFavored = dSum > pSum;
-  const plaintiffTag = plaintiffFavored ? '<span class="tc-favored-tag">FAVORED</span>'
-                     : (defendantFavored ? '<span class="tc-uphill-tag">UPHILL</span>' : '');
-  const defendantTag = defendantFavored ? '<span class="tc-favored-tag">FAVORED</span>'
-                     : (plaintiffFavored ? '<span class="tc-uphill-tag">UPHILL</span>' : '');
+  const pFav   = pSum > dSum;
+  const dFav   = dSum > pSum;
 
   document.getElementById('tc-content').innerHTML = `
     <div class="tc-summary">
@@ -1897,57 +1928,8 @@ function renderTryCaseModal(d, factionId) {
     <div class="tc-choices">
       <div class="tc-choice-lab">CHOOSE A SIDE TO REPRESENT</div>
       <div class="tc-choice-grid">
-
-        <div class="tc-choice plaintiff">
-          <div class="tc-ch-head">
-            ${plaintiffTag}
-            <div class="tc-ch-side-lab">FOR THE PLAINTIFF</div>
-            <div class="tc-ch-party">${escHtml(d.plaintiff_name || '—')}</div>
-            <div class="tc-ch-party-meta">${escHtml(partyMeta(d.plaintiff_party_type, d.plaintiff_corp_type))}</div>
-          </div>
-          <div class="tc-ch-body">
-            <div class="tc-rep-row">
-              <span class="tc-rep-lab">REPUTATION ON WIN</span>
-              <span class="tc-rep-val">+${pRep.toFixed(1)}</span>
-            </div>
-            <div class="tc-st-row">
-              <span class="tc-st-lab">Beats favoring this side</span>
-              <span class="tc-st-val ${plaintiffFavored ? 'high' : 'low'}">${pCount} of 10 &middot; total ${pSum}</span>
-            </div>
-            <button type="button" class="tc-take-btn" data-side="plaintiff">&#9874; REPRESENT THE PLAINTIFF</button>
-            <div class="tc-ch-note">${plaintiffFavored
-              ? 'An easier win, a smaller reward. <em>The case is on your side.</em>'
-              : (defendantFavored
-                  ? 'A hard fight, a larger purse. <em>You\'ll have to outwork the file.</em>'
-                  : 'The case is evenly weighed. <em>Either side is winnable.</em>')}</div>
-          </div>
-        </div>
-
-        <div class="tc-choice defendant">
-          <div class="tc-ch-head">
-            ${defendantTag}
-            <div class="tc-ch-side-lab">FOR THE DEFENDANT</div>
-            <div class="tc-ch-party">${escHtml(d.defendant_name || '—')}</div>
-            <div class="tc-ch-party-meta">${escHtml(partyMeta(d.defendant_party_type, d.defendant_corp_type))}</div>
-          </div>
-          <div class="tc-ch-body">
-            <div class="tc-rep-row">
-              <span class="tc-rep-lab">REPUTATION ON WIN</span>
-              <span class="tc-rep-val">+${dRep.toFixed(1)}</span>
-            </div>
-            <div class="tc-st-row">
-              <span class="tc-st-lab">Beats favoring this side</span>
-              <span class="tc-st-val ${defendantFavored ? 'high' : 'low'}">${dCount} of 10 &middot; total ${dSum}</span>
-            </div>
-            <button type="button" class="tc-take-btn" data-side="defendant">&#9874; REPRESENT THE DEFENDANT</button>
-            <div class="tc-ch-note">${defendantFavored
-              ? 'An easier win, a smaller reward. <em>The case is on your side.</em>'
-              : (plaintiffFavored
-                  ? 'A hard fight, a larger purse. <em>You\'ll have to outwork the file.</em>'
-                  : 'The case is evenly weighed. <em>Either side is winnable.</em>')}</div>
-          </div>
-        </div>
-
+        ${tcSideCard('plaintiff', d.plaintiff_name, d.plaintiff_party_type, d.plaintiff_corp_type, pRep, pCount, pSum, pFav, dFav)}
+        ${tcSideCard('defendant', d.defendant_name, d.defendant_party_type, d.defendant_corp_type, dRep, dCount, dSum, dFav, pFav)}
       </div>
     </div>
 

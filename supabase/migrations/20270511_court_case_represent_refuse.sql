@@ -29,7 +29,14 @@ BEGIN;
 DROP FUNCTION IF EXISTS public.accept_drawn_case(uuid, uuid);
 DROP FUNCTION IF EXISTS public.reject_drawn_case(uuid, uuid);
 
--- Widen the decision CHECK constraint.
+-- Swap the decision CHECK constraint to the new value set. Any rows
+-- left over from the brief life of the accept/reject flow (20270509)
+-- would otherwise fail validation and break the migration mid-apply.
+-- The attempts log is just "this lawyer drew this case" — replay-
+-- tolerant, so deleting the orphans is safe; the lawyer can re-draw.
+DELETE FROM public.politician_court_case_attempts
+ WHERE decision IN ('accepted', 'rejected');
+
 ALTER TABLE public.politician_court_case_attempts
     DROP CONSTRAINT IF EXISTS politician_court_case_attempts_decision_check;
 ALTER TABLE public.politician_court_case_attempts
