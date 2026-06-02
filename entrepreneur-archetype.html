@@ -190,8 +190,9 @@ async function createEntrepreneur() {
       id: factionId,
       faction_type: 'entrepreneur',
       faction_name: setup.name,
-      nation: setup.originNation,   // origin only — NOT NULL column
-      nation_id: null,             // nation-agnostic by design
+      nation: setup.originNation,            // current location at creation
+      ent_origin_nation: setup.originNation, // immutable birthplace (20270491)
+      nation_id: null,                       // nation-agnostic by design
       seats: 0,
       abandoned_at: null,
       leader_first_name: firstName,

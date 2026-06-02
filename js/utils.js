@@ -90,6 +90,17 @@ export function displayName(faction) {
     return nick ? `${full} (${nick})` : full;
 }
 
+// Entrepreneur "home nation" = ent_origin_nation (immutable birthplace,
+// set by 20270349 / the 20270491 travel RPC seed) with a fallback to
+// the current location for legacy rows missed by the one-time backfill.
+// Mirrors found_entrepreneur_corp's server-side derivation so the
+// picker, modals, and gate all agree on the same name.
+export function homeNationName(faction) {
+    const origin = (faction?.ent_origin_nation || '').trim();
+    const nation = (faction?.nation || '').trim();
+    return origin || nation || '';
+}
+
 /**
  * Truncate a string to `max` characters, adding '...' if trimmed.
  */

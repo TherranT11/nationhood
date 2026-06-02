@@ -81,17 +81,28 @@ async function main() {
         }
 
         // ── Step 1: Collect and sort migration files ───────────────────
-        const migrationsDir = path.resolve(__dirname, '..', 'sql', 'migrations');
-        if (!fs.existsSync(migrationsDir)) {
-            console.error('ERROR: sql/migrations/ directory not found.');
+        // Reads both sql/migrations (legacy, frozen) and supabase/migrations
+        // (canonical for new work — applied to prod via db-push.yml). Files
+        // are interleaved by basename so the alphabetical run order matches
+        // the order prod sees. If both dirs contain the same basename, the
+        // supabase/migrations copy wins (that's what prod runs); the sql/
+        // copy is skipped to avoid double-apply.
+        const legacyDir   = path.resolve(__dirname, '..', 'sql', 'migrations');
+        const canonicalDir = path.resolve(__dirname, '..', 'supabase', 'migrations');
+        if (!fs.existsSync(legacyDir) && !fs.existsSync(canonicalDir)) {
+            console.error('ERROR: neither sql/migrations/ nor supabase/migrations/ exists.');
             process.exit(1);
         }
 
-        const files = fs.readdirSync(migrationsDir)
-            .filter(f => f.endsWith('.sql'))
-            .sort();
+        const collect = (dir) => fs.existsSync(dir)
+            ? fs.readdirSync(dir).filter(f => f.endsWith('.sql')).map(f => ({ name: f, dir }))
+            : [];
+        const byName = new Map();
+        for (const entry of collect(legacyDir))     byName.set(entry.name, entry);  // legacy first
+        for (const entry of collect(canonicalDir))  byName.set(entry.name, entry);  // supabase wins on dup
+        const files = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 
-        console.log(`\n[1] Found ${files.length} migration files.\n`);
+        console.log(`\n[1] Found ${files.length} migration files (${legacyDir.split('/').slice(-2).join('/')} + ${canonicalDir.split('/').slice(-2).join('/')}).\n`);
 
         // ── Step 2: Execute each migration ─────────────────────────────
         let applied = 0;
@@ -99,8 +110,9 @@ async function main() {
         let failed = 0;
         const failures = [];
 
-        for (const file of files) {
-            const filePath = path.join(migrationsDir, file);
+        for (const entry of files) {
+            const file = entry.name;
+            const filePath = path.join(entry.dir, file);
             const sql = fs.readFileSync(filePath, 'utf8');
 
             try {

@@ -407,7 +407,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel, homeNationName } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
 
@@ -725,7 +725,7 @@ function renderPositions(corps, filter) {
     // picker to home; corps expand to other nations per-corp via Regional HQs.
     // Falls back to current nation if origin isn't set, then to the full
     // picker if neither resolves — the server gate is the backstop.
-    const homeName = ctx.faction?.ent_origin_nation || ctx.faction?.nation;
+    const homeName = homeNationName(ctx.faction);
     const homeNation = (natRes.data || []).find(n => n.name === homeName);
     const isAbroad = homeName && ctx.faction?.nation && ctx.faction.nation !== homeName;
     if (homeNation) {
