@@ -454,12 +454,6 @@
 <script type="module">
 import { _supabase, requireAuth } from './js/supabase-client.js';
 
-const user = await requireAuth();
-if (user) {
-  document.getElementById('wrap').style.visibility = 'visible';
-  init();
-}
-
 // Litigation types per case category — the user-supplied taxonomy.
 const LITIGATION_BY_TYPE = {
   civil: [
@@ -479,13 +473,21 @@ const LITIGATION_BY_TYPE = {
 const BEAT_TYPES = ['evid', 'law', 'fact', 'app'];
 const BEAT_TYPE_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
 const MAX_BEATS = 10;
+const DRAFT_KEY = 'courtcase_draft_v1';
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c =>
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-const DRAFT_KEY = 'courtcase_draft_v1';
+// Constants and helpers above the top-level await — otherwise init()
+// (called immediately after the await resolves) hits the TDZ on any
+// const declared further down the module body.
+const user = await requireAuth();
+if (user) {
+  document.getElementById('wrap').style.visibility = 'visible';
+  init();
+}
 
 function init() {
   wirePillGroups();
