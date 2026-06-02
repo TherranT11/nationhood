@@ -242,9 +242,13 @@
   .witness{background:var(--paper);border:0.5px solid var(--paper-line);border-radius:6px;overflow:hidden;border-left:3px solid var(--witness);margin-bottom:12px;}
   .w-head{padding:12px 16px;background:#1e1916;border-bottom:0.5px solid var(--paper-line);display:flex;align-items:center;gap:11px;}
   .w-num{font-family:Georgia,serif;font-size:12px;color:var(--witness-bright);font-weight:700;letter-spacing:-0.005em;flex-shrink:0;width:38px;font-style:italic;}
-  .w-name-input{flex:1;padding:7px 10px;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:3px;color:#fff;font-size:12px;font-family:Georgia,serif;font-weight:500;}
-  .w-name-input::placeholder{color:var(--faint);font-style:italic;}
-  .w-name-input:focus{outline:none;border-color:var(--witness-dim);}
+  .w-gender-lab{font-size:8.5px;letter-spacing:0.14em;color:var(--witness-bright);font-weight:700;text-transform:uppercase;flex-shrink:0;}
+  .w-gender-select{padding:7px 26px 7px 11px;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:3px;color:#fff;font-size:11px;font-family:inherit;font-weight:600;letter-spacing:0.05em;cursor:pointer;appearance:none;flex-shrink:0;min-width:110px;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 11px) 50%, calc(100% - 7px) 50%;
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat;}
+  .w-gender-select:focus{outline:none;border-color:var(--witness-dim);}
+  .w-name-hint{flex:1;font-size:9.5px;letter-spacing:0.08em;color:var(--mut);font-style:italic;}
   .w-delete{width:22px;height:22px;border-radius:3px;background:transparent;border:0.5px solid var(--paper-line);color:var(--mut);font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .w-delete:hover{color:var(--red);border-color:var(--red-dim);background:var(--red-bg);}
 
@@ -1035,10 +1039,17 @@ function addWitness(prefill) {
   if (host.children.length >= MAX_WITNESSES) return;
   const node = document.createElement('div');
   node.className = 'witness';
+  const gender = prefill?.gender === 'female' ? 'female' : (prefill?.gender === 'male' ? 'male' : '');
   node.innerHTML = `
     <div class="w-head">
       <span class="w-num"></span>
-      <input type="text" class="w-name-input" maxlength="80" placeholder="Witness name&hellip;" value="${escapeHtml(prefill?.name || '')}">
+      <span class="w-gender-lab">Gender</span>
+      <select class="w-gender-select">
+        <option value="" ${gender === '' ? 'selected' : ''}>&mdash;</option>
+        <option value="male"   ${gender === 'male'   ? 'selected' : ''}>MALE</option>
+        <option value="female" ${gender === 'female' ? 'selected' : ''}>FEMALE</option>
+      </select>
+      <span class="w-name-hint">Name will be drawn from the nation's name pool when a trial begins.</span>
       <button type="button" class="w-delete" title="Delete witness">&#10005;</button>
     </div>
     <div class="w-body">
@@ -1203,7 +1214,7 @@ function refreshAllRequiresBeatSelects() {
 
 function collectWitnesses() {
   return Array.from(document.querySelectorAll('#witnesses-list .witness')).map(w => ({
-    name:        (w.querySelector('.w-name-input').value || '').trim(),
+    gender:      w.querySelector('.w-gender-select').value || '',
     description: (w.querySelector('.w-desc').value || '').trim(),
     direct:      collectQA(w, 'direct'),
     cross:       collectQA(w, 'cross'),
@@ -1226,14 +1237,15 @@ function collectQA(witnessNode, phase) {
 function validateWitnesses(witnesses) {
   for (let i = 0; i < witnesses.length; i++) {
     const w = witnesses[i];
-    if (!w.name) return `Witness ${i + 1} needs a name.`;
+    const label0 = `Witness ${i + 1}`;
+    if (!w.gender) return `${label0}: pick a gender. (Name auto-draws at trial time.)`;
     if (w.direct.length === 0 && w.cross.length === 0) {
-      return `${w.name}: a witness needs at least one direct or cross question.`;
+      return `${label0}: a witness needs at least one direct or cross question.`;
     }
     for (const phase of ['direct', 'cross']) {
       for (let j = 0; j < w[phase].length; j++) {
         const qa = w[phase][j];
-        const label = `${w.name} · ${phase} Q${j + 1}`;
+        const label = `${label0} · ${phase} Q${j + 1}`;
         if (!qa.question) return `${label}: question text is required.`;
         if (!qa.answer) return `${label}: answer text is required.`;
         if (!qa.supports) return `${label}: pick whether the answer supports plaintiff or defendant.`;
