@@ -110,6 +110,10 @@ body {
     <div class="subtitle">How will you shape the world? Choose your path, then select a nation to join.</div>
   </div>
   <div style="width:100%;max-width:640px;padding:0 16px 48px;">
+    <div id="opt-party" onclick="selectFactionOption('party')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--blue-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+      <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Politician</div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
+    </div>
     <div id="opt-entrepreneur" onclick="selectFactionOption('entrepreneur')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--purple,#8b5cf6)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.06em;">Entrepreneur</span>
@@ -164,10 +168,20 @@ let selectedFaction = null;
 
 function selectFactionOption(type) {
   selectedFaction = type;
+  const optParty = document.getElementById('opt-party');
   const optEnt = document.getElementById('opt-entrepreneur');
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
-  if (type === 'entrepreneur') {
+  // Reset all cards
+  for (const opt of [optParty, optEnt]) {
+    opt.classList.remove('fs-selected');
+    opt.style.borderColor = 'var(--border-0)';
+  }
+
+  if (type === 'party') {
+    optParty.classList.add('fs-selected');
+    optParty.style.borderColor = 'var(--blue-border)';
+  } else if (type === 'entrepreneur') {
     optEnt.classList.add('fs-selected');
     optEnt.style.borderColor = 'var(--purple,#8b5cf6)';
   }
@@ -181,10 +195,11 @@ function selectFactionOption(type) {
 }
 
 function confirmFactionChoice() {
-  if (selectedFaction !== 'entrepreneur') return;
-  // No alpha gate; origin nation + gender + name are chosen next in
-  // select-nation.html (the faction is created there).
-  sessionStorage.setItem('pending_faction_type', 'entrepreneur');
+  if (selectedFaction !== 'party' && selectedFaction !== 'entrepreneur') return;
+  // Both paths pick a nation next in select-nation.html. The party flow then
+  // returns here and init() forwards to createparty.html; the entrepreneur
+  // faction is created directly in select-nation.html.
+  sessionStorage.setItem('pending_faction_type', selectedFaction);
   window.location.href = 'select-nation.html';
 }
 
