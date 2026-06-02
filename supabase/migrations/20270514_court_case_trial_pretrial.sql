@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS public.court_case_trials (
                                    CHECK (status IN ('pre_trial', 'in_progress', 'resolved', 'settled', 'expired')),
     pre_trial_started_at_tick  int NOT NULL,
     pre_trial_expires_at_tick  int NOT NULL,
+    -- Set by represent_pretrial when the second side joins; read by
+    -- the Phase 2 trial UI to anchor round timing. Phase 1 only
+    -- writes it, so existing rows from before Phase 2 deploys will
+    -- naturally have NULL until matched.
     matched_at_tick            int,
     created_at                 timestamptz NOT NULL DEFAULT now()
 );
@@ -319,22 +323,28 @@ BEGIN
     -- means this can only succeed if no live pre-trial exists for
     -- this case. draw_court_case already excludes such cases, so a
     -- conflict here means someone else opened a pre-trial in the
-    -- race window — the entire function transaction rolls back and
-    -- the lawyer's attempts row is undone too.
-    INSERT INTO public.court_case_trials (
-        case_draft_id, nation_id,
-        plaintiff_advocate_id, defendant_advocate_id,
-        plaintiff_name, defendant_name,
-        status,
-        pre_trial_started_at_tick, pre_trial_expires_at_tick
-    ) VALUES (
-        p_case_id, v_pol.bar_admitted_nation_id,
-        CASE WHEN p_side = 'plaintiff' THEN v_pol.id ELSE NULL END,
-        CASE WHEN p_side = 'defendant' THEN v_pol.id ELSE NULL END,
-        btrim(p_plaintiff_name), btrim(p_defendant_name),
-        'pre_trial',
-        v_tick, v_tick + 3
-    ) RETURNING id INTO v_trial_id;
+    -- race window. The EXCEPTION block returns a graceful
+    -- 'case_in_trial' reason and the entire function transaction
+    -- rolls back (the lawyer's attempts row is undone too).
+    BEGIN
+        INSERT INTO public.court_case_trials (
+            case_draft_id, nation_id,
+            plaintiff_advocate_id, defendant_advocate_id,
+            plaintiff_name, defendant_name,
+            status,
+            pre_trial_started_at_tick, pre_trial_expires_at_tick
+        ) VALUES (
+            p_case_id, v_pol.bar_admitted_nation_id,
+            CASE WHEN p_side = 'plaintiff' THEN v_pol.id ELSE NULL END,
+            CASE WHEN p_side = 'defendant' THEN v_pol.id ELSE NULL END,
+            btrim(p_plaintiff_name), btrim(p_defendant_name),
+            'pre_trial',
+            v_tick, v_tick + 3
+        ) RETURNING id INTO v_trial_id;
+    EXCEPTION
+        WHEN unique_violation THEN
+            RETURN jsonb_build_object('success', false, 'reason', 'case_in_trial');
+    END;
 
     RETURN jsonb_build_object(
         'success',  true,
