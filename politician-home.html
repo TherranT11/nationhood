@@ -1425,6 +1425,11 @@ const AFFIL_VARIANTS = {
     // logic enables that one and greys the other two (Statute Books
     // and Brief the Press — RPCs land later).
     actionsEnabled: true,
+    // 3-tick cooldown stamped by draw_court_case on success
+    // (20270520). Shared by all three action buttons via the
+    // existing renderAffiliation cooldown branch, but only TRY A
+    // CASE is enabled, so only it visibly cools down.
+    cooldownColumn: 'try_case_cooldown_until_tick',
   },
   // Triggered when politician_office is NULL but politician_ministry is
   // set — no elected seat, but a confirmed bureaucrat. descFn picks up
@@ -2380,6 +2385,7 @@ function tryCaseReasonText(reason) {
     no_name_pool:        'Your nation has no name pool seeded yet.',
     no_cases_available:  'No new cases on the docket. Check back later.',
     no_viable_case:      'No case on the docket could find the right parties in your nation right now.',
+    cooldown:            'You drew a case recently. Wait a few ticks before drawing again.',
   })[reason] || ('Could not draw a case: ' + (reason || 'unknown'));
 }
 
