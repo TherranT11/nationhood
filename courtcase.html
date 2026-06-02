@@ -468,10 +468,13 @@
         </div>
       </div>
 
-      <!-- Reputation-on-victory: (sum of hidden strengths of beats that
-           support that side) / 3 = REPUTATION gained by the lawyer who
-           wins representing that side. Updates live as beats are edited;
-           only counts beats that have both a strength and a Supports pick. -->
+      <!-- Reputation-on-victory uses the INVERSE of the support split:
+           the lawyer who wins for side X gains reputation proportional
+           to the strength of the beats that argued AGAINST them. A
+           one-sided case pays the underdog handsomely if they pull off
+           the upset, and pays the favorite very little. Updates live as
+           beats are edited; only counts beats with both a strength and
+           a Supports pick. -->
       <div class="payout">
         <div class="payout-lab">REPUTATION ON VICTORY</div>
         <div class="payout-grid">
@@ -876,11 +879,12 @@ function recalcBalance() {
   document.getElementById('beat-avg-mini').textContent =
     `avg strength so far · ${avgStr}`;
 
-  // Payout per side = (sum of hidden strengths of beats supporting that
-  // side) / 3. Empty side renders as em dash so the player can tell the
-  // calculation hasn't kicked in yet.
-  const payoutP = plaintiffSum ? (plaintiffSum / 3).toFixed(1) : null;
-  const payoutD = defendantSum ? (defendantSum / 3).toFixed(1) : null;
+  // Payout per side = (sum of hidden strengths of beats supporting the
+  // OPPOSING side) / 3. Winning against the stacked evidence is the
+  // impressive feat, so the side that the beats argue AGAINST pays out
+  // the higher reputation if its lawyer pulls off the upset.
+  const payoutP = defendantSum ? (defendantSum / 3).toFixed(1) : null;
+  const payoutD = plaintiffSum ? (plaintiffSum / 3).toFixed(1) : null;
   document.getElementById('payout-plaintiff').innerHTML = payoutP == null ? '&mdash;' : payoutP;
   document.getElementById('payout-defendant').innerHTML = payoutD == null ? '&mdash;' : payoutD;
 
