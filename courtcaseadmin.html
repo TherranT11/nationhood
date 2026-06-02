@@ -397,7 +397,7 @@ function renderPartySection(num, side, partyType, corpType) {
           <div class="field wide">
             <label class="field-lab">PARTY TYPE</label>
             <div class="pill-row" data-pill-group="${side}_party_type">
-              ${['person','corporation'].map(v =>
+              ${['person','corporation','state'].map(v =>
                 `<span class="pill ${partyType === v ? 'selected' : ''}" data-val="${v}">${v.toUpperCase()}</span>`).join('')}
             </div>
           </div>
