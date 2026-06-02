@@ -851,6 +851,14 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Draft a memo that lands on the right desk inside the ministry.' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.' },
 ];
+// Advocate action placeholders — three court types mirror the three
+// law categories seeded in 20270502 (Criminal / Civil / Commercial).
+// No `action` key → renderAffiliation greys them out until RPCs land.
+const ADVOCATE_ACTIONS = [
+  { ic: '§', name: 'TRY A CASE IN CRIMINAL COURT',   cost: 'no cost', desc: 'Argue a prosecution or defense in the criminal docket. The stakes are liberty, and the press is watching.' },
+  { ic: '⚖', name: 'TRY A CASE IN CIVIL COURT',       cost: 'no cost', desc: 'Take a civil matter to the bench — property, contract, family. Quieter than criminal, but the file builds your name.' },
+  { ic: '☷', name: 'TRY A CASE IN COMMERCIAL COURT', cost: 'no cost', desc: 'Stand for a firm in commercial chambers. The retainer is good; the precedent travels.' },
+];
 
 const AFFIL_VARIANTS = {
   party_member: {
@@ -900,6 +908,21 @@ const AFFIL_VARIANTS = {
     actions: LEGISLATURE_ACTIONS,
     actionsEnabled: true,  // Tier-2 MP keeps the same action set
   },
+  // Triggered when politician_office is NULL, politician_ministry is
+  // NULL, but bar_admitted_nation_id is set — the player has chosen
+  // the judicial career instead of civil service or politics. descFn
+  // pulls the admitting nation name from ctx so the copy reads
+  // "Bar of X".
+  advocate: {
+    variant: 'var-jud',
+    eyebrow: 'JUDICIAL CAREER · TIER 1',
+    badge:   '⚖',
+    name:    'Advocate',
+    descFn:  (ctx) => `You have been admitted to the Bar of <strong>${escHtml(ctx.nation?.name || '—')}</strong>. You appear before the courts — the realistic first step on the bench.`,
+    actions: ADVOCATE_ACTIONS,
+    // actionsEnabled left undefined → render logic greys every action
+    // out (no `action` key on the entries either).
+  },
   // Triggered when politician_office is NULL but politician_ministry is
   // set — no elected seat, but a confirmed bureaucrat. descFn picks up
   // the ministry slug from ctx so the copy reads "Ministry of X".
@@ -918,16 +941,19 @@ const AFFIL_VARIANTS = {
 function renderAffiliation(ctx) {
   const host = document.getElementById('affiliation-host');
   if (!host) return;
-  const office   = ctx.faction?.politician_office   || null;
-  const ministry = ctx.faction?.politician_ministry || null;
+  const office     = ctx.faction?.politician_office       || null;
+  const ministry   = ctx.faction?.politician_ministry     || null;
+  const barNation  = ctx.faction?.bar_admitted_nation_id  || null;
   // Variant fallback ladder: elected office → civil-servant (ministry
-  // set, no office) → party-member default. Each tier is mutually
-  // exclusive in practice; the sit-the-exam gate blocks ministry
-  // assignment while an office is held, and resigning an office
-  // doesn't touch ministry.
+  // set, no office) → advocate (bar-admitted, no ministry/office) →
+  // party-member default. Each tier is mutually exclusive in practice;
+  // the sit-the-exam gate blocks ministry assignment while an office
+  // is held, and bar_exam_start blocks while a career already exists.
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
-    : (ministry ? AFFIL_VARIANTS.civil_servant : AFFIL_VARIANTS.party_member);
+    : (ministry ? AFFIL_VARIANTS.civil_servant
+                : (barNation ? AFFIL_VARIANTS.advocate
+                             : AFFIL_VARIANTS.party_member));
   const partyName = ctx.party?.faction_name || '';
 
   // Description: variants with a static `desc` use it; variants with
