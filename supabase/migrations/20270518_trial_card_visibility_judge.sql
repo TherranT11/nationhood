@@ -122,8 +122,9 @@ BEGIN
 
     -- Pick a judge from the trial nation's last_name_pool. Doubled-up
     -- hyphenated form (LastA-LastB) so the display can prefix "Hon."
-    -- and read like a real bench name. Fallback to a single name if
-    -- the pool has fewer than 2 entries.
+    -- and read like a real bench name. If the nation has fewer than
+    -- two last names, fall through to NULL — the client renders
+    -- "court convened" instead of an awkward "Hon. <fallback>".
     SELECT * INTO v_nation FROM public.nations WHERE id = v_trial.nation_id;
     v_last_pool := COALESCE(v_nation.last_name_pool, ARRAY[]::text[]);
     v_last_len  := COALESCE(array_length(v_last_pool, 1), 0);
@@ -134,7 +135,7 @@ BEGIN
     ELSIF v_last_len = 1 THEN
         v_judge := v_last_pool[1];
     ELSE
-        v_judge := 'the Bench';
+        v_judge := NULL;
     END IF;
 
     IF v_open_side = 'plaintiff' THEN
