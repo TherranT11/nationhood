@@ -432,10 +432,26 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
-// Dispatch bucket categories for the World Events panel — mirrors
-// entrepreneur-dashboard.html so the same event_log row falls into the
-// same bucket on both surfaces.
-const POLITICS_CATEGORIES  = ['politics','political','government','crisis','diplomatic','diplomacy','international','economy','executive_order','protest','bill','new_party'];
+// Dispatch bucket categories for the World Events panel.
+//
+// POLITICS_CATEGORIES on this surface is intentionally NARROW: only
+// rows that come from a politician faction's actions land in the
+// Politics tab. Party fundraisers / coalition-formation events /
+// nation-level political news fire with broader categories like
+// 'politics' or 'political' and are filtered out here — they belong
+// on the Nation / World tabs, not on the politician's career feed.
+//
+// The entrepreneur-dashboard.html mirror does NOT narrow the same way
+// because entrepreneurs care about the broader political ticker;
+// these two surfaces are intentionally divergent.
+//
+// First populater of this category: committee_propose_law dispatches
+// category='politician' on every successful Propose New Law. As more
+// politician actions add their own event_log dispatches (sit_exam,
+// resign_office, join/leave/found_party, won/lost_election currently
+// only write to politician_career_events) they should use the same
+// 'politician' category.
+const POLITICS_CATEGORIES  = ['politician'];
 const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 
 // Career-log templates — keyed by politician_career_events.event_type. Adding
@@ -474,6 +490,12 @@ const CAREER_EVENT_TEMPLATES = {
     `${name}'s civil service exam application to the Ministry of ${target || 'a ministry'} was rejected.`,
   resigned_office: (name, target) =>
     `${name} resigns from their office as ${target || 'an elected official'}.`,
+  // Propose New Law — written by committee_propose_law (20270500).
+  // target_name is the proposal's section (acts as a stand-in title
+  // until a dedicated title field lands on the modal).
+  // metadata.committee_name carries the formal committee display name.
+  proposed_law: (name, target, meta = {}) =>
+    `${name} has submitted a law proposal titled: ${target || 'a proposal'}, that has been sent to the ${meta.committee_name || 'a committee'}.`,
 };
 
 let politician = null;
@@ -526,7 +548,7 @@ async function init() {
       _supabase.from('politician_career_events')
         .select('event_tick, event_type, target_name, metadata')
         .eq('faction_id', politician.id)
-        .order('event_tick', { ascending: false }),
+        .order('event_tick', { ascending: true }),
       // Pulls only the columns the Pressing Issues card renders. resolve_due
       // ran above, so a just-resolved race has already been deleted by the
       // time this fetch runs (Promise.all does not enforce order; here
@@ -721,7 +743,9 @@ async function saveNickname(raw) {
 // Career log — derived from the politician's lifecycle today. Only one event
 // exists (the founding); future entries (joined party X, became MP, scandal,
 // etc.) get appended as those mechanics land and can write into the same list.
-// Sorted newest-first so a long career reads with the latest beat on top.
+// Sorted oldest-first so the list reads as a career trajectory: career start
+// at the top, each subsequent event appended below in the order it happened.
+// New events land at the bottom and don't disturb the rows already rendered.
 function renderCareer() {
   const first = politician.leader_first_name || '';
   const last  = politician.leader_last_name  || '';
@@ -744,7 +768,7 @@ function renderCareer() {
     if (!fn) continue;
     events.push({ tick: Number(row.event_tick), text: fn(display, row.target_name, row.metadata || {}) });
   }
-  events.sort((a, b) => b.tick - a.tick);
+  events.sort((a, b) => a.tick - b.tick);
 
   const host = document.getElementById('career-events');
   if (!host) return;
