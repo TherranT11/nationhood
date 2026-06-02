@@ -1911,12 +1911,23 @@ async function confirmSitTheExam() {
   const prev = confirmBtn.textContent;
   confirmBtn.textContent = 'Rolling…';
   try {
-    const { data, error } = await _supabase.rpc('politician_sit_the_exam');
+    const factionId = window.__careerCtx?.faction?.id || null;
+    if (!factionId) {
+      renderExamModalResult({
+        kind: 'bad', title: 'Application blocked',
+        body: 'No active politician found.', reload: false,
+      });
+      return;
+    }
+    const { data, error } = await _supabase.rpc('politician_sit_the_exam', {
+      p_faction_id: factionId,
+    });
     if (error) throw error;
     if (!data?.success) {
       const REASON = {
         not_authenticated:     'Sign in to sit the exam.',
         no_politician:         'No politician on this account.',
+        already_in_career:     "You can't join the civil service if you already have a career.",
         has_party:             'You must leave your party before sitting the civil service exam.',
         in_office:             'You must not hold a political office to sit the civil service exam.',
         already_civil_servant: 'You are already a civil servant.',
