@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Statutes</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. Per-page
+   styles match the section-card chrome used on politician-nation /
+   politician-ministry-foreign. */
+.content { max-width:1200px; margin:18px auto; padding:0 20px; }
+
+.mn-num { color:#888; font-size:10px; font-weight:600; margin-right:8px;
+  font-family:monospace; letter-spacing:0.08em; }
+.mn-head { display:flex; align-items:baseline; gap:10px; margin:24px 0 10px; }
+.mn-head .lab { color:#fff; font-size:18px; font-weight:600; letter-spacing:0.02em; }
+.mn-head .ital { font-family:Georgia, serif; font-style:italic; color:#5aafa5; margin-left:6px; }
+
+/* Overview card — scales badge + title + description. Mirrors the ministry
+   overview chrome (politician-ministry-foreign.html .mof-*). */
+.mof-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:7px;
+  border-left:3px solid #5aafa5; padding:18px 22px; display:flex; gap:20px; align-items:flex-start; }
+.mof-badge { width:48px; height:48px; flex-shrink:0; border-radius:6px;
+  background:rgba(90,175,165,0.08); border:0.5px solid rgba(90,175,165,0.4);
+  display:flex; align-items:center; justify-content:center; color:#5aafa5; font-size:22px; }
+.mof-info { flex:1; min-width:0; }
+.mof-eyebrow { font-size:9px; letter-spacing:0.16em; color:#5aafa5; font-weight:600; margin-bottom:5px; }
+.mof-title { font-size:20px; font-weight:600; color:#fff; line-height:1.2; }
+.mof-title .ital { font-family:Georgia, serif; font-style:italic; color:#a5c0d0; }
+.mof-desc { color:#cfcabf; font-size:11.5px; line-height:1.6; margin-top:10px; }
+.mof-desc b { color:#fff; font-weight:600; }
+
+/* Section cards — blank-state today. Each code is its own card with a
+   header (code name + tagline) and a blank-state body that will be
+   replaced by §-numbered law rows once seeded. */
+.mn-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
+  padding:24px 22px; color:#666; font-size:11px; font-style:italic; text-align:center; }
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+
+  <!-- Overview -->
+  <div class="mn-head">
+    <span class="mn-num">I.</span>
+    <span class="lab">Overview</span>
+  </div>
+  <div class="mof-card">
+    <div class="mof-badge">&#x2696;</div>
+    <div class="mof-info">
+      <div class="mof-eyebrow">LEGAL FRAMEWORK</div>
+      <div class="mof-title">Statutes <span class="ital">of the Nation</span></div>
+      <div class="mof-desc">
+        The five codes that govern the Republic. Every act of Parliament, every executive order,
+        and every judgment of the courts ultimately traces back to one of these books — and the
+        Advocate is expected to know them cold.
+      </div>
+    </div>
+  </div>
+
+  <!-- I. Constitutional Charter -->
+  <div class="mn-head"><span class="mn-num">I.</span><span class="lab">Constitutional <span class="ital">Charter</span></span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- II. Criminal Code -->
+  <div class="mn-head"><span class="mn-num">II.</span><span class="lab">Criminal <span class="ital">Code</span></span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- III. Civil Code -->
+  <div class="mn-head"><span class="mn-num">III.</span><span class="lab">Civil <span class="ital">Code</span></span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- IV. Commercial Code -->
+  <div class="mn-head"><span class="mn-num">IV.</span><span class="lab">Commercial <span class="ital">Code</span></span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+  <!-- V. Electoral Code -->
+  <div class="mn-head"><span class="mn-num">V.</span><span class="lab">Electoral <span class="ital">Code</span></span></div>
+  <div class="mn-card">Nothing recorded yet.</div>
+
+</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+
+(async () => {
+  let ctx;
+  try { ctx = await bootstrapPolitician('nation'); }
+  catch (e) { console.warn('[politician-statutes] bootstrap failed:', e?.message || e); return; }
+  if (!ctx) return;
+  document.getElementById('content').style.display = 'block';
+})();
+</script>
+
+</body>
+</html>
