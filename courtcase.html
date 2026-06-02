@@ -22,6 +22,11 @@
     --app:#c87a7a; --app-dim:#5a3030; --app-bg:#160e0e;
     --eyewit:#a87aab; --eyewit-dim:#5a3050; --eyewit-bg:#14081a;
     --expert:#7abcaa; --expert-dim:#3a5a55; --expert-bg:#0a1614;
+    /* witness — pinkish accent for the testimony surface (Section VI) */
+    --witness:#b88a98; --witness-dim:#5a3e48; --witness-bg:#180e12; --witness-bright:#d4a8b6;
+    /* exam phases: direct = friendly (green), cross = hostile (red) */
+    --direct:#7ab07a; --direct-bg:#0e1611;
+    --cross:#c87a7a; --cross-bg:#160e0e;
     /* parchment */
     --paper:#1a1612; --paper-line:#2a2218; --paper-text:#d8cfb8;
   }
@@ -215,6 +220,100 @@
   .btn-save:hover{background:#251710;color:#fff;}
   .btn-draft{background:transparent;border:0.5px solid var(--line);color:var(--mut);}
   .btn-draft:hover{color:#fff;border-color:#3a3a3a;}
+
+  /* ============ SECTION VI · WITNESSES ============
+     Optional section; up to 3 witnesses per case, each with up to
+     3 direct and 3 cross Q&A pairs. Each answer carries supports
+     (plaintiff/defendant) + strength (1-10), same pattern as the
+     beats above — the trial system will treat called testimony as
+     mini-beats during verdict tally.
+
+     A question can optionally require a single beat to be played
+     before the lawyer can ask it. requires_beat is stored as the
+     beat's INDEX (0-9) in the beats array.
+
+     The .witness vocab is self-contained so it doesn't collide
+     with .beat-* above. Pinkish --witness accent picks up the
+     "testimony" feel. */
+  .witness-banner{padding:11px 14px;background:var(--witness-bg);border:0.5px solid var(--witness-dim);border-left:3px solid var(--witness);border-radius:5px;margin-bottom:16px;font-size:10px;color:#bbb;line-height:1.6;}
+  .witness-banner strong{color:var(--witness-bright);font-weight:600;}
+  .witness-banner em{font-style:italic;color:#fff;}
+
+  .witness{background:var(--paper);border:0.5px solid var(--paper-line);border-radius:6px;overflow:hidden;border-left:3px solid var(--witness);margin-bottom:12px;}
+  .w-head{padding:12px 16px;background:#1e1916;border-bottom:0.5px solid var(--paper-line);display:flex;align-items:center;gap:11px;}
+  .w-num{font-family:Georgia,serif;font-size:12px;color:var(--witness-bright);font-weight:700;letter-spacing:-0.005em;flex-shrink:0;width:38px;font-style:italic;}
+  .w-name-input{flex:1;padding:7px 10px;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:3px;color:#fff;font-size:12px;font-family:Georgia,serif;font-weight:500;}
+  .w-name-input::placeholder{color:var(--faint);font-style:italic;}
+  .w-name-input:focus{outline:none;border-color:var(--witness-dim);}
+  .w-delete{width:22px;height:22px;border-radius:3px;background:transparent;border:0.5px solid var(--paper-line);color:var(--mut);font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .w-delete:hover{color:var(--red);border-color:var(--red-dim);background:var(--red-bg);}
+
+  .w-body{padding:14px 16px;}
+  .w-field-lab{font-size:8.5px;letter-spacing:0.14em;color:var(--witness-bright);font-weight:700;margin-bottom:5px;text-transform:uppercase;}
+  .w-desc{width:100%;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:4px;padding:9px 12px;color:var(--paper-text);font-family:Georgia,serif;font-size:11px;line-height:1.55;resize:vertical;min-height:48px;font-style:italic;}
+  .w-desc::placeholder{color:var(--faint);}
+  .w-desc:focus{outline:none;border-color:var(--witness-dim);}
+  .w-desc-wrap{margin-bottom:18px;}
+
+  .phase-divider{display:flex;align-items:center;gap:10px;margin:14px 0 10px;}
+  .pd-line{flex:1;height:0;border-top:0.5px dashed var(--paper-line);}
+  .pd-label{font-size:9px;letter-spacing:0.16em;font-weight:700;text-transform:uppercase;padding:3px 11px;border-radius:3px;}
+  .pd-label.direct{background:var(--direct-bg);color:var(--direct);border:0.5px solid var(--green-dim);}
+  .pd-label.cross{background:var(--cross-bg);color:var(--cross);border:0.5px solid var(--red-dim);}
+
+  .qa-pair{background:#181410;border:0.5px solid var(--paper-line);border-radius:5px;padding:11px 12px;margin-bottom:8px;border-left:2px solid;}
+  .qa-pair.direct{border-left-color:var(--direct);}
+  .qa-pair.cross{border-left-color:var(--cross);}
+
+  .qa-head{display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap;}
+  .qa-num{font-size:8px;letter-spacing:0.13em;color:var(--mut);font-weight:700;text-transform:uppercase;}
+  .qa-num strong{color:var(--brass-bright);}
+  .qa-req-select{font-size:8px;letter-spacing:0.1em;font-weight:700;color:var(--brass-bright);background:var(--brass-bg);border:0.5px solid var(--brass-dim);border-radius:2px;padding:3px 7px;cursor:pointer;font-family:-apple-system,system-ui,sans-serif;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 9px) 50%, calc(100% - 5px) 50%;
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat; padding-right:18px;}
+  .qa-req-select.empty{color:var(--mut);background:#0a0807;border-color:var(--paper-line);font-weight:600;}
+  .qa-delete{margin-left:auto;width:18px;height:18px;border-radius:3px;background:transparent;border:0.5px solid var(--paper-line);color:var(--mut);font-size:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .qa-delete:hover{color:var(--red);border-color:var(--red-dim);background:var(--red-bg);}
+
+  .qa-q-row,.qa-a-row{display:flex;gap:9px;align-items:flex-start;margin-bottom:5px;}
+  .qa-a-row{margin-bottom:7px;}
+  .qa-prefix{font-size:8px;letter-spacing:0.13em;font-weight:700;width:34px;flex-shrink:0;padding-top:5px;text-transform:uppercase;}
+  .qa-prefix.q{color:var(--brass-bright);}
+  .qa-prefix.a{color:var(--witness-bright);}
+  .qa-textarea{flex:1;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:3px;padding:6px 9px;color:var(--paper-text);font-family:Georgia,serif;font-size:10.5px;line-height:1.5;resize:vertical;min-height:30px;}
+  .qa-textarea::placeholder{color:var(--faint);font-style:italic;}
+  .qa-textarea:focus{outline:none;border-color:var(--witness-dim);}
+  .qa-textarea.q-text{font-style:italic;}
+  .qa-textarea.a-text{font-style:normal;color:#fff;}
+
+  /* Answer's supports + strength — same vocabulary as the beat
+     row above so the data model maps cleanly. */
+  .qa-answer-meta{display:flex;align-items:center;gap:8px;padding:6px 0 0 43px;flex-wrap:wrap;}
+  .qa-meta-lab{font-size:7.5px;letter-spacing:0.14em;color:var(--brass);font-weight:700;flex-shrink:0;}
+  .qa-meta-select{padding:5px 22px 5px 9px;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:3px;color:var(--brass-bright);font-family:Georgia,serif;font-size:11px;font-weight:700;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 9px) 50%, calc(100% - 5px) 50%;
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat;min-width:46px;}
+  .qa-meta-support{padding:5px 22px 5px 9px;background:#0a0807;border:0.5px solid var(--paper-line);border-radius:3px;color:#fff;font-family:inherit;font-size:9.5px;font-weight:600;letter-spacing:0.06em;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 9px) 50%, calc(100% - 5px) 50%;
+    background-size:4px 4px, 4px 4px; background-repeat:no-repeat;}
+
+  .add-qa{margin-top:6px;padding:8px;background:transparent;border:0.5px dashed var(--paper-line);border-radius:4px;color:var(--mut);font-size:9px;letter-spacing:0.12em;font-weight:700;cursor:pointer;font-family:inherit;width:100%;text-transform:uppercase;}
+  .add-qa:hover{color:var(--paper-text);border-color:var(--witness-dim);background:#15110d;}
+  .add-qa.direct:hover{color:var(--direct);border-color:var(--green-dim);}
+  .add-qa.cross:hover{color:var(--cross);border-color:var(--red-dim);}
+  .add-qa:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .add-witness{padding:11px 18px;background:#0a0807;border:0.5px dashed var(--witness-dim);border-radius:5px;color:var(--witness-bright);font-size:9.5px;letter-spacing:0.13em;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;}
+  .add-witness:hover{background:var(--witness-bg);border-style:solid;border-color:var(--witness);color:#fff;}
+  .add-witness:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .w-counter{margin-top:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .w-counter-text{font-family:Georgia,serif;font-size:12px;color:#fff;font-weight:600;}
+  .w-counter-text em{font-style:italic;color:var(--witness-bright);}
+  .w-counter-text .sub{color:var(--mut);font-family:inherit;font-size:9.5px;font-weight:normal;font-style:italic;margin-left:6px;}
 
   @media (max-width: 720px){
     .field-row, .field-row.three{grid-template-columns:1fr;}
@@ -507,6 +606,25 @@
     </div>
   </div>
 
+  <!-- ============ VI. WITNESSES ============ -->
+  <div class="section">
+    <div class="sec-head">
+      <span class="sec-num">VI</span>
+      <span class="sec-title">The <span class="serif">witnesses</span></span>
+      <span class="sec-sub">people who may be called to the stand &middot; optional &middot; up to 3</span>
+    </div>
+    <div class="sec-body">
+      <div class="witness-banner">
+        <strong>Witnesses are optional.</strong> Each witness has Direct questions (the friendly lawyer's) and Cross questions (opposing counsel's). Some questions may <em>require a specific beat to be in evidence first</em> &mdash; the lawyer cannot ask them until they have played that beat. Each answer carries a side it supports and a hidden strength, same as a beat.
+      </div>
+      <div id="witnesses-list"></div>
+      <div class="w-counter">
+        <button type="button" class="add-witness" id="add-witness-btn">+ ADD WITNESS</button>
+        <span class="w-counter-text" id="witness-counter"><em>0</em> witnesses added <span class="sub">&middot; up to 3 witnesses per case</span></span>
+      </div>
+    </div>
+  </div>
+
   <!-- FOOTER -->
   <div class="foot">
     <div class="foot-note">
@@ -523,6 +641,9 @@ import { _supabase, requireAuth } from './js/supabase-client.js';
 import { LITIGATION_BY_TYPE, BEAT_TYPES, BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 
 const MAX_BEATS = 10;
+const MAX_WITNESSES = 3;
+const MAX_QA_PER_PHASE = 3;
+const QA_TEXT_LIMIT = 240;
 const DRAFT_KEY = 'courtcase_draft_v1';
 
 function escapeHtml(s) {
@@ -550,8 +671,10 @@ function init() {
     for (let i = 0; i < 3; i++) addBeat();
   }
   document.getElementById('add-beat-btn').addEventListener('click', () => addBeat());
+  document.getElementById('add-witness-btn').addEventListener('click', () => addWitness());
   document.getElementById('save-draft-btn').addEventListener('click', onSaveDraft);
   document.getElementById('submit-btn').addEventListener('click', onSubmitForApproval);
+  updateWitnessCounter();
 }
 
 function restoreDraft() {
@@ -580,6 +703,8 @@ function restoreDraft() {
   if (beats.length < 3) {
     for (let i = beats.length; i < 3; i++) addBeat();
   }
+  const witnesses = Array.isArray(p.witnesses) ? p.witnesses : [];
+  witnesses.slice(0, MAX_WITNESSES).forEach(w => addWitness(w));
   return true;
 }
 
@@ -614,6 +739,7 @@ function collectPayload() {
                             ? selectedPill('defendant_corp_type') : null,
     overview:             (document.getElementById('overview').value || '').trim(),
     beats,
+    witnesses:            collectWitnesses(),
   };
 }
 
@@ -633,6 +759,10 @@ function validatePayload(p) {
   if (filledBeats.some(b => !b.type)) return 'Every beat needs a type (Evidence, Law, Fact, or Appeal).';
   if (filledBeats.some(b => !b.strength)) return 'Every beat needs a hidden strength (1-10).';
   if (filledBeats.some(b => !b.support)) return 'Every beat needs to mark whether it supports plaintiff or defendant.';
+  // Witnesses are optional — but if any are present, they must be
+  // fully filled. validateWitnesses returns the first problem found.
+  const witnessErr = validateWitnesses(p.witnesses || []);
+  if (witnessErr) return witnessErr;
   return null;
 }
 
@@ -885,6 +1015,223 @@ function recalcBalance() {
   // the ten the trial draft needs.
   const totalRows = beats.length;
   document.getElementById('add-beat-btn').disabled = totalRows >= MAX_BEATS;
+
+  // Keep witness "requires beat" dropdowns in sync with the current
+  // beat list — names update on every keystroke, indices shift when
+  // beats are deleted, so the selects need a re-render too.
+  refreshAllRequiresBeatSelects();
+}
+
+// ── Witnesses ───────────────────────────────────────────────────────
+// Optional Section VI. Up to MAX_WITNESSES witnesses; each has up to
+// MAX_QA_PER_PHASE direct + cross Q&A pairs. Each answer carries
+// supports (plaintiff/defendant) and strength (1-10) — the trial
+// system will treat called testimony as mini-beats during the verdict
+// tally. A question can optionally require a single beat to be
+// already played in trial (requires_beat = 0-9 index into the beats
+// array; null = freely askable).
+function addWitness(prefill) {
+  const host = document.getElementById('witnesses-list');
+  if (host.children.length >= MAX_WITNESSES) return;
+  const node = document.createElement('div');
+  node.className = 'witness';
+  node.innerHTML = `
+    <div class="w-head">
+      <span class="w-num"></span>
+      <input type="text" class="w-name-input" maxlength="80" placeholder="Witness name&hellip;" value="${escapeHtml(prefill?.name || '')}">
+      <button type="button" class="w-delete" title="Delete witness">&#10005;</button>
+    </div>
+    <div class="w-body">
+      <div class="w-desc-wrap">
+        <div class="w-field-lab">DESCRIPTION</div>
+        <textarea class="w-desc" maxlength="300" placeholder="Who is this witness, and why are they testifying?">${escapeHtml(prefill?.description || '')}</textarea>
+      </div>
+
+      <div class="phase-divider">
+        <span class="pd-line"></span>
+        <span class="pd-label direct">&minus; Direct Examination &minus;</span>
+        <span class="pd-line"></span>
+      </div>
+      <div class="qa-list" data-phase="direct"></div>
+      <button type="button" class="add-qa direct" data-phase="direct">+ ADD DIRECT QUESTION</button>
+
+      <div class="phase-divider">
+        <span class="pd-line"></span>
+        <span class="pd-label cross">&minus; Cross-Examination &minus;</span>
+        <span class="pd-line"></span>
+      </div>
+      <div class="qa-list" data-phase="cross"></div>
+      <button type="button" class="add-qa cross" data-phase="cross">+ ADD CROSS QUESTION</button>
+    </div>`;
+  host.appendChild(node);
+
+  node.querySelector('.w-delete').addEventListener('click', () => {
+    node.remove();
+    renumberWitnesses();
+    updateWitnessCounter();
+  });
+  node.querySelectorAll('.add-qa').forEach(btn => {
+    btn.addEventListener('click', () => addQA(node, btn.dataset.phase));
+  });
+
+  // Rehydrate direct + cross Q&A from prefill, or leave both phases
+  // empty (the player adds rows by clicking +).
+  (prefill?.direct || []).forEach(q => addQA(node, 'direct', q));
+  (prefill?.cross || []).forEach(q => addQA(node, 'cross', q));
+
+  renumberWitnesses();
+  updateWitnessCounter();
+}
+
+function addQA(witnessNode, phase, prefill) {
+  const list = witnessNode.querySelector(`.qa-list[data-phase="${phase}"]`);
+  if (!list) return;
+  if (list.children.length >= MAX_QA_PER_PHASE) return;
+  const row = document.createElement('div');
+  row.className = `qa-pair ${phase}`;
+  const reqIdx = prefill?.requires_beat;
+  const support = prefill?.supports || '';
+  const strength = Number(prefill?.strength) || null;
+  row.innerHTML = `
+    <div class="qa-head">
+      <span class="qa-num">${phase === 'direct' ? 'Direct' : 'Cross'} &middot; <strong class="qa-num-val">Q —</strong></span>
+      <select class="qa-req-select${reqIdx == null ? ' empty' : ''}" data-requires-beat="${reqIdx == null ? '' : reqIdx}"></select>
+      <button type="button" class="qa-delete" title="Delete question">&#10005;</button>
+    </div>
+    <div class="qa-q-row">
+      <span class="qa-prefix q">Q:</span>
+      <textarea class="qa-textarea q-text" maxlength="${QA_TEXT_LIMIT}" placeholder="What is the question?">${escapeHtml(prefill?.question || '')}</textarea>
+    </div>
+    <div class="qa-a-row">
+      <span class="qa-prefix a">A:</span>
+      <textarea class="qa-textarea a-text" maxlength="${QA_TEXT_LIMIT}" placeholder="What is the witness's answer?">${escapeHtml(prefill?.answer || '')}</textarea>
+    </div>
+    <div class="qa-answer-meta">
+      <span class="qa-meta-lab">ANSWER STRENGTH</span>
+      <select class="qa-meta-select qa-strength">
+        <option value="">—</option>
+        ${Array.from({ length: 10 }, (_, i) => {
+          const n = i + 1;
+          return `<option value="${n}" ${strength === n ? 'selected' : ''}>${n}</option>`;
+        }).join('')}
+      </select>
+      <span class="qa-meta-lab">SUPPORTS</span>
+      <select class="qa-meta-select qa-meta-support qa-support">
+        <option value="">—</option>
+        <option value="plaintiff" ${support === 'plaintiff' ? 'selected' : ''}>PLAINTIFF</option>
+        <option value="defendant" ${support === 'defendant' ? 'selected' : ''}>DEFENDANT</option>
+      </select>
+    </div>`;
+  list.appendChild(row);
+
+  row.querySelector('.qa-delete').addEventListener('click', () => {
+    row.remove();
+    renumberQA(witnessNode, phase);
+    refreshAddQaButtons(witnessNode);
+  });
+  const reqSelect = row.querySelector('.qa-req-select');
+  reqSelect.addEventListener('change', () => {
+    const v = reqSelect.value;
+    reqSelect.dataset.requiresBeat = v;
+    reqSelect.classList.toggle('empty', v === '');
+  });
+
+  populateRequiresBeatSelect(reqSelect, reqIdx);
+  renumberQA(witnessNode, phase);
+  refreshAddQaButtons(witnessNode);
+}
+
+// Build the "requires beat" select's options from the current beat
+// names. Called when a Q&A row is added and on every recalcBalance
+// pass so renaming / reordering beats stays in sync.
+function populateRequiresBeatSelect(selectEl, selectedIdx) {
+  const beats = Array.from(document.querySelectorAll('#beats-list .beat:not(.example)'));
+  const current = selectEl.dataset.requiresBeat;
+  const effective = selectedIdx != null ? String(selectedIdx) : current;
+  let optsHtml = `<option value="">+ REQUIRES BEAT</option>`;
+  beats.forEach((b, i) => {
+    const name = (b.querySelector('.beat-name').value || '').trim() || `Beat ${i + 1}`;
+    const isSel = String(i) === effective;
+    optsHtml += `<option value="${i}" ${isSel ? 'selected' : ''}>§ ${i + 1} · ${escapeHtml(name)}</option>`;
+  });
+  selectEl.innerHTML = optsHtml;
+  selectEl.classList.toggle('empty', !selectEl.value);
+}
+
+function renumberWitnesses() {
+  document.querySelectorAll('#witnesses-list .witness').forEach((w, i) => {
+    w.querySelector('.w-num').textContent = `W. ${i + 1}`;
+  });
+}
+function renumberQA(witnessNode, phase) {
+  const phaseLabel = phase === 'direct' ? 'Direct' : 'Cross';
+  witnessNode.querySelectorAll(`.qa-list[data-phase="${phase}"] .qa-pair`).forEach((q, i) => {
+    q.querySelector('.qa-num').innerHTML = `${phaseLabel} &middot; <strong class="qa-num-val">Q ${i + 1}</strong>`;
+  });
+}
+function refreshAddQaButtons(witnessNode) {
+  ['direct', 'cross'].forEach(phase => {
+    const list = witnessNode.querySelector(`.qa-list[data-phase="${phase}"]`);
+    const btn  = witnessNode.querySelector(`.add-qa[data-phase="${phase}"]`);
+    if (btn) btn.disabled = list.children.length >= MAX_QA_PER_PHASE;
+  });
+}
+function updateWitnessCounter() {
+  const n = document.querySelectorAll('#witnesses-list .witness').length;
+  const counter = document.getElementById('witness-counter');
+  if (counter) {
+    counter.innerHTML = `<em>${n}</em> witness${n === 1 ? '' : 'es'} added <span class="sub">&middot; up to ${MAX_WITNESSES} witnesses per case</span>`;
+  }
+  const addBtn = document.getElementById('add-witness-btn');
+  if (addBtn) addBtn.disabled = n >= MAX_WITNESSES;
+}
+
+// Called from recalcBalance so the "requires beat" dropdowns reflect
+// the current beat list any time beats are added / renamed / reordered.
+function refreshAllRequiresBeatSelects() {
+  document.querySelectorAll('#witnesses-list .qa-req-select').forEach(sel => {
+    populateRequiresBeatSelect(sel);
+  });
+}
+
+function collectWitnesses() {
+  return Array.from(document.querySelectorAll('#witnesses-list .witness')).map(w => ({
+    name:        (w.querySelector('.w-name-input').value || '').trim(),
+    description: (w.querySelector('.w-desc').value || '').trim(),
+    direct:      collectQA(w, 'direct'),
+    cross:       collectQA(w, 'cross'),
+  }));
+}
+function collectQA(witnessNode, phase) {
+  return Array.from(witnessNode.querySelectorAll(`.qa-list[data-phase="${phase}"] .qa-pair`)).map(q => {
+    const reqRaw = q.querySelector('.qa-req-select').value;
+    const strengthRaw = q.querySelector('.qa-strength').value;
+    return {
+      question:      (q.querySelector('.q-text').value || '').trim(),
+      answer:        (q.querySelector('.a-text').value || '').trim(),
+      supports:      q.querySelector('.qa-support').value || '',
+      strength:      strengthRaw === '' ? null : Number(strengthRaw),
+      requires_beat: reqRaw === '' ? null : Number(reqRaw),
+    };
+  });
+}
+
+function validateWitnesses(witnesses) {
+  for (let i = 0; i < witnesses.length; i++) {
+    const w = witnesses[i];
+    if (!w.name) return `Witness ${i + 1} needs a name.`;
+    for (const phase of ['direct', 'cross']) {
+      for (let j = 0; j < w[phase].length; j++) {
+        const qa = w[phase][j];
+        const label = `${w.name} · ${phase} Q${j + 1}`;
+        if (!qa.question) return `${label}: question text is required.`;
+        if (!qa.answer) return `${label}: answer text is required.`;
+        if (!qa.supports) return `${label}: pick whether the answer supports plaintiff or defendant.`;
+        if (!qa.strength) return `${label}: pick a hidden strength (1-10) for the answer.`;
+      }
+    }
+  }
+  return null;
 }
 </script>
 </body>
