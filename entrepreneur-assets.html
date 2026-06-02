@@ -247,7 +247,7 @@ import { _supabase } from './js/supabase-client.js';
       tOverlay.innerHTML = `<div class="ch-travel-modal">
         <div class="ct-head"><span class="ct-eyebrow">— TRAVEL —</span><button class="ct-x" id="ct-x">&times;</button></div>
         <div class="ct-title">Board a Plane</div>
-        <div class="ct-sub">Relocate your entrepreneur to any nation. Remember: you can only found a corporation in the nation you're currently in.</div>
+        <div class="ct-sub">Relocate your entrepreneur to any nation. Remember: you can only found a corporation in your home nation, and you must be there to do it — travel takes you abroad.</div>
         <div class="ct-cost">Cost <b>${usd(TRAVEL_COST)}</b> &middot; Personal Funds <b class="${afford ? 'ok' : 'no'}">${usd(funds)}</b></div>
         ${nations.length ? `<select id="ct-nation" class="ct-select">${opts}</select>` : `<div class="ct-empty">No other nation to travel to.</div>`}
         ${msg ? `<div class="ct-msg">${esc(msg)}</div>` : ''}
