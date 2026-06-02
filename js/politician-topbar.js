@@ -5,7 +5,7 @@
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
 import { APP_VERSION, fmtBig, displayName, currentAge } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
@@ -114,9 +114,11 @@ function buildSwitcher(facs) {
   // Existing rows — every active, non-hidden faction the user owns.
   const items = list.map(f => {
     const { label, color } = getFactionTypeBadge(f.faction_type);
+    const role = getPoliticianRoleLabel(f);
+    const name = (f.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
     return `<div class="pol-dd-item" data-id="${esc(f.id)}">
       <span class="pol-dd-badge" style="color:${color}">${esc(label)}</span>
-      <span class="pol-dd-name">${esc(f.faction_name || 'Unnamed')}</span>
+      <span class="pol-dd-name">${esc(name)}</span>
     </div>`;
   });
   // Politician slot row — label rule, cap, and Patreon11 gate all

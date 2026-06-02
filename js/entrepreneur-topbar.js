@@ -7,7 +7,7 @@
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
 import { hfFmtBig, APP_VERSION } from './utils.js';
-import { getFactionTypeBadge, getFactionDashboardUrl, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { getFactionTypeBadge, getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
@@ -145,7 +145,9 @@ function buildSwitcher(facs) {
   };
   for (const fac of facs) {
     const { label, color } = getFactionTypeBadge(fac.faction_type);
-    addRow('', label, color, fac.faction_name || 'Unnamed', () => {
+    const role = getPoliticianRoleLabel(fac);
+    const name = (fac.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
+    addRow('', label, color, name, () => {
       sessionStorage.setItem('active_faction_id', fac.id);
       window.location.href = getFactionDashboardUrl(fac) || 'faction-select.html';
     });
@@ -338,7 +340,7 @@ export async function bootstrapEntrepreneur(activeTab) {
           .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id')
+      .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
 

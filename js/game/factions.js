@@ -83,6 +83,29 @@ export function getFactionTypeBadge(factionType) {
 }
 
 /**
+ * Role suffix for a politician faction in the switcher chips, so a
+ * player with multiple politicians can tell their advocate from their
+ * MP from their civil servant when switching between them.
+ *
+ * Mutually exclusive in practice — the civil-service gate (20270507)
+ * blocks the exam if bar_admitted_nation_id is set, and election +
+ * appointment paths each write only one of politician_office /
+ * politician_ministry. If two ever co-exist on the same row,
+ * Advocate wins by display priority (most stable career identity).
+ *
+ * Returns null for non-politician factions or unassigned politicians
+ * (junior politician with no career yet) — callers should skip the
+ * suffix in that case rather than print "(null)".
+ */
+export function getPoliticianRoleLabel(faction) {
+    if (!faction || faction.faction_type !== 'politician') return null;
+    if (faction.bar_admitted_nation_id) return 'Advocate';
+    if (faction.politician_office === 'member_of_parliament') return 'MP';
+    if (faction.politician_ministry) return 'Civil Servant';
+    return null;
+}
+
+/**
  * Dashboard URL for a faction the player is switching INTO from a faction
  * switcher dropdown. Returns null for unknown types so each caller can
  * apply its own home-page fallback (party pages default to dashboard.html,
