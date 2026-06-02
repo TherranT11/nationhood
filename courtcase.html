@@ -128,13 +128,17 @@
   .beat-delete{width:22px;height:22px;border-radius:3px;background:transparent;border:0.5px solid var(--line);color:var(--mut);font-size:11px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .beat-delete:hover{color:var(--red);border-color:var(--red-dim);background:var(--red-bg);}
 
-  .beat-body{padding:11px 14px;}
+  .beat-body{padding:11px 14px;display:flex;flex-direction:column;gap:8px;}
+
+  .beat-name{width:100%;background:transparent;border:none;border-bottom:0.5px solid var(--paper-line);color:var(--brass-bright);font-family:Georgia,serif;font-size:13px;font-weight:600;letter-spacing:-0.005em;padding:0 0 5px;}
+  .beat-name::placeholder{color:var(--brass-dim);font-style:italic;font-weight:400;}
+  .beat-name:focus{outline:none;border-bottom-color:var(--brass);}
 
   .beat-desc{width:100%;background:transparent;border:none;color:var(--paper-text);font-family:Georgia,serif;font-size:11px;line-height:1.6;resize:vertical;min-height:38px;padding:0;font-style:italic;}
   .beat-desc::placeholder{color:var(--faint);}
   .beat-desc:focus{outline:none;}
 
-  .beat-strength{padding:9px 14px;background:#181410;border-top:0.5px solid var(--paper-line);display:flex;align-items:center;gap:13px;font-family:-apple-system,system-ui,sans-serif;}
+  .beat-strength{padding:9px 14px;background:#181410;border-top:0.5px solid var(--paper-line);display:flex;align-items:center;gap:13px;flex-wrap:wrap;font-family:-apple-system,system-ui,sans-serif;}
   .bs-lab{font-size:8.5px;letter-spacing:0.14em;color:var(--brass);font-weight:700;flex-shrink:0;}
   .bs-select{padding:6px 28px 6px 11px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:var(--brass-bright);font-family:Georgia,serif;font-size:13px;font-weight:700;cursor:pointer;appearance:none;
     background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
@@ -142,6 +146,12 @@
     background-size:5px 5px, 5px 5px; background-repeat:no-repeat; min-width:62px;}
   .bs-select:hover{border-color:var(--brass-dim);}
   .bs-select:focus{outline:none;border-color:var(--brass);}
+  .bs-support{padding:6px 28px 6px 11px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;color:#fff;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:0.06em;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+    background-position:calc(100% - 12px) 50%, calc(100% - 7px) 50%;
+    background-size:5px 5px, 5px 5px; background-repeat:no-repeat;}
+  .bs-support:hover{border-color:var(--brass-dim);}
+  .bs-support:focus{outline:none;border-color:var(--brass);}
   .bs-hint{font-size:8.5px;color:var(--mut);font-style:italic;flex:1;}
 
   /* add beat button + counter */
@@ -155,6 +165,16 @@
   .beat-counter.complete em{color:var(--green);}
   .beat-counter .sub{color:var(--mut);font-family:inherit;font-size:9.5px;font-weight:normal;font-style:italic;}
   .beat-stat-mini{font-size:8.5px;color:var(--mut);margin-left:auto;font-family:monospace;letter-spacing:0.04em;}
+
+  /* payout panel */
+  .payout{margin-top:10px;padding:13px 16px;background:#0a0807;border:0.5px solid var(--line);border-radius:6px;}
+  .payout-lab{font-size:8.5px;letter-spacing:0.16em;color:var(--brass);font-weight:700;margin-bottom:11px;}
+  .payout-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px;}
+  .payout-row{padding:9px 12px;background:#101010;border:0.5px solid rgba(255,255,255,0.05);border-radius:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .payout-side{font-size:11px;color:#bbb;}
+  .payout-side em{font-style:italic;color:var(--brass-bright);}
+  .payout-val{font-family:Georgia,serif;font-size:18px;color:#fff;font-weight:600;line-height:1;display:flex;align-items:baseline;gap:6px;}
+  .payout-unit{font-family:-apple-system,system-ui,sans-serif;font-size:8.5px;letter-spacing:0.14em;color:var(--mut);font-weight:700;text-transform:uppercase;}
 
   /* balance panel */
   .balance{margin-top:14px;padding:13px 16px;background:#0a0807;border:0.5px solid var(--line);border-radius:6px;}
@@ -360,11 +380,14 @@
             <span class="example-pill">EXAMPLE</span>
           </div>
           <div class="beat-body">
-            <textarea class="beat-desc" readonly>The signed waiver: defendant produced a one-page document, signed and witnessed three days before the incident, expressly releasing the plaintiff from liability for the activity in question.</textarea>
+            <input class="beat-name" type="text" readonly value="The Signed Waiver">
+            <textarea class="beat-desc" readonly>Defendant produced a one-page document, signed and witnessed three days before the incident, expressly releasing the plaintiff from liability for the activity in question.</textarea>
           </div>
           <div class="beat-strength">
             <span class="bs-lab">HIDDEN STRENGTH</span>
             <select class="bs-select" disabled><option>8</option></select>
+            <span class="bs-lab">SUPPORTS</span>
+            <select class="bs-support" disabled><option>DEFENDANT</option></select>
             <span class="bs-hint">documentary &middot; hard to refute</span>
           </div>
         </div>
@@ -382,11 +405,14 @@
             <span class="example-pill">EXAMPLE</span>
           </div>
           <div class="beat-body">
-            <textarea class="beat-desc" readonly>What kind of community: the defendant has lived in this town for thirty-one years, raised four children here, and never been the subject of a complaint. The plaintiff moved to the district nine months ago.</textarea>
+            <input class="beat-name" type="text" readonly value="A Pillar of the Community">
+            <textarea class="beat-desc" readonly>The defendant has lived in this town for thirty-one years, raised four children here, and never been the subject of a complaint. The plaintiff moved to the district nine months ago.</textarea>
           </div>
           <div class="beat-strength">
             <span class="bs-lab">HIDDEN STRENGTH</span>
             <select class="bs-select" disabled><option>5</option></select>
+            <span class="bs-lab">SUPPORTS</span>
+            <select class="bs-support" disabled><option>DEFENDANT</option></select>
             <span class="bs-hint">judge-dependent &middot; moves a jury</span>
           </div>
         </div>
@@ -433,6 +459,30 @@
           <div class="bal-avg">
             <div class="bal-avg-lab">AVG STRENGTH</div>
             <div class="bal-avg-val"><em id="bal-avg">&mdash;</em></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reputation-on-victory: (sum of hidden strengths of beats that
+           support that side) / 3 = REPUTATION gained by the lawyer who
+           wins representing that side. Updates live as beats are edited;
+           only counts beats that have both a strength and a Supports pick. -->
+      <div class="payout">
+        <div class="payout-lab">REPUTATION ON VICTORY</div>
+        <div class="payout-grid">
+          <div class="payout-row">
+            <div class="payout-side">If Victorious Representing <em>Plaintiff</em></div>
+            <div class="payout-val">
+              <span id="payout-plaintiff">&mdash;</span>
+              <span class="payout-unit">rep</span>
+            </div>
+          </div>
+          <div class="payout-row">
+            <div class="payout-side">If Victorious Representing <em>Defendant</em></div>
+            <div class="payout-val">
+              <span id="payout-defendant">&mdash;</span>
+              <span class="payout-unit">rep</span>
+            </div>
           </div>
         </div>
       </div>
@@ -547,9 +597,11 @@ function selectPill(groupName, val) {
 function collectPayload() {
   const beats = Array.from(document.querySelectorAll('#beats-list .beat:not(.example)'))
     .map(b => ({
+      name:        (b.querySelector('.beat-name').value || '').trim(),
       type:        b.dataset.beatType || '',
       description: (b.querySelector('.beat-desc').value || '').trim(),
       strength:    Number(b.dataset.strength) || null,
+      support:     b.dataset.support || '',
     }));
   return {
     case_type:            selectedPill('case_type'),
@@ -577,8 +629,10 @@ function validatePayload(p) {
   if (!p.overview) return 'Fill in the case overview.';
   const filledBeats = p.beats.filter(b => b.description.length > 0);
   if (filledBeats.length < 10) return `All ten beats are required. You have ${filledBeats.length}.`;
+  if (filledBeats.some(b => !b.name)) return 'Every beat needs a short name (e.g. "Lease Agreement").';
   if (filledBeats.some(b => !b.type)) return 'Every beat needs a type (Evidence, Law, Fact, or Appeal).';
   if (filledBeats.some(b => !b.strength)) return 'Every beat needs a hidden strength (1-10).';
+  if (filledBeats.some(b => !b.support)) return 'Every beat needs to mark whether it supports plaintiff or defendant.';
   return null;
 }
 
@@ -684,9 +738,9 @@ function updateConditional(side) {
 }
 
 // ── Beats ───────────────────────────────────────────────────────────
-// `prefill` is optional: { type, description, strength }. Used by
-// restoreDraft() to rehydrate a beat from localStorage; addBeat()
-// without an argument creates a blank row.
+// `prefill` is optional: { name, type, description, strength, support }.
+// Used by restoreDraft() to rehydrate a beat from localStorage;
+// addBeat() without an argument creates a blank row.
 function addBeat(prefill) {
   const userBeats = document.querySelectorAll('#beats-list .beat:not(.example)');
   if (userBeats.length >= MAX_BEATS) return;
@@ -695,8 +749,11 @@ function addBeat(prefill) {
   node.className = t ? `beat ${t}` : 'beat';
   node.dataset.beatType = t;
   node.dataset.strength = prefill?.strength ?? '';
+  node.dataset.support = prefill?.support || '';
+  const name = prefill?.name || '';
   const desc = prefill?.description || '';
   const strength = Number(prefill?.strength) || null;
+  const support = prefill?.support || '';
   node.innerHTML = `
     <div class="beat-head">
       <span class="beat-num"></span>
@@ -706,6 +763,7 @@ function addBeat(prefill) {
       <button type="button" class="beat-delete" title="Delete this beat">&#10005;</button>
     </div>
     <div class="beat-body">
+      <input class="beat-name" type="text" maxlength="80" placeholder="Name of the beat (e.g. Lease Agreement, Evidence of Fraud)" value="${escapeHtml(name)}">
       <textarea class="beat-desc" placeholder="Describe this beat&hellip; (a piece of evidence, a statute, a circumstance, an appeal to principle)">${escapeHtml(desc)}</textarea>
     </div>
     <div class="beat-strength">
@@ -717,7 +775,13 @@ function addBeat(prefill) {
           return `<option value="${n}" ${strength === n ? 'selected' : ''}>${n}</option>`;
         }).join('')}
       </select>
-      <span class="bs-hint">only the judge sees this</span>
+      <span class="bs-lab">SUPPORTS</span>
+      <select class="bs-support">
+        <option value="">—</option>
+        <option value="plaintiff" ${support === 'plaintiff' ? 'selected' : ''}>PLAINTIFF</option>
+        <option value="defendant" ${support === 'defendant' ? 'selected' : ''}>DEFENDANT</option>
+      </select>
+      <span class="bs-hint">strength is hidden &middot; supports is shown to advocates</span>
     </div>`;
   // Insert before the anchor so beats live in their canonical position.
   const anchor = document.getElementById('beats-anchor');
@@ -742,10 +806,14 @@ function addBeat(prefill) {
     renumberBeats();
     recalcBalance();
   });
+  node.querySelector('.beat-name').addEventListener('input', () => recalcBalance());
   node.querySelector('.beat-desc').addEventListener('input', () => recalcBalance());
   node.querySelector('.bs-select').addEventListener('change', (e) => {
     node.dataset.strength = e.target.value || '';
     recalcBalance();
+  });
+  node.querySelector('.bs-support').addEventListener('change', (e) => {
+    node.dataset.support = e.target.value || '';
   });
 
   renumberBeats();
@@ -778,11 +846,16 @@ function recalcBalance() {
 
   const counts = { evid: 0, law: 0, fact: 0, app: 0 };
   let sum = 0, withStrength = 0;
+  let plaintiffSum = 0, defendantSum = 0;
   filled.forEach(b => {
     const t = b.dataset.beatType;
     if (t && counts[t] !== undefined) counts[t] += 1;
     const s = Number(b.dataset.strength);
-    if (Number.isFinite(s) && s > 0) { sum += s; withStrength += 1; }
+    if (Number.isFinite(s) && s > 0) {
+      sum += s; withStrength += 1;
+      if (b.dataset.support === 'plaintiff') plaintiffSum += s;
+      else if (b.dataset.support === 'defendant') defendantSum += s;
+    }
   });
   document.getElementById('bal-evid').textContent = counts.evid;
   document.getElementById('bal-law').textContent  = counts.law;
@@ -794,6 +867,14 @@ function recalcBalance() {
   document.getElementById('bal-avg').innerHTML = avgStr === '—' ? '&mdash;' : avgStr;
   document.getElementById('beat-avg-mini').textContent =
     `avg strength so far · ${avgStr}`;
+
+  // Payout per side = (sum of hidden strengths of beats supporting that
+  // side) / 3. Empty side renders as em dash so the player can tell the
+  // calculation hasn't kicked in yet.
+  const payoutP = plaintiffSum ? (plaintiffSum / 3).toFixed(1) : null;
+  const payoutD = defendantSum ? (defendantSum / 3).toFixed(1) : null;
+  document.getElementById('payout-plaintiff').innerHTML = payoutP == null ? '&mdash;' : payoutP;
+  document.getElementById('payout-defendant').innerHTML = payoutD == null ? '&mdash;' : payoutD;
 
   // Disable Add Beat at the cap so the player can't add more rows than
   // the ten the trial draft needs.

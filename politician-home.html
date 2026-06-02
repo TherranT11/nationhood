@@ -319,6 +319,74 @@
   .ar-buttons { grid-template-columns:1fr; }
   .ar-buttons.cols-2 { grid-template-columns:1fr; }
 }
+
+/* ── Try a Case modal — Advocate's docket draw ─────────────────────
+   Hidden by default; openTryCaseModal(drawnCase) sets .open. Wiring
+   to the TRY A CASE action button is intentionally NOT in place yet
+   (per spec). ───────────────────────────────────────────────────── */
+.tc-back {
+  position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
+  display:none; align-items:flex-start; justify-content:center; padding:32px 18px; overflow-y:auto;
+}
+.tc-back.open { display:flex; }
+.tc-modal {
+  width:100%; max-width:780px; background:#0d0d0d;
+  border:0.5px solid rgba(200,162,110,0.25); border-left:3px solid #c8a26e; border-radius:7px;
+  color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; box-shadow:0 24px 60px rgba(0,0,0,0.55);
+}
+.tc-head { padding:14px 22px; display:flex; align-items:center; gap:12px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.tc-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e; font-weight:700; flex:1; }
+.tc-close { width:24px; height:24px; border-radius:3px; background:transparent; border:0.5px solid rgba(255,255,255,0.08); color:#888; cursor:pointer; font-size:13px; }
+.tc-close:hover { color:#fff; border-color:#3a3a3a; }
+.tc-body { padding:20px 22px; display:flex; flex-direction:column; gap:16px; }
+
+.tc-title { font-family:Georgia,serif; font-size:21px; color:#fff; line-height:1.2; letter-spacing:-0.005em; }
+.tc-title em { font-style:italic; color:#dcb88a; }
+.tc-tagrow { display:flex; gap:8px; flex-wrap:wrap; }
+.tc-tag { font-size:8.5px; letter-spacing:0.14em; font-weight:700; padding:3px 9px; border-radius:2px;
+  background:#161208; border:0.5px solid #5a4630; color:#dcb88a; }
+
+.tc-parties { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.tc-party { padding:11px 14px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:5px; }
+.tc-party .tc-lab { font-size:8px; letter-spacing:0.16em; color:#888; font-weight:700; margin-bottom:5px; }
+.tc-party .tc-who { font-family:Georgia,serif; font-size:14px; color:#fff; line-height:1.3; }
+.tc-party .tc-sub { font-size:9.5px; color:#888; margin-top:3px; font-style:italic; }
+
+.tc-overview { padding:12px 14px; background:#1a1612; border:0.5px solid #2a2218; border-radius:5px;
+  font-family:Georgia,serif; font-size:12px; line-height:1.6; color:#d8cfb8; }
+
+.tc-beats-head { display:flex; align-items:baseline; gap:10px; }
+.tc-beats-lab { font-size:9px; letter-spacing:0.16em; color:#c8a26e; font-weight:700; }
+.tc-beats-note { font-size:9px; color:#888; font-style:italic; }
+.tc-beats { display:flex; flex-direction:column; gap:7px; }
+.tc-beat { background:#1a1612; border:0.5px solid #2a2218; border-left:3px solid rgba(255,255,255,0.07); border-radius:5px; padding:9px 12px; }
+.tc-beat.evid { border-left-color:#d4b87a; }
+.tc-beat.law  { border-left-color:#9aab7a; }
+.tc-beat.fact { border-left-color:#7a9aab; }
+.tc-beat.app  { border-left-color:#c87a7a; }
+.tc-beat-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap; }
+.tc-beat-num { font-family:Georgia,serif; font-size:11px; color:#dcb88a; font-weight:700; width:24px; flex-shrink:0; }
+.tc-beat-name { font-family:Georgia,serif; font-size:13px; color:#fff; font-weight:600; flex:1; }
+.tc-beat-type { font-size:7.5px; letter-spacing:0.13em; padding:2px 7px; border-radius:2px;
+  background:#0a0807; border:0.5px solid rgba(255,255,255,0.07); font-weight:700; }
+.tc-beat-type.evid { color:#d4b87a; background:#16120a; border-color:#5a4a2e; }
+.tc-beat-type.law  { color:#9aab7a; background:#10130a; border-color:#4a5a3a; }
+.tc-beat-type.fact { color:#7a9aab; background:#0e1318; border-color:#3a5060; }
+.tc-beat-type.app  { color:#c87a7a; background:#160e0e; border-color:#5a3030; }
+.tc-beat-support { font-size:7.5px; letter-spacing:0.13em; padding:2px 7px; border-radius:2px;
+  background:#0a0807; border:0.5px solid rgba(255,255,255,0.07); color:#bbb; font-weight:700; }
+.tc-beat-desc { font-family:Georgia,serif; font-size:11px; color:#d8cfb8; line-height:1.55; font-style:italic; }
+
+.tc-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.06); display:flex; gap:11px; justify-content:flex-end; }
+.tc-btn { padding:11px 20px; border-radius:4px; font-size:10px; letter-spacing:0.14em; font-weight:700;
+  cursor:pointer; font-family:inherit; border:0.5px solid; }
+.tc-btn-reject { background:transparent; border-color:rgba(200,122,122,0.5); color:#c87a7a; }
+.tc-btn-reject:hover { background:rgba(200,122,122,0.08); color:#fff; }
+.tc-btn-accept { background:rgba(200,162,110,0.1); border-color:#c8a26e; color:#dcb88a; }
+.tc-btn-accept:hover { background:#251710; color:#fff; }
+.tc-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.tc-status { font-size:10px; color:#888; padding:0 22px 14px; font-style:italic; }
+.tc-status.bad { color:#c87a7a; }
 </style>
 </head>
 <body>
@@ -854,10 +922,18 @@ const CIVIL_SERVANT_ACTIONS = [
 // Advocate action placeholders — three court types mirror the three
 // law categories seeded in 20270502 (Criminal / Civil / Commercial).
 // No `action` key → renderAffiliation greys them out until RPCs land.
+// Advocate's three actions. TRY A CASE is the big-swing primary —
+// draws a random approved case from the court_case_drafts pool (filled
+// with names and corps from the lawyer's nation) and presents it for
+// Accept (+0.2 Standing) or Reject (-1 Reputation). The court type
+// (Criminal / Civil / Commercial) becomes flavor on the drawn case
+// rather than a player choice. The other two slots are the safe grind
+// (Statute Books → Legal Acumen) and the Notoriety-only play
+// (Brief the Press → big swing, no Wins on the record).
 const ADVOCATE_ACTIONS = [
-  { ic: '§', name: 'TRY A CASE IN CRIMINAL COURT',   cost: 'no cost', desc: 'Argue a prosecution or defense in the criminal docket. The stakes are liberty, and the press is watching.' },
-  { ic: '⚖', name: 'TRY A CASE IN CIVIL COURT',       cost: 'no cost', desc: 'Take a civil matter to the bench — property, contract, family. Quieter than criminal, but the file builds your name.' },
-  { ic: '☷', name: 'TRY A CASE IN COMMERCIAL COURT', cost: 'no cost', desc: 'Stand for a firm in commercial chambers. The retainer is good; the precedent travels.' },
+  { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.' },
+  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'Spend a quiet afternoon with the codes. No risk, no wins — just Legal Acumen.' },
+  { ic: '❐', name: 'BRIEF THE PRESS',         cost: 'no cost', desc: 'Skip the courtroom and go straight to the headlines. High Notoriety swing, no Wins on the record.' },
 ];
 
 const AFFIL_VARIANTS = {
@@ -1641,7 +1717,152 @@ function subscribeChatInserts() {
     .subscribe();
 }
 
+// ── Try a Case flow ─────────────────────────────────────────────────
+// Wires the draw / accept / reject RPCs to a modal that shows the
+// docket-drawn case. NOTE: tryACase() below is intentionally NOT
+// bound to the TRY A CASE action button yet (per spec) — the wiring
+// will land in a follow-up turn. To exercise the modal manually, call
+// window.__tryACase(factionId) from the console.
+async function tryACase(factionId) {
+  if (!factionId) return;
+  showTryCaseStatus('Drawing a case from the docket…', false);
+  openTryCaseModal();
+  try {
+    const { data, error } = await _supabase.rpc('draw_court_case', { p_faction_id: factionId });
+    if (error) throw error;
+    if (!data?.success) {
+      showTryCaseStatus(tryCaseReasonText(data?.reason), true);
+      return;
+    }
+    renderTryCaseModal(data, factionId);
+  } catch (err) {
+    showTryCaseStatus('Draw failed: ' + (err?.message || 'unknown'), true);
+  }
+}
+window.__tryACase = tryACase;
+
+function tryCaseReasonText(reason) {
+  return ({
+    not_authenticated:   'You need to sign in to try a case.',
+    no_politician:       'No active politician found.',
+    not_advocate:        'You need to pass the bar before trying a case.',
+    no_nation:           'Your nation could not be located.',
+    no_name_pool:        'Your nation has no name pool seeded yet.',
+    no_cases_available:  'No new cases on the docket. Check back later.',
+    no_viable_case:      'No case on the docket could find the right parties in your nation right now.',
+  })[reason] || ('Could not draw a case: ' + (reason || 'unknown'));
+}
+
+function openTryCaseModal() {
+  document.getElementById('tc-back').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeTryCaseModal() {
+  document.getElementById('tc-back').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function showTryCaseStatus(msg, isBad) {
+  document.getElementById('tc-back').classList.add('open');
+  document.getElementById('tc-content').innerHTML = `
+    <div class="tc-status ${isBad ? 'bad' : ''}" style="padding:32px 22px;text-align:center;">${escHtml(msg)}</div>`;
+}
+
+function renderTryCaseModal(d, factionId) {
+  const beatTypeLabel = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
+  const beats = Array.isArray(d.beats) ? d.beats : [];
+  const partyHtml = (label, name, partyType, corpType) => `
+    <div class="tc-party">
+      <div class="tc-lab">${label}</div>
+      <div class="tc-who">${escHtml(name || '—')}</div>
+      <div class="tc-sub">${partyType === 'corporation'
+        ? (corpType ? corpType.replace(/_/g, ' ') + ' corporation' : 'corporation')
+        : 'individual'}</div>
+    </div>`;
+  document.getElementById('tc-content').innerHTML = `
+    <div class="tc-body">
+      <div>
+        <div class="tc-tagrow">
+          <span class="tc-tag">${(d.case_type || '').toUpperCase()}</span>
+          <span class="tc-tag">${escHtml((d.litigation_type || '').toUpperCase())}</span>
+        </div>
+      </div>
+      <div class="tc-parties">
+        ${partyHtml('PLAINTIFF', d.plaintiff_name, d.plaintiff_party_type, d.plaintiff_corp_type)}
+        ${partyHtml('DEFENDANT', d.defendant_name, d.defendant_party_type, d.defendant_corp_type)}
+      </div>
+      <div class="tc-overview">${escHtml(d.overview || '')}</div>
+      <div class="tc-beats-head">
+        <span class="tc-beats-lab">THE BEATS</span>
+        <span class="tc-beats-note">strength is hidden from advocates until trial</span>
+      </div>
+      <div class="tc-beats">
+        ${beats.map((b, i) => {
+          const t = b?.type || '';
+          const sup = b?.support || '';
+          return `
+            <div class="tc-beat ${t}">
+              <div class="tc-beat-head">
+                <span class="tc-beat-num">§ ${i + 1}</span>
+                <span class="tc-beat-name">${escHtml(b?.name || '—')}</span>
+                ${t ? `<span class="tc-beat-type ${t}">${beatTypeLabel[t] || ''}</span>` : ''}
+                ${sup ? `<span class="tc-beat-support">SUPPORTS ${sup.toUpperCase()}</span>` : ''}
+              </div>
+              <div class="tc-beat-desc">${escHtml(b?.description || '')}</div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="tc-foot">
+      <button type="button" class="tc-btn tc-btn-reject" id="tc-reject">REJECT &middot; −1 Reputation</button>
+      <button type="button" class="tc-btn tc-btn-accept" id="tc-accept">✓ ACCEPT CASE &middot; +0.2 Political Standing</button>
+    </div>`;
+  document.getElementById('tc-accept').addEventListener('click', () => decideTryCase(factionId, d.case_id, 'accept'));
+  document.getElementById('tc-reject').addEventListener('click', () => decideTryCase(factionId, d.case_id, 'reject'));
+}
+
+async function decideTryCase(factionId, caseId, decision) {
+  const acceptBtn = document.getElementById('tc-accept');
+  const rejectBtn = document.getElementById('tc-reject');
+  acceptBtn.disabled = true;
+  rejectBtn.disabled = true;
+  const rpc = decision === 'accept' ? 'accept_drawn_case' : 'reject_drawn_case';
+  try {
+    const { data, error } = await _supabase.rpc(rpc, { p_faction_id: factionId, p_case_id: caseId });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not record decision: ' + (data?.reason || 'unknown'));
+      acceptBtn.disabled = false;
+      rejectBtn.disabled = false;
+      return;
+    }
+    closeTryCaseModal();
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    acceptBtn.disabled = false;
+    rejectBtn.disabled = false;
+  }
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 init();
 </script>
+
+<!-- Try a Case modal — Advocate docket draw. Hidden until openTryCaseModal()
+     sets .open. Wiring to TRY A CASE action button is deferred (per spec). -->
+<div class="tc-back" id="tc-back">
+  <div class="tc-modal">
+    <div class="tc-head">
+      <span class="tc-eyebrow">JUDICIARY &middot; DOCKET DRAW</span>
+      <button type="button" class="tc-close" onclick="document.getElementById('tc-back').classList.remove('open');document.body.style.overflow='';" title="Close">&#10005;</button>
+    </div>
+    <div id="tc-content"></div>
+  </div>
+</div>
+
 </body>
 </html>
