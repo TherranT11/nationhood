@@ -156,6 +156,55 @@
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center;
   margin-bottom:28px; }
 
+/* ─── Counsel-offer card (Pressing Issues) ────────────────────────
+   Rendered for each pending corp_advocate_offer aimed at this
+   politician. The card design lives in the same Pressing Issues
+   container as .ci-camp; classes prefixed .offer-* / .oi- ("offer
+   info") so they don't collide. Accept pays +1 Reputation server-
+   side via accept_counsel_offer (20270513); Reject is a no-stat
+   resolve via reject_counsel_offer. */
+.offer-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06); border-radius:6px;
+  overflow:hidden; border-left:3px solid #c8a26e; display:flex; align-items:stretch;
+  transition:background 0.15s; }
+/* Stacks cleanly under .ci-camp (campaign) or another .offer-card; the
+   first card in #pressing-issues sits flush, every later card gets
+   the same 10px gap regardless of which type sits above it. */
+#pressing-issues > .offer-card + .offer-card,
+#pressing-issues > .ci-camp + .offer-card { margin-top:10px; }
+.offer-card:hover { background:#101010; }
+.offer-icon-wrap { display:flex; align-items:center; justify-content:center; padding:13px 18px;
+  border-right:0.5px solid rgba(255,255,255,0.06); background:#0a0807; flex-shrink:0; }
+.offer-icon { width:38px; height:38px; border-radius:5px; background:#161208;
+  border:0.5px solid #5a4630; color:#dcb88a; display:flex; align-items:center;
+  justify-content:center; font-size:18px; }
+.offer-info { flex:1; padding:13px 18px; min-width:0; }
+.oi-eyebrow { font-size:7.5px; letter-spacing:0.16em; color:#c8a26e; font-weight:700; margin-bottom:4px; }
+.oi-headline { font-family:Georgia,serif; font-size:14px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; line-height:1.25; margin-bottom:5px; }
+.oi-headline em { font-style:italic; color:#dcb88a; }
+.oi-meta { display:flex; align-items:center; gap:10px; font-size:9.5px; color:#7a7a7a; flex-wrap:wrap; }
+.oi-corp { padding:2px 8px; border-radius:3px; font-size:8.5px; letter-spacing:0.1em;
+  font-weight:700; background:#10130a; color:#9ac99a; border:0.5px solid #3a5a3a; }
+.oi-sep { color:#3a3a3a; }
+.oi-ceo { color:#bbb; }
+.oi-ceo strong { color:#fff; font-weight:600; }
+.oi-rep { color:#7a7a7a; font-style:italic; }
+.oi-rep strong { color:#9ac99a; font-style:normal; font-weight:700; font-family:Georgia,serif; font-size:11px; }
+.offer-right { display:flex; align-items:center; gap:8px; padding:13px 18px; background:#0a0807;
+  border-left:0.5px solid rgba(255,255,255,0.06); flex-shrink:0; }
+.offer-accept-btn, .offer-reject-btn { padding:9px 16px; font-size:9px; letter-spacing:0.13em;
+  font-weight:700; border-radius:3px; background:transparent; cursor:pointer; font-family:inherit; }
+.offer-accept-btn { border:0.5px solid #3a5a3a; color:#9ac99a; }
+.offer-accept-btn:hover { background:#0e1611; border-color:#7ab07a; color:#fff; }
+.offer-reject-btn { border:0.5px solid #5a3030; color:#d49a9a; }
+.offer-reject-btn:hover { background:#160e0e; border-color:#c87a7a; color:#fff; }
+.offer-accept-btn:disabled, .offer-reject-btn:disabled { opacity:0.5; cursor:not-allowed; }
+@media (max-width: 720px) {
+  .offer-card { flex-direction:column; }
+  .offer-icon-wrap { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.06); padding:9px; }
+  .offer-right { border-left:none; border-top:0.5px solid rgba(255,255,255,0.06); justify-content:flex-end; }
+}
+
 /* Career log — one date-prefixed row per event, listed newest-first. */
 /* ─── Active Campaign card (Pressing Issues) ─────────────────────────
    Rendered when politician_active_election has a row for the current
@@ -656,6 +705,7 @@ let allEvents = [];       // event_log rows feeding the World Events panel
 let evCurrentTab = 'politics';
 let careerRows = [];   // persistent rows from politician_career_events; merged with the derived founding event at render time.
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
+let counselOffers = []; // pending corp_advocate_offers for this politician (20270512/13). Surfaces as Pressing Issues cards.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -689,7 +739,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -707,18 +757,25 @@ async function init() {
         .select('race_tier, district, opp_first, opp_last, opp_blurb, opp_party_name, your_stat, opp_stat, win_odds_pct, stake_win, stake_lose, resolve_tick, polling_you_pct, polling_opp_pct, polling_undecided_pct, created_at')
         .eq('politician_id', politician.id)
         .maybeSingle(),
+      // Pending counsel-retainer offers from corps in the advocate's
+      // bar nation. RPC returns offers:[] for non-advocates so it's
+      // safe to call unconditionally.
+      _supabase.rpc('list_counsel_offers_for_advocate', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
     if (raceRes.error) console.error('politician-home: active_election fetch failed', raceRes.error);
+    if (offersRes.error) console.error('politician-home: counsel offers fetch failed', offersRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
+    counselOffers = (offersRes.data?.success ? offersRes.data.offers : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
     careerRows = [];
     activeRace = null;
+    counselOffers = [];
   }
 
   renderHero(ctx.shard);
@@ -1353,12 +1410,73 @@ async function handleMpAction(btn) {
 function renderPressingIssues(ctx) {
   const host = document.getElementById('pressing-issues');
   if (!host) return;
-  if (!activeRace) {
+  const blocks = [];
+  if (activeRace) blocks.push(renderCampaignCard(ctx));
+  counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
+  if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
     return;
   }
-  host.innerHTML = renderCampaignCard(ctx);
-  bindCampaignActions(ctx);
+  host.innerHTML = blocks.join('');
+  if (activeRace) bindCampaignActions(ctx);
+  bindCounselOfferActions();
+}
+
+function renderCounselOfferCard(o) {
+  const corpName = escHtml(o.corp_name || 'A corporation');
+  const ceo      = escHtml(o.ceo_name || '—');
+  return `
+    <div class="offer-card" data-offer-id="${escHtml(o.offer_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9874;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">OFFER FOR COUNSEL &middot; CORPORATE RETAINER</div>
+        <div class="oi-headline">A corporation seeks to <em>retain</em> your services.</div>
+        <div class="oi-meta">
+          <span class="oi-corp">CORPORATION &middot; ${corpName}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-ceo">CEO <strong>${ceo}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-rep">Reputation: <strong>+1</strong></span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-offer-id="${escHtml(o.offer_id)}">&#10003; ACCEPT</button>
+        <button type="button" class="offer-reject-btn" data-offer-id="${escHtml(o.offer_id)}">&#10005; REJECT</button>
+      </div>
+    </div>`;
+}
+
+function bindCounselOfferActions() {
+  document.querySelectorAll('.offer-accept-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveCounselOffer(btn, 'accept'));
+  });
+  document.querySelectorAll('.offer-reject-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveCounselOffer(btn, 'reject'));
+  });
+}
+
+async function resolveCounselOffer(btn, decision) {
+  const card = btn.closest('.offer-card');
+  if (!card) return;
+  const offerId = card.dataset.offerId;
+  if (!offerId) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  const rpc = decision === 'accept' ? 'accept_counsel_offer' : 'reject_counsel_offer';
+  try {
+    const { data, error } = await _supabase.rpc(rpc, { p_offer_id: offerId });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not resolve offer: ' + (data?.reason || 'unknown'));
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
 }
 
 // Two-or-three-letter abbreviation derived from a party name: first
