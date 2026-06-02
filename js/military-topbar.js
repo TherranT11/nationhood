@@ -15,6 +15,7 @@ import {
     getFactionTypeBadge,
     getFactionDashboardUrl,
     getBranchDisplayLabel,
+    getPoliticianRoleLabel,
     isHiddenFromSwitcher,
     nextPoliticianSlot,
     activatePoliticianSlot,
@@ -194,9 +195,11 @@ export function renderMilitaryTopBar(container, opts = {}) {
             const abbr = f.faction_type === 'military'
                 ? getBranchDisplayLabel(f.branch)
                 : (f.abbreviation || '—');
+            const role = getPoliticianRoleLabel(f);
+            const name = (f.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
             return `<div class="mil-dd-item${isActive ? ' active' : ''}" data-faction-id="${escHtml(f.id)}">
                 <span class="mil-dd-type" style="color:${color}">${label}</span>
-                <span class="mil-dd-name">${escHtml(f.faction_name || 'Unnamed')}</span>
+                <span class="mil-dd-name">${escHtml(name)}</span>
                 <span class="mil-dd-abbr">[${escHtml(abbr)}]</span>
             </div>`;
         }).join('');

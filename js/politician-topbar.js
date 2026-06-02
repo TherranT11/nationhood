@@ -5,7 +5,7 @@
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
 import { APP_VERSION, fmtBig, displayName, currentAge } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
@@ -114,9 +114,11 @@ function buildSwitcher(facs) {
   // Existing rows — every active, non-hidden faction the user owns.
   const items = list.map(f => {
     const { label, color } = getFactionTypeBadge(f.faction_type);
+    const role = getPoliticianRoleLabel(f);
+    const name = (f.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
     return `<div class="pol-dd-item" data-id="${esc(f.id)}">
       <span class="pol-dd-badge" style="color:${color}">${esc(label)}</span>
-      <span class="pol-dd-name">${esc(f.faction_name || 'Unnamed')}</span>
+      <span class="pol-dd-name">${esc(name)}</span>
     </div>`;
   });
   // Politician slot row — label rule, cap, and Patreon11 gate all
@@ -228,7 +230,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_standing, politician_reputation, politician_credibility, political_capital, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, politician_ministry, civil_service_exam_cooldown_until_tick, speech_cooldown_until_tick, door_knock_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick, bar_admitted_nation_id, bar_admitted_at_tick, bar_last_attempt_tick, try_case_cooldown_until_tick, party_cooldown_until_tick')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_standing, politician_reputation, politician_credibility, political_capital, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, politician_ministry, civil_service_exam_cooldown_until_tick, speech_cooldown_until_tick, door_knock_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick, bar_admitted_nation_id, bar_admitted_at_tick, bar_last_attempt_tick, politician_experienced_advocate_at_tick, try_case_cooldown_until_tick, party_cooldown_until_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);

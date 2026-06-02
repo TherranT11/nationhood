@@ -1036,6 +1036,26 @@ const JUDICIARY_RUNGS = [
     },
   },
   {
+    name: 'Experienced Advocate',
+    // Held once the politician has claimed the step-up. 20270529 stores
+    // the tick on factions.politician_experienced_advocate_at_tick;
+    // not cleared, so the rung stays lit for the life of the career.
+    held:        (s)  => !!s.experiencedAdvocateAtTick,
+    descIfHeld:  ()  => 'A senior practitioner — recognised by the bar for a sustained record of cases tried.',
+    descIfNot:   ()  => 'Step up from junior advocate to a recognised practitioner. The bar marks your record once your reputation in court justifies the title.',
+    actionIfNot: (s) => {
+      // Must be admitted to THIS nation's bar first (matches Advocate's
+      // held() gate — cross-nation admissions don't count).
+      if (!s.barAdmittedNationId || s.barAdmittedNationId !== s.nationId) {
+        return { label: 'Pass the Bar first', kind: 'disabled' };
+      }
+      if (s.politicianReputation < 30) {
+        return { label: `Step Up · Need 30 Rep (${s.politicianReputation}/30)`, kind: 'disabled' };
+      }
+      return { label: 'Step Up', kind: 'primary', action: 'step-up-experienced-advocate' };
+    },
+  },
+  {
     name: 'Magistrate',
     held:        ()  => false,
     descIfHeld:  ()  => 'Presided over a lower court. Cleared.',
@@ -1047,6 +1067,13 @@ const JUDICIARY_RUNGS = [
     descIfHeld:  ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
     descIfNot:   ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
     actions:     ['Hear an Appeal', '§ Set Precedent', '↩ Overturn a Ruling'],
+  },
+  {
+    name: 'Supreme Court Justice',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'Sit on the Supreme Court — a small bench whose decisions stand unless the Chief Justice convenes a full sitting.',
+    descIfNot:   ()  => 'Sit on the Supreme Court — a small bench whose decisions stand unless the Chief Justice convenes a full sitting.',
+    accessNote:  'appointed',
   },
   {
     name: 'Chief Justice',
@@ -1512,6 +1539,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     barAdmittedNationId:     ctx?.faction?.bar_admitted_nation_id || null,
     barAdmittedAtTick:       Number(ctx?.faction?.bar_admitted_at_tick) || 0,
     barLastAttemptTick:      Number(ctx?.faction?.bar_last_attempt_tick) || 0,
+    // Reputation gates the Experienced Advocate step-up (20270529).
+    // Reads off the same factions.politician_reputation the trial
+    // verdict bumps; threshold-only, no spend.
+    politicianReputation:    Number(ctx?.faction?.politician_reputation) || 0,
+    experiencedAdvocateAtTick: Number(ctx?.faction?.politician_experienced_advocate_at_tick) || 0,
   };
 }
 
@@ -1857,6 +1889,35 @@ function bindRungActions(ctx) {
   });
   document.querySelectorAll('#barModal [data-bar-close]').forEach(btn => {
     btn.addEventListener('click', () => closeBarExamModal());
+  });
+
+  // Step Up — Experienced Advocate (Judiciary Tier 2, 20270529). No
+  // cost; the 30-Rep gate is a threshold. Disable-on-click prevents
+  // double-fire while the RPC is in flight; success reloads so the
+  // rung flips to held + the switcher chip picks up the new role
+  // suffix.
+  document.querySelectorAll('[data-action="step-up-experienced-advocate"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = 'Stepping up…';
+      try {
+        const facId = window.__careerCtx?.faction?.id;
+        if (!facId) throw new Error('No active politician.');
+        const { data, error } = await _supabase.rpc('politician_step_up_experienced_advocate',
+          { p_faction_id: facId });
+        if (error) throw error;
+        if (!data?.success) {
+          const reason = data?.reason || 'unknown';
+          throw new Error(`Could not step up: ${reason}`);
+        }
+        window.location.reload();
+      } catch (e) {
+        alert(e?.message || 'Step up failed.');
+        btn.disabled = false;
+        btn.textContent = 'Step Up';
+      }
+    });
   });
 }
 
