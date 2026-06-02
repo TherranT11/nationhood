@@ -86,6 +86,13 @@ BEGIN
     IF v_comm.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'committee_not_found');
     END IF;
+    -- Orphaned politicians (NULL nation_id) can't propose. Otherwise
+    -- v_comm.nation_id <> NULL evaluates to NULL → IF skips → an
+    -- orphan could submit to any committee. IS DISTINCT FROM closes
+    -- the NULL-bypass; the explicit NULL check returns the same
+    -- wrong_nation reason so the client doesn't need a new branch.
+    -- (Restored from 20270498's audit patch — body kept here to keep
+    -- this CREATE OR REPLACE the canonical reference.)
     IF v_pol.nation_id IS NULL OR v_comm.nation_id IS DISTINCT FROM v_pol.nation_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'wrong_nation');
     END IF;
@@ -108,6 +115,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'invalid_articles');
     END IF;
 
+    -- Validate each article's shape + sum total text length.
     FOR v_art IN SELECT * FROM jsonb_array_elements(p_articles)
     LOOP
         IF jsonb_typeof(v_art) <> 'object' THEN
@@ -124,6 +132,9 @@ BEGIN
             'total', v_total_len, 'cap', 600);
     END IF;
 
+    -- Server-normalised articles: trim, ordinal 1..N, drop unknown
+    -- tag values to 'operative' so the column shape is predictable
+    -- regardless of what the client sent.
     SELECT jsonb_agg(
             jsonb_build_object(
                 'ordinal', ord,
@@ -182,6 +193,12 @@ BEGIN
         )
     );
 
+    -- ONE-SOURCE NOTE: the sentence here is duplicated in
+    -- politician-home.html's CAREER_EVENT_TEMPLATES.proposed_law
+    -- because event_log stores text (read directly) while
+    -- politician_career_events stores components (rendered via the
+    -- template map). The two writers MUST emit identical strings.
+    -- If you edit the format below, update the client template too.
     INSERT INTO event_log (
         nation_id, faction_id,
         event_name, description_used,

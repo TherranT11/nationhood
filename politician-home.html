@@ -494,6 +494,11 @@ const CAREER_EVENT_TEMPLATES = {
   // target_name is the proposal's section (acts as a stand-in title
   // until a dedicated title field lands on the modal).
   // metadata.committee_name carries the formal committee display name.
+  //
+  // ONE-SOURCE NOTE: this sentence is duplicated in 20270500's
+  // committee_propose_law RPC where it's concatenated into
+  // event_log.description_used (Politics tab reads that directly).
+  // If you edit the format here, update the SQL concat too.
   proposed_law: (name, target, meta = {}) =>
     `${name} has submitted a law proposal titled: ${target || 'a proposal'}, that has been sent to the ${meta.committee_name || 'a committee'}.`,
 };
