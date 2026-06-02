@@ -200,6 +200,9 @@
 .offer-reject-btn { border:0.5px solid #5a3030; color:#d49a9a; }
 .offer-reject-btn:hover { background:#160e0e; border-color:#c87a7a; color:#fff; }
 .offer-accept-btn:disabled, .offer-reject-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.offer-pending-pill { font-size:9px; letter-spacing:0.13em; font-weight:700; padding:7px 11px;
+  border-radius:3px; background:#161208; color:#dcb88a; border:0.5px solid #5a4630;
+  text-transform:uppercase; }
 @media (max-width: 720px) {
   .offer-card { flex-direction:column; }
   .offer-icon-wrap { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.06); padding:9px; }
@@ -1808,12 +1811,26 @@ function bindActiveTrialActions() {
 }
 
 function renderPretrialCard(p) {
-  const openSide   = p.open_side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
-  const caseTag    = `${(p.case_type || '').toUpperCase()} · ${escHtml((p.litigation_type || '').toUpperCase())}`;
-  const ticksLeft  = Number(p.ticks_remaining);
-  const ticksHtml  = Number.isFinite(ticksLeft)
+  const openSide      = p.open_side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+  const caseTag       = `${(p.case_type || '').toUpperCase()} · ${escHtml((p.litigation_type || '').toUpperCase())}`;
+  const ticksLeft     = Number(p.ticks_remaining);
+  const ticksHtml     = Number.isFinite(ticksLeft)
     ? `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} remaining`
     : 'pre-trial window';
+  // Corp-side cases route through OFFER → owner accepts. Person-side
+  // cases still direct-claim via REPRESENT (no player on the other
+  // end to accept). 20270519's list_pretrial_cases_for_advocate
+  // exposes open_party_type + offer_status to drive both bits.
+  const isCorp        = p.open_party_type === 'corporation';
+  const alreadyOffered = p.offer_status === 'pending';
+  let actionHtml;
+  if (alreadyOffered) {
+    actionHtml = '<span class="offer-pending-pill">OFFER SENT</span>';
+  } else if (isCorp) {
+    actionHtml = `<button type="button" class="offer-accept-btn pretrial-offer">&#9874; OFFER TO REPRESENT</button>`;
+  } else {
+    actionHtml = `<button type="button" class="offer-accept-btn pretrial-join">&#9874; REPRESENT ${openSide}</button>`;
+  }
   return `
     <div class="offer-card pretrial-card" data-trial-id="${escHtml(p.trial_id)}">
       <div class="offer-icon-wrap">
@@ -1828,31 +1845,36 @@ function renderPretrialCard(p) {
           <span class="oi-rep">${escHtml(ticksHtml)}</span>
         </div>
       </div>
-      <div class="offer-right">
-        <button type="button" class="offer-accept-btn pretrial-join">&#9874; REPRESENT ${openSide}</button>
-      </div>
+      <div class="offer-right">${actionHtml}</div>
     </div>`;
 }
 
 function bindPretrialActions() {
   document.querySelectorAll('.pretrial-join').forEach(btn => {
-    btn.addEventListener('click', () => joinPretrial(btn));
+    btn.addEventListener('click', () => resolvePretrial(btn, 'join'));
+  });
+  document.querySelectorAll('.pretrial-offer').forEach(btn => {
+    btn.addEventListener('click', () => resolvePretrial(btn, 'offer'));
   });
 }
 
-async function joinPretrial(btn) {
+// Person-side → represent_pretrial (direct claim).
+// Corp-side  → offer_trial_counsel (queued for corp owner to accept).
+async function resolvePretrial(btn, mode) {
   const card = btn.closest('.pretrial-card');
   if (!card) return;
   const trialId = card.dataset.trialId;
   if (!trialId) return;
   card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  const rpc = mode === 'offer' ? 'offer_trial_counsel' : 'represent_pretrial';
   try {
-    const { data, error } = await _supabase.rpc('represent_pretrial', {
+    const { data, error } = await _supabase.rpc(rpc, {
       p_faction_id: politician.id, p_trial_id: trialId,
     });
     if (error) throw error;
     if (!data?.success) {
-      alert('Could not join pre-trial: ' + (data?.reason || 'unknown'));
+      alert((mode === 'offer' ? 'Could not send offer: ' : 'Could not join pre-trial: ')
+            + (data?.reason || 'unknown'));
       card.querySelectorAll('button').forEach(b => { b.disabled = false; });
       return;
     }
