@@ -745,6 +745,80 @@
     .corp-crest { width:56px; height:56px; font-size:18px; }
     .corp-id { gap:14px; }
   }
+
+  /* ── Retain Counsel modal ──────────────────────────────────────── */
+  .rc-back { position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
+    display:none; align-items:center; justify-content:center; padding:18px; }
+  .rc-back.open { display:flex; }
+  .rc-modal { width:100%; max-width:900px; background:#111; border:1px solid rgba(255,255,255,0.06);
+    border-radius:6px; overflow:hidden; max-height:90vh; display:flex; flex-direction:column;
+    color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; }
+
+  .rc-head { padding:16px 22px 14px; border-bottom:1px solid rgba(255,255,255,0.06);
+    position:relative; flex-shrink:0; background:#0d0d0d; }
+  .rc-eyebrow { font-size:10px; letter-spacing:0.14em; color:#c8a26e; font-weight:700;
+    text-transform:uppercase; margin-bottom:5px; }
+  .rc-title { font-size:18px; color:#fff; font-weight:600; letter-spacing:-0.005em; line-height:1.2; }
+  .rc-title em { font-style:italic; color:#dcb88a; font-weight:500; font-family:Georgia,serif; }
+  .rc-sub { font-size:11px; color:#7a7a7a; margin-top:6px; line-height:1.55; }
+  .rc-sub strong { color:#bbb; }
+  .rc-close { position:absolute; top:14px; right:18px; font-size:14px; color:#7a7a7a;
+    cursor:pointer; background:transparent; border:none; padding:2px 6px; }
+  .rc-close:hover { color:#fff; }
+
+  .rc-offers-bar { padding:11px 22px; background:#0d0d0d;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    display:flex; align-items:center; gap:14px; }
+  .rc-info { flex:1; font-size:10.5px; color:#7a7a7a; line-height:1.5; }
+  .rc-info strong { color:#bbb; }
+  .rc-info em { color:#dcb88a; font-style:italic; }
+  .rc-counter { display:flex; align-items:center; gap:8px; }
+  .rc-count-lab { font-size:9px; letter-spacing:0.12em; color:#c8a26e; font-weight:700; }
+  .rc-count-dots { display:flex; gap:4px; }
+  .rc-dot { width:8px; height:8px; border-radius:50%; border:1px solid #5a4630; background:transparent; }
+  .rc-dot.used { background:#c8a26e; border-color:#c8a26e; }
+
+  .rc-list { flex:1; overflow-y:auto; padding:0; display:flex; flex-direction:column; }
+  .rc-col-head { display:grid; grid-template-columns:2fr 0.9fr 0.9fr 0.9fr auto;
+    gap:14px; padding:10px 22px; font-size:9px; letter-spacing:0.13em; color:#5a5a5a;
+    font-weight:700; border-bottom:1px solid rgba(255,255,255,0.06); background:#0d0d0d;
+    text-transform:uppercase; }
+  .rc-col-head .ch-right { text-align:right; }
+
+  .rc-adv { display:grid; grid-template-columns:2fr 0.9fr 0.9fr 0.9fr auto;
+    gap:14px; align-items:center; padding:13px 22px;
+    border-bottom:1px solid rgba(255,255,255,0.04); cursor:pointer;
+    transition:background 0.12s; }
+  .rc-adv:hover { background:#0d0d0d; }
+  .rc-adv.selected { background:rgba(200,162,110,0.05); box-shadow:inset 3px 0 0 #c8a26e; }
+  .rc-adv.offered { opacity:0.5; cursor:default; }
+  .rc-adv.offered:hover { background:transparent; }
+  .rc-adv:last-child { border-bottom:none; }
+
+  .rc-adv-name-text { font-size:12px; color:#fff; font-weight:600; letter-spacing:-0.005em; line-height:1.25; }
+  .rc-adv-sub { font-size:10px; color:#7a7a7a; margin-top:2px; }
+  .rc-stat { text-align:right; }
+  .rc-stat-val { font-size:13px; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; color:#fff; }
+  .rc-stat-val.high { color:#9ac99a; }
+  .rc-stat-val.mid  { color:#d4b87a; }
+  .rc-stat-val.low  { color:#7a7a7a; }
+  .rc-adv-action { text-align:right; font-size:10px; }
+  .rc-offer-pill { font-size:9px; letter-spacing:0.12em; color:#d4b87a; font-weight:700; text-transform:uppercase; }
+  .rc-selected-pill { font-size:9px; letter-spacing:0.12em; color:#dcb88a; font-weight:700; text-transform:uppercase; }
+
+  .rc-empty { padding:40px 22px; text-align:center; color:#7a7a7a; font-style:italic; font-size:12px; }
+  .rc-empty.bad { color:#c87a7a; }
+
+  .rc-foot { padding:13px 22px; background:#0d0d0d; border-top:1px solid rgba(255,255,255,0.06);
+    display:flex; align-items:center; gap:14px; flex-shrink:0; }
+  .rc-foot-note { flex:1; font-size:10.5px; color:#7a7a7a; line-height:1.5; }
+  .rc-foot-note strong { color:#fff; }
+  .rc-foot-note em { color:#dcb88a; font-style:italic; }
+  .rc-offer-btn { padding:8px 16px; border-radius:3px; font-size:10px; letter-spacing:0.1em;
+    font-weight:700; cursor:pointer; font-family:inherit; background:transparent;
+    border:1px solid #c8a26e; color:#dcb88a; text-transform:uppercase; }
+  .rc-offer-btn:hover { background:#161208; color:#fff; }
+  .rc-offer-btn:disabled { opacity:0.4; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -2021,6 +2095,170 @@ function initials(s, n) {
       } catch (e) {
         console.warn('[entrepreneur-corp] cancel aircraft order failed:', e?.message || e);
         if (btn) { btn.disabled = false; btn.textContent = originalLabel || 'Decline'; }
+      }
+    }
+
+    // ── Legal Counsel modal — Retain Counsel button on the corp
+    // sidebar. Owner-only on the server; for non-owners the
+    // list_available_advocates RPC returns reason='not_owner' and we
+    // shut the modal with a status. Selecting an advocate enables the
+    // OFFER TO RETAIN footer button; offering re-loads the modal so
+    // the new pending offer shows the OFFER SENT pill and the dots
+    // counter ticks forward. ──
+    const _rc = { advocates: [], pending: 0, maxOffers: 3, selectedId: null, corpName: '' };
+
+    function setupCounselButton() {
+      const btn = document.getElementById('cp-counsel-btn');
+      if (!btn) return;
+      btn.addEventListener('click', openCounselModal);
+      document.getElementById('rc-close').addEventListener('click', closeCounselModal);
+      document.getElementById('rc-offer-btn').addEventListener('click', sendCounselOffer);
+    }
+
+    function openCounselModal() {
+      document.getElementById('rc-back').classList.add('open');
+      document.getElementById('rc-list').innerHTML =
+        '<div class="rc-empty">Loading…</div>';
+      document.getElementById('rc-offer-btn').disabled = true;
+      loadCounselModal();
+    }
+    function closeCounselModal() {
+      document.getElementById('rc-back').classList.remove('open');
+      _rc.selectedId = null;
+    }
+
+    async function loadCounselModal() {
+      try {
+        const { data, error } = await _supabase.rpc('list_available_advocates', { p_corp_id: id });
+        if (error) throw error;
+        if (!data?.success) {
+          const reasons = {
+            not_owner: 'Only the CEO of this corp can retain counsel.',
+            corp_not_found: 'Corporation not found.',
+            not_authenticated: 'Sign in to continue.',
+          };
+          document.getElementById('rc-list').innerHTML =
+            `<div class="rc-empty bad">${escapeHtml(reasons[data?.reason] || ('Could not load advocates: ' + (data?.reason || 'unknown')))}</div>`;
+          return;
+        }
+        _rc.advocates = data.advocates || [];
+        _rc.pending = data.pending_offers || 0;
+        _rc.maxOffers = data.max_offers || 3;
+        _rc.corpName = data.corp_name || '';
+        _rc.selectedId = null;
+        renderCounselModal();
+      } catch (err) {
+        document.getElementById('rc-list').innerHTML =
+          `<div class="rc-empty bad">${escapeHtml('Load failed: ' + (err?.message || 'network error'))}</div>`;
+      }
+    }
+
+    function statClass(v) {
+      const n = Number(v) || 0;
+      if (n >= 7) return 'high';
+      if (n >= 4) return 'mid';
+      return 'low';
+    }
+    function statText(v) {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return n.toFixed(1);
+    }
+
+    function renderCounselModal() {
+      // Header: bind corp name into the eyebrow.
+      document.getElementById('rc-eyebrow').textContent =
+        'RETAIN LEGAL COUNSEL · ' + (_rc.corpName || '').toUpperCase();
+
+      // Dots: pending used / maxOffers total.
+      const dotsHost = document.getElementById('rc-count-dots');
+      const max = _rc.maxOffers;
+      let dotsHtml = '';
+      for (let i = 0; i < max; i++) {
+        dotsHtml += `<span class="rc-dot${i < _rc.pending ? ' used' : ''}"></span>`;
+      }
+      dotsHost.innerHTML = dotsHtml;
+
+      // List.
+      const list = document.getElementById('rc-list');
+      list.innerHTML = `
+        <div class="rc-col-head">
+          <span>ADVOCATE</span>
+          <span class="ch-right">STANDING</span>
+          <span class="ch-right">CREDIBILITY</span>
+          <span class="ch-right">REPUTATION</span>
+          <span></span>
+        </div>
+        ${_rc.advocates.length
+          ? _rc.advocates.map(a => {
+              const offered = a.offer_status === 'pending';
+              const selected = !offered && a.id === _rc.selectedId;
+              const cls = ['rc-adv',
+                offered ? 'offered' : '',
+                selected ? 'selected' : ''].filter(Boolean).join(' ');
+              const sub = a.nation_name ? `bar of ${a.nation_name}` : 'bar-admitted advocate';
+              const action = offered
+                ? '<span class="rc-offer-pill">OFFER SENT</span>'
+                : (selected ? '<span class="rc-selected-pill">SELECTED</span>' : '');
+              return `
+                <div class="${cls}" data-id="${a.id}" ${offered ? '' : 'data-selectable="1"'}>
+                  <div>
+                    <div class="rc-adv-name-text">${escapeHtml(a.name || '—')}</div>
+                    <div class="rc-adv-sub">${escapeHtml(sub)}</div>
+                  </div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.standing)}">${statText(a.standing)}</div></div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.credibility)}">${statText(a.credibility)}</div></div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.reputation)}">${statText(a.reputation)}</div></div>
+                  <div class="rc-adv-action">${action}</div>
+                </div>`;
+            }).join('')
+          : '<div class="rc-empty">No advocates are currently available.</div>'}`;
+
+      list.querySelectorAll('.rc-adv[data-selectable]').forEach(row => {
+        row.addEventListener('click', () => {
+          _rc.selectedId = row.dataset.id;
+          renderCounselModal();
+        });
+      });
+
+      // Footer.
+      const note = document.getElementById('rc-foot-note');
+      const offerBtn = document.getElementById('rc-offer-btn');
+      const remaining = Math.max(0, _rc.maxOffers - _rc.pending);
+      if (_rc.selectedId) {
+        const sel = _rc.advocates.find(a => a.id === _rc.selectedId);
+        note.innerHTML = `Selected: <strong>${escapeHtml(sel?.name || '—')}</strong>. <em>${remaining} offer${remaining === 1 ? '' : 's'} remaining.</em>`;
+        offerBtn.disabled = remaining <= 0;
+      } else if (remaining <= 0) {
+        note.innerHTML = '<strong>Offer limit reached.</strong> <em>Wait for advocates to respond before sending more.</em>';
+        offerBtn.disabled = true;
+      } else {
+        note.innerHTML = `Pick an advocate, then click <strong>OFFER TO RETAIN</strong>. <em>${remaining} of ${_rc.maxOffers} offer${_rc.maxOffers === 1 ? '' : 's'} remaining.</em>`;
+        offerBtn.disabled = true;
+      }
+    }
+
+    async function sendCounselOffer() {
+      if (!_rc.selectedId) return;
+      const btn = document.getElementById('rc-offer-btn');
+      btn.disabled = true;
+      const orig = btn.textContent;
+      btn.textContent = 'SENDING…';
+      try {
+        const { data, error } = await _supabase.rpc('offer_corp_retainer', {
+          p_corp_id: id, p_politician_id: _rc.selectedId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          alert('Could not send offer: ' + (data?.reason || 'unknown'));
+          btn.disabled = false; btn.textContent = orig;
+          return;
+        }
+        btn.textContent = orig;
+        await loadCounselModal();
+      } catch (err) {
+        alert('Failed: ' + (err?.message || 'network error'));
+        btn.disabled = false; btn.textContent = orig;
       }
     }
 
@@ -5282,6 +5520,7 @@ function initials(s, n) {
       }
 
       setupCorpChat();
+      setupCounselButton();
       if (isOwner) {
         // Building-marketplace handlers. The :not() guards skip the
         // shipping buttons (sh-place-bid / sh-withdraw-bid / sh-edit-bid)
@@ -7896,6 +8135,31 @@ const openBidModal = (contractId, label, yourCost) => {
     <div class="bm-foot">
       <button class="bm-btn sec" id="br-cancel">Cancel</button>
       <button class="bm-btn pri" id="br-submit">List for Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- Retain Counsel modal. Owner-only on the server; non-owners get
+     a status banner when the list_available_advocates RPC denies. -->
+<div class="rc-back" id="rc-back">
+  <div class="rc-modal">
+    <div class="rc-head">
+      <div class="rc-eyebrow" id="rc-eyebrow">RETAIN LEGAL COUNSEL</div>
+      <div class="rc-title">Available <em>Advocates</em></div>
+      <div class="rc-sub">Advocates admitted to the bar and currently accepting corporate retainers. <strong>You may offer to retain up to three</strong>. Each offer must be accepted by the advocate before counsel is formally engaged.</div>
+      <button type="button" class="rc-close" id="rc-close" title="Cancel">&#10005;</button>
+    </div>
+    <div class="rc-offers-bar">
+      <div class="rc-info">Select an advocate, then click <strong>OFFER TO RETAIN</strong>. <em>Each may decline.</em></div>
+      <div class="rc-counter">
+        <span class="rc-count-lab">OFFERS SENT</span>
+        <div class="rc-count-dots" id="rc-count-dots"></div>
+      </div>
+    </div>
+    <div class="rc-list" id="rc-list"></div>
+    <div class="rc-foot">
+      <div class="rc-foot-note" id="rc-foot-note">Pick an advocate, then click <strong>OFFER TO RETAIN</strong>.</div>
+      <button type="button" class="rc-offer-btn" id="rc-offer-btn" disabled>OFFER TO RETAIN</button>
     </div>
   </div>
 </div>
