@@ -501,6 +501,14 @@ const CAREER_EVENT_TEMPLATES = {
   // If you edit the format here, update the SQL concat too.
   proposed_law: (name, target, meta = {}) =>
     `${name} has submitted a law proposal titled: ${target || 'a proposal'}, that has been sent to the ${meta.committee_name || 'a committee'}.`,
+  // Bar Exam — written by bar_exam_submit (20270503). target_name is
+  // the nation's name; metadata.correct/total carries the score. The
+  // same sentence is duplicated in the RPC's event_log dispatch — if
+  // you edit one, edit the other.
+  admitted_to_bar: (name, target) =>
+    `${name} has successfully passed the Bar Exam of ${target || 'their nation'} and has been admitted as a judicial advocate.`,
+  failed_bar_exam: (name, target) =>
+    `${name} has failed the Bar Exam of ${target || 'their nation'}; it is unknown if they will re-attempt it in the future.`,
 };
 
 let politician = null;

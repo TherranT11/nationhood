@@ -375,6 +375,139 @@
   #electionModal .em-footer  { flex-direction:column; gap:12px; align-items:stretch; }
   #electionModal .em-your-stats { justify-content:space-around; }
 }
+
+/* ───────────────── Bar Exam modal ─────────────────
+   Judiciary "brass-on-deep" palette to set the modal apart from the
+   teal Sit-the-Exam (civil service) one. Three views: .bv-confirm
+   (warning + Sit/Cancel), .bv-questions (one Q at a time with a 3-dot
+   progress strip), .bv-result (per-question outcome + pass/fail
+   summary). Only one view is .show at a time. */
+#barModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+  align-items:flex-start; justify-content:center; padding:48px 22px 22px;
+  z-index:220; overflow-y:auto; }
+#barModal.open { display:flex; }
+#barModal .bar-modal { width:100%; max-width:720px;
+  background:linear-gradient(180deg,#0e0a0c 0%,#080608 100%);
+  border:0.5px solid #3a242c; border-radius:9px; overflow:hidden;
+  box-shadow:0 0 0 1px rgba(138,88,104,0.06), 0 25px 60px rgba(0,0,0,0.8); }
+
+#barModal .bar-head { padding:22px 28px 18px; border-bottom:0.5px solid #3a242c;
+  background:linear-gradient(180deg, rgba(138,88,104,0.06) 0%, transparent 100%);
+  position:relative; }
+#barModal .bar-eyebrow { font-size:9px; letter-spacing:0.22em; color:#c8a26e;
+  font-weight:700; text-align:center; margin-bottom:8px; }
+#barModal .bar-title { font-family:Georgia,serif; font-size:22px; color:#fff;
+  font-weight:500; letter-spacing:-0.01em; text-align:center; }
+#barModal .bar-title em { font-style:italic; color:#dcb88a; }
+#barModal .bar-sub { font-size:10.5px; color:#888; text-align:center; margin-top:8px; line-height:1.55; }
+#barModal .bar-sub strong { color:#bbb; }
+#barModal .bar-close { position:absolute; top:18px; right:20px; font-size:14px;
+  color:#888; cursor:pointer; background:transparent; border:none; }
+#barModal .bar-close:hover { color:#fff; }
+
+/* View visibility — only one of .bv-* shows at a time. */
+#barModal .bar-view { display:none; }
+#barModal .bar-view.show { display:block; }
+
+/* Confirm view */
+#barModal .bv-confirm .bv-body { padding:24px 32px; color:#cfcabf; font-size:11.5px; line-height:1.7;
+  background:#1a1612; border-top:0.5px solid #2a2218; border-bottom:0.5px solid #2a2218; }
+#barModal .bv-confirm .bv-body strong { color:#fff; }
+#barModal .bv-confirm .bv-body em { color:#dcb88a; font-style:italic; }
+
+/* Progress strip (questions view) */
+#barModal .bv-progress { padding:14px 28px; border-bottom:0.5px solid rgba(255,255,255,0.07);
+  background:#0a0a0a; display:flex; align-items:center; gap:14px; }
+#barModal .pg-lab { font-size:8.5px; letter-spacing:0.16em; color:#666; font-weight:600; }
+#barModal .pg-dots { flex:1; display:flex; align-items:center; justify-content:center; gap:10px; }
+#barModal .pg-dot { display:flex; align-items:center; gap:7px; }
+#barModal .pg-circle { width:22px; height:22px; border-radius:50%; display:flex;
+  align-items:center; justify-content:center; font-size:10px; font-weight:700;
+  font-family:Georgia,serif; }
+#barModal .pg-dot.done .pg-circle { background:#0e1611; border:0.5px solid #3a5a42; color:#6ab07a; }
+#barModal .pg-dot.current .pg-circle { background:#161208; border:0.5px solid #c8a26e;
+  color:#dcb88a; box-shadow:0 0 8px rgba(200,162,110,0.2); }
+#barModal .pg-dot.pending .pg-circle { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); color:#666; }
+#barModal .pg-line { width:36px; height:1px; background:rgba(255,255,255,0.07); }
+#barModal .pg-line.done { background:#3a5a42; }
+#barModal .pg-stats { font-size:9.5px; color:#888; }
+#barModal .pg-stats strong { color:#dcb88a; font-weight:700; }
+
+/* Question body — parchment background */
+#barModal .bv-question { padding:24px 32px; background:#1a1612;
+  border-top:0.5px solid #2a2218; border-bottom:0.5px solid #2a2218; }
+#barModal .q-marker { font-size:9px; letter-spacing:0.2em; color:#c8a26e; font-weight:700;
+  text-align:center; margin-bottom:10px; }
+#barModal .q-domain { font-size:8.5px; letter-spacing:0.16em; color:#888; font-weight:600;
+  text-align:center; margin-bottom:14px; }
+#barModal .q-domain strong { color:#dcb88a; }
+#barModal .q-text { font-family:Georgia,serif; color:#d8cfb8; font-size:14.5px; line-height:1.7; }
+
+/* Answer choices */
+#barModal .bv-answers { padding:18px 32px; background:#0a0a0a; display:flex; flex-direction:column; gap:8px; }
+#barModal .ans { padding:13px 16px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:5px; cursor:pointer; display:flex; align-items:flex-start; gap:13px;
+  transition:all 0.15s; text-align:left; font-family:inherit; color:inherit; }
+#barModal .ans:hover { background:#101010; border-color:#3a242c; }
+#barModal .ans.selected { background:rgba(138,88,104,0.06); border-color:#8a5868;
+  border-left:3px solid #c8a26e; padding-left:13px; }
+#barModal .ans-letter { width:24px; height:24px; border-radius:50%; background:#0a0a0a;
+  border:0.5px solid rgba(255,255,255,0.07); display:flex; align-items:center;
+  justify-content:center; font-size:10px; color:#888; font-weight:700;
+  font-family:Georgia,serif; flex-shrink:0; margin-top:1px; }
+#barModal .ans.selected .ans-letter { background:#161208; border-color:#c8a26e; color:#dcb88a; }
+#barModal .ans-text { flex:1; font-size:11.5px; color:#ddd; line-height:1.6; }
+
+/* Result view */
+#barModal .bv-result-summary { padding:20px 32px; background:#1a1612;
+  border-bottom:0.5px solid #2a2218; text-align:center; }
+#barModal .bv-result-summary.pass .bv-result-headline { color:#6ab07a; }
+#barModal .bv-result-summary.fail .bv-result-headline { color:#c87a7a; }
+#barModal .bv-result-eyebrow { font-size:9px; letter-spacing:0.22em; color:#c8a26e;
+  font-weight:700; margin-bottom:6px; }
+#barModal .bv-result-headline { font-family:Georgia,serif; font-size:22px; font-weight:500; line-height:1.25; }
+#barModal .bv-result-body { font-size:11.5px; color:#cfcabf; line-height:1.7; margin-top:10px; }
+#barModal .bv-result-body em { font-style:italic; color:#dcb88a; }
+#barModal .bv-result-rows { padding:14px 32px; background:#0a0a0a; display:flex;
+  flex-direction:column; gap:8px; }
+#barModal .bv-rr { padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+  border-left:2px solid #5a3030; border-radius:5px; }
+#barModal .bv-rr.correct { border-left-color:#3a5a42; }
+#barModal .bv-rr-head { display:flex; align-items:center; gap:10px; font-size:9px;
+  letter-spacing:0.13em; font-weight:700; margin-bottom:6px; }
+#barModal .bv-rr-head .num { color:#c8a26e; }
+#barModal .bv-rr-head .domain { color:#888; flex:1; }
+#barModal .bv-rr-head .badge { padding:2px 7px; border-radius:2px; font-size:7.5px; letter-spacing:0.14em; }
+#barModal .bv-rr.correct .badge { color:#6ab07a; border:0.5px solid #3a5a42; background:#0e1611; }
+#barModal .bv-rr:not(.correct) .badge { color:#c87a7a; border:0.5px solid #5a3030; background:#160e0e; }
+#barModal .bv-rr-prompt { color:#d8cfb8; font-family:Georgia,serif; font-size:11px; line-height:1.55;
+  margin-bottom:6px; }
+#barModal .bv-rr-detail { font-size:10px; color:#888; line-height:1.5; }
+#barModal .bv-rr-detail b { color:#bbb; }
+
+/* Footer */
+#barModal .bar-foot { padding:16px 28px; background:#0a0a0a; border-top:0.5px solid #3a242c;
+  display:flex; align-items:center; gap:14px; }
+#barModal .foot-rule { flex:1; font-size:9.5px; color:#888; line-height:1.55; }
+#barModal .foot-rule strong { color:#bbb; }
+#barModal .bar-btn { padding:11px 22px; border-radius:4px; font-size:10px; letter-spacing:0.16em;
+  font-weight:700; cursor:pointer; font-family:inherit; background:#161208;
+  border:0.5px solid #c8a26e; color:#dcb88a; }
+#barModal .bar-btn:hover:not(:disabled) { background:#241510; color:#fff; }
+#barModal .bar-btn:disabled { opacity:0.4; cursor:not-allowed; }
+#barModal .bar-btn.secondary { background:transparent; border-color:rgba(255,255,255,0.15); color:#888; }
+#barModal .bar-btn.secondary:hover:not(:disabled) { color:#fff; border-color:#888; }
+#barModal .bar-err { padding:0 28px 12px; color:#c87a7a; font-size:10px; display:none; }
+#barModal .bar-err.show { display:block; }
+
+@media (max-width:600px) {
+  #barModal .bar-head { padding:18px 18px 14px; }
+  #barModal .bv-question { padding:18px 18px; }
+  #barModal .bv-answers, #barModal .bv-result-rows { padding:14px 18px; }
+  #barModal .bar-foot { padding:14px 18px; flex-direction:column; align-items:stretch; }
+  #barModal .bar-btn { width:100%; }
+  #barModal .pg-line { width:20px; }
+}
 </style>
 </head>
 <body>
@@ -471,6 +604,55 @@
       <button class="exam-close" type="button" aria-label="Close" data-exam-close>&times;</button>
     </div>
     <div class="exam-body" id="exam-body"></div>
+  </div>
+</div>
+
+<!-- Bar Exam modal — opened by the Advocate (Judiciary Tier 1) rung's
+     [Seek the Bar] action. Three view states under one shell:
+     confirm → questions → result. Server provides 3 random questions
+     via bar_exam_start; client collects answers and submits via
+     bar_exam_submit. -->
+<div id="barModal" aria-hidden="true">
+  <div class="bar-modal" role="dialog" aria-modal="true">
+    <div class="bar-head">
+      <div class="bar-eyebrow">EXAMINATION FOR ADMISSION TO THE BAR</div>
+      <div class="bar-title">The <em><span id="bar-nation-name">National</span></em> Bar Examination</div>
+      <div class="bar-sub" id="bar-subtitle">Three questions on the standing laws of the Republic.</div>
+      <button class="bar-close" type="button" aria-label="Close" data-bar-close>&times;</button>
+    </div>
+
+    <!-- Confirm view -->
+    <div class="bar-view bv-confirm" id="bv-confirm">
+      <div class="bv-body" id="bv-confirm-body"></div>
+      <div class="bar-err" id="bar-err-confirm"></div>
+      <div class="bar-foot">
+        <div class="foot-rule" id="bv-confirm-rule"></div>
+        <button class="bar-btn secondary" type="button" data-bar-close>CANCEL</button>
+        <button class="bar-btn" type="button" id="bar-start-btn">SIT THE EXAM &rsaquo;</button>
+      </div>
+    </div>
+
+    <!-- Questions view -->
+    <div class="bar-view bv-questions" id="bv-questions">
+      <div class="bv-progress" id="bv-progress"></div>
+      <div class="bv-question" id="bv-question"></div>
+      <div class="bv-answers" id="bv-answers"></div>
+      <div class="bar-err" id="bar-err-q"></div>
+      <div class="bar-foot">
+        <div class="foot-rule"><strong>Reminder:</strong> All three answers must be correct. A wrong answer ends the exam. You may retake the bar after <strong>3 ticks</strong> if you fail; failure costs <strong>−2 Political Capital</strong>.</div>
+        <button class="bar-btn" type="button" id="bar-next-btn">NEXT &rsaquo;</button>
+      </div>
+    </div>
+
+    <!-- Result view -->
+    <div class="bar-view bv-result" id="bv-result">
+      <div class="bv-result-summary" id="bv-result-summary"></div>
+      <div class="bv-result-rows" id="bv-result-rows"></div>
+      <div class="bar-foot">
+        <div class="foot-rule" id="bv-result-rule"></div>
+        <button class="bar-btn" type="button" id="bar-close-btn" data-bar-close>CLOSE</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -836,10 +1018,23 @@ const GOVERNMENT_RUNGS = [
 const JUDICIARY_RUNGS = [
   {
     name: 'Advocate',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'Practiced law and argued before the courts. Cleared.',
+    // Held when this politician is admitted to THIS nation's bar.
+    // Cross-nation admissions don't count for this nation's ladder.
+    held:        (s)  => !!s.barAdmittedNationId && s.barAdmittedNationId === s.nationId,
+    descIfHeld:  (s)  => `Admitted to the bar of ${s.nationName || 'this nation'} and practising law.`,
     descIfNot:   ()  => 'Practice law and argue before the courts — the realistic first step on the bench.',
-    actionIfNot: { label: 'Seek the Bar', kind: 'disabled' },
+    // Active-race / membership-style gating doesn't apply to the
+    // bar: any politician can sit it. The only gates are admission
+    // (already passed) and cooldown (recent fail).
+    actionIfNot: (s) => {
+      if (!s.nationId) return { label: 'No Nation', kind: 'disabled' };
+      const ready = s.barLastAttemptTick ? s.barLastAttemptTick + 3 : 0;
+      if (ready > s.currentTick) {
+        return { label: `Bar Cooldown · ${ready - s.currentTick} tick${ready - s.currentTick === 1 ? '' : 's'}`,
+                 kind: 'disabled' };
+      }
+      return { label: 'Seek the Bar', kind: 'primary', action: 'seek-the-bar' };
+    },
   },
   {
     name: 'Magistrate',
@@ -1309,6 +1504,15 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
     committeeCount:          Number(committeeCount) || 0,
     committeeApplicationPending: !!committeeApplicationPending,
+    // Bar exam (20270503). barAdmittedNationId tracks the nation
+    // whose bar this politician is admitted to (NULL = not admitted).
+    // Compared against ctx.nation.id to drive the Advocate rung's
+    // held() and the Affiliations line.
+    nationId:                ctx?.nation?.id || null,
+    nationName:              ctx?.nation?.name || '',
+    barAdmittedNationId:     ctx?.faction?.bar_admitted_nation_id || null,
+    barAdmittedAtTick:       Number(ctx?.faction?.bar_admitted_at_tick) || 0,
+    barLastAttemptTick:      Number(ctx?.faction?.bar_last_attempt_tick) || 0,
   };
 }
 
@@ -1358,12 +1562,20 @@ function render(politician, shard, nation, party) {
 
   // Affiliations — office · party when office held, else party-only
   // (or None for independents). Same source as politician-home's hero
-  // affiliation so the two surfaces never disagree.
+  // affiliation so the two surfaces never disagree. Bar admission is
+  // appended as a separate suffix once the politician passes the
+  // Bar Exam in their current nation.
+  const barAdmitted = !!politician?.bar_admitted_nation_id
+                   && politician.bar_admitted_nation_id === nation?.id;
+  const barSuffix = barAdmitted ? ` · Advocate of ${nation?.name || 'this nation'}` : '';
   if (party) {
-    document.getElementById('cc-affiliations').textContent = office
+    document.getElementById('cc-affiliations').textContent = (office
       ? `${officeTitle(office)} · ${party.faction_name}`
-      : party.faction_name;
+      : party.faction_name) + barSuffix;
     document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
+  } else if (barAdmitted) {
+    document.getElementById('cc-affiliations').textContent = `Advocate of ${nation?.name || 'this nation'}`;
+    document.getElementById('cc-affiliations-sub').textContent = 'admitted to the bar';
   } else {
     document.getElementById('cc-affiliations').textContent = 'None';
     document.getElementById('cc-affiliations-sub').textContent = 'no parties, no movements';
@@ -1421,6 +1633,11 @@ function renderLadders(state, ctx) {
   const restHtml = restLadders.map(l => ladderHtmlFor(l, false)).join('');
 
   host.innerHTML = tier0Html + branchHtml + restHtml;
+  // Stash ctx for the bar exam modal — its open handler needs the
+  // nation name + id for the confirm copy + the active election
+  // resolve path. No other consumer; reset on each render so the
+  // modal always picks up the freshest state.
+  window.__careerCtx = ctx;
   bindRungActions(ctx);
 }
 
@@ -1632,6 +1849,16 @@ function bindRungActions(ctx) {
   document.querySelectorAll('#examModal [data-exam-close]').forEach(btn => {
     btn.addEventListener('click', () => closeSitTheExamModal(false));
   });
+
+  // Seek the Bar — Advocate (Judiciary Tier 1). Opens its own modal
+  // separate from the civil-service exam; bar_exam_start / bar_exam_submit
+  // RPCs land in 20270503.
+  document.querySelectorAll('[data-action="seek-the-bar"]').forEach(btn => {
+    btn.addEventListener('click', () => openBarExamModal());
+  });
+  document.querySelectorAll('#barModal [data-bar-close]').forEach(btn => {
+    btn.addEventListener('click', () => closeBarExamModal());
+  });
 }
 
 // ─── Sit the Exam modal ───────────────────────────────────────────
@@ -1756,6 +1983,256 @@ function renderExamModalResult({ kind, title, body, reload }) {
 // politician_stand_for_election; the page reloads so the rung flips to
 // its in-race state and any other actions (door-knock, speech) reflect
 // the consumed action gate.
+
+// ─── Bar Exam modal ───────────────────────────────────────────────
+// Three-view shell: confirm → questions → result. State is purely
+// local — server is the source for the question slate (bar_exam_start)
+// and the result (bar_exam_submit). Result view replaces the body in
+// place; clicking CLOSE reloads so the Advocate rung flips to held
+// and the Affiliations line picks up "Advocate of {nation}".
+
+const _barState = {
+  questions: [],          // array of {id, domain, prompt, answers:[{letter,text}]}
+  answers:   {},          // questionId → 'A'|'B'|'C'|'D'
+  currentIdx: 0,
+  inFlight:  false,
+};
+
+async function openBarExamModal() {
+  const overlay = document.getElementById('barModal');
+  if (!overlay) return;
+  _barState.questions = [];
+  _barState.answers = {};
+  _barState.currentIdx = 0;
+  _barState.inFlight = false;
+
+  document.getElementById('bar-nation-name').textContent =
+    (window.__careerCtx?.nation?.name) || 'National';
+
+  renderBarConfirm();
+  showBarView('bv-confirm');
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeBarExamModal() {
+  if (_barState.inFlight) return;
+  const overlay = document.getElementById('barModal');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+}
+
+function showBarView(viewId) {
+  document.querySelectorAll('#barModal .bar-view').forEach(v => v.classList.remove('show'));
+  const v = document.getElementById(viewId);
+  if (v) v.classList.add('show');
+}
+
+function renderBarConfirm() {
+  const nationName = (window.__careerCtx?.nation?.name) || 'your nation';
+  document.getElementById('bv-confirm-body').innerHTML = `
+    You are about to apply to the <em>Bar Exam</em> of the nation of <strong>${escHtml(nationName)}</strong>,
+    sponsored by the Ministry of Justice. You may only attempt this exam every
+    <strong>3 ticks</strong>, and failure will cost you <strong>−2 Political Capital</strong>.
+    <br><br>Do you wish to proceed?
+  `;
+  document.getElementById('bv-confirm-rule').innerHTML =
+    `Three questions will be drawn at random from the statutes of ${escHtml(nationName)}.`;
+  const err = document.getElementById('bar-err-confirm');
+  err.classList.remove('show'); err.textContent = '';
+
+  const startBtn = document.getElementById('bar-start-btn');
+  startBtn.disabled = false;
+  startBtn.onclick = startBarExam;
+}
+
+async function startBarExam() {
+  if (_barState.inFlight) return;
+  const startBtn = document.getElementById('bar-start-btn');
+  const err = document.getElementById('bar-err-confirm');
+  _barState.inFlight = true;
+  startBtn.disabled = true;
+  startBtn.textContent = 'LOADING…';
+  err.classList.remove('show'); err.textContent = '';
+  try {
+    const { data, error } = await _supabase.rpc('bar_exam_start');
+    if (error) throw error;
+    if (!data?.success) {
+      err.textContent = barReasonHuman(data?.reason, data);
+      err.classList.add('show');
+      _barState.inFlight = false;
+      startBtn.disabled = false;
+      startBtn.textContent = 'SIT THE EXAM ›';
+      return;
+    }
+    _barState.questions = Array.isArray(data.questions) ? data.questions : [];
+    _barState.answers = {};
+    _barState.currentIdx = 0;
+    _barState.inFlight = false;
+    if (_barState.questions.length !== 3) {
+      err.textContent = 'Unexpected question count from server.';
+      err.classList.add('show');
+      startBtn.disabled = false;
+      startBtn.textContent = 'SIT THE EXAM ›';
+      return;
+    }
+    renderBarQuestionView();
+    showBarView('bv-questions');
+  } catch (e) {
+    err.textContent = 'Could not start the exam: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    _barState.inFlight = false;
+    startBtn.disabled = false;
+    startBtn.textContent = 'SIT THE EXAM ›';
+  }
+}
+
+function renderBarQuestionView() {
+  const i = _barState.currentIdx;
+  const q = _barState.questions[i];
+  if (!q) return;
+  const roman = ['I','II','III'][i] || String(i + 1);
+
+  // Progress strip
+  const dots = [];
+  for (let k = 0; k < 3; k++) {
+    const status = k < i ? 'done' : k === i ? 'current' : 'pending';
+    const symbol = status === 'done' ? '✓' : ['I','II','III'][k];
+    dots.push(`<div class="pg-dot ${status}"><span class="pg-circle">${symbol}</span></div>`);
+    if (k < 2) dots.push(`<div class="pg-line${k < i ? ' done' : ''}"></div>`);
+  }
+  document.getElementById('bv-progress').innerHTML = `
+    <span class="pg-lab">EXAM PROGRESS</span>
+    <div class="pg-dots">${dots.join('')}</div>
+    <span class="pg-stats"><strong>${i + 1} of 3</strong></span>`;
+
+  document.getElementById('bv-question').innerHTML = `
+    <div class="q-marker">QUESTION ${roman} OF III</div>
+    <div class="q-domain">DOMAIN: <strong>${escHtml((q.domain || '').toUpperCase())}</strong></div>
+    <div class="q-text">${escHtml(q.prompt || '')}</div>`;
+
+  const selected = _barState.answers[q.id];
+  const answers  = Array.isArray(q.answers) ? q.answers : [];
+  document.getElementById('bv-answers').innerHTML = answers.map(a => `
+    <button class="ans${selected === a.letter ? ' selected' : ''}" type="button" data-letter="${escHtml(a.letter)}">
+      <span class="ans-letter">${escHtml(a.letter)}</span>
+      <span class="ans-text">${escHtml(a.text)}</span>
+    </button>`).join('');
+  document.querySelectorAll('#bv-answers .ans').forEach(btn => {
+    btn.onclick = () => {
+      _barState.answers[q.id] = btn.dataset.letter;
+      renderBarQuestionView();
+    };
+  });
+
+  const err = document.getElementById('bar-err-q');
+  err.classList.remove('show'); err.textContent = '';
+
+  const nextBtn = document.getElementById('bar-next-btn');
+  nextBtn.disabled = !selected;
+  nextBtn.textContent = (i === 2) ? 'SUBMIT ›' : 'NEXT ›';
+  nextBtn.onclick = () => {
+    if (!_barState.answers[q.id]) return;
+    if (_barState.currentIdx < 2) {
+      _barState.currentIdx++;
+      renderBarQuestionView();
+    } else {
+      submitBarExam();
+    }
+  };
+}
+
+async function submitBarExam() {
+  if (_barState.inFlight) return;
+  const nextBtn = document.getElementById('bar-next-btn');
+  const err = document.getElementById('bar-err-q');
+  const ids = _barState.questions.map(q => q.id);
+  const ans = _barState.questions.map(q => _barState.answers[q.id]);
+  _barState.inFlight = true;
+  nextBtn.disabled = true;
+  nextBtn.textContent = 'SUBMITTING…';
+  err.classList.remove('show'); err.textContent = '';
+  try {
+    const { data, error } = await _supabase.rpc('bar_exam_submit', {
+      p_question_ids: ids, p_answers: ans,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      err.textContent = barReasonHuman(data?.reason, data);
+      err.classList.add('show');
+      _barState.inFlight = false;
+      nextBtn.disabled = false;
+      nextBtn.textContent = 'SUBMIT ›';
+      return;
+    }
+    renderBarResultView(data);
+    showBarView('bv-result');
+  } catch (e) {
+    err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    _barState.inFlight = false;
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'SUBMIT ›';
+  }
+}
+
+function renderBarResultView(result) {
+  const summary = document.getElementById('bv-result-summary');
+  const nationName = result.nation_name || 'this nation';
+  if (result.passed) {
+    summary.className = 'bv-result-summary pass';
+    summary.innerHTML = `
+      <div class="bv-result-eyebrow">ADMITTED TO THE BAR</div>
+      <div class="bv-result-headline">Congratulations.</div>
+      <div class="bv-result-body">You have been admitted as a member of the bar of <em>${escHtml(nationName)}</em>, and you may now practise law. Good luck in your career.</div>`;
+  } else {
+    summary.className = 'bv-result-summary fail';
+    summary.innerHTML = `
+      <div class="bv-result-eyebrow">EXAMINATION FAILED</div>
+      <div class="bv-result-headline">${escHtml(String(result.correct_count || 0))} of 3 correct.</div>
+      <div class="bv-result-body">The bar has not been seated. You may re-attempt after <em>3 ticks</em>. <strong>−2 Political Capital</strong> applied.</div>`;
+  }
+
+  const rows = Array.isArray(result.results) ? result.results : [];
+  document.getElementById('bv-result-rows').innerHTML = rows.map((r, idx) => `
+    <div class="bv-rr${r.was_correct ? ' correct' : ''}">
+      <div class="bv-rr-head">
+        <span class="num">Q${idx + 1}</span>
+        <span class="domain">${escHtml(r.domain || '')}</span>
+        <span class="badge">${r.was_correct ? 'CORRECT' : 'INCORRECT'}</span>
+      </div>
+      <div class="bv-rr-prompt">${escHtml(r.prompt || '')}</div>
+      <div class="bv-rr-detail">Your answer: <b>${escHtml(r.chosen || '?')}</b>${r.was_correct ? '' : ` &middot; Correct answer: <b>${escHtml(r.correct || '?')}</b> &mdash; ${escHtml(r.correct_text || '')}`}</div>
+    </div>`).join('');
+
+  document.getElementById('bv-result-rule').innerHTML = result.passed
+    ? 'The Advocate rung is now held. The bench ladder is open to you.'
+    : `Next attempt available at tick <strong>${escHtml(String(result.ready_at_tick ?? '?'))}</strong>.`;
+
+  // Close reloads the page so the Advocate rung flips to held +
+  // Affiliations updates. Either outcome benefits from a refresh
+  // (loss applied PC delta).
+  document.getElementById('bar-close-btn').onclick = () => { location.reload(); };
+}
+
+function barReasonHuman(reason, data) {
+  const r = String(reason || '');
+  switch (r) {
+    case 'not_authenticated':  return 'You are not signed in.';
+    case 'no_politician':      return 'No politician faction found.';
+    case 'no_nation':          return 'You are not associated with a nation.';
+    case 'already_admitted':   return 'You are already admitted to this bar.';
+    case 'cooldown':           return `On cooldown — next attempt at tick ${data?.ready_at_tick ?? '?'}.`;
+    case 'no_question_bank':   return 'No bar exam questions seeded for this nation yet.';
+    case 'invalid_submission': return 'The submission was malformed; please try again.';
+    case 'invalid_answer':     return 'One of your answers was not A/B/C/D.';
+    case 'question_not_found': return 'A question was missing from the bank. Refresh and retry.';
+    default:                   return `Could not proceed (${r || 'unknown'}).`;
+  }
+}
 
 let emSelectedTier = 'community';
 
