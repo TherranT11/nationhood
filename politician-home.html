@@ -156,6 +156,56 @@
   padding:22px 18px; color:#666; font-size:12px; line-height:1.6; text-align:center;
   margin-bottom:28px; }
 
+/* ─── Counsel-offer card (Pressing Issues) ────────────────────────
+   Rendered for each pending corp_advocate_offer aimed at this
+   politician. The card design lives in the same Pressing Issues
+   container as .ci-camp; classes prefixed .offer-* / .oi- ("offer
+   info") so they don't collide. Accept pays +1 Reputation server-
+   side via accept_counsel_offer (20270513); Reject is a no-stat
+   resolve via reject_counsel_offer. */
+.offer-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.06); border-radius:6px;
+  overflow:hidden; border-left:3px solid #c8a26e; display:flex; align-items:stretch;
+  transition:background 0.15s; }
+/* Stacks cleanly under .ci-camp (campaign) or another .offer-card; the
+   first card in #pressing-issues sits flush, every later card gets
+   the same 10px gap regardless of which type sits above it. */
+#pressing-issues > .offer-card + .offer-card,
+#pressing-issues > .ci-camp + .offer-card { margin-top:10px; }
+.offer-card:hover { background:#101010; }
+.offer-icon-wrap { display:flex; align-items:center; justify-content:center; padding:13px 18px;
+  border-right:0.5px solid rgba(255,255,255,0.06); background:#0a0807; flex-shrink:0; }
+.offer-icon { width:38px; height:38px; border-radius:5px; background:#161208;
+  border:0.5px solid #5a4630; color:#dcb88a; display:flex; align-items:center;
+  justify-content:center; font-size:18px; }
+.offer-info { flex:1; padding:13px 18px; min-width:0; }
+.oi-eyebrow { font-size:7.5px; letter-spacing:0.16em; color:#c8a26e; font-weight:700; margin-bottom:4px; }
+.oi-headline { font-family:Georgia,serif; font-size:14px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; line-height:1.25; margin-bottom:5px; }
+.oi-headline em { font-style:italic; color:#dcb88a; }
+.oi-headline .v { font-family:Georgia,serif; font-style:italic; color:#c8a26e; margin:0 4px; }
+.oi-meta { display:flex; align-items:center; gap:10px; font-size:9.5px; color:#7a7a7a; flex-wrap:wrap; }
+.oi-corp { padding:2px 8px; border-radius:3px; font-size:8.5px; letter-spacing:0.1em;
+  font-weight:700; background:#10130a; color:#9ac99a; border:0.5px solid #3a5a3a; }
+.oi-sep { color:#3a3a3a; }
+.oi-ceo { color:#bbb; }
+.oi-ceo strong { color:#fff; font-weight:600; }
+.oi-rep { color:#7a7a7a; font-style:italic; }
+.oi-rep strong { color:#9ac99a; font-style:normal; font-weight:700; font-family:Georgia,serif; font-size:11px; }
+.offer-right { display:flex; align-items:center; gap:8px; padding:13px 18px; background:#0a0807;
+  border-left:0.5px solid rgba(255,255,255,0.06); flex-shrink:0; }
+.offer-accept-btn, .offer-reject-btn { padding:9px 16px; font-size:9px; letter-spacing:0.13em;
+  font-weight:700; border-radius:3px; background:transparent; cursor:pointer; font-family:inherit; }
+.offer-accept-btn { border:0.5px solid #3a5a3a; color:#9ac99a; }
+.offer-accept-btn:hover { background:#0e1611; border-color:#7ab07a; color:#fff; }
+.offer-reject-btn { border:0.5px solid #5a3030; color:#d49a9a; }
+.offer-reject-btn:hover { background:#160e0e; border-color:#c87a7a; color:#fff; }
+.offer-accept-btn:disabled, .offer-reject-btn:disabled { opacity:0.5; cursor:not-allowed; }
+@media (max-width: 720px) {
+  .offer-card { flex-direction:column; }
+  .offer-icon-wrap { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.06); padding:9px; }
+  .offer-right { border-left:none; border-top:0.5px solid rgba(255,255,255,0.06); justify-content:flex-end; }
+}
+
 /* Career log — one date-prefixed row per event, listed newest-first. */
 /* ─── Active Campaign card (Pressing Issues) ─────────────────────────
    Rendered when politician_active_election has a row for the current
@@ -320,73 +370,309 @@
   .ar-buttons.cols-2 { grid-template-columns:1fr; }
 }
 
-/* ── Try a Case modal — Advocate's docket draw ─────────────────────
-   Hidden by default; openTryCaseModal(drawnCase) sets .open. Wiring
-   to the TRY A CASE action button is intentionally NOT in place yet
-   (per spec). ───────────────────────────────────────────────────── */
-.tc-back {
-  position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
-  display:none; align-items:flex-start; justify-content:center; padding:32px 18px; overflow-y:auto;
-}
+/* ── Try a Case modal — Advocate's docket draw + choose-a-side ───
+   Hidden by default; openTryCaseModal() sets .open. No X close
+   button in the success path (the player must Represent or Refuse).
+   Refuse costs Political Capital; a close button appears only on
+   draw-error paths so the player isn't trapped. ────────────────── */
+.tc-back { position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
+  display:none; align-items:center; justify-content:center; padding:18px; }
 .tc-back.open { display:flex; }
-.tc-modal {
-  width:100%; max-width:780px; background:#0d0d0d;
-  border:0.5px solid rgba(200,162,110,0.25); border-left:3px solid #c8a26e; border-radius:7px;
-  color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; box-shadow:0 24px 60px rgba(0,0,0,0.55);
-}
-.tc-head { padding:14px 22px; display:flex; align-items:center; gap:12px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
-.tc-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e; font-weight:700; flex:1; }
-.tc-close { width:24px; height:24px; border-radius:3px; background:transparent; border:0.5px solid rgba(255,255,255,0.08); color:#888; cursor:pointer; font-size:13px; }
-.tc-close:hover { color:#fff; border-color:#3a3a3a; }
-.tc-body { padding:20px 22px; display:flex; flex-direction:column; gap:16px; }
+.tc-modal { width:100%; max-width:880px; background:linear-gradient(180deg, #0e0a0c 0%, #080608 100%);
+  border:0.5px solid #3a242c; border-radius:9px;
+  box-shadow:0 0 0 1px rgba(138,88,104,0.05), 0 25px 60px rgba(0,0,0,0.8);
+  overflow:hidden; max-height:96vh; display:flex; flex-direction:column;
+  color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; }
 
-.tc-title { font-family:Georgia,serif; font-size:21px; color:#fff; line-height:1.2; letter-spacing:-0.005em; }
+.tc-head { padding:20px 28px 16px; border-bottom:0.5px solid #3a242c;
+  background:linear-gradient(180deg, rgba(138,88,104,0.05) 0%, transparent 100%);
+  position:relative; flex-shrink:0; }
+.tc-eyebrow { font-size:9px; letter-spacing:0.22em; color:#c8a26e; font-weight:700;
+  text-align:center; margin-bottom:7px; }
+.tc-eyebrow::before { content:"\2696  "; color:#dcb88a; font-size:11px; }
+.tc-title { font-family:Georgia,serif; font-size:22px; color:#fff; font-weight:500;
+  letter-spacing:-0.01em; line-height:1.2; text-align:center; }
 .tc-title em { font-style:italic; color:#dcb88a; }
-.tc-tagrow { display:flex; gap:8px; flex-wrap:wrap; }
-.tc-tag { font-size:8.5px; letter-spacing:0.14em; font-weight:700; padding:3px 9px; border-radius:2px;
-  background:#161208; border:0.5px solid #5a4630; color:#dcb88a; }
+.tc-sub { font-size:10px; color:#888; text-align:center; margin-top:7px; line-height:1.55; }
+.tc-sub strong { color:#bbb; }
+.tc-sub em { font-style:italic; color:#dcb88a; }
+.tc-close { position:absolute; top:18px; right:20px; font-size:14px; color:#888;
+  cursor:pointer; background:transparent; border:none; padding:4px; }
+.tc-close:hover { color:#fff; }
 
-.tc-parties { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-.tc-party { padding:11px 14px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:5px; }
-.tc-party .tc-lab { font-size:8px; letter-spacing:0.16em; color:#888; font-weight:700; margin-bottom:5px; }
-.tc-party .tc-who { font-family:Georgia,serif; font-size:14px; color:#fff; line-height:1.3; }
-.tc-party .tc-sub { font-size:9.5px; color:#888; margin-top:3px; font-style:italic; }
+.tc-body { overflow-y:auto; flex:1; }
 
-.tc-overview { padding:12px 14px; background:#1a1612; border:0.5px solid #2a2218; border-radius:5px;
-  font-family:Georgia,serif; font-size:12px; line-height:1.6; color:#d8cfb8; }
+.tc-summary { padding:16px 28px; border-bottom:0.5px solid rgba(255,255,255,0.07); background:#1a1612; }
+.tc-sum-class { font-size:9px; letter-spacing:0.18em; color:#c8a26e; font-weight:700;
+  text-align:center; margin-bottom:7px; }
+.tc-sum-class::before { content:"\1F4DC  "; color:#dcb88a; }
+.tc-sum-caption { font-family:Georgia,serif; font-size:17px; color:#d8cfb8; text-align:center;
+  font-weight:500; letter-spacing:-0.005em; line-height:1.3; }
+.tc-sum-caption .v { font-style:italic; color:#c8a26e; margin:0 6px; }
+.tc-sum-caption em { font-style:italic; color:#dcb88a; }
 
-.tc-beats-head { display:flex; align-items:baseline; gap:10px; }
-.tc-beats-lab { font-size:9px; letter-spacing:0.16em; color:#c8a26e; font-weight:700; }
-.tc-beats-note { font-size:9px; color:#888; font-style:italic; }
-.tc-beats { display:flex; flex-direction:column; gap:7px; }
-.tc-beat { background:#1a1612; border:0.5px solid #2a2218; border-left:3px solid rgba(255,255,255,0.07); border-radius:5px; padding:9px 12px; }
-.tc-beat.evid { border-left-color:#d4b87a; }
-.tc-beat.law  { border-left-color:#9aab7a; }
-.tc-beat.fact { border-left-color:#7a9aab; }
-.tc-beat.app  { border-left-color:#c87a7a; }
-.tc-beat-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap; }
-.tc-beat-num { font-family:Georgia,serif; font-size:11px; color:#dcb88a; font-weight:700; width:24px; flex-shrink:0; }
-.tc-beat-name { font-family:Georgia,serif; font-size:13px; color:#fff; font-weight:600; flex:1; }
-.tc-beat-type { font-size:7.5px; letter-spacing:0.13em; padding:2px 7px; border-radius:2px;
-  background:#0a0807; border:0.5px solid rgba(255,255,255,0.07); font-weight:700; }
-.tc-beat-type.evid { color:#d4b87a; background:#16120a; border-color:#5a4a2e; }
-.tc-beat-type.law  { color:#9aab7a; background:#10130a; border-color:#4a5a3a; }
-.tc-beat-type.fact { color:#7a9aab; background:#0e1318; border-color:#3a5060; }
-.tc-beat-type.app  { color:#c87a7a; background:#160e0e; border-color:#5a3030; }
-.tc-beat-support { font-size:7.5px; letter-spacing:0.13em; padding:2px 7px; border-radius:2px;
-  background:#0a0807; border:0.5px solid rgba(255,255,255,0.07); color:#bbb; font-weight:700; }
-.tc-beat-desc { font-family:Georgia,serif; font-size:11px; color:#d8cfb8; line-height:1.55; font-style:italic; }
+.tc-sum-desc { padding:13px 28px 16px; font-family:Georgia,serif; color:#d8cfb8;
+  font-size:11.5px; line-height:1.7; background:#1a1612;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); }
 
-.tc-foot { padding:14px 22px; border-top:0.5px solid rgba(255,255,255,0.06); display:flex; gap:11px; justify-content:flex-end; }
-.tc-btn { padding:11px 20px; border-radius:4px; font-size:10px; letter-spacing:0.14em; font-weight:700;
-  cursor:pointer; font-family:inherit; border:0.5px solid; }
-.tc-btn-reject { background:transparent; border-color:rgba(200,122,122,0.5); color:#c87a7a; }
-.tc-btn-reject:hover { background:rgba(200,122,122,0.08); color:#fff; }
-.tc-btn-accept { background:rgba(200,162,110,0.1); border-color:#c8a26e; color:#dcb88a; }
-.tc-btn-accept:hover { background:#251710; color:#fff; }
-.tc-btn:disabled { opacity:0.5; cursor:not-allowed; }
-.tc-status { font-size:10px; color:#888; padding:0 22px 14px; font-style:italic; }
+.tc-assess { padding:13px 28px; background:#080606;
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  display:flex; align-items:center; gap:14px; }
+.tc-as-ic { width:30px; height:30px; border-radius:50%; background:#10130a;
+  border:0.5px solid #4a5a3a; color:#b8cf90;
+  display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.tc-as-info { flex:1; }
+.tc-as-lab { font-size:7.5px; letter-spacing:0.14em; color:#666; font-weight:700; margin-bottom:3px; }
+.tc-as-text { font-size:11.5px; color:#fff; font-weight:500; line-height:1.4; }
+.tc-as-text em { font-family:Georgia,serif; font-style:italic; color:#dcb88a; font-weight:600; }
+.tc-as-text .tc-strength { color:#dcb88a; font-weight:600; font-family:monospace; font-size:11px; }
+
+.tc-choices { padding:18px 28px; background:#0a0807; }
+.tc-choice-lab { font-size:8.5px; letter-spacing:0.18em; color:#c8a26e; font-weight:700;
+  text-align:center; margin-bottom:14px; }
+.tc-choice-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width: 640px) { .tc-choice-grid { grid-template-columns:1fr; } }
+
+.tc-choice { background:#1a1612; border:0.5px solid #2a2218; border-radius:7px;
+  overflow:hidden; border-top:4px solid; transition:transform 0.2s, box-shadow 0.2s; }
+.tc-choice.plaintiff { border-top-color:#9aab7a; }
+.tc-choice.defendant { border-top-color:#7a9aab; }
+.tc-choice.plaintiff:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(154,171,122,0.18); }
+.tc-choice.defendant:hover { transform:translateY(-3px); box-shadow:0 8px 24px rgba(122,154,171,0.18); }
+
+.tc-ch-head { padding:14px 18px 11px; background:#1e1916;
+  border-bottom:0.5px solid #2a2218; text-align:center; position:relative; }
+.tc-ch-side-lab { font-size:8px; letter-spacing:0.18em; font-weight:700; margin-bottom:5px; }
+.tc-choice.plaintiff .tc-ch-side-lab { color:#b8cf90; }
+.tc-choice.defendant .tc-ch-side-lab { color:#9ab8c8; }
+.tc-ch-party { font-family:Georgia,serif; font-size:14.5px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; line-height:1.25; }
+.tc-ch-party em { font-style:italic; color:#dcb88a; }
+.tc-ch-party-meta { font-size:9.5px; color:#888; margin-top:4px; font-style:italic; }
+
+.tc-favored-tag, .tc-uphill-tag { position:absolute; top:9px; right:12px; font-size:7px;
+  letter-spacing:0.15em; font-weight:700; padding:3px 7px; border-radius:2px; }
+.tc-favored-tag { background:#0e1611; color:#6ab07a; border:0.5px solid #3a5a42; }
+.tc-uphill-tag  { background:#160e0e; color:#c87a7a; border:0.5px solid #5a3030; }
+
+.tc-ch-body { padding:14px 18px; }
+.tc-rep-row { display:flex; align-items:center; justify-content:space-between;
+  padding:11px 14px; background:#181410; border-radius:5px; margin-bottom:11px; }
+.tc-rep-lab { font-size:8px; letter-spacing:0.16em; color:#666; font-weight:700; }
+.tc-rep-val { font-family:Georgia,serif; font-size:22px; font-weight:600;
+  letter-spacing:-0.01em; line-height:1; }
+.tc-choice.plaintiff .tc-rep-val { color:#b8cf90; }
+.tc-choice.defendant .tc-rep-val { color:#9ab8c8; }
+
+.tc-st-row { display:flex; align-items:center; justify-content:space-between;
+  padding:9px 14px; background:#0a0807; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:5px; margin-bottom:11px; font-size:9.5px; }
+.tc-st-lab { color:#888; letter-spacing:0.04em; }
+.tc-st-val { font-family:monospace; color:#fff; font-weight:700; letter-spacing:0.04em; }
+.tc-st-val.high { color:#b8cf90; }
+.tc-st-val.low { color:#9ab8c8; }
+
+.tc-take-btn { display:block; width:100%; padding:12px; font-size:10px;
+  letter-spacing:0.15em; font-weight:700; border-radius:4px; cursor:pointer;
+  font-family:inherit; text-align:center; }
+.tc-choice.plaintiff .tc-take-btn { background:#10130a; border:0.5px solid #9aab7a; color:#b8cf90; }
+.tc-choice.plaintiff .tc-take-btn:hover { background:rgba(154,171,122,0.18); color:#fff; }
+.tc-choice.defendant .tc-take-btn { background:#0e1318; border:0.5px solid #7a9aab; color:#9ab8c8; }
+.tc-choice.defendant .tc-take-btn:hover { background:rgba(122,154,171,0.18); color:#fff; }
+.tc-take-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+.tc-ch-note { font-size:8.5px; color:#888; text-align:center; margin-top:9px;
+  font-style:italic; line-height:1.5; }
+.tc-ch-note em { color:#dcb88a; font-style:italic; }
+
+.tc-foot { padding:14px 28px; background:#0a0807; border-top:0.5px solid #3a242c;
+  display:flex; align-items:center; gap:14px; flex-shrink:0; }
+.tc-foot-note { flex:1; font-size:9.5px; color:#888; line-height:1.5; }
+.tc-foot-note strong { color:#bbb; }
+.tc-foot-note em { color:#dcb88a; font-style:italic; }
+.tc-refuse-btn { padding:11px 18px; border-radius:4px; font-size:9.5px;
+  letter-spacing:0.13em; font-weight:700; cursor:pointer; font-family:inherit;
+  background:transparent; border:0.5px solid #5a3030; color:#c87a7a;
+  display:flex; align-items:center; gap:8px; }
+.tc-refuse-btn:hover { background:#160e0e; color:#fff; border-color:#c87a7a; }
+.tc-refuse-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.tc-refuse-cost { font-size:8px; letter-spacing:0.1em; color:#888; font-weight:600; }
+
+.tc-status { padding:40px 28px; text-align:center; color:#888;
+  font-style:italic; font-size:12px; }
 .tc-status.bad { color:#c87a7a; }
+.tc-status-close { display:block; margin:18px auto 0; padding:10px 22px;
+  background:transparent; border:0.5px solid rgba(255,255,255,0.15); border-radius:4px;
+  color:#888; font-size:10px; letter-spacing:0.14em; font-weight:700;
+  cursor:pointer; font-family:inherit; }
+.tc-status-close:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
+
+/* ── Trial modal (Phase 2 shell) ──────────────────────────────────
+   Read-only view of an in-progress trial. The .trial-* vocab is
+   self-contained so it doesn't collide with the .tc-* (Try a Case)
+   or .offer-* (Pressing Issues) namespaces above. */
+.trial-back { position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:9100;
+  display:none; align-items:center; justify-content:center; padding:18px; }
+.trial-back.open { display:flex; }
+.trial-modal { position:relative; width:100%; max-width:920px;
+  background:linear-gradient(180deg, #0e0a0c 0%, #080608 100%);
+  border:0.5px solid #3a242c; border-radius:9px;
+  box-shadow:0 0 0 1px rgba(138,88,104,0.05), 0 25px 60px rgba(0,0,0,0.85);
+  overflow:hidden; max-height:96vh; display:flex; flex-direction:column;
+  color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; }
+.trial-close { position:absolute; top:14px; right:18px; font-size:14px; color:#888;
+  cursor:pointer; background:transparent; border:none; padding:4px 6px; z-index:5; }
+.trial-close:hover { color:#fff; }
+#trial-content { display:flex; flex-direction:column; max-height:96vh; }
+
+.trial-head { padding:18px 24px 14px; border-bottom:0.5px solid #3a242c;
+  background:linear-gradient(180deg, rgba(138,88,104,0.05) 0%, transparent 100%);
+  display:flex; align-items:flex-start; gap:14px; flex-shrink:0; }
+.trial-head-info { flex:1; min-width:0; }
+.trial-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e; font-weight:700; }
+.trial-eyebrow::before { content:"\2696  "; color:#dcb88a; }
+.trial-title { font-family:Georgia,serif; font-size:18px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; margin-top:5px; line-height:1.2; }
+.trial-title .v { font-family:Georgia,serif; font-style:italic; color:#c8a26e; margin:0 4px; }
+.trial-meta { font-size:10px; color:#888; margin-top:5px; }
+.trial-meta strong { color:#dcb88a; font-weight:600; }
+
+.trial-turn-pill { padding:6px 13px; border-radius:4px; font-size:9px; letter-spacing:0.13em;
+  font-weight:700; flex-shrink:0; display:flex; align-items:center; gap:6px; }
+.trial-turn-pill.your   { background:#161208; color:#dcb88a; border:0.5px solid #c8a26e; }
+.trial-turn-pill.theirs { background:#0a0a0a; color:#888;     border:0.5px solid rgba(255,255,255,0.15); }
+.trial-turn-pill .dot { width:6px; height:6px; border-radius:50%; background:#dcb88a;
+  box-shadow:0 0 6px rgba(220,184,138,0.6); }
+
+.trial-overview { padding:13px 24px; background:#1a1612;
+  border-bottom:0.5px solid rgba(255,255,255,0.07);
+  font-family:Georgia,serif; font-size:11.5px; line-height:1.6; color:#d8cfb8; flex-shrink:0; }
+
+.trial-chat { flex:1; overflow-y:auto; padding:24px; background:#080606;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); min-height:120px; }
+
+.trial-status { padding:30px 22px; text-align:center; color:#888;
+  font-style:italic; font-size:11.5px; }
+.trial-status.bad { color:#c87a7a; }
+
+.trial-hand { padding:14px 24px 18px; background:#0a0807; flex-shrink:0; }
+.trial-hand-lab { font-size:8.5px; letter-spacing:0.16em; color:#c8a26e; font-weight:700; margin-bottom:11px; }
+.trial-hand-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; }
+@media (max-width: 720px) { .trial-hand-grid { grid-template-columns:repeat(2, 1fr); } }
+
+.trial-beat { background:#1a1612; border:0.5px solid #2a2218; border-radius:5px;
+  overflow:hidden; border-top:3px solid rgba(255,255,255,0.07);
+  display:flex; flex-direction:column; }
+.trial-beat.evid { border-top-color:#d4b87a; }
+.trial-beat.law  { border-top-color:#9aab7a; }
+.trial-beat.fact { border-top-color:#7a9aab; }
+.trial-beat.app  { border-top-color:#c87a7a; }
+.trial-beat.played { opacity:0.4; }
+.trial-beat-head { padding:7px 9px; background:#1e1916;
+  border-bottom:0.5px solid #2a2218; display:flex; align-items:center; gap:5px; }
+.trial-beat-type { font-size:6.5px; letter-spacing:0.16em; font-weight:700;
+  padding:2px 5px; border-radius:2px; background:#0a0807; }
+.trial-beat-type.evid { color:#d4b87a; background:#16120a; border:0.5px solid #5a4a2e; }
+.trial-beat-type.law  { color:#9aab7a; background:#10130a; border:0.5px solid #4a5a3a; }
+.trial-beat-type.fact { color:#7a9aab; background:#0e1318; border:0.5px solid #3a5060; }
+.trial-beat-type.app  { color:#c87a7a; background:#160e0e; border:0.5px solid #5a3030; }
+.trial-beat-num { font-family:Georgia,serif; font-size:9px; color:#c8a26e; font-weight:600;
+  font-style:italic; margin-left:auto; }
+.trial-beat-name { padding:8px 9px 4px; font-family:Georgia,serif; font-size:10.5px;
+  color:#d8cfb8; font-weight:500; line-height:1.3; flex:1; }
+.trial-beat-desc { padding:0 9px 8px; font-family:Georgia,serif; font-size:8.5px;
+  color:#888; line-height:1.4; font-style:italic; }
+.trial-beat-foot { padding:5px 9px; background:#181410; border-top:0.5px solid #2a2218;
+  font-size:7px; letter-spacing:0.14em; font-weight:700; text-align:center; }
+.trial-beat-foot.favors-you  { color:#9ac99a; }
+.trial-beat-foot.favors-them { color:#c87a7a; }
+
+.trial-hand-hint { font-size:8.5px; color:#888; text-align:center; margin-top:11px;
+  line-height:1.5; font-style:italic; }
+.trial-hand-hint em { color:#dcb88a; font-style:italic; }
+
+/* ── Trial chat (Phase 3a) ───────────────────────────────────── */
+.trial-round-marker { align-self:center; text-align:center; font-size:8px;
+  letter-spacing:0.16em; color:#888; padding:4px 12px; background:#0a0807;
+  border:0.5px solid rgba(255,255,255,0.06); border-radius:14px;
+  font-weight:600; margin:8px auto; max-width:200px; }
+.trial-msg { display:flex; gap:9px; margin-bottom:10px; }
+.trial-msg.you   { flex-direction:row-reverse; }
+.trial-msg.them  { flex-direction:row; }
+.trial-msg-bubble { max-width:78%; padding:10px 13px; border-radius:7px;
+  border:0.5px solid rgba(255,255,255,0.07); }
+.trial-msg.you  .trial-msg-bubble { background:rgba(200,144,112,0.05);
+  border-color:#5a4630; }
+.trial-msg.them .trial-msg-bubble { background:#0d0a08; }
+.trial-msg-text { font-size:11px; line-height:1.6; color:#ddd; }
+.trial-msg-beat { margin-top:8px; padding:7px 10px; background:#0a0807;
+  border:0.5px solid #2a2218; border-radius:4px; border-left:2.5px solid;
+  display:flex; align-items:center; gap:8px; }
+.trial-msg-beat.evid { border-left-color:#d4b87a; }
+.trial-msg-beat.law  { border-left-color:#9aab7a; }
+.trial-msg-beat.fact { border-left-color:#7a9aab; }
+.trial-msg-beat.app  { border-left-color:#c87a7a; }
+.trial-msg-beat-type { font-size:7px; letter-spacing:0.14em; font-weight:700;
+  padding:2px 6px; border-radius:2px; }
+.trial-msg-beat-type.evid { background:#16120a; color:#d4b87a; border:0.5px solid #5a4a2e; }
+.trial-msg-beat-type.law  { background:#10130a; color:#9aab7a; border:0.5px solid #4a5a3a; }
+.trial-msg-beat-type.fact { background:#0e1318; color:#7a9aab; border:0.5px solid #3a5060; }
+.trial-msg-beat-type.app  { background:#160e0e; color:#c87a7a; border:0.5px solid #5a3030; }
+.trial-msg-beat-name { font-family:Georgia,serif; font-size:10.5px;
+  color:#d8cfb8; font-weight:500; flex:1; }
+
+/* ── Beat hand: armed / armable / played states ─────────────── */
+.trial-beat.armable { cursor:pointer; transition:transform 0.15s, box-shadow 0.15s; }
+.trial-beat.armable:hover { transform:translateY(-2px);
+  box-shadow:0 6px 14px rgba(0,0,0,0.5); }
+.trial-beat.armed { transform:translateY(-3px);
+  box-shadow:0 0 0 1px #c8a26e, 0 6px 14px rgba(200,162,110,0.25); }
+.trial-beat-foot.armed      { background:#161208; color:#dcb88a;
+  border-top-color:#c8a26e; }
+.trial-beat-foot.played-foot { color:#888; }
+
+/* ── Input bar (Phase 3a) ──────────────────────────────────── */
+.trial-input-bar { padding:12px 24px 14px; background:#0a0807;
+  border-top:0.5px solid rgba(255,255,255,0.06);
+  border-bottom:0.5px solid rgba(255,255,255,0.06); flex-shrink:0; }
+.trial-input-bar.disabled { background:#080606; }
+.trial-input-hint { font-size:10.5px; color:#888; font-style:italic; text-align:center; padding:8px 0; }
+.trial-input-hint em { color:#dcb88a; font-style:italic; }
+.trial-input-meta { display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:8px;
+  letter-spacing:0.13em; color:#888; }
+.trial-input-meta-lab { color:#c8a26e; font-weight:700; }
+.trial-msg-dots { display:flex; gap:5px; }
+.trial-msg-dot { width:11px; height:11px; border-radius:50%;
+  background:#0a0807; border:0.5px solid rgba(255,255,255,0.12); }
+.trial-msg-dot.used { background:#c8a26e; border-color:#c8a26e; }
+.trial-input-remaining { margin-left:auto; font-family:monospace; letter-spacing:0.04em; color:#888; }
+
+.trial-armed-tag { font-size:8.5px; letter-spacing:0.13em; color:#dcb88a; font-weight:700;
+  background:#161208; border:0.5px solid #5a4630; border-radius:3px;
+  padding:5px 9px; margin-bottom:9px; text-align:center; }
+
+.trial-input-row { display:flex; gap:9px; align-items:stretch; }
+.trial-input-field { flex:1; padding:9px 12px; background:#080606;
+  border:0.5px solid #5a4630; border-radius:5px; color:#fff; font-size:11.5px;
+  font-family:inherit; line-height:1.55; resize:none; min-height:44px; max-height:100px; }
+.trial-input-field::placeholder { color:#5a5a5a; font-style:italic; }
+.trial-input-field:focus { outline:none; border-color:#c8a26e; }
+.trial-input-actions { display:flex; flex-direction:column; gap:5px; }
+.trial-send-btn, .trial-endturn-btn { padding:8px 14px; border-radius:4px;
+  font-size:9px; letter-spacing:0.13em; font-weight:700; cursor:pointer;
+  font-family:inherit; }
+.trial-send-btn { background:#161208; border:0.5px solid #c8a26e; color:#dcb88a; }
+.trial-send-btn:hover { background:#251710; color:#fff; }
+.trial-endturn-btn { background:transparent;
+  border:0.5px solid rgba(255,255,255,0.12); color:#888; }
+.trial-endturn-btn:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
+.trial-send-btn:disabled, .trial-endturn-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+@media (max-width: 720px) {
+  .trial-input-row { flex-direction:column; }
+  .trial-input-actions { flex-direction:row; }
+  .trial-input-actions button { flex:1; }
+}
 </style>
 </head>
 <body>
@@ -496,6 +782,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName } from './js/utils.js';
+import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
@@ -587,6 +874,9 @@ let allEvents = [];       // event_log rows feeding the World Events panel
 let evCurrentTab = 'politics';
 let careerRows = [];   // persistent rows from politician_career_events; merged with the derived founding event at render time.
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
+let counselOffers = []; // pending corp_advocate_offers for this politician (20270512/13). Surfaces as Pressing Issues cards.
+let pretrialCases = []; // active pre-trials in this politician's bar nation awaiting a counterparty (20270514).
+let activeTrials = [];  // in-progress trials this politician is on either side of (20270515). Surfaces as Pressing Issues + opens the trial modal.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -620,7 +910,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -638,22 +928,47 @@ async function init() {
         .select('race_tier, district, opp_first, opp_last, opp_blurb, opp_party_name, your_stat, opp_stat, win_odds_pct, stake_win, stake_lose, resolve_tick, polling_you_pct, polling_opp_pct, polling_undecided_pct, created_at')
         .eq('politician_id', politician.id)
         .maybeSingle(),
+      // Pending counsel-retainer offers from corps in the advocate's
+      // bar nation. RPC returns offers:[] for non-advocates so it's
+      // safe to call unconditionally.
+      _supabase.rpc('list_counsel_offers_for_advocate', { p_faction_id: politician.id }),
+      // Active pre-trials in the advocate's bar nation awaiting a
+      // counterparty. Same defensive shape: pretrials:[] for non-
+      // advocates so the fetch is robust for every politician type.
+      _supabase.rpc('list_pretrial_cases_for_advocate', { p_faction_id: politician.id }),
+      // In-progress trials this advocate is on either side of.
+      // trials:[] for non-advocates and for advocates without
+      // active matches.
+      _supabase.rpc('list_active_trials_for_advocate', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
     if (raceRes.error) console.error('politician-home: active_election fetch failed', raceRes.error);
+    if (offersRes.error) console.error('politician-home: counsel offers fetch failed', offersRes.error);
+    if (pretrialRes.error) console.error('politician-home: pretrial cases fetch failed', pretrialRes.error);
+    if (trialsRes.error) console.error('politician-home: active trials fetch failed', trialsRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
+    counselOffers = (offersRes.data?.success ? offersRes.data.offers : []) || [];
+    pretrialCases = (pretrialRes.data?.success ? pretrialRes.data.pretrials : []) || [];
+    activeTrials  = (trialsRes.data?.success  ? trialsRes.data.trials    : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
     careerRows = [];
     activeRace = null;
+    counselOffers = [];
+    pretrialCases = [];
+    activeTrials  = [];
   }
 
   renderHero(ctx.shard);
   renderStats();
+  // Trial modal X close — wired once at init since the modal element
+  // is static (the body of the modal re-renders on each open).
+  const trialCloseBtn = document.getElementById('trial-close');
+  if (trialCloseBtn) trialCloseBtn.addEventListener('click', closeTrialModal);
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
   renderCareer();
@@ -931,7 +1246,7 @@ const CIVIL_SERVANT_ACTIONS = [
 // (Statute Books → Legal Acumen) and the Notoriety-only play
 // (Brief the Press → big swing, no Wins on the record).
 const ADVOCATE_ACTIONS = [
-  { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.' },
+  { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
   { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'Spend a quiet afternoon with the codes. No risk, no wins — just Legal Acumen.' },
   { ic: '❐', name: 'BRIEF THE PRESS',         cost: 'no cost', desc: 'Skip the courtroom and go straight to the headlines. High Notoriety swing, no Wins on the record.' },
 ];
@@ -996,8 +1311,10 @@ const AFFIL_VARIANTS = {
     name:    'Advocate',
     descFn:  (ctx) => `You have been admitted to the Bar of <strong>${escHtml(ctx.nation?.name || '—')}</strong>. You appear before the courts — the realistic first step on the bench.`,
     actions: ADVOCATE_ACTIONS,
-    // actionsEnabled left undefined → render logic greys every action
-    // out (no `action` key on the entries either).
+    // Only TRY A CASE has an `action` key, so the existing render
+    // logic enables that one and greys the other two (Statute Books
+    // and Brief the Press — RPCs land later).
+    actionsEnabled: true,
   },
   // Triggered when politician_office is NULL but politician_ministry is
   // set — no elected seat, but a confirmed bureaucrat. descFn picks up
@@ -1136,10 +1453,16 @@ function renderAffiliation(ctx) {
     </div>`;
 
   // Wire enabled (non-cooldown, non-disabled) buttons to their RPCs.
-  // Each MP action consumes the shared 6-tick cooldown server-side; on
-  // success we reload so the cooldown / stat changes show immediately.
+  // 'try-case' opens the choose-a-side modal; everything else routes
+  // through handleMpAction (MP + local ladders share the catalog).
   host.querySelectorAll('.act-btn[data-action]').forEach(btn => {
-    btn.addEventListener('click', () => handleMpAction(btn));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.action === 'try-case') {
+        tryACase(ctx.faction?.id);
+      } else {
+        handleMpAction(btn);
+      }
+    });
   });
   const resignBtn = host.querySelector('[data-resign-office]');
   if (resignBtn) resignBtn.addEventListener('click', () => handleResignOffice(resignBtn, variant.name));
@@ -1276,12 +1599,170 @@ async function handleMpAction(btn) {
 function renderPressingIssues(ctx) {
   const host = document.getElementById('pressing-issues');
   if (!host) return;
-  if (!activeRace) {
+  const blocks = [];
+  if (activeRace) blocks.push(renderCampaignCard(ctx));
+  counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
+  // Active trials surface above pre-trial broadcasts — the lawyer's
+  // own in-progress courtrooms outrank any "case looking for counsel"
+  // broadcasts they could join.
+  activeTrials.forEach(t => blocks.push(renderActiveTrialCard(t)));
+  pretrialCases.forEach(p => blocks.push(renderPretrialCard(p)));
+  if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
     return;
   }
-  host.innerHTML = renderCampaignCard(ctx);
-  bindCampaignActions(ctx);
+  host.innerHTML = blocks.join('');
+  if (activeRace) bindCampaignActions(ctx);
+  bindCounselOfferActions();
+  bindPretrialActions();
+  bindActiveTrialActions();
+}
+
+function renderActiveTrialCard(t) {
+  const yourTurn   = !!t.your_turn;
+  const sideLabel  = (t.side || '').toUpperCase();
+  const caseTag    = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
+  const roundLabel = `ROUND ${t.current_round || 1} OF IV`;
+  const eyebrow    = yourTurn
+    ? `TRIAL IN SESSION &middot; YOUR TURN &middot; ${roundLabel}`
+    : `TRIAL IN SESSION &middot; OPPOSING COUNSEL'S TURN &middot; ${roundLabel}`;
+  return `
+    <div class="offer-card trial-card" data-trial-id="${escHtml(t.trial_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9876;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">${eyebrow}</div>
+        <div class="oi-headline">${escHtml(t.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(t.defendant_name || '—')}</div>
+        <div class="oi-meta">
+          <span class="oi-corp">${escHtml(caseTag)}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-ceo">FOR THE <strong>${escHtml(sideLabel)}</strong></span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn trial-enter">&#9874; ENTER COURTROOM</button>
+      </div>
+    </div>`;
+}
+
+function bindActiveTrialActions() {
+  document.querySelectorAll('.trial-enter').forEach(btn => {
+    btn.addEventListener('click', () => openTrialModal(btn.closest('.trial-card')?.dataset.trialId));
+  });
+}
+
+function renderPretrialCard(p) {
+  const openSide   = p.open_side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+  const caseTag    = `${(p.case_type || '').toUpperCase()} · ${escHtml((p.litigation_type || '').toUpperCase())}`;
+  const ticksLeft  = Number(p.ticks_remaining);
+  const ticksHtml  = Number.isFinite(ticksLeft)
+    ? `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} remaining`
+    : 'pre-trial window';
+  return `
+    <div class="offer-card pretrial-card" data-trial-id="${escHtml(p.trial_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9878;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">PRE-TRIAL &middot; CASE SEEKING ${openSide} COUNSEL</div>
+        <div class="oi-headline">${escHtml(p.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(p.defendant_name || '—')}</div>
+        <div class="oi-meta">
+          <span class="oi-corp">${escHtml(caseTag)}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-rep">${escHtml(ticksHtml)}</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn pretrial-join">&#9874; REPRESENT ${openSide}</button>
+      </div>
+    </div>`;
+}
+
+function bindPretrialActions() {
+  document.querySelectorAll('.pretrial-join').forEach(btn => {
+    btn.addEventListener('click', () => joinPretrial(btn));
+  });
+}
+
+async function joinPretrial(btn) {
+  const card = btn.closest('.pretrial-card');
+  if (!card) return;
+  const trialId = card.dataset.trialId;
+  if (!trialId) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('represent_pretrial', {
+      p_faction_id: politician.id, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not join pre-trial: ' + (data?.reason || 'unknown'));
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
+}
+
+function renderCounselOfferCard(o) {
+  const corpName = escHtml(o.corp_name || 'A corporation');
+  const ceo      = escHtml(o.ceo_name || '—');
+  return `
+    <div class="offer-card" data-offer-id="${escHtml(o.offer_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9874;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">OFFER FOR COUNSEL &middot; CORPORATE RETAINER</div>
+        <div class="oi-headline">A corporation seeks to <em>retain</em> your services.</div>
+        <div class="oi-meta">
+          <span class="oi-corp">CORPORATION &middot; ${corpName}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-ceo">CEO <strong>${ceo}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-rep">Reputation: <strong>+1</strong></span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn">&#10003; ACCEPT</button>
+        <button type="button" class="offer-reject-btn">&#10005; REJECT</button>
+      </div>
+    </div>`;
+}
+
+function bindCounselOfferActions() {
+  document.querySelectorAll('.offer-accept-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveCounselOffer(btn, 'accept'));
+  });
+  document.querySelectorAll('.offer-reject-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveCounselOffer(btn, 'reject'));
+  });
+}
+
+async function resolveCounselOffer(btn, decision) {
+  const card = btn.closest('.offer-card');
+  if (!card) return;
+  const offerId = card.dataset.offerId;
+  if (!offerId) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  const rpc = decision === 'accept' ? 'accept_counsel_offer' : 'reject_counsel_offer';
+  try {
+    const { data, error } = await _supabase.rpc(rpc, { p_offer_id: offerId });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not resolve offer: ' + (data?.reason || 'unknown'));
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
 }
 
 // Two-or-three-letter abbreviation derived from a party name: first
@@ -1718,28 +2199,27 @@ function subscribeChatInserts() {
 }
 
 // ── Try a Case flow ─────────────────────────────────────────────────
-// Wires the draw / accept / reject RPCs to a modal that shows the
-// docket-drawn case. NOTE: tryACase() below is intentionally NOT
-// bound to the TRY A CASE action button yet (per spec) — the wiring
-// will land in a follow-up turn. To exercise the modal manually, call
-// window.__tryACase(factionId) from the console.
+// Draws a docket case for an Advocate, shows the choose-a-side modal
+// (party summary + preliminary assessment + per-side reputation), and
+// dispatches the player's choice to represent_drawn_case (commits
+// the advocate to a side; the trial system pays out reputation on
+// victory) or refuse_drawn_case (-2 Political Capital).
 async function tryACase(factionId) {
   if (!factionId) return;
-  showTryCaseStatus('Drawing a case from the docket…', false);
   openTryCaseModal();
+  showTryCaseStatus('Drawing a case from the docket…', false, false);
   try {
     const { data, error } = await _supabase.rpc('draw_court_case', { p_faction_id: factionId });
     if (error) throw error;
     if (!data?.success) {
-      showTryCaseStatus(tryCaseReasonText(data?.reason), true);
+      showTryCaseStatus(tryCaseReasonText(data?.reason), true, true);
       return;
     }
     renderTryCaseModal(data, factionId);
   } catch (err) {
-    showTryCaseStatus('Draw failed: ' + (err?.message || 'unknown'), true);
+    showTryCaseStatus('Draw failed: ' + (err?.message || 'unknown'), true, true);
   }
 }
-window.__tryACase = tryACase;
 
 function tryCaseReasonText(reason) {
   return ({
@@ -1761,101 +2241,514 @@ function closeTryCaseModal() {
   document.getElementById('tc-back').classList.remove('open');
   document.body.style.overflow = '';
 }
-function showTryCaseStatus(msg, isBad) {
+// In the success path the player must commit (Represent or Refuse) —
+// no close button. The status path shows one only on errors so the
+// player isn't trapped if the draw failed.
+function showTryCaseStatus(msg, isBad, allowClose) {
   document.getElementById('tc-back').classList.add('open');
   document.getElementById('tc-content').innerHTML = `
-    <div class="tc-status ${isBad ? 'bad' : ''}" style="padding:32px 22px;text-align:center;">${escHtml(msg)}</div>`;
+    <div class="tc-status ${isBad ? 'bad' : ''}">${escHtml(msg)}
+      ${allowClose ? '<button type="button" class="tc-status-close" id="tc-status-close">CLOSE</button>' : ''}
+    </div>`;
+  const close = document.getElementById('tc-status-close');
+  if (close) close.addEventListener('click', closeTryCaseModal);
+}
+
+function partyMeta(partyType, corpType) {
+  if (partyType === 'corporation') {
+    return corpType ? `${corpType.replace(/_/g, ' ')} corporation` : 'corporation';
+  }
+  return 'individual';
+}
+function assessmentText(pSum, dSum) {
+  if (pSum === dSum) return 'is evenly weighed on the beats';
+  return pSum > dSum
+    ? 'favors <em>the plaintiff</em> on the beats'
+    : 'favors <em>the defendant</em> on the beats';
+}
+
+// Render one of the two side cards. Both sides are structurally
+// identical — only the side slug, the party data, and the
+// favored/uphill state vary. `isFavored` and `isUphill` are mutually
+// exclusive; both false means the case is evenly weighed.
+function tcSideCard(side, name, partyType, corpType, rep, count, sum, isFavored, isUphill) {
+  const tag = isFavored ? '<span class="tc-favored-tag">FAVORED</span>'
+            : (isUphill ? '<span class="tc-uphill-tag">UPHILL</span>' : '');
+  const note = isFavored
+    ? 'An easier win, a smaller reward. <em>The case is on your side.</em>'
+    : (isUphill
+        ? 'A hard fight, a larger purse. <em>You\'ll have to outwork the file.</em>'
+        : 'The case is evenly weighed. <em>Either side is winnable.</em>');
+  const label = side === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+  return `
+    <div class="tc-choice ${side}">
+      <div class="tc-ch-head">
+        ${tag}
+        <div class="tc-ch-side-lab">FOR THE ${label}</div>
+        <div class="tc-ch-party">${escHtml(name || '—')}</div>
+        <div class="tc-ch-party-meta">${escHtml(partyMeta(partyType, corpType))}</div>
+      </div>
+      <div class="tc-ch-body">
+        <div class="tc-rep-row">
+          <span class="tc-rep-lab">REPUTATION ON WIN</span>
+          <span class="tc-rep-val">+${rep.toFixed(1)}</span>
+        </div>
+        <div class="tc-st-row">
+          <span class="tc-st-lab">Beats favoring this side</span>
+          <span class="tc-st-val ${isFavored ? 'high' : 'low'}">${count} of 10 &middot; total ${sum}</span>
+        </div>
+        <button type="button" class="tc-take-btn" data-side="${side}">&#9874; REPRESENT THE ${label}</button>
+        <div class="tc-ch-note">${note}</div>
+      </div>
+    </div>`;
 }
 
 function renderTryCaseModal(d, factionId) {
-  const beatTypeLabel = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
-  const beats = Array.isArray(d.beats) ? d.beats : [];
-  const partyHtml = (label, name, partyType, corpType) => `
-    <div class="tc-party">
-      <div class="tc-lab">${label}</div>
-      <div class="tc-who">${escHtml(name || '—')}</div>
-      <div class="tc-sub">${partyType === 'corporation'
-        ? (corpType ? corpType.replace(/_/g, ' ') + ' corporation' : 'corporation')
-        : 'individual'}</div>
-    </div>`;
+  const pSum   = Number(d.plaintiff_strength_sum) || 0;
+  const dSum   = Number(d.defendant_strength_sum) || 0;
+  const pCount = Number(d.plaintiff_beat_count) || 0;
+  const dCount = Number(d.defendant_beat_count) || 0;
+  const pRep   = Number(d.plaintiff_rep_on_win) || 0;
+  const dRep   = Number(d.defendant_rep_on_win) || 0;
+  const pFav   = pSum > dSum;
+  const dFav   = dSum > pSum;
+
   document.getElementById('tc-content').innerHTML = `
-    <div class="tc-body">
-      <div>
-        <div class="tc-tagrow">
-          <span class="tc-tag">${(d.case_type || '').toUpperCase()}</span>
-          <span class="tc-tag">${escHtml((d.litigation_type || '').toUpperCase())}</span>
-        </div>
-      </div>
-      <div class="tc-parties">
-        ${partyHtml('PLAINTIFF', d.plaintiff_name, d.plaintiff_party_type, d.plaintiff_corp_type)}
-        ${partyHtml('DEFENDANT', d.defendant_name, d.defendant_party_type, d.defendant_corp_type)}
-      </div>
-      <div class="tc-overview">${escHtml(d.overview || '')}</div>
-      <div class="tc-beats-head">
-        <span class="tc-beats-lab">THE BEATS</span>
-        <span class="tc-beats-note">strength is hidden from advocates until trial</span>
-      </div>
-      <div class="tc-beats">
-        ${beats.map((b, i) => {
-          const t = b?.type || '';
-          const sup = b?.support || '';
-          return `
-            <div class="tc-beat ${t}">
-              <div class="tc-beat-head">
-                <span class="tc-beat-num">§ ${i + 1}</span>
-                <span class="tc-beat-name">${escHtml(b?.name || '—')}</span>
-                ${t ? `<span class="tc-beat-type ${t}">${beatTypeLabel[t] || ''}</span>` : ''}
-                ${sup ? `<span class="tc-beat-support">SUPPORTS ${sup.toUpperCase()}</span>` : ''}
-              </div>
-              <div class="tc-beat-desc">${escHtml(b?.description || '')}</div>
-            </div>`;
-        }).join('')}
+    <div class="tc-summary">
+      <div class="tc-sum-class">${escHtml((d.case_type || '').toUpperCase())} &middot; ${escHtml((d.litigation_type || '').toUpperCase())}</div>
+      <div class="tc-sum-caption">${escHtml(d.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(d.defendant_name || '—')}</div>
+    </div>
+
+    <div class="tc-sum-desc">${escHtml(d.overview || '')}</div>
+
+    <div class="tc-assess">
+      <div class="tc-as-ic">&#9878;</div>
+      <div class="tc-as-info">
+        <div class="tc-as-lab">PRELIMINARY ASSESSMENT</div>
+        <div class="tc-as-text">Current case ${assessmentText(pSum, dSum)}. <span class="tc-strength">Plaintiff strength: ${pSum} &middot; Defendant strength: ${dSum}</span></div>
       </div>
     </div>
+
+    <div class="tc-choices">
+      <div class="tc-choice-lab">CHOOSE A SIDE TO REPRESENT</div>
+      <div class="tc-choice-grid">
+        ${tcSideCard('plaintiff', d.plaintiff_name, d.plaintiff_party_type, d.plaintiff_corp_type, pRep, pCount, pSum, pFav, dFav)}
+        ${tcSideCard('defendant', d.defendant_name, d.defendant_party_type, d.defendant_corp_type, dRep, dCount, dSum, dFav, pFav)}
+      </div>
+    </div>
+
     <div class="tc-foot">
-      <button type="button" class="tc-btn tc-btn-reject" id="tc-reject">REJECT &middot; −1 Reputation</button>
-      <button type="button" class="tc-btn tc-btn-accept" id="tc-accept">✓ ACCEPT CASE &middot; +0.2 Political Standing</button>
+      <div class="tc-foot-note">
+        Choose one side and the trial begins after the draft phase. <strong>You will see the beats only after committing.</strong> <em>The Bar expects advocates to take work.</em>
+      </div>
+      <button type="button" class="tc-refuse-btn" id="tc-refuse">
+        <span>&#10005; REFUSE THE MATTER</span>
+        <span class="tc-refuse-cost">&minus;2 POLITICAL CAPITAL</span>
+      </button>
     </div>`;
-  document.getElementById('tc-accept').addEventListener('click', () => decideTryCase(factionId, d.case_id, 'accept'));
-  document.getElementById('tc-reject').addEventListener('click', () => decideTryCase(factionId, d.case_id, 'reject'));
+
+  document.querySelectorAll('.tc-take-btn').forEach(btn => {
+    btn.addEventListener('click', () => commitSide(factionId, d.case_id, btn.dataset.side, d.plaintiff_name, d.defendant_name));
+  });
+  document.getElementById('tc-refuse').addEventListener('click', () => refuseCase(factionId, d.case_id));
 }
 
-async function decideTryCase(factionId, caseId, decision) {
-  const acceptBtn = document.getElementById('tc-accept');
-  const rejectBtn = document.getElementById('tc-reject');
-  acceptBtn.disabled = true;
-  rejectBtn.disabled = true;
-  const rpc = decision === 'accept' ? 'accept_drawn_case' : 'reject_drawn_case';
+// Single click-lock helper: disables every Represent/Refuse button on
+// the modal so a double-click can't fire two RPCs in flight.
+function lockTryCaseChoices() {
+  document.querySelectorAll('.tc-take-btn, #tc-refuse').forEach(b => { b.disabled = true; });
+}
+function unlockTryCaseChoices() {
+  document.querySelectorAll('.tc-take-btn, #tc-refuse').forEach(b => { b.disabled = false; });
+}
+
+async function commitSide(factionId, caseId, side, plaintiffName, defendantName) {
+  lockTryCaseChoices();
   try {
-    const { data, error } = await _supabase.rpc(rpc, { p_faction_id: factionId, p_case_id: caseId });
+    // p_plaintiff_name / p_defendant_name snapshot the parties the
+    // lawyer saw in the draw modal so the pre-trial row carries the
+    // same names every joining advocate will see. The server uses
+    // these verbatim (with btrim) — randomised names from the modal
+    // become the canonical trial names.
+    const { data, error } = await _supabase.rpc('represent_drawn_case', {
+      p_faction_id: factionId, p_case_id: caseId, p_side: side,
+      p_plaintiff_name: plaintiffName, p_defendant_name: defendantName,
+    });
     if (error) throw error;
     if (!data?.success) {
-      alert('Could not record decision: ' + (data?.reason || 'unknown'));
-      acceptBtn.disabled = false;
-      rejectBtn.disabled = false;
+      alert('Could not commit: ' + (data?.reason || 'unknown'));
+      unlockTryCaseChoices();
       return;
     }
     closeTryCaseModal();
     window.location.reload();
   } catch (err) {
     alert('Failed: ' + (err?.message || 'network error'));
-    acceptBtn.disabled = false;
-    rejectBtn.disabled = false;
+    unlockTryCaseChoices();
+  }
+}
+
+async function refuseCase(factionId, caseId) {
+  lockTryCaseChoices();
+  try {
+    const { data, error } = await _supabase.rpc('refuse_drawn_case', {
+      p_faction_id: factionId, p_case_id: caseId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not refuse: ' + (data?.reason || 'unknown'));
+      unlockTryCaseChoices();
+      return;
+    }
+    closeTryCaseModal();
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    unlockTryCaseChoices();
+  }
+}
+
+// ── Trial modal (Phase 3a) ──────────────────────────────────────────
+// Renders an in-progress trial: case header, chat log, hand grid,
+// and an input bar that lets the active lawyer arm a beat + send
+// up to 4 messages per turn. Polls every 4s while open so messages
+// from the opposing counsel appear without a manual refresh.
+let _trialPoll = null;
+let _trialState = { trialId: null, armedBeatIndex: null, sending: false };
+
+async function openTrialModal(trialId) {
+  if (!trialId) return;
+  _trialState.trialId = trialId;
+  _trialState.armedBeatIndex = null;
+  _trialState.sending = false;
+  document.getElementById('trial-back').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('trial-content').innerHTML =
+    '<div class="trial-status">Loading trial…</div>';
+  await refreshTrial();
+  // Light-touch polling: only while the modal is open. Stops on close
+  // or when the trial leaves in_progress.
+  if (_trialPoll) clearInterval(_trialPoll);
+  _trialPoll = setInterval(() => {
+    if (!_trialState.sending) refreshTrial();
+  }, 4000);
+}
+function closeTrialModal() {
+  document.getElementById('trial-back').classList.remove('open');
+  document.body.style.overflow = '';
+  if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
+  _trialState.trialId = null;
+  _trialState.armedBeatIndex = null;
+}
+function trialReasonText(reason) {
+  return ({
+    not_authenticated:           'Sign in to view this trial.',
+    no_politician:               'No active politician on this account.',
+    trial_not_found:             'Trial no longer exists.',
+    trial_not_active:            'This trial is no longer in session.',
+    not_in_trial:                "You're not counsel on this trial.",
+    case_not_found:              'Case record missing.',
+    not_your_turn:               "It's the opposing counsel's turn.",
+    turn_message_cap:            'You have already sent 4 messages this turn.',
+    empty_text:                  'Type a message before sending.',
+    text_too_long:               'Messages are capped at 240 characters.',
+    invalid_beat_index:          'That beat is not part of this case.',
+    beat_already_played_this_turn: 'You have already played a beat this round.',
+    beat_not_in_hand:            'That beat is no longer in your hand.',
+    beat_favours_opponent:       'You can only play beats that favour your side as argument.',
+  })[reason] || ('Action failed: ' + (reason || 'unknown'));
+}
+
+async function refreshTrial() {
+  const trialId = _trialState.trialId;
+  if (!trialId) return;
+  try {
+    const { data, error } = await _supabase.rpc('get_trial_state', {
+      p_faction_id: politician.id, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      document.getElementById('trial-content').innerHTML =
+        `<div class="trial-status bad">${escHtml(trialReasonText(data?.reason))}</div>`;
+      if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
+      return;
+    }
+    renderTrialModal(data);
+  } catch (err) {
+    document.getElementById('trial-content').innerHTML =
+      `<div class="trial-status bad">Failed to load: ${escHtml(err?.message || 'network error')}</div>`;
+    if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
+  }
+}
+
+function renderTrialModal(d) {
+  // If a beat we'd previously armed got consumed (e.g., a stale tab
+  // played it), drop the arm.
+  if (_trialState.armedBeatIndex != null) {
+    const armedBeat = (d.hand || []).find(b => b.beat_index === _trialState.armedBeatIndex);
+    if (!armedBeat || armedBeat.played_at_round != null || armedBeat.objected_at_round != null) {
+      _trialState.armedBeatIndex = null;
+    }
+  }
+
+  // Save the in-flight textarea state so the polling re-render doesn't
+  // wipe what the lawyer is typing.
+  const prevInput = document.getElementById('trial-input');
+  const carryText = prevInput ? prevInput.value : '';
+  const carryFocus = prevInput === document.activeElement;
+  const carrySelStart = prevInput && carryFocus ? prevInput.selectionStart : null;
+  const carrySelEnd   = prevInput && carryFocus ? prevInput.selectionEnd   : null;
+
+  const caseTag    = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
+  const roundLabel = `ROUND ${d.current_round || 1} OF IV`;
+  const yourSide   = (d.side || 'plaintiff').toUpperCase();
+  const turnPill   = d.your_turn
+    ? '<span class="trial-turn-pill your"><span class="dot"></span> YOUR TURN</span>'
+    : '<span class="trial-turn-pill theirs">OPPOSING TURN</span>';
+
+  const messages = Array.isArray(d.messages) ? d.messages : [];
+  document.getElementById('trial-content').innerHTML = `
+    <div class="trial-head">
+      <div class="trial-head-info">
+        <div class="trial-eyebrow">${escHtml(caseTag)} &middot; ${roundLabel}</div>
+        <div class="trial-title">${escHtml(d.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(d.defendant_name || '—')}</div>
+        <div class="trial-meta">Representing <strong>${yourSide}</strong> &middot; vs. <strong>${escHtml(d.opponent_name || 'Opposing Counsel')}</strong></div>
+      </div>
+      ${turnPill}
+    </div>
+
+    <div class="trial-overview">${escHtml(d.overview || '')}</div>
+
+    <div class="trial-chat" id="trial-chat">${renderTrialChat(messages, d.side)}</div>
+
+    ${renderTrialInputBar(d)}
+
+    <div class="trial-hand">
+      <div class="trial-hand-lab">YOUR HAND &middot; ${(d.hand || []).length} BEATS DRAWN FROM THE POOL</div>
+      <div class="trial-hand-grid">${renderTrialHand(d)}</div>
+    </div>`;
+
+  // Scroll chat to bottom on every render so the latest message is visible.
+  const chat = document.getElementById('trial-chat');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+
+  // Restore typed text + selection / focus carried over from the
+  // previous render (otherwise the 4s poll wipes the textarea).
+  const newInput = document.getElementById('trial-input');
+  if (newInput && carryText) newInput.value = carryText;
+  if (newInput && carryFocus) {
+    newInput.focus();
+    if (carrySelStart != null) newInput.setSelectionRange(carrySelStart, carrySelEnd);
+  }
+
+  bindTrialControls(d);
+}
+
+function renderTrialChat(messages, yourSide) {
+  if (!messages.length) {
+    return '<div class="trial-status">Argument log will appear here once messages are exchanged.</div>';
+  }
+  // Group by round: insert a "ROUND N" divider when round changes.
+  let lastRound = null;
+  return messages.map(m => {
+    let divider = '';
+    if (m.round !== lastRound) {
+      divider = `<div class="trial-round-marker">&mdash; ROUND ${m.round} &mdash;</div>`;
+      lastRound = m.round;
+    }
+    const mine = m.side === yourSide;
+    const cls  = mine ? 'trial-msg you' : 'trial-msg them';
+    const beat = m.beat_played_index != null
+      ? `<div class="trial-msg-beat ${escHtml(m.beat_type || '')}">
+           <span class="trial-msg-beat-type ${escHtml(m.beat_type || '')}">${escHtml((BEAT_TYPE_LABEL[m.beat_type] || '').toUpperCase())}</span>
+           <span class="trial-msg-beat-name">${escHtml(m.beat_name || '—')}</span>
+         </div>` : '';
+    return divider + `
+      <div class="${cls}">
+        <div class="trial-msg-bubble">
+          <div class="trial-msg-text">${escHtml(m.text)}</div>
+          ${beat}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderTrialHand(d) {
+  const hand = Array.isArray(d.hand) ? d.hand : [];
+  if (!hand.length) return '<div class="trial-status">No beats dealt yet.</div>';
+  const armedIndex = _trialState.armedBeatIndex;
+  return hand.map((b, i) => {
+    const t = b?.type || '';
+    const played = b?.played_at_round != null;
+    const objected = b?.objected_at_round != null;
+    const consumed = played || objected;
+    const favorsYou = b?.support === d.side;
+    const armed = (armedIndex === b.beat_index) && !consumed;
+    const armable = d.your_turn && favorsYou && !consumed;
+    const cls = ['trial-beat', t,
+      consumed ? 'played' : '',
+      armed ? 'armed' : '',
+      armable ? 'armable' : '',
+    ].filter(Boolean).join(' ');
+    let footText;
+    if (played) footText = `PLAYED &middot; ROUND ${b.played_at_round}`;
+    else if (objected) footText = `USED &middot; OBJECTION`;
+    else if (armed) footText = '&#9876; ARMED';
+    else if (favorsYou) footText = 'FAVORS YOUR SIDE';
+    else footText = 'FAVORS OPPONENT';
+    const footCls = armed
+      ? 'armed'
+      : (consumed ? 'played-foot' : (favorsYou ? 'favors-you' : 'favors-them'));
+    return `
+      <div class="${cls}" data-beat-index="${b.beat_index}"${armable ? '' : ' aria-disabled="true"'}>
+        <div class="trial-beat-head">
+          ${t ? `<span class="trial-beat-type ${t}">${escHtml(BEAT_TYPE_LABEL[t] || '')}</span>` : ''}
+          <span class="trial-beat-num">&sect; ${i + 1}</span>
+        </div>
+        <div class="trial-beat-name">${escHtml(b?.name || '—')}</div>
+        <div class="trial-beat-desc">${escHtml(b?.description || '')}</div>
+        <div class="trial-beat-foot ${footCls}">${footText}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderTrialInputBar(d) {
+  if (!d.your_turn) {
+    return `
+      <div class="trial-input-bar disabled">
+        <div class="trial-input-hint">Opposing counsel is speaking. <em>Wait for your turn.</em></div>
+      </div>`;
+  }
+  const sent = Number(d.messages_sent_this_turn) || 0;
+  const remaining = Math.max(0, 4 - sent);
+  const dotsHtml = Array.from({ length: 4 }, (_, i) =>
+    `<span class="trial-msg-dot${i < sent ? ' used' : ''}"></span>`).join('');
+  const armedHtml = _trialState.armedBeatIndex != null
+    ? `<div class="trial-armed-tag">&#9876; BEAT ARMED &middot; will play with next message</div>`
+    : '';
+  return `
+    <div class="trial-input-bar">
+      <div class="trial-input-meta">
+        <span class="trial-input-meta-lab">MESSAGES THIS TURN</span>
+        <span class="trial-msg-dots">${dotsHtml}</span>
+        <span class="trial-input-remaining">${remaining} of 4 remaining</span>
+      </div>
+      ${armedHtml}
+      <div class="trial-input-row">
+        <textarea class="trial-input-field" id="trial-input" maxlength="240"
+                  placeholder="Address the Court. (240 character limit)"></textarea>
+        <div class="trial-input-actions">
+          <button type="button" class="trial-send-btn" id="trial-send">SEND</button>
+          <button type="button" class="trial-endturn-btn" id="trial-endturn">END TURN</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function bindTrialControls(d) {
+  // Arm / disarm beats.
+  document.querySelectorAll('#trial-content .trial-beat.armable').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = Number(card.dataset.beatIndex);
+      _trialState.armedBeatIndex =
+        _trialState.armedBeatIndex === idx ? null : idx;
+      renderTrialModal(d);
+    });
+  });
+  // Send + End Turn.
+  const sendBtn   = document.getElementById('trial-send');
+  const endBtn    = document.getElementById('trial-endturn');
+  if (sendBtn)   sendBtn.addEventListener('click', () => sendTrialMessage(d.trial_id));
+  if (endBtn)    endBtn.addEventListener('click',  () => endTrialTurn(d.trial_id));
+}
+
+async function sendTrialMessage(trialId) {
+  if (_trialState.sending) return;
+  const input = document.getElementById('trial-input');
+  if (!input) return;
+  const text = (input.value || '').trim();
+  if (!text) { input.focus(); return; }
+  if (text.length > 240) { alert('Messages are capped at 240 characters.'); return; }
+
+  _trialState.sending = true;
+  const sendBtn = document.getElementById('trial-send');
+  const endBtn  = document.getElementById('trial-endturn');
+  if (sendBtn) sendBtn.disabled = true;
+  if (endBtn)  endBtn.disabled  = true;
+  try {
+    const { data, error } = await _supabase.rpc('send_trial_message', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+      p_text:       text,
+      p_beat_index: _trialState.armedBeatIndex,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    input.value = '';
+    _trialState.armedBeatIndex = null;
+    await refreshTrial();
+  } catch (err) {
+    alert('Send failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (endBtn)  endBtn.disabled  = false;
+  }
+}
+
+async function endTrialTurn(trialId) {
+  if (_trialState.sending) return;
+  if (!confirm('End your turn now? You can still send up to your remaining messages.')) return;
+  _trialState.sending = true;
+  try {
+    const { data, error } = await _supabase.rpc('end_turn', {
+      p_faction_id: politician.id, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    _trialState.armedBeatIndex = null;
+    await refreshTrial();
+  } catch (err) {
+    alert('End turn failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
   }
 }
 
 init();
 </script>
 
-<!-- Try a Case modal — Advocate docket draw. Hidden until openTryCaseModal()
-     sets .open. Wiring to TRY A CASE action button is deferred (per spec). -->
+<!-- Trial modal (Phase 2 shell). Opened from a "TRIAL IN SESSION"
+     Pressing Issues card; pulls the caller's hand, round, and turn
+     from get_trial_state. The X close button is wired via
+     addEventListener at init (see closeTrialModal). Phase 3 wires
+     the chat + input + beat plays + objections + settle. -->
+<div class="trial-back" id="trial-back">
+  <div class="trial-modal">
+    <button type="button" class="trial-close" id="trial-close" title="Close">&#10005;</button>
+    <div id="trial-content"></div>
+  </div>
+</div>
+
+<!-- Try a Case modal — Advocate docket draw + choose-a-side. Hidden
+     until openTryCaseModal() sets .open. No close X in the success
+     path: the player must either commit (Represent a side) or Refuse
+     (-2 Political Capital). On draw failure the status path renders
+     its own Close button so the player isn't trapped. -->
 <div class="tc-back" id="tc-back">
   <div class="tc-modal">
     <div class="tc-head">
-      <span class="tc-eyebrow">JUDICIARY &middot; DOCKET DRAW</span>
-      <button type="button" class="tc-close" onclick="document.getElementById('tc-back').classList.remove('open');document.body.style.overflow='';" title="Close">&#10005;</button>
+      <div class="tc-eyebrow">A NEW MATTER &middot; FOR YOUR CONSIDERATION</div>
+      <div class="tc-title">Try a <em>Case</em></div>
+      <div class="tc-sub">A case has been drawn from the docket. <strong>Choose a side to represent</strong>, or refuse the matter. <em>Refusing costs Political Capital.</em></div>
     </div>
-    <div id="tc-content"></div>
+    <div class="tc-body" id="tc-content"></div>
   </div>
 </div>
 

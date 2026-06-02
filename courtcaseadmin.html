@@ -196,23 +196,7 @@
 
 <script type="module">
 import { _supabase, requireAuth } from './js/supabase-client.js';
-
-const LITIGATION_BY_TYPE = {
-  civil: [
-    'Tenancy & Habitation', 'Personal Injury', 'Defamation', 'Family Law',
-    'Inheritance & Estates', 'Property Title', 'Civil Rights', 'Wrongful Termination',
-  ],
-  criminal: [
-    'Bribery & Corruption', 'Embezzlement', 'Fraud', 'Tax Evasion',
-    'Money Laundering', 'Assault', 'Homicide', 'Drug Offenses',
-  ],
-  commercial: [
-    'Contract Dispute', 'Breach of Warranty', 'Force Majeure', 'Intellectual Property',
-    'Antitrust', 'Securities', 'Shareholder Dispute', 'Maritime',
-  ],
-};
-const BEAT_TYPES = ['evid', 'law', 'fact', 'app'];
-const BEAT_TYPE_LABEL = { evid: 'EVIDENCE', law: 'LAW', fact: 'FACT', app: 'APPEAL' };
+import { LITIGATION_BY_TYPE, BEAT_TYPES, BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 
 const state = {
   filter: 'pending',
