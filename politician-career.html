@@ -1058,6 +1058,31 @@ const JUDICIARY_RUNGS = [
     },
   },
   {
+    name: 'State Prosecutor',
+    // Held once politician_state_prosecutor_at_tick is stamped by
+    // politician_seek_state_prosecutor_appointment (20270532). Parallel
+    // sidestep to the bench — does NOT gate Magistrate, and Magistrate
+    // doesn't gate it. `!= null` so a tick-0 stamp reads as held.
+    held:        (s)  => s.stateProsecutorAtTick != null,
+    descIfHeld:  ()  => 'Carrying the people’s brief — prosecuting cases on behalf of the state.',
+    descIfNot:   ()  => 'Carry the state’s brief in court — prosecute on behalf of the people. A parallel role to the bench, won by appointment rather than election.',
+    actionIfNot: (s) => {
+      if (!s.barAdmittedNationId || s.barAdmittedNationId !== s.nationId) {
+        return { label: 'Pass the Bar first', kind: 'disabled' };
+      }
+      if (s.experiencedAdvocateAtTick == null) {
+        return { label: 'Step up first', kind: 'disabled' };
+      }
+      if (s.politicianReputation < 35) {
+        return { label: `Seek Appointment · Need 35 Rep (${s.politicianReputation}/35)`, kind: 'disabled' };
+      }
+      if (s.politicalCapital < 25) {
+        return { label: `Seek Appointment · Need 25 PC (${s.politicalCapital}/25)`, kind: 'disabled' };
+      }
+      return { label: 'Seek Appointment', kind: 'primary', action: 'seek-state-prosecutor' };
+    },
+  },
+  {
     name: 'Magistrate',
     // Held once politician_magistrate_at_tick is stamped by
     // politician_take_the_bench (20270531). One-shot; never cleared.
@@ -1571,6 +1596,10 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // set once and never cleared.
     politicalCapital:        Number(ctx?.faction?.political_capital) || 0,
     magistrateAtTick:        ctx?.faction?.politician_magistrate_at_tick ?? null,
+    // State Prosecutor (20270532) — parallel sidestep to the bench
+    // path. 35 Rep + 25 PC threshold (no spend), Experienced Advocate
+    // prereq. Doesn't gate or unlock Magistrate.
+    stateProsecutorAtTick:   ctx?.faction?.politician_state_prosecutor_at_tick ?? null,
   };
 }
 
@@ -1935,6 +1964,13 @@ function bindRungActions(ctx) {
     restingLabel:  'Take the Bench',
     pendingLabel:  'Taking the bench…',
     errorPrefix:   'Could not take the bench',
+  });
+  bindCareerClimbAction({
+    action:        'seek-state-prosecutor',
+    rpc:           'politician_seek_state_prosecutor_appointment',
+    restingLabel:  'Seek Appointment',
+    pendingLabel:  'Seeking appointment…',
+    errorPrefix:   'Could not seek appointment',
   });
 }
 
