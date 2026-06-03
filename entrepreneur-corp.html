@@ -915,9 +915,9 @@
         <div class="delta" id="cp-val-delta">—</div>
       </div>
       <div class="fin-card">
-        <div class="lab">INCOME LAST TICK</div>
+        <div class="lab">REVENUE CHANGE (THIS MONTH)</div>
         <div class="val" id="cp-income">$0</div>
-        <div class="delta">— per tick</div>
+        <div class="delta" id="cp-income-delta">&mdash; this month</div>
       </div>
       <div class="fin-card">
         <div class="lab">DEBT</div>
@@ -3299,6 +3299,36 @@ function initials(s, n) {
 
     set('cp-cash', fmtM(getEntrepreneurCorpCash(c)));
     set('cp-cash-delta', '— corp treasury');
+
+    // Revenue Change (This Month) — one tick is one in-game month per
+    // how-to.html, so the most recent corp_cash_history row IS this
+    // month's net delta. cash_delta is the authoritative SOT written
+    // by the tick processor (cash_end - cash_start). Renders with
+    // sign + colour; no row yet → $0 / "no data yet" fallback.
+    try {
+      const { data: histRow, error: histErr } = await _supabase.from('corp_cash_history')
+        .select('cash_delta, tick')
+        .eq('faction_id', id)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const incomeEl = document.getElementById('cp-income');
+      if (incomeEl) {
+        if (histErr || !histRow) {
+          incomeEl.textContent = '$0';
+          incomeEl.style.color = '';
+          set('cp-income-delta', histErr ? '— lookup failed' : '— no data yet');
+        } else {
+          const delta = Number(histRow.cash_delta) || 0;
+          const sign  = delta > 0 ? '+' : (delta < 0 ? '−' : '');
+          incomeEl.textContent = sign + fmtUsd(Math.abs(delta));
+          incomeEl.style.color = delta > 0 ? '#9ac89e' : (delta < 0 ? '#e09898' : '');
+          set('cp-income-delta', '— tick ' + histRow.tick);
+        }
+      }
+    } catch (e) {
+      // Non-fatal — leave the placeholder. Other cards keep rendering.
+    }
 
     // VALUATION from the shared single source (js/game/corp-valuation.js
     // §3). Both private and public corps show dynamic BOOK VALUE — feed
