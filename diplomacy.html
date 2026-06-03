@@ -10455,12 +10455,35 @@ async function sendTradeToParliamentFromModal() {
         alert('You need a diplomatic role to send the agreement to parliament.');
         return;
     }
+    const m = _activeNegModal;
+    // Defensive: hide-condition already gates this on count=2 and
+    // status != 'ratification', but a stale local state could let
+    // the click through. Skip if already ratifying.
+    if (m.status === 'ratification') return;
+
     const sendBtn = document.getElementById('trade-neg-send-parliament-btn');
     if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
     try {
-        await sendTradeToParliament(_activeNegModal.negotiationId);
-        _activeNegModal.status = 'ratification';
+        const factionId = _worldState?.faction?.id;
+        const { data: shardData } = await _supabase.from('shard')
+            .select('current_tick').eq('name', 'Alpha Shard').single();
+        const tick = shardData?.current_tick || 0;
+
+        const billIds = await createTradeRatificationBills(m, tick, factionId);
+
+        const { error } = await _supabase.from('trade_negotiations').update({
+            status:     'ratification',
+            bill_a_id:  billIds.bill_a_id,
+            bill_b_id:  billIds.bill_b_id,
+        }).eq('id', m.negotiationId);
+        if (error) { alert('Failed: ' + error.message); return; }
+
+        m.status    = 'ratification';
+        m.bill_a_id = billIds.bill_a_id;
+        m.bill_b_id = billIds.bill_b_id;
         negAgreementRender();
+    } catch (err) {
+        alert(err.message || 'Failed to send to parliament.');
     } finally {
         if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send to Parliament'; }
     }
@@ -10468,6 +10491,68 @@ async function sendTradeToParliamentFromModal() {
 window.sendTradeToParliamentFromModal = sendTradeToParliamentFromModal;
 
 let _negAgreementToggling = false;
+
+// Bill creation for trade-agreement ratification. Called from two
+// sites: negAgreementToggle (when the second party approves) and
+// sendTradeToParliamentFromModal (the manual recovery button —
+// shown when count=2 but status somehow didn't flip).
+//
+// Inserts a ratification bill into each party's parliament and
+// fires the matching event_log entry. Returns { bill_a_id,
+// bill_b_id } so the caller can write them into the negotiation
+// row. Throws on insert failure.
+async function createTradeRatificationBills(m, tick, factionId) {
+    const [{ data: nationARow }, { data: nationBRow }] = await Promise.all([
+        _supabase.from('nations').select('name').eq('id', m.weAreA ? m.myNationId : m.partnerNationId).single(),
+        _supabase.from('nations').select('name').eq('id', m.weAreA ? m.partnerNationId : m.myNationId).single(),
+    ]);
+    const nameA = nationARow?.name || 'Unknown';
+    const nameB = nationBRow?.name || 'Unknown';
+    const agreementName = m.agreementName || 'Trade Agreement';
+    const billTitle = 'Ratify: ' + agreementName;
+    const billPreamble = 'Ratification of the trade agreement "' + agreementName + '" between ' +
+        nameA + ' and ' + nameB + '. A YES vote enacts the agreement; a NO vote rejects it.';
+
+    const VOTING_WINDOW = 3;
+    const billBase = {
+        bill_type: 'ratification', bill_name: billTitle, preamble: billPreamble,
+        trade_negotiation_id: m.negotiationId, status: 'floor',
+        proposed_tick: tick, floor_tick: tick,
+        voting_ends_tick: tick + VOTING_WINDOW,
+    };
+
+    const nationAId = m.weAreA ? m.myNationId : m.partnerNationId;
+    const nationBId = m.weAreA ? m.partnerNationId : m.myNationId;
+    const approverA = m.weAreA ? factionId : m.approvedByA;
+    const approverB = m.weAreA ? m.approvedByB : factionId;
+
+    const billA = { ...billBase, nation_id: nationAId, proposed_by: approverA };
+    const billB = { ...billBase, nation_id: nationBId, proposed_by: approverB };
+
+    const [resultA, resultB] = await Promise.all([
+        _supabase.from('bills').insert(billA).select('id').single(),
+        _supabase.from('bills').insert(billB).select('id').single(),
+    ]);
+
+    if (resultA.error) throw new Error('Error creating ratification bill: ' + resultA.error.message);
+    if (resultB.error) throw new Error('Error creating ratification bill: ' + resultB.error.message);
+
+    // "Sent for ratification" event. The actual "signed" event fires
+    // from resolveTradeRatificationBill (bills.js) once both bills pass.
+    const ratifyDesc = 'The ' + agreementName + ' has been sent to both parliaments for ratification.';
+    _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
+        nation_id: nid,
+        event_name: agreementName + ' — Ratification',
+        category: 'trade',
+        description_chosen: ratifyDesc,
+        fired_at_tick: tick,
+    }))).then(() => {});
+
+    return {
+        bill_a_id: resultA.data?.id || null,
+        bill_b_id: resultB.data?.id || null,
+    };
+}
 
 async function negAgreementToggle() {
     if (_negAgreementToggling || !_activeNegModal) return;
@@ -10509,59 +10594,15 @@ async function negAgreementToggle() {
         const theirApproved = m.weAreA ? m.approvedByB : m.approvedByA;
         if (theirApproved) {
             updateData.status = 'ratification';
-
-            // Fetch nation names
-            const [{ data: nationARow }, { data: nationBRow }] = await Promise.all([
-                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.myNationId : m.partnerNationId).single(),
-                _supabase.from('nations').select('name').eq('id', m.weAreA ? m.partnerNationId : m.myNationId).single(),
-            ]);
-            const nameA = nationARow?.name || 'Unknown';
-            const nameB = nationBRow?.name || 'Unknown';
-            const agreementName = m.agreementName || 'Trade Agreement';
-            const billTitle = 'Ratify: ' + agreementName;
-            const billPreamble = 'Ratification of the trade agreement "' + agreementName + '" between ' +
-                nameA + ' and ' + nameB + '. A YES vote enacts the agreement; a NO vote rejects it.';
-
-            const VOTING_WINDOW = 3;
-            const billBase = {
-                bill_type: 'ratification', bill_name: billTitle, preamble: billPreamble,
-                trade_negotiation_id: m.negotiationId, status: 'floor',
-                proposed_tick: tick, floor_tick: tick,
-                voting_ends_tick: tick + VOTING_WINDOW,
-            };
-
-            const nationAId = m.weAreA ? m.myNationId : m.partnerNationId;
-            const nationBId = m.weAreA ? m.partnerNationId : m.myNationId;
-            const approverA = m.weAreA ? factionId : m.approvedByA;
-            const approverB = m.weAreA ? m.approvedByB : factionId;
-
-            const billA = { ...billBase, nation_id: nationAId, proposed_by: approverA };
-            const billB = { ...billBase, nation_id: nationBId, proposed_by: approverB };
-
-            const [resultA, resultB] = await Promise.all([
-                _supabase.from('bills').insert(billA).select('id').single(),
-                _supabase.from('bills').insert(billB).select('id').single(),
-            ]);
-
-            if (resultA.error) { alert('Error creating ratification bill: ' + resultA.error.message); _negAgreementToggling = false; return; }
-            if (resultB.error) { alert('Error creating ratification bill: ' + resultB.error.message); _negAgreementToggling = false; return; }
-
-            updateData.bill_a_id = resultA.data?.id || null;
-            updateData.bill_b_id = resultB.data?.id || null;
-
-            // Fire the "sent for ratification" event only. The "signed" event
-            // is a misnomer at this stage — both parties have just agreed to
-            // send the agreement to their parliaments. The actual signing
-            // event fires from resolveTradeRatificationBill (bills.js) once
-            // both ratification bills pass.
-            const ratifyDesc = 'The ' + agreementName + ' has been sent to both parliaments for ratification.';
-            _supabase.from('event_log').insert([nationAId, nationBId].map(nid => ({
-                nation_id: nid,
-                event_name: agreementName + ' — Ratification',
-                category: 'trade',
-                description_chosen: ratifyDesc,
-                fired_at_tick: tick,
-            }))).then(() => {});
+            try {
+                const billIds = await createTradeRatificationBills(m, tick, factionId);
+                updateData.bill_a_id = billIds.bill_a_id;
+                updateData.bill_b_id = billIds.bill_b_id;
+            } catch (err) {
+                alert(err.message || 'Failed to create ratification bills.');
+                _negAgreementToggling = false;
+                return;
+            }
         }
 
         const { error } = await _supabase.from('trade_negotiations').update(updateData).eq('id', m.negotiationId);
