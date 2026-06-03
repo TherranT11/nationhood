@@ -340,6 +340,20 @@
   .cf-row .num.amber { color:#c89e6e; }
   .cf-row .num.red   { color:#c98a8a; }
   .cf-row .num.muted { color:#666; }
+  /* Corporate History section — chronological event list aggregated
+     from event_log + corp_tax_bills (see list_corp_history RPC). */
+  .ch-list  { display:flex; flex-direction:column; gap:6px; }
+  .ch-row   { display:grid; grid-template-columns:120px 1fr; gap:14px;
+              padding:11px 14px; background:#0d0d0d;
+              border:0.5px solid rgba(255,255,255,0.07); border-radius:5px; }
+  .ch-date  { color:#666; font-size:11px; font-family:monospace;
+              letter-spacing:0.03em; padding-top:2px; }
+  .ch-body  { min-width:0; }
+  .ch-title { color:#d4d4d4; font-size:12px; font-weight:500;
+              margin-bottom:3px; }
+  .ch-desc  { color:#888; font-size:11px; line-height:1.55; }
+  .ch-empty { color:#666; font-size:11px; font-style:italic;
+              padding:18px; text-align:center; }
   /* Construction bid cards (issuer Accept/Reject) */
   .cb-bids { margin:-2px 0 8px 14px; display:flex; flex-direction:column; gap:5px; }
   .cb-bid { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
@@ -950,6 +964,11 @@
           <span class="roman">IV.</span><span class="sans">Corporate</span><span class="serif">Finance</span>
         </div>
         <div id="cp-finance"></div>
+
+        <div class="section-heading">
+          <span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">History</span>
+        </div>
+        <div id="cp-history"></div>
       </div>
 
       <div>
@@ -1045,7 +1064,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, tickToDate, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -7950,9 +7969,40 @@ const openBidModal = (contractId, label, yourCost) => {
       }
     };
 
+    // Corporate History — chronological event feed for this corp.
+    // Aggregates event_log + corp_tax_bills via list_corp_history RPC
+    // (20270564). Phase A only — six event types (founding, IPO/private,
+    // share buys/sells, loan payments) lack capture hooks today and will
+    // surface as their hooks land in Phase B.
+    const renderHistory = async () => {
+      const fc = document.getElementById('cp-history');
+      if (!fc) return;
+      fc.innerHTML = '<div class="ch-empty">Loading…</div>';
+      const { data, error } = await _supabase.rpc('list_corp_history', { p_corp_id: id });
+      if (error || !data?.success) {
+        fc.innerHTML = '<div class="ch-empty">Couldn’t load history.</div>';
+        return;
+      }
+      const events = data.events || [];
+      if (!events.length) {
+        fc.innerHTML = '<div class="ch-empty">No history events yet.</div>';
+        return;
+      }
+      const rows = events.map(e => `
+        <div class="ch-row">
+          <div class="ch-date">${escapeHtml(tickToDate(e.tick))}</div>
+          <div class="ch-body">
+            <div class="ch-title">${escapeHtml(e.title || '—')}</div>
+            ${e.body ? `<div class="ch-desc">${escapeHtml(e.body)}</div>` : ''}
+          </div>
+        </div>`).join('');
+      fc.innerHTML = `<div class="ch-list">${rows}</div>`;
+    };
+
     await renderProjects();
     renderAssets(); // sync — reads ownedBuildings populated by renderProjects
     await renderFinance();
+    await renderHistory();
 
     document.getElementById('cp-load').style.display = 'none';
     document.getElementById('cp-app').style.display = 'block';
