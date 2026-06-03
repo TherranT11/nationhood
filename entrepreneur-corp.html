@@ -915,9 +915,9 @@
         <div class="delta" id="cp-val-delta">—</div>
       </div>
       <div class="fin-card">
-        <div class="lab">INCOME LAST TICK</div>
+        <div class="lab">REVENUE CHANGE (THIS MONTH)</div>
         <div class="val" id="cp-income">$0</div>
-        <div class="delta">— per tick</div>
+        <div class="delta" id="cp-income-delta">&mdash; this month</div>
       </div>
       <div class="fin-card">
         <div class="lab">DEBT</div>
@@ -3300,6 +3300,36 @@ function initials(s, n) {
     set('cp-cash', fmtM(getEntrepreneurCorpCash(c)));
     set('cp-cash-delta', '— corp treasury');
 
+    // Revenue Change (This Month) — one tick is one in-game month per
+    // how-to.html, so the most recent corp_cash_history row IS this
+    // month's net delta. cash_delta is the authoritative SOT written
+    // by the tick processor (cash_end - cash_start). Renders with
+    // sign + colour; no row yet → $0 / "no data yet" fallback.
+    try {
+      const { data: histRow, error: histErr } = await _supabase.from('corp_cash_history')
+        .select('cash_delta, tick')
+        .eq('faction_id', id)
+        .order('tick', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const incomeEl = document.getElementById('cp-income');
+      if (incomeEl) {
+        if (histErr || !histRow) {
+          incomeEl.textContent = '$0';
+          incomeEl.style.color = '';
+          set('cp-income-delta', histErr ? '— lookup failed' : '— no data yet');
+        } else {
+          const delta = Number(histRow.cash_delta) || 0;
+          const sign  = delta > 0 ? '+' : (delta < 0 ? '−' : '');
+          incomeEl.textContent = sign + fmtUsd(Math.abs(delta));
+          incomeEl.style.color = delta > 0 ? '#9ac89e' : (delta < 0 ? '#e09898' : '');
+          set('cp-income-delta', '— tick ' + histRow.tick);
+        }
+      }
+    } catch (e) {
+      // Non-fatal — leave the placeholder. Other cards keep rendering.
+    }
+
     // VALUATION from the shared single source (js/game/corp-valuation.js
     // §3). Both private and public corps show dynamic BOOK VALUE — feed
     // the building/loan aggregates so it matches the recommended sale/
@@ -5293,8 +5323,21 @@ function initials(s, n) {
           const nm = p.nation?.name || '—';
           return `<div class="surv-cell"><div style="color:#fff;font-weight:600;">${escapeHtml(nm)}</div></div>`;
         };
-        // Ownership defaults to "No Permit" until the permit mechanic lands.
-        const ownershipCellHtml = '<div class="surv-cell"><span class="surv-status">No Permit</span></div>';
+        // Ownership cell — reads from the same oilPlots[].permit_holder*
+        // fields the Permits panel uses, so the two tables can't disagree
+        // about who holds what. ONE SOURCE OF TRUTH: the
+        // permit_holder_corp_id column on oil_plots is the authority;
+        // both panels read it.
+        const ownershipCell = (p) => {
+          if (!p.permit_holder_corp_id) {
+            return '<div class="surv-cell"><span class="surv-status">No Permit</span></div>';
+          }
+          if (p.permit_holder_corp_id === id) {
+            return '<div class="surv-cell"><span style="color:#8aaa6a;font-weight:600;">YOURS</span></div>';
+          }
+          const holder = escapeHtml(p.permit_holder?.name || 'Another corp');
+          return `<div class="surv-cell"><span style="color:#cfcabf;">${holder}</span></div>`;
+        };
         const plotRowsHtml = oilPlots.map(p => {
           const isHomePlot = p.nation_id === c.hq_nation_id;
           if (p.surveyed) {
@@ -5308,7 +5351,7 @@ function initials(s, n) {
               ${nationCell(p)}
               <div class="surv-cell surv-status surveyed">Surveyed <span class="${tierClass}">${escapeHtml(tierLabel)}</span></div>
               <div class="surv-cell surv-crude">${crude}</div>
-              ${ownershipCellHtml}
+              ${ownershipCell(p)}
               <div class="surv-cell surv-action"><span style="color:#666;font-size:10px;">—</span></div>
             </div>`;
           }
@@ -5325,7 +5368,7 @@ function initials(s, n) {
             ${nationCell(p)}
             <div class="surv-cell surv-status">Unsurveyed</div>
             <div class="surv-cell surv-crude"><span style="color:#666;">—</span></div>
-            ${ownershipCellHtml}
+            ${ownershipCell(p)}
             <div class="surv-cell surv-action">${actionHtml}</div>
           </div>`;
         }).join('');

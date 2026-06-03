@@ -109,7 +109,11 @@ export function getPoliticianRoleLabel(faction) {
         // cleared. `!= null` so a tick-0 stamp still reads as set
         // (truthy would treat 0 as not-yet-stepped-up).
         if (faction.politician_magistrate_at_tick != null) return 'Magistrate';
-        if (faction.politician_state_prosecutor_at_tick != null) return 'State Prosecutor';
+        // Display label was "State Prosecutor" until 20270543 renamed
+        // it to "State Advocate" — the column / RPC / event_log
+        // trigger_key keep the original name to avoid a schema churn
+        // pass; only the user-facing string flipped.
+        if (faction.politician_state_prosecutor_at_tick != null) return 'State Advocate';
         if (faction.politician_experienced_advocate_at_tick != null) return 'Experienced Advocate';
         return 'Advocate';
     }

@@ -94,6 +94,30 @@
 .sec-cta .cta-title { font-size:14px; font-weight:600; color:#fff; letter-spacing:0.02em; }
 .sec-cta .cta-sub   { font-size:11px; color:#888; margin-top:5px; line-height:1.5; }
 
+/* Legal Cases — one card per resolved trial in the nation. Card
+   layout mirrors the sec-cta visual language (dark panel, teal
+   accents) without the linking-to-detail-page affordance, since the
+   case is rendered inline. */
+.legal-cases-list { display:flex; flex-direction:column; gap:10px; }
+.legal-cases-empty { padding:18px 20px; background:#0d1416; border:0.5px solid rgba(90,175,165,0.18);
+  border-radius:5px; color:#888; font-size:12px; font-style:italic; text-align:center; }
+.lcase-card { padding:14px 18px; background:#0d1416; border:0.5px solid rgba(90,175,165,0.18);
+  border-radius:5px; }
+.lcase-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; margin-bottom:5px; }
+.lcase-title { font-size:14px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
+.lcase-title .lcase-v { font-style:italic; color:#5aafa5; padding:0 3px; }
+.lcase-year  { font-size:11px; color:#888; font-style:italic; }
+.lcase-type  { font-size:9.5px; letter-spacing:0.16em; color:#5aafa5; font-weight:700;
+  text-transform:uppercase; margin-bottom:8px; }
+.lcase-desc  { font-size:11.5px; color:#aaa; line-height:1.55; margin-bottom:9px; }
+.lcase-meta  { font-size:10.5px; color:#888; line-height:1.5; display:flex; gap:14px;
+  flex-wrap:wrap; align-items:baseline; margin-bottom:6px; }
+.lcase-meta strong { color:#cfcabf; font-weight:600; }
+.lcase-meta .lcase-meta-sep { color:#3a3a3a; }
+.lcase-verdict { font-size:11.5px; color:#dcb88a; font-style:italic; padding-top:8px;
+  border-top:0.5px solid rgba(255,255,255,0.05); }
+.lcase-verdict strong { color:#fff; font-style:normal; font-weight:600; }
+
 /* Government & Politics — parliament block. Reads movement_party rows
    for the nation and renders an SVG arc (one seat per circle, coloured
    by party), a three-card strip (governing party / PM / opposition
@@ -385,6 +409,7 @@
     <button data-target="sec-elections">Elections</button>
     <button data-target="sec-committees">Committees</button>
     <button data-target="sec-laws">Laws &amp; Statutes</button>
+    <button data-target="sec-cases">Legal Cases</button>
     <button data-target="sec-ministries">Ministries</button>
     <button data-target="sec-economy">Economy</button>
     <button data-target="sec-military">Military</button>
@@ -499,6 +524,15 @@
           <div class="cta-sub">The five codes governing the nation &mdash; Constitutional Charter, Criminal Code, Civil Code, Commercial Code, Electoral Code.</div>
         </div>
       </a>
+      <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
+    </div>
+  </details>
+  <details id="sec-cases" class="sec">
+    <summary>Legal Cases</summary>
+    <div class="sec-body">
+      <div id="legal-cases-list" class="legal-cases-list">
+        <div class="legal-cases-empty">Loading&hellip;</div>
+      </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -749,6 +783,14 @@ async function init() {
   } catch (err) {
     console.warn('politician-nation: loadVoting threw', err);
   }
+
+  // Legal Cases (20270541) — list resolved trials in this nation.
+  // Non-blocking; failure renders an empty-state, doesn't break
+  // the page.
+  loadLegalCases(nation.id).catch(err => {
+    console.warn('politician-nation: loadLegalCases threw', err);
+    renderLegalCases({ error: err?.message || 'load failed' });
+  });
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
@@ -1010,6 +1052,66 @@ function openHashSection() {
     det.open = true;
     det.scrollIntoView({ behavior: 'auto', block: 'start' });
   }
+}
+
+// Legal Cases panel (20270541). Fetches resolved trials in the
+// nation via list_resolved_cases_for_nation and hands them to
+// renderLegalCases. Newest-first, capped at 50 server-side.
+async function loadLegalCases(nationId) {
+  const { data, error } = await _supabase.rpc('list_resolved_cases_for_nation',
+    { p_nation_id: nationId });
+  if (error) {
+    renderLegalCases({ error: error.message });
+    return;
+  }
+  if (!data?.success) {
+    renderLegalCases({ error: data?.reason || 'unknown' });
+    return;
+  }
+  renderLegalCases({ cases: data.cases || [] });
+}
+
+function renderLegalCases({ cases, error } = {}) {
+  const host = document.getElementById('legal-cases-list');
+  if (!host) return;
+  if (error) {
+    host.innerHTML = `<div class="legal-cases-empty">Couldn’t load case history: ${escHtml(error)}.</div>`;
+    return;
+  }
+  if (!cases || !cases.length) {
+    host.innerHTML = '<div class="legal-cases-empty">No verdicts have been rendered in this nation yet.</div>';
+    return;
+  }
+  const TYPE_LABEL = { civil: 'Civil', criminal: 'Criminal', commercial: 'Commercial' };
+  host.innerHTML = cases.map(c => {
+    const plaintiff = c.plaintiff_name || 'Plaintiff';
+    const defendant = c.defendant_name || 'Defendant';
+    const year = c.year_started != null ? c.year_started : '—';
+    const typeLabel = TYPE_LABEL[c.case_type] || (c.case_type || '').toUpperCase();
+    const litigation = c.litigation_type
+      ? `${escHtml(typeLabel)} <span class="lcase-meta-sep">&middot;</span> ${escHtml(c.litigation_type)}`
+      : escHtml(typeLabel);
+    const pAttorney = c.plaintiff_attorney || 'Plaintiff counsel';
+    const dAttorney = c.defendant_attorney || 'Defendant counsel';
+    const winnerName = c.winner === 'plaintiff' ? plaintiff
+                      : c.winner === 'defendant' ? defendant
+                      : 'the court';
+    return `
+      <div class="lcase-card">
+        <div class="lcase-head">
+          <span class="lcase-title">${escHtml(plaintiff)}<span class="lcase-v">vs.</span>${escHtml(defendant)}</span>
+          <span class="lcase-year">(${escHtml(String(year))})</span>
+        </div>
+        <div class="lcase-type">${litigation}</div>
+        ${c.overview ? `<div class="lcase-desc">${escHtml(c.overview)}</div>` : ''}
+        <div class="lcase-meta">
+          <span><strong>${escHtml(pAttorney)}</strong> for the plaintiff</span>
+          <span class="lcase-meta-sep">|</span>
+          <span><strong>${escHtml(dAttorney)}</strong> for the defendant</span>
+        </div>
+        <div class="lcase-verdict">Verdict rendered in favor of <strong>${escHtml(winnerName)}</strong>.</div>
+      </div>`;
+  }).join('');
 }
 
 async function loadVoting(nationId, currentTick) {

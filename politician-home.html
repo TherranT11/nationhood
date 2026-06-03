@@ -567,6 +567,36 @@
   cursor:pointer; font-family:inherit; }
 .tc-status-close:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
 
+/* ── Appeal modal (20270543) ────────────────────────────────────────
+   Borrows the .tc-back/.tc-modal chrome; only the body styles are
+   unique. Close X sits absolute in the top-right since browsing
+   appealable cases is non-binding (unlike Try a Case). */
+.ap-close { position:absolute; top:12px; right:14px; width:28px; height:28px;
+  border:0.5px solid rgba(255,255,255,0.12); background:transparent; color:#888;
+  border-radius:4px; cursor:pointer; font-size:13px; line-height:1; font-family:inherit;
+  display:flex; align-items:center; justify-content:center; }
+.ap-close:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
+.ap-list { padding:18px 22px 24px; display:flex; flex-direction:column; gap:10px;
+  max-height:60vh; overflow-y:auto; }
+.ap-empty { padding:36px 28px; text-align:center; color:#888; font-style:italic;
+  font-size:12px; }
+.ap-card { padding:13px 16px; background:#0d1416; border:0.5px solid rgba(90,175,165,0.22);
+  border-radius:5px; display:flex; align-items:center; gap:14px; }
+.ap-card-info { flex:1; min-width:0; }
+.ap-card-head { font-size:13px; color:#fff; font-weight:500; font-family:Georgia,serif;
+  letter-spacing:-0.005em; margin-bottom:4px; }
+.ap-card-head .ap-v { font-style:italic; color:#5aafa5; padding:0 4px; }
+.ap-card-meta { font-size:10.5px; color:#888; line-height:1.5; }
+.ap-card-meta strong { color:#c89070; font-weight:600; }
+.ap-card-meta .ap-sep { color:#3a3a3a; padding:0 6px; }
+.ap-card-meta .ap-window { color:#9ac99a; font-style:italic; }
+.ap-card-meta .ap-window.urgent { color:#e09898; }
+.ap-card-btn { padding:10px 18px; border-radius:4px; font-size:10px; letter-spacing:0.13em;
+  font-weight:700; cursor:pointer; font-family:inherit; background:#161208;
+  border:0.5px solid #c8a26e; color:#dcb88a; text-transform:uppercase; flex-shrink:0; }
+.ap-card-btn:hover { background:#251710; color:#fff; }
+.ap-card-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
 /* ── Trial modal (Phase 2 shell) ──────────────────────────────────
    Read-only view of an in-progress trial. The .trial-* vocab is
    self-contained so it doesn't collide with the .tc-* (Try a Case)
@@ -1194,6 +1224,9 @@ async function init() {
   // is static (the body of the modal re-renders on each open).
   const trialCloseBtn = document.getElementById('trial-close');
   if (trialCloseBtn) trialCloseBtn.addEventListener('click', closeTrialModal);
+  // Appeal modal X close — same static-DOM-once-at-init pattern.
+  const apCloseBtn = document.getElementById('ap-close');
+  if (apCloseBtn) apCloseBtn.addEventListener('click', closeAppealModal);
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
   renderCareer();
@@ -1468,12 +1501,14 @@ const CIVIL_SERVANT_ACTIONS = [
 // Accept (+0.2 Standing) or Reject (-1 Reputation). The court type
 // (Criminal / Civil / Commercial) becomes flavor on the drawn case
 // rather than a player choice. The other two slots are the safe grind
-// (Statute Books → Legal Acumen) and the Notoriety-only play
-// (Brief the Press → big swing, no Wins on the record).
+// (Statute Books → Legal Acumen) and the appellate play (Appeal,
+// 20270543 — pick a verdict within 12 ticks, flip it for +5 Rep, lose
+// 1 Rep if it stands). Magistrates can see the button but the server
+// gates them out — see start_appeal's magistrate_cannot_appeal reason.
 const ADVOCATE_ACTIONS = [
   { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
   { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'Spend a quiet afternoon with the codes. No risk, no wins — just Legal Acumen.' },
-  { ic: '❐', name: 'BRIEF THE PRESS',         cost: 'no cost', desc: 'Skip the courtroom and go straight to the headlines. High Notoriety swing, no Wins on the record.' },
+  { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +5 Reputation; lose 1 if it stands.', action: 'appeal' },
 ];
 
 const AFFIL_VARIANTS = {
@@ -1689,6 +1724,8 @@ function renderAffiliation(ctx) {
     btn.addEventListener('click', () => {
       if (btn.dataset.action === 'try-case') {
         tryACase(ctx.faction?.id);
+      } else if (btn.dataset.action === 'appeal') {
+        openAppealModal(ctx.faction?.id);
       } else {
         handleMpAction(btn);
       }
@@ -2579,6 +2616,122 @@ function openTryCaseModal() {
   document.getElementById('tc-back').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
+
+// ── Appeal flow ────────────────────────────────────────────────────
+// Opens a modal listing resolved verdicts in this lawyer's nation
+// that landed within the last 12 ticks and don't already have an
+// appeal in flight. Click [Start Appeal] on a card → fires
+// start_appeal RPC → trial gets created (state-side appellees
+// auto-fill a State Advocate; otherwise pre_trial waits for pickup).
+async function openAppealModal(factionId) {
+  if (!factionId) return;
+  document.getElementById('ap-back').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('ap-content').innerHTML =
+    '<div class="ap-empty">Loading appealable cases…</div>';
+  try {
+    const { data, error } = await _supabase.rpc('list_appealable_cases', { p_faction_id: factionId });
+    if (error) throw error;
+    if (!data?.success) {
+      renderAppealList({ error: appealReasonText(data?.reason) });
+      return;
+    }
+    renderAppealList({ cases: data.cases || [], factionId });
+  } catch (err) {
+    renderAppealList({ error: err?.message || 'load failed' });
+  }
+}
+function closeAppealModal() {
+  document.getElementById('ap-back').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function appealReasonText(reason) {
+  return ({
+    not_authenticated:       'You need to sign in to file an appeal.',
+    no_politician:           'No active politician found.',
+    not_advocate:            'You need to pass the bar before filing an appeal.',
+    magistrate_cannot_appeal:'Magistrates preside; they do not file appeals.',
+    missing_argument:        'Missing required input.',
+    trial_not_found:         'The original trial could not be found.',
+    original_not_resolved:   'That trial has not reached a verdict yet.',
+    nation_mismatch:         'You can only appeal cases tried in your bar nation.',
+    appeal_window_closed:    'That verdict is more than 12 ticks old.',
+    no_verdict_to_appeal:    'That case ended without a verdict.',
+    appeal_in_flight:        'An appeal on that case is already in progress.',
+  })[reason] || ('Appeal failed: ' + (reason || 'unknown'));
+}
+
+function renderAppealList({ cases, error, factionId } = {}) {
+  const host = document.getElementById('ap-content');
+  if (!host) return;
+  if (error) {
+    host.innerHTML = `<div class="ap-empty">${escHtml(error)}</div>`;
+    return;
+  }
+  if (!cases || !cases.length) {
+    host.innerHTML = '<div class="ap-empty">No verdicts in the last 12 ticks are eligible for appeal.</div>';
+    return;
+  }
+  const TYPE_LABEL = { civil: 'Civil', criminal: 'Criminal', commercial: 'Commercial' };
+  const cardsHtml = cases.map(c => {
+    const plaintiff = c.plaintiff_name || 'Plaintiff';
+    const defendant = c.defendant_name || 'Defendant';
+    const winnerSide = c.winner === 'plaintiff' ? plaintiff
+                      : c.winner === 'defendant' ? defendant
+                      : 'the court';
+    const typeLabel = TYPE_LABEL[c.case_type] || (c.case_type || '').toUpperCase();
+    const litigation = c.litigation_type
+      ? `${escHtml(typeLabel)} <span class="ap-sep">&middot;</span> ${escHtml(c.litigation_type)}`
+      : escHtml(typeLabel);
+    const ticksLeft = Number(c.ticks_remaining ?? 0);
+    const urgentCls = ticksLeft <= 3 ? ' urgent' : '';
+    const windowText = ticksLeft <= 0 ? 'window closing' : `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} left`;
+    return `
+      <div class="ap-card">
+        <div class="ap-card-info">
+          <div class="ap-card-head">${escHtml(plaintiff)}<span class="ap-v">vs.</span>${escHtml(defendant)}</div>
+          <div class="ap-card-meta">
+            ${litigation}
+            <span class="ap-sep">&middot;</span>
+            <span>verdict for <strong>${escHtml(winnerSide)}</strong></span>
+            <span class="ap-sep">&middot;</span>
+            <span class="ap-window${urgentCls}">${escHtml(windowText)}</span>
+          </div>
+        </div>
+        <button type="button" class="ap-card-btn" data-original-trial-id="${escHtml(c.original_trial_id)}">Start Appeal</button>
+      </div>`;
+  }).join('');
+  host.innerHTML = `<div class="ap-list">${cardsHtml}</div>`;
+  host.querySelectorAll('[data-original-trial-id]').forEach(btn => {
+    btn.addEventListener('click', () => startAppeal(factionId, btn.dataset.originalTrialId, btn));
+  });
+}
+
+async function startAppeal(factionId, originalTrialId, btn) {
+  if (!factionId || !originalTrialId) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Filing…'; }
+  try {
+    const { data, error } = await _supabase.rpc('start_appeal', {
+      p_faction_id:        factionId,
+      p_original_trial_id: originalTrialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(appealReasonText(data?.reason));
+      if (btn) { btn.disabled = false; btn.textContent = 'Start Appeal'; }
+      return;
+    }
+    closeAppealModal();
+    // Reload so the new appeal trial surfaces in the Pressing
+    // Issues feed — same pattern as the rest of the home-page
+    // RPC-success paths.
+    window.location.reload();
+  } catch (err) {
+    alert('Appeal failed: ' + (err?.message || 'unknown'));
+    if (btn) { btn.disabled = false; btn.textContent = 'Start Appeal'; }
+  }
+}
 function closeTryCaseModal() {
   document.getElementById('tc-back').classList.remove('open');
   document.body.style.overflow = '';
@@ -2839,6 +2992,7 @@ function trialReasonText(reason) {
     not_the_judge:               'You are not the presiding Magistrate on this trial.',
     no_pending_objection:        'There is no objection pending a ruling.',
     not_awaiting_verdict:        'The trial is not at verdict yet.',
+    jury_decides_criminal:       'Criminal verdicts are decided by the jury, not the bench.',
     invalid_ruling:              'Pick either Sustain or Overrule.',
     pending_message_missing:     'The pending objection record is missing.',
   })[reason] || ('Action failed: ' + (reason || 'unknown'));
@@ -3566,6 +3720,21 @@ init();
       <div class="tc-sub">A case has been drawn from the docket. <strong>Choose a side to represent</strong>, or refuse the matter. <em>Refusing costs Political Capital.</em></div>
     </div>
     <div class="tc-body" id="tc-content"></div>
+  </div>
+</div>
+
+<!-- Appeal modal (20270543). Reuses .tc-back/.tc-modal styles so the
+     chrome stays uniform with Try a Case. Distinct id (#ap-back) +
+     close X (unlike try-case, browsing appeals is non-binding). -->
+<div class="tc-back" id="ap-back">
+  <div class="tc-modal">
+    <button type="button" class="ap-close" id="ap-close" title="Close">&#10005;</button>
+    <div class="tc-head">
+      <div class="tc-eyebrow">FILE AN APPEAL &middot; LAST 12 TICKS</div>
+      <div class="tc-title">Appeal a <em>Verdict</em></div>
+      <div class="tc-sub">Pick a verdict to challenge. <strong>You will represent the original losing side.</strong> Flip the lower court for <em>+5 Reputation</em>; if the verdict stands you lose 1.</div>
+    </div>
+    <div class="tc-body" id="ap-content"></div>
   </div>
 </div>
 
