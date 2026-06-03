@@ -194,8 +194,11 @@ async function init() {
 
 function reasonText(reason) {
   return ({
+    not_authenticated:  'You must be signed in.',
     missing_argument:   'Missing contract id.',
     contract_not_found: 'Contract not found.',
+    no_entrepreneur:    'No entrepreneur faction found.',
+    not_party_ceo:      'Only the CEOs of the negotiating parties may view this draft.',
   })[reason] || ('Failed: ' + (reason || 'unknown'));
 }
 

@@ -2859,16 +2859,26 @@ function initials(s, n) {
           ${rows || '<div style="text-align:center;color:#666;font-style:italic;padding:18px;font-size:11px;">No other corporations available.</div>'}
           <button type="button" id="negBackToList" style="margin-top:10px;width:100%;padding:9px;background:transparent;color:#888;border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">&larr; Back</button>`;
         document.getElementById('negBackToList').addEventListener('click', () => renderNegListView());
-        body.querySelectorAll('.neg-picker-row').forEach(btn => {
-          btn.addEventListener('click', () => startNegotiationWith(btn.dataset.corpId, btn));
+        // Pick a corp → fire start_corp_negotiation. We disable EVERY
+        // picker row on the first click so rapid clicks on different
+        // corps can't fire parallel start_corp_negotiation calls and
+        // create duplicate drafts before the redirect lands.
+        const rows = body.querySelectorAll('.neg-picker-row');
+        rows.forEach(btn => {
+          btn.addEventListener('click', () => {
+            rows.forEach(other => { other.disabled = true; other.style.opacity = '0.6'; });
+            startNegotiationWith(btn.dataset.corpId, btn, rows);
+          });
         });
       } catch (e) {
         body.innerHTML = `<div style="color:#c98a8a;text-align:center;padding:18px;font-size:11px;">Failed to load corps: ${escapeHtml(e?.message || 'unknown')}</div>`;
       }
     }
 
-    async function startNegotiationWith(counterpartyCorpId, btn) {
-      if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+    async function startNegotiationWith(counterpartyCorpId, btn, allRows) {
+      const reenable = () => {
+        if (allRows) allRows.forEach(r => { r.disabled = false; r.style.opacity = '1'; });
+      };
       try {
         const { data, error } = await _supabase.rpc('start_corp_negotiation', {
           p_initiating_corp_id: id,
@@ -2885,13 +2895,13 @@ function initials(s, n) {
             counterparty_not_found:  'Counterparty corporation not found.'
           };
           alert(R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
-          if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+          reenable();
           return;
         }
         window.location.href = 'corp-contract.html?id=' + data.contract_id;
       } catch (e) {
         alert('Failed: ' + (e?.message || e));
-        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        reenable();
       }
     }
 
