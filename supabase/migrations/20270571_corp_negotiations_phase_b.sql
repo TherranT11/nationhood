@@ -502,11 +502,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_cancellable');
     END IF;
 
-    SELECT id INTO v_caller_faction_id FROM public.factions
-     WHERE faction_type = 'entrepreneur'
-       AND abandoned_at IS NULL
-       AND (id = v_uid OR linked_user_id = v_uid)
-     ORDER BY created_at ASC LIMIT 1;
+    v_caller_faction_id := public._corp_negotiation_caller_faction();
     IF v_caller_faction_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_entrepreneur');
     END IF;
@@ -549,11 +545,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'missing_argument');
     END IF;
 
-    SELECT id INTO v_caller_faction_id FROM public.factions
-     WHERE faction_type = 'entrepreneur'
-       AND abandoned_at IS NULL
-       AND (id = v_uid OR linked_user_id = v_uid)
-     ORDER BY created_at ASC LIMIT 1;
+    v_caller_faction_id := public._corp_negotiation_caller_faction();
     IF v_caller_faction_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_entrepreneur');
     END IF;
@@ -640,11 +632,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'contract_not_found');
     END IF;
 
-    SELECT id INTO v_caller_faction_id FROM public.factions
-     WHERE faction_type = 'entrepreneur'
-       AND abandoned_at IS NULL
-       AND (id = v_uid OR linked_user_id = v_uid)
-     ORDER BY created_at ASC LIMIT 1;
+    v_caller_faction_id := public._corp_negotiation_caller_faction();
     IF v_caller_faction_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_entrepreneur');
     END IF;
