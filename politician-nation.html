@@ -1093,9 +1093,22 @@ function renderLegalCases({ cases, error } = {}) {
       : escHtml(typeLabel);
     const pAttorney = c.plaintiff_attorney || 'Plaintiff counsel';
     const dAttorney = c.defendant_attorney || 'Defendant counsel';
-    const winnerName = c.winner === 'plaintiff' ? plaintiff
-                      : c.winner === 'defendant' ? defendant
-                      : 'the court';
+    const sideName = (side) => side === 'plaintiff' ? plaintiff
+                            : side === 'defendant' ? defendant
+                            : 'the court';
+    const winnerName = sideName(c.winner);
+    // Overturned label includes the appellate winner because it differs
+    // from the original by definition; sustained doesn't need a name
+    // since the original winner shown elsewhere is still correct.
+    let verdictHtml;
+    if (c.appeal_status === 'sustained') {
+      verdictHtml = 'Sustained on Appeal.';
+    } else if (c.appeal_status === 'overturned') {
+      const appealWinner = escHtml(sideName(c.appeal_winner));
+      verdictHtml = `Overturned on Appeal. Verdict for <strong>${appealWinner}</strong>.`;
+    } else {
+      verdictHtml = `Verdict rendered in favor of <strong>${escHtml(winnerName)}</strong>.`;
+    }
     return `
       <div class="lcase-card">
         <div class="lcase-head">
@@ -1109,7 +1122,7 @@ function renderLegalCases({ cases, error } = {}) {
           <span class="lcase-meta-sep">|</span>
           <span><strong>${escHtml(dAttorney)}</strong> for the defendant</span>
         </div>
-        <div class="lcase-verdict">Verdict rendered in favor of <strong>${escHtml(winnerName)}</strong>.</div>
+        <div class="lcase-verdict">${verdictHtml}</div>
       </div>`;
   }).join('');
 }
