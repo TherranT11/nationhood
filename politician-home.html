@@ -2889,6 +2889,10 @@ function renderAppealList({ cases, error, factionId } = {}) {
 
 async function startAppeal(factionId, originalTrialId, btn) {
   if (!factionId || !originalTrialId) return;
+  // Cards now carry one of two labels (Start Appeal / Appeal to
+  // Supreme Court) — capture whichever this button had so we can
+  // restore it on error rather than collapsing both into one.
+  const originalLabel = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Filing…'; }
   try {
     const { data, error } = await _supabase.rpc('start_appeal', {
@@ -2898,17 +2902,14 @@ async function startAppeal(factionId, originalTrialId, btn) {
     if (error) throw error;
     if (!data?.success) {
       alert(appealReasonText(data?.reason));
-      if (btn) { btn.disabled = false; btn.textContent = 'Start Appeal'; }
+      if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
       return;
     }
     closeAppealModal();
-    // Reload so the new appeal trial surfaces in the Pressing
-    // Issues feed — same pattern as the rest of the home-page
-    // RPC-success paths.
     window.location.reload();
   } catch (err) {
     alert('Appeal failed: ' + (err?.message || 'unknown'));
-    if (btn) { btn.disabled = false; btn.textContent = 'Start Appeal'; }
+    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
   }
 }
 function closeTryCaseModal() {

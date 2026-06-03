@@ -410,8 +410,7 @@ BEGIN
         'appellant_side',    v_appellant_side,
         'status',            v_status,
         'state_advocate_id', v_state_advocate_id,
-        'judge_faction_id',  v_judge_id,
-        'is_supreme_court',  v_is_sc
+        'judge_faction_id',  v_judge_id
     );
 END $$;
 
@@ -553,8 +552,7 @@ BEGIN
                 'matched_at_tick',  v_tick,
                 'judge_assigned',   false,
                 'judge_faction_id', NULL,
-                'is_appeal',        true,
-                'is_supreme_court', true
+                'is_appeal',        true
             );
         END IF;
 
@@ -582,8 +580,7 @@ BEGIN
             'matched_at_tick',  v_tick,
             'judge_assigned',   v_judge_id IS NOT NULL,
             'judge_faction_id', v_judge_id,
-            'is_appeal',        true,
-            'is_supreme_court', false
+            'is_appeal',        true
         );
     END IF;
 
