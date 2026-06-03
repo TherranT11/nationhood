@@ -469,15 +469,18 @@ export function pctOwned(shares, sharesOutstanding) {
  * Viewer's ownership % of an entrepreneur corp — one source for the
  * stake math read by the corporations list, markets directory, and any
  * future surface that needs "what fraction of this corp does the viewer
- * own?". Private corps aren't tradeable, so only the founder holds a
- * stake (100%); public corps use pctOwned over the viewer's shares.
+ * own?". Whenever the corp has a share model (shares_outstanding != null
+ * — public corps always, private corps after a director-investment is
+ * accepted per 20270212), use pctOwned over the viewer's shares. Only
+ * pre-investment private corps fall through to "owner=100, else=0",
+ * since they have no shareholdings rows to read.
  */
 export function viewerStakePct(corp, viewerFactionId, viewerShares) {
     if (!corp) return 0;
-    if (corp.listing !== 'public') {
-        return corp.owner_faction_id === viewerFactionId ? 100 : 0;
+    if (corp.shares_outstanding != null) {
+        return pctOwned(viewerShares || 0, corp.shares_outstanding) ?? 0;
     }
-    return pctOwned(viewerShares || 0, corp.shares_outstanding) ?? 0;
+    return corp.owner_faction_id === viewerFactionId ? 100 : 0;
 }
 
 /**
