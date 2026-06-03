@@ -855,7 +855,7 @@ async function init() {
         .maybeSingle(),
       _supabase
         .from('factions')
-        .select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick')
+        .select('id, faction_type, faction_name, abbreviation, branch, abandoned_at, is_banned, nation_id, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick')
         .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     ]);
 

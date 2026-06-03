@@ -1057,9 +1057,23 @@ const JUDICIARY_RUNGS = [
   },
   {
     name: 'Magistrate',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'Presided over a lower court. Cleared.',
+    // Held once politician_magistrate_at_tick is stamped by
+    // politician_take_the_bench (20270531). One-shot; never cleared.
+    held:        (s)  => !!s.magistrateAtTick,
+    descIfHeld:  ()  => 'Presiding over a lower court — district or municipal jurisdiction.',
     descIfNot:   ()  => 'Preside over a lower court — district or municipal jurisdiction.',
+    actionIfNot: (s) => {
+      if (!s.barAdmittedNationId || s.barAdmittedNationId !== s.nationId) {
+        return { label: 'Pass the Bar first', kind: 'disabled' };
+      }
+      if (!s.experiencedAdvocateAtTick) {
+        return { label: 'Step up first', kind: 'disabled' };
+      }
+      if (s.politicalCapital < 35) {
+        return { label: `Take the Bench · Need 35 PC (${s.politicalCapital}/35)`, kind: 'disabled' };
+      }
+      return { label: 'Take the Bench', kind: 'primary', action: 'take-the-bench' };
+    },
   },
   {
     name: 'Appellate Justice',
@@ -1544,6 +1558,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // verdict bumps; threshold-only, no spend.
     politicianReputation:    Number(ctx?.faction?.politician_reputation) || 0,
     experiencedAdvocateAtTick: Number(ctx?.faction?.politician_experienced_advocate_at_tick) || 0,
+    // Magistrate take-the-bench (20270531). 35 PC threshold (not
+    // deducted), gated on Experienced Advocate. magistrateAtTick set
+    // once and never cleared.
+    politicalCapital:        Number(ctx?.faction?.political_capital) || 0,
+    magistrateAtTick:        Number(ctx?.faction?.politician_magistrate_at_tick) || 0,
   };
 }
 
@@ -1916,6 +1935,34 @@ function bindRungActions(ctx) {
         alert(e?.message || 'Step up failed.');
         btn.disabled = false;
         btn.textContent = 'Step Up';
+      }
+    });
+  });
+
+  // Take the Bench — Magistrate (Judiciary Tier 3, 20270531). Same
+  // shape as Step Up: disable-on-click anti-double-fire, reload on
+  // success so the rung flips to held + switcher chip picks up
+  // (Magistrate). 35 PC is a threshold, not a spend.
+  document.querySelectorAll('[data-action="take-the-bench"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = 'Taking the bench…';
+      try {
+        const facId = window.__careerCtx?.faction?.id;
+        if (!facId) throw new Error('No active politician.');
+        const { data, error } = await _supabase.rpc('politician_take_the_bench',
+          { p_faction_id: facId });
+        if (error) throw error;
+        if (!data?.success) {
+          const reason = data?.reason || 'unknown';
+          throw new Error(`Could not take the bench: ${reason}`);
+        }
+        window.location.reload();
+      } catch (e) {
+        alert(e?.message || 'Take the bench failed.');
+        btn.disabled = false;
+        btn.textContent = 'Take the Bench';
       }
     });
   });
