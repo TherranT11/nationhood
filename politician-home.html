@@ -253,7 +253,6 @@
   letter-spacing:0.13em; font-weight:700; display:flex; align-items:center; gap:6px; }
 .ti-pill.your-turn  { background:#161208; color:#dcb88a; border:0.5px solid #c8a26e; }
 .ti-pill.their-turn { background:#1a1a1a; color:#888; border:0.5px solid rgba(255,255,255,0.07); }
-.ti-pill.waiting    { background:#0e1611; color:#9ac99a; border:0.5px solid #3a5a3a; }
 .ti-pill-dot { width:6px; height:6px; border-radius:50%; background:currentColor;
   box-shadow:0 0 6px rgba(220,184,138,0.7); animation:ti-pulse 1.6s ease-in-out infinite; }
 @keyframes ti-pulse { 0%, 100% { opacity:1; } 50% { opacity:0.4; } }
@@ -1819,7 +1818,10 @@ function renderPressingIssues(ctx) {
 const TRIAL_ROUND_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
 function renderActiveTrialCard(t) {
-  const isPretrial = t.status === 'pre_trial';
+  // list_active_trials_for_advocate only returns trials in
+  // 'in_progress' or 'settlement_conference' status. Standalone
+  // pre_trial cases (waiting for opposing counsel) come through
+  // renderPretrialCard via pretrialCases. No branch here for them.
   const isSettleConf = t.status === 'settlement_conference';
   const side       = t.side || 'plaintiff';
   const caseTag    = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
@@ -1854,35 +1856,6 @@ function renderActiveTrialCard(t) {
             ${statusPill}
           </div>
           <button type="button" class="ti-resume-btn trial-enter">${decided ? 'OPEN CONFERENCE' : 'DECIDE NOW'} &rsaquo;</button>
-        </div>
-      </div>`;
-  }
-
-  // Pre-trial-self variant: side filled, waiting for opposing counsel.
-  if (isPretrial) {
-    const ticks = Number.isFinite(t.pre_trial_expires_at_tick)
-      ? Math.max(0, t.pre_trial_expires_at_tick - currentTick) : null;
-    const waiting = ticks == null ? 'pre-trial window'
-                  : `${ticks} tick${ticks === 1 ? '' : 's'} for opposing counsel`;
-    return `
-      <div class="ti-card pretrial" data-trial-id="${escHtml(t.trial_id)}">
-        <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
-        <div class="ti-info">
-          <div class="ti-eyebrow">PRE-TRIAL &middot; WAITING FOR OPPOSING COUNSEL</div>
-          <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
-          <div class="ti-meta">
-            <span class="ti-side ${side}">${escHtml(sideLabel)}</span>
-            <span class="ti-sep">&middot;</span>
-            <span class="ti-round">${escHtml(caseTag)}</span>
-            <span class="ti-sep">&middot;</span>
-            <span class="ti-judge">${escHtml(waiting)}</span>
-          </div>
-        </div>
-        <div class="ti-right">
-          <div class="ti-status">
-            <span class="ti-status-lab">STATUS</span>
-            <span class="ti-pill waiting">&#x231B; WAITING</span>
-          </div>
         </div>
       </div>`;
   }
