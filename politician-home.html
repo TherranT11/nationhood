@@ -579,13 +579,20 @@
 .ap-list { padding:18px 22px 24px; display:flex; flex-direction:column; gap:10px;
   max-height:60vh; overflow-y:auto; }
 .ap-empty { padding:36px 28px; text-align:center; color:#888; font-style:italic;
-  font-size:12px; }
-.ap-card { padding:13px 16px; background:#0d1416; border:0.5px solid rgba(90,175,165,0.22);
+  font-size:12px; line-height:1.6; }
+.ap-empty .ap-empty-explain { margin-top:14px; padding-top:14px; font-style:normal;
+  border-top:0.5px solid rgba(200,162,110,0.18); color:#aaa; font-size:11px;
+  max-width:520px; margin-left:auto; margin-right:auto; line-height:1.7; }
+.ap-empty .ap-empty-explain strong { color:#dcb88a; font-weight:600; }
+/* Card uses the brass palette to match the Try-a-Case modal chrome
+   instead of the teal accent used by politician-nation panels —
+   keeps the modal's interior visually consistent with its border. */
+.ap-card { padding:13px 16px; background:#0d0a08; border:0.5px solid rgba(200,162,110,0.25);
   border-radius:5px; display:flex; align-items:center; gap:14px; }
 .ap-card-info { flex:1; min-width:0; }
 .ap-card-head { font-size:13px; color:#fff; font-weight:500; font-family:Georgia,serif;
   letter-spacing:-0.005em; margin-bottom:4px; }
-.ap-card-head .ap-v { font-style:italic; color:#5aafa5; padding:0 4px; }
+.ap-card-head .ap-v { font-style:italic; color:#c8a26e; padding:0 4px; }
 .ap-card-meta { font-size:10.5px; color:#888; line-height:1.5; }
 .ap-card-meta strong { color:#c89070; font-weight:600; }
 .ap-card-meta .ap-sep { color:#3a3a3a; padding:0 6px; }
@@ -1508,7 +1515,7 @@ const CIVIL_SERVANT_ACTIONS = [
 const ADVOCATE_ACTIONS = [
   { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
   { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'Spend a quiet afternoon with the codes. No risk, no wins — just Legal Acumen.' },
-  { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +5 Reputation; lose 1 if it stands.', action: 'appeal' },
+  { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +3 Reputation and +5 Political Capital; lose 5 Rep and 3 PC if it stands.', action: 'appeal' },
 ];
 
 const AFFIL_VARIANTS = {
@@ -1656,24 +1663,60 @@ function renderAffiliation(ctx) {
   const onCooldown = variant.actionsEnabled && nextActionTick > currentTick;
   const cooldownLeft = onCooldown ? nextActionTick - currentTick : 0;
 
+  // 20270545: Advocate-tier per-action gates. TRY A CASE has both a
+  // 1-tick cooldown AND a case-load cap (Advocate 3 / Experienced
+  // Advocate 4 / State Advocate 4). APPEAL doesn't share the cooldown
+  // but does share the cap (filing an appeal still creates a trial).
+  // Cap excludes judge-side trials.
+  const advocateCaseCap = (ctx.faction?.bar_admitted_nation_id && ctx.faction?.politician_magistrate_at_tick == null)
+    ? ((ctx.faction?.politician_experienced_advocate_at_tick != null
+        || ctx.faction?.politician_state_prosecutor_at_tick != null) ? 4 : 3)
+    : null;
+  const advocateActiveCount = (activeTrials || []).filter(t => t.role !== 'judge').length;
+  const atCaseCap = advocateCaseCap != null && advocateActiveCount >= advocateCaseCap;
+
   const actionsCount = variant.actions.length;
   const colsClass = actionsCount === 2 ? ' cols-2' : '';
   const actionsHtml = variant.actions.map(a => {
     const enabled = !!variant.actionsEnabled && !!a.action;
     let cls = 'act-btn';
     let attrs = '';
+    // Per-action gates layered on top of the variant-level cooldown.
+    // TRY A CASE: cooldown OR cap → disabled. APPEAL: cap → disabled
+    // (but ignores the try-case cooldown). Other variants and
+    // not-yet-wired advocate actions fall through to the base logic.
+    let perActionDisabled = null;
+    if (enabled && a.action === 'try-case') {
+      if (onCooldown) {
+        perActionDisabled = { kind: 'cooldown', text: `Ready in ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'}`, title: `Cooldown — ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'} remaining` };
+      } else if (atCaseCap) {
+        perActionDisabled = { kind: 'cooldown', text: `Case load full (${advocateActiveCount}/${advocateCaseCap})`, title: `At your active-case limit. Resolve a trial before drawing a new one.` };
+      }
+    } else if (enabled && a.action === 'appeal') {
+      if (atCaseCap) {
+        perActionDisabled = { kind: 'cooldown', text: `Case load full (${advocateActiveCount}/${advocateCaseCap})`, title: `At your active-case limit. Resolve a trial before filing an appeal.` };
+      }
+    }
     if (!enabled) {
       cls += ' disabled';
       attrs = ' aria-disabled="true" title="Action mechanics coming soon"';
-    } else if (onCooldown) {
+    } else if (perActionDisabled) {
+      cls += ' cooldown';
+      attrs = ` aria-disabled="true" title="${escHtml(perActionDisabled.title)}"`;
+    } else if (onCooldown && a.action !== 'appeal') {
+      // Variant-level cooldown still applies to actions that don't
+      // have their own per-action handling (other than try-case which
+      // checked it above and APPEAL which opts out).
       cls += ' cooldown';
       attrs = ` aria-disabled="true" title="Cooldown — ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'} remaining"`;
     } else {
       attrs = ` data-action="${escHtml(a.action)}"`;
     }
-    const cooldownLine = enabled && onCooldown
-      ? `<div class="act-cooldown">Ready in ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'}</div>`
-      : '';
+    const cooldownLine = enabled && perActionDisabled
+      ? `<div class="act-cooldown">${escHtml(perActionDisabled.text)}</div>`
+      : (enabled && onCooldown && a.action !== 'appeal'
+          ? `<div class="act-cooldown">Ready in ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'}</div>`
+          : '');
     return `
     <div class="${cls}"${attrs}>
       <div class="act-head">
@@ -2601,14 +2644,16 @@ async function tryACase(factionId) {
 
 function tryCaseReasonText(reason) {
   return ({
-    not_authenticated:   'You need to sign in to try a case.',
-    no_politician:       'No active politician found.',
-    not_advocate:        'You need to pass the bar before trying a case.',
-    no_nation:           'Your nation could not be located.',
-    no_name_pool:        'Your nation has no name pool seeded yet.',
-    no_cases_available:  'No new cases on the docket. Check back later.',
-    no_viable_case:      'No case on the docket could find the right parties in your nation right now.',
-    cooldown:            'You drew a case recently. Wait a few ticks before drawing again.',
+    not_authenticated:       'You need to sign in to try a case.',
+    no_politician:           'No active politician found.',
+    not_advocate:            'You need to pass the bar before trying a case.',
+    magistrate_cannot_try:   'Magistrates preside; they do not try cases.',
+    no_nation:               'Your nation could not be located.',
+    no_name_pool:            'Your nation has no name pool seeded yet.',
+    no_cases_available:      'No new cases on the docket. Check back later.',
+    no_viable_case:          'No case on the docket could find the right parties in your nation right now.',
+    cooldown:                'You drew a case this tick. Try again next tick.',
+    case_cap_reached:        'You\'re at your active-case limit. Resolve a trial before drawing a new one.',
   })[reason] || ('Could not draw a case: ' + (reason || 'unknown'));
 }
 
@@ -2659,6 +2704,7 @@ function appealReasonText(reason) {
     appeal_window_closed:    'That verdict is more than 12 ticks old.',
     no_verdict_to_appeal:    'That case ended without a verdict.',
     appeal_in_flight:        'An appeal on that case is already in progress.',
+    case_cap_reached:        'You\'re at your active-case limit. Resolve a trial before filing a new one.',
   })[reason] || ('Appeal failed: ' + (reason || 'unknown'));
 }
 
@@ -2670,7 +2716,11 @@ function renderAppealList({ cases, error, factionId } = {}) {
     return;
   }
   if (!cases || !cases.length) {
-    host.innerHTML = '<div class="ap-empty">No verdicts in the last 12 ticks are eligible for appeal.</div>';
+    host.innerHTML = `
+      <div class="ap-empty">
+        No verdicts in the last 12 ticks are eligible for appeal.
+        <div class="ap-empty-explain">Winning a case on appeal gives <strong>+3 Reputation</strong> and <strong>+5 Political Capital</strong>; losing it costs <strong>−5 Reputation</strong> and <strong>−3 Political Capital</strong>.</div>
+      </div>`;
     return;
   }
   const TYPE_LABEL = { civil: 'Civil', criminal: 'Criminal', commercial: 'Commercial' };
@@ -3732,7 +3782,7 @@ init();
     <div class="tc-head">
       <div class="tc-eyebrow">FILE AN APPEAL &middot; LAST 12 TICKS</div>
       <div class="tc-title">Appeal a <em>Verdict</em></div>
-      <div class="tc-sub">Pick a verdict to challenge. <strong>You will represent the original losing side.</strong> Flip the lower court for <em>+5 Reputation</em>; if the verdict stands you lose 1.</div>
+      <div class="tc-sub">Pick a verdict to challenge. <strong>You will represent the original losing side.</strong> Winning a case on appeal gives <em>+3 Reputation</em> and <em>+5 Political Capital</em>; losing it costs <em>−5 Reputation</em> and <em>−3 Political Capital</em>.</div>
     </div>
     <div class="tc-body" id="ap-content"></div>
   </div>
