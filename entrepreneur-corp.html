@@ -2461,7 +2461,6 @@ function initials(s, n) {
       document.getElementById('fl-claim-count').textContent = '0 / 600';
       document.getElementById('fl-claim-count').classList.remove('warn');
       document.getElementById('fl-def-card').classList.remove('show');
-      document.getElementById('fl-cost-name').textContent = 'the defendant';
       document.getElementById('fl-err').classList.remove('show');
       renderLawsuitFiles();
       validateLawsuit();
@@ -2520,7 +2519,6 @@ function initials(s, n) {
       document.getElementById('fl-def-treas').textContent = fmtUsd(c.treasury);
       document.getElementById('fl-def-sub').textContent =
         c.nation_name ? `Headquartered in ${c.nation_name}.` : '';
-      document.getElementById('fl-cost-name').textContent = c.name || 'the defendant';
       card.classList.add('show');
       validateLawsuit();
     }
@@ -8819,7 +8817,7 @@ const openBidModal = (contractId, label, yourCost) => {
 
     <div class="fl-cost">
       <div class="fl-seal">$</div>
-      <div class="fl-cost-txt">Filing this action commits <b id="fl-cost-name">the defendant</b> to a <b>$2,000,000</b> defense to open proceedings. Non-refundable once served.</div>
+      <div class="fl-cost-txt">Filing this action commits <b>this corporation</b> to a <b>$2,000,000</b> filing fee to open proceedings. Non-refundable once served.</div>
       <div class="fl-cost-amt">$2M</div>
     </div>
 
