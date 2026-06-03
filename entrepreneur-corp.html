@@ -3331,23 +3331,25 @@ function initials(s, n) {
     set('cp-cash-delta', '— corp treasury');
 
     // Revenue Change (This Month) — one tick is one in-game month per
-    // how-to.html, so the most recent corp_cash_history row IS this
-    // month's net delta. cash_delta is the authoritative SOT written
-    // by the tick processor (cash_end - cash_start). Renders with
-    // sign + colour; no row yet → $0 / "no data yet" fallback.
+    // how-to.html. corp_cash_history (the old per-tick aggregate
+    // table) was culled in sql/migrations/20270251 so we read from
+    // corp_cash_events (the granular SOT) via the corp_revenue_change
+    // _this_month RPC (20270566), which sums delta for the latest
+    // tick of activity. tick=null + cash_delta=0 → "no data yet"
+    // fallback distinct from rpc-error "lookup failed".
     try {
-      const { data: histRow, error: histErr } = await _supabase.from('corp_cash_history')
-        .select('cash_delta, tick')
-        .eq('faction_id', id)
-        .order('tick', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: histRow, error: histErr } = await _supabase
+        .rpc('corp_revenue_change_this_month', { p_corp_id: id });
       const incomeEl = document.getElementById('cp-income');
       if (incomeEl) {
-        if (histErr || !histRow) {
+        if (histErr || !histRow?.success) {
           incomeEl.textContent = '$0';
           incomeEl.style.color = '';
-          set('cp-income-delta', histErr ? '— lookup failed' : '— no data yet');
+          set('cp-income-delta', '— lookup failed');
+        } else if (histRow.tick == null) {
+          incomeEl.textContent = '$0';
+          incomeEl.style.color = '';
+          set('cp-income-delta', '— no data yet');
         } else {
           const delta = Number(histRow.cash_delta) || 0;
           const sign  = delta > 0 ? '+' : (delta < 0 ? '−' : '');
