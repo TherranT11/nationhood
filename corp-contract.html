@@ -362,7 +362,7 @@ function reasonText(reason) {
     contract_not_found:    'Contract not found.',
     negotiation_not_found: 'Negotiation not found.',
     negotiation_cancelled: 'This negotiation has been cancelled.',
-    negotiation_signed:    'Can’t edit — the contract has been signed. Withdraw a signature first.',
+    negotiation_signed:    'Can’t edit — the contract has been signed. Cancel the negotiation and start fresh to make changes.',
     article_not_found:     'Article not found.',
     no_entrepreneur:       'No entrepreneur faction found.',
     not_party_ceo:         'Only the CEOs of the negotiating parties may view this draft.',
@@ -567,15 +567,16 @@ function renderSignaturesHtml() {
       line = `<span class="sig-signature empty">&mdash; sign here &mdash;</span>`;
     }
     let btn;
-    if (isMine && !isSigned) {
+    if (isSigned) {
+      // Once signed, the signature is locked. No withdraw — binding
+      // contracts exit only via expiry; pre-binding ones via Cancel
+      // Negotiation (still available in awaiting_signatures).
+      btn = `<button type="button" class="sig-btn signed" disabled>&#10003; Signed</button>`;
+    } else if (isMine) {
       const enabled = hasExpiry; // can't sign without expiry set
       btn = enabled
         ? `<button type="button" class="sig-btn primary" data-sig-action="sign" data-corp-id="${escapeHtml(party)}">&#9999; Sign as CEO</button>`
         : `<button type="button" class="sig-btn disabled" disabled>Set expiry first</button>`;
-    } else if (isMine && isSigned) {
-      btn = `<button type="button" class="sig-btn amber" data-sig-action="withdraw" data-corp-id="${escapeHtml(party)}">Withdraw Signature</button>`;
-    } else if (!isMine && isSigned) {
-      btn = `<button type="button" class="sig-btn signed" disabled>&#10003; Signed</button>`;
     } else {
       btn = `<button type="button" class="sig-btn disabled" disabled>Waiting on Counterparty</button>`;
     }
@@ -605,7 +606,7 @@ function renderSignaturesHtml() {
     ? `<span class="binding-status bound">&#10003; Binding</span>`
     : `<span class="binding-status partial">Partial &middot; ${sigCount} of 2 Signed</span>`;
   const stripLab = state.isBinding
-    ? `<strong>This contract is binding.</strong> Filed to both corporations' Documents containers. <em>Either CEO may withdraw their signature to revert.</em>`
+    ? `<strong>This contract is binding.</strong> Filed to both corporations' Documents containers. <em>It remains in force until ${escapeHtml(tickToDate(c.expires_at_tick))}.</em>`
     : `Lock all articles, then both CEOs must sign. <em>The contract becomes a binding instrument when both signatures are affixed.</em>`;
 
   return `
@@ -747,9 +748,10 @@ function bindHandlers() {
     }
   });
 
-  // Signature section actions: Set Expiry, Sign, Withdraw. Delegated
-  // on #cc-signatures because the section gets re-rendered on every
-  // refresh().
+  // Signature section actions: Set Expiry + Sign. Delegated on
+  // #cc-signatures because the section gets re-rendered on every
+  // refresh(). No withdraw — binding contracts exit only via expiry;
+  // pre-binding ones via Cancel Negotiation.
   document.getElementById('cc-signatures').addEventListener('click', async (e) => {
     const setBtn = e.target.closest('#cc-set-expiry-btn');
     if (setBtn) {
@@ -778,21 +780,16 @@ function bindHandlers() {
       return;
     }
 
-    const sigBtn = e.target.closest('[data-sig-action]');
+    const sigBtn = e.target.closest('[data-sig-action="sign"]');
     if (!sigBtn || sigBtn.disabled) return;
-    const action = sigBtn.dataset.sigAction;
     const corpId = sigBtn.dataset.corpId;
     if (!corpId) return;
-    if (action === 'withdraw' && !confirm('Withdraw your signature?')) return;
 
     sigBtn.disabled = true;
     const prevText = sigBtn.textContent;
-    sigBtn.textContent = action === 'sign' ? 'Signing…' : 'Withdrawing…';
+    sigBtn.textContent = 'Signing…';
     try {
-      const rpc = action === 'sign'
-        ? 'sign_corp_negotiation'
-        : 'withdraw_corp_negotiation_signature';
-      const { data, error } = await _supabase.rpc(rpc, {
+      const { data, error } = await _supabase.rpc('sign_corp_negotiation', {
         p_contract_id: contractId, p_corp_id: corpId,
       });
       if (error) throw error;
