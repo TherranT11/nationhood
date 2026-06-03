@@ -727,7 +727,7 @@
 .trial-input-field::placeholder { color:#5a5a5a; font-style:italic; }
 .trial-input-field:focus { outline:none; border-color:#c8a26e; }
 .trial-input-actions { display:flex; flex-direction:column; gap:5px; }
-.trial-send-btn, .trial-endturn-btn { padding:8px 14px; border-radius:4px;
+.trial-send-btn, .trial-endturn-btn, .trial-objection-btn { padding:8px 14px; border-radius:4px;
   font-size:9px; letter-spacing:0.13em; font-weight:700; cursor:pointer;
   font-family:inherit; }
 .trial-send-btn { background:#161208; border:0.5px solid #c8a26e; color:#dcb88a; }
@@ -735,7 +735,45 @@
 .trial-endturn-btn { background:transparent;
   border:0.5px solid rgba(255,255,255,0.12); color:#888; }
 .trial-endturn-btn:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
-.trial-send-btn:disabled, .trial-endturn-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.trial-objection-btn { background:transparent;
+  border:0.5px solid rgba(213,90,80,0.55); color:#d55a50; }
+.trial-objection-btn:hover { color:#fff; background:rgba(213,90,80,0.12); border-color:#d55a50; }
+.trial-send-btn:disabled, .trial-endturn-btn:disabled, .trial-objection-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+/* ── Objection picker (Phase 3b) ────────────────────────────────
+   Inline picker that replaces the input bar when the OBJECTION
+   button is clicked. Picks a type, an ammo beat from the hand,
+   an optional reason, then fires send_objection. Closes back to
+   the normal input bar on CANCEL or successful SUBMIT. */
+.trial-obj-pick { padding:14px 24px 16px; background:#0a0807;
+  border-top:0.5px solid rgba(213,90,80,0.25); flex-shrink:0; }
+.trial-obj-head { display:flex; align-items:center; gap:10px; margin-bottom:11px; }
+.trial-obj-head-lab { font-size:9.5px; letter-spacing:0.18em; color:#d55a50; font-weight:700; }
+.trial-obj-head-count { margin-left:auto; font-family:monospace; font-size:9.5px; color:#888;
+  letter-spacing:0.05em; }
+.trial-obj-section { margin-bottom:11px; }
+.trial-obj-section-lab { font-size:8px; letter-spacing:0.16em; color:#c8a26e; font-weight:700;
+  text-transform:uppercase; margin-bottom:6px; }
+.trial-obj-pills { display:flex; flex-wrap:wrap; gap:6px; }
+.trial-obj-pill { padding:6px 11px; background:transparent; border:0.5px solid rgba(255,255,255,0.12);
+  border-radius:3px; color:#aaa; font-size:9.5px; letter-spacing:0.08em; font-weight:600;
+  font-family:inherit; cursor:pointer; text-transform:uppercase; }
+.trial-obj-pill:hover { color:#fff; border-color:rgba(255,255,255,0.28); }
+.trial-obj-pill.selected { color:#d55a50; border-color:#d55a50; background:rgba(213,90,80,0.08); }
+.trial-obj-ammo-empty { font-size:10px; color:#888; font-style:italic; padding:6px 0; }
+.trial-obj-ammo { padding:7px 10px; background:#0c0a08; border:0.5px solid rgba(255,255,255,0.1);
+  border-radius:4px; color:#bbb; font-size:10px; cursor:pointer; display:flex; gap:7px;
+  align-items:center; font-family:inherit; text-align:left; }
+.trial-obj-ammo:hover { color:#fff; border-color:rgba(255,255,255,0.28); }
+.trial-obj-ammo.selected { color:#dcb88a; border-color:#c8a26e; background:#161208; }
+.trial-obj-ammo-num { font-family:monospace; font-size:9px; color:#c8a26e; font-weight:700; }
+.trial-obj-ammo-type { font-size:8px; letter-spacing:0.1em; color:#888; text-transform:uppercase; }
+.trial-obj-reason { width:100%; padding:8px 11px; background:#080606;
+  border:0.5px solid #5a4630; border-radius:4px; color:#fff; font-size:11px;
+  font-family:inherit; line-height:1.5; resize:none; min-height:38px; max-height:90px; box-sizing:border-box; }
+.trial-obj-reason::placeholder { color:#5a5a5a; font-style:italic; }
+.trial-obj-reason:focus { outline:none; border-color:#c8a26e; }
+.trial-obj-actions { display:flex; gap:8px; justify-content:flex-end; }
 
 /* ── Trial modal: mobile (≤720px) ────────────────────────────────
    Desktop layout was 920px-wide centred modal. On a phone the
@@ -788,6 +826,11 @@
 
   /* "Wait for your turn" hint */
   .trial-input-hint { padding:6px 0; font-size:11px; }
+
+  /* Objection picker — tighten horizontal padding + bump reason
+     font-size to 16px so iOS Safari doesn't auto-zoom the textarea. */
+  .trial-obj-pick { padding:12px 12px 14px; }
+  .trial-obj-reason { font-size:16px; min-height:54px; }
 }
 </style>
 </head>
@@ -2600,13 +2643,23 @@ async function refuseCase(factionId, caseId) {
 // up to 4 messages per turn. Polls every 4s while open so messages
 // from the opposing counsel appear without a manual refresh.
 let _trialPoll = null;
-let _trialState = { trialId: null, armedBeatIndex: null, sending: false };
+// objectionMode + objectionType + objectionAmmoIndex + objectionText
+// hold the inline objection picker's state across the 4s poll
+// re-renders. Cleared on close (cancel or successful submit).
+let _trialState = { trialId: null, armedBeatIndex: null, sending: false,
+  objectionMode: false, objectionType: null, objectionAmmoIndex: null, objectionText: '' };
+
+const OBJECTION_TYPES = ['Relevance', 'Leading', 'Foundation', 'Hearsay', 'Argumentative'];
+// "OBJECTION · {Type}. " is 16 + longest-type (13 = Argumentative) + 3 = 32 chars.
+// Server caps at 240, so reason gets 208 to be safe regardless of type.
+const OBJECTION_REASON_MAX = 208;
 
 async function openTrialModal(trialId) {
   if (!trialId) return;
   _trialState.trialId = trialId;
   _trialState.armedBeatIndex = null;
   _trialState.sending = false;
+  resetObjectionPicker();
   document.getElementById('trial-back').classList.add('open');
   document.body.style.overflow = 'hidden';
   document.getElementById('trial-content').innerHTML =
@@ -2625,6 +2678,14 @@ function closeTrialModal() {
   if (_trialPoll) { clearInterval(_trialPoll); _trialPoll = null; }
   _trialState.trialId = null;
   _trialState.armedBeatIndex = null;
+  resetObjectionPicker();
+}
+
+function resetObjectionPicker() {
+  _trialState.objectionMode = false;
+  _trialState.objectionType = null;
+  _trialState.objectionAmmoIndex = null;
+  _trialState.objectionText = '';
 }
 function trialReasonText(reason) {
   return ({
@@ -2642,6 +2703,10 @@ function trialReasonText(reason) {
     beat_already_played_this_turn: 'You have already played a beat this round.',
     beat_not_in_hand:            'That beat is no longer in your hand.',
     beat_favours_opponent:       'You can only play beats that favour your side as argument.',
+    beat_not_objection_material: 'Pick an opp-supporting beat from your hand as ammo.',
+    no_objection_target:         'Opposing counsel has no played beats to object to yet.',
+    objection_cap_reached:       'You have used all 3 objections in this trial.',
+    missing_argument:            'Missing required input.',
   })[reason] || ('Action failed: ' + (reason || 'unknown'));
 }
 
@@ -2805,6 +2870,9 @@ function renderTrialInputBar(d) {
         <div class="trial-input-hint">Opposing counsel is speaking. <em>Wait for your turn.</em></div>
       </div>`;
   }
+  if (_trialState.objectionMode) {
+    return renderObjectionPicker(d);
+  }
   const sent = Number(d.messages_sent_this_turn) || 0;
   const remaining = Math.max(0, 4 - sent);
   const dotsHtml = Array.from({ length: 4 }, (_, i) =>
@@ -2812,12 +2880,28 @@ function renderTrialInputBar(d) {
   const armedHtml = _trialState.armedBeatIndex != null
     ? `<div class="trial-armed-tag">&#9876; BEAT ARMED &middot; will play with next message</div>`
     : '';
+  // OBJECTION button disabled when: out of action slots, cap reached,
+  // no opp-supporting unspent beats in hand, or no opp beat to target.
+  // Server re-validates each gate, so a stale tab can't bypass.
+  const ammoBeats   = (d.hand || []).filter(b => b && b.support && b.support !== d.side
+                                                  && b.played_at_round == null
+                                                  && b.objected_at_round == null);
+  const objRemaining = Number(d.objections_remaining ?? 3);
+  const oppHasPlayed = (d.messages || []).some(m => m.side && m.side !== d.side && m.side !== 'system'
+                                                    && m.beat_played_index != null);
+  let objDisabled = '';
+  let objReason   = '';
+  if (remaining <= 0)         { objDisabled = 'disabled'; objReason = 'No action slots left this turn'; }
+  else if (objRemaining <= 0) { objDisabled = 'disabled'; objReason = 'All 3 objections used'; }
+  else if (!ammoBeats.length) { objDisabled = 'disabled'; objReason = 'No opp-supporting beat in hand'; }
+  else if (!oppHasPlayed)     { objDisabled = 'disabled'; objReason = 'No opp beat to object to yet'; }
+  const objTitle = objReason ? ` title="${escHtml(objReason)}"` : '';
   return `
     <div class="trial-input-bar">
       <div class="trial-input-meta">
         <span class="trial-input-meta-lab">MESSAGES THIS TURN</span>
         <span class="trial-msg-dots">${dotsHtml}</span>
-        <span class="trial-input-remaining">${remaining} of 4 remaining</span>
+        <span class="trial-input-remaining">${remaining} of 4 remaining &middot; ${objRemaining} objection${objRemaining === 1 ? '' : 's'} left</span>
       </div>
       ${armedHtml}
       <div class="trial-input-row">
@@ -2825,8 +2909,54 @@ function renderTrialInputBar(d) {
                   placeholder="Address the Court. (240 character limit)"></textarea>
         <div class="trial-input-actions">
           <button type="button" class="trial-send-btn" id="trial-send">SEND</button>
+          <button type="button" class="trial-objection-btn" id="trial-objection"${objDisabled}${objTitle}>OBJECTION</button>
           <button type="button" class="trial-endturn-btn" id="trial-endturn">END TURN</button>
         </div>
+      </div>
+    </div>`;
+}
+
+function renderObjectionPicker(d) {
+  const ammoBeats = (d.hand || []).filter(b => b && b.support && b.support !== d.side
+                                                && b.played_at_round == null
+                                                && b.objected_at_round == null);
+  const objRemaining = Number(d.objections_remaining ?? 3);
+  const type     = _trialState.objectionType;
+  const ammoIdx  = _trialState.objectionAmmoIndex;
+  const text     = _trialState.objectionText || '';
+  const typeHtml = OBJECTION_TYPES.map(t =>
+    `<button type="button" class="trial-obj-pill${type === t ? ' selected' : ''}" data-obj-type="${escHtml(t)}">${escHtml(t)}</button>`).join('');
+  const ammoHtml = ammoBeats.length
+    ? ammoBeats.map(b => `
+        <button type="button" class="trial-obj-ammo${ammoIdx === b.beat_index ? ' selected' : ''}" data-ammo-index="${b.beat_index}">
+          <span class="trial-obj-ammo-num">&sect; ${(b.beat_index ?? 0) + 1}</span>
+          <span>${escHtml(b.name || '—')}</span>
+          <span class="trial-obj-ammo-type">${escHtml(BEAT_TYPE_LABEL[b.type] || b.type || '')}</span>
+        </button>`).join('')
+    : `<div class="trial-obj-ammo-empty">No opp-supporting beats in your hand &mdash; nothing to spend as ammo.</div>`;
+  const canSubmit = type && ammoIdx != null && ammoBeats.length && objRemaining > 0;
+  return `
+    <div class="trial-obj-pick">
+      <div class="trial-obj-head">
+        <span class="trial-obj-head-lab">OBJECTION</span>
+        <span class="trial-obj-head-count">${objRemaining} of 3 objection${objRemaining === 1 ? '' : 's'} remaining</span>
+      </div>
+      <div class="trial-obj-section">
+        <div class="trial-obj-section-lab">Type</div>
+        <div class="trial-obj-pills">${typeHtml}</div>
+      </div>
+      <div class="trial-obj-section">
+        <div class="trial-obj-section-lab">Ammo Beat &middot; opp-supporting beat to spend</div>
+        <div class="trial-obj-pills">${ammoHtml}</div>
+      </div>
+      <div class="trial-obj-section">
+        <div class="trial-obj-section-lab">Reason (optional)</div>
+        <textarea class="trial-obj-reason" id="trial-obj-reason" maxlength="${OBJECTION_REASON_MAX}"
+                  placeholder="State your grounds. (${OBJECTION_REASON_MAX} characters)">${escHtml(text)}</textarea>
+      </div>
+      <div class="trial-obj-actions">
+        <button type="button" class="trial-endturn-btn" id="trial-obj-cancel">CANCEL</button>
+        <button type="button" class="trial-send-btn" id="trial-obj-submit"${canSubmit ? '' : ' disabled'}>SUBMIT OBJECTION</button>
       </div>
     </div>`;
 }
@@ -2846,6 +2976,84 @@ function bindTrialControls(d) {
   const endBtn    = document.getElementById('trial-endturn');
   if (sendBtn)   sendBtn.addEventListener('click', () => sendTrialMessage(d.trial_id));
   if (endBtn)    endBtn.addEventListener('click',  () => endTrialTurn(d.trial_id));
+
+  // Open the OBJECTION picker.
+  const objBtn = document.getElementById('trial-objection');
+  if (objBtn) objBtn.addEventListener('click', () => {
+    _trialState.objectionMode = true;
+    _trialState.objectionType = null;
+    _trialState.objectionAmmoIndex = null;
+    _trialState.objectionText = '';
+    renderTrialModal(d);
+  });
+
+  // Picker: type pills, ammo selection, reason, cancel, submit. All
+  // update _trialState then re-render so the SUBMIT button's enabled
+  // state stays in sync with the pickers.
+  document.querySelectorAll('#trial-content [data-obj-type]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const reasonEl = document.getElementById('trial-obj-reason');
+      if (reasonEl) _trialState.objectionText = reasonEl.value;
+      _trialState.objectionType = btn.dataset.objType;
+      renderTrialModal(d);
+    });
+  });
+  document.querySelectorAll('#trial-content [data-ammo-index]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const reasonEl = document.getElementById('trial-obj-reason');
+      if (reasonEl) _trialState.objectionText = reasonEl.value;
+      const idx = Number(btn.dataset.ammoIndex);
+      _trialState.objectionAmmoIndex =
+        _trialState.objectionAmmoIndex === idx ? null : idx;
+      renderTrialModal(d);
+    });
+  });
+  const objCancel = document.getElementById('trial-obj-cancel');
+  if (objCancel) objCancel.addEventListener('click', () => {
+    resetObjectionPicker();
+    renderTrialModal(d);
+  });
+  const objSubmit = document.getElementById('trial-obj-submit');
+  if (objSubmit) objSubmit.addEventListener('click', () => submitObjection(d));
+  const objReason = document.getElementById('trial-obj-reason');
+  if (objReason) objReason.addEventListener('input', () => {
+    _trialState.objectionText = objReason.value;
+  });
+}
+
+async function submitObjection(d) {
+  if (_trialState.sending) return;
+  const type    = _trialState.objectionType;
+  const ammoIdx = _trialState.objectionAmmoIndex;
+  const reason  = (_trialState.objectionText || '').trim();
+  if (!type || ammoIdx == null) return;
+  const text = (`OBJECTION · ${type}.` + (reason ? ` ${reason}` : '')).slice(0, 240);
+  _trialState.sending = true;
+  const submitBtn = document.getElementById('trial-obj-submit');
+  const cancelBtn = document.getElementById('trial-obj-cancel');
+  if (submitBtn) submitBtn.disabled = true;
+  if (cancelBtn) cancelBtn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('send_objection', {
+      p_faction_id: politician.id,
+      p_trial_id:   d.trial_id,
+      p_beat_index: ammoIdx,
+      p_text:       text,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    resetObjectionPicker();
+    await refreshTrial();
+  } catch (err) {
+    alert('Objection failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    if (submitBtn) submitBtn.disabled = false;
+    if (cancelBtn) cancelBtn.disabled = false;
+  }
 }
 
 async function sendTrialMessage(trialId) {
