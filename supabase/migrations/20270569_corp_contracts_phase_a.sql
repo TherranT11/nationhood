@@ -9,18 +9,23 @@
 -- only transition to "cancelled" for now.
 --
 -- Schema (deliberately barebones):
---   corp_contracts — one row per negotiation. Carries both parties,
---                    initiator, status, and the tick stamps Phase A
---                    needs (created, cancelled). signed_at_tick,
---                    expires_at_tick, terminated_at_tick all land
---                    in their respective phases via ALTER ADD COLUMN.
+--   corp_negotiations — one row per inter-corp negotiation. Distinct
+--                       table name (not corp_contracts) because the
+--                       legacy infrastructure-bidding system in
+--                       sql/migrations/20260328 already owns
+--                       corp_contracts with an unrelated schema.
+--                       Carries both parties, initiator, status, and
+--                       the tick stamps Phase A needs (created,
+--                       cancelled). signed_at_tick, expires_at_tick,
+--                       terminated_at_tick all land in their
+--                       respective phases via ALTER ADD COLUMN.
 --
 -- Permissions:
 --   • Only the CEO (entrepreneur_corps.owner_faction_id) of the
 --     initiating corp can start a negotiation.
 --   • Either party's CEO can cancel a drafting contract.
---   • SELECT/INSERT/UPDATE on corp_contracts revoked from clients —
---     all reads/writes must flow through the SECURITY DEFINER RPCs.
+--   • SELECT/INSERT/UPDATE on corp_negotiations revoked from clients
+--     — all reads/writes must flow through the SECURITY DEFINER RPCs.
 --
 -- Status discipline:
 --   'drafting'  → 'cancelled'           (this phase)
@@ -33,14 +38,14 @@
 BEGIN;
 
 -- ── 1. Schema ────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS public.corp_contracts (
+CREATE TABLE IF NOT EXISTS public.corp_negotiations (
     id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    -- Both parties are corps (factions.faction_type='corp'). Distinct
-    -- by CHECK so a corp can't negotiate with itself. CASCADE on corp
-    -- delete: if either party folds, the negotiation goes with it.
-    initiating_corp_id       UUID NOT NULL REFERENCES public.factions(id) ON DELETE CASCADE,
-    counterparty_corp_id     UUID NOT NULL REFERENCES public.factions(id) ON DELETE CASCADE,
+    -- Both parties are entrepreneur_corps rows. Distinct by CHECK so a
+    -- corp can't negotiate with itself. CASCADE on corp delete: if
+    -- either party folds, the negotiation goes with it.
+    initiating_corp_id       UUID NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
+    counterparty_corp_id     UUID NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
 
     -- The entrepreneur faction whose user actually clicked Start.
     -- SET NULL on faction delete — the contract record outlives the
@@ -57,20 +62,20 @@ CREATE TABLE IF NOT EXISTS public.corp_contracts (
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-    CONSTRAINT corp_contracts_distinct_parties
+    CONSTRAINT corp_negotiations_distinct_parties
         CHECK (initiating_corp_id <> counterparty_corp_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_corp_contracts_initiating
-    ON public.corp_contracts (initiating_corp_id, status);
-CREATE INDEX IF NOT EXISTS idx_corp_contracts_counterparty
-    ON public.corp_contracts (counterparty_corp_id, status);
+CREATE INDEX IF NOT EXISTS idx_corp_negotiations_initiating
+    ON public.corp_negotiations (initiating_corp_id, status);
+CREATE INDEX IF NOT EXISTS idx_corp_negotiations_counterparty
+    ON public.corp_negotiations (counterparty_corp_id, status);
 
-COMMENT ON TABLE public.corp_contracts IS
+COMMENT ON TABLE public.corp_negotiations IS
     'One row per inter-corp contract negotiation. Phase A only supports drafting / cancelled states; Phase B adds awaiting_signatures, Phase C adds binding/expired/terminated. RPC-only — direct DML revoked from clients.';
 
--- Clients hit corp_contracts only through the SECURITY DEFINER RPCs.
-REVOKE ALL ON public.corp_contracts FROM PUBLIC, anon, authenticated;
+-- Clients hit corp_negotiations only through the SECURITY DEFINER RPCs.
+REVOKE ALL ON public.corp_negotiations FROM PUBLIC, anon, authenticated;
 
 -- ── 2. start_corp_negotiation ────────────────────────────────────
 -- Creates a 'drafting' contract row. Caller must be the CEO of the
@@ -127,7 +132,7 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM public.shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    INSERT INTO public.corp_contracts (
+    INSERT INTO public.corp_negotiations (
         initiating_corp_id, counterparty_corp_id,
         initiated_by_faction_id, status, created_at_tick
     ) VALUES (
@@ -150,7 +155,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
     v_uid                UUID := auth.uid();
-    v_contract           public.corp_contracts%ROWTYPE;
+    v_contract           public.corp_negotiations%ROWTYPE;
     v_caller_faction_id  UUID;
     v_tick               INT;
 BEGIN
@@ -161,7 +166,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'missing_argument');
     END IF;
 
-    SELECT * INTO v_contract FROM public.corp_contracts
+    SELECT * INTO v_contract FROM public.corp_negotiations
      WHERE id = p_contract_id FOR UPDATE;
     IF v_contract.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'contract_not_found');
@@ -190,7 +195,7 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM public.shard WHERE name = 'Alpha Shard' LIMIT 1;
 
-    UPDATE public.corp_contracts
+    UPDATE public.corp_negotiations
        SET status                  = 'cancelled',
            cancelled_at_tick       = COALESCE(v_tick, 0),
            cancelled_by_faction_id = v_caller_faction_id,
@@ -249,7 +254,7 @@ BEGIN
             CASE WHEN c.initiating_corp_id = p_corp_id
                  THEN n_b.name
                  ELSE n_a.name END            AS counterparty_corp_nation
-          FROM public.corp_contracts c
+          FROM public.corp_negotiations c
           LEFT JOIN public.entrepreneur_corps ec_a ON ec_a.id = c.initiating_corp_id
           LEFT JOIN public.entrepreneur_corps ec_b ON ec_b.id = c.counterparty_corp_id
           LEFT JOIN public.nations n_a ON n_a.id = ec_a.hq_nation_id
@@ -276,7 +281,7 @@ CREATE OR REPLACE FUNCTION public.get_corp_contract(
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
-    v_contract               public.corp_contracts%ROWTYPE;
+    v_contract               public.corp_negotiations%ROWTYPE;
     v_initiating_name        TEXT;
     v_initiating_nation      TEXT;
     v_counterparty_name      TEXT;
@@ -286,7 +291,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'missing_argument');
     END IF;
 
-    SELECT * INTO v_contract FROM public.corp_contracts WHERE id = p_contract_id;
+    SELECT * INTO v_contract FROM public.corp_negotiations WHERE id = p_contract_id;
     IF v_contract.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'contract_not_found');
     END IF;

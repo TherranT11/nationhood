@@ -1,29 +1,30 @@
 -- ════════════════════════════════════════════════════════════════════
 -- 20270570 — Corporate Contracts Phase A audit fixes
 --
--- Three findings from the pre-commit audit on 20270569:
+-- Pre-commit audit findings on 20270569. Originally there were three;
+-- two are folded back into 20270569 itself now that the user hit the
+-- corp_contracts name collision and we had to revise that file anyway:
 --
---   1. FK target wrong. corp_contracts.initiating_corp_id and
---      counterparty_corp_id were declared REFERENCES public.factions
---      (id), but entrepreneur_corps.id is a standalone UUID not
---      mirrored in factions (entrepreneur_corps was authored that
---      way in sql/migrations/20270139). INSERTs of entrepreneur_corps
---      .id values would have violated the FK. Drop the wrong
---      constraints and re-add against entrepreneur_corps(id).
+--   • [folded into 20270569] FK target was REFERENCES factions(id);
+--     entrepreneur_corps.id is a standalone UUID. Fixed at the source.
 --
---   2. Privacy on list_corp_negotiations + get_corp_contract. Both
---      RPCs were callable with any corp id / contract id by any
---      authenticated user. A competitor could enumerate to discover
---      a corp's negotiations and counterparties. Tighten: only the
---      CEO of a corp can list its drafts; only the CEO of either
---      party can fetch a contract. Phase C will widen get_corp
---      _contract for status='binding' once those exist — binding
---      contracts are public knowledge once executed, but drafts and
---      cancelled drafts stay party-private.
+--   • [folded into 20270569] Table renamed corp_contracts →
+--     corp_negotiations because sql/migrations/20260328 already owns
+--     corp_contracts with an unrelated infrastructure-bidding schema.
 --
---   3. (Client-side, handled in the entrepreneur-corp.html edit
---      that accompanies this migration: disable ALL picker rows on
---      the first click so rapid taps can't create duplicate drafts.)
+--   • [this migration] Privacy on list_corp_negotiations + get_corp
+--     _contract. Both RPCs were callable with any corp_id /
+--     contract_id by any authenticated user. A competitor could
+--     enumerate to discover a corp's negotiations and counterparties.
+--     Tighten: only the CEO of a corp can list its drafts; only the
+--     CEO of either party can fetch a contract. Phase C will widen
+--     get_corp_contract for status='binding' once those exist —
+--     binding contracts are public knowledge once executed, but
+--     drafts and cancelled drafts stay party-private.
+--
+--   • [client-side, in the entrepreneur-corp.html edit] picker race:
+--     disable ALL picker rows on the first click so rapid taps can't
+--     create duplicate drafts.
 --
 -- Bodies of list_corp_negotiations and get_corp_contract are
 -- byte-identical to 20270569 except for the inserted CEO check at
@@ -32,20 +33,7 @@
 
 BEGIN;
 
--- ── 1. FK retargeting ─────────────────────────────────────────────
-ALTER TABLE public.corp_contracts
-    DROP CONSTRAINT IF EXISTS corp_contracts_initiating_corp_id_fkey,
-    DROP CONSTRAINT IF EXISTS corp_contracts_counterparty_corp_id_fkey;
-
-ALTER TABLE public.corp_contracts
-    ADD CONSTRAINT corp_contracts_initiating_corp_id_fkey
-        FOREIGN KEY (initiating_corp_id)
-        REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
-    ADD CONSTRAINT corp_contracts_counterparty_corp_id_fkey
-        FOREIGN KEY (counterparty_corp_id)
-        REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE;
-
--- ── 2a. list_corp_negotiations — CEO gate ────────────────────────
+-- ── list_corp_negotiations — CEO gate ────────────────────────────
 CREATE OR REPLACE FUNCTION public.list_corp_negotiations(
     p_corp_id UUID
 ) RETURNS jsonb
@@ -111,7 +99,7 @@ BEGIN
             CASE WHEN c.initiating_corp_id = p_corp_id
                  THEN n_b.name
                  ELSE n_a.name END            AS counterparty_corp_nation
-          FROM public.corp_contracts c
+          FROM public.corp_negotiations c
           LEFT JOIN public.entrepreneur_corps ec_a ON ec_a.id = c.initiating_corp_id
           LEFT JOIN public.entrepreneur_corps ec_b ON ec_b.id = c.counterparty_corp_id
           LEFT JOIN public.nations n_a ON n_a.id = ec_a.hq_nation_id
@@ -123,7 +111,7 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'negotiations', v_negotiations);
 END $$;
 
--- ── 2b. get_corp_contract — party-CEO gate ───────────────────────
+-- ── get_corp_contract — party-CEO gate ──────────────────────────
 CREATE OR REPLACE FUNCTION public.get_corp_contract(
     p_contract_id UUID
 ) RETURNS jsonb
@@ -132,7 +120,7 @@ AS $$
 DECLARE
     v_uid                  UUID := auth.uid();
     v_caller_faction_id    UUID;
-    v_contract             public.corp_contracts%ROWTYPE;
+    v_contract             public.corp_negotiations%ROWTYPE;
     v_initiating_name      TEXT;
     v_initiating_nation    TEXT;
     v_counterparty_name    TEXT;
@@ -145,7 +133,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'missing_argument');
     END IF;
 
-    SELECT * INTO v_contract FROM public.corp_contracts WHERE id = p_contract_id;
+    SELECT * INTO v_contract FROM public.corp_negotiations WHERE id = p_contract_id;
     IF v_contract.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'contract_not_found');
     END IF;
