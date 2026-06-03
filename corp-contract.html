@@ -168,6 +168,102 @@
     border-color:var(--legal-dim); background:rgba(200,144,112,0.03); }
   .add-article-btn:disabled { opacity:0.5; cursor:not-allowed; }
 
+  /* Signatures block — appears once articles are all locked
+     (status='awaiting_signatures' or 'binding'). */
+  .signatures { margin-top:18px; background:var(--panel);
+    border:1px solid var(--line); border-radius:7px;
+    border-left:3px solid var(--legal); overflow:hidden; }
+  .sig-head { padding:15px 22px; background:#0a0a0a;
+    border-bottom:1px solid var(--line); text-align:center; }
+  .sig-head-lab { font-size:9.5px; letter-spacing:0.2em;
+    color:var(--legal); font-weight:700; text-transform:uppercase;
+    margin-bottom:5px; }
+  .sig-head-title { font-family:Georgia,serif; font-size:15px;
+    color:#fff; font-weight:500; letter-spacing:-0.005em; }
+  .sig-head-title em { font-style:italic; color:var(--legal-bright); }
+  .sig-head-meta { font-size:9px; color:var(--mut); margin-top:5px;
+    font-style:italic; }
+
+  .expiry-row { padding:14px 22px;
+    border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .expiry-lab { font-family:Georgia,serif; font-size:12px;
+    color:var(--paper-text); font-weight:500; letter-spacing:-0.005em;
+    flex:1; }
+  .expiry-lab em { font-style:italic; color:var(--legal-bright); }
+  .expiry-help { font-size:9px; color:var(--mut); font-style:italic;
+    line-height:1.5; margin-top:3px; }
+  .expiry-input { padding:9px 14px; background:#0a1413;
+    border:0.5px solid var(--paper-line); border-radius:3px;
+    color:var(--paper-text); font-family:Georgia,serif;
+    font-size:12.5px; font-weight:600; font-style:italic;
+    cursor:pointer; }
+  .expiry-input:focus { outline:none; border-color:var(--legal); }
+  .expiry-input:disabled { opacity:0.7; cursor:not-allowed; }
+  .expiry-display { font-family:Georgia,serif; font-size:13px;
+    font-style:italic; color:var(--legal-bright); }
+
+  .sig-row { padding:22px; display:flex; gap:18px;
+    align-items:stretch; flex-wrap:wrap; }
+  .sig-block { flex:1; min-width:260px; background:var(--paper);
+    border:0.5px solid var(--paper-line); border-radius:6px;
+    padding:18px 22px; display:flex; flex-direction:column;
+    border-top:3px solid var(--legal-dim); }
+  .sig-block.signed { border-top-color:var(--green); }
+  .sig-party-lab { font-size:8px; letter-spacing:0.16em;
+    color:var(--mut); font-weight:700; text-transform:uppercase;
+    margin-bottom:7px; }
+  .sig-party-name { font-family:Georgia,serif; font-size:14.5px;
+    color:var(--paper-text); font-weight:500; letter-spacing:-0.005em;
+    line-height:1.3; }
+  .sig-party-name em { font-style:italic; color:var(--legal-bright); }
+  .sig-party-meta { font-size:9.5px; color:var(--mut); margin-top:4px; }
+
+  .sig-line { height:46px; border-bottom:1px solid var(--paper-line);
+    margin:22px 0 7px; display:flex; align-items:flex-end;
+    justify-content:center; padding-bottom:5px; }
+  .sig-line.signed { border-bottom-color:var(--green-dim); }
+  .sig-signature { font-family:Georgia,serif; font-style:italic;
+    font-size:24px; color:var(--green-bright); letter-spacing:-0.01em;
+    line-height:1; }
+  .sig-signature.empty { color:var(--faint); font-size:10px;
+    font-style:italic; font-family:-apple-system,system-ui,sans-serif;
+    letter-spacing:0.1em; text-transform:uppercase; }
+  .sig-caption { font-size:8.5px; color:var(--mut); text-align:center;
+    font-style:italic; }
+  .sig-caption strong { color:#aaa; font-style:normal; font-weight:600; }
+
+  .sig-btn { margin-top:14px; padding:12px; font-size:10px;
+    letter-spacing:0.14em; font-weight:700; border-radius:4px;
+    cursor:pointer; font-family:inherit; text-transform:uppercase; }
+  .sig-btn.primary { background:var(--legal-bg);
+    border:1px solid var(--legal); color:var(--legal-bright); }
+  .sig-btn.primary:hover { background:#15211f; color:#fff; }
+  .sig-btn.amber { background:var(--amber-bg);
+    border:1px solid var(--amber-dim); color:var(--amber); }
+  .sig-btn.amber:hover { background:#15211f; color:#fff; }
+  .sig-btn.disabled, .sig-btn:disabled { background:transparent;
+    border:1px solid var(--line); color:var(--mut);
+    cursor:not-allowed; opacity:0.5; }
+  .sig-btn.signed { background:rgba(122,176,122,0.06);
+    border:1px solid var(--green-dim); color:var(--green-bright);
+    cursor:default; }
+
+  .binding-strip { padding:15px 22px; background:#0a0a0a;
+    border-top:1px solid var(--line); display:flex;
+    align-items:center; gap:14px; flex-wrap:wrap; }
+  .binding-lab { flex:1; font-size:10px; color:var(--mut);
+    line-height:1.55; }
+  .binding-lab strong { color:#fff; font-weight:600; }
+  .binding-lab em { color:var(--legal-bright); font-style:italic; }
+  .binding-status { padding:10px 20px; border-radius:4px;
+    font-size:10px; letter-spacing:0.14em; font-weight:700;
+    text-transform:uppercase; flex-shrink:0; }
+  .binding-status.partial { background:var(--amber-bg);
+    color:var(--amber); border:1px solid var(--amber-dim); }
+  .binding-status.bound { background:var(--green-bg);
+    color:var(--green-bright); border:1px solid var(--green-dim); }
+
   /* Cancel block */
   .cancel-block { margin:24px -4px 4px; padding:16px 18px;
     background:#0a1413; border:1px solid var(--paper-line);
@@ -221,6 +317,7 @@
         </div>
         <div id="cc-articles"></div>
         <button type="button" class="add-article-btn" id="cc-add-article-btn" style="display:none;">+ Add Article</button>
+        <div id="cc-signatures"></div>
         <div class="cancel-block" id="cc-cancel-block" style="display:none;">
           <div class="cancel-block-info">
             <div class="cancel-block-lab">Withdraw from this <em>negotiation</em>.</div>
@@ -265,11 +362,17 @@ function reasonText(reason) {
     contract_not_found:    'Contract not found.',
     negotiation_not_found: 'Negotiation not found.',
     negotiation_cancelled: 'This negotiation has been cancelled.',
+    negotiation_signed:    'Can’t edit — the contract has been signed. Withdraw a signature first.',
     article_not_found:     'Article not found.',
     no_entrepreneur:       'No entrepreneur faction found.',
     not_party_ceo:         'Only the CEOs of the negotiating parties may view this draft.',
     not_ceo:               'You’re not the CEO of the corp you’re acting as.',
     corp_not_party:        'That corp isn’t a party to this negotiation.',
+    wrong_status:          'That action isn’t available in the contract’s current state.',
+    already_signed:        'The expiry is locked — at least one CEO has signed.',
+    expiry_not_set:        'Set an expiry date before signing.',
+    expiry_in_past:        'Pick a future month for expiry.',
+    not_cancellable:       'This contract can’t be cancelled from its current state.',
   })[reason] || ('Failed: ' + (reason || 'unknown'));
 }
 
@@ -294,18 +397,45 @@ async function refresh() {
   state.contract     = data.contract;
   state.activeCorpId = (data.contract.caller_corp_ids || [])[0] || null;
   state.isCancelled  = data.contract.status === 'cancelled';
+  state.isBinding    = data.contract.status === 'binding';
+  state.hasAnySig    = (data.contract.signatures || []).length > 0;
+  // Articles are editable only while no signature has landed. The
+  // server enforces the same rule via negotiation_signed in the
+  // validator; this is the UI mirror so the inputs read-only and
+  // the action buttons disappear.
+  state.canEditArticles = !state.isCancelled && !state.isBinding
+                          && !state.hasAnySig && !!state.activeCorpId;
   render();
+}
+
+// Tick ↔ "YYYY-MM" conversion for the <input type="month"> picker.
+// Tick 0 anchored at January 2000 (matches js/utils.js tickToYear so
+// the picker and the topbar GAME DATE can't disagree about what
+// year it is).
+function tickToMonthString(tick) {
+  if (tick == null) return '';
+  const year  = 2000 + Math.floor(tick / 12);
+  const month = (tick % 12) + 1; // ISO month is 1-based
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+function monthStringToTick(s) {
+  if (!s) return null;
+  const [year, month] = s.split('-').map(Number);
+  if (!year || !month) return null;
+  return (year - 2000) * 12 + (month - 1);
 }
 
 function render() {
   const c = state.contract;
   const isCancelled = state.isCancelled;
+  const isBinding   = state.isBinding;
   const initiatingLabel = `${escapeHtml(c.initiating_corp_name || '—')} · ${escapeHtml(c.initiating_corp_nation || '—')}`;
   const counterpartyLabel = `${escapeHtml(c.counterparty_corp_name || '—')} · ${escapeHtml(c.counterparty_corp_nation || '—')}`;
   const statusLabel = ({
-    drafting: 'Draft',
+    drafting:            'Draft',
     awaiting_signatures: 'Awaiting Signatures',
-    cancelled: 'Cancelled',
+    binding:             'Binding',
+    cancelled:           'Cancelled',
   })[c.status] || 'Draft';
 
   document.getElementById('cc-crumb').innerHTML = `
@@ -366,27 +496,140 @@ function render() {
         ? `<div class="articles-empty">No articles were drafted before cancellation.</div>`
         : `<div class="articles-empty"><strong>No articles yet.</strong><br><br>Either CEO may start drafting. Articles ship to the counterparty for agreement; both parties must agree before an article locks.</div>`);
 
-  // Add-article button only when not cancelled and caller can act.
+  // Add-article only when articles are still editable (no signatures
+  // yet, not binding, not cancelled, caller is CEO).
   const addBtn = document.getElementById('cc-add-article-btn');
-  if (!isCancelled && state.activeCorpId) {
-    addBtn.style.display = 'block';
-    addBtn.disabled = false;
-  } else {
-    addBtn.style.display = 'none';
-  }
+  addBtn.style.display = state.canEditArticles ? 'block' : 'none';
+  addBtn.disabled = false;
 
-  // Cancel block: shown for drafting / awaiting_signatures.
+  // Cancel block: drafting + awaiting_signatures only. Binding
+  // contracts need termination (Phase E), not cancellation.
   const cancelBlock = document.getElementById('cc-cancel-block');
-  cancelBlock.style.display = isCancelled ? 'none' : 'flex';
+  cancelBlock.style.display = (isCancelled || isBinding) ? 'none' : 'flex';
+
+  // Signatures section: shows once articles are all locked
+  // (awaiting_signatures) and stays for binding. Hidden during
+  // drafting or cancelled.
+  const sigHost = document.getElementById('cc-signatures');
+  if (c.status === 'awaiting_signatures' || isBinding) {
+    sigHost.innerHTML = renderSignaturesHtml();
+  } else {
+    sigHost.innerHTML = '';
+  }
 
   document.getElementById('cc-load').style.display = 'none';
   document.getElementById('cc-app').style.display = 'block';
 }
 
+function renderSignaturesHtml() {
+  const c = state.contract;
+  const sigs = c.signatures || [];
+  const initiatorSig    = sigs.find(s => s.corp_id === c.initiating_corp_id);
+  const counterpartySig = sigs.find(s => s.corp_id === c.counterparty_corp_id);
+  const isInitiator     = state.activeCorpId === c.initiating_corp_id;
+  const isCounterparty  = state.activeCorpId === c.counterparty_corp_id;
+  const hasExpiry       = c.expires_at_tick != null;
+  // Expiry editable while in awaiting_signatures AND no signatures yet.
+  const expiryEditable  = c.status === 'awaiting_signatures'
+                          && !state.hasAnySig
+                          && !!state.activeCorpId;
+
+  // Expiry control / display.
+  const expiryHtml = expiryEditable
+    ? `<div class="expiry-row">
+         <div class="expiry-lab">
+           This agreement <em>expires</em> on the selected month.
+           <div class="expiry-help">Pick a future month. Once either CEO signs the expiry locks.</div>
+         </div>
+         <input type="month" class="expiry-input" id="cc-expiry-input"
+                value="${escapeHtml(tickToMonthString(c.expires_at_tick))}" />
+         <button type="button" class="sig-btn primary" id="cc-set-expiry-btn">Set Expiry</button>
+       </div>`
+    : `<div class="expiry-row">
+         <div class="expiry-lab">
+           This agreement <em>expires</em> on
+           <span class="expiry-display">${hasExpiry ? escapeHtml(tickToDate(c.expires_at_tick)) : '— not yet set —'}</span>.
+         </div>
+       </div>`;
+
+  // Per-party signature block.
+  const sigBlock = (which, party, partyName, partyNation, sig) => {
+    const isMine     = state.activeCorpId === party;
+    const isSigned   = !!sig;
+    const lineClass  = isSigned ? 'signed' : '';
+    const blockClass = isSigned ? 'signed' : '';
+    let line;
+    if (isSigned) {
+      // "Signed" wordmark + tick label. Use the corp name as the
+      // mark so it reads as a corporate signature.
+      line = `<span class="sig-signature">${escapeHtml(partyName || which)}</span>`;
+    } else {
+      line = `<span class="sig-signature empty">&mdash; sign here &mdash;</span>`;
+    }
+    let btn;
+    if (isMine && !isSigned) {
+      const enabled = hasExpiry; // can't sign without expiry set
+      btn = enabled
+        ? `<button type="button" class="sig-btn primary" data-sig-action="sign" data-corp-id="${escapeHtml(party)}">&#9999; Sign as CEO</button>`
+        : `<button type="button" class="sig-btn disabled" disabled>Set expiry first</button>`;
+    } else if (isMine && isSigned) {
+      btn = `<button type="button" class="sig-btn amber" data-sig-action="withdraw" data-corp-id="${escapeHtml(party)}">Withdraw Signature</button>`;
+    } else if (!isMine && isSigned) {
+      btn = `<button type="button" class="sig-btn signed" disabled>&#10003; Signed</button>`;
+    } else {
+      btn = `<button type="button" class="sig-btn disabled" disabled>Waiting on Counterparty</button>`;
+    }
+    const caption = isSigned && sig?.signed_at_tick != null
+      ? `Signed <strong>${escapeHtml(tickToDate(sig.signed_at_tick))}</strong>`
+      : (isMine ? 'Your signature' : 'Counterparty signature');
+    return `
+      <div class="sig-block ${blockClass}">
+        <div class="sig-party-lab">For the ${escapeHtml(which)}</div>
+        <div class="sig-party-name">${escapeHtml(partyName || '—')}</div>
+        <div class="sig-party-meta">${escapeHtml(partyNation || '—')}</div>
+        <div class="sig-line ${lineClass}">${line}</div>
+        <div class="sig-caption">${caption}</div>
+        ${btn}
+      </div>`;
+  };
+
+  const sigRow = `
+    <div class="sig-row">
+      ${sigBlock('Initiator',    c.initiating_corp_id,   c.initiating_corp_name,   c.initiating_corp_nation,   initiatorSig)}
+      ${sigBlock('Counterparty', c.counterparty_corp_id, c.counterparty_corp_name, c.counterparty_corp_nation, counterpartySig)}
+    </div>`;
+
+  // Binding strip — partial vs bound.
+  const sigCount = sigs.length;
+  const stripStatus = state.isBinding
+    ? `<span class="binding-status bound">&#10003; Binding</span>`
+    : `<span class="binding-status partial">Partial &middot; ${sigCount} of 2 Signed</span>`;
+  const stripLab = state.isBinding
+    ? `<strong>This contract is binding.</strong> Filed to both corporations' Documents containers. <em>Either CEO may withdraw their signature to revert.</em>`
+    : `Lock all articles, then both CEOs must sign. <em>The contract becomes a binding instrument when both signatures are affixed.</em>`;
+
+  return `
+    <div class="signatures">
+      <div class="sig-head">
+        <div class="sig-head-lab">Signatures &middot; Execution</div>
+        <div class="sig-head-title">In <em>witness</em> whereof</div>
+        ${state.isBinding ? '<div class="sig-head-meta">Both signatures affixed.</div>' : '<div class="sig-head-meta">Set the expiry, then both CEOs sign.</div>'}
+      </div>
+      ${expiryHtml}
+      ${sigRow}
+      <div class="binding-strip">
+        <div class="binding-lab">${stripLab}</div>
+        ${stripStatus}
+      </div>
+    </div>`;
+}
+
 function renderArticleHtml(a, index) {
   const c = state.contract;
   const isCancelled = state.isCancelled;
-  const editable = !isCancelled && !!state.activeCorpId;
+  // Phase D: editable also requires no signatures and not binding —
+  // canEditArticles bundles those checks. Server enforces the same.
+  const editable = state.canEditArticles;
   const titleVal = escapeHtml(a.title || '');
   const bodyVal  = escapeHtml(a.body  || '');
   const isLocked = !!a.locked;
@@ -501,6 +744,67 @@ function bindHandlers() {
     } catch (e) {
       alert('Cancel failed: ' + (e?.message || e));
       btn.disabled = false; btn.textContent = 'Cancel Negotiation';
+    }
+  });
+
+  // Signature section actions: Set Expiry, Sign, Withdraw. Delegated
+  // on #cc-signatures because the section gets re-rendered on every
+  // refresh().
+  document.getElementById('cc-signatures').addEventListener('click', async (e) => {
+    const setBtn = e.target.closest('#cc-set-expiry-btn');
+    if (setBtn) {
+      if (setBtn.disabled || !state.activeCorpId) return;
+      const input = document.getElementById('cc-expiry-input');
+      const tick = monthStringToTick(input?.value);
+      if (tick == null) { alert('Pick a month first.'); return; }
+      setBtn.disabled = true; setBtn.textContent = 'Saving…';
+      try {
+        const { data, error } = await _supabase.rpc('set_corp_negotiation_expires', {
+          p_contract_id:     contractId,
+          p_corp_id:         state.activeCorpId,
+          p_expires_at_tick: tick,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          alert(reasonText(data?.reason));
+          setBtn.disabled = false; setBtn.textContent = 'Set Expiry';
+          return;
+        }
+        await refresh();
+      } catch (err) {
+        alert('Failed: ' + (err?.message || err));
+        setBtn.disabled = false; setBtn.textContent = 'Set Expiry';
+      }
+      return;
+    }
+
+    const sigBtn = e.target.closest('[data-sig-action]');
+    if (!sigBtn || sigBtn.disabled) return;
+    const action = sigBtn.dataset.sigAction;
+    const corpId = sigBtn.dataset.corpId;
+    if (!corpId) return;
+    if (action === 'withdraw' && !confirm('Withdraw your signature?')) return;
+
+    sigBtn.disabled = true;
+    const prevText = sigBtn.textContent;
+    sigBtn.textContent = action === 'sign' ? 'Signing…' : 'Withdrawing…';
+    try {
+      const rpc = action === 'sign'
+        ? 'sign_corp_negotiation'
+        : 'withdraw_corp_negotiation_signature';
+      const { data, error } = await _supabase.rpc(rpc, {
+        p_contract_id: contractId, p_corp_id: corpId,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        alert(reasonText(data?.reason));
+        sigBtn.disabled = false; sigBtn.textContent = prevText;
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      alert('Failed: ' + (err?.message || err));
+      sigBtn.disabled = false; sigBtn.textContent = prevText;
     }
   });
 }
