@@ -58,15 +58,17 @@ BEGIN
             el.fired_at_tick                                AS tick,
             el.trigger_key                                  AS kind,
             el.event_name                                   AS title,
-            el.description_used                             AS body,
-            el.effects_applied                              AS metadata
+            el.description_used                             AS body
           FROM public.event_log el
          WHERE el.fired_at_tick IS NOT NULL
            AND (
                el.faction_id = p_corp_id
+               -- Text comparison on the JSON value rather than ::uuid
+               -- cast — any historical row with a malformed corp_id
+               -- string would otherwise throw and tank the query for
+               -- the entire corp.
                OR (el.effects_applied IS NOT NULL
-                   AND (el.effects_applied ->> 'corp_id') IS NOT NULL
-                   AND (el.effects_applied ->> 'corp_id')::uuid = p_corp_id)
+                   AND el.effects_applied ->> 'corp_id' = p_corp_id::text)
            )
 
         UNION ALL
@@ -81,14 +83,7 @@ BEGIN
                    to_char(b.amount_due, 'FM999,999,999,999'),
                    b.year,
                    to_char(b.revenue_taxed, 'FM999,999,999,999'),
-                   b.rate_pct)                              AS body,
-            jsonb_build_object(
-                'tax_bill_id', b.id,
-                'amount_due',  b.amount_due,
-                'year',        b.year,
-                'rate_pct',    b.rate_pct,
-                'status',      b.status
-            )                                                AS metadata
+                   b.rate_pct)                              AS body
           FROM public.corp_tax_bills b
          WHERE b.corp_id = p_corp_id
 
@@ -107,12 +102,7 @@ BEGIN
                  ELSE 'Taxes Paid' END                      AS title,
             format('Tax bill of $%s for year %s paid.',
                    to_char(b.amount_due, 'FM999,999,999,999'),
-                   b.year)                                   AS body,
-            jsonb_build_object(
-                'tax_bill_id', b.id,
-                'amount_paid', b.amount_due,
-                'year',        b.year
-            )                                                AS metadata
+                   b.year)                                   AS body
           FROM public.corp_tax_bills b
          WHERE b.corp_id = p_corp_id
            AND b.status IN ('paid', 'paid_with_fraud')
