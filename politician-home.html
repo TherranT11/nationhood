@@ -1982,17 +1982,46 @@ function renderPressingIssues(ctx) {
 const TRIAL_ROUND_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
 function renderActiveTrialCard(t) {
-  // list_active_trials_for_advocate only returns trials in
-  // 'in_progress' or 'settlement_conference' status. Standalone
-  // pre_trial cases (waiting for opposing counsel) come through
-  // renderPretrialCard via pretrialCases. No branch here for them.
+  // list_active_trials_for_advocate returns trials in
+  // 'in_progress', 'settlement_conference', or 'awaiting_hearing'
+  // (SC trials queued for the Supreme Court). Standalone pre_trial
+  // cases (waiting for opposing counsel) come through
+  // renderPretrialCard via pretrialCases.
   const isSettleConf = t.status === 'settlement_conference';
+  const isAwaiting   = t.status === 'awaiting_hearing';
   const isJudge      = t.role === 'judge';
+  const isSC         = !!t.is_supreme_court;
   const side         = t.side || 'plaintiff';
   const caseTag      = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
   const sideLabel    = isJudge
     ? 'PRESIDING FROM THE BENCH'
     : (side === 'plaintiff' ? 'FOR THE PLAINTIFF' : 'FOR THE DEFENDANT');
+
+  // Awaiting-hearing variant (SC only). The trial is queued — both
+  // counsels seated, but the Supreme Court is either busy with
+  // another case or waiting for a Justice to be appointed. No CTA
+  // button; status pill conveys the wait.
+  if (isAwaiting) {
+    return `
+      <div class="ti-card in-progress trial-enter-card" data-trial-id="${escHtml(t.trial_id)}">
+        <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
+        <div class="ti-info">
+          <div class="ti-eyebrow">SUPREME COURT CASE &middot; ${escHtml(caseTag)}</div>
+          <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
+          <div class="ti-meta">
+            <span class="ti-side ${side}">${escHtml(sideLabel)}</span>
+            <span class="ti-sep">&middot;</span>
+            <span class="ti-judge">queued for the bench</span>
+          </div>
+        </div>
+        <div class="ti-right">
+          <div class="ti-status">
+            <span class="ti-status-lab">STATUS</span>
+            <span class="ti-pill their-turn">AWAITING HEARING</span>
+          </div>
+        </div>
+      </div>`;
+  }
 
   // Judge variant — caller is the assigned Magistrate. Mirrors the
   // advocate card shape so the Pressing Issues feed stays uniform;
@@ -2074,11 +2103,17 @@ function renderActiveTrialCard(t) {
   const turnPill   = t.your_turn
     ? '<span class="ti-pill your-turn"><span class="ti-pill-dot"></span> YOUR TURN</span>'
     : '<span class="ti-pill their-turn">OPPOSING TURN</span>';
+  // SC in-progress trials read as "SUPREME COURT CASE" rather than
+  // "ONGOING TRIAL" — the court tier IS the headline. Other variants
+  // (judge, settlement_conference) don't need this since SC trials
+  // skip settlement and the judge view only applies once an SC
+  // Justice is assigned (Phase 2's appointment mechanic deferred).
+  const eyebrowLabel = isSC ? 'SUPREME COURT CASE' : 'ONGOING TRIAL';
   return `
     <div class="ti-card in-progress trial-enter-card" data-trial-id="${escHtml(t.trial_id)}">
       <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
       <div class="ti-info">
-        <div class="ti-eyebrow">ONGOING TRIAL &middot; ${escHtml(caseTag)}</div>
+        <div class="ti-eyebrow">${eyebrowLabel} &middot; ${escHtml(caseTag)}</div>
         <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
         <div class="ti-meta">
           <span class="ti-side ${side}">${escHtml(sideLabel)}</span>
