@@ -1544,22 +1544,16 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Draft a memo that lands on the right desk inside the ministry.' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.' },
 ];
-// Advocate action placeholders — three court types mirror the three
-// law categories seeded in 20270502 (Criminal / Civil / Commercial).
-// No `action` key → renderAffiliation greys them out until RPCs land.
-// Advocate's three actions. TRY A CASE is the big-swing primary —
-// draws a random approved case from the court_case_drafts pool (filled
-// with names and corps from the lawyer's nation) and presents it for
-// Accept (+0.2 Standing) or Reject (-1 Reputation). The court type
-// (Criminal / Civil / Commercial) becomes flavor on the drawn case
-// rather than a player choice. The other two slots are the safe grind
-// (Statute Books → Legal Acumen) and the appellate play (Appeal,
-// 20270543 — pick a verdict within 12 ticks, flip it for +5 Rep, lose
-// 1 Rep if it stands). Magistrates can see the button but the server
-// gates them out — see start_appeal's magistrate_cannot_appeal reason.
+// Advocate's three actions. TRY A CASE draws from the court_case_drafts
+// pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Credibility,
+// -1 Reputation, only when no active cases. APPEAL (20270543/45,
+// 20270561 for SC) is the appellate play. All three share
+// try_case_cooldown_until_tick so the panel's "PICK ONE EACH TICK"
+// rule holds; APPEAL opts out of that cooldown but still respects the
+// case-load cap. Magistrates are server-gated out of TRY/APPEAL/READ.
 const ADVOCATE_ACTIONS = [
   { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
-  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'Spend a quiet afternoon with the codes. No risk, no wins — just Legal Acumen.' },
+  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'A quiet afternoon with the codes. +2 Credibility, -1 Reputation. Only when no cases are active.', action: 'read-statute-books' },
   { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +3 Reputation and +5 Political Capital; lose 5 Rep and 3 PC if it stands.', action: 'appeal' },
 ];
 
@@ -1623,14 +1617,10 @@ const AFFIL_VARIANTS = {
     name:    'Advocate',
     descFn:  (ctx) => `You have been admitted to the Bar of <strong>${escHtml(ctx.nation?.name || '—')}</strong>. You appear before the courts — the realistic first step on the bench.`,
     actions: ADVOCATE_ACTIONS,
-    // Only TRY A CASE has an `action` key, so the existing render
-    // logic enables that one and greys the other two (Statute Books
-    // and Brief the Press — RPCs land later).
     actionsEnabled: true,
-    // 3-tick cooldown stamped by draw_court_case on success
-    // (20270520). Shared by all three action buttons via the
-    // existing renderAffiliation cooldown branch, but only TRY A
-    // CASE is enabled, so only it visibly cools down.
+    // 1-tick cooldown shared by TRY A CASE (20270545) and STATUTE
+    // BOOKS (20270577). APPEAL opts out via its per-action branch
+    // below but still respects the case-load cap.
     cooldownColumn: 'try_case_cooldown_until_tick',
   },
   // Triggered when politician_office is NULL but politician_ministry is
@@ -1741,6 +1731,12 @@ function renderAffiliation(ctx) {
       if (atCaseCap) {
         perActionDisabled = { kind: 'cooldown', text: `Case load full (${advocateActiveCount}/${advocateCaseCap})`, title: `At your active-case limit. Resolve a trial before filing an appeal.` };
       }
+    } else if (enabled && a.action === 'read-statute-books') {
+      // STATUTE BOOKS is gated by "no active cases" — onCooldown is
+      // handled by the shared variant-level branch below.
+      if (advocateActiveCount > 0) {
+        perActionDisabled = { kind: 'cooldown', text: `${advocateActiveCount} active case${advocateActiveCount === 1 ? '' : 's'}`, title: `Resolve your open trials before studying.` };
+      }
     }
     if (!enabled) {
       cls += ' disabled';
@@ -1835,7 +1831,12 @@ const ACTIONS = {
   'fundraising-call':   { rpc: 'politician_fundraising_call',      label: 'Fundraising Call',   needsParty: true,  format: fmtLocalResult },
   'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
   'office-hours':       { rpc: 'politician_office_hours',          label: 'Office Hours',       needsParty: true,  format: fmtLocalResult },
+  'read-statute-books': { rpc: 'read_statute_books',               label: 'Read the Statute Books', needsParty: false, format: fmtStatuteBooks },
 };
+
+function fmtStatuteBooks(data) {
+  return `Read the Statute Books: Credibility ${data.credibility_delta > 0 ? '+' : ''}${data.credibility_delta} (now ${data.new_credibility}), Reputation ${data.reputation_delta > 0 ? '+' : ''}${data.reputation_delta} (now ${data.new_reputation}).`;
+}
 
 function fmtMpResult(data) {
   const label = ACTIONS[data.action.replace(/_/g, '-')]?.label || data.action;
@@ -1895,6 +1896,8 @@ const ACTION_REASON = {
   cooldown:                 'You’ve already used your action this tick.',
   insufficient_party_funds: 'Your party can’t cover the cost.',
   no_shard:                 'Shard not found.',
+  not_advocate:             'You need to be a bar-admitted advocate (and not a Magistrate).',
+  active_cases:             'Resolve your active cases before studying the codes.',
 };
 
 async function handleResignOffice(btn, officeName) {
