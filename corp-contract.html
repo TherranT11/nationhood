@@ -83,12 +83,83 @@
     border-bottom:1px dashed var(--paper-line); text-align:center; }
   .recital strong { color:#fff; font-weight:600; font-style:normal; }
 
-  /* Phase A placeholder */
-  .articles-placeholder { padding:36px 24px; text-align:center;
+  /* Articles list */
+  .articles-empty { padding:28px 24px; text-align:center;
     color:var(--mut); font-size:11px; font-style:italic; line-height:1.7; }
-  .articles-placeholder em { color:var(--legal-bright); font-style:italic; }
-  .articles-placeholder strong { color:#aaa; font-style:normal;
-    font-weight:600; }
+  .articles-empty strong { color:#aaa; font-style:normal; font-weight:600; }
+
+  .article { margin-bottom:18px; padding:0; }
+  .article-head { display:flex; align-items:baseline; gap:11px;
+    margin-bottom:9px; padding-bottom:7px;
+    border-bottom:1px dotted var(--paper-line); }
+  .article-num { font-family:Georgia,serif; font-size:15px;
+    color:var(--legal-bright); font-weight:600; font-style:italic;
+    letter-spacing:-0.005em; flex-shrink:0; }
+  .article-title-input { flex:1; font-family:Georgia,serif;
+    font-size:14.5px; color:#fff; font-weight:600; letter-spacing:-0.005em;
+    background:transparent; border:none; padding:0; outline:none;
+    min-width:0; }
+  .article-title-input::placeholder { color:var(--faint);
+    font-style:italic; font-weight:400; }
+  .article.locked .article-title-input { color:var(--paper-text); }
+  .article-status { font-size:7.5px; letter-spacing:0.14em;
+    font-weight:700; padding:3px 8px; border-radius:2px;
+    font-family:-apple-system,system-ui,sans-serif; text-transform:uppercase;
+    flex-shrink:0; }
+  .article-status.locked { background:var(--green-bg);
+    color:var(--green-bright); border:1px solid var(--green-dim); }
+  .article-status.pending { background:var(--amber-bg);
+    color:var(--amber); border:1px solid var(--amber-dim); }
+  .article-status.empty { background:transparent; color:var(--faint);
+    border:1px solid var(--paper-line); }
+
+  .article-body-input { width:100%; background:transparent;
+    border:none; color:var(--paper-text); font-family:Georgia,serif;
+    font-size:12px; line-height:1.8; resize:vertical; min-height:54px;
+    padding:0; outline:none; }
+  .article-body-input::placeholder { color:var(--faint); font-style:italic; }
+
+  .article-actions { display:flex; align-items:center; gap:10px;
+    padding-top:11px; margin-top:9px;
+    border-top:1px dotted var(--paper-line);
+    font-family:-apple-system,system-ui,sans-serif; flex-wrap:wrap; }
+  .agree-state { display:flex; align-items:center; gap:5px; font-size:9px;
+    color:var(--mut); font-style:italic; letter-spacing:0.04em; }
+  .agree-state.agreed { color:var(--green-bright); font-style:normal; }
+  .agree-state.empty { color:var(--faint); }
+  .agree-state .dot { font-size:11px; }
+  .agree-spacer { flex:1; }
+  .article-btn { padding:7px 14px; border-radius:3px; font-size:9px;
+    letter-spacing:0.13em; font-weight:700; cursor:pointer;
+    font-family:inherit; text-transform:uppercase; }
+  .article-btn.primary { background:var(--green-bg);
+    border:1px solid var(--green); color:var(--green-bright); }
+  .article-btn.primary:hover { background:rgba(122,176,122,0.12); color:#fff; }
+  .article-btn.amber { background:var(--amber-bg);
+    border:1px solid var(--amber-dim); color:var(--amber); }
+  .article-btn.amber:hover { background:#241810; color:#fff; }
+  .article-btn.neutral { background:transparent;
+    border:1px solid var(--paper-line); color:var(--mut); }
+  .article-btn.neutral:hover { color:#bbb; border-color:rgba(255,255,255,0.18); }
+  .article-btn.danger { background:transparent;
+    border:1px solid var(--paper-line); color:var(--mut);
+    width:26px; height:26px; padding:0; display:flex;
+    align-items:center; justify-content:center; font-size:11px; }
+  .article-btn.danger:hover { color:var(--red);
+    border-color:var(--red-dim); background:var(--red-bg); }
+  .article-btn:disabled { opacity:0.45; cursor:not-allowed; }
+  .article-btn.locked-pill { background:rgba(122,176,122,0.05);
+    border:1px solid var(--green-dim); color:var(--green);
+    cursor:default; }
+
+  .add-article-btn { margin-top:8px; padding:14px;
+    background:transparent; border:1px dashed var(--paper-line);
+    border-radius:5px; color:var(--mut); font-size:9.5px;
+    letter-spacing:0.14em; font-weight:700; cursor:pointer;
+    font-family:inherit; width:100%; text-transform:uppercase; }
+  .add-article-btn:hover { color:var(--legal-bright);
+    border-color:var(--legal-dim); background:rgba(200,144,112,0.03); }
+  .add-article-btn:disabled { opacity:0.5; cursor:not-allowed; }
 
   /* Cancel block */
   .cancel-block { margin:24px -4px 4px; padding:16px 18px;
@@ -141,13 +212,8 @@
           corporation by signature of its Chief Executive Officer, the
           parties <strong>do hereby agree</strong> to the following articles:
         </div>
-        <div class="articles-placeholder">
-          <strong>Article authoring is not yet enabled on this contract.</strong><br><br>
-          The negotiation is registered on both corporations' records. Either
-          CEO may withdraw at any time before articles begin. The drafting
-          surface (add / agree / lock <em>articles</em>) ships in the next
-          phase.
-        </div>
+        <div id="cc-articles"></div>
+        <button type="button" class="add-article-btn" id="cc-add-article-btn" style="display:none;">+ Add Article</button>
         <div class="cancel-block" id="cc-cancel-block" style="display:none;">
           <div class="cancel-block-info">
             <div class="cancel-block-lab">Withdraw from this <em>negotiation</em>.</div>
@@ -179,14 +245,7 @@ async function init() {
   if (!ctx) return;
 
   try {
-    const { data, error } = await _supabase.rpc('get_corp_contract',
-      { p_contract_id: contractId });
-    if (error) throw error;
-    if (!data?.success) {
-      showError(reasonText(data?.reason));
-      return;
-    }
-    render(data.contract);
+    await refresh();
   } catch (e) {
     showError(e?.message || 'Failed to load contract.');
   }
@@ -194,11 +253,16 @@ async function init() {
 
 function reasonText(reason) {
   return ({
-    not_authenticated:  'You must be signed in.',
-    missing_argument:   'Missing contract id.',
-    contract_not_found: 'Contract not found.',
-    no_entrepreneur:    'No entrepreneur faction found.',
-    not_party_ceo:      'Only the CEOs of the negotiating parties may view this draft.',
+    not_authenticated:     'You must be signed in.',
+    missing_argument:      'Missing argument.',
+    contract_not_found:    'Contract not found.',
+    negotiation_not_found: 'Negotiation not found.',
+    negotiation_cancelled: 'This negotiation has been cancelled.',
+    article_not_found:     'Article not found.',
+    no_entrepreneur:       'No entrepreneur faction found.',
+    not_party_ceo:         'Only the CEOs of the negotiating parties may view this draft.',
+    not_ceo:               'You’re not the CEO of the corp you’re acting as.',
+    corp_not_party:        'That corp isn’t a party to this negotiation.',
   })[reason] || ('Failed: ' + (reason || 'unknown'));
 }
 
@@ -209,29 +273,51 @@ function showError(msg) {
   el.style.display = 'block';
 }
 
-function render(c) {
-  const isCancelled = c.status === 'cancelled';
+const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV'];
+const romanize = (n) => ROMAN[n] || String(n + 1);
+
+// Module-level state. Repopulated by refresh() on every server round-trip.
+let state = { contract: null, activeCorpId: null, isCancelled: false };
+
+async function refresh() {
+  const { data, error } = await _supabase.rpc('get_corp_contract',
+    { p_contract_id: contractId });
+  if (error) { showError(error.message || 'Failed to load.'); return; }
+  if (!data?.success) { showError(reasonText(data?.reason)); return; }
+  state.contract     = data.contract;
+  state.activeCorpId = (data.contract.caller_corp_ids || [])[0] || null;
+  state.isCancelled  = data.contract.status === 'cancelled';
+  render();
+}
+
+function render() {
+  const c = state.contract;
+  const isCancelled = state.isCancelled;
   const initiatingLabel = `${escapeHtml(c.initiating_corp_name || '—')} · ${escapeHtml(c.initiating_corp_nation || '—')}`;
   const counterpartyLabel = `${escapeHtml(c.counterparty_corp_name || '—')} · ${escapeHtml(c.counterparty_corp_nation || '—')}`;
+  const statusLabel = ({
+    drafting: 'Draft',
+    awaiting_signatures: 'Awaiting Signatures',
+    cancelled: 'Cancelled',
+  })[c.status] || 'Draft';
 
   document.getElementById('cc-crumb').innerHTML = `
     <a href="entrepreneur-corp.html?id=${escapeHtml(c.initiating_corp_id)}">${escapeHtml(c.initiating_corp_name || 'Corp')}</a>
     <span class="sep">&rsaquo;</span>
-    <span class="here">${isCancelled ? 'Cancelled' : 'Draft'} · Contract Negotiation</span>`;
+    <span class="here">${escapeHtml(statusLabel)} · Contract Negotiation</span>`;
 
-  if (isCancelled) {
-    document.getElementById('cc-cancelled-banner').innerHTML = `
-      <div class="cancelled-banner">
-        <strong>Negotiation cancelled.</strong> This draft was closed on tick ${c.cancelled_at_tick ?? '—'}
-        ${c.cancelled_at_tick != null ? '(' + escapeHtml(tickToDate(c.cancelled_at_tick)) + ')' : ''}.
-      </div>`;
-  }
+  document.getElementById('cc-cancelled-banner').innerHTML = isCancelled
+    ? `<div class="cancelled-banner">
+         <strong>Negotiation cancelled.</strong> This draft was closed on tick ${c.cancelled_at_tick ?? '—'}
+         ${c.cancelled_at_tick != null ? '(' + escapeHtml(tickToDate(c.cancelled_at_tick)) + ')' : ''}.
+       </div>`
+    : '';
 
   document.getElementById('cc-page-head').innerHTML = `
     <div class="ph-row">
       <div class="ph-icon">&#9999;</div>
       <div class="ph-info">
-        <div class="ph-eyebrow">${isCancelled ? 'Cancelled Negotiation' : 'Contract Negotiation · Draft'}</div>
+        <div class="ph-eyebrow">${isCancelled ? 'Cancelled Negotiation' : 'Contract Negotiation · ' + escapeHtml(statusLabel)}</div>
         <div class="ph-name">Draft the <em>Articles</em></div>
         <div class="ph-meta">Compose articles one at a time. <strong>Each article requires both parties to agree before it locks.</strong> Once all articles are locked, both CEOs may sign. <em>The contract becomes binding only when both signatures are affixed.</em></div>
       </div>
@@ -264,44 +350,203 @@ function render(c) {
     <div class="doc-title">${escapeHtml(c.initiating_corp_name || 'Initiator')} &mdash; <em>${escapeHtml(c.counterparty_corp_name || 'Counterparty')}</em></div>
     <div class="doc-sub"><strong>${escapeHtml(c.initiating_corp_name || '—')}</strong>, of the ${escapeHtml(c.initiating_corp_nation || 'unknown jurisdiction')}, and <strong>${escapeHtml(c.counterparty_corp_name || '—')}</strong>, of the ${escapeHtml(c.counterparty_corp_nation || 'unknown jurisdiction')}</div>`;
 
-  // Cancel block only renders for drafting contracts. RPC enforces the
-  // CEO check server-side so even if a non-CEO somehow sees the button
-  // they get a clean rejection.
-  if (!isCancelled) {
-    const cancelBlock = document.getElementById('cc-cancel-block');
-    cancelBlock.style.display = 'flex';
-    document.getElementById('cc-cancel-btn').addEventListener('click', async () => {
-      if (!confirm('Cancel this negotiation? Both parties' +
-        ' will be notified and the draft will close.')) return;
-      const btn = document.getElementById('cc-cancel-btn');
-      btn.disabled = true;
-      btn.textContent = 'Cancelling…';
-      try {
-        const { data, error } = await _supabase.rpc('cancel_corp_negotiation',
-          { p_contract_id: contractId });
-        if (error) throw error;
-        if (!data?.success) {
-          alert('Cancel failed: ' + (data?.reason || 'unknown'));
-          btn.disabled = false;
-          btn.textContent = 'Cancel Negotiation';
-          return;
-        }
-        // Reload in place so the cancelled state renders. The user
-        // navigates away on their own — we don't know which corp page
-        // is "theirs" without another lookup.
-        window.location.reload();
-      } catch (e) {
-        alert('Cancel failed: ' + (e?.message || e));
-        btn.disabled = false;
-        btn.textContent = 'Cancel Negotiation';
-      }
-    });
+  // Articles.
+  const articles = c.articles || [];
+  const host = document.getElementById('cc-articles');
+  host.innerHTML = articles.length
+    ? articles.map((a, i) => renderArticleHtml(a, i)).join('')
+    : (isCancelled
+        ? `<div class="articles-empty">No articles were drafted before cancellation.</div>`
+        : `<div class="articles-empty"><strong>No articles yet.</strong><br><br>Either CEO may start drafting. Articles ship to the counterparty for agreement; both parties must agree before an article locks.</div>`);
+
+  // Add-article button only when not cancelled and caller can act.
+  const addBtn = document.getElementById('cc-add-article-btn');
+  if (!isCancelled && state.activeCorpId) {
+    addBtn.style.display = 'block';
+    addBtn.disabled = false;
+  } else {
+    addBtn.style.display = 'none';
   }
+
+  // Cancel block: shown for drafting / awaiting_signatures.
+  const cancelBlock = document.getElementById('cc-cancel-block');
+  cancelBlock.style.display = isCancelled ? 'none' : 'flex';
 
   document.getElementById('cc-load').style.display = 'none';
   document.getElementById('cc-app').style.display = 'block';
 }
 
+function renderArticleHtml(a, index) {
+  const c = state.contract;
+  const isCancelled = state.isCancelled;
+  const editable = !isCancelled && !!state.activeCorpId;
+  const titleVal = escapeHtml(a.title || '');
+  const bodyVal  = escapeHtml(a.body  || '');
+  const isLocked = !!a.locked;
+
+  const agreements = a.parties_agreed || [];
+  const myAgreement   = state.activeCorpId
+    ? agreements.find(x => x.corp_id === state.activeCorpId) : null;
+  const otherCorpId   = state.activeCorpId === c.initiating_corp_id
+    ? c.counterparty_corp_id : c.initiating_corp_id;
+  const otherCorpName = state.activeCorpId === c.initiating_corp_id
+    ? c.counterparty_corp_name : c.initiating_corp_name;
+  const otherAgreement = agreements.find(x => x.corp_id === otherCorpId);
+
+  let statusPill;
+  if (isLocked) {
+    statusPill = '<span class="article-status locked">&#10003; Locked</span>';
+  } else if (myAgreement && !otherAgreement) {
+    statusPill = '<span class="article-status pending">Awaiting counterparty</span>';
+  } else if (otherAgreement && !myAgreement) {
+    statusPill = '<span class="article-status pending">Awaiting your agreement</span>';
+  } else if (!a.title && !a.body) {
+    statusPill = '<span class="article-status empty">Empty</span>';
+  } else {
+    statusPill = '<span class="article-status empty">In drafting</span>';
+  }
+
+  const youLab = myAgreement
+    ? `<span class="agree-state agreed"><span class="dot">&#10003;</span> You agreed</span>`
+    : `<span class="agree-state empty"><span class="dot">&#9711;</span> You pending</span>`;
+  const otherLab = otherAgreement
+    ? `<span class="agree-state agreed"><span class="dot">&#10003;</span> ${escapeHtml(otherCorpName || 'Counterparty')} agreed</span>`
+    : `<span class="agree-state empty"><span class="dot">&#9711;</span> ${escapeHtml(otherCorpName || 'Counterparty')} pending</span>`;
+
+  let actions = '';
+  if (editable) {
+    actions += `<button type="button" class="article-btn neutral" data-action="save" data-article-id="${escapeHtml(a.id)}">Save</button>`;
+    actions += myAgreement
+      ? `<button type="button" class="article-btn amber" data-action="withdraw" data-article-id="${escapeHtml(a.id)}">Withdraw</button>`
+      : `<button type="button" class="article-btn primary" data-action="agree" data-article-id="${escapeHtml(a.id)}">&#10003; Agree to Article</button>`;
+    actions += `<button type="button" class="article-btn danger" data-action="delete" data-article-id="${escapeHtml(a.id)}" title="Delete">&#10005;</button>`;
+  }
+
+  return `
+    <div class="article${isLocked ? ' locked' : ''}">
+      <div class="article-head">
+        <span class="article-num">Article ${romanize(index)}.</span>
+        <input type="text" class="article-title-input" data-article-id="${escapeHtml(a.id)}" data-field="title"
+          value="${titleVal}" placeholder="Untitled article — enter heading…" ${editable ? '' : 'readonly'} />
+        ${statusPill}
+      </div>
+      <textarea class="article-body-input" data-article-id="${escapeHtml(a.id)}" data-field="body"
+        placeholder="Write the body of this article. Both parties must agree to the text before the article can be locked." ${editable ? '' : 'readonly'}>${bodyVal}</textarea>
+      <div class="article-actions">
+        ${youLab}
+        ${otherLab}
+        <span class="agree-spacer"></span>
+        ${actions}
+      </div>
+    </div>`;
+}
+
+// Event delegation — listeners attach once on init, then live across
+// re-renders without leaking.
+function bindHandlers() {
+  document.getElementById('cc-articles').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const articleId = btn.dataset.articleId;
+    if (!articleId || !state.activeCorpId) return;
+    await runArticleAction(action, articleId, btn);
+  });
+
+  document.getElementById('cc-add-article-btn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!state.activeCorpId || btn.disabled) return;
+    btn.disabled = true; btn.textContent = 'Adding…';
+    try {
+      const { data, error } = await _supabase.rpc('add_corp_negotiation_article', {
+        p_negotiation_id: contractId,
+        p_corp_id:        state.activeCorpId,
+        p_title:          null,
+        p_body:           null,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        alert('Failed to add article: ' + reasonText(data?.reason));
+        btn.disabled = false; btn.textContent = '+ Add Article';
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      alert('Failed to add article: ' + (err?.message || err));
+      btn.disabled = false; btn.textContent = '+ Add Article';
+    }
+  });
+
+  document.getElementById('cc-cancel-btn').addEventListener('click', async () => {
+    if (!confirm('Cancel this negotiation? The draft will close for both parties.')) return;
+    const btn = document.getElementById('cc-cancel-btn');
+    btn.disabled = true; btn.textContent = 'Cancelling…';
+    try {
+      const { data, error } = await _supabase.rpc('cancel_corp_negotiation',
+        { p_contract_id: contractId });
+      if (error) throw error;
+      if (!data?.success) {
+        alert('Cancel failed: ' + reasonText(data?.reason));
+        btn.disabled = false; btn.textContent = 'Cancel Negotiation';
+        return;
+      }
+      await refresh();
+    } catch (e) {
+      alert('Cancel failed: ' + (e?.message || e));
+      btn.disabled = false; btn.textContent = 'Cancel Negotiation';
+    }
+  });
+}
+
+async function runArticleAction(action, articleId, btn) {
+  // Disable every action button on this article during the call so
+  // double-clicks can't race save with agree etc.
+  const card = btn.closest('.article');
+  const allBtns = card.querySelectorAll('[data-action]');
+  allBtns.forEach(b => b.disabled = true);
+  const restore = () => allBtns.forEach(b => b.disabled = false);
+  try {
+    let result;
+    if (action === 'save') {
+      const titleEl = card.querySelector('[data-field="title"]');
+      const bodyEl  = card.querySelector('[data-field="body"]');
+      result = await _supabase.rpc('update_corp_negotiation_article', {
+        p_article_id: articleId,
+        p_corp_id:    state.activeCorpId,
+        p_title:      titleEl?.value ?? null,
+        p_body:       bodyEl?.value ?? null,
+      });
+    } else if (action === 'agree') {
+      result = await _supabase.rpc('agree_corp_negotiation_article', {
+        p_article_id: articleId, p_corp_id: state.activeCorpId,
+      });
+    } else if (action === 'withdraw') {
+      result = await _supabase.rpc('withdraw_corp_negotiation_article_agreement', {
+        p_article_id: articleId, p_corp_id: state.activeCorpId,
+      });
+    } else if (action === 'delete') {
+      if (!confirm('Delete this article?')) { restore(); return; }
+      result = await _supabase.rpc('delete_corp_negotiation_article', {
+        p_article_id: articleId, p_corp_id: state.activeCorpId,
+      });
+    } else {
+      restore();
+      return;
+    }
+    if (result?.error) throw result.error;
+    if (!result?.data?.success) {
+      alert(reasonText(result?.data?.reason));
+      restore();
+      return;
+    }
+    await refresh();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    restore();
+  }
+}
+
+bindHandlers();
 init();
 </script>
 
