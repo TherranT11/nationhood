@@ -312,6 +312,11 @@ export async function bootstrapPolitician(activeTab) {
   _supabase.rpc('resolve_due_bills')
     .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_bills:', error.message); })
     .catch(e => console.warn('[politician-topbar] resolve_due_bills threw:', e?.message || e));
+  // 20270536: rotate trials whose judge has been silent >5 ticks
+  // so the docket keeps moving without a dedicated tick processor.
+  _supabase.rpc('resolve_due_judge_timeouts')
+    .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_judge_timeouts:', error.message); })
+    .catch(e => console.warn('[politician-topbar] resolve_due_judge_timeouts threw:', e?.message || e));
 
   return { user, faction, shard, nation, allUserFactions, party };
 }

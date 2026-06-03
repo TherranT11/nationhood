@@ -699,6 +699,40 @@
   border-top-color:#c8a26e; }
 .trial-beat-foot.played-foot { color:#888; }
 
+.trial-msg-beat-str { margin-left:auto; font-family:Georgia,serif; font-size:11px;
+  font-style:italic; color:#dcb88a; font-weight:600; padding:2px 7px;
+  background:#161208; border:0.5px solid #5a4630; border-radius:2px; }
+
+/* ── Judge bench surface (20270536) ────────────────────────
+   Reuses the trial-modal brass palette. Lives below the chat
+   when caller is the presiding Magistrate. */
+.judge-scale { padding:12px 24px 6px; background:#0a0807;
+  border-top:0.5px solid rgba(200,162,110,0.18); flex-shrink:0; }
+.judge-scale-row { display:flex; justify-content:space-between; align-items:baseline; }
+.judge-scale-col { display:flex; flex-direction:column; gap:3px; }
+.judge-scale-col.plaintiff { align-items:flex-start; color:#b8cf90; }
+.judge-scale-col.defendant { align-items:flex-end;   color:#9ab8c8; }
+.judge-scale-lab { font-size:8px; letter-spacing:0.16em; font-weight:700; text-transform:uppercase; }
+.judge-scale-val { font-family:Georgia,serif; font-size:22px; font-weight:700; line-height:1; font-style:italic; }
+.judge-scale-verdict { margin-top:9px; font-family:Georgia,serif; font-size:10.5px;
+  color:#bbb; font-style:italic; text-align:center; line-height:1.4; }
+.judge-row { padding:13px 24px 16px; background:#0a0807;
+  border-top:0.5px solid rgba(200,162,110,0.25); flex-shrink:0;
+  display:flex; align-items:center; gap:11px; }
+.judge-row.idle { border-top-color:rgba(255,255,255,0.06); }
+.judge-row-lab { font-size:9px; letter-spacing:0.16em; color:#dcb88a; font-weight:700;
+  text-transform:uppercase; flex-shrink:0; }
+.judge-row.idle .judge-row-lab { color:#888; }
+.judge-row-hint { font-size:10px; color:#888; font-style:italic; }
+.judge-row .trial-send-btn, .judge-row .trial-objection-btn {
+  padding:10px 18px; font-size:9.5px; letter-spacing:0.13em; }
+@media (max-width: 720px) {
+  .judge-scale { padding:11px 12px 6px; }
+  .judge-scale-val { font-size:19px; }
+  .judge-row { padding:11px 12px 13px; flex-wrap:wrap; gap:8px; }
+  .judge-row .trial-send-btn, .judge-row .trial-objection-btn { flex:1; padding:11px 8px; }
+}
+
 /* ── Settlement conference panel (20270533) ─────────────────
    Renders below the chat when status='settlement_conference'.
    Replaces the input bar + hand grid for the pre-trial gate. */
@@ -1823,9 +1857,53 @@ function renderActiveTrialCard(t) {
   // pre_trial cases (waiting for opposing counsel) come through
   // renderPretrialCard via pretrialCases. No branch here for them.
   const isSettleConf = t.status === 'settlement_conference';
-  const side       = t.side || 'plaintiff';
-  const caseTag    = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
-  const sideLabel  = side === 'plaintiff' ? 'FOR THE PLAINTIFF' : 'FOR THE DEFENDANT';
+  const isJudge      = t.role === 'judge';
+  const side         = t.side || 'plaintiff';
+  const caseTag      = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
+  const sideLabel    = isJudge
+    ? 'PRESIDING FROM THE BENCH'
+    : (side === 'plaintiff' ? 'FOR THE PLAINTIFF' : 'FOR THE DEFENDANT');
+
+  // Judge variant — caller is the assigned Magistrate. Mirrors the
+  // advocate card shape so the Pressing Issues feed stays uniform;
+  // the right-side pill flips to RULING REQUESTED / AWAITING VERDICT
+  // / BENCH when the judge has a pending action vs is just monitoring.
+  if (isJudge) {
+    let statusPill, ctaLabel;
+    if (t.pending_objection) {
+      statusPill = '<span class="ti-pill your-turn"><span class="ti-pill-dot"></span> RULING REQUESTED</span>';
+      ctaLabel   = 'RULE NOW';
+    } else if (t.awaiting_verdict) {
+      statusPill = '<span class="ti-pill your-turn"><span class="ti-pill-dot"></span> ENTER VERDICT</span>';
+      ctaLabel   = 'DELIVER VERDICT';
+    } else if (isSettleConf) {
+      statusPill = '<span class="ti-pill their-turn">SETTLEMENT CONFERENCE</span>';
+      ctaLabel   = 'OPEN BENCH';
+    } else {
+      statusPill = '<span class="ti-pill their-turn">ON THE BENCH</span>';
+      ctaLabel   = 'OPEN BENCH';
+    }
+    return `
+      <div class="ti-card in-progress trial-enter-card" data-trial-id="${escHtml(t.trial_id)}">
+        <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
+        <div class="ti-info">
+          <div class="ti-eyebrow">FROM THE BENCH &middot; ${escHtml(caseTag)}</div>
+          <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
+          <div class="ti-meta">
+            <span class="ti-judge">${escHtml(sideLabel)}</span>
+            <span class="ti-sep">&middot;</span>
+            <span class="ti-round">${isSettleConf ? 'Settlement Conference' : `Round <strong>${escHtml(TRIAL_ROUND_ROMAN[t.current_round] || (t.current_round || 1))}</strong> of IV`}</span>
+          </div>
+        </div>
+        <div class="ti-right">
+          <div class="ti-status">
+            <span class="ti-status-lab">STATUS</span>
+            ${statusPill}
+          </div>
+          <button type="button" class="ti-resume-btn trial-enter">${ctaLabel} &rsaquo;</button>
+        </div>
+      </div>`;
+  }
 
   // Settlement-conference variant: both lawyers in, neither has
   // argued yet, both must offer/reject before arguments begin.
@@ -2756,6 +2834,13 @@ function trialReasonText(reason) {
     not_in_settlement_conference: 'The settlement conference is no longer active.',
     invalid_decision:            'Pick either Offer or Reject.',
     already_decided:             'Your decision is already on the record.',
+    objection_pending:           'Wait for the judge to rule on the pending objection.',
+    awaiting_verdict:            'Awaiting the judge’s verdict.',
+    not_the_judge:               'You are not the presiding Magistrate on this trial.',
+    no_pending_objection:        'There is no objection pending a ruling.',
+    not_awaiting_verdict:        'The trial is not at verdict yet.',
+    invalid_ruling:              'Pick either Sustain or Overrule.',
+    pending_message_missing:     'The pending objection record is missing.',
   })[reason] || ('Action failed: ' + (reason || 'unknown'));
 }
 
@@ -2782,6 +2867,15 @@ async function refreshTrial() {
 }
 
 function renderTrialModal(d) {
+  // Judge branch (20270536): caller is the presiding Magistrate.
+  // Bench view — strengths revealed, rule/verdict controls instead
+  // of the speak-+-beat input bar. Routes BEFORE the settlement-
+  // conference check because the judge view spans both SC and
+  // in_progress phases.
+  if (d.role === 'judge') {
+    renderJudgeTrialModal(d);
+    return;
+  }
   // Settlement-conference branch: different layout (no hand, no
   // turn-based chat row, no objection picker). The trial modal stays
   // open through pre-trial-settle → arguments; polling re-renders
@@ -2850,6 +2944,164 @@ function renderTrialModal(d) {
   }
 
   bindTrialControls(d);
+}
+
+// ─── Judge UI (Magistrate bench, 20270536) ─────────────────────────
+// Variant of the trial modal rendered when the caller is the
+// presiding Magistrate. Reuses the trial-modal palette (brass) so
+// the bench surface stays visually uniform with the lawyer view.
+function renderJudgeTrialModal(d) {
+  const caseTag  = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
+  const messages = Array.isArray(d.messages) ? d.messages : [];
+  const isSC     = d.status === 'settlement_conference';
+  const tallies  = computeJudgeTallies(d);
+  const pending  = !!d.pending_objection_message_id;
+  const awaiting = !!d.awaiting_verdict;
+  // Status pill that mirrors the advocate modal's turn-pill slot.
+  let pillHtml;
+  if (pending)        pillHtml = '<span class="trial-turn-pill your"><span class="dot"></span> RULING REQUESTED</span>';
+  else if (awaiting)  pillHtml = '<span class="trial-turn-pill your"><span class="dot"></span> ENTER VERDICT</span>';
+  else if (isSC)      pillHtml = '<span class="trial-turn-pill theirs">SETTLEMENT CONFERENCE</span>';
+  else                pillHtml = '<span class="trial-turn-pill theirs">ON THE BENCH</span>';
+
+  // Ruling row only renders when there's something to rule.
+  let rulingHtml = '';
+  if (pending) {
+    rulingHtml = `
+      <div class="judge-row">
+        <span class="judge-row-lab">RULING</span>
+        <button type="button" class="trial-objection-btn" data-judge-rule="sustain">SUSTAIN</button>
+        <button type="button" class="trial-send-btn"      data-judge-rule="overrule">OVERRULE</button>
+      </div>`;
+  } else if (awaiting) {
+    rulingHtml = `
+      <div class="judge-row">
+        <span class="judge-row-lab">VERDICT</span>
+        <button type="button" class="trial-send-btn"      data-judge-verdict>ENTER VERDICT</button>
+      </div>`;
+  } else {
+    rulingHtml = `
+      <div class="judge-row idle">
+        <span class="judge-row-lab">BENCH</span>
+        <span class="judge-row-hint">${isSC ? 'Counsels are deliberating settlement.' : 'No ruling required. Awaiting counsel.'}</span>
+      </div>`;
+  }
+
+  document.getElementById('trial-content').innerHTML = `
+    <div class="trial-head">
+      <div class="trial-head-info">
+        <div class="trial-eyebrow">FROM THE BENCH &middot; ${escHtml(caseTag)} &middot; ${isSC ? 'SETTLEMENT CONFERENCE' : `ROUND ${escHtml(TRIAL_ROUND_ROMAN[d.current_round] || (d.current_round || 1))} OF IV`}</div>
+        <div class="trial-title">${escHtml(d.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(d.defendant_name || '—')}</div>
+        <div class="trial-meta">Presiding &middot; <strong>${escHtml(d.judge_name || 'Hon. Magistrate')}</strong></div>
+      </div>
+      ${pillHtml}
+    </div>
+    <div class="trial-overview">${escHtml(d.overview || '')}</div>
+    <div class="trial-chat" id="trial-chat">${renderTrialChat(messages, /*yourSide=*/null)}</div>
+    <div class="judge-scale">
+      <div class="judge-scale-row">
+        <div class="judge-scale-col plaintiff">
+          <span class="judge-scale-lab">PLAINTIFF</span>
+          <span class="judge-scale-val">${tallies.plaintiff}</span>
+        </div>
+        <div class="judge-scale-col defendant">
+          <span class="judge-scale-lab">DEFENDANT</span>
+          <span class="judge-scale-val">${tallies.defendant}</span>
+        </div>
+      </div>
+      <div class="judge-scale-verdict">${escHtml(tallies.leaning)}</div>
+    </div>
+    ${rulingHtml}`;
+  const chat = document.getElementById('trial-chat');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+  bindJudgeControls(d);
+}
+
+// Server-side _apply_verdict computes the canonical tally. The judge
+// modal mirrors that math client-side so the scale updates live as
+// the chat advances. Strength reveal is gated by the server (only
+// included in d.case_beats / d.hand when caller is judge).
+function computeJudgeTallies(d) {
+  let p = 0, def = 0;
+  for (const h of (d.hand || [])) {
+    if (h.played_at_round == null || h.nullified) continue;
+    const s = Number(h.strength) || 0;
+    if (h.side === 'plaintiff') p += s;
+    else if (h.side === 'defendant') def += s;
+  }
+  for (const q of (d.asked_witness_qa || [])) {
+    const s = Number(q.strength) || 0;
+    if (q.supports === 'plaintiff') p += s;
+    else if (q.supports === 'defendant') def += s;
+  }
+  // Objection deltas aren't exposed individually; the canonical
+  // verdict will fold them in. Show the strength tally as the
+  // visible scale; the judge's verdict reveals the official total.
+  let leaning;
+  const diff = p - def;
+  if      (diff >=  6) leaning = 'Leaning strongly for the plaintiff';
+  else if (diff >=  2) leaning = 'Leaning for the plaintiff';
+  else if (diff <= -6) leaning = 'Leaning strongly for the defendant';
+  else if (diff <= -2) leaning = 'Leaning for the defendant';
+  else                 leaning = 'Close call — either side could prevail';
+  return { plaintiff: p, defendant: def, leaning };
+}
+
+function bindJudgeControls(d) {
+  document.querySelectorAll('#trial-content [data-judge-rule]').forEach(btn => {
+    btn.addEventListener('click', () => submitJudgeRuling(d.trial_id, btn.dataset.judgeRule));
+  });
+  const verdictBtn = document.querySelector('#trial-content [data-judge-verdict]');
+  if (verdictBtn) verdictBtn.addEventListener('click', () => submitJudgeVerdict(d.trial_id));
+}
+
+async function submitJudgeRuling(trialId, ruling) {
+  if (_trialState.sending) return;
+  _trialState.sending = true;
+  document.querySelectorAll('#trial-content [data-judge-rule]').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('judge_rule_objection', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+      p_ruling:     ruling,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    await refreshTrial();
+  } catch (err) {
+    alert('Ruling failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    document.querySelectorAll('#trial-content [data-judge-rule]').forEach(b => { b.disabled = false; });
+  }
+}
+
+async function submitJudgeVerdict(trialId) {
+  if (_trialState.sending) return;
+  if (!confirm('Enter the verdict now? This will close the trial and apply reputation and standing changes.')) return;
+  _trialState.sending = true;
+  const btn = document.querySelector('#trial-content [data-judge-verdict]');
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('judge_enter_verdict', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    await refreshTrial();
+  } catch (err) {
+    alert('Verdict failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ─── Settlement Conference (pre-trial gate, 20270533) ──────────────
@@ -2961,10 +3213,17 @@ function renderTrialChat(messages, yourSide) {
     }
     const mine = m.side === yourSide;
     const cls  = mine ? 'trial-msg you' : 'trial-msg them';
+    // Strength badge only emitted by get_trial_state v6 when caller
+    // is the presiding judge — server-side gate. Renders inline next
+    // to the beat name; absent for lawyers (their own + opp's beat
+    // strengths stay hidden until verdict).
+    const strHtml = (m.beat_played_index != null && m.beat_strength != null)
+      ? `<span class="trial-msg-beat-str" title="Hidden strength (judge sees)">STR ${escHtml(m.beat_strength)}</span>` : '';
     const beat = m.beat_played_index != null
       ? `<div class="trial-msg-beat ${escHtml(m.beat_type || '')}">
            <span class="trial-msg-beat-type ${escHtml(m.beat_type || '')}">${escHtml((BEAT_TYPE_LABEL[m.beat_type] || '').toUpperCase())}</span>
            <span class="trial-msg-beat-name">${escHtml(m.beat_name || '—')}</span>
+           ${strHtml}
          </div>` : '';
     return divider + `
       <div class="${cls}">
@@ -3016,6 +3275,22 @@ function renderTrialHand(d) {
 }
 
 function renderTrialInputBar(d) {
+  // Judge-pause states freeze BOTH counsels — show a banner instead
+  // of the normal input. The advocate's RPCs all reject with
+  // objection_pending / awaiting_verdict, so this is just to keep the
+  // UI honest about why the buttons aren't there.
+  if (d.pending_objection_message_id) {
+    return `
+      <div class="trial-input-bar disabled">
+        <div class="trial-input-hint">Counsel has objected. <em>Awaiting the judge’s ruling.</em></div>
+      </div>`;
+  }
+  if (d.awaiting_verdict) {
+    return `
+      <div class="trial-input-bar disabled">
+        <div class="trial-input-hint">Argument has closed. <em>Awaiting the judge’s verdict.</em></div>
+      </div>`;
+  }
   if (!d.your_turn) {
     return `
       <div class="trial-input-bar disabled">
