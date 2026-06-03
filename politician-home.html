@@ -1126,6 +1126,13 @@ const CAREER_EVENT_TEMPLATES = {
   // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.
   took_case: (name, target, meta = {}) =>
     `${name} has taken the case of ${target || 'a matter'} representing the ${meta.side || 'one side'}.`,
+  // Verdict-side career events — written by _apply_verdict (20270549),
+  // one row per attorney that had a seat. target_name is the case
+  // caption; metadata.nation_name + metadata.trial_id come along.
+  won_case:  (name, target, meta = {}) =>
+    `${name} wins ${target || 'a case'} in the nation of ${meta.nation_name || 'their nation'}.`,
+  lost_case: (name, target) =>
+    `${name} suffers a setback with a loss in the case of ${target || 'a matter'}.`,
 };
 
 let politician = null;
