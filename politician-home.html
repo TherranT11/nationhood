@@ -700,6 +700,34 @@
   border-top-color:#c8a26e; }
 .trial-beat-foot.played-foot { color:#888; }
 
+/* ── Settlement conference panel (20270533) ─────────────────
+   Renders below the chat when status='settlement_conference'.
+   Replaces the input bar + hand grid for the pre-trial gate. */
+.sc-panel { padding:16px 24px 18px; background:#0a0807;
+  border-top:0.5px solid rgba(200,162,110,0.25); flex-shrink:0; }
+.sc-panel-lab { font-size:9px; letter-spacing:0.16em; color:#c8a26e; font-weight:700;
+  text-transform:uppercase; margin-bottom:10px; text-align:center; }
+.sc-own-offer  { color:#dcb88a; }
+.sc-own-reject { color:#bbb; }
+.sc-panel-actions { display:flex; gap:11px; justify-content:center; margin-bottom:10px; }
+.sc-btn { padding:11px 22px; border-radius:4px; font-size:10px; letter-spacing:0.13em;
+  font-weight:700; cursor:pointer; font-family:inherit; text-transform:uppercase;
+  transition:all 0.15s; }
+.sc-offer { background:#161208; border:0.5px solid #c8a26e; color:#dcb88a; }
+.sc-offer:hover { background:#251710; color:#fff; }
+.sc-reject { background:transparent; border:0.5px solid rgba(255,255,255,0.18); color:#aaa; }
+.sc-reject:hover { background:rgba(255,255,255,0.05); color:#fff; border-color:rgba(255,255,255,0.35); }
+.sc-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.sc-panel-hint { font-size:10px; color:#888; text-align:center; font-style:italic;
+  line-height:1.55; max-width:540px; margin:0 auto; }
+.sc-panel-hint em { color:#dcb88a; }
+.sc-panel.decided .sc-panel-hint strong { color:#fff; font-style:normal; }
+@media (max-width: 720px) {
+  .sc-panel { padding:13px 12px 15px; }
+  .sc-panel-actions { flex-direction:column; gap:8px; }
+  .sc-btn { padding:13px 16px; font-size:11px; }
+}
+
 /* ── Input bar (Phase 3a) ──────────────────────────────────── */
 .trial-input-bar { padding:12px 24px 14px; background:#0a0807;
   border-top:0.5px solid rgba(255,255,255,0.06);
@@ -1792,9 +1820,43 @@ const TRIAL_ROUND_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
 function renderActiveTrialCard(t) {
   const isPretrial = t.status === 'pre_trial';
+  const isSettleConf = t.status === 'settlement_conference';
   const side       = t.side || 'plaintiff';
   const caseTag    = `${(t.case_type || '').toUpperCase()} · ${escHtml((t.litigation_type || '').toUpperCase())}`;
   const sideLabel  = side === 'plaintiff' ? 'FOR THE PLAINTIFF' : 'FOR THE DEFENDANT';
+
+  // Settlement-conference variant: both lawyers in, neither has
+  // argued yet, both must offer/reject before arguments begin.
+  // Eyebrow reads SETTLEMENT CONFERENCE; right-side pill reads
+  // YOUR CALL (you haven't decided) or WAITING (you decided, opp
+  // hasn't). Card opens the same trial modal — which renders the
+  // SC picker instead of the chat when status matches.
+  if (isSettleConf) {
+    const decided = t.own_settlement_decision != null;
+    const statusPill = decided
+      ? '<span class="ti-pill their-turn">WAITING</span>'
+      : '<span class="ti-pill your-turn"><span class="ti-pill-dot"></span> YOUR CALL</span>';
+    return `
+      <div class="ti-card in-progress trial-enter-card" data-trial-id="${escHtml(t.trial_id)}">
+        <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
+        <div class="ti-info">
+          <div class="ti-eyebrow">SETTLEMENT CONFERENCE &middot; ${escHtml(caseTag)}</div>
+          <div class="ti-caption">${escHtml(t.plaintiff_name || '—')}<span class="v">v.</span>${escHtml(t.defendant_name || '—')}</div>
+          <div class="ti-meta">
+            <span class="ti-side ${side}">${escHtml(sideLabel)}</span>
+            <span class="ti-sep">&middot;</span>
+            <span class="ti-judge">${decided ? 'awaiting opposing counsel' : 'offer or reject settlement'}</span>
+          </div>
+        </div>
+        <div class="ti-right">
+          <div class="ti-status">
+            <span class="ti-status-lab">STATUS</span>
+            ${statusPill}
+          </div>
+          <button type="button" class="ti-resume-btn trial-enter">${decided ? 'OPEN CONFERENCE' : 'DECIDE NOW'} &rsaquo;</button>
+        </div>
+      </div>`;
+  }
 
   // Pre-trial-self variant: side filled, waiting for opposing counsel.
   if (isPretrial) {
@@ -2718,6 +2780,9 @@ function trialReasonText(reason) {
     no_objection_target:         'Opposing counsel has no played beats to object to yet.',
     objection_cap_reached:       'You have used all 3 objections in this trial.',
     missing_argument:            'Missing required input.',
+    not_in_settlement_conference: 'The settlement conference is no longer active.',
+    invalid_decision:            'Pick either Offer or Reject.',
+    already_decided:             'Your decision is already on the record.',
   })[reason] || ('Action failed: ' + (reason || 'unknown'));
 }
 
@@ -2744,6 +2809,14 @@ async function refreshTrial() {
 }
 
 function renderTrialModal(d) {
+  // Settlement-conference branch: different layout (no hand, no
+  // turn-based chat row, no objection picker). The trial modal stays
+  // open through pre-trial-settle → arguments; polling re-renders
+  // when the state machine advances.
+  if (d.status === 'settlement_conference') {
+    renderSettlementConference(d);
+    return;
+  }
   // If a beat we'd previously armed got consumed (e.g., a stale tab
   // played it), drop the arm.
   if (_trialState.armedBeatIndex != null) {
@@ -2804,6 +2877,101 @@ function renderTrialModal(d) {
   }
 
   bindTrialControls(d);
+}
+
+// ─── Settlement Conference (pre-trial gate, 20270533) ──────────────
+// Modal content when status='settlement_conference'. Two paths:
+// you haven't decided → Offer / Reject buttons; you have → waiting
+// state. When both sides have decided, the server flips state and
+// the next poll re-renders into the settled / in_progress view.
+function renderSettlementConference(d) {
+  const caseTag    = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
+  const yourSide   = (d.side || 'plaintiff').toUpperCase();
+  const messages   = Array.isArray(d.messages) ? d.messages : [];
+  const ownDecision = d.side === 'plaintiff'
+    ? d.plaintiff_settlement_decision
+    : d.defendant_settlement_decision;
+  const oppDecision = d.side === 'plaintiff'
+    ? d.defendant_settlement_decision
+    : d.plaintiff_settlement_decision;
+  // Settlement-amount narrative — surfaces the dice band so the
+  // player knows what they're agreeing to before clicking Offer.
+  const ct = (d.case_type || '').toLowerCase();
+  const stake = ct === 'commercial'
+    ? '$1–20M settlement (1d20)'
+    : ct === 'criminal'
+      ? '4–9 year sentence reduction (1d6 + 3)'
+      : '$1–10M settlement (1d10)';
+  let panel;
+  if (ownDecision == null) {
+    panel = `
+      <div class="sc-panel">
+        <div class="sc-panel-lab">YOUR CALL &middot; ${escHtml(stake)} if both sides offer</div>
+        <div class="sc-panel-actions">
+          <button type="button" class="sc-btn sc-offer"  data-sc-decision="offer">OFFER TO SETTLE</button>
+          <button type="button" class="sc-btn sc-reject" data-sc-decision="reject">REJECT SETTLEMENT</button>
+        </div>
+        <div class="sc-panel-hint">
+          If both sides offer, the trial ends here with a settlement. Otherwise the court proceeds to arguments.
+          <em>This decision is locked in once made.</em>
+        </div>
+      </div>`;
+  } else {
+    const yourLabel = ownDecision === 'offer' ? 'OFFERED TO SETTLE' : 'REJECTED SETTLEMENT';
+    const oppLabel = oppDecision == null
+      ? `<strong>${escHtml(d.opponent_name || 'Opposing counsel')}</strong> is still deciding…`
+      : `<strong>${escHtml(d.opponent_name || 'Opposing counsel')}</strong> has decided. Court is convening.`;
+    panel = `
+      <div class="sc-panel decided">
+        <div class="sc-panel-lab">YOU &middot; <span class="sc-own-${escHtml(ownDecision)}">${yourLabel}</span></div>
+        <div class="sc-panel-hint">${oppLabel}</div>
+      </div>`;
+  }
+  document.getElementById('trial-content').innerHTML = `
+    <div class="trial-head">
+      <div class="trial-head-info">
+        <div class="trial-eyebrow">${escHtml(caseTag)} &middot; SETTLEMENT CONFERENCE</div>
+        <div class="trial-title">${escHtml(d.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(d.defendant_name || '—')}</div>
+        <div class="trial-meta">Representing <strong>${yourSide}</strong> &middot; vs. <strong>${escHtml(d.opponent_name || 'Opposing Counsel')}</strong></div>
+      </div>
+      <span class="trial-turn-pill ${ownDecision == null ? 'your' : 'theirs'}">${ownDecision == null ? '<span class="dot"></span> YOUR CALL' : 'WAITING'}</span>
+    </div>
+    <div class="trial-overview">${escHtml(d.overview || '')}</div>
+    <div class="trial-chat" id="trial-chat">${renderTrialChat(messages, d.side)}</div>
+    ${panel}`;
+  const chat = document.getElementById('trial-chat');
+  if (chat) chat.scrollTop = chat.scrollHeight;
+  bindSettlementConferenceControls(d);
+}
+
+function bindSettlementConferenceControls(d) {
+  document.querySelectorAll('#trial-content [data-sc-decision]').forEach(btn => {
+    btn.addEventListener('click', () => submitSettlementDecision(d.trial_id, btn.dataset.scDecision));
+  });
+}
+
+async function submitSettlementDecision(trialId, decision) {
+  if (_trialState.sending) return;
+  _trialState.sending = true;
+  document.querySelectorAll('#trial-content [data-sc-decision]').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('respond_settlement_conference', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+      p_decision:   decision,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    await refreshTrial();
+  } catch (err) {
+    alert('Settlement decision failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    document.querySelectorAll('#trial-content [data-sc-decision]').forEach(b => { b.disabled = false; });
+  }
 }
 
 function renderTrialChat(messages, yourSide) {
