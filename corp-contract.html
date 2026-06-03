@@ -7,15 +7,22 @@
 <style>
   * { box-sizing:border-box; margin:0; padding:0; }
   :root {
-    --bg:#080808; --panel:#0d0d0d;
+    --bg:#050505; --panel:#0d0d0d;
     --green:#7ab07a; --green-dim:#3a5a3a; --green-bg:#0e1611; --green-bright:#9ac99a;
-    --amber:#d4b87a; --amber-dim:#5a4d2e; --amber-bg:#161208;
+    --amber:#7aa8a0; --amber-dim:#2d5a55; --amber-bg:#0d1614;
     --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
     --line:rgba(255,255,255,0.06); --line2:rgba(255,255,255,0.04);
     --txt:#d4d4d4; --mut:#888; --faint:#666;
-    --legal:#c89070; --legal-bright:#dba88c; --legal-dim:#5a3e2a; --legal-bg:#160e08;
-    --oil:#c87a7a; --ship:#c89070;
-    --paper:#1a1612; --paper-line:#2a2218; --paper-text:#d8cfb8;
+    /* Politician teal palette (matches .sec-cta, .lcase-card, etc.
+       in politician-nation.html). Replaces the earlier brass/legal
+       palette so the negotiation surface reads as part of the
+       politician UI family. */
+    --legal:#5aafa5; --legal-bright:#7ec5bc; --legal-dim:#2d5a55; --legal-bg:#0d1614;
+    --oil:#5aafa5; --ship:#5aafa5;
+    /* "Paper" is now a dark cool panel rather than warm parchment so
+       the document area matches the rest of the politician dark
+       theme — same shape, different palette. */
+    --paper:#0d1416; --paper-line:rgba(90,175,165,0.18); --paper-text:#d4d4d4;
   }
   body { background:var(--bg); color:var(--txt);
     font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
@@ -65,7 +72,7 @@
   .document { background:var(--paper); border:1px solid var(--paper-line);
     border-radius:7px; overflow:hidden; margin-bottom:16px; }
   .doc-head { padding:22px 28px 16px; text-align:center;
-    border-bottom:1px solid var(--paper-line); background:#1e1916; }
+    border-bottom:1px solid var(--paper-line); background:#0f1a18; }
   .doc-eyebrow { font-size:9.5px; letter-spacing:0.22em; color:var(--legal);
     font-weight:700; text-transform:uppercase; margin-bottom:9px; }
   .doc-title { font-family:Georgia,serif; font-size:22px;
@@ -137,7 +144,7 @@
   .article-btn.primary:hover { background:rgba(122,176,122,0.12); color:#fff; }
   .article-btn.amber { background:var(--amber-bg);
     border:1px solid var(--amber-dim); color:var(--amber); }
-  .article-btn.amber:hover { background:#241810; color:#fff; }
+  .article-btn.amber:hover { background:#15211f; color:#fff; }
   .article-btn.neutral { background:transparent;
     border:1px solid var(--paper-line); color:var(--mut); }
   .article-btn.neutral:hover { color:#bbb; border-color:rgba(255,255,255,0.18); }
@@ -163,7 +170,7 @@
 
   /* Cancel block */
   .cancel-block { margin:24px -4px 4px; padding:16px 18px;
-    background:#15110d; border:1px solid var(--paper-line);
+    background:#0a1413; border:1px solid var(--paper-line);
     border-radius:5px; display:flex; align-items:center; gap:14px;
     border-left:3px solid var(--red-dim);
     font-family:-apple-system,system-ui,sans-serif; }
