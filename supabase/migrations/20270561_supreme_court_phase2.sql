@@ -76,6 +76,14 @@ ALTER TABLE public.factions
 COMMENT ON COLUMN public.factions.politician_supreme_court_justice_at_tick IS
     'Tick at which this politician was appointed Supreme Court Justice (Judiciary Tier 5). NULL = not appointed. One-shot, never cleared. Appointment RPC deferred — admins set this directly for now.';
 
+-- Column-level write protection. Without this, a player with
+-- row-level UPDATE access to their own faction row could
+-- self-promote by direct-writing the column from the client,
+-- bypassing the (future) appointment RPC entirely. Inline here
+-- so the column add and the lock-down ship atomically.
+REVOKE UPDATE (politician_supreme_court_justice_at_tick)
+    ON public.factions FROM PUBLIC, anon, authenticated;
+
 ALTER TABLE public.court_case_trials
     DROP CONSTRAINT IF EXISTS court_case_trials_status_check;
 ALTER TABLE public.court_case_trials
