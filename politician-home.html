@@ -366,9 +366,21 @@
 @media (max-width:700px) {
   .hero { grid-template-columns:1fr; gap:18px; }
   .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
-  .anchor-message { margin-left:0; }
+  .anchor-message { margin-left:0; max-width:none; }
   .stats-row { grid-template-columns:repeat(2, 1fr); }
+  .identity-body .name { flex-wrap:wrap; gap:6px; }
   .identity-body .name .first, .identity-body .name .last { font-size:32px; }
+  /* AGE / NATION / AFFILIATION row: wrap to a second line rather than
+     clipping AFFILIATION. Smaller gap so two items still fit per row. */
+  .meta-row { flex-wrap:wrap; gap:14px 18px; }
+  /* Larger tap targets + horizontal scroll for the World Events tab
+     strip so the 5 tabs (POLITICS / CORPORATE / MILITARY / NATION /
+     WORLD) don't crush at narrow widths. */
+  .we-tabs { padding:0 10px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .we-tab { padding:11px 12px; flex-shrink:0; }
+  /* Side-by-side pairs in the panel (anchor-nick) keep right-alignment
+     by default; left-align matches the rest of the stacked column. */
+  .anchor-nick-row { justify-content:flex-start; }
 }
 
 /* ─── Current Affiliation panel ─────────────────────────────────────
