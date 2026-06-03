@@ -1478,17 +1478,19 @@ async function init() {
   // Minister" state so re-clicks don't try to recreate the request
   // (the RPC short-circuits with already_pending, but the visual
   // signal should match: the player's call is already in queue).
+  // Goes through get_pending_state_advocate_request_for_applicant
+  // (20270556) rather than a direct table query — the requests
+  // table is RLS-on/no-policies so PostgREST returns 0 rows to the
+  // authenticated role.
   let stateAdvocateRequestPending = false;
   try {
-    const { count, error } = await _supabase
-      .from('state_advocate_appointment_requests')
-      .select('id', { count: 'exact', head: true })
-      .eq('applicant_faction_id', ctx.faction.id)
-      .eq('status', 'pending');
-    if (error) console.warn('politician-career: pending state advocate request count failed', error);
-    stateAdvocateRequestPending = (Number(count) || 0) > 0;
+    const { data, error } = await _supabase.rpc(
+      'get_pending_state_advocate_request_for_applicant',
+      { p_faction_id: ctx.faction.id });
+    if (error) console.warn('politician-career: pending state advocate request lookup failed', error);
+    stateAdvocateRequestPending = Array.isArray(data) && data.length > 0;
   } catch (err) {
-    console.warn('politician-career: pending state advocate request count threw', err);
+    console.warn('politician-career: pending state advocate request lookup threw', err);
   }
 
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
