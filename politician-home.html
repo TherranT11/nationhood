@@ -2289,11 +2289,12 @@ function partyAbbrFrom(name) {
 function renderCampaignCard(ctx) {
   const tier = activeRace.race_tier;
   const isParl = tier === 'parliament';
-  // ticks_remaining is "act windows you still have including this one".
-  // resolve_due fires when current > resolve_tick (strictly past), so the
-  // resolve_tick itself is the player's final act window — display
-  // "FINAL TICK" instead of "0 TICKS REMAINING".
-  const ticksRemaining = Math.max(0, Number(activeRace.resolve_tick) - currentTick);
+  // Display the resolve tick directly rather than a countdown — countdown
+  // clamps at 0 once current ticks past resolve_tick, which would pin the
+  // badge in a stuck state if resolve_due_elections fails to clear the
+  // row (race condition fixed in 20270558, but the badge should be honest
+  // either way). The label reads naturally as "RESOLVES ON {tick}".
+  const resolveTick = Number(activeRace.resolve_tick);
   const eyebrow = isParl ? 'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL'
                          : 'ACTIVE CAMPAIGN · LOW-STAKES · COMMUNITY';
   const titleLead = isParl ? 'Member of Parliament' : 'Community Organizer';
@@ -2303,9 +2304,9 @@ function renderCampaignCard(ctx) {
     ? `An Assembly seat in ${escHtml(ctx.nation?.name || 'the capital')}.`
     : 'A volunteer seat on your neighborhood association.';
   const subline = `${baseBlurb} Running as a member of <strong>${escHtml(partyName)}</strong> against ${escHtml(oppPartyName)}.`;
-  const timeBlock = ticksRemaining > 0
-    ? `<div class="ci-time">${ticksRemaining}</div><div class="ci-time-l">TICK${ticksRemaining === 1 ? '' : 'S'} REMAINING</div>`
-    : `<div class="ci-time">!</div><div class="ci-time-l final">FINAL TICK</div>`;
+  const timeBlock = Number.isFinite(resolveTick)
+    ? `<div class="ci-time">${resolveTick}</div><div class="ci-time-l">RESOLVES ON</div>`
+    : `<div class="ci-time">—</div><div class="ci-time-l">RESOLVES ON</div>`;
 
   // Stat label tracks the tier — community uses Credibility, parliament Charisma.
   const statLabel = isParl ? 'CHARISMA' : 'CREDIBILITY';
