@@ -103,9 +103,11 @@ export function getPoliticianRoleLabel(faction) {
         // Bench tiers replace lower suffixes — show the most recent /
         // highest rung. 20270531 Magistrate sits above 20270529
         // Experienced Advocate; both columns are set-once / never-
-        // cleared, so checking from the top works.
-        if (faction.politician_magistrate_at_tick) return 'Magistrate';
-        if (faction.politician_experienced_advocate_at_tick) return 'Experienced Advocate';
+        // cleared, so checking from the top works. `!= null` so a
+        // legitimate tick-0 stamp still reads as set (truthy check
+        // would treat 0 as not-yet-stepped-up).
+        if (faction.politician_magistrate_at_tick != null) return 'Magistrate';
+        if (faction.politician_experienced_advocate_at_tick != null) return 'Experienced Advocate';
         return 'Advocate';
     }
     if (faction.politician_office === 'member_of_parliament') return 'MP';
