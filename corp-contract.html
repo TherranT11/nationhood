@@ -524,6 +524,33 @@ async function runArticleAction(action, articleId, btn) {
         p_body:       bodyEl?.value ?? null,
       });
     } else if (action === 'agree') {
+      // Auto-save unsaved typing before agreeing — otherwise the
+      // typed title/body lives only in the DOM and the refresh()
+      // below wipes it back to whatever the server had. Skip the
+      // save when inputs match the server state so we don't reset
+      // the counterparty's existing agreement (update_article
+      // clears ALL agreements per the edit-reset rule).
+      const titleEl = card.querySelector('[data-field="title"]');
+      const bodyEl  = card.querySelector('[data-field="body"]');
+      const currentTitle = (titleEl?.value || '').trim();
+      const currentBody  = (bodyEl?.value  || '').trim();
+      const serverA = (state.contract.articles || []).find(x => x.id === articleId);
+      const serverTitle = (serverA?.title || '').trim();
+      const serverBody  = (serverA?.body  || '').trim();
+      if (currentTitle !== serverTitle || currentBody !== serverBody) {
+        const saveResult = await _supabase.rpc('update_corp_negotiation_article', {
+          p_article_id: articleId,
+          p_corp_id:    state.activeCorpId,
+          p_title:      titleEl?.value ?? null,
+          p_body:       bodyEl?.value  ?? null,
+        });
+        if (saveResult?.error) throw saveResult.error;
+        if (!saveResult?.data?.success) {
+          alert(reasonText(saveResult?.data?.reason));
+          restore();
+          return;
+        }
+      }
       result = await _supabase.rpc('agree_corp_negotiation_article', {
         p_article_id: articleId, p_corp_id: state.activeCorpId,
       });
