@@ -1269,6 +1269,7 @@ async function submitBizMotion() {
 
     submit.textContent = 'Resolving…';
     const { data, error } = await _supabase.rpc('propose_party_motion', {
+      p_faction_id:   _viewerPolId,
       p_motion_type:  motionType,
       p_payload_text: payloadText,
       p_payload_url:  payloadUrl,
