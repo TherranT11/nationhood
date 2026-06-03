@@ -8,11 +8,11 @@ import { APP_VERSION, fmtBig, displayName, currentAge } from './utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
-  { id: 'home',      label: 'HOME',      href: 'politician-home.html' },
-  { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html' },
-  { id: 'nation',    label: 'NATION',    href: 'politician-nation.html' },
-  { id: 'career',    label: 'CAREER',    href: 'politician-career.html' },
-  { id: 'resources', label: 'RESOURCES', href: 'politician-resources.html' },
+  { id: 'home',      label: 'HOME',      href: 'politician-home.html',      icon: '🏠' },
+  { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html', icon: '✊' },
+  { id: 'nation',    label: 'NATION',    href: 'politician-nation.html',    icon: '🌍' },
+  { id: 'career',    label: 'CAREER',    href: 'politician-career.html',    icon: '⚖️' },
+  { id: 'forum',     label: 'FORUM',     href: 'politician-forum.html',     icon: '💬' },
 ];
 
 
@@ -67,6 +67,22 @@ function ensureStyles() {
   .pol-nav a:not(.active):hover { color:#d4d4d4; }
   .pol-nav a.active { color:#5aafa5; border-bottom:1px solid #5aafa5; }
 
+  /* Mobile bottom navigation — mirrors the dashboard.css pattern
+     (.mobile-bottom-nav) but uses the politician teal accent. Replaces
+     the horizontal .pol-nav on narrow screens. */
+  .pol-bottom-nav { display:none; position:fixed; bottom:0; left:0; right:0; z-index:500;
+    background:#050505; border-top:0.5px solid rgba(255,255,255,0.12);
+    padding:4px 0 env(safe-area-inset-bottom, 0);
+    justify-content:space-around; align-items:center; }
+  .pol-bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:1px;
+    padding:6px 0; text-decoration:none; flex:1; min-width:0; transition:color 0.15s; }
+  .pol-bottom-nav .icon { font-size:18px; line-height:1;
+    filter:grayscale(100%) brightness(0.6); transition:filter 0.15s; }
+  .pol-bottom-nav .label { font-family:monospace; font-size:8px; font-weight:600;
+    letter-spacing:0.04em; text-transform:uppercase; color:#888; transition:color 0.15s; }
+  .pol-bottom-nav a.active .icon { filter:none; }
+  .pol-bottom-nav a.active .label { color:#5aafa5; }
+
   @media (max-width:700px) {
     .pol-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
     .pol-topbar .brand { flex:1 1 auto; min-width:0; }
@@ -80,7 +96,16 @@ function ensureStyles() {
     .pol-topbar .cash-pill, .pol-pill { font-size:10px; padding:4px 8px; }
     .pol-util { font-size:10px; }
     .pol-dd { min-width:200px; max-width:calc(100vw - 24px); }
-    .pol-nav { padding:0 12px; gap:18px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    /* Top tab nav hidden — bottom nav replaces it. */
+    .pol-nav { display:none; }
+    .pol-bottom-nav { display:flex; }
+    /* Clear space under page content so the fixed bottom nav doesn't cover it. */
+    body { padding-bottom:56px; }
+  }
+  @media (max-width:480px) {
+    .pol-bottom-nav .icon { font-size:16px; }
+    .pol-bottom-nav .label { font-size:7px; }
+    .pol-bottom-nav a { padding:5px 0; }
   }`;
   document.head.appendChild(s);
 }
@@ -201,6 +226,22 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
     <nav class="pol-nav">
       ${POL_TABS.map(t => `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${esc(t.label)}</a>`).join('')}
     </nav>`;
+
+  // Mobile bottom nav — appended to body (not the container) so its
+  // fixed positioning isn't affected by the topbar's stacking context.
+  // Idempotent: re-renders replace any prior instance, so switching
+  // between politician pages doesn't stack copies.
+  let bottom = document.getElementById('pol-bottom-nav');
+  if (bottom) bottom.remove();
+  bottom = document.createElement('nav');
+  bottom.id = 'pol-bottom-nav';
+  bottom.className = 'pol-bottom-nav';
+  bottom.innerHTML = POL_TABS.map(t => `
+    <a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">
+      <span class="icon">${t.icon}</span>
+      <span class="label">${esc(t.label)}</span>
+    </a>`).join('');
+  document.body.appendChild(bottom);
 
   buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && !isHiddenFromSwitcher(x)));
   startCountdown(s.next_tick_at);

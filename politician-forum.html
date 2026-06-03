@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Politician — Resources</title>
+<title>Politician — Forum</title>
 <style>
 /* Topbar / nav / body base live in js/politician-topbar.js. This page styles
    only its own body: a subtab row (Wiki / Ledger) above an empty pane.
@@ -53,9 +53,9 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 
 async function init() {
   let ctx = null;
-  try { ctx = await bootstrapPolitician('resources'); }
+  try { ctx = await bootstrapPolitician('forum'); }
   catch (err) {
-    console.error('politician-resources: bootstrap failed', err);
+    console.error('politician-forum: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
