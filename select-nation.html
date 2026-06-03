@@ -841,7 +841,7 @@ async function init() {
       const titleEl = document.querySelector('.page-header .title');
       const subEl = document.querySelector('.page-header .subtitle');
       if (titleEl) titleEl.textContent = 'Where is your Businessman from?';
-      if (subEl) subEl.textContent = 'Pick the nation your entrepreneur hails from. You stay nation-agnostic — this only sets your origin and name.';
+      if (subEl) subEl.textContent = 'Choose carefully — your origin nation is where you can found corporations, and its corporate tax law shapes your bottom line.';
       // HARD LOCK: cannot originate where you already hold a party/military
       // (also enforced by the enforce_entrepreneur_nation_lock trigger, which
       // is authoritative — this client gate fails open to it on a read error).
@@ -931,6 +931,20 @@ function getGovTypeLabel(govTypeOrNation) {
   return 'PARLIAMENTARY';
 }
 
+// Map nations.corporate_tax (0–100, anchored at 0/10/30/50/70/90 per
+// the canonical policy options in supabase/migrations/20270117) to
+// the policy-name label. Intermediate values bucket to nearest band.
+function corporateTaxPolicyLabel(rate) {
+  const r = Number(rate);
+  if (rate == null || isNaN(r))     return '—';
+  if (r === 0)                       return 'No Corporate Tax';
+  if (r <= 20)                       return 'Tax Haven';
+  if (r <= 40)                       return 'Pro-Business Low Tax';
+  if (r <= 60)                       return 'Standard Rate';
+  if (r <= 80)                       return 'Progressive';
+  return 'Heavy Taxation';
+}
+
 function renderNations(nations, partiesByNation) {
   const grid = document.getElementById('nations-grid');
   // Neptune nations (admin-created via the Add Nation tool) are hidden from
@@ -1015,6 +1029,7 @@ function renderNations(nations, partiesByNation) {
             <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value" style="color:var(--text-secondary);">${hfFmtBig(Number(nation.politician_gdp) || 0)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value" style="color:var(--text-secondary);">${fmtBig(nation.population)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Active Entrepreneurs</span><span class="stat-row__value" style="color:var(--text-secondary);">${cachedEntrepreneursByNation[nation.name] || 0}</span></div>
+            <div class="stat-row"><span class="stat-row__label">Corporate Tax Law</span><span class="stat-row__value" style="color:var(--text-secondary);">${escapeHtml(corporateTaxPolicyLabel(nation.corporate_tax))}</span></div>
             ${locked
               ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party or Military Branch here</div>`
               : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`}
