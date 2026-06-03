@@ -100,12 +100,18 @@ export function getFactionTypeBadge(factionType) {
 export function getPoliticianRoleLabel(faction) {
     if (!faction || faction.faction_type !== 'politician') return null;
     if (faction.bar_admitted_nation_id) {
-        // 20270529: stepping up replaces the Advocate suffix with the
-        // higher rung. The tick column is set once and never cleared,
-        // so any non-null value means the politician has stepped up.
-        return faction.politician_experienced_advocate_at_tick
-            ? 'Experienced Advocate'
-            : 'Advocate';
+        // Bench tiers replace lower suffixes — show the most recent /
+        // highest rung. Priority: Magistrate (bench, 20270531) →
+        // State Prosecutor (parallel sidestep, 20270532) → Experienced
+        // Advocate (20270529) → Advocate. Magistrate wins when both
+        // bench and prosecutor are held (rare; possible since the two
+        // are parallel paths). All columns are set-once / never-
+        // cleared. `!= null` so a tick-0 stamp still reads as set
+        // (truthy would treat 0 as not-yet-stepped-up).
+        if (faction.politician_magistrate_at_tick != null) return 'Magistrate';
+        if (faction.politician_state_prosecutor_at_tick != null) return 'State Prosecutor';
+        if (faction.politician_experienced_advocate_at_tick != null) return 'Experienced Advocate';
+        return 'Advocate';
     }
     if (faction.politician_office === 'member_of_parliament') return 'MP';
     if (faction.politician_ministry) return 'Civil Servant';

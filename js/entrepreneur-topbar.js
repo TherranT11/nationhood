@@ -340,7 +340,7 @@ export async function bootstrapEntrepreneur(activeTab) {
           .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick')
+      .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
 
