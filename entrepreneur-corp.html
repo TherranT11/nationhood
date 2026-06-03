@@ -2863,11 +2863,11 @@ function initials(s, n) {
         // picker row on the first click so rapid clicks on different
         // corps can't fire parallel start_corp_negotiation calls and
         // create duplicate drafts before the redirect lands.
-        const rows = body.querySelectorAll('.neg-picker-row');
-        rows.forEach(btn => {
+        const pickerRows = body.querySelectorAll('.neg-picker-row');
+        pickerRows.forEach(btn => {
           btn.addEventListener('click', () => {
-            rows.forEach(other => { other.disabled = true; other.style.opacity = '0.6'; });
-            startNegotiationWith(btn.dataset.corpId, btn, rows);
+            pickerRows.forEach(other => { other.disabled = true; other.style.opacity = '0.6'; });
+            startNegotiationWith(btn.dataset.corpId, btn, pickerRows);
           });
         });
       } catch (e) {
