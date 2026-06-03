@@ -1921,12 +1921,15 @@ function initials(s, n) {
     async function openBuyAircraftModal() {
       const overlay = document.getElementById('ad-engtrade-overlay');
       if (!overlay) return;
-      const { data: designs, error: dErr } = await _supabase.from('ent_aircraft_designs')
-        .select('id, name, airframe_class, passengers, range_nm, demand_score, safety_score, quality, cost_per_unit, owner:entrepreneur_corps!entrepreneur_corp_id(name)')
-        .eq('design_type', 'aircraft').eq('status', 'available').neq('entrepreneur_corp_id', id)
-        .in('airframe_class', ['regional', 'narrowbody', 'widebody']).order('name');
+      // 20270547: list_buyable_aircraft_designs returns the standard
+      // design fields PLUS effective_cost_per_unit, which folds in
+      // the manufacturer's most recent engine import price so the
+      // buyer sees true sourcing cost rather than the design's
+      // stored value alone.
+      const { data: listRes, error: dErr } = await _supabase.rpc('list_buyable_aircraft_designs',
+        { p_buyer_corp_id: id });
       if (dErr) console.warn('[entrepreneur-corp] buy-aircraft fetch error:', dErr.message);
-      const opts = designs || [];
+      const opts = (listRes?.success ? listRes.designs : []) || [];
       let submitting = false;
       overlay.innerHTML = `
         <div class="bm-modal" style="max-width:520px;">
@@ -1935,15 +1938,23 @@ function initials(s, n) {
             <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request aircraft from a manufacturer. They name a price and pick delivery mode — from stock (instant) or build-to-order (delivered over the build window). You accept; the cash settles on accept either way. Bought aircraft join your fleet.</div>
             ${opts.length ? `
               <div class="bm-label">Aircraft</div>
-              <div class="be-engines" id="ba-design-list">${opts.map((d, i) => `
+              <div class="be-engines" id="ba-design-list">${opts.map((d, i) => {
+                const stored   = Number(d.cost_per_unit) || 0;
+                const effective= Number(d.effective_cost_per_unit) || stored;
+                const engCount = Number(d.engine_count) || 0;
+                const engImp   = Number(d.engine_import_price) || 0;
+                const showBreakdown = effective > stored && engCount > 0 && engImp > 0;
+                return `
                 <div class="be-eng${i === 0 ? ' sel' : ''}" data-id="${d.id}">
                   <div class="be-eng-top">
                     <span class="be-eng-nm">${escapeHtml(d.name)}</span>
-                    <span class="be-eng-cost">${fmtUsd(Number(d.cost_per_unit) || 0)}/u</span>
+                    <span class="be-eng-cost">${fmtUsd(effective)}/u</span>
                   </div>
                   <div class="be-eng-mfg">${escapeHtml(d.owner?.name || '—')}</div>
                   <div class="be-eng-st">${escapeHtml(d.airframe_class || '')} · ${d.passengers} pax · range ${d.range_nm} · demand ${d.demand_score} · safety ${d.safety_score} · Q${d.quality}</div>
-                </div>`).join('')}</div>
+                  ${showBreakdown ? `<div class="be-eng-st" style="margin-top:3px;color:#7a8a8a;">design ${fmtUsd(stored)} + ${engCount}× engine import @ ${fmtUsd(engImp)}/u</div>` : ''}
+                </div>`;
+              }).join('')}</div>
               <input type="hidden" id="ba-design" value="${opts[0].id}">
               <div class="bm-label">Quantity</div>
               <input type="number" class="bm-input" id="ba-qty" min="1" max="50" value="1">
