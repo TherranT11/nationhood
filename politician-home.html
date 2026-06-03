@@ -2687,6 +2687,17 @@ function resetObjectionPicker() {
   _trialState.objectionAmmoIndex = null;
   _trialState.objectionText = '';
 }
+
+// Single source of truth for what counts as objection ammo: an
+// opp-supporting beat in the caller's hand that's still unspent
+// (not played as argument, not already used as objection ammo).
+// Mirrors the server's gate in send_objection (20270525) so the
+// "OBJECTION button disabled" reason and the ammo list both agree.
+function trialObjectionAmmo(d) {
+  return (d?.hand || []).filter(b => b && b.support && b.support !== d.side
+                                       && b.played_at_round == null
+                                       && b.objected_at_round == null);
+}
 function trialReasonText(reason) {
   return ({
     not_authenticated:           'Sign in to view this trial.',
@@ -2883,9 +2894,7 @@ function renderTrialInputBar(d) {
   // OBJECTION button disabled when: out of action slots, cap reached,
   // no opp-supporting unspent beats in hand, or no opp beat to target.
   // Server re-validates each gate, so a stale tab can't bypass.
-  const ammoBeats   = (d.hand || []).filter(b => b && b.support && b.support !== d.side
-                                                  && b.played_at_round == null
-                                                  && b.objected_at_round == null);
+  const ammoBeats   = trialObjectionAmmo(d);
   const objRemaining = Number(d.objections_remaining ?? 3);
   const oppHasPlayed = (d.messages || []).some(m => m.side && m.side !== d.side && m.side !== 'system'
                                                     && m.beat_played_index != null);
@@ -2917,9 +2926,7 @@ function renderTrialInputBar(d) {
 }
 
 function renderObjectionPicker(d) {
-  const ammoBeats = (d.hand || []).filter(b => b && b.support && b.support !== d.side
-                                                && b.played_at_round == null
-                                                && b.objected_at_round == null);
+  const ammoBeats = trialObjectionAmmo(d);
   const objRemaining = Number(d.objections_remaining ?? 3);
   const type     = _trialState.objectionType;
   const ammoIdx  = _trialState.objectionAmmoIndex;
