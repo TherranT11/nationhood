@@ -891,6 +891,9 @@
       <div id="cp-acquire" style="display:none;align-self:center;min-width:160px;text-align:center;"></div>
       <!-- Declare Bankruptcy (2.6.8.6): owner-only. Populated by JS. -->
       <div id="cp-bankrupt" style="display:none;align-self:center;text-align:center;"></div>
+      <!-- Corporate Negotiations (20270569): owner-only entry point to start
+           or browse in-progress contract drafts. Populated by JS. -->
+      <div id="cp-negotiations" style="display:none;align-self:center;min-width:200px;text-align:center;"></div>
       <!-- Director actions (2.6.8.6.2): board directors of a PRIVATE corp see
            [Offer Investment]; [Sell Equity] also if they hold shares. JS-gated. -->
       <div id="cp-director-actions" style="display:none;align-self:center;min-width:200px;text-align:center;">
@@ -2753,6 +2756,153 @@ function initials(s, n) {
           bkBusy = false; btn.disabled = false; btn.textContent = prev;
         }
       });
+    }
+
+    // ── Corporate Negotiations (20270569): owner-only header entry.
+    //    Button shows in-flight draft count; click opens a modal listing
+    //    current drafts + a [+ Start New] launcher that swaps in a
+    //    counterparty picker.
+    const negWrap = document.getElementById('cp-negotiations');
+    if (negWrap && isOwner) {
+      negWrap.innerHTML = `
+        <button class="rl-btn" id="cp-neg-btn" style="padding:8px 14px;background:#160e08;color:#dba88c;border:0.5px solid #5a3e2a;border-radius:4px;cursor:pointer;display:block;width:100%;">Corporate Negotiations<span id="cp-neg-count" style="margin-left:6px;color:#888;font-size:10px;"></span></button>`;
+      negWrap.style.display = 'block';
+      // Background load of the current draft count so the badge is honest
+      // before the user clicks. Failure is silent — the modal lookup re-runs.
+      (async () => {
+        try {
+          const { data } = await _supabase.rpc('list_corp_negotiations', { p_corp_id: id });
+          const n = data?.success ? (data.negotiations || []).length : 0;
+          const lab = document.getElementById('cp-neg-count');
+          if (lab && n > 0) lab.textContent = '· ' + n;
+        } catch (e) { /* silent */ }
+      })();
+      document.getElementById('cp-neg-btn').addEventListener('click', () => openNegotiationsModal());
+    }
+
+    // Modal renders two views (list / picker) inside a single overlay.
+    // Plain DOM + inline styles — the modal is small enough that a shared
+    // CSS bag isn't worth it.
+    function openNegotiationsModal() {
+      let ov = document.getElementById('negModal');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'negModal';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9000;display:flex;align-items:center;justify-content:center;padding:18px;';
+        ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+        ov.innerHTML = `
+          <div id="negModalBox" style="width:100%;max-width:560px;background:#0d0d0d;border:0.5px solid rgba(255,255,255,0.12);border-left:3px solid #c89070;border-radius:7px;overflow:hidden;color:#d4d4d4;font-family:-apple-system,system-ui,sans-serif;">
+            <div style="padding:18px 22px 14px;border-bottom:0.5px solid rgba(255,255,255,0.07);position:relative;">
+              <div style="font-size:9px;letter-spacing:0.16em;color:#c89070;font-weight:700;text-transform:uppercase;margin-bottom:4px;">Corporate Negotiations</div>
+              <div id="negModalTitle" style="font-size:17px;font-weight:600;color:#fff;">Open Drafts</div>
+              <button type="button" id="negModalClose" style="position:absolute;top:14px;right:14px;background:transparent;color:#888;border:0.5px solid rgba(255,255,255,0.12);border-radius:3px;width:26px;height:26px;cursor:pointer;font-family:inherit;font-size:13px;">&times;</button>
+            </div>
+            <div id="negModalBody" style="padding:18px 22px;max-height:60vh;overflow-y:auto;"></div>
+          </div>`;
+        document.body.appendChild(ov);
+        document.getElementById('negModalClose').addEventListener('click', () => ov.remove());
+      }
+      renderNegListView();
+    }
+
+    async function renderNegListView() {
+      document.getElementById('negModalTitle').textContent = 'Open Drafts';
+      const body = document.getElementById('negModalBody');
+      body.innerHTML = '<div style="text-align:center;color:#666;font-style:italic;padding:24px;font-size:11px;">Loading…</div>';
+      try {
+        const { data, error } = await _supabase.rpc('list_corp_negotiations', { p_corp_id: id });
+        if (error) throw error;
+        const negs = data?.success ? (data.negotiations || []) : [];
+        const rowsHtml = negs.length
+          ? negs.map(n => `
+              <a href="corp-contract.html?id=${escapeHtml(n.contract_id)}" style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.07);border-radius:5px;text-decoration:none;color:inherit;margin-bottom:8px;">
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12.5px;color:#fff;font-weight:500;">${escapeHtml(n.counterparty_corp_name || '—')}</div>
+                  <div style="font-size:10px;color:#888;margin-top:2px;">${escapeHtml(n.counterparty_corp_nation || '—')} &middot; ${n.is_initiator ? 'you initiated' : 'they initiated'} &middot; tick ${n.created_at_tick ?? '—'}</div>
+                </div>
+                <span style="color:#c89070;font-size:11px;">&rsaquo;</span>
+              </a>`).join('')
+          : `<div style="text-align:center;color:#666;font-style:italic;padding:18px;font-size:11px;">No open drafts.</div>`;
+        body.innerHTML = `
+          ${rowsHtml}
+          <button type="button" id="negStartNew" style="margin-top:6px;width:100%;padding:11px;background:#160e08;color:#dba88c;border:0.5px solid #5a3e2a;border-radius:4px;cursor:pointer;font-family:inherit;font-size:10.5px;letter-spacing:0.14em;font-weight:700;text-transform:uppercase;">+ Start New Negotiation</button>`;
+        document.getElementById('negStartNew').addEventListener('click', () => renderNegPickerView());
+      } catch (e) {
+        body.innerHTML = `<div style="color:#c98a8a;text-align:center;padding:18px;font-size:11px;">Failed to load: ${escapeHtml(e?.message || 'unknown')}</div>`;
+      }
+    }
+
+    async function renderNegPickerView() {
+      document.getElementById('negModalTitle').textContent = 'Pick Counterparty';
+      const body = document.getElementById('negModalBody');
+      body.innerHTML = '<div style="text-align:center;color:#666;font-style:italic;padding:24px;font-size:11px;">Loading corps…</div>';
+      try {
+        const { data: corps, error } = await _supabase
+          .from('entrepreneur_corps')
+          .select('id, name, industry, hq_nation_id, nations(name)')
+          .neq('id', id)
+          .order('name');
+        if (error) throw error;
+        const rows = (corps || []).map(co => {
+          const nation = co.nations?.name || '—';
+          return `
+            <button type="button" class="neg-picker-row" data-corp-id="${escapeHtml(co.id)}" style="display:flex;align-items:center;gap:10px;padding:11px 14px;background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.07);border-radius:5px;width:100%;cursor:pointer;font-family:inherit;color:inherit;margin-bottom:6px;text-align:left;">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:12.5px;color:#fff;font-weight:500;">${escapeHtml(co.name || '—')}</div>
+                <div style="font-size:10px;color:#888;margin-top:2px;">${escapeHtml(industryLabel(co.industry) || co.industry || '—')} &middot; ${escapeHtml(nation)}</div>
+              </div>
+              <span style="color:#c89070;font-size:11px;">&rsaquo;</span>
+            </button>`;
+        }).join('');
+        body.innerHTML = `
+          <div style="margin-bottom:10px;font-size:10.5px;color:#888;line-height:1.55;">Select a corporation to begin drafting articles together. Either party's CEO can cancel before signing.</div>
+          ${rows || '<div style="text-align:center;color:#666;font-style:italic;padding:18px;font-size:11px;">No other corporations available.</div>'}
+          <button type="button" id="negBackToList" style="margin-top:10px;width:100%;padding:9px;background:transparent;color:#888;border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;cursor:pointer;font-family:inherit;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">&larr; Back</button>`;
+        document.getElementById('negBackToList').addEventListener('click', () => renderNegListView());
+        // Pick a corp → fire start_corp_negotiation. We disable EVERY
+        // picker row on the first click so rapid clicks on different
+        // corps can't fire parallel start_corp_negotiation calls and
+        // create duplicate drafts before the redirect lands.
+        const rows = body.querySelectorAll('.neg-picker-row');
+        rows.forEach(btn => {
+          btn.addEventListener('click', () => {
+            rows.forEach(other => { other.disabled = true; other.style.opacity = '0.6'; });
+            startNegotiationWith(btn.dataset.corpId, btn, rows);
+          });
+        });
+      } catch (e) {
+        body.innerHTML = `<div style="color:#c98a8a;text-align:center;padding:18px;font-size:11px;">Failed to load corps: ${escapeHtml(e?.message || 'unknown')}</div>`;
+      }
+    }
+
+    async function startNegotiationWith(counterpartyCorpId, btn, allRows) {
+      const reenable = () => {
+        if (allRows) allRows.forEach(r => { r.disabled = false; r.style.opacity = '1'; });
+      };
+      try {
+        const { data, error } = await _supabase.rpc('start_corp_negotiation', {
+          p_initiating_corp_id: id,
+          p_counterparty_corp_id: counterpartyCorpId
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const R = {
+            not_authenticated:       'Sign in to start a negotiation.',
+            missing_argument:        'Missing corporation id.',
+            same_corp:               'You can\'t negotiate with yourself.',
+            no_entrepreneur:         'No entrepreneur faction found.',
+            not_ceo:                 'Only the CEO can start a negotiation.',
+            counterparty_not_found:  'Counterparty corporation not found.'
+          };
+          alert(R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
+          reenable();
+          return;
+        }
+        window.location.href = 'corp-contract.html?id=' + data.contract_id;
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        reenable();
+      }
     }
 
     // ── Survey Oil Plot: confirm cost + paid-bonus picker, then fire
