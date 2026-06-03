@@ -1146,6 +1146,7 @@ let activeRace = null; // politician_active_election row when one exists; drives
 let counselOffers = []; // pending corp_advocate_offers for this politician (20270512/13). Surfaces as Pressing Issues cards.
 let pretrialCases = []; // active pre-trials in this politician's bar nation awaiting a counterparty (20270514).
 let activeTrials = [];  // in-progress trials this politician is on either side of (20270515). Surfaces as Pressing Issues + opens the trial modal.
+let stateAdvocateRequests = []; // pending state_advocate_appointment_requests where this politician is the reviewer (MoI). Surfaces as Pressing Issues cards (20270555).
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1179,7 +1180,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1209,6 +1210,12 @@ async function init() {
       // trials:[] for non-advocates and for advocates without
       // active matches.
       _supabase.rpc('list_active_trials_for_advocate', { p_faction_id: politician.id }),
+      // Pending State Advocate appointment requests where this
+      // politician is the reviewer (the Minister of the Interior at
+      // the time the applicant pressed Seek Appointment). Empty
+      // table-result for politicians without the seat, so calling
+      // unconditionally is safe (20270555).
+      _supabase.rpc('list_pending_state_advocate_requests_for_reviewer', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
@@ -1216,12 +1223,14 @@ async function init() {
     if (offersRes.error) console.error('politician-home: counsel offers fetch failed', offersRes.error);
     if (pretrialRes.error) console.error('politician-home: pretrial cases fetch failed', pretrialRes.error);
     if (trialsRes.error) console.error('politician-home: active trials fetch failed', trialsRes.error);
+    if (saReqRes.error) console.error('politician-home: state advocate requests fetch failed', saReqRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
     counselOffers = (offersRes.data?.success ? offersRes.data.offers : []) || [];
     pretrialCases = (pretrialRes.data?.success ? pretrialRes.data.pretrials : []) || [];
     activeTrials  = (trialsRes.data?.success  ? trialsRes.data.trials    : []) || [];
+    stateAdvocateRequests = saReqRes.data || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1230,6 +1239,7 @@ async function init() {
     counselOffers = [];
     pretrialCases = [];
     activeTrials  = [];
+    stateAdvocateRequests = [];
   }
 
   renderHero(ctx.shard);
@@ -1918,6 +1928,10 @@ function renderPressingIssues(ctx) {
   if (!host) return;
   const blocks = [];
   if (activeRace) blocks.push(renderCampaignCard(ctx));
+  // State Advocate appointment requests routed to this politician
+  // (as Minister of the Interior) come first after the campaign —
+  // they're cabinet-level decisions and the applicant is waiting.
+  stateAdvocateRequests.forEach(r => blocks.push(renderStateAdvocateRequestCard(r)));
   counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
   // Active trials surface above pre-trial broadcasts — the lawyer's
   // own in-progress courtrooms outrank any "case looking for counsel"
@@ -1930,6 +1944,7 @@ function renderPressingIssues(ctx) {
   }
   host.innerHTML = blocks.join('');
   if (activeRace) bindCampaignActions(ctx);
+  bindStateAdvocateRequestActions();
   bindCounselOfferActions();
   bindPretrialActions();
   bindActiveTrialActions();
@@ -2183,6 +2198,75 @@ async function resolveCounselOffer(btn, decision) {
     if (error) throw error;
     if (!data?.success) {
       alert('Could not resolve offer: ' + (data?.reason || 'unknown'));
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
+}
+
+// State Advocate appointment request card — reuses the .offer-card
+// CSS template (same shape: icon-wrap + info + right-side buttons)
+// so the visual rhythm stays consistent with the counsel-offer row
+// above it. The applicant's stat snapshot (taken at request time
+// per 20270555) is rendered verbatim — the MoI sees the same
+// numbers the applicant had when they pressed Seek Appointment,
+// even if reputation drifted while the request sat in the queue.
+function renderStateAdvocateRequestCard(r) {
+  const applicant = escHtml(r.applicant_name || 'A politician');
+  const incumbent = r.incumbent_name ? escHtml(r.incumbent_name) : null;
+  const displacementLine = incumbent
+    ? `<span class="oi-sep">&middot;</span><span class="oi-corp">Would displace <strong>${incumbent}</strong></span>`
+    : '';
+  return `
+    <div class="offer-card" data-sa-request-id="${escHtml(r.request_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9878;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">APPOINTMENT REQUEST &middot; STATE ADVOCATE</div>
+        <div class="oi-headline">${applicant} seeks the <em>State Advocate</em> appointment.</div>
+        <div class="oi-meta">
+          <span class="oi-corp">Standing: <strong>${Number(r.applicant_standing) || 0}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Reputation: <strong>${Number(r.applicant_reputation) || 0}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Credibility: <strong>${Number(r.applicant_credibility) || 0}</strong></span>
+          ${displacementLine}
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn sa-req-accept-btn">&#10003; APPOINT</button>
+        <button type="button" class="offer-reject-btn sa-req-reject-btn">&#10005; REJECT</button>
+      </div>
+    </div>`;
+}
+
+function bindStateAdvocateRequestActions() {
+  document.querySelectorAll('.sa-req-accept-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveStateAdvocateRequest(btn, true));
+  });
+  document.querySelectorAll('.sa-req-reject-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveStateAdvocateRequest(btn, false));
+  });
+}
+
+async function resolveStateAdvocateRequest(btn, accept) {
+  const card = btn.closest('[data-sa-request-id]');
+  if (!card) return;
+  const requestId = card.dataset.saRequestId;
+  if (!requestId) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc(
+      'respond_state_advocate_appointment_request',
+      { p_request_id: requestId, p_accept: accept });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not resolve request: ' + (data?.reason || 'unknown'));
       card.querySelectorAll('button').forEach(b => { b.disabled = false; });
       return;
     }
