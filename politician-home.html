@@ -578,10 +578,22 @@
   cursor:pointer; font-family:inherit; }
 .tc-status-close:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
 
-/* ── Appeal modal (20270543) ────────────────────────────────────────
-   Borrows the .tc-back/.tc-modal chrome; only the body styles are
-   unique. Close X sits absolute in the top-right since browsing
-   appealable cases is non-binding (unlike Try a Case). */
+/* ── Appeal modal ────────────────────────────────────────────────
+   Re-themed to match the politician teal palette (rest of the
+   politician UI uses #5aafa5) — the brass palette inherited from
+   .tc-back/.tc-modal is overridden via the .ap-themed scope below.
+   Close X sits absolute in the top-right since browsing appealable
+   cases is non-binding (unlike Try a Case). */
+.ap-themed.tc-back { background:rgba(0,0,0,0.82); }
+.ap-themed .tc-modal { background:linear-gradient(180deg, #0d0f0e 0%, #070908 100%);
+  border-color:rgba(90,175,165,0.3);
+  box-shadow:0 0 0 1px rgba(90,175,165,0.05), 0 25px 60px rgba(0,0,0,0.85); }
+.ap-themed .tc-head { border-bottom-color:rgba(90,175,165,0.18);
+  background:linear-gradient(180deg, rgba(90,175,165,0.05) 0%, transparent 100%); }
+.ap-themed .tc-eyebrow { color:#5aafa5; }
+.ap-themed .tc-eyebrow::before { color:#5aafa5; content:"\2696  "; }
+.ap-themed .tc-title em { color:#5aafa5; }
+.ap-themed .tc-sub em { color:#5aafa5; }
 .ap-close { position:absolute; top:12px; right:14px; width:28px; height:28px;
   border:0.5px solid rgba(255,255,255,0.12); background:transparent; color:#888;
   border-radius:4px; cursor:pointer; font-size:13px; line-height:1; font-family:inherit;
@@ -592,28 +604,33 @@
 .ap-empty { padding:36px 28px; text-align:center; color:#888; font-style:italic;
   font-size:12px; line-height:1.6; }
 .ap-empty .ap-empty-explain { margin-top:14px; padding-top:14px; font-style:normal;
-  border-top:0.5px solid rgba(200,162,110,0.18); color:#aaa; font-size:11px;
+  border-top:0.5px solid rgba(90,175,165,0.18); color:#aaa; font-size:11px;
   max-width:520px; margin-left:auto; margin-right:auto; line-height:1.7; }
-.ap-empty .ap-empty-explain strong { color:#dcb88a; font-weight:600; }
-/* Card uses the brass palette to match the Try-a-Case modal chrome
-   instead of the teal accent used by politician-nation panels —
-   keeps the modal's interior visually consistent with its border. */
-.ap-card { padding:13px 16px; background:#0d0a08; border:0.5px solid rgba(200,162,110,0.25);
+.ap-empty .ap-empty-explain strong { color:#5aafa5; font-weight:600; }
+.ap-card { padding:13px 16px; background:#0a0c0b; border:0.5px solid rgba(90,175,165,0.22);
   border-radius:5px; display:flex; align-items:center; gap:14px; }
+/* Supreme Court cards take a subtle gold-leaf accent so the kind is
+   readable at a glance without leaving the teal palette. */
+.ap-card.sc { border-color:rgba(196,164,98,0.35); background:#0c0b09; }
 .ap-card-info { flex:1; min-width:0; }
 .ap-card-head { font-size:13px; color:#fff; font-weight:500; font-family:Georgia,serif;
   letter-spacing:-0.005em; margin-bottom:4px; }
-.ap-card-head .ap-v { font-style:italic; color:#c8a26e; padding:0 4px; }
+.ap-card-head .ap-v { font-style:italic; color:#5aafa5; padding:0 4px; }
+.ap-card.sc .ap-card-head .ap-v { color:#c4a462; }
 .ap-card-meta { font-size:10.5px; color:#888; line-height:1.5; }
-.ap-card-meta strong { color:#c89070; font-weight:600; }
+.ap-card-meta strong { color:#a0d8d8; font-weight:600; }
 .ap-card-meta .ap-sep { color:#3a3a3a; padding:0 6px; }
 .ap-card-meta .ap-window { color:#9ac99a; font-style:italic; }
 .ap-card-meta .ap-window.urgent { color:#e09898; }
+.ap-card-meta .ap-kind { color:#c4a462; font-weight:600; letter-spacing:0.06em;
+  text-transform:uppercase; font-size:9px; }
 .ap-card-btn { padding:10px 18px; border-radius:4px; font-size:10px; letter-spacing:0.13em;
-  font-weight:700; cursor:pointer; font-family:inherit; background:#161208;
-  border:0.5px solid #c8a26e; color:#dcb88a; text-transform:uppercase; flex-shrink:0; }
-.ap-card-btn:hover { background:#251710; color:#fff; }
+  font-weight:700; cursor:pointer; font-family:inherit; background:#0d1413;
+  border:0.5px solid #5aafa5; color:#a0d8d8; text-transform:uppercase; flex-shrink:0; }
+.ap-card-btn:hover { background:#152221; color:#fff; }
 .ap-card-btn:disabled { opacity:0.5; cursor:not-allowed; }
+.ap-card.sc .ap-card-btn { border-color:#c4a462; color:#dcc488; background:#13110a; }
+.ap-card.sc .ap-card-btn:hover { background:#1f1b10; color:#fff; }
 
 /* ── Trial modal (Phase 2 shell) ──────────────────────────────────
    Read-only view of an in-progress trial. The .trial-* vocab is
@@ -2808,6 +2825,8 @@ function appealReasonText(reason) {
     no_verdict_to_appeal:    'That case ended without a verdict.',
     appeal_in_flight:        'An appeal on that case is already in progress.',
     case_cap_reached:        'You\'re at your active-case limit. Resolve a trial before filing a new one.',
+    sc_requires_experienced_or_state: 'Supreme Court appeals are filed by Experienced Advocates or State Advocates.',
+    sc_is_terminal:          'Supreme Court rulings are final and cannot be appealed further.',
   })[reason] || ('Appeal failed: ' + (reason || 'unknown'));
 }
 
@@ -2840,19 +2859,26 @@ function renderAppealList({ cases, error, factionId } = {}) {
     const ticksLeft = Number(c.ticks_remaining ?? 0);
     const urgentCls = ticksLeft <= 3 ? ' urgent' : '';
     const windowText = ticksLeft <= 0 ? 'window closing' : `${ticksLeft} tick${ticksLeft === 1 ? '' : 's'} left`;
+    // appeal_kind tags the card (20270560): 'verdict' = regular appeal
+    // of an original trial; 'appeal' = SC appeal of a resolved appeal.
+    // The SC card carries an extra eyebrow tag + a different button
+    // label and gold-leaf accent, but otherwise renders the same body.
+    const isSc = c.appeal_kind === 'appeal';
+    const btnLabel = isSc ? 'Appeal to Supreme Court' : 'Start Appeal';
+    const kindTag = isSc ? '<span class="ap-kind">Supreme Court</span><span class="ap-sep">&middot;</span>' : '';
     return `
-      <div class="ap-card">
+      <div class="ap-card${isSc ? ' sc' : ''}">
         <div class="ap-card-info">
           <div class="ap-card-head">${escHtml(plaintiff)}<span class="ap-v">vs.</span>${escHtml(defendant)}</div>
           <div class="ap-card-meta">
-            ${litigation}
+            ${kindTag}${litigation}
             <span class="ap-sep">&middot;</span>
             <span>verdict for <strong>${escHtml(winnerSide)}</strong></span>
             <span class="ap-sep">&middot;</span>
             <span class="ap-window${urgentCls}">${escHtml(windowText)}</span>
           </div>
         </div>
-        <button type="button" class="ap-card-btn" data-original-trial-id="${escHtml(c.original_trial_id)}">Start Appeal</button>
+        <button type="button" class="ap-card-btn" data-original-trial-id="${escHtml(c.original_trial_id)}">${escHtml(btnLabel)}</button>
       </div>`;
   }).join('');
   host.innerHTML = `<div class="ap-list">${cardsHtml}</div>`;
@@ -3877,16 +3903,16 @@ init();
   </div>
 </div>
 
-<!-- Appeal modal (20270543). Reuses .tc-back/.tc-modal styles so the
-     chrome stays uniform with Try a Case. Distinct id (#ap-back) +
-     close X (unlike try-case, browsing appeals is non-binding). -->
-<div class="tc-back" id="ap-back">
+<!-- Appeal modal. Reuses .tc-back/.tc-modal positioning but re-themes
+     via .ap-themed (teal politician palette). Distinct id (#ap-back)
+     + close X since browsing appealable cases is non-binding. -->
+<div class="tc-back ap-themed" id="ap-back">
   <div class="tc-modal">
     <button type="button" class="ap-close" id="ap-close" title="Close">&#10005;</button>
     <div class="tc-head">
       <div class="tc-eyebrow">FILE AN APPEAL &middot; LAST 12 TICKS</div>
       <div class="tc-title">Appeal a <em>Verdict</em></div>
-      <div class="tc-sub">Pick a verdict to challenge. <strong>You will represent the original losing side.</strong> Winning a case on appeal gives <em>+3 Reputation</em> and <em>+5 Political Capital</em>; losing it costs <em>−5 Reputation</em> and <em>−3 Political Capital</em>.</div>
+      <div class="tc-sub">Pick a verdict to challenge. <strong>You will represent the losing side.</strong> Experienced Advocates and State Advocates can also escalate resolved appeals to the <em>Supreme Court</em>.</div>
     </div>
     <div class="tc-body" id="ap-content"></div>
   </div>
