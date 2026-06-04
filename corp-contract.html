@@ -68,6 +68,62 @@
   .sb-val em { color:var(--mut); font-style:italic; }
   .sb-sep { color:#2a2a2a; font-size:13px; }
 
+  /* NEG GRID — articles left, chat right. Collapses to a single
+     column under 920px so narrow viewports get the article panel
+     full-width and the chat stacks below it. */
+  .neg-grid { display:grid; grid-template-columns:2fr 1fr; gap:16px;
+    align-items:start; }
+  @media (max-width:920px) { .neg-grid { grid-template-columns:1fr; } }
+
+  /* CHAT — sits in the right column of .neg-grid. Same paper-panel
+     surface as .document so the two read as siblings. Fixed height
+     so the message log scrolls inside its own area instead of
+     stretching the page. */
+  .chat-panel { background:var(--paper); border:1px solid var(--paper-line);
+    border-radius:7px; overflow:hidden;
+    display:flex; flex-direction:column;
+    height:640px; position:sticky; top:24px; }
+  .chat-head { padding:14px 18px; border-bottom:1px solid var(--paper-line);
+    display:flex; align-items:center; justify-content:space-between; }
+  .chat-head-title { font-size:11px; letter-spacing:0.16em; color:var(--legal-bright);
+    font-weight:700; text-transform:uppercase; }
+  .chat-head-sub { font-size:9.5px; color:var(--mut); font-style:italic; }
+  .chat-log { flex:1; overflow-y:auto; padding:14px 16px;
+    display:flex; flex-direction:column; gap:10px;
+    background:#0a1112; }
+  .chat-empty { text-align:center; color:var(--faint); font-size:11px;
+    font-style:italic; padding:40px 12px; }
+  .chat-msg { display:flex; flex-direction:column; gap:3px; max-width:88%; }
+  .chat-msg.me { align-self:flex-end; align-items:flex-end; }
+  .chat-msg.them { align-self:flex-start; align-items:flex-start; }
+  .chat-msg-meta { font-size:9px; letter-spacing:0.04em; color:var(--mut); }
+  .chat-msg-meta strong { color:var(--legal-bright); font-weight:600; }
+  .chat-msg-body { padding:8px 12px; border-radius:6px;
+    font-size:12.5px; line-height:1.45; color:var(--paper-text);
+    background:#0d1b1f; border:1px solid var(--paper-line);
+    word-break:break-word; }
+  .chat-msg.me .chat-msg-body { background:var(--legal-bg);
+    border-color:var(--legal-dim); }
+  .chat-input-row { padding:10px 12px; border-top:1px solid var(--paper-line);
+    display:flex; gap:8px; align-items:flex-start; }
+  .chat-input { flex:1; padding:8px 10px;
+    background:#0a1213; border:1px solid var(--paper-line); border-radius:4px;
+    color:var(--paper-text); font:inherit; font-size:12px; line-height:1.4;
+    resize:none; min-height:32px; max-height:120px; }
+  .chat-input:focus { outline:none; border-color:var(--legal-dim);
+    background:#0c1518; }
+  .chat-send { padding:8px 14px;
+    background:var(--legal-bg); color:var(--legal-bright);
+    border:1px solid var(--legal-dim); border-radius:4px;
+    font-size:9.5px; letter-spacing:0.12em; font-weight:700;
+    text-transform:uppercase; cursor:pointer; font-family:inherit;
+    flex-shrink:0; align-self:stretch; }
+  .chat-send:hover:not(:disabled) { background:var(--legal); color:#fff;
+    border-color:var(--legal); }
+  .chat-send:disabled { opacity:0.45; cursor:not-allowed; }
+  .chat-msg-error { color:var(--red); font-size:9.5px; font-style:italic;
+    padding:4px 12px 0; }
+
   /* DOCUMENT */
   .document { background:var(--paper); border:1px solid var(--paper-line);
     border-radius:7px; overflow:hidden; margin-bottom:16px; }
@@ -306,25 +362,47 @@
     <div id="cc-cancelled-banner"></div>
     <div class="page-head" id="cc-page-head"></div>
     <div class="summary-bar" id="cc-summary"></div>
-    <div class="document">
-      <div class="doc-head" id="cc-doc-head"></div>
-      <div class="doc-body">
-        <div class="recital">
-          WHEREAS the parties named above have entered into negotiations in
-          good faith, and WHEREAS each is duly authorised to bind its
-          corporation by signature of its Chief Executive Officer, the
-          parties <strong>do hereby agree</strong> to the following articles:
-        </div>
-        <div id="cc-articles"></div>
-        <button type="button" class="add-article-btn" id="cc-add-article-btn" style="display:none;">+ Add Article</button>
-        <div id="cc-signatures"></div>
-        <div class="cancel-block" id="cc-cancel-block" style="display:none;">
-          <div class="cancel-block-info">
-            <div class="cancel-block-lab">Withdraw from this <em>negotiation</em>.</div>
-            <div class="cancel-block-help">Cancelling closes the draft for both parties. The record is retained for history.</div>
+    <div class="neg-grid">
+      <div class="document">
+        <div class="doc-head" id="cc-doc-head"></div>
+        <div class="doc-body">
+          <div class="recital">
+            WHEREAS the parties named above have entered into negotiations in
+            good faith, and WHEREAS each is duly authorised to bind its
+            corporation by signature of its Chief Executive Officer, the
+            parties <strong>do hereby agree</strong> to the following articles:
           </div>
-          <button type="button" class="cancel-btn" id="cc-cancel-btn">Cancel Negotiation</button>
+          <div id="cc-articles"></div>
+          <button type="button" class="add-article-btn" id="cc-add-article-btn" style="display:none;">+ Add Article</button>
+          <div id="cc-signatures"></div>
+          <div class="cancel-block" id="cc-cancel-block" style="display:none;">
+            <div class="cancel-block-info">
+              <div class="cancel-block-lab">Withdraw from this <em>negotiation</em>.</div>
+              <div class="cancel-block-help">Cancelling closes the draft for both parties. The record is retained for history.</div>
+            </div>
+            <button type="button" class="cancel-btn" id="cc-cancel-btn">Cancel Negotiation</button>
+          </div>
         </div>
+      </div>
+
+      <!-- Chat panel — CEO-to-CEO discussion alongside the article
+           drafting surface. Wired by initChat() in the script block
+           once refresh() resolves activeCorpId. -->
+      <div class="chat-panel" id="cc-chat-panel" style="display:none;">
+        <div class="chat-head">
+          <div class="chat-head-title">Discussion</div>
+          <div class="chat-head-sub">CEOs only</div>
+        </div>
+        <div class="chat-log" id="cc-chat-log">
+          <div class="chat-empty" id="cc-chat-empty">No messages yet.</div>
+        </div>
+        <div class="chat-input-row">
+          <textarea id="cc-chat-input" class="chat-input"
+                    placeholder="Say something to the other CEO…"
+                    rows="1" maxlength="2000"></textarea>
+          <button type="button" id="cc-chat-send" class="chat-send" disabled>Send</button>
+        </div>
+        <div class="chat-msg-error" id="cc-chat-error" style="display:none;"></div>
       </div>
     </div>
   </div>
@@ -406,6 +484,182 @@ async function refresh() {
   state.canEditArticles = !state.isCancelled && !state.isBinding
                           && !state.hasAnySig && !!state.activeCorpId;
   render();
+  initChat();
+}
+
+// ────────────────────────────────────────────────────────────────────
+// CEO-to-CEO chat. Backed by 20270604's send_corp_negotiation_message
+// + list_corp_negotiation_messages. activeCorpId is the corp the
+// caller is acting as (resolved by get_corp_contract); we pass it
+// to the RPCs so the server-side _corp_negotiation_validate_caller
+// can confirm CEO-of-that-corp.
+//
+// Polling model matches the trial modal: setInterval every 4s while
+// the page is visible. Cleared on page unload (browser handles the
+// timer dropping when the tab/window closes; nothing else holds a
+// reference).
+// ────────────────────────────────────────────────────────────────────
+let chatState = {
+  pollTimer:        null,
+  callerFactionId:  null,
+  latestMessageId:  null,    // for cheap "did anything change?" comparison
+  sending:          false,
+};
+
+function initChat() {
+  if (!state.activeCorpId) {
+    // No active corp = caller isn't a CEO of either side. Hide the
+    // chat panel entirely; nothing to discuss as a third party.
+    const panel = document.getElementById('cc-chat-panel');
+    if (panel) panel.style.display = 'none';
+    return;
+  }
+  const panel = document.getElementById('cc-chat-panel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+
+  bindChatControls();
+  loadChatMessages();
+  if (!chatState.pollTimer) {
+    chatState.pollTimer = setInterval(loadChatMessages, 4000);
+  }
+}
+
+function bindChatControls() {
+  const input = document.getElementById('cc-chat-input');
+  const send  = document.getElementById('cc-chat-send');
+  if (!input || !send) return;
+  // Avoid duplicate listeners across refresh() calls — replace the
+  // existing input with a clone so any prior bindings come off with it.
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+  const newSend = send.cloneNode(true);
+  send.parentNode.replaceChild(newSend, send);
+
+  const refreshInput = document.getElementById('cc-chat-input');
+  const refreshSend  = document.getElementById('cc-chat-send');
+  refreshInput.addEventListener('input', () => {
+    refreshSend.disabled = refreshInput.value.trim().length === 0 || chatState.sending;
+    // Soft autosize the textarea up to its CSS max-height.
+    refreshInput.style.height = 'auto';
+    refreshInput.style.height = Math.min(refreshInput.scrollHeight, 120) + 'px';
+  });
+  refreshInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (!refreshSend.disabled) sendChatMessage();
+    }
+  });
+  refreshSend.addEventListener('click', sendChatMessage);
+}
+
+async function loadChatMessages() {
+  if (!state.activeCorpId) return;
+  const { data, error } = await _supabase.rpc('list_corp_negotiation_messages', {
+    p_negotiation_id: contractId,
+    p_corp_id:        state.activeCorpId,
+  });
+  if (error || !data?.success) {
+    // Soft-fail: the panel keeps whatever it last had, no banner.
+    // Polling will retry; permanent failures surface via send.
+    return;
+  }
+  chatState.callerFactionId = data.caller_faction_id;
+  renderChatMessages(data.messages || []);
+}
+
+function renderChatMessages(messages) {
+  const log = document.getElementById('cc-chat-log');
+  if (!log) return;
+  if (!messages.length) {
+    log.innerHTML = '<div class="chat-empty">No messages yet.</div>';
+    chatState.latestMessageId = null;
+    return;
+  }
+
+  // Skip the re-render if nothing changed. Avoids fighting the user's
+  // scroll position on every 4s poll.
+  const newestId = messages[messages.length - 1].id;
+  if (newestId === chatState.latestMessageId && log.querySelector('.chat-msg')) return;
+
+  const wasNearBottom = (log.scrollHeight - log.scrollTop - log.clientHeight) < 60;
+
+  log.innerHTML = messages.map(m => {
+    const isMe = m.faction_id && m.faction_id === chatState.callerFactionId;
+    const sideClass = isMe ? 'me' : 'them';
+    const whoLabel = isMe ? 'You' : escapeHtml(m.author_name || '[deleted]');
+    const factionTag = m.faction_name && !isMe
+      ? ` <span style="color:var(--mut);">· ${escapeHtml(m.faction_name)}</span>`
+      : '';
+    const when = formatChatTime(m.created_at);
+    return `
+      <div class="chat-msg ${sideClass}">
+        <div class="chat-msg-meta"><strong>${whoLabel}</strong>${factionTag} · ${escapeHtml(when)}</div>
+        <div class="chat-msg-body">${escapeHtml(m.body)}</div>
+      </div>`;
+  }).join('');
+  chatState.latestMessageId = newestId;
+
+  if (wasNearBottom) log.scrollTop = log.scrollHeight;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('cc-chat-input');
+  const send  = document.getElementById('cc-chat-send');
+  const err   = document.getElementById('cc-chat-error');
+  if (!input || !send) return;
+  const text = input.value.trim();
+  if (!text) return;
+
+  chatState.sending = true;
+  send.disabled = true;
+  err.style.display = 'none';
+
+  try {
+    const { data, error } = await _supabase.rpc('send_corp_negotiation_message', {
+      p_negotiation_id: contractId,
+      p_corp_id:        state.activeCorpId,
+      p_body:           text,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'Sign in first.',
+        missing_argument:  'Missing argument.',
+        not_party_ceo:     'Only the negotiating CEOs can post here.',
+        not_ceo:           'You aren\'t the CEO of that corp.',
+        corp_not_party:    'That corp isn\'t a party to this negotiation.',
+        body_too_short:    'Message is empty.',
+        body_too_long:     `Message exceeds ${data?.max ?? 2000} characters.`,
+      };
+      err.textContent = REASON[data?.reason] || `Failed to send (${data?.reason || 'unknown'}).`;
+      err.style.display = 'block';
+      return;
+    }
+    input.value = '';
+    input.style.height = 'auto';
+    await loadChatMessages();
+  } catch (e) {
+    err.textContent = 'Send failed: ' + (e?.message || e);
+    err.style.display = 'block';
+  } finally {
+    chatState.sending = false;
+    send.disabled = (document.getElementById('cc-chat-input')?.value?.trim()?.length ?? 0) === 0;
+  }
+}
+
+function formatChatTime(iso) {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const diff = Math.max(0, Date.now() - then);
+  const m = Math.round(diff / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return d < 30 ? `${d}d ago` : new Date(iso).toLocaleDateString();
 }
 
 // Tick ↔ "YYYY-MM" conversion for the <input type="month"> picker.

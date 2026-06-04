@@ -68,6 +68,19 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Corp negotiation chat (CEO-to-CEO discussion).** The contract
+  negotiation page (`corp-contract.html`) now splits into a 2-column
+  layout: article-drafting panel left (~66%), discussion panel right
+  (~33%). Either CEO can post messages to the other in the same row
+  as the articles they're drafting. Backed by migration `20270604`:
+  new `corp_negotiation_messages` table, plus
+  `send_corp_negotiation_message` and `list_corp_negotiation_messages`
+  RPCs that reuse the existing `_corp_negotiation_validate_caller`
+  helper (from 20270571) so posting is gated on
+  "CEO of one of the two parties." 4-second poll on the client mirrors
+  the trial-modal pattern; no Supabase Realtime subscription needed.
+  Layout collapses to single-column under 920px. Hidden entirely when
+  the viewer isn't a CEO of either party (admin / observer mode).
 - **Forum Edit/Delete now show on movement-party-authored posts.**
   User reported a post they authored under their party (a
   `movement_party` faction, e.g. "Partido Conservador de Melizea")
