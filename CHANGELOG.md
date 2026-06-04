@@ -97,16 +97,21 @@ All notable changes to Nationhood are recorded here. Format inspired by
   postable types. Migration `20270603`.
 - **Wiki subtab now functional on both Forum surfaces.** The
   previously-placeholder "No wiki entries yet" pane in
-  `politician-forum.html` and `entrepreneur-forum.html` now renders
-  a flat alphabetical list of all `wiki_pages` (title + template
-  type chip) with an inline reader on click — title, infobox,
-  body with `[[wiki-links]]` resolved via the existing
-  `renderWikiLinks` helper. Links to other wiki pages stay inside
-  the Forum shell; missing-link clicks fall through to
-  `wiki.html` so the user can land on the standalone editor for
-  the new slug. Shared `js/forum-wiki.js` module so the two Forum
-  pages don't duplicate the list/reader code (single
-  `mountWikiPane(hostEl, supabase)` entry point).
+  `politician-forum.html` and `entrepreneur-forum.html` now mirrors
+  the standalone `wiki-list.html` surface: title search input,
+  template-type filter pills (All / Nation / Person / Corporation /
+  Religion / Culture / Political Party / Law / Agreement / Event /
+  Organization / Military Unit / Product / Location / Sports),
+  a tag-filter input with popular-tag chips (`fetchPopularTags`),
+  Wiki Home + New Page buttons that link out to the standalone
+  pages, and the alphabetical page list with title + tag chips +
+  type tag + updated date. Clicking a row opens the page inline
+  with the same reader (`renderWikiLinks` + `renderInfobox`) as
+  before — links to other wiki pages stay inside the Forum shell;
+  missing-link clicks fall through to `wiki.html`. Shared
+  `js/forum-wiki.js` module so the two Forum pages don't duplicate
+  the list/reader code (single `mountWikiPane(hostEl, supabase)`
+  entry point).
 - **Entrepreneur forum parity.** Renamed the entrepreneur `LOBBYING`
   tab to `FORUM` and cloned the four `politician-forum-*.html`
   pages into `entrepreneur-forum-*.html` siblings with the
@@ -182,9 +187,37 @@ All notable changes to Nationhood are recorded here. Format inspired by
   `list_active_trials_for_advocate` both return
   `ticks_until_forfeit` so the modal + Pressing-Issues card render
   the countdown without client-side tick math.
+- **Corp contract — auto-grow article textareas + mobile refresh.**
+  Article body textareas on `corp-contract.html` now soft-autosize
+  to fit their content (no internal scrollbar; doubled the min
+  height from 54 → 108px), wired through a shared
+  `autosizeTextarea(el, maxPx)` helper that also powers the chat
+  composer. Added 720px and 520px breakpoints so the contract reads
+  cleanly on phones: tighter padding, stacked phase rows, stacked
+  cancel block. At ≤920px the 2-column negotiation grid collapses to
+  a single column and the chat panel drops its `position:sticky`
+  pin so it sits naturally below the doc panel.
 
 ### Fixed
 
+- **Oil & Gas: Revenue Change card now reflects actual per-tick
+  revenue.** The "Revenue Change (This Month)" card on
+  `entrepreneur-corp.html` was rendering "$0 · no data yet" for every
+  oil & gas corp even when retail revenue was clearly flowing into
+  the treasury each tick (pumps → refinery → gas stations → treasury,
+  same-tick). Root cause: `corp_revenue_change_this_month` reads
+  `corp_cash_events` (a legacy ledger FK'd to `factions(id)`), but
+  `process_oil_and_gas` writes to `entrepreneur_corps.treasury_cash`
+  and physically can't emit corp_cash_events rows (wrong FK). The
+  ledger had zero matching rows; the card had nothing to display.
+  Fix in `20270605`: new `entrepreneur_corps.last_tick_revenue` +
+  `last_revenue_tick` columns (server-only writes) stamped by
+  `process_oil_and_gas` on every tick that produces retail revenue,
+  plus a rewrite of `corp_revenue_change_this_month` to read those
+  columns directly. Same response shape so the client doesn't
+  change. Same fix needed for airline routes, share trades,
+  apartment rents, etc. — those still bypass the legacy ledger and
+  will keep showing "no data yet" until they get the same stamp.
 - **`20270579` storage policy** wrapped in `DROP POLICY IF EXISTS`
   guards. The first push attempt failed with `SQLSTATE 42710`
   (policy already exists) on a re-run.

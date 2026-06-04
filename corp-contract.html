@@ -73,7 +73,13 @@
      full-width and the chat stacks below it. */
   .neg-grid { display:grid; grid-template-columns:2fr 1fr; gap:16px;
     align-items:start; }
-  @media (max-width:920px) { .neg-grid { grid-template-columns:1fr; } }
+  @media (max-width:920px) {
+    .neg-grid { grid-template-columns:1fr; }
+    /* Stacked layout — chat is no longer side-by-side, so unpin it
+       from sticky and let it size to its content. The 720px block
+       below tightens spacing further. */
+    .chat-panel { position:static; }
+  }
 
   /* Mobile refresh — tighter paddings + single-column layouts on
      narrower viewports so the contract doesn't horizontally clip
@@ -219,7 +225,7 @@
     border:none; color:var(--paper-text); font-family:Georgia,serif;
     font-size:12px; line-height:1.8; min-height:108px;
     padding:0; outline:none;
-    /* Auto-grown by autosizeArticleBody() in script — the JS sets
+    /* Auto-grown by autosizeTextarea() in script — the JS sets
        height = scrollHeight on render + on input so the textarea
        always fits its content. resize:none stops the manual drag
        handle from conflicting with the JS sizing. */
@@ -585,9 +591,8 @@ function bindChatControls() {
   const refreshSend  = document.getElementById('cc-chat-send');
   refreshInput.addEventListener('input', () => {
     refreshSend.disabled = refreshInput.value.trim().length === 0 || chatState.sending;
-    // Soft autosize the textarea up to its CSS max-height.
-    refreshInput.style.height = 'auto';
-    refreshInput.style.height = Math.min(refreshInput.scrollHeight, 120) + 'px';
+    // Soft autosize via the shared helper (capped at 120px).
+    autosizeTextarea(refreshInput, 120);
   });
   refreshInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -706,20 +711,24 @@ async function sendChatMessage() {
   }
 }
 
-// Auto-grow an article body textarea so it always fits its content
-// without an inner scrollbar. Called once on render (initial fit)
-// and again on every input event (live grow). delegate-bound so a
-// single listener handles every article body input regardless of
-// how many re-renders happen.
-function autosizeArticleBody(el) {
+// Auto-grow a textarea so it always fits its content without an
+// inner scrollbar. Optional maxPx cap (chat input uses 120 so the
+// reply box doesn't take over the whole panel; article body uses
+// no cap so long contracts grow freely).
+function autosizeTextarea(el, maxPx) {
   if (!el) return;
   el.style.height = 'auto';
-  el.style.height = el.scrollHeight + 'px';
+  const h = el.scrollHeight;
+  el.style.height = (maxPx ? Math.min(h, maxPx) : h) + 'px';
 }
+// Delegate listener — one input handler at document level catches
+// every .article-body-input across re-renders without per-element
+// attach/detach.
 document.addEventListener('input', (e) => {
   const t = e.target;
-  if (t && t.classList && t.classList.contains('article-body-input')) {
-    autosizeArticleBody(t);
+  if (!t || !t.classList) return;
+  if (t.classList.contains('article-body-input')) {
+    autosizeTextarea(t);
   }
 });
 
@@ -828,7 +837,7 @@ function render() {
   // Auto-grow article body textareas to fit their content. Initial
   // sizing happens right after innerHTML lands (scrollHeight is now
   // correct); the input listener keeps it in sync as the user types.
-  host.querySelectorAll('.article-body-input').forEach(autosizeArticleBody);
+  host.querySelectorAll('.article-body-input').forEach(el => autosizeTextarea(el));
 
   // Add-article only when articles are still editable (no signatures
   // yet, not binding, not cancelled, caller is CEO).
