@@ -68,12 +68,12 @@ AS $$
        AND o.status   = 'accepted'
        AND f.abandoned_at IS NULL
        AND f.bar_admitted_nation_id IS NOT NULL
-     ORDER BY COALESCE(f.politician_standing, 0) DESC, random()
+     ORDER BY COALESCE(f.politician_influence, 0) DESC, random()
      LIMIT 1;
 $$;
 
 COMMENT ON FUNCTION public._corp_highest_standing_counsel(uuid) IS
-    'Single source of truth for "which retained advocate represents this corp in a new case?" — highest politician_standing among accepted corp_advocate_offers, random tie-break, skips abandoned + non-bar-admitted (advocates who lost the bar). Returns NULL when the corp has no usable counsel.';
+    'Single source of truth for "which retained advocate represents this corp in a new case?" — highest politician_influence (formerly politician_standing pre-20270583) among accepted corp_advocate_offers, random tie-break, skips abandoned + non-bar-admitted (advocates who lost the bar). Returns NULL when the corp has no usable counsel.';
 
 REVOKE EXECUTE ON FUNCTION public._corp_highest_standing_counsel(uuid) FROM PUBLIC;
 
