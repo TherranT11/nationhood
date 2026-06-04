@@ -68,6 +68,24 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Nation flag + name on every thread row.** Category-list rows
+  now carry a small chip beside the title with the thread's
+  Primary Nation (flag image + name) or "International" when
+  unset. Same chip pattern on the thread detail header. Server-
+  side join in `get_forum_category` + `get_forum_thread` pulls
+  `nations.flag_url`; client-side render goes through a shared
+  `renderNationChip()` helper in `forum-utils.js`.
+- **Edit + Delete on your own posts.** Both chips appear in a small
+  action row at the bottom of any post whose `author_faction_id` is
+  in the caller's faction set. Edit swaps the body for an inline
+  `contenteditable` with Save / Cancel; Save round-trips through
+  `update_forum_post` (server re-checks ownership and bounds, sets
+  `forum_posts.updated_at`). The page reloads on success so the
+  render-side sanitizer runs and an `edited <relative>` badge
+  appears beside the original timestamp. Delete confirms, calls
+  `delete_forum_post`; if the row was the only post in its thread
+  the thread row cascades (empty threads aren't a useful surface)
+  and the page bounces back to the category index.
 
 ### Added — Contracts
 
@@ -125,6 +143,32 @@ All notable changes to Nationhood are recorded here. Format inspired by
   because the tag-stripped length came out to 0. The check now
   passes when the body contains an `<img>` tag, regardless of
   accompanying text.
+- **Forum compose upload path mismatch**. Image uploads were going to
+  `forum-images/<bootstrap-faction>/...` instead of the
+  identity-selector value, so they landed in the wrong faction's
+  folder while the post was attributed to the selected faction.
+  Compose now reads the selected identity for the upload path and
+  early-returns with a friendly message if no identity is selected.
+- **Stale "Posting as" footer on compose** removed. It was a
+  carryover from the pre-identity-selector design and showed the
+  bootstrap-selected faction regardless of which identity the
+  dropdown actually picked — actively misleading. The dropdown is
+  the author truth; the footer copy now points the user at it.
+
+### Security
+
+- **`_forum_resolve_author` grant tightened.** The internal helper
+  used by `create_forum_thread` and `create_forum_post` is now
+  `REVOKE FROM PUBLIC` with no `GRANT TO authenticated`. Both call
+  sites are SECURITY DEFINER and execute with elevated privileges
+  regardless, so removing the wire-API surface costs nothing and
+  reduces what a client can probe directly.
+- **`forum-images` per-faction upload policy.** The 20270597
+  initial policy gated only on `bucket_id = 'forum-images'`,
+  letting any authenticated user write to any path under the
+  bucket (no XSS surface, just clutter). The 20270598 follow-up
+  pins `(storage.foldername(name))[1]` to a faction id the
+  caller owns (`id = auth.uid() OR linked_user_id = auth.uid()`).
 
 ### Removed
 

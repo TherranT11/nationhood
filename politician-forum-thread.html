@@ -51,13 +51,19 @@
 }
 .threadhead-meta .stat strong { color:#bbb; font-weight:600; }
 .threadhead-meta .sep { color:#444; }
-.threadhead-nation {
-  display:inline-flex; align-items:center; gap:5px;
-  padding:4px 10px; border-radius:3px;
+.thread-nation {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 11px 4px 7px; border-radius:3px;
   background:var(--zc-bg); border:1px solid var(--zc-dim);
   color:var(--zc-bright);
   font-size:9px; letter-spacing:0.14em; font-weight:700; text-transform:uppercase;
 }
+.thread-nation-flag {
+  width:16px; height:11px; object-fit:cover;
+  border:0.5px solid rgba(255,255,255,0.12); border-radius:1px;
+  flex-shrink:0;
+}
+.thread-nation-name { line-height:1; }
 
 /* ─── Posts ──────────────────────────────────────────────────────── */
 .posts {
@@ -106,6 +112,44 @@
   font-size:9.5px; color:#666; font-style:italic;
   flex-shrink:0; text-align:right;
 }
+.post-when .edited { color:#7ac8c8; font-style:italic; }
+
+.post-actions {
+  display:flex; gap:6px; padding:8px 22px 14px;
+  border-top:1px dashed rgba(255,255,255,0.04);
+  background:rgba(255,255,255,0.005);
+}
+.post-act {
+  padding:5px 11px; border-radius:3px;
+  background:transparent; border:1px solid rgba(255,255,255,0.06);
+  color:#888;
+  font-size:8.5px; letter-spacing:0.12em; font-weight:700;
+  text-transform:uppercase; cursor:pointer; font-family:inherit;
+}
+.post-act:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.post-act.danger:hover:not(:disabled) { color:#e09898; border-color:rgba(200,120,120,0.4); }
+.post-act:disabled { opacity:0.45; cursor:not-allowed; }
+.post-act.primary {
+  background:rgba(90,175,165,0.08); border-color:#5aafa5; color:#7ac8c8;
+}
+.post-act.primary:hover:not(:disabled) { background:rgba(90,175,165,0.16); color:#fff; }
+
+.post-edit-area {
+  width:100%; min-height:140px; max-height:400px;
+  padding:14px 18px;
+  background:#0a0f10; border:1px solid rgba(90,175,165,0.3); border-radius:4px;
+  color:#d4d4d4;
+  font-family:Georgia,serif; font-size:13px; line-height:1.7;
+  outline:none; overflow-y:auto;
+}
+.post-edit-area:focus { border-color:rgba(90,175,165,0.5); }
+.post-edit-area img {
+  max-width:100%; height:auto; margin:8px 0;
+  border-radius:4px; border:1px solid rgba(90,175,165,0.25);
+  display:block;
+}
+.post-edit-msg { font-size:9.5px; color:#c87a7a; font-style:italic; padding-top:6px; }
+.post-edit-msg.ok { color:#7ac8c8; }
 
 .post-body {
   padding:24px 28px;
@@ -300,7 +344,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
-import { escHtml, sanitizeHtml, countWords, formatRelative, ZONE_META, insertImageAtCursor }
+import { escHtml, sanitizeHtml, countWords, formatRelative, ZONE_META, insertImageAtCursor, renderNationChip }
   from './js/forum-utils.js';
 
 const BODY_MIN = 4, BODY_MAX = 50000;
@@ -347,6 +391,7 @@ async function init() {
   renderPosts(threadData.posts);
   renderIdentities(identities);
   bindReplyForm(threadId);
+  bindPostActions();
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
@@ -398,9 +443,7 @@ async function fetchMyIdentities() {
 function renderThreadHead(thread, cat) {
   const host = document.getElementById('threadhead-host');
   const zoneMeta = ZONE_META[cat.zone] || { eyebrow: '', name: '' };
-  const nationChip = thread.nation_name
-    ? `<span class="threadhead-nation">${escHtml(thread.nation_name)}</span>`
-    : `<span class="threadhead-nation">International</span>`;
+  const nationChip = renderNationChip(thread.nation_name, thread.nation_flag_url, { className: 'thread-nation' });
   host.innerHTML = `
     <div class="threadhead ${escHtml(cat.zone)}">
       <div class="threadhead-row">
@@ -439,8 +482,20 @@ function renderPost(p, isFirst) {
   // Body sanitized at render time as a second line of defence — the
   // client sanitizer at submit is the first.
   const safeBody = sanitizeHtml(p.body || '');
+  const editedLine = p.updated_at
+    ? `<span class="edited">edited ${escHtml(formatRelative(p.updated_at))}</span>`
+    : '';
+  // Edit + Delete chips only show when caller_owns is true on this
+  // post (server-computed in get_forum_thread). The RPCs re-verify
+  // ownership; this is just the UX gate.
+  const ownerActions = p.caller_owns
+    ? `<div class="post-actions" data-post-id="${escHtml(p.post_id)}">
+         <button type="button" class="post-act" data-act="edit">Edit</button>
+         <button type="button" class="post-act danger" data-act="delete">Delete</button>
+       </div>`
+    : '';
   return `
-    <div class="post${isFirst ? ' first' : ''}">
+    <div class="post${isFirst ? ' first' : ''}" data-post-id="${escHtml(p.post_id)}">
       <div class="post-head">
         <div class="post-avatar">${escHtml(initialsFromName(name))}</div>
         <div class="post-id">
@@ -452,9 +507,13 @@ function renderPost(p, isFirst) {
               : ''}
           </div>
         </div>
-        <div class="post-when">${escHtml(formatRelative(p.created_at))}</div>
+        <div class="post-when">
+          ${escHtml(formatRelative(p.created_at))}
+          ${editedLine ? `<br>${editedLine}` : ''}
+        </div>
       </div>
-      <div class="post-body">${safeBody}</div>
+      <div class="post-body" data-role="body">${safeBody}</div>
+      ${ownerActions}
     </div>`;
 }
 
@@ -561,6 +620,154 @@ async function handleImageUpload(file, bodyEl, authorFactionId, updateCount, upd
   } finally {
     addImgBtn.disabled = false;
     if (wasDisabled) updateBtn(); else postBtn.disabled = false;
+  }
+}
+
+function bindPostActions() {
+  document.querySelectorAll('.post-actions').forEach(actions => {
+    const postId = actions.dataset.postId;
+    if (!postId) return;
+    const post = actions.closest('.post');
+    actions.querySelector('[data-act="edit"]')?.addEventListener('click', () => {
+      enterEditMode(post, postId);
+    });
+    actions.querySelector('[data-act="delete"]')?.addEventListener('click', () => {
+      deletePost(post, postId);
+    });
+  });
+}
+
+function enterEditMode(postEl, postId) {
+  const bodyEl = postEl.querySelector('[data-role="body"]');
+  const actions = postEl.querySelector('.post-actions');
+  if (!bodyEl || !actions) return;
+
+  // Snapshot the rendered HTML so Cancel can restore it. The DB
+  // round-trip on save will re-render via the page reload; this is
+  // just the optimistic local rollback.
+  const originalHtml = bodyEl.innerHTML;
+
+  // Swap the rendered body for a contenteditable region pre-filled
+  // with the same HTML. The sanitizer ran at render time, so the
+  // HTML in the DOM is already trustworthy to re-edit.
+  bodyEl.classList.add('post-edit-area');
+  bodyEl.classList.remove('post-body');
+  bodyEl.setAttribute('contenteditable', 'true');
+  bodyEl.focus();
+
+  // Swap the chip row for Save + Cancel + a small message slot.
+  const msgId = `edit-msg-${postId}`;
+  actions.innerHTML = `
+    <button type="button" class="post-act primary" data-act="save">Save</button>
+    <button type="button" class="post-act" data-act="cancel">Cancel</button>
+    <span style="flex:1;"></span>
+    <span class="post-edit-msg" id="${msgId}"></span>`;
+
+  const saveBtn   = actions.querySelector('[data-act="save"]');
+  const cancelBtn = actions.querySelector('[data-act="cancel"]');
+  const msgEl     = actions.querySelector(`#${msgId}`);
+
+  const setMsg = (text, ok) => {
+    if (!msgEl) return;
+    msgEl.textContent = text || '';
+    msgEl.classList.toggle('ok', !!ok && !!text);
+  };
+
+  cancelBtn.addEventListener('click', () => {
+    bodyEl.innerHTML = originalHtml;
+    exitEditMode(postEl, postId);
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const cleaned = sanitizeHtml(bodyEl.innerHTML || '');
+    const visibleLen = cleaned.replace(/<[^>]*>/g, '').trim().length;
+    const hasImage = /<img\b/i.test(cleaned);
+    if (visibleLen < BODY_MIN && !hasImage) {
+      setMsg(`Post needs at least ${BODY_MIN} characters or an image.`, false);
+      return;
+    }
+    if (cleaned.length > BODY_MAX) {
+      setMsg(`Post exceeds ${BODY_MAX.toLocaleString()} characters.`, false);
+      return;
+    }
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    setMsg('Saving…', true);
+    try {
+      const { data, error } = await _supabase.rpc('update_forum_post', {
+        p_post_id:   postId,
+        p_body_html: cleaned,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_authenticated: 'Sign in first.',
+          not_post_owner:    'You can\'t edit that post.',
+          post_not_found:    'Post no longer exists.',
+          body_too_short:    `Post needs at least ${data?.min ?? BODY_MIN} characters or an image.`,
+          body_too_long:     `Post exceeds ${data?.max ?? BODY_MAX} characters.`,
+        };
+        setMsg(REASON[data?.reason] || `Could not save (${data?.reason || 'unknown'}).`, false);
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        return;
+      }
+      // Reload so the rendered HTML goes through render-side sanitize
+      // and the 'edited <relative>' badge appears.
+      window.location.reload();
+    } catch (e) {
+      console.error('update_forum_post failed', e);
+      setMsg(`Save failed: ${e?.message || e}`, false);
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  });
+}
+
+function exitEditMode(postEl, postId) {
+  const bodyEl = postEl.querySelector('[data-role="body"]');
+  const actions = postEl.querySelector('.post-actions');
+  if (!bodyEl || !actions) return;
+  bodyEl.classList.remove('post-edit-area');
+  bodyEl.classList.add('post-body');
+  bodyEl.removeAttribute('contenteditable');
+  actions.innerHTML = `
+    <button type="button" class="post-act" data-act="edit">Edit</button>
+    <button type="button" class="post-act danger" data-act="delete">Delete</button>`;
+  // Re-bind for the freshly-rendered chips.
+  actions.querySelector('[data-act="edit"]')?.addEventListener('click', () => enterEditMode(postEl, postId));
+  actions.querySelector('[data-act="delete"]')?.addEventListener('click', () => deletePost(postEl, postId));
+}
+
+async function deletePost(postEl, postId) {
+  if (!confirm('Delete this post? If it\'s the only post in the thread, the whole thread goes with it.')) return;
+  const actions = postEl.querySelector('.post-actions');
+  actions?.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('delete_forum_post', { p_post_id: postId });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'Sign in first.',
+        not_post_owner:    'You can\'t delete that post.',
+        post_not_found:    'Post already gone.',
+      };
+      alert(REASON[data?.reason] || `Could not delete (${data?.reason || 'unknown'}).`);
+      actions?.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    if (data.thread_gone) {
+      // Whole thread evaporated — bounce back to the category index
+      // rather than landing on a 'thread_not_found' detail page.
+      const backLink = document.getElementById('back-link');
+      window.location.href = backLink?.getAttribute('href') || 'politician-forum.html';
+    } else {
+      window.location.reload();
+    }
+  } catch (e) {
+    console.error('delete_forum_post failed', e);
+    alert(`Delete failed: ${e?.message || e}`);
+    actions?.querySelectorAll('button').forEach(b => { b.disabled = false; });
   }
 }
 
