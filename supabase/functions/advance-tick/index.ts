@@ -30935,6 +30935,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Aircraft production service failed (non-fatal):', prErr);
     }
 
+    // Trial turn timeouts (20270589): auto-flip current_turn on
+    // in-progress trials where the side on the clock has been idle for
+    // ≥ 4 ticks. Mirrors end_turn's flip logic; round-4 defendant
+    // timeout closes the trial via _close_trial_at_round_four. Excludes
+    // objection-pending and awaiting-verdict trials (the modal locks
+    // the clock there anyway).
+    try {
+        const { data: ttResult, error: ttErr } =
+            await supabase.rpc('process_trial_turn_timeouts', { p_tick: newTick });
+        if (ttErr) {
+            console.error('[advanceTick] process_trial_turn_timeouts failed:', ttErr.message);
+        } else if (ttResult && (ttResult.flipped > 0 || ttResult.closed > 0)) {
+            summary.trialTurnTimeouts = ttResult;
+            console.log(`[advanceTick] Trial turn timeouts: ${ttResult.flipped} flipped, ${ttResult.closed} closed`);
+        }
+    } catch (ttErr) {
+        console.error('[advanceTick] Trial turn timeouts service failed (non-fatal):', ttErr);
+    }
+
     // Aircraft RFPs (20270229): award the lowest-price bid at the deadline,
     // advance build-to-order, and on completion deliver the aircraft to the
     // airline (settling the order + production cost atomically).

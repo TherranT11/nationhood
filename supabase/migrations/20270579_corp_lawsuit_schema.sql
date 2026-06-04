@@ -69,11 +69,13 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Authenticated users can upload (the file_corp_lawsuit RPC re-checks
 -- ownership; the bucket policy only enforces "must be signed in").
+DROP POLICY IF EXISTS "Authenticated users can upload lawsuit evidence" ON storage.objects;
 CREATE POLICY "Authenticated users can upload lawsuit evidence"
     ON storage.objects FOR INSERT
     TO authenticated
     WITH CHECK (bucket_id = 'lawsuit-evidence');
 
+DROP POLICY IF EXISTS "Anyone can view lawsuit evidence" ON storage.objects;
 CREATE POLICY "Anyone can view lawsuit evidence"
     ON storage.objects FOR SELECT
     TO public
