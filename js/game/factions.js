@@ -147,29 +147,33 @@ export function getFactionDashboardUrl(faction) {
 /**
  * Entrepreneur archetypes — single source of truth for the setup
  * archetype page. The player picks one; its fixed stat block + starting
- * cash are written to the new factions columns. Total is always the sum
- * of the four stats, derived wherever shown (never stored).
+ * cash are written to the new factions columns. Stats are the shared
+ * Reputation / Influence / Skill trio (cash is the fourth, "Capital").
+ * Totals are derived wherever shown (never stored); the rename from
+ * the four-stat ambition/cunning/reputation/vision model leaves
+ * archetypes with uneven totals (28–42) — a deliberate v1 trade-off,
+ * to be re-balanced in a follow-up.
  */
 export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
     heir: {
         name: 'THE HEIR',
         quote: "You didn't build this. Your father did. Now it's yours to keep or lose.",
         description: "Inherited a substantial position. Comes with money and a name, but the field doesn't yet know whether you're worth your inheritance. Trusted because of who you are, doubted for the same reason.",
-        stats: { ambition: 6, cunning: 4, reputation: 18, vision: 8 },
+        stats: { influence: 6, skill: 4, reputation: 18 },
         startingCash: 95000000,
     },
     founder: {
         name: 'THE FOUNDER',
         quote: 'You built one thing well. Whether you can build another is the open question.',
         description: 'Sold a successful business and now have capital to deploy but no platform. Modest reputation among insiders, unknown to the public. You know how to make things; whether you know how to make more things is untested.',
-        stats: { ambition: 16, cunning: 8, reputation: 10, vision: 14 },
+        stats: { influence: 16, skill: 8, reputation: 10 },
         startingCash: 48000000,
     },
     operator: {
         name: 'THE OPERATOR',
         quote: 'Twenty years in middle management. You know how everything works. Now you have your own seat at the table.',
         description: "Long-tenured corporate executive who finally bought a meaningful stake. Reputation built on competence and execution. Knows where the bodies are buried in three industries. Less of a builder, more of a fixer.",
-        stats: { ambition: 8, cunning: 14, reputation: 14, vision: 4 },
+        stats: { influence: 8, skill: 14, reputation: 14 },
         startingCash: 62000000,
         // 20 years in middle management means they started ~22 and
         // are now at least 42; setup samples from a 45-55 range.
@@ -179,28 +183,28 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
         name: 'THE RAIDER',
         quote: 'Other people built it. You take it.',
         description: "Aggressive corporate raider with a track record of hostile takeovers, leveraged buyouts, and brutal restructurings. Feared in boardrooms. The press hates you. You don't read the press.",
-        stats: { ambition: 18, cunning: 20, reputation: 2, vision: 6 },
+        stats: { influence: 18, skill: 20, reputation: 2 },
         startingCash: 71000000,
     },
     visionary: {
         name: 'THE VISIONARY',
         quote: 'You see what no one else does. The question is whether you can convince anyone before you run out of money.',
         description: 'Brilliant strategic thinker with unconventional ideas. Has a reputation among the people who matter for being either a genius or a crank. Has built nothing of note yet — but the ideas are real.',
-        stats: { ambition: 14, cunning: 6, reputation: 8, vision: 20 },
+        stats: { influence: 14, skill: 6, reputation: 8 },
         startingCash: 32000000,
     },
     politician: {
         name: 'THE POLITICIAN',
         quote: 'You know everyone. You know what they want. You know what they owe.',
         description: "Spent your career in regulated industries where success depends on relationships with government. Reputation is everything in your world. You don't out-compete rivals; you out-maneuver them through connections they don't have.",
-        stats: { ambition: 10, cunning: 16, reputation: 16, vision: 4 },
+        stats: { influence: 10, skill: 16, reputation: 16 },
         startingCash: 54000000,
     },
     prodigy: {
         name: 'THE PRODIGY',
         quote: 'Twenty-five years old. Your first venture sold for more than the GDP of small countries. Now the second act starts and no one knows what it looks like.',
-        description: "Recently exited a wildly successful early venture. The market still doesn't know what to make of you. You have cash, vision, and ambition — but neither operational depth nor political capital.",
-        stats: { ambition: 20, cunning: 4, reputation: 12, vision: 18 },
+        description: "Recently exited a wildly successful early venture. The market still doesn't know what to make of you. You have cash and ambition — but neither operational depth nor political capital.",
+        stats: { influence: 20, skill: 4, reputation: 12 },
         startingCash: 88000000,
         // Quote pins them to 25; setup honours this override instead
         // of the default 30+1d6 random spread.
@@ -209,8 +213,8 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
     fixer: {
         name: 'THE FIXER',
         quote: "You've been brought in to clean up two failed companies. Both came back from the brink. Now you have your own war chest.",
-        description: 'Career turnaround specialist who\'s been hired to save dying companies, succeeded twice, and parlayed that into a personal position. Modest cash but enormous credibility for getting things done in hard situations.',
-        stats: { ambition: 12, cunning: 14, reputation: 16, vision: 8 },
+        description: 'Career turnaround specialist who\'s been hired to save dying companies, succeeded twice, and parlayed that into a personal position. Modest cash but enormous reputation for getting things done in hard situations.',
+        stats: { influence: 12, skill: 14, reputation: 16 },
         startingCash: 28000000,
     },
 });

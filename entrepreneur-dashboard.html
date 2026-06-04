@@ -819,10 +819,13 @@ async function handleMakePayment(e) {
     // in flight. loadNetWorth replaces both lines once the server answers.
     setText('net-worth', hfFmtBig(Number(f.party_funds) || 0));
 
-    // Real stats — the four set at archetype selection. Total is derived.
+    // Real stats — the three set at archetype selection (Reputation,
+    // Influence, Skill). Capital is shown via net-worth above. Total
+    // is derived.
     const stats = [
-      ['AMBITION', f.ent_ambition], ['CUNNING', f.ent_cunning],
-      ['REPUTATION', f.ent_reputation], ['VISION', f.ent_vision],
+      ['REPUTATION', f.ent_reputation],
+      ['INFLUENCE',  f.ent_influence],
+      ['SKILL',      f.ent_skill],
     ];
     const total = stats.reduce((s, [, v]) => s + (Number(v) || 0), 0);
     document.getElementById('stats-row').innerHTML = stats.map(([label, v], i) => `

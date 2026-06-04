@@ -1650,7 +1650,7 @@ const _MINISTRY_ACTION_REGISTRY = {
         {
             id: 'resign_as_pm',
             name: 'Resign as Prime Minister',
-            desc: 'Step down. Coalition enters caretaker status with a window to nominate a successor; otherwise a snap election fires. -3 Momentum, -0.05 Credibility, -3 Stability, 12-tick PM ban.',
+            desc: 'Step down. Coalition enters caretaker status with a window to nominate a successor; otherwise a snap election fires. -3 Momentum, -0.05 Skill, -3 Stability, 12-tick PM ban.',
             cost: '$0',
             costColor: 'var(--text-dim)',
             tags: ['GOVERNMENT', 'PM ONLY'],
@@ -7169,7 +7169,7 @@ async function triggerResignAsPM() {
         'If the window expires, a snap election is called.\n\n' +
         'Cost to your party:\n' +
         '\u2022 \u22123 Momentum\n' +
-        '\u2022 \u22120.05 Credibility\n' +
+        '\u2022 \u22120.05 Skill\n' +
         '\u2022 Nation: \u22123 Stability\n' +
         '\u2022 12-tick bar from the PM seat on your party\n\n' +
         'Proceed?'

@@ -108,7 +108,7 @@ export function mountBoardPressingIssues({
             .select('id, corp_id, applicant_faction_id, created_tick, expires_tick,'
                   + ' corp:entrepreneur_corps!corp_id(id, name, industry, listing),'
                   + ' applicant:factions!applicant_faction_id(faction_name, leader_first_name, leader_last_name,'
-                  + ' ent_ambition, ent_cunning, ent_reputation, ent_vision)')
+                  + ' ent_influence, ent_skill, ent_reputation)')
             .in('id', reqIds)
             .eq('status', 'pending');
         if (reqErr) { console.warn('[board-pi] requests fetch failed:', reqErr.message); return []; }
@@ -176,7 +176,7 @@ export function mountBoardPressingIssues({
         const apRo = document.createElement('div'); apRo.className = 'role'; apRo.textContent = 'WISHES TO JOIN AS DIRECTOR';
         apLeft.append(apNm, apRo);
         const stats = document.createElement('div'); stats.className = 'bp-stats';
-        for (const [label, key] of [['AMB','ent_ambition'],['CUN','ent_cunning'],['REP','ent_reputation'],['VIS','ent_vision']]) {
+        for (const [label, key] of [['REP','ent_reputation'],['INF','ent_influence'],['SKL','ent_skill']]) {
             const s  = document.createElement('div'); s.className = 's';
             const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = label;
             const sv = document.createElement('div'); sv.className = 'v'; sv.textContent = String(app[key] ?? '—');

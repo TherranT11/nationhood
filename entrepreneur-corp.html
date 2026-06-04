@@ -2325,9 +2325,9 @@ function initials(s, n) {
       list.innerHTML = `
         <div class="rc-col-head">
           <span>ADVOCATE</span>
-          <span class="ch-right">STANDING</span>
-          <span class="ch-right">CREDIBILITY</span>
           <span class="ch-right">REPUTATION</span>
+          <span class="ch-right">INFLUENCE</span>
+          <span class="ch-right">SKILL</span>
           <span></span>
         </div>
         ${_rc.advocates.length
@@ -2347,9 +2347,9 @@ function initials(s, n) {
                     <div class="rc-adv-name-text">${escapeHtml(a.name || '—')}</div>
                     <div class="rc-adv-sub">${escapeHtml(sub)}</div>
                   </div>
-                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.standing)}">${statText(a.standing)}</div></div>
-                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.credibility)}">${statText(a.credibility)}</div></div>
                   <div class="rc-stat"><div class="rc-stat-val ${statClass(a.reputation)}">${statText(a.reputation)}</div></div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.influence)}">${statText(a.influence)}</div></div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.skill)}">${statText(a.skill)}</div></div>
                   <div class="rc-adv-action">${action}</div>
                 </div>`;
             }).join('')
@@ -6214,7 +6214,7 @@ function initials(s, n) {
           <div class="bm-tier ${key === selKey ? 'sel' : ''}" data-tier="${key}">
             <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
             <span class="num cost">${fmtUsd(cost)}</span><span class="num">${dur}t</span>
-            <span class="num amb">+${t.amb} Amb</span>
+            <span class="num amb">+${t.amb} Inf</span>
           </div>`;
       }).join('');
       document.querySelectorAll('#bm-tiers .bm-tier').forEach(el => {
@@ -6302,7 +6302,7 @@ function initials(s, n) {
         ? `<span class="bm-stat">${escapeHtml(nation.name)}: cost-of-living ${Math.round(Number(nation.cost_of_living ?? 50))} · infrastructure ${Math.round(Number(nation.infrastructure ?? 50))}</span><br>`
         : '';
       document.getElementById('bm-summary').innerHTML =
-        `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Ambition</b> for you.<br>${footer}`;
+        `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Influence</b> for you.<br>${footer}`;
     };
 
     const openBuildModal = async () => {

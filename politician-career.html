@@ -578,8 +578,8 @@
     <div class="em-footer" id="em-footer" style="display:none;">
       <div class="em-your-stats">
         <div class="em-stat-block"><div class="li">POL. CAPITAL</div><div class="lv infl" id="em-stat-infl">—</div></div>
-        <div class="em-stat-block"><div class="li">CHARISMA</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
-        <div class="em-stat-block"><div class="li">CREDIBILITY</div><div class="lv cred" id="em-stat-cred">—</div></div>
+        <div class="em-stat-block"><div class="li">INFLUENCE</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
+        <div class="em-stat-block"><div class="li">SKILL</div><div class="lv cred" id="em-stat-cred">—</div></div>
       </div>
       <div class="em-footer-buttons">
         <button class="em-btn cancel"  type="button" data-em-close>CANCEL</button>
@@ -1546,8 +1546,8 @@ function renderResolutionBanner(r) {
   }
   const statReward = r.stat_reward;
   if (won && statReward) {
-    const statLabel = statReward.kind === 'charisma' ? 'Charisma'
-                    : statReward.kind === 'credibility' ? 'Credibility'
+    const statLabel = statReward.kind === 'influence' ? 'Influence'
+                    : statReward.kind === 'skill' ? 'Skill'
                     : null;
     if (statLabel) {
       sentences.push(`Your ${statLabel} rose to ${Number(statReward.new_value) || 0}.`);
@@ -2573,15 +2573,15 @@ function renderElectionOffer(offer, ctx) {
   // / mockup. Political Capital is numeric in the DB; floor to int for display.
   const f = ctx.faction || {};
   const cap  = Math.floor(Number(f.political_capital)      || 0);
-  const sta  = Number(f.politician_standing)    || 0;
-  const cred = Number(f.politician_credibility) || 0;
+  const sta  = Number(f.politician_influence)   || 0;
+  const cred = Number(f.politician_skill)       || 0;
   document.getElementById('em-stat-infl').textContent = cap;
   document.getElementById('em-stat-cha' ).textContent = sta;
   document.getElementById('em-stat-cred').textContent = cred;
 
   const body = document.getElementById('em-body');
   body.innerHTML = `
-    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Credibility</span> drives community races; <span class="cha">Charisma</span> drives parliamentary ones.</div>
+    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Skill</span> drives community races; <span class="cha">Influence</span> drives parliamentary ones.</div>
     <div class="em-options">
       ${renderOptionCard('community',  com,  'LOW STAKES · COMMUNITY',     'Community Organizer', 'A volunteer seat on your neighborhood association. A small race, but real — you’d be elected by your block. Most political careers begin here.', 1)}
       ${renderOptionCard('parliament', parl, 'HIGH STAKES · NATIONAL',     'Member of Parliament','A vacant Assembly seat in a working-class district of the capital. National-level race, national-level attention.', 2)}
@@ -2612,7 +2612,7 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const odds = Number(race.odds_pct) || 0;
   const oddsClass = odds >= 60 ? 'fav' : (odds >= 40 ? 'even' : 'long');
   const oppFull = `${race.opp_first || ''} ${race.opp_last || ''}`.trim() || '—';
-  const statLabel  = tier === 'community' ? 'Credibility' : 'Charisma';
+  const statLabel  = tier === 'community' ? 'Skill' : 'Influence';
   const isParl     = tier === 'parliament';
   const partyName  = isParl ? (race.opp_party_name || 'Independent') : 'Independent';
   const partyColor = isParl ? race.opp_party_color : null;
