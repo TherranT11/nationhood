@@ -504,6 +504,7 @@ let chatState = {
   callerFactionId:  null,
   latestMessageId:  null,    // for cheap "did anything change?" comparison
   sending:          false,
+  pollInFlight:     false,   // guard against overlapping polls on slow networks
 };
 
 function initChat() {
@@ -555,17 +556,30 @@ function bindChatControls() {
 
 async function loadChatMessages() {
   if (!state.activeCorpId) return;
-  const { data, error } = await _supabase.rpc('list_corp_negotiation_messages', {
-    p_negotiation_id: contractId,
-    p_corp_id:        state.activeCorpId,
-  });
-  if (error || !data?.success) {
-    // Soft-fail: the panel keeps whatever it last had, no banner.
-    // Polling will retry; permanent failures surface via send.
-    return;
+  // Concurrent-poll guard: if a previous poll is still in flight on a
+  // slow connection (>4s round-trip), skip this tick rather than
+  // racing renders. The next setInterval fire will pick up the slack.
+  if (chatState.pollInFlight) return;
+  chatState.pollInFlight = true;
+  try {
+    const { data, error } = await _supabase.rpc('list_corp_negotiation_messages', {
+      p_negotiation_id: contractId,
+      p_corp_id:        state.activeCorpId,
+    });
+    if (error || !data?.success) {
+      // Soft-fail: the panel keeps whatever it last had, no banner.
+      // Polling will retry; permanent failures surface via send.
+      return;
+    }
+    chatState.callerFactionId = data.caller_faction_id;
+    renderChatMessages(data.messages || []);
+  } catch (_) {
+    // Network throw — same soft-fail as the in-band error path. The
+    // next poll retries; if it's persistent the user will notice
+    // when their next send returns a hard error.
+  } finally {
+    chatState.pollInFlight = false;
   }
-  chatState.callerFactionId = data.caller_faction_id;
-  renderChatMessages(data.messages || []);
 }
 
 function renderChatMessages(messages) {
