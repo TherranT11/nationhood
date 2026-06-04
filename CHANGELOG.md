@@ -223,6 +223,18 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Corporate Contracts section on `entrepreneur-corp.html` now
+  populates with binding contracts.** The `#cp-contracts` div sat
+  on a hardcoded "No contracts yet." even after both CEOs signed a
+  negotiation into `status='binding'` — no JS ever queried for
+  them. The Corporate Negotiations modal already calls
+  `list_corp_negotiations` for drafting contracts, so migration
+  `20270610` extends that same RPC with an optional `p_statuses
+  TEXT[] DEFAULT ARRAY['drafting']` parameter (existing modal calls
+  unchanged) and the section now passes `['binding']`. Also threads
+  `signed_at_tick` + `expires_at_tick` into the response so each
+  row reads "signed Jul, 2014 · expires Mar, 2017". Clicking a row
+  opens the same `corp-contract.html?id=…` page the modal does.
 - **Aircraft production: own-designed engines were billed twice.**
   An aviation-manufacturing corp that designed both an engine and an
   aircraft using that engine was being charged the engine cost twice:

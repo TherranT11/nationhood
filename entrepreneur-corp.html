@@ -8527,6 +8527,51 @@ const openBidModal = (contractId, label, yourCost) => {
     // Aggregates event_log + corp_tax_bills via list_corp_history RPC
     // (20270564). Phase A only — six event types (founding, IPO/private,
     // share buys/sells, loan payments) lack capture hooks today and will
+    // Corporate Contracts section: binding (mutually-signed) contracts
+    // where this corp is either party. Drafting + awaiting_signatures
+    // surface in the Corporate Negotiations modal — those are
+    // work-in-progress. Once both CEOs sign, the contract flips to
+    // 'binding' and lands here. Sourced from the same
+    // list_corp_negotiations RPC the modal uses (20270610 extended it
+    // with a p_statuses filter so we don't duplicate the join).
+    const renderContracts = async () => {
+      const host = document.getElementById('cp-contracts');
+      if (!host) return;
+      host.innerHTML = '<div class="ch-empty">Loading…</div>';
+      const { data, error } = await _supabase.rpc('list_corp_negotiations', {
+        p_corp_id: id,
+        p_statuses: ['binding'],
+      });
+      if (error || !data?.success) {
+        host.innerHTML = '<div class="ch-empty">Couldn’t load contracts.</div>';
+        return;
+      }
+      const contracts = data.negotiations || [];
+      if (!contracts.length) {
+        host.innerHTML = '<div class="ch-empty">No contracts yet.</div>';
+        return;
+      }
+      const rows = contracts.map(c => {
+        const counterparty = escapeHtml(c.counterparty_corp_name || '—');
+        const nation       = c.counterparty_corp_nation
+          ? ` · ${escapeHtml(c.counterparty_corp_nation)}` : '';
+        const side         = c.is_initiator ? 'you initiated' : 'they initiated';
+        const expires      = c.expires_at_tick != null
+          ? ` · expires ${escapeHtml(tickToDate(c.expires_at_tick))}` : '';
+        const signed       = c.signed_at_tick != null
+          ? escapeHtml(tickToDate(c.signed_at_tick)) : '—';
+        return `
+          <a href="corp-contract.html?id=${escapeHtml(c.contract_id)}" class="ch-row" style="text-decoration:none;color:inherit;">
+            <div class="ch-date">${signed}</div>
+            <div class="ch-body">
+              <div class="ch-title">${counterparty}${nation}</div>
+              <div class="ch-desc">${side}${expires}</div>
+            </div>
+          </a>`;
+      }).join('');
+      host.innerHTML = `<div class="ch-list">${rows}</div>`;
+    };
+
     // surface as their hooks land in Phase B.
     const renderHistory = async () => {
       const fc = document.getElementById('cp-history');
@@ -8556,6 +8601,7 @@ const openBidModal = (contractId, label, yourCost) => {
     await renderProjects();
     renderAssets(); // sync — reads ownedBuildings populated by renderProjects
     await renderFinance();
+    await renderContracts();
     await renderHistory();
 
     document.getElementById('cp-load').style.display = 'none';
