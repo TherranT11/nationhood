@@ -200,6 +200,24 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Oil & Gas: Revenue Change card now reflects actual per-tick
+  revenue.** The "Revenue Change (This Month)" card on
+  `entrepreneur-corp.html` was rendering "$0 · no data yet" for every
+  oil & gas corp even when retail revenue was clearly flowing into
+  the treasury each tick (pumps → refinery → gas stations → treasury,
+  same-tick). Root cause: `corp_revenue_change_this_month` reads
+  `corp_cash_events` (a legacy ledger FK'd to `factions(id)`), but
+  `process_oil_and_gas` writes to `entrepreneur_corps.treasury_cash`
+  and physically can't emit corp_cash_events rows (wrong FK). The
+  ledger had zero matching rows; the card had nothing to display.
+  Fix in `20270605`: new `entrepreneur_corps.last_tick_revenue` +
+  `last_revenue_tick` columns (server-only writes) stamped by
+  `process_oil_and_gas` on every tick that produces retail revenue,
+  plus a rewrite of `corp_revenue_change_this_month` to read those
+  columns directly. Same response shape so the client doesn't
+  change. Same fix needed for airline routes, share trades,
+  apartment rents, etc. — those still bypass the legacy ledger and
+  will keep showing "no data yet" until they get the same stamp.
 - **`20270579` storage policy** wrapped in `DROP POLICY IF EXISTS`
   guards. The first push attempt failed with `SQLSTATE 42710`
   (policy already exists) on a re-run.
