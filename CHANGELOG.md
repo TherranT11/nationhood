@@ -198,8 +198,101 @@ All notable changes to Nationhood are recorded here. Format inspired by
   a single column and the chat panel drops its `position:sticky`
   pin so it sits naturally below the doc panel.
 
+### Changed
+
+- **Aircraft production: engine handling consolidated into helpers.**
+  `ent_queue_production_run` (DIY runs) and `ent_accept_aircraft_order`
+  (BTO branch) both did the same five-step engine dance inline:
+  look up the engine design, verify type, check
+  `ent_engine_inventory >= engine_count × qty`, subtract engine cost
+  from `v_per_unit`, draw from inventory via a race-guarded CAS
+  UPDATE. Two copies of the math, two copies of the inventory
+  consumption pattern — exactly the duplication that bit us when
+  `20270368` regressed the unified engine handling in one function
+  but not the other. Migration `20270609` extracts:
+  `_aircraft_engine_requirement(corp_id, engine_design_id, eng_count,
+  qty)` (STABLE lookup + check, returns engine cost + eng_need on
+  success) and `_draw_engines_from_inventory(corp_id,
+  engine_design_id, qty)` (race-guarded CAS draw). Both callers
+  re-issued to PERFORM the helpers. Public response shapes preserved
+  — `insufficient_engines` for DIY, `seller_insufficient_engines`
+  for BTO — so the existing client error handlers
+  (`entrepreneur-corp.html:1877` + `:2216`) don't move. Now: one
+  place to change the engine-discount math, one place to change the
+  draw semantics, no more drift risk.
+
 ### Fixed
 
+- **Corporate Contracts section on `entrepreneur-corp.html` now
+  populates with binding contracts.** The `#cp-contracts` div sat
+  on a hardcoded "No contracts yet." even after both CEOs signed a
+  negotiation into `status='binding'` — no JS ever queried for
+  them. The Corporate Negotiations modal already calls
+  `list_corp_negotiations` for drafting contracts, so migration
+  `20270610` extends that same RPC with an optional `p_statuses
+  TEXT[] DEFAULT ARRAY['drafting']` parameter (existing modal calls
+  unchanged) and the section now passes `['binding']`. Also threads
+  `signed_at_tick` + `expires_at_tick` into the response so each
+  row reads "signed Jul, 2014 · expires Mar, 2017". Clicking a row
+  opens the same `corp-contract.html?id=…` page the modal does.
+- **Aircraft production: own-designed engines were billed twice.**
+  An aviation-manufacturing corp that designed both an engine and an
+  aircraft using that engine was being charged the engine cost twice:
+  once when producing the engine into `ent_engine_inventory`, and
+  again as part of the bundled `design.cost_per_unit` when producing
+  the aircraft. Root cause: `20270368` ("plumb per_unit_cost
+  through ent_queue_production_run") rebased its body from `20270235`,
+  which still had the original own-vs-foreign-engine branch — so it
+  silently reverted the `20270356` unification fix that had
+  intentionally collapsed both paths ("no own-vs-foreign branch — if
+  you don't have the engines on hand, you can't build the aircraft").
+  For own-designed engines, `v_engine.entrepreneur_corp_id ==
+  p_corp_id`, so the foreign-only block was skipped: no inventory
+  consumption, no engine-cost subtraction from `v_per_unit`,
+  manufacturer charged the full bundled cost. Migration `20270608`
+  re-issues `ent_queue_production_run` with the unified body
+  (functionally `20270363`'s version + the `per_unit_cost` write
+  `20270368` was after). Foreign-corp aircraft orders via
+  `ent_accept_aircraft_order` (20270586) were already on the unified
+  pattern — only DIY production runs were affected. Existing in-flight
+  / completed runs aren't retro-fixed; their `cost_per_tick` was
+  stamped at queue time. Any cash restitution for engines already
+  double-billed is a separate per-corp one-shot.
+- **Airlines: route panel shows lane demand pool, not last-tick
+  carried.** The "Total passengers on lane" line under each active
+  route was summing `last_tick_pax` across every airline on the city
+  pair. For a brand-new route — no tick processed yet — every term
+  is 0 and the row rendered as "Total: 0 — You 0", which looked
+  broken even though everything was correct. Migration `20270607`
+  carves the existing per-lane demand formula out of
+  `process_entrepreneur_airline_routes`' `lane_demand` CTE into a
+  reusable `lane_demand(origin_city_id, dest_city_id) RETURNS int`
+  helper (single source of truth — the tick processor calls the
+  same helper instead of its old inline formula). New
+  `list_active_lane_demands()` RPC returns the per-lane pool in one
+  call for the client to merge with `last_tick_pax`. The route row
+  now reads "Lane demand: 18 · last tick: 0 — You 0" the moment
+  the route opens; once ticks accumulate it becomes "Lane demand:
+  18 · last tick: 15 — You 10 · Sky Air 5", same per-airline
+  breakdown as before. No formula duplication client-side.
+- **Airlines: every nation now has 3 cities + auto-range trigger.**
+  Only Calveth and Avelia had `airline_cities` rows (seeded by 20260706
+  phase 2); eleven other nations sat at zero, so any airline founded
+  outside those two nations hit "No cities available" in the Open Route
+  form even with idle aircraft. `admin_create_nation` never seeded
+  cities, and `admin_create_hub` never backfilled `airline_city_ranges`
+  for the city it inserted — so even hand-added cities were range-
+  orphaned and unusable. Migration `20270606`:
+  (a) AFTER-INSERT trigger on `airline_cities` that fans out
+  `airline_city_ranges` to every existing city using the 20270465
+  formula (within-nation = 2; cross-nation derived from
+  `diplomatic_relations.proximity`). Same trigger covers future
+  `admin_create_hub` calls.
+  (b) Seeds three placeholder cities for each of the eleven zero-city
+  nations: `"{Nation} Capital"` (50% pop, capital), `"{Nation} North"`
+  (30%), `"{Nation} South"` (20%). Rename via `admin_update_hub` when
+  the worldbuilding lands. Weights sum to 100 so the deferred
+  `pop_pct` constraint trigger from 20270465 passes at COMMIT.
 - **Oil & Gas: Revenue Change card now reflects actual per-tick
   revenue.** The "Revenue Change (This Month)" card on
   `entrepreneur-corp.html` was rendering "$0 · no data yet" for every

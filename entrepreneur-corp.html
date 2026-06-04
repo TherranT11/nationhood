@@ -1067,9 +1067,7 @@
         <div class="section-heading">
           <span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">Contracts</span>
         </div>
-        <div id="cp-contracts">
-          <div class="ch-empty">No contracts yet.</div>
-        </div>
+        <div id="cp-contracts"></div>
 
         <div class="section-heading">
           <span class="roman">VI.</span><span class="sans">Corporate</span><span class="serif">History</span>
@@ -5242,7 +5240,7 @@ function initials(s, n) {
       // endpoint nation (20270477 replaced the terminal layer).
       let airlinePanelHtml = '';
       if (c.industry === 'airline' && canView) {
-        const [routeRes, cityRes, aircraftRes, laneRes] = await Promise.all([
+        const [routeRes, cityRes, aircraftRes, laneRes, demandRes] = await Promise.all([
           _supabase.from('airline_routes')
             .select(`id, ticket_price, route_type, origin_city_id, dest_city_id,
                      aircraft_class,
@@ -5261,10 +5259,16 @@ function initials(s, n) {
           _supabase.from('airline_routes')
             .select('origin_city_id, dest_city_id, last_tick_pax, airline_corp_id, airline:entrepreneur_corps!airline_corp_id(name)')
             .eq('status', 'active'),
+          // Per-lane demand for every active lane. RPC sources from the
+          // lane_demand() helper — same SoT process_entrepreneur_airline_routes
+          // uses to allocate pax each tick, so what's displayed and what
+          // gets paid out can't drift. (20270607.)
+          _supabase.rpc('list_active_lane_demands'),
         ]);
         if (routeRes.error)    console.warn('[entrepreneur-corp] routes fetch error:', routeRes.error.message);
         if (cityRes.error)     console.warn('[entrepreneur-corp] cities fetch error:', cityRes.error.message);
         if (aircraftRes.error) console.warn('[entrepreneur-corp] aircraft fetch error:', aircraftRes.error.message);
+        if (demandRes.error)   console.warn('[entrepreneur-corp] lane-demand fetch error:', demandRes.error.message);
         if (laneRes.error)     console.warn('[entrepreneur-corp] lane-routes fetch error:', laneRes.error.message);
 
         const routes    = routeRes.data || [];
@@ -5288,8 +5292,9 @@ function initials(s, n) {
         }
         const distFor = (oId, dId) => distanceMap.get(`${oId}|${dId}`) ?? null;
 
-        // Lane → { total pax, per-airline pax } across every active route on
-        // the city pair (shared lanes). Drives the competitor breakdown.
+        // Lane → { total pax last tick, per-airline pax last tick } across
+        // every active route on the city pair. Drives the competitor
+        // breakdown below the lane-demand headline.
         const laneMap = new Map();
         for (const lr of (laneRes.data || [])) {
           const key = `${lr.origin_city_id}|${lr.dest_city_id}`;
@@ -5300,6 +5305,16 @@ function initials(s, n) {
           const cname = lr.airline_corp_id === id ? 'You'
             : (lr.airline?.name || 'Unknown airline');
           lane.byCorp.set(cname, (lane.byCorp.get(cname) || 0) + pax);
+        }
+
+        // Lane key → demand pool (pax/tick). Sourced from the
+        // list_active_lane_demands RPC (20270607) which calls the
+        // lane_demand() helper — same formula process_entrepreneur_airline
+        // _routes uses to allocate pax. A freshly-opened route can
+        // surface its lane's pool before any tick has run.
+        const laneDemandMap = new Map();
+        for (const d of (demandRes.data || [])) {
+          laneDemandMap.set(`${d.origin_city_id}|${d.dest_city_id}`, Number(d.demand) || 0);
         }
 
         // Owned / idle per class, derived from the aircraft rows — the
@@ -5380,13 +5395,19 @@ function initials(s, n) {
               const planes = cnt > 0 ? `${cnt}× ${label}` : '—';
               const net = (Number(r.last_tick_revenue) || 0) - (Number(r.last_tick_spend) || 0);
               const netCls = net > 0 ? 'accent' : net < 0 ? 'red' : 'dim';
-              // Lane competition: total passengers + per-airline last-tick pax
-              // across every airline serving this city pair.
-              const lane = laneMap.get(`${r.origin_city_id}|${r.dest_city_id}`);
-              const laneHtml = lane ? `<div class="sh-row-sub" style="margin-top:3px;">Total passengers on lane: <span class="accent">${lane.total}</span> — ${
-                [...lane.byCorp.entries()].sort((a, b) => b[1] - a[1])
-                  .map(([n, p]) => `<span class="${n === 'You' ? 'accent' : 'dim'}">${escapeHtml(n)} ${p}</span>`).join(' · ')
-              }</div>` : '';
+              // Lane headline: demand pool (server-side SoT) + per-airline
+              // last-tick pax. Demand shows what the lane sustains before
+              // the share split, so a brand-new route renders coherently
+              // ("Lane demand: 18 · last tick: 0 — You 0") instead of
+              // "Total: 0 — You 0" which used to make the row look broken.
+              const laneKey = `${r.origin_city_id}|${r.dest_city_id}`;
+              const lane    = laneMap.get(laneKey);
+              const demand  = laneDemandMap.get(laneKey) ?? 0;
+              const breakdown = lane && lane.byCorp.size > 0
+                ? [...lane.byCorp.entries()].sort((a, b) => b[1] - a[1])
+                    .map(([n, p]) => `<span class="${n === 'You' ? 'accent' : 'dim'}">${escapeHtml(n)} ${p}</span>`).join(' · ')
+                : `<span class="accent">You 0</span>`;
+              const laneHtml = `<div class="sh-row-sub" style="margin-top:3px;">Lane demand: <span class="accent">${demand}</span> · last tick: ${lane?.total ?? 0} — ${breakdown}</div>`;
               const rDist = distFor(r.origin_city_id, r.dest_city_id);
               const distBadge = rDist != null ? ` <span class="dim">· distance ${rDist}</span>` : '';
               return `
@@ -8504,6 +8525,51 @@ const openBidModal = (contractId, label, yourCost) => {
     // Aggregates event_log + corp_tax_bills via list_corp_history RPC
     // (20270564). Phase A only — six event types (founding, IPO/private,
     // share buys/sells, loan payments) lack capture hooks today and will
+    // Corporate Contracts section: binding (mutually-signed) contracts
+    // where this corp is either party. Drafting + awaiting_signatures
+    // surface in the Corporate Negotiations modal — those are
+    // work-in-progress. Once both CEOs sign, the contract flips to
+    // 'binding' and lands here. Sourced from the same
+    // list_corp_negotiations RPC the modal uses (20270610 extended it
+    // with a p_statuses filter so we don't duplicate the join).
+    const renderContracts = async () => {
+      const host = document.getElementById('cp-contracts');
+      if (!host) return;
+      host.innerHTML = '<div class="ch-empty">Loading…</div>';
+      const { data, error } = await _supabase.rpc('list_corp_negotiations', {
+        p_corp_id: id,
+        p_statuses: ['binding'],
+      });
+      if (error || !data?.success) {
+        host.innerHTML = '<div class="ch-empty">Couldn’t load contracts.</div>';
+        return;
+      }
+      const contracts = data.negotiations || [];
+      if (!contracts.length) {
+        host.innerHTML = '<div class="ch-empty">No contracts yet.</div>';
+        return;
+      }
+      const rows = contracts.map(c => {
+        const counterparty = escapeHtml(c.counterparty_corp_name || '—');
+        const nation       = c.counterparty_corp_nation
+          ? ` · ${escapeHtml(c.counterparty_corp_nation)}` : '';
+        const side         = c.is_initiator ? 'you initiated' : 'they initiated';
+        const expires      = c.expires_at_tick != null
+          ? ` · expires ${escapeHtml(tickToDate(c.expires_at_tick))}` : '';
+        const signed       = c.signed_at_tick != null
+          ? escapeHtml(tickToDate(c.signed_at_tick)) : '—';
+        return `
+          <a href="corp-contract.html?id=${escapeHtml(c.contract_id)}" class="ch-row" style="text-decoration:none;color:inherit;">
+            <div class="ch-date">${signed}</div>
+            <div class="ch-body">
+              <div class="ch-title">${counterparty}${nation}</div>
+              <div class="ch-desc">${side}${expires}</div>
+            </div>
+          </a>`;
+      }).join('');
+      host.innerHTML = `<div class="ch-list">${rows}</div>`;
+    };
+
     // surface as their hooks land in Phase B.
     const renderHistory = async () => {
       const fc = document.getElementById('cp-history');
@@ -8533,6 +8599,7 @@ const openBidModal = (contractId, label, yourCost) => {
     await renderProjects();
     renderAssets(); // sync — reads ownedBuildings populated by renderProjects
     await renderFinance();
+    await renderContracts();
     await renderHistory();
 
     document.getElementById('cp-load').style.display = 'none';
