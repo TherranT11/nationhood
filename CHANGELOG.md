@@ -125,6 +125,32 @@ All notable changes to Nationhood are recorded here. Format inspired by
   because the tag-stripped length came out to 0. The check now
   passes when the body contains an `<img>` tag, regardless of
   accompanying text.
+- **Forum compose upload path mismatch**. Image uploads were going to
+  `forum-images/<bootstrap-faction>/...` instead of the
+  identity-selector value, so they landed in the wrong faction's
+  folder while the post was attributed to the selected faction.
+  Compose now reads the selected identity for the upload path and
+  early-returns with a friendly message if no identity is selected.
+- **Stale "Posting as" footer on compose** removed. It was a
+  carryover from the pre-identity-selector design and showed the
+  bootstrap-selected faction regardless of which identity the
+  dropdown actually picked — actively misleading. The dropdown is
+  the author truth; the footer copy now points the user at it.
+
+### Security
+
+- **`_forum_resolve_author` grant tightened.** The internal helper
+  used by `create_forum_thread` and `create_forum_post` is now
+  `REVOKE FROM PUBLIC` with no `GRANT TO authenticated`. Both call
+  sites are SECURITY DEFINER and execute with elevated privileges
+  regardless, so removing the wire-API surface costs nothing and
+  reduces what a client can probe directly.
+- **`forum-images` per-faction upload policy.** The 20270597
+  initial policy gated only on `bucket_id = 'forum-images'`,
+  letting any authenticated user write to any path under the
+  bucket (no XSS surface, just clutter). The 20270598 follow-up
+  pins `(storage.foldername(name))[1]` to a faction id the
+  caller owns (`id = auth.uid() OR linked_user_id = auth.uid()`).
 
 ### Removed
 
