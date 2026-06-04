@@ -25,7 +25,7 @@
 // don't exist yet) fall through to wiki.html so the user can land
 // on the standalone editor surface for that slug.
 
-import { fetchPageList, fetchPage, renderWikiLinks, renderInfobox, fetchPopularTags } from './wiki.js';
+import { fetchPageList, fetchPage, renderWikiLinks, renderInfobox, fetchPopularTags, normalizeTag } from './wiki.js';
 import { escHtml } from './forum-utils.js';
 
 const STYLE_ID = 'forum-wiki-styles';
@@ -40,10 +40,6 @@ const TEMPLATE_TYPES = [
 
 function titleCaseType(t) {
     return t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-}
-
-function normalizeTag(raw) {
-    return String(raw || '').trim().replace(/^#/, '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
 }
 
 function ensureStyles() {
@@ -329,9 +325,10 @@ export async function mountWikiPane(hostEl, supabase) {
     renderList();
 
     function filterPages() {
+        const needle = searchTerm.toLowerCase();
         return (pages || []).filter(p => {
             if (activeFilter !== 'all' && p.template_type !== activeFilter) return false;
-            if (searchTerm && !p.title.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            if (needle && !(p.title || '').toLowerCase().includes(needle)) return false;
             if (searchTags.length > 0) {
                 const pageTags = p.tags || [];
                 if (!searchTags.every(t => pageTags.includes(t))) return false;
@@ -404,7 +401,7 @@ export async function mountWikiPane(hostEl, supabase) {
                 </div>
                 <div class="fw-filter-bar">${filterBtns}</div>
                 <div class="fw-toolbar-row">
-                    <div class="fw-tag-wrap" id="fw-tag-wrap">
+                    <div class="fw-tag-wrap">
                         ${tagChipsHtml}
                         <input type="text" class="fw-tag-input" id="fw-tag-input" placeholder="Filter by tag — #avelia #primeminister">
                     </div>

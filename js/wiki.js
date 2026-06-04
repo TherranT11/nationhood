@@ -210,9 +210,12 @@ export async function fetchFactionNames(supabase, factionIds) {
 const MAX_TAGS = 20;
 const MAX_TAG_LENGTH = 32;
 
-/** Normalize a tag: lowercase, strip # prefix, trim, remove invalid chars */
-function normalizeTag(raw) {
-    return raw.replace(/^#/, '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '').slice(0, MAX_TAG_LENGTH);
+/** Normalize a tag: lowercase, strip # prefix, trim, remove invalid chars.
+ *  Defensive against null/undefined so callers can pass `input.value`
+ *  without guarding. Exported for forum-wiki.js so the in-forum tag
+ *  filter normalises identically to the standalone wiki surface. */
+export function normalizeTag(raw) {
+    return String(raw ?? '').replace(/^#/, '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '').slice(0, MAX_TAG_LENGTH);
 }
 
 /**

@@ -225,7 +225,7 @@
     border:none; color:var(--paper-text); font-family:Georgia,serif;
     font-size:12px; line-height:1.8; min-height:108px;
     padding:0; outline:none;
-    /* Auto-grown by autosizeArticleBody() in script — the JS sets
+    /* Auto-grown by autosizeTextarea() in script — the JS sets
        height = scrollHeight on render + on input so the textarea
        always fits its content. resize:none stops the manual drag
        handle from conflicting with the JS sizing. */
@@ -837,7 +837,7 @@ function render() {
   // Auto-grow article body textareas to fit their content. Initial
   // sizing happens right after innerHTML lands (scrollHeight is now
   // correct); the input listener keeps it in sync as the user types.
-  host.querySelectorAll('.article-body-input').forEach(autosizeArticleBody);
+  host.querySelectorAll('.article-body-input').forEach(el => autosizeTextarea(el));
 
   // Add-article only when articles are still editable (no signatures
   // yet, not binding, not cancelled, caller is CEO).
