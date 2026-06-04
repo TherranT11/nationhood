@@ -198,6 +198,29 @@ All notable changes to Nationhood are recorded here. Format inspired by
   a single column and the chat panel drops its `position:sticky`
   pin so it sits naturally below the doc panel.
 
+### Changed
+
+- **Aircraft production: engine handling consolidated into helpers.**
+  `ent_queue_production_run` (DIY runs) and `ent_accept_aircraft_order`
+  (BTO branch) both did the same five-step engine dance inline:
+  look up the engine design, verify type, check
+  `ent_engine_inventory >= engine_count × qty`, subtract engine cost
+  from `v_per_unit`, draw from inventory via a race-guarded CAS
+  UPDATE. Two copies of the math, two copies of the inventory
+  consumption pattern — exactly the duplication that bit us when
+  `20270368` regressed the unified engine handling in one function
+  but not the other. Migration `20270609` extracts:
+  `_aircraft_engine_requirement(corp_id, engine_design_id, eng_count,
+  qty)` (STABLE lookup + check, returns engine cost + eng_need on
+  success) and `_draw_engines_from_inventory(corp_id,
+  engine_design_id, qty)` (race-guarded CAS draw). Both callers
+  re-issued to PERFORM the helpers. Public response shapes preserved
+  — `insufficient_engines` for DIY, `seller_insufficient_engines`
+  for BTO — so the existing client error handlers
+  (`entrepreneur-corp.html:1877` + `:2216`) don't move. Now: one
+  place to change the engine-discount math, one place to change the
+  draw semantics, no more drift risk.
+
 ### Fixed
 
 - **Aircraft production: own-designed engines were billed twice.**
