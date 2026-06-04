@@ -7,13 +7,13 @@
 -- rename — only the bodies + UI labels change.
 --
 -- Run Political Ads (politician_door_knock):
---   • Costs 1 Influence (political_capital) up front.
+--   • Costs 1 Capital (politician_influence) up front.
 --   • Roll 1d10 + politician_skill.
 --   • Increases polling_you_pct by the roll total (drawn from
 --     polling_undecided_pct first, then polling_opp_pct).
 --   • No popularity / reputation deltas. No party-side effects.
 --   • Treats the "no active race" case as a no-op on polling
---     (Influence still spent — running ads outside a campaign is
+--     (Capital still spent — running ads outside a campaign is
 --     a waste, by design).
 --
 -- Give a Speech (politician_give_speech):
@@ -83,11 +83,11 @@ BEGIN
             'ready_at_tick', v_pol.next_member_action_tick);
     END IF;
 
-    -- Influence cost: 1.
-    IF COALESCE(v_pol.political_capital, 0) < AD_COST THEN
+    -- Capital cost: 1 (politician_influence column, displayed as "Capital").
+    IF COALESCE(v_pol.politician_influence, 0) < AD_COST THEN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_capital',
             'required', AD_COST,
-            'have',     COALESCE(v_pol.political_capital, 0));
+            'have',     COALESCE(v_pol.politician_influence, 0));
     END IF;
 
     v_roll  := 1 + floor(random() * 10)::int;   -- 1d10
@@ -95,13 +95,13 @@ BEGIN
     v_next  := v_tick + 1;
 
     UPDATE factions
-       SET political_capital       = GREATEST(0, COALESCE(political_capital, 0) - AD_COST),
+       SET politician_influence    = GREATEST(0, COALESCE(politician_influence, 0) - AD_COST),
            next_member_action_tick = v_next
      WHERE id = v_pol.id
-    RETURNING political_capital INTO v_new_cap;
+    RETURNING politician_influence INTO v_new_cap;
 
     -- Polling bump on the active race. No-op if the politician has no
-    -- open race — Influence is still spent (campaigning ads outside a
+    -- open race — Capital is still spent (campaigning ads outside a
     -- campaign is a waste, by design).
     SELECT * INTO v_race FROM politician_active_election WHERE politician_id = v_pol.id;
     IF v_race.politician_id IS NOT NULL THEN
@@ -121,7 +121,7 @@ BEGIN
         'skill',                   COALESCE(v_pol.politician_skill, 0),
         'polling_delta',           v_total,
         'cost',                    AD_COST,
-        'political_capital',       v_new_cap,
+        'politician_influence',    v_new_cap,
         'next_member_action_tick', v_next,
         'has_active_race',         v_race.politician_id IS NOT NULL
     );
