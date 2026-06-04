@@ -445,7 +445,7 @@ async function init() {
 
   _viewerPolId         = ctx.faction?.id || null;
   _viewerPartyId       = ctx.faction?.politician_party_id || null;
-  _viewerStanding         = Number(ctx.faction?.politician_standing) || 0;
+  _viewerStanding         = Number(ctx.faction?.politician_influence) || 0;
   _viewerReputation       = Number(ctx.faction?.politician_reputation) || 0;
   _viewerPoliticalCapital = Number(ctx.faction?.political_capital) || 0;
   _viewerSpeechReadyAt    = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
@@ -464,7 +464,7 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, nickname, leader_age, political_capital, politician_reputation, politician_credibility, politician_office, volunteers')
+      .select('id, leader_first_name, leader_last_name, nickname, leader_age, political_capital, politician_reputation, politician_skill, politician_office, volunteers')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
@@ -627,7 +627,7 @@ function renderActionsPanel() {
         <div class="act-name">Give a Speech</div>
         <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${speechRemaining} tick${speechRemaining === 1 ? '' : 's'}`}</div>
       </div>
-      <div class="act-meta">1d6 + Standing (yours: ${_viewerStanding}). Hit: +0.2 Party Popularity (+0.4 on nat 6). Miss: −2 Reputation (−3 on nat 1). 3-tick cooldown.</div>
+      <div class="act-meta">1d6 + Influence (yours: ${_viewerStanding}). Hit: +0.2 Party Popularity (+0.4 on nat 6). Miss: −2 Reputation (−3 on nat 1). 3-tick cooldown.</div>
     </div>
   `;
   list.querySelectorAll('.act-card').forEach(card => {
@@ -655,7 +655,7 @@ async function onMemberAction(actionKey, card) {
       _viewerReputation    = Number(data.politician_reputation) || 0;
       _viewerSpeechReadyAt = Number(data.cooldown_until_tick) || 0;
       patchPopularityCell(Number(data.popularity_pct));
-      flashActionResult(formatActionMsg('Standing', data), bracketKind(data.bracket));
+      flashActionResult(formatActionMsg('Influence', data), bracketKind(data.bracket));
     }
   } catch (err) {
     console.warn(`[party] ${actionKey} failed`, err);
@@ -1010,10 +1010,10 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
     const office = m.politician_office || null;
     const affilText = office ? officeTitle(office) : 'Party Member';
     const affilCls  = office ? 'mem-affil office' : 'mem-affil';
-    // Allies cap = reputation × 3 (national); Volunteers cap = credibility × 3 (local).
+    // Allies cap = reputation × 3 (national); Volunteers cap = skill × 3 (local).
     // National Allies count isn't tracked yet — placeholder 0. Local
     // Volunteers comes from the live column written by Civic Meeting.
-    const driverStat = isNational ? m.politician_reputation : m.politician_credibility;
+    const driverStat = isNational ? m.politician_reputation : m.politician_skill;
     const statCap = Math.max(0, Math.round((Number(driverStat) || 0) * 3));
     const statNow = isNational ? 0 : Math.round(Number(m.volunteers) || 0);
     return `<div class="mem-row">
@@ -1269,6 +1269,7 @@ async function submitBizMotion() {
 
     submit.textContent = 'Resolving…';
     const { data, error } = await _supabase.rpc('propose_party_motion', {
+      p_faction_id:   _viewerPolId,
       p_motion_type:  motionType,
       p_payload_text: payloadText,
       p_payload_url:  payloadUrl,

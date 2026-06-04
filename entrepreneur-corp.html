@@ -224,6 +224,9 @@
      (.ap-btn-small.list / .accept). Same outline pattern, same hover tone. */
   .ap-btn-small.counsel { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; letter-spacing:0.12em; }
   .ap-btn-small.counsel:hover { background:#243a1f; color:#fff; }
+  .ap-btn-small.lawsuit { background:rgba(90,175,165,0.08); border:0.5px solid #5aafa5; color:#5aafa5; font-weight:500; letter-spacing:0.12em; }
+  .ap-btn-small.lawsuit:hover:not(:disabled) { background:rgba(90,175,165,0.18); color:#fff; }
+  .ap-btn-small.lawsuit:disabled { opacity:0.35; cursor:not-allowed; }
   .ap-btn-small.counsel:disabled { opacity:0.5; cursor:not-allowed; }
   .ap-btn-small.reject { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
   .ap-btn-small.reject:hover { color:#c98a8a; border-color:rgba(201,138,138,0.4); }
@@ -834,6 +837,99 @@
     border:1px solid #8aaa6a; color:#8aaa6a; text-transform:uppercase; }
   .rc-offer-btn:hover { background:#243a1f; color:#fff; }
   .rc-offer-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* ── File a Lawsuit modal ──────────────────────────────────────── */
+  .fl-back { position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
+    display:none; align-items:center; justify-content:center; padding:18px; }
+  .fl-back.open { display:flex; }
+  .fl-modal { width:100%; max-width:680px; background:#0d0e10; border:1px solid #1f2123;
+    border-radius:8px; overflow:hidden; max-height:92vh; display:flex; flex-direction:column;
+    color:#e9e8e4; font-family:-apple-system,system-ui,sans-serif; }
+  .fl-head { padding:22px 26px 18px; border-bottom:1px solid #16181a;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+  .fl-crumb { font-size:9.5px; letter-spacing:0.22em; color:#bd5550; font-weight:700;
+    text-transform:uppercase; margin-bottom:8px; }
+  .fl-title { font-size:24px; color:#fff; font-weight:700; letter-spacing:-0.015em; line-height:1; }
+  .fl-title em { font-family:Georgia,serif; font-style:italic; color:#5aafa5; font-weight:400; }
+  .fl-sub { color:#8b8e90; font-size:13px; margin-top:7px; }
+  .fl-close { background:transparent; border:1px solid #1f2123; color:#8b8e90; width:30px;
+    height:30px; border-radius:6px; cursor:pointer; font-size:16px; line-height:1; flex:none; }
+  .fl-close:hover { color:#fff; border-color:#8b8e90; }
+  .fl-body { padding:22px 26px 6px; max-height:60vh; overflow-y:auto; }
+  .fl-field { margin-bottom:24px; }
+  .fl-sec-head { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .fl-sec-head .rn { font-family:monospace; font-size:10px; color:#5a5d60; letter-spacing:0.1em; }
+  .fl-sec-head h3 { font-size:16px; font-weight:700; letter-spacing:-0.01em; color:#fff; }
+  .fl-sec-head h3 em { font-family:Georgia,serif; font-style:italic; font-weight:500; color:#5aafa5; }
+  .fl-sec-head .opt { margin-left:auto; font-family:monospace; font-size:9px; letter-spacing:0.18em;
+    text-transform:uppercase; color:#5a5d60; }
+  .fl-select-wrap { position:relative; }
+  .fl-select-wrap select { width:100%; background:#0d0e10; border:1px solid #1f2123; color:#e9e8e4;
+    font-family:inherit; font-size:14px; border-radius:6px; padding:12px 38px 12px 14px;
+    appearance:none; cursor:pointer; outline:none; }
+  .fl-select-wrap select:focus { border-color:#36474a; box-shadow:0 0 0 3px rgba(90,175,165,0.1); }
+  .fl-select-wrap::after { content:""; position:absolute; right:14px; top:50%; width:6px; height:6px;
+    border-right:1.5px solid #5aafa5; border-bottom:1.5px solid #5aafa5;
+    transform:translateY(-65%) rotate(45deg); pointer-events:none; }
+  .fl-def-card { display:none; margin-top:11px; border:1px solid #1f2123; border-left:2px solid #c6a04e;
+    background:#14110a; border-radius:6px; padding:14px 16px; }
+  .fl-def-card.show { display:block; }
+  .fl-def-tier { font-family:monospace; font-size:9px; letter-spacing:0.22em; text-transform:uppercase;
+    color:#c6a04e; margin-bottom:5px; }
+  .fl-def-row { display:flex; align-items:baseline; gap:12px; }
+  .fl-def-name { font-size:15px; color:#fff; font-weight:600; }
+  .fl-def-treas { margin-left:auto; font-family:monospace; font-size:11px; color:#8b8e90; }
+  .fl-def-treas b { color:#7cab78; font-weight:500; }
+  .fl-def-sub { color:#8b8e90; font-size:12px; margin-top:4px; }
+  .fl-textarea { width:100%; background:#0d0e10; border:1px solid #1f2123; color:#e9e8e4;
+    font-family:inherit; font-size:14px; border-radius:6px; padding:12px 14px; outline:none;
+    resize:vertical; min-height:96px; line-height:1.55; }
+  .fl-textarea:focus { border-color:#36474a; box-shadow:0 0 0 3px rgba(90,175,165,0.1); }
+  .fl-count { text-align:right; font-family:monospace; font-size:9.5px; letter-spacing:0.1em;
+    color:#5a5d60; margin-top:6px; }
+  .fl-count.warn { color:#bd5550; }
+  .fl-drop { border:1.5px dashed #1f2123; border-radius:6px; background:#0d0e10; padding:22px;
+    text-align:center; cursor:pointer; transition:0.18s; }
+  .fl-drop:hover, .fl-drop.drag { border-color:#36474a; background:rgba(90,175,165,0.03); }
+  .fl-drop .ico { width:32px; height:32px; margin:0 auto; border:1px solid #1f2123; border-radius:6px;
+    display:grid; place-items:center; color:#5aafa5; font-size:16px; }
+  .fl-drop p { margin-top:9px; font-size:13px; color:#8b8e90; }
+  .fl-drop p b { color:#fff; font-weight:600; }
+  .fl-drop .hint { font-family:monospace; font-size:9px; letter-spacing:0.16em; color:#5a5d60;
+    margin-top:8px; text-transform:uppercase; }
+  .fl-files { list-style:none; margin-top:10px; display:flex; flex-direction:column; gap:7px; }
+  .fl-files li { display:flex; align-items:center; gap:10px; background:#0d0e10; border:1px solid #1f2123;
+    border-left:2px solid #c6a04e; border-radius:5px; padding:9px 11px; }
+  .fl-files .pill { font-family:monospace; font-size:8px; letter-spacing:0.16em; color:#c6a04e;
+    border:1px solid rgba(198,160,78,0.35); padding:2px 6px; border-radius:3px;
+    text-transform:uppercase; flex:none; }
+  .fl-files .fname { flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fl-files .fsize { font-family:monospace; font-size:9.5px; color:#5a5d60; flex:none; }
+  .fl-files .del { background:none; border:none; color:#5a5d60; cursor:pointer; font-size:15px;
+    flex:none; padding:0 4px; }
+  .fl-files .del:hover { color:#bd5550; }
+  .fl-err { color:#bd5550; font-size:12px; margin-top:9px; display:none; }
+  .fl-err.show { display:block; }
+  .fl-cost { padding:14px 26px; border-top:1px solid #16181a; display:flex; align-items:center;
+    gap:13px; background:#0b0c0d; }
+  .fl-seal { width:30px; height:30px; border:1px solid #c6a04e; border-radius:50%; display:grid;
+    place-items:center; color:#c6a04e; font-family:Georgia,serif; font-style:italic; font-size:15px;
+    flex:none; }
+  .fl-cost-txt { font-size:12.5px; color:#8b8e90; line-height:1.4; flex:1; }
+  .fl-cost-txt b { color:#e9e8e4; font-weight:600; }
+  .fl-cost-amt { font-family:monospace; font-weight:500; font-size:20px; color:#c6a04e;
+    letter-spacing:0.01em; }
+  .fl-foot { display:flex; gap:11px; justify-content:flex-end; align-items:center;
+    padding:14px 26px 18px; border-top:1px solid #16181a; }
+  .fl-validity { margin-right:auto; font-size:11.5px; color:#5a5d60; }
+  .fl-btn { font-family:monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+    padding:10px 18px; border-radius:5px; cursor:pointer; transition:0.18s; border:1px solid #1f2123;
+    background:none; font-weight:500; }
+  .fl-btn.ghost { color:#8b8e90; }
+  .fl-btn.ghost:hover { border-color:#8b8e90; color:#fff; }
+  .fl-btn.file { background:rgba(90,175,165,0.1); border-color:rgba(90,175,165,0.4); color:#5aafa5; }
+  .fl-btn.file:hover:not(:disabled) { background:rgba(90,175,165,0.18); border-color:#5aafa5; color:#fff; }
+  .fl-btn.file:disabled { opacity:0.35; cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -1056,14 +1152,18 @@
           <div id="cp-chat-note" style="color:#c98a8a;font-size:11px;margin-top:6px;min-height:1em;"></div>
         </div>
 
-        <!-- Legal Counsel — appears under Corp Chat for every corp. The
-             Retain button is not wired yet; the surface is shipping
-             ahead of the represent-a-corp flow. -->
+        <!-- Legal Counsel — Retain Counsel (20270512) + File a Lawsuit
+             (20270580). File requires at least one accepted advocate
+             retainer on this corp; button is disabled until then. -->
         <div class="details-card" id="cp-counsel-card">
           <div class="lab">LEGAL COUNSEL</div>
-          <div class="ds-row" style="margin-bottom:0;">
+          <div class="ds-row" style="margin-bottom:8px;">
             <span class="key" style="font-style:italic;" id="cp-counsel-current">None retained</span>
             <button type="button" class="ap-btn-small counsel" id="cp-counsel-btn">RETAIN COUNSEL</button>
+          </div>
+          <div class="ds-row" style="margin-bottom:0;">
+            <span class="key" id="cp-lawsuit-note" style="font-size:11px;color:#7a7a7a;">Retain counsel to file a lawsuit.</span>
+            <button type="button" class="ap-btn-small lawsuit" id="cp-lawsuit-btn" disabled title="Retain at least one advocate before filing.">FILE A LAWSUIT</button>
           </div>
         </div>
       </div>
@@ -2225,9 +2325,9 @@ function initials(s, n) {
       list.innerHTML = `
         <div class="rc-col-head">
           <span>ADVOCATE</span>
-          <span class="ch-right">STANDING</span>
-          <span class="ch-right">CREDIBILITY</span>
           <span class="ch-right">REPUTATION</span>
+          <span class="ch-right">INFLUENCE</span>
+          <span class="ch-right">SKILL</span>
           <span></span>
         </div>
         ${_rc.advocates.length
@@ -2247,9 +2347,9 @@ function initials(s, n) {
                     <div class="rc-adv-name-text">${escapeHtml(a.name || '—')}</div>
                     <div class="rc-adv-sub">${escapeHtml(sub)}</div>
                   </div>
-                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.standing)}">${statText(a.standing)}</div></div>
-                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.credibility)}">${statText(a.credibility)}</div></div>
                   <div class="rc-stat"><div class="rc-stat-val ${statClass(a.reputation)}">${statText(a.reputation)}</div></div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.influence)}">${statText(a.influence)}</div></div>
+                  <div class="rc-stat"><div class="rc-stat-val ${statClass(a.skill)}">${statText(a.skill)}</div></div>
                   <div class="rc-adv-action">${action}</div>
                 </div>`;
             }).join('')
@@ -2300,6 +2400,237 @@ function initials(s, n) {
       } catch (err) {
         alert('Failed: ' + (err?.message || 'network error'));
         btn.disabled = false; btn.textContent = orig;
+      }
+    }
+
+    // ── File a Lawsuit modal (20270580) — gated by accepted counsel.
+    // Button on the Legal Counsel card opens it; defendants loaded via
+    // list_lawsuit_defendants; evidence files upload to lawsuit-evidence
+    // bucket then ride along to file_corp_lawsuit as plaintiff beats. ──
+    const _fl = { defendants: [], selectedId: null, files: [], submitting: false };
+    const FL_MAX_FILE  = 2 * 1024 * 1024;
+    const FL_MAX_FILES = 10;
+    const FL_REASONS = {
+      not_authenticated:  'Sign in to file.',
+      not_owner:          'Only the CEO of this corp can file.',
+      no_counsel:         'Retain at least one advocate before filing.',
+      corp_not_found:     'This corporation no longer exists.',
+      defendant_not_found:'That defendant no longer exists.',
+      cannot_sue_self:    'A corp cannot sue itself.',
+      cannot_sue_own:     'You cannot sue another corp you own.',
+      claim_too_short:    'The statement of claim is too short (min 12 chars).',
+      claim_too_long:     'The statement of claim is too long (max 600 chars).',
+      insufficient_funds: 'The corp treasury cannot cover the $2M filing fee.',
+      corp_no_nation:     'This corp has no HQ nation set.',
+      missing_argument:   'Missing required fields.',
+    };
+
+    async function setupLawsuitButton() {
+      const btn = document.getElementById('cp-lawsuit-btn');
+      if (!btn) return;
+      btn.addEventListener('click', openLawsuitModal);
+      document.getElementById('fl-close').addEventListener('click', closeLawsuitModal);
+      document.getElementById('fl-cancel').addEventListener('click', closeLawsuitModal);
+      document.getElementById('fl-submit').addEventListener('click', submitLawsuit);
+      document.getElementById('fl-defendant').addEventListener('change', onLawsuitDefendantChange);
+      document.getElementById('fl-claim').addEventListener('input', onLawsuitClaimInput);
+      const drop = document.getElementById('fl-drop');
+      const input = document.getElementById('fl-file-input');
+      drop.addEventListener('click', () => input.click());
+      input.addEventListener('change', e => addLawsuitFiles(e.target.files));
+      ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+      ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag'); }));
+      drop.addEventListener('drop', e => addLawsuitFiles(e.dataTransfer.files));
+
+      // Enable the button only when this corp has at least one accepted
+      // counsel — server still re-checks, but the UI shouldn't lie.
+      const { data, error } = await _supabase.from('corp_advocate_offers')
+        .select('id').eq('corp_id', id).eq('status', 'accepted').limit(1);
+      if (!error && (data || []).length > 0) {
+        btn.disabled = false;
+        btn.removeAttribute('title');
+        document.getElementById('cp-lawsuit-note').textContent =
+          'Open a commercial action. $2,000,000 filing fee.';
+      }
+    }
+
+    async function openLawsuitModal() {
+      _fl.selectedId = null;
+      _fl.files = [];
+      document.getElementById('fl-claim').value = '';
+      document.getElementById('fl-claim-count').textContent = '0 / 600';
+      document.getElementById('fl-claim-count').classList.remove('warn');
+      document.getElementById('fl-def-card').classList.remove('show');
+      document.getElementById('fl-err').classList.remove('show');
+      renderLawsuitFiles();
+      validateLawsuit();
+      document.getElementById('fl-back').classList.add('open');
+      await loadLawsuitDefendants();
+    }
+    function closeLawsuitModal() {
+      if (_fl.submitting) return;
+      document.getElementById('fl-back').classList.remove('open');
+    }
+
+    async function loadLawsuitDefendants() {
+      const sel = document.getElementById('fl-defendant');
+      sel.innerHTML = '<option value="" disabled selected>Loading corporations…</option>';
+      try {
+        const { data, error } = await _supabase.rpc('list_lawsuit_defendants', { p_corp_id: id });
+        if (error) throw error;
+        if (!data?.success) {
+          sel.innerHTML = `<option value="" disabled selected>${escapeHtml(FL_REASONS[data?.reason] || 'Could not load corporations.')}</option>`;
+          return;
+        }
+        _fl.defendants = data.corps || [];
+        if (_fl.defendants.length === 0) {
+          sel.innerHTML = '<option value="" disabled selected>No corporations available to sue.</option>';
+          return;
+        }
+        const groups = new Map();
+        for (const c of _fl.defendants) {
+          const key = industryLabel(c.industry) || titleCase(c.industry || 'Other');
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(c);
+        }
+        let html = '<option value="" disabled selected>Select a corporation to sue…</option>';
+        for (const [label, corps] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+          html += `<optgroup label="${escapeHtml(label)}">`;
+          for (const c of corps) {
+            html += `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`;
+          }
+          html += '</optgroup>';
+        }
+        sel.innerHTML = html;
+      } catch (err) {
+        sel.innerHTML = `<option value="" disabled selected>Load failed: ${escapeHtml(err?.message || 'network error')}</option>`;
+      }
+    }
+
+    function onLawsuitDefendantChange() {
+      const sel = document.getElementById('fl-defendant');
+      _fl.selectedId = sel.value || null;
+      const c = _fl.defendants.find(x => x.id === _fl.selectedId);
+      const card = document.getElementById('fl-def-card');
+      if (!c) { card.classList.remove('show'); validateLawsuit(); return; }
+      document.getElementById('fl-def-tier').textContent =
+        'DEFENDANT · ' + (industryLabel(c.industry) || titleCase(c.industry || 'Other')).toUpperCase();
+      document.getElementById('fl-def-name').textContent = c.name || '—';
+      document.getElementById('fl-def-treas').textContent = fmtUsd(c.treasury);
+      document.getElementById('fl-def-sub').textContent =
+        c.nation_name ? `Headquartered in ${c.nation_name}.` : '';
+      card.classList.add('show');
+      validateLawsuit();
+    }
+
+    function onLawsuitClaimInput() {
+      const v = document.getElementById('fl-claim').value;
+      const counter = document.getElementById('fl-claim-count');
+      counter.textContent = `${v.length} / 600`;
+      counter.classList.toggle('warn', v.length > 560);
+      validateLawsuit();
+    }
+
+    function addLawsuitFiles(list) {
+      const err = document.getElementById('fl-err');
+      err.classList.remove('show');
+      for (const f of list) {
+        if (_fl.files.length >= FL_MAX_FILES) {
+          err.textContent = `At most ${FL_MAX_FILES} exhibits per filing.`;
+          err.classList.add('show');
+          break;
+        }
+        if (f.size > FL_MAX_FILE) {
+          err.textContent = `"${f.name}" is ${fmtBytes(f.size)} — exceeds the 2 MB exhibit limit.`;
+          err.classList.add('show');
+          continue;
+        }
+        _fl.files.push(f);
+      }
+      document.getElementById('fl-file-input').value = '';
+      renderLawsuitFiles();
+    }
+    function renderLawsuitFiles() {
+      const ul = document.getElementById('fl-files');
+      ul.innerHTML = '';
+      _fl.files.forEach((f, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="pill">Exhibit</span><span class="fname"></span><span class="fsize"></span><button class="del" title="Remove">&times;</button>`;
+        li.querySelector('.fname').textContent = f.name;
+        li.querySelector('.fsize').textContent = fmtBytes(f.size);
+        li.querySelector('.del').addEventListener('click', () => { _fl.files.splice(i, 1); renderLawsuitFiles(); });
+        ul.appendChild(li);
+      });
+    }
+    function fmtBytes(b) {
+      return b < 1024 ? `${b} B` : b < 1048576 ? `${(b/1024).toFixed(0)} KB` : `${(b/1048576).toFixed(2)} MB`;
+    }
+
+    function validateLawsuit() {
+      const ok = !!_fl.selectedId && document.getElementById('fl-claim').value.trim().length >= 12;
+      document.getElementById('fl-submit').disabled = !ok || _fl.submitting;
+      document.getElementById('fl-validity').textContent = ok
+        ? 'Ready to file. The court awaits.'
+        : 'Complete steps I & II to proceed.';
+    }
+
+    async function submitLawsuit() {
+      if (_fl.submitting) return;
+      const claim = document.getElementById('fl-claim').value.trim();
+      if (!_fl.selectedId || claim.length < 12) return;
+      _fl.submitting = true;
+      const btn = document.getElementById('fl-submit');
+      const orig = btn.textContent;
+      btn.disabled = true;
+
+      try {
+        // 1. Upload evidence files to lawsuit-evidence bucket.
+        const evidence = [];
+        for (let i = 0; i < _fl.files.length; i++) {
+          const f = _fl.files[i];
+          btn.textContent = `UPLOADING ${i + 1}/${_fl.files.length}…`;
+          const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const path = `${id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}/${safeName}`;
+          const { error: upErr } = await _supabase.storage
+            .from('lawsuit-evidence')
+            .upload(path, f, { cacheControl: '3600', upsert: false, contentType: f.type });
+          if (upErr) throw new Error(`Upload failed for "${f.name}": ${upErr.message}`);
+          const { data: pub } = _supabase.storage.from('lawsuit-evidence').getPublicUrl(path);
+          if (!pub?.publicUrl) throw new Error(`Could not resolve URL for "${f.name}".`);
+          evidence.push({ url: pub.publicUrl, name: f.name, size: f.size, type: f.type });
+        }
+
+        // 2. File the suit.
+        btn.textContent = 'FILING…';
+        const { data, error } = await _supabase.rpc('file_corp_lawsuit', {
+          p_corp_id:           id,
+          p_defendant_corp_id: _fl.selectedId,
+          p_claim_text:        claim,
+          p_evidence:          evidence,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const msg = FL_REASONS[data?.reason] || `Could not file: ${data?.reason || 'unknown'}`;
+          const err = document.getElementById('fl-err');
+          err.textContent = msg;
+          err.classList.add('show');
+          _fl.submitting = false;
+          btn.disabled = false;
+          btn.textContent = orig;
+          return;
+        }
+
+        // Success — reload so the new trial surfaces in the counsels'
+        // pressing issues and the corp treasury drops by $2M.
+        btn.textContent = 'FILED ✓';
+        setTimeout(() => window.location.reload(), 400);
+      } catch (e) {
+        const err = document.getElementById('fl-err');
+        err.textContent = e?.message || 'Filing failed.';
+        err.classList.add('show');
+        _fl.submitting = false;
+        btn.disabled = false;
+        btn.textContent = orig;
       }
     }
 
@@ -5754,6 +6085,7 @@ function initials(s, n) {
 
       setupCorpChat();
       setupCounselButton();
+      setupLawsuitButton();
       if (isOwner) {
         // Building-marketplace handlers. The :not() guards skip the
         // shipping buttons (sh-place-bid / sh-withdraw-bid / sh-edit-bid)
@@ -5882,7 +6214,7 @@ function initials(s, n) {
           <div class="bm-tier ${key === selKey ? 'sel' : ''}" data-tier="${key}">
             <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
             <span class="num cost">${fmtUsd(cost)}</span><span class="num">${dur}t</span>
-            <span class="num amb">+${t.amb} Amb</span>
+            <span class="num amb">+${t.amb} Inf</span>
           </div>`;
       }).join('');
       document.querySelectorAll('#bm-tiers .bm-tier').forEach(el => {
@@ -5970,7 +6302,7 @@ function initials(s, n) {
         ? `<span class="bm-stat">${escapeHtml(nation.name)}: cost-of-living ${Math.round(Number(nation.cost_of_living ?? 50))} · infrastructure ${Math.round(Number(nation.infrastructure ?? 50))}</span><br>`
         : '';
       document.getElementById('bm-summary').innerHTML =
-        `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Ambition</b> for you.<br>${footer}`;
+        `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Influence</b> for you.<br>${footer}`;
     };
 
     const openBuildModal = async () => {
@@ -8424,6 +8756,75 @@ const openBidModal = (contractId, label, yourCost) => {
     <div class="rc-foot">
       <div class="rc-foot-note" id="rc-foot-note">Pick an advocate, then click <strong>OFFER TO RETAIN</strong>.</div>
       <button type="button" class="rc-offer-btn" id="rc-offer-btn" disabled>OFFER TO RETAIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- File a Lawsuit modal — opens from the Legal Counsel card on the
+     corp page when the corp has at least one accepted advocate. Body
+     calls file_corp_lawsuit (20270580); evidence files upload to
+     the lawsuit-evidence Storage bucket (20270579) first and the
+     resolved URLs ride along in the RPC payload as plaintiff beats. -->
+<div class="fl-back" id="fl-back">
+  <div class="fl-modal">
+    <div class="fl-head">
+      <div>
+        <div class="fl-crumb">New Action &middot; Litigation</div>
+        <div class="fl-title">File a <em>Lawsuit</em></div>
+        <div class="fl-sub" id="fl-sub">Name your defendant and state your claim before the court.</div>
+      </div>
+      <button type="button" class="fl-close" id="fl-close" title="Cancel">&times;</button>
+    </div>
+
+    <div class="fl-body">
+      <div class="fl-field">
+        <div class="fl-sec-head"><span class="rn">I.</span><h3>Target <em>Corporation</em></h3></div>
+        <div class="fl-select-wrap">
+          <select id="fl-defendant">
+            <option value="" disabled selected>Loading corporations&hellip;</option>
+          </select>
+        </div>
+        <div class="fl-def-card" id="fl-def-card">
+          <div class="fl-def-tier" id="fl-def-tier">DEFENDANT</div>
+          <div class="fl-def-row">
+            <span class="fl-def-name" id="fl-def-name">—</span>
+            <span class="fl-def-treas">Treasury&nbsp; <b id="fl-def-treas">—</b></span>
+          </div>
+          <div class="fl-def-sub" id="fl-def-sub"></div>
+        </div>
+      </div>
+
+      <div class="fl-field">
+        <div class="fl-sec-head"><span class="rn">II.</span><h3>Statement of <em>Claim</em></h3></div>
+        <textarea class="fl-textarea" id="fl-claim" maxlength="600"
+                  placeholder="Describe the wrong, the harm, and the relief you seek."></textarea>
+        <div class="fl-count" id="fl-claim-count">0 / 600</div>
+      </div>
+
+      <div class="fl-field">
+        <div class="fl-sec-head"><span class="rn">III.</span><h3>Add <em>Evidence</em></h3><span class="opt">Optional</span></div>
+        <div class="fl-drop" id="fl-drop">
+          <div class="ico">+</div>
+          <p><b>Click to attach</b> or drag exhibits here</p>
+          <div class="hint">PDF &middot; PNG &middot; JPG &middot; DOCX &middot; XLSX &mdash; max 2 MB per file</div>
+          <input type="file" id="fl-file-input" multiple hidden
+                 accept="application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        </div>
+        <ul class="fl-files" id="fl-files"></ul>
+        <div class="fl-err" id="fl-err"></div>
+      </div>
+    </div>
+
+    <div class="fl-cost">
+      <div class="fl-seal">$</div>
+      <div class="fl-cost-txt">Filing this action commits <b>this corporation</b> to a <b>$2,000,000</b> filing fee to open proceedings. Non-refundable once served.</div>
+      <div class="fl-cost-amt">$2M</div>
+    </div>
+
+    <div class="fl-foot">
+      <span class="fl-validity" id="fl-validity">Complete steps I &amp; II to proceed.</span>
+      <button type="button" class="fl-btn ghost" id="fl-cancel">Cancel</button>
+      <button type="button" class="fl-btn file" id="fl-submit" disabled>File Suit &middot; $2M</button>
     </div>
   </div>
 </div>

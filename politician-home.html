@@ -1161,6 +1161,17 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} wins ${target || 'a case'} in the nation of ${meta.nation_name || 'their nation'}.`,
   lost_case: (name, target) =>
     `${name} suffers a setback with a loss in the case of ${target || 'a matter'}.`,
+  // Committee Chair bid — written by politician_bid_for_chair (20270584).
+  // target_name is the incumbent's full name (on the bidder's row) or the
+  // challenger's (on the defender's row). metadata carries both rolls.
+  bid_won_chair: (name, target) =>
+    `${name} unseated ${target || 'the incumbent'} to take the committee chair.`,
+  bid_lost_chair: (name, target) =>
+    `${name} mounted a bid for the committee chair against ${target || 'the incumbent'} and lost.`,
+  lost_chair_to_bid: (name, target) =>
+    `${name} was unseated from the committee chair by ${target || 'a challenger'}.`,
+  defended_chair_from_bid: (name, target) =>
+    `${name} held the committee chair against a bid by ${target || 'a challenger'}.`,
 };
 
 let politician = null;
@@ -1491,10 +1502,10 @@ function renderCareer() {
 
 function renderStats() {
   const stats = [
-    { label: 'STANDING',    value: politician.politician_standing    ?? 1,           kind: 'num' },
-    { label: 'REPUTATION',  value: politician.politician_reputation  ?? 1,           kind: 'num' },
-    { label: 'CREDIBILITY', value: politician.politician_credibility ?? 1,           kind: 'num' },
-    { label: 'POLITICAL CAPITAL', value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
+    { label: 'REPUTATION', value: politician.politician_reputation ?? 1, kind: 'num' },
+    { label: 'INFLUENCE',  value: politician.politician_influence  ?? 1, kind: 'num' },
+    { label: 'SKILL',      value: politician.politician_skill      ?? 1, kind: 'num' },
+    { label: 'CAPITAL',    value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
   ];
   document.getElementById('stats-row').innerHTML = stats.map((s, i) =>
     `<div class="stat-card${i === 0 ? ' accent' : ''}">
@@ -1545,7 +1556,7 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
-// pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Credibility,
+// pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
 // -1 Reputation, only when no active cases. APPEAL (20270543/45,
 // 20270561 for SC) is the appellate play. All three share
 // try_case_cooldown_until_tick so the panel's "PICK ONE EACH TICK"
@@ -1553,7 +1564,7 @@ const CIVIL_SERVANT_ACTIONS = [
 // case-load cap. Magistrates are server-gated out of TRY/APPEAL/READ.
 const ADVOCATE_ACTIONS = [
   { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
-  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'A quiet afternoon with the codes. +2 Credibility, -1 Reputation. Only when no cases are active.', action: 'read-statute-books' },
+  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'A quiet afternoon with the codes. +2 Skill, -1 Reputation. Only when no cases are active.', action: 'read-statute-books' },
   { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +3 Reputation and +5 Political Capital; lose 5 Rep and 3 PC if it stands.', action: 'appeal' },
 ];
 
@@ -1835,7 +1846,7 @@ const ACTIONS = {
 };
 
 function fmtStatuteBooks(data) {
-  return `Read the Statute Books: Credibility ${data.credibility_delta > 0 ? '+' : ''}${data.credibility_delta} (now ${data.new_credibility}), Reputation ${data.reputation_delta > 0 ? '+' : ''}${data.reputation_delta} (now ${data.new_reputation}).`;
+  return `Read the Statute Books: Skill ${data.skill_delta > 0 ? '+' : ''}${data.skill_delta} (now ${data.new_skill}), Reputation ${data.reputation_delta > 0 ? '+' : ''}${data.reputation_delta} (now ${data.new_reputation}).`;
 }
 
 function fmtMpResult(data) {
@@ -1862,17 +1873,17 @@ function fmtLocalResult(data) {
   const slug  = data.action.replace(/_/g, '-');
   const label = ACTIONS[slug]?.label || data.action;
   if (data.action === 'fundraising_call') {
-    const stake = ` (rolled ${data.roll} + ${data.credibility} Credibility = ${data.total})`;
-    if (data.bracket === 'crit_fail') return `${label}: donor blacklisted you${stake}. Credibility dropped to ${data.new_credibility}.`;
+    const stake = ` (rolled ${data.roll} + ${data.skill} Skill = ${data.total})`;
+    if (data.bracket === 'crit_fail') return `${label}: donor blacklisted you${stake}. Skill dropped to ${data.new_skill}.`;
     if (data.bracket === 'fail')      return `${label}: slow day, no one bit${stake}. Nothing raised.`;
     const money = `$${Number(data.money_raised || 0).toLocaleString()}`;
-    if (data.bracket === 'crit')      return `${label}: legendary round${stake}. Raised ${money} (2× with the volunteer bonus). Credibility rose to ${data.new_credibility}.`;
+    if (data.bracket === 'crit')      return `${label}: legendary round${stake}. Raised ${money} (2× with the volunteer bonus). Skill rose to ${data.new_skill}.`;
     return `${label}: raised ${money}${stake}.`;
   }
   if (data.action === 'civic_meeting') {
-    const stake = ` (rolled ${data.roll} + ${data.credibility} Credibility = ${data.total})`;
+    const stake = ` (rolled ${data.roll} + ${data.skill} Skill = ${data.total})`;
     if (data.bracket === 'crit_fail') return `${label}: said something off-key${stake}. Lost a volunteer (now ${data.new_volunteers}).`;
-    if (data.bracket === 'fail')      return `${label}: rough room${stake}. Credibility dropped to ${data.new_credibility}.`;
+    if (data.bracket === 'fail')      return `${label}: rough room${stake}. Skill dropped to ${data.new_skill}.`;
     if (data.bracket === 'crit')      return `${label}: the whole room joined the cause${stake}. +2 Volunteers (now ${data.new_volunteers}), party popularity rose to ${data.new_popularity}%.`;
     return `${label}: won a convert${stake}. Volunteers now ${data.new_volunteers}.`;
   }
@@ -1881,7 +1892,7 @@ function fmtLocalResult(data) {
     if (data.bracket === 'crit_fail') return `${label}: someone leaked a bad story${stake}. Reputation dropped to ${data.new_reputation}.`;
     if (data.bracket === 'fail')      return `${label}: nobody came${stake}. Party popularity dropped to ${data.new_popularity}%.`;
     if (data.bracket === 'crit')      return `${label}: great constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
-    return `${label}: showing up matters${stake}. Credibility rose to ${data.new_credibility}.`;
+    return `${label}: showing up matters${stake}. Skill rose to ${data.new_skill}.`;
   }
   return `${label}: done.`;
 }
@@ -2296,11 +2307,11 @@ function renderStateAdvocateRequestCard(r) {
         <div class="oi-eyebrow">APPOINTMENT REQUEST &middot; STATE ADVOCATE</div>
         <div class="oi-headline">${applicant} seeks the <em>State Advocate</em> appointment.</div>
         <div class="oi-meta">
-          <span class="oi-corp">Standing: <strong>${Number(r.applicant_standing) || 0}</strong></span>
-          <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Reputation: <strong>${Number(r.applicant_reputation) || 0}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Credibility: <strong>${Number(r.applicant_credibility) || 0}</strong></span>
+          <span class="oi-corp">Influence: <strong>${Number(r.applicant_influence) || 0}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Skill: <strong>${Number(r.applicant_skill) || 0}</strong></span>
           ${displacementLine}
         </div>
       </div>

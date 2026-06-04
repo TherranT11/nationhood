@@ -86,7 +86,7 @@ let currentUser = null;
 
 function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 function fmtCash(n) { return '$' + (Number(n) / 1e6) + 'M'; }
-function statTotal(st) { return st.ambition + st.cunning + st.reputation + st.vision; }
+function statTotal(st) { return st.influence + st.skill + st.reputation; }
 
 function renderCards() {
   document.getElementById('cards').innerHTML = Object.entries(ENTREPRENEUR_ARCHETYPES).map(([key, a]) => `
@@ -107,12 +107,11 @@ function selectArchetype(key) {
   const panel = document.getElementById('stat-panel');
   panel.innerHTML = `
     <div class="stat-row head"><span class="k">Stat</span><span class="v">Value</span></div>
-    <div class="stat-row"><span class="k">Ambition</span><span class="v">${st.ambition}</span></div>
-    <div class="stat-row"><span class="k">Cunning</span><span class="v">${st.cunning}</span></div>
     <div class="stat-row"><span class="k">Reputation</span><span class="v">${st.reputation}</span></div>
-    <div class="stat-row"><span class="k">Vision</span><span class="v">${st.vision}</span></div>
+    <div class="stat-row"><span class="k">Influence</span><span class="v">${st.influence}</span></div>
+    <div class="stat-row"><span class="k">Skill</span><span class="v">${st.skill}</span></div>
     <div class="stat-row total"><span class="k">Total</span><span class="v">${statTotal(st)}</span></div>
-    <div class="stat-row cash"><span class="k">Starting Cash</span><span class="v">${fmtCash(a.startingCash)}</span></div>`;
+    <div class="stat-row cash"><span class="k">Capital</span><span class="v">${fmtCash(a.startingCash)}</span></div>`;
   panel.classList.add('show');
   const btn = document.getElementById('create-btn');
   btn.classList.add('on');
@@ -199,10 +198,9 @@ async function createEntrepreneur() {
       leader_last_name: lastName,
       leader_age: age,
       entrepreneur_archetype: selectedKey,
-      ent_ambition: a.stats.ambition,
-      ent_cunning: a.stats.cunning,
+      ent_influence: a.stats.influence,
+      ent_skill: a.stats.skill,
       ent_reputation: a.stats.reputation,
-      ent_vision: a.stats.vision,
       ent_starting_cash: a.startingCash,
       party_funds: a.startingCash,  // live balance = starting cash (one source)
     };

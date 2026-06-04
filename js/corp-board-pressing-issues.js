@@ -24,6 +24,8 @@
  *   // ctl.getCount() — number of open requests the viewer can vote on
  */
 
+import { ENT_STAT_DISPLAY } from './game/factions.js';
+
 const STYLE_ID = 'bp-board-pressing-styles';
 
 const CSS = `
@@ -103,12 +105,12 @@ export function mountBoardPressingIssues({
         if (reqIds.length === 0) return [];
 
         // 2) The pending requests (joined to corp + applicant for display).
+        const statCols = ENT_STAT_DISPLAY.map(s => s.key).join(', ');
         const { data: reqs, error: reqErr } = await supabase
             .from('corp_board_requests')
             .select('id, corp_id, applicant_faction_id, created_tick, expires_tick,'
                   + ' corp:entrepreneur_corps!corp_id(id, name, industry, listing),'
-                  + ' applicant:factions!applicant_faction_id(faction_name, leader_first_name, leader_last_name,'
-                  + ' ent_ambition, ent_cunning, ent_reputation, ent_vision)')
+                  + ` applicant:factions!applicant_faction_id(faction_name, leader_first_name, leader_last_name, ${statCols})`)
             .in('id', reqIds)
             .eq('status', 'pending');
         if (reqErr) { console.warn('[board-pi] requests fetch failed:', reqErr.message); return []; }
@@ -176,9 +178,9 @@ export function mountBoardPressingIssues({
         const apRo = document.createElement('div'); apRo.className = 'role'; apRo.textContent = 'WISHES TO JOIN AS DIRECTOR';
         apLeft.append(apNm, apRo);
         const stats = document.createElement('div'); stats.className = 'bp-stats';
-        for (const [label, key] of [['AMB','ent_ambition'],['CUN','ent_cunning'],['REP','ent_reputation'],['VIS','ent_vision']]) {
+        for (const { short, key } of ENT_STAT_DISPLAY) {
             const s  = document.createElement('div'); s.className = 's';
-            const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = label;
+            const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = short;
             const sv = document.createElement('div'); sv.className = 'v'; sv.textContent = String(app[key] ?? '—');
             s.append(sl, sv);
             stats.appendChild(s);

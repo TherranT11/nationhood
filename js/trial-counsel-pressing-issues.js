@@ -142,13 +142,13 @@ export function mountTrialCounselPressingIssues({ supabase, faction, host, showE
         const name = document.createElement('div'); name.className = 'tc-pi-offer-name';
         name.textContent = o.advocate_name || 'Advocate';
         const stats = document.createElement('div'); stats.className = 'tc-pi-offer-stats';
-        const sStand = document.createElement('span'); sStand.className = statClass(o.standing);
-        sStand.textContent = `STG ${statText(o.standing)}`;
-        const sCred  = document.createElement('span'); sCred.className = statClass(o.credibility);
-        sCred.textContent  = `CRD ${statText(o.credibility)}`;
         const sRep   = document.createElement('span'); sRep.className = statClass(o.reputation);
         sRep.textContent   = `REP ${statText(o.reputation)}`;
-        stats.append(sStand, sCred, sRep);
+        const sInf   = document.createElement('span'); sInf.className = statClass(o.influence);
+        sInf.textContent   = `INF ${statText(o.influence)}`;
+        const sSkl   = document.createElement('span'); sSkl.className = statClass(o.skill);
+        sSkl.textContent   = `SKL ${statText(o.skill)}`;
+        stats.append(sRep, sInf, sSkl);
 
         const actions = document.createElement('div'); actions.className = 'tc-pi-offer-actions';
         const acc = document.createElement('button');

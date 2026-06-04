@@ -282,8 +282,8 @@
       <div class="ec-h">I. Choose Your <em>Industry</em></div>
       <div class="ec-grid3" id="ec-ind">
         <div class="ec-pick sel" data-ind="construction"><div class="pn">Construction</div><div class="pd">Build infrastructure and projects. Lumpy, contract-driven revenue; scales with Reputation.</div></div>
-        <div class="ec-pick" data-ind="banking"><div class="pn">Banking</div><div class="pd">Loans, deposits, underwriting. Steady interest-spread revenue; scales with Cunning.</div></div>
-        <div class="ec-pick" data-ind="shipping"><div class="pn">Shipping</div><div class="pd">Charter routes and move cargo. Cyclical, asset-heavy revenue; scales with Vision.</div></div>
+        <div class="ec-pick" data-ind="banking"><div class="pn">Banking</div><div class="pd">Loans, deposits, underwriting. Steady interest-spread revenue; scales with Skill.</div></div>
+        <div class="ec-pick" data-ind="shipping"><div class="pn">Shipping</div><div class="pd">Charter routes and move cargo. Cyclical, asset-heavy revenue; scales with Influence.</div></div>
         <div class="ec-pick" data-ind="real_estate"><div class="pn">Real Estate</div><div class="pd">Acquire finished buildings from Construction corps and collect rent. Steady tenant revenue; scales with Reputation.</div></div>
         <div class="ec-pick" data-ind="airline"><div class="pn">Airline</div><div class="pd">Buy aircraft and fly passenger routes between cities. Demand scales with each nation's standard of living. Capital-intensive — founds empty; buy your first aircraft from corp treasury. Expand beyond your HQ nation by building a Regional HQ.</div></div>
         <div class="ec-pick" data-ind="aviation_manufacturing"><div class="pn">Aviation Manufacturing</div><div class="pd">Build aircraft and engines. Founds with one Assembly Plant in your HQ nation — a 1D6 roll: 1-5 a Light Assembly Plant, 6 the rarer Engine Assembly Plant.</div></div>
@@ -410,6 +410,7 @@ import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel, homeNationName } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
+import { ENT_STAT_DISPLAY } from './js/game/factions.js';
 
 // Attach book-value aggregates to every corp in `corps` as c.bookAgg
 // (via the shared fetchCorpBookAggregates), so computeEntrepreneurValuation
@@ -891,9 +892,9 @@ function renderPositions(corps, filter) {
       const sh  = document.createElement('div'); sh.className = 'stats-head';
       sh.textContent = `${applicantName.toUpperCase()} — STATS PRESENTED TO THE BOARD`;
       const stats = document.createElement('div'); stats.className = 'stats';
-      for (const [label, key] of [['AMBITION','ent_ambition'],['CUNNING','ent_cunning'],['REPUTATION','ent_reputation'],['VISION','ent_vision']]) {
+      for (const { long, key } of ENT_STAT_DISPLAY) {
         const s = document.createElement('div'); s.className = 'stat';
-        const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = label;
+        const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = long;
         const sv = document.createElement('div'); sv.className = 'v';   sv.textContent = String(f[key] ?? '—');
         s.append(sl, sv);
         stats.appendChild(s);
