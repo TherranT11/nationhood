@@ -4998,7 +4998,7 @@ function initials(s, n) {
         // My active listings (regardless of nation — once listed, the
         // broker manages them even if the office in that nation lapses).
         const { data: myListings, error: lErr } = await _supabase.from('corp_buildings')
-          .select('id, name, building_type, tier, cost_paid, list_price, broker_fee_paid, broker_listed_at_tick, owner_corp_id, nation:nations!nation_id(name), owner:entrepreneur_corps!owner_corp_id(name)')
+          .select('id, name, building_type, tier, cost_paid, list_price, broker_fee_paid, broker_listed_at_tick, nation:nations!nation_id(name), owner:entrepreneur_corps!owner_corp_id(name)')
           .eq('broker_corp_id', id)
           .eq('status', 'completed')
           .order('broker_listed_at_tick', { ascending: false });
