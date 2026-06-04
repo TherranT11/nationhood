@@ -181,7 +181,7 @@
 
   <div class="actbar">
     <div class="actbar-meta" id="actbar-meta">—</div>
-    <button class="act-newthread" id="new-thread-btn" disabled title="Coming in v2">&#9999; New Thread</button>
+    <button class="act-newthread" id="new-thread-btn" disabled>&#9999; New Thread</button>
   </div>
 
   <div id="thread-host"></div>
@@ -192,7 +192,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
-import { escHtml, fmtInt, formatRelative, ZONE_META }
+import { escHtml, fmtInt, formatRelative, ZONE_META, getSlugFromUrl }
   from './js/forum-utils.js';
 
 function zoneLabel(zone) {
@@ -203,9 +203,14 @@ function zoneLabel(zone) {
   return meta ? `${meta.eyebrow} · ${meta.name}` : (zone || '');
 }
 
-function getSlugFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('slug') || '';
+function bindNewThreadButton(slug) {
+  const btn = document.getElementById('new-thread-btn');
+  if (!btn || !slug) return;
+  btn.disabled = false;
+  btn.title = 'Start a new thread in this category';
+  btn.addEventListener('click', () => {
+    window.location.href = `politician-forum-compose.html?slug=${encodeURIComponent(slug)}`;
+  });
 }
 
 async function init() {
@@ -254,9 +259,9 @@ async function loadCategory(ctx, slug) {
     head.innerHTML = renderHead(data.category);
     list.innerHTML = renderThreadList(data.threads);
     meta.textContent = `${fmtInt(data.thread_count)} thread${data.thread_count === 1 ? '' : 's'} in this category`;
-    // Thread-detail page lands in v2 alongside the create-thread RPC.
-    // Until then, rows render but aren't clickable — adding a handler
-    // that goes nowhere would just be noise.
+    bindNewThreadButton(data.category.slug);
+    // Thread-row clicks land in a follow-up slice with the thread-
+    // detail page. Until then, rows render but aren't clickable.
   } catch (e) {
     console.error('politician-forum-category: load failed', e);
     head.innerHTML = `<div class="cathead"><div class="cathead-row"><div class="cathead-info"><div class="cathead-title">—</div><div class="cathead-desc">Failed to load: ${escHtml(e?.message || e)}</div></div></div></div>`;

@@ -61,3 +61,79 @@ export const ZONE_META = {
 };
 
 export const ZONE_ORDER = ['world', 'players', 'game'];
+
+// ─── HTML sanitization for the rich-text body ─────────────────────
+// Whitelisted tags + attributes. Anything else gets unwrapped (the
+// element disappears but its text content survives). Used twice:
+// once at submit time before sending to create_forum_thread, again
+// at render time before innerHTML'ing the stored body. The render
+// pass is the security boundary — submit-side sanitization is just
+// belt-and-braces against a hostile client smuggling bad HTML.
+const ALLOWED_TAGS = new Set([
+  'B', 'STRONG', 'I', 'EM', 'U',
+  'P', 'BR', 'DIV', 'SPAN',
+  'H1', 'H2', 'H3',
+  'UL', 'OL', 'LI',
+  'BLOCKQUOTE',
+  'A', 'IMG',
+]);
+const ALLOWED_ATTRS = {
+  A:   ['href'],
+  IMG: ['src', 'alt'],
+};
+const SAFE_URL_RE = /^https?:\/\//i;
+
+export function sanitizeHtml(html) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html ?? '');
+  walkSanitize(tmp);
+  return tmp.innerHTML;
+}
+
+function walkSanitize(node) {
+  for (const child of [...node.childNodes]) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      if (!ALLOWED_TAGS.has(child.tagName)) {
+        // Unwrap — move children up, drop the element itself.
+        child.replaceWith(...child.childNodes);
+        continue;
+      }
+      const allowed = ALLOWED_ATTRS[child.tagName] || [];
+      for (const attr of [...child.attributes]) {
+        if (!allowed.includes(attr.name)) {
+          child.removeAttribute(attr.name);
+        }
+      }
+      // URL allowlist on href / src — drop the attribute entirely
+      // if it doesn't start with http:// or https://. Strips javascript:,
+      // data:, mailto:, etc.
+      if (child.tagName === 'A') {
+        const href = child.getAttribute('href') || '';
+        if (!SAFE_URL_RE.test(href)) child.removeAttribute('href');
+      }
+      if (child.tagName === 'IMG') {
+        const src = child.getAttribute('src') || '';
+        if (!SAFE_URL_RE.test(src)) child.removeAttribute('src');
+      }
+      walkSanitize(child);
+    } else if (child.nodeType !== Node.TEXT_NODE) {
+      // Comments, processing instructions, etc. — strip.
+      child.remove();
+    }
+  }
+}
+
+// Word count for the toolbar's "N words · ~M min read" pill. Reads
+// from the visible text content of a rich-text node so HTML markup
+// doesn't inflate the count.
+export function countWords(text) {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+// Both the category-detail and compose pages key off ?slug= in the URL.
+// Returns '' when the param is missing so callers can branch on falsy.
+export function getSlugFromUrl() {
+  return new URLSearchParams(window.location.search).get('slug') || '';
+}
