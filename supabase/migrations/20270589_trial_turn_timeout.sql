@@ -66,10 +66,22 @@ BEGIN
         IF NEW.current_turn IS NULL THEN
             -- Turn cleared (trial closing / resetting). Clear the stamp too.
             NEW.current_turn_started_at_tick := NULL;
-        ELSE
+        ELSIF NEW.current_turn_started_at_tick IS NOT DISTINCT FROM
+              OLD.current_turn_started_at_tick THEN
+            -- Caller didn't explicitly set the stamp (column carried over
+            -- from OLD). Read it from the shard. This branch covers
+            -- end_turn (20270538), call_witness_qa, judge_rule_objection,
+            -- represent_pretrial, accept_drawn_case, and the objection-
+            -- resume paths — all client-triggered, so shard.current_tick
+            -- is the correct, committed value at call time.
             SELECT current_tick INTO v_tick
               FROM public.shard WHERE name = 'Alpha Shard' LIMIT 1;
             NEW.current_turn_started_at_tick := COALESCE(v_tick, 0);
+        -- ELSE: caller (process_trial_turn_timeouts, called from
+        -- advance-tick BEFORE shard.current_tick is committed) explicitly
+        -- passed the correct tick in the UPDATE. Leave it alone —
+        -- reading shard here would return the STALE pre-commit value
+        -- and stamp the new turn one tick too early.
         END IF;
     END IF;
     RETURN NEW;
@@ -112,24 +124,32 @@ BEGIN
     LOOP
         IF r.current_turn = 'plaintiff' THEN
             -- Plaintiff timeout: flip to defendant. Same round.
+            -- Stamp current_turn_started_at_tick explicitly with v_tick
+            -- so the trigger's stale-shard-read branch doesn't fire
+            -- (we're inside advance-tick; shard hasn't committed the
+            -- new tick yet — would otherwise stamp T-1).
             UPDATE court_case_trials
-               SET current_turn = 'defendant', messages_sent_this_turn = 0
+               SET current_turn = 'defendant',
+                   current_turn_started_at_tick = v_tick,
+                   messages_sent_this_turn = 0
              WHERE id = r.id;
             v_flipped := v_flipped + 1;
 
         ELSE
             -- Defendant timeout.
             IF r.current_round < 4 THEN
-                -- Advance to next round, back to plaintiff.
                 UPDATE court_case_trials
                    SET current_turn = 'plaintiff',
                        current_round = r.current_round + 1,
+                       current_turn_started_at_tick = v_tick,
                        messages_sent_this_turn = 0
                  WHERE id = r.id;
                 v_flipped := v_flipped + 1;
             ELSE
                 -- Round 4 defendant timeout: close the trial via
-                -- the same helper end_turn calls (20270538).
+                -- the same helper end_turn calls (20270538). Helper
+                -- sets awaiting_verdict=true but doesn't touch
+                -- current_turn, so no trigger firing here.
                 SELECT (public._close_trial_at_round_four(r.id) -> 'verdict')
                   INTO v_verdict;
                 v_closed := v_closed + 1;
