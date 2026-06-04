@@ -511,7 +511,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     if (bid) {
       e.preventDefault();
       if (bid.dataset.busy === '1') return;
-      if (!confirm(`Bid for Chair? You'll spend ${BID_CAPITAL_COST} Political Capital regardless of outcome and trigger an 8-tick cooldown. Win takes the seat.`)) return;
+      if (!confirm(`Bid for Chair? You'll spend ${BID_CAPITAL_COST} Influence regardless of outcome and trigger an 8-tick cooldown. Win takes the seat.`)) return;
       bid.dataset.busy = '1';
       bid.disabled = true;
       try {
@@ -527,7 +527,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
             already_chair:         'You already hold the chair.',
             membership_too_short:  `Seated ${data.have_ticks ?? '?'} of ${data.need_ticks ?? BID_MEMBERSHIP_TICKS} required ticks.`,
             insufficient_skill:    `Need ${data.required ?? BID_SKILL_THRESHOLD} Skill — you have ${data.have ?? '?'}.`,
-            insufficient_capital:  `Need ${data.required ?? BID_CAPITAL_COST} Political Capital — you have ${data.have ?? '?'}.`,
+            insufficient_capital:  `Need ${data.required ?? BID_CAPITAL_COST} Influence — you have ${data.have ?? '?'}.`,
             cooldown:              `Cooldown — next bid at tick ${data.next_tick ?? '?'}.`,
             no_chair_seat:         'No chair seat to challenge (vacant or missing).',
           })[r] || `Could not bid: ${r}.`;
@@ -715,7 +715,7 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, faction,
 
   // [Bid for Chair] mirrors politician_bid_for_chair (20270584). Open
   // to any seated non-chair member who's been on the committee for
-  // ≥4 ticks, has Skill ≥8, Political Capital ≥15, and isn't on the
+  // ≥4 ticks, has Skill ≥8, Influence ≥15, and isn't on the
   // 8-tick post-bid cooldown.
   const skill   = Number(faction?.politician_skill) || 0;
   const capital = Number(faction?.political_capital) || 0;
@@ -730,7 +730,7 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, faction,
         : skill < BID_SKILL_THRESHOLD
           ? `Need ${BID_SKILL_THRESHOLD} Skill (you have ${skill})`
           : capital < BID_CAPITAL_COST
-            ? `Need ${BID_CAPITAL_COST} Political Capital (you have ${Math.floor(capital)})`
+            ? `Need ${BID_CAPITAL_COST} Influence (you have ${Math.floor(capital)})`
             : nextBid > currentTick
               ? `Cooldown — next bid at tick ${nextBid}`
               : '';
@@ -743,7 +743,7 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, faction,
       title: holdDisabledReason || '',
       stub: false },
     { act: 'bid',  ic: '☖', name: 'BID FOR CHAIR',
-      desc: `Challenge the incumbent. Roll 1d6 + your Skill vs the chair's 1d6 + Skill. Win takes the seat (+2 Reputation); loss costs 1 Reputation. Either way: -${BID_CAPITAL_COST} Political Capital, 8-tick cooldown.`,
+      desc: `Challenge the incumbent. Roll 1d6 + your Skill vs the chair's 1d6 + Skill. Win takes the seat (+2 Reputation); loss costs 1 Reputation. Either way: -${BID_CAPITAL_COST} Influence, 8-tick cooldown.`,
       enabled: bidEnabled,
       title: bidDisabledReason || '',
       stub: false },

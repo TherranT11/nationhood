@@ -620,7 +620,7 @@ function renderActionsPanel() {
         <div class="act-name">Door Knocking</div>
         <div class="act-cd${dkReady ? ' ready' : ''}">${dkReady ? 'Ready' : `Ready in ${dkRemaining} tick${dkRemaining === 1 ? '' : 's'}`}</div>
       </div>
-      <div class="act-meta">1d6 + Reputation (yours: ${_viewerReputation}). Hit: +0.2 Political Capital (+0.4 on nat 6). Miss: −0.5 Party Popularity (−1 on nat 1). 2-tick cooldown.</div>
+      <div class="act-meta">1d6 + Reputation (yours: ${_viewerReputation}). Hit: +0.2 Influence (+0.4 on nat 6). Miss: −0.5 Party Popularity (−1 on nat 1). 2-tick cooldown.</div>
     </div>
     <div class="act-card${speechReady ? '' : ' disabled'}" data-action="give_speech">
       <div class="act-row">
@@ -692,7 +692,7 @@ function formatActionMsg(statLabel, data) {
   const fmt = (n, label) => `${n > 0 ? '+' : ''}${n} ${label}`;
   const deltas = [
     popDelta ? fmt(popDelta, 'Party Popularity') : '',
-    capDelta ? fmt(capDelta, 'Political Capital') : '',
+    capDelta ? fmt(capDelta, 'Influence') : '',
     repDelta ? fmt(repDelta, 'Reputation') : '',
   ].filter(Boolean).join(' &middot; ') || 'no change';
   const header = `Rolled ${data.roll} + ${stat} ${statLabel} = ${total}${tag}`;
@@ -721,7 +721,7 @@ function patchPopularityCell(newPct) {
   });
 }
 
-// Update the viewer's own Political Capital cell in the Members panel
+// Update the viewer's own Influence cell in the Members panel
 // after an action. Finds the viewer's row by the "You" badge marker,
 // so the rest of the members list stays untouched.
 function patchViewerCapitalCell(newCap) {

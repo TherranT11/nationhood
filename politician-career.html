@@ -578,7 +578,7 @@
     <div class="em-footer" id="em-footer" style="display:none;">
       <div class="em-your-stats">
         <div class="em-stat-block"><div class="li">POL. CAPITAL</div><div class="lv infl" id="em-stat-infl">—</div></div>
-        <div class="em-stat-block"><div class="li">INFLUENCE</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
+        <div class="em-stat-block"><div class="li">STANDING</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
         <div class="em-stat-block"><div class="li">SKILL</div><div class="lv cred" id="em-stat-cred">—</div></div>
       </div>
       <div class="em-footer-buttons">
@@ -638,7 +638,7 @@
       <div class="bv-answers" id="bv-answers"></div>
       <div class="bar-err" id="bar-err-q"></div>
       <div class="bar-foot">
-        <div class="foot-rule"><strong>Reminder:</strong> All three answers must be correct. A wrong answer ends the exam. You may retake the bar after <strong>3 ticks</strong> if you fail; failure costs <strong>−2 Political Capital</strong>.</div>
+        <div class="foot-rule"><strong>Reminder:</strong> All three answers must be correct. A wrong answer ends the exam. You may retake the bar after <strong>3 ticks</strong> if you fail; failure costs <strong>−2 Influence</strong>.</div>
         <button class="bar-btn" type="button" id="bar-next-btn">NEXT &rsaquo;</button>
       </div>
     </div>
@@ -1415,7 +1415,7 @@ async function init() {
     const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
     if (!error && data?.resolved) resolution = data;
     if (resolution) {
-      // Reflect the post-resolution Political Capital in ctx.faction
+      // Reflect the post-resolution Influence in ctx.faction
       // immediately so the topbar / mock-up stat readout don't lag a
       // tick behind the banner copy.
       ctx.faction.political_capital = resolution.political_capital;
@@ -1515,9 +1515,9 @@ function renderResolutionBanner(r) {
   const headline = won ? 'ELECTION — VICTORY' : 'ELECTION — DEFEAT';
 
   // Compose the body as discrete sentences so each clause renders only
-  // when it has something to say. Party-reward + Political Capital
+  // when it has something to say. Party-reward + Influence
   // sentences tail-append; they're suppressed for losses (no party
-  // reward, and Political Capital delta of 0 in a community loss).
+  // reward, and Influence delta of 0 in a community loss).
   const sentences = [];
   sentences.push(won
     ? `You won the ${tier} race in ${escHtml(district)} against ${escHtml(opp)}.`
@@ -1546,7 +1546,7 @@ function renderResolutionBanner(r) {
   }
   const statReward = r.stat_reward;
   if (won && statReward) {
-    const statLabel = statReward.kind === 'influence' ? 'Influence'
+    const statLabel = statReward.kind === 'influence' ? 'Standing'
                     : statReward.kind === 'skill' ? 'Skill'
                     : null;
     if (statLabel) {
@@ -1554,7 +1554,7 @@ function renderResolutionBanner(r) {
     }
   }
   if (deltaLabel) {
-    sentences.push(`Political Capital ${deltaLabel}.`);
+    sentences.push(`Influence ${deltaLabel}.`);
   }
   // Office stamp — surfaces the new factions.politician_office value
   // in the same banner that announced the win. The page reload that
@@ -2111,8 +2111,8 @@ function renderExamModalConfirm() {
     <div class="exam-copy">
       Sit the civil-service entrance exam. <strong>1d6</strong> roll.
       On a <strong>1</strong> the Ministry rejects your application
-      (&minus;2 Political Capital, re-apply in 12 ticks). On
-      <strong>2&ndash;6</strong> you pass: +3 Political Capital and a
+      (&minus;2 Influence, re-apply in 12 ticks). On
+      <strong>2&ndash;6</strong> you pass: +3 Influence and a
       random ministry assignment (Defense / Foreign Affairs & Trade /
       Economic Development / Interior).
     </div>
@@ -2168,14 +2168,14 @@ async function confirmSitTheExam() {
       renderExamModalResult({
         kind: 'bad',
         title: `Rolled a 1 — rejected`,
-        body: `Due to a poor application, the Ministry of ${escHtml(data.ministry_name)} has rejected your application. You may apply again next month. <strong>−2 Political Capital</strong>.`,
+        body: `Due to a poor application, the Ministry of ${escHtml(data.ministry_name)} has rejected your application. You may apply again next month. <strong>−2 Influence</strong>.`,
         reload: true,
       });
     } else {
       renderExamModalResult({
         kind: 'good',
         title: `Rolled a ${data.roll} — appointed`,
-        body: `You have been appointed to the <strong>Ministry of ${escHtml(data.ministry_name)}</strong>. <strong>+3 Political Capital</strong>. Your career page will update on close.`,
+        body: `You have been appointed to the <strong>Ministry of ${escHtml(data.ministry_name)}</strong>. <strong>+3 Influence</strong>. Your career page will update on close.`,
         reload: true,
       });
     }
@@ -2268,7 +2268,7 @@ function renderBarConfirm() {
   document.getElementById('bv-confirm-body').innerHTML = `
     You are about to apply to the <em>Bar Exam</em> of the nation of <strong>${escHtml(nationName)}</strong>,
     sponsored by the Ministry of Justice. You may only attempt this exam every
-    <strong>3 ticks</strong>, and failure will cost you <strong>−2 Political Capital</strong>.
+    <strong>3 ticks</strong>, and failure will cost you <strong>−2 Influence</strong>.
     <br><br>Do you wish to proceed?
   `;
   document.getElementById('bv-confirm-rule').innerHTML =
@@ -2451,7 +2451,7 @@ function renderBarResultView(result) {
     summary.innerHTML = `
       <div class="bv-result-eyebrow">EXAMINATION FAILED</div>
       <div class="bv-result-headline">${escHtml(String(result.correct_count || 0))} of 3 correct.</div>
-      <div class="bv-result-body">The bar has not been seated. You may re-attempt after <em>3 ticks</em>. <strong>−2 Political Capital</strong> applied.</div>`;
+      <div class="bv-result-body">The bar has not been seated. You may re-attempt after <em>3 ticks</em>. <strong>−2 Influence</strong> applied.</div>`;
   }
 
   const rows = Array.isArray(result.results) ? result.results : [];
@@ -2570,7 +2570,7 @@ function renderElectionOffer(offer, ctx) {
   const parl = offer.parliament || {};
 
   // Footer stats are read live off ctx.faction so they match the topbar
-  // / mockup. Political Capital is numeric in the DB; floor to int for display.
+  // / mockup. Influence is numeric in the DB; floor to int for display.
   const f = ctx.faction || {};
   const cap  = Math.floor(Number(f.political_capital)      || 0);
   const sta  = Number(f.politician_influence)   || 0;
@@ -2581,7 +2581,7 @@ function renderElectionOffer(offer, ctx) {
 
   const body = document.getElementById('em-body');
   body.innerHTML = `
-    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Skill</span> drives community races; <span class="cha">Influence</span> drives parliamentary ones.</div>
+    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Skill</span> drives community races; <span class="cha">Standing</span> drives parliamentary ones.</div>
     <div class="em-options">
       ${renderOptionCard('community',  com,  'LOW STAKES · COMMUNITY',     'Community Organizer', 'A volunteer seat on your neighborhood association. A small race, but real — you’d be elected by your block. Most political careers begin here.', 1)}
       ${renderOptionCard('parliament', parl, 'HIGH STAKES · NATIONAL',     'Member of Parliament','A vacant Assembly seat in a working-class district of the capital. National-level race, national-level attention.', 2)}
@@ -2612,7 +2612,7 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const odds = Number(race.odds_pct) || 0;
   const oddsClass = odds >= 60 ? 'fav' : (odds >= 40 ? 'even' : 'long');
   const oppFull = `${race.opp_first || ''} ${race.opp_last || ''}`.trim() || '—';
-  const statLabel  = tier === 'community' ? 'Skill' : 'Influence';
+  const statLabel  = tier === 'community' ? 'Skill' : 'Standing';
   const isParl     = tier === 'parliament';
   const partyName  = isParl ? (race.opp_party_name || 'Independent') : 'Independent';
   const partyColor = isParl ? race.opp_party_color : null;
