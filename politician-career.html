@@ -1312,13 +1312,14 @@ const NAVY_RUNGS = [
     ],
   },
   {
-    name: 'Department Head · Lieutenant Commander',
+    name: 'Capital Ship Commander · Captain',
     held:        ()  => false,
-    descIfHeld:  ()  => 'You run a department aboard a larger warship, or command a patrol craft of your own.',
-    descIfNot:   ()  => 'You run a department aboard a larger warship — operations, weapons, engineering, navigation — or you command a patrol craft of your own. Your first taste of real responsibility: men reporting to you, decisions you sign for, watches you set rather than stand.',
+    descIfHeld:  ()  => 'You hold command of a cruiser or carrier — the heaviest hull the Republic puts to sea.',
+    descIfNot:   ()  => 'Command of a cruiser or aircraft carrier — the heaviest warship in the Fleet. A thousand-plus crew, a flight deck or main batteries, and the kind of ship that defines a Navy. The Ministry follows your name; foreign attachés track your deployments.',
     actions: [
-      'Command a Patrol Boat',
-      'Run a Department',
+      'Command a Capital Ship',
+      'Lead a Strike Group',
+      { label: 'Conduct a Surface Action', dark: true },
     ],
   },
   {
@@ -1333,7 +1334,7 @@ const NAVY_RUNGS = [
     ],
   },
   {
-    name: 'Squadron Commander · Captain',
+    name: 'Squadron Commander · Admiral',
     held:        ()  => false,
     descIfHeld:  ()  => 'You direct multiple ships — a squadron in formation or a heavy cruiser with its auxiliaries.',
     descIfNot:   ()  => 'Command of multiple ships — a squadron of three to five vessels operating in formation, or a heavy cruiser with its own auxiliaries. You no longer steer the ship; you direct ships. Officers junior to you have their own commands and report up.',
@@ -1354,7 +1355,7 @@ const NAVY_RUNGS = [
     ],
   },
   {
-    name: 'Chief of Naval Operations · Admiral',
+    name: 'Chief of Naval Operations · Fleet Admiral',
     tierName: 'APEX',
     held:        ()  => false,
     descIfHeld:  ()  => 'You head the Navy — the Fleet is yours to direct, modernize, commit, or keep in port.',
