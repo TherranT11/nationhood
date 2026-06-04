@@ -200,6 +200,23 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Airlines: route panel shows lane demand pool, not last-tick
+  carried.** The "Total passengers on lane" line under each active
+  route was summing `last_tick_pax` across every airline on the city
+  pair. For a brand-new route — no tick processed yet — every term
+  is 0 and the row rendered as "Total: 0 — You 0", which looked
+  broken even though everything was correct. Migration `20270607`
+  carves the existing per-lane demand formula out of
+  `process_entrepreneur_airline_routes`' `lane_demand` CTE into a
+  reusable `lane_demand(origin_city_id, dest_city_id) RETURNS int`
+  helper (single source of truth — the tick processor calls the
+  same helper instead of its old inline formula). New
+  `list_active_lane_demands()` RPC returns the per-lane pool in one
+  call for the client to merge with `last_tick_pax`. The route row
+  now reads "Lane demand: 18 · last tick: 0 — You 0" the moment
+  the route opens; once ticks accumulate it becomes "Lane demand:
+  18 · last tick: 15 — You 10 · Sky Air 5", same per-airline
+  breakdown as before. No formula duplication client-side.
 - **Airlines: every nation now has 3 cities + auto-range trigger.**
   Only Calveth and Avelia had `airline_cities` rows (seeded by 20260706
   phase 2); eleven other nations sat at zero, so any airline founded
