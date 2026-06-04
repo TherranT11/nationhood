@@ -75,6 +75,45 @@
     align-items:start; }
   @media (max-width:920px) { .neg-grid { grid-template-columns:1fr; } }
 
+  /* Mobile refresh — tighter paddings + single-column layouts on
+     narrower viewports so the contract doesn't horizontally clip
+     on a phone. Two breakpoints: 720px (tablet/landscape phone),
+     520px (portrait phone). */
+  @media (max-width:720px) {
+    .wrap { padding:16px 12px; }
+    .crumb { margin-bottom:10px; font-size:8.5px; letter-spacing:0.1em; }
+    .ph-row { flex-direction:column; align-items:flex-start; gap:10px;
+              padding:14px 16px; }
+    .ph-icon { width:36px; height:36px; }
+    .ph-title { font-size:13px; }
+    .summary-bar { padding:9px 14px; gap:10px; }
+    .sb-sep { display:none; }
+    .doc-head { padding:18px 16px 12px; }
+    .doc-body { padding:18px 16px; font-size:13px; }
+    .recital { font-size:12px; line-height:1.55; }
+    .article-row { padding:14px 14px 12px; }
+    .article-actions { gap:6px; }
+    .cancel-block { flex-direction:column; align-items:flex-start;
+                    gap:10px; padding:14px 14px; }
+    /* Chat is full-width below articles on narrow screens; drop
+       sticky so it doesn't try to pin while the doc panel scrolls
+       above it. Auto height so the input row stays reachable. */
+    .chat-panel { height:auto; max-height:520px; position:static;
+                  min-height:380px; }
+  }
+  @media (max-width:520px) {
+    .wrap { padding:12px 10px; }
+    .ph-row { padding:12px 14px; gap:8px; }
+    .doc-head { padding:14px 12px 10px; }
+    .doc-body { padding:14px 12px; }
+    .article-row { padding:12px 12px 10px; }
+    .article-body-input { font-size:13px; line-height:1.7;
+                          min-height:120px; }
+    .chat-panel { min-height:320px; max-height:460px; }
+    .chat-log { padding:10px 12px; }
+    .chat-input { font-size:13px; }
+  }
+
   /* CHAT — sits in the right column of .neg-grid. Same paper-panel
      surface as .document so the two read as siblings. Fixed height
      so the message log scrolls inside its own area instead of
@@ -178,8 +217,13 @@
 
   .article-body-input { width:100%; background:transparent;
     border:none; color:var(--paper-text); font-family:Georgia,serif;
-    font-size:12px; line-height:1.8; resize:vertical; min-height:54px;
-    padding:0; outline:none; }
+    font-size:12px; line-height:1.8; min-height:108px;
+    padding:0; outline:none;
+    /* Auto-grown by autosizeArticleBody() in script — the JS sets
+       height = scrollHeight on render + on input so the textarea
+       always fits its content. resize:none stops the manual drag
+       handle from conflicting with the JS sizing. */
+    resize:none; overflow:hidden; }
   .article-body-input::placeholder { color:var(--faint); font-style:italic; }
 
   .article-actions { display:flex; align-items:center; gap:10px;
@@ -662,6 +706,23 @@ async function sendChatMessage() {
   }
 }
 
+// Auto-grow an article body textarea so it always fits its content
+// without an inner scrollbar. Called once on render (initial fit)
+// and again on every input event (live grow). delegate-bound so a
+// single listener handles every article body input regardless of
+// how many re-renders happen.
+function autosizeArticleBody(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t && t.classList && t.classList.contains('article-body-input')) {
+    autosizeArticleBody(t);
+  }
+});
+
 function formatChatTime(iso) {
   if (!iso) return '';
   const then = new Date(iso).getTime();
@@ -763,6 +824,11 @@ function render() {
     : (isCancelled
         ? `<div class="articles-empty">No articles were drafted before cancellation.</div>`
         : `<div class="articles-empty"><strong>No articles yet.</strong><br><br>Either CEO may start drafting. Articles ship to the counterparty for agreement; both parties must agree before an article locks.</div>`);
+
+  // Auto-grow article body textareas to fit their content. Initial
+  // sizing happens right after innerHTML lands (scrollHeight is now
+  // correct); the input listener keeps it in sync as the user types.
+  host.querySelectorAll('.article-body-input').forEach(autosizeArticleBody);
 
   // Add-article only when articles are still editable (no signatures
   // yet, not binding, not cancelled, caller is CEO).
