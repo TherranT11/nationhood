@@ -200,6 +200,24 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Airlines: every nation now has 3 cities + auto-range trigger.**
+  Only Calveth and Avelia had `airline_cities` rows (seeded by 20260706
+  phase 2); eleven other nations sat at zero, so any airline founded
+  outside those two nations hit "No cities available" in the Open Route
+  form even with idle aircraft. `admin_create_nation` never seeded
+  cities, and `admin_create_hub` never backfilled `airline_city_ranges`
+  for the city it inserted — so even hand-added cities were range-
+  orphaned and unusable. Migration `20270606`:
+  (a) AFTER-INSERT trigger on `airline_cities` that fans out
+  `airline_city_ranges` to every existing city using the 20270465
+  formula (within-nation = 2; cross-nation derived from
+  `diplomatic_relations.proximity`). Same trigger covers future
+  `admin_create_hub` calls.
+  (b) Seeds three placeholder cities for each of the eleven zero-city
+  nations: `"{Nation} Capital"` (50% pop, capital), `"{Nation} North"`
+  (30%), `"{Nation} South"` (20%). Rename via `admin_update_hub` when
+  the worldbuilding lands. Weights sum to 100 so the deferred
+  `pop_pct` constraint trigger from 20270465 passes at COMMIT.
 - **Oil & Gas: Revenue Change card now reflects actual per-tick
   revenue.** The "Revenue Change (This Month)" card on
   `entrepreneur-corp.html` was rendering "$0 · no data yet" for every
