@@ -432,8 +432,9 @@ function bindControls(ctx, cat) {
 }
 
 async function handleImageUpload(file, ctx, bodyEl) {
-  const msgEl = document.getElementById('compose-msg');
   const addImgBtn = document.getElementById('add-image-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const postBtn   = document.getElementById('post-btn');
   if (!ALLOWED_MIME.has(file.type)) {
     setMsg(`Unsupported image type ${file.type}. Use PNG / JPEG / GIF / WebP.`, false);
     return;
@@ -442,7 +443,16 @@ async function handleImageUpload(file, ctx, bodyEl) {
     setMsg(`Image too large (${Math.round(file.size / 1024)} KB). 8 MB max.`, false);
     return;
   }
+  // Lock every navigation affordance while the upload is in flight.
+  // Cancelling mid-upload would orphan the file in storage because
+  // supabase-js doesn't surface an AbortSignal for storage uploads —
+  // the only way to prevent the orphan is to prevent the cancel.
+  // Post + Add Image lock too so we don't get two uploads racing or
+  // a submit firing on a body that's still mutating.
   addImgBtn.disabled = true;
+  cancelBtn.disabled = true;
+  const postWasDisabled = postBtn.disabled;
+  postBtn.disabled   = true;
   setMsg('Uploading…', true);
   try {
     const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
@@ -455,13 +465,18 @@ async function handleImageUpload(file, ctx, bodyEl) {
     if (!publicUrl) throw new Error('No public URL returned for the upload.');
     insertImageAtCursor(bodyEl, publicUrl, file.name);
     updateWordCount();
-    updatePostButtonState();
     setMsg('Image inserted.', true);
   } catch (e) {
     console.error('image upload failed', e);
     setMsg(`Upload failed: ${e?.message || e}`, false);
   } finally {
     addImgBtn.disabled = false;
+    cancelBtn.disabled = false;
+    // Re-evaluate Post against current content. If the upload landed
+    // and inserted an <img>, the body now has a tag → updatePostButtonState
+    // picks that up. If it failed, restore Post's prior state.
+    if (postWasDisabled) updatePostButtonState();
+    else postBtn.disabled = false;
   }
 }
 
@@ -506,10 +521,16 @@ function updateToolbarActive() {
 
 function updatePostButtonState() {
   const title = document.getElementById('title-input').value.trim();
-  const bodyText = (document.getElementById('body-input').textContent || '').trim();
+  const bodyEl = document.getElementById('body-input');
+  const bodyText = (bodyEl.textContent || '').trim();
+  // Image-only bodies are allowed (see 20270598 create_forum_thread
+  // body-too-short check). Mirror that on the client so the button
+  // enables when the body has an <img> even with no caption text.
+  const hasImage = bodyEl.querySelector('img') != null;
+  const bodyOk = bodyText.length >= BODY_MIN || hasImage;
   const ok = title.length >= TITLE_MIN
           && title.length <= TITLE_MAX
-          && bodyText.length >= BODY_MIN;
+          && bodyOk;
   document.getElementById('post-btn').disabled = !ok;
 }
 
@@ -529,10 +550,13 @@ async function submitThread(ctx, cat) {
   const bodyRaw = bodyEl.innerHTML || '';
   const bodyClean = sanitizeHtml(bodyRaw);
   const visibleLen = bodyClean.replace(/<[^>]*>/g, '').trim().length;
+  const hasImage = /<img\b/i.test(bodyClean);
 
   if (title.length < TITLE_MIN) { setMsg(`Title needs at least ${TITLE_MIN} characters.`, false); return; }
   if (title.length > TITLE_MAX) { setMsg(`Title can be at most ${TITLE_MAX} characters.`, false); return; }
-  if (visibleLen < BODY_MIN)    { setMsg(`Body needs at least ${BODY_MIN} characters.`, false); return; }
+  if (visibleLen < BODY_MIN && !hasImage) {
+    setMsg(`Body needs at least ${BODY_MIN} characters or an image.`, false); return;
+  }
   if (bodyClean.length > BODY_MAX) { setMsg(`Body exceeds ${BODY_MAX.toLocaleString()} character limit.`, false); return; }
 
   postBtn.disabled   = true;
