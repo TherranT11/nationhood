@@ -334,6 +334,14 @@
   display:flex; justify-content:space-between; align-items:baseline; }
 .ci-actions-lab .remind { color:#888; font-style:italic; font-size:8.5px; letter-spacing:0.04em; text-transform:none; }
 .ci-act-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+.ci-act-grid.cols-3 { grid-template-columns:repeat(3, 1fr); }
+.ci-endorse-badge { cursor:default; opacity:0.85; }
+.ci-endorse-badge.endorsed { border-color:rgba(154,166,110,0.45); background:#0d1208; }
+.ci-endorse-badge.endorsed .ci-act-name { color:#b8cf90; letter-spacing:0.08em; font-size:10px; }
+.ci-endorse-badge.endorsed .ci-act-icon { color:#9aa66e; }
+.ci-endorse-badge.rejected { border-color:rgba(200,120,120,0.35); background:#120808; }
+.ci-endorse-badge.rejected .ci-act-name { color:#c87a7a; letter-spacing:0.08em; font-size:10px; }
+.ci-endorse-badge.rejected .ci-act-icon { color:#c87a7a; }
 .ci-act { padding:10px 11px; background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px;
   text-align:left; cursor:pointer; transition:all 0.15s; font:inherit; color:inherit; }
 .ci-act:hover:not(:disabled) { background:#161616; border-color:rgba(255,255,255,0.16); }
@@ -1240,7 +1248,7 @@ async function init() {
       // time this fetch runs (Promise.all does not enforce order; here
       // ordering doesn't matter because resolve happened in a prior await).
       _supabase.from('politician_active_election')
-        .select('race_tier, district, opp_first, opp_last, opp_blurb, opp_party_name, your_stat, opp_stat, win_odds_pct, stake_win, stake_lose, resolve_tick, polling_you_pct, polling_opp_pct, polling_undecided_pct, created_at')
+        .select('race_tier, district, opp_first, opp_last, opp_blurb, opp_party_name, your_stat, opp_stat, win_odds_pct, stake_win, stake_lose, resolve_tick, polling_you_pct, polling_opp_pct, polling_undecided_pct, endorsement_outcome, created_at')
         .eq('politician_id', politician.id)
         .maybeSingle(),
       // Pending counsel-retainer offers from corps in the advocate's
@@ -1540,8 +1548,8 @@ function renderStats() {
 // rest of this file. Full consolidation to the imported version is a
 // future cleanup pass.
 const PARTY_MEMBER_ACTIONS = [
-  { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct. Your Reputation gets you in the door — a stumble drags the party brand down with you.' },
-  { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost', desc: 'Climb a stump. A great line lifts the party — a bad one is your name in the paper, not theirs.' },
+  { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct. Roll 1d6 — a 1 costs you 1 Influence, 2–5 gains 1, a 6 gains 2.', action: 'door-knock' },
+  { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost · 3-tick cooldown', desc: 'Climb a stump. Random 50/50: +1 Skill or +1 Capital.', action: 'give-speech' },
 ];
 const LOCAL_GOV_ACTIONS = [
   { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Build the war chest.',                       action: 'fundraising-call' },
@@ -1583,6 +1591,8 @@ const AFFIL_VARIANTS = {
     descIfPartyName: (p) => `You hold a card in <strong>${escHtml(p)}</strong>. The work right now is on the ground — show up, make calls, become known to the people who get out the vote.`,
     descIfNoParty:   ()  => 'You are an independent — no party card, no caucus. Join a party first; the action set opens once you do.',
     actions: PARTY_MEMBER_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'next_member_action_tick',
   },
   community_organizer: {
     variant: 'var-local',
@@ -1754,6 +1764,15 @@ function renderAffiliation(ctx) {
       if (advocateActiveCount > 0) {
         perActionDisabled = { kind: 'cooldown', text: `${advocateActiveCount} active case${advocateActiveCount === 1 ? '' : 's'}`, title: `Resolve your open trials before studying.` };
       }
+    } else if (enabled && a.action === 'give-speech') {
+      // Speech has its own 3-tick cooldown (next_speech_tick, 20270591)
+      // layered on top of the shared 1-per-tick gate. Door-knock isn't
+      // affected.
+      const speechReady = Number(ctx.faction?.next_speech_tick) || 0;
+      if (speechReady > currentTick) {
+        const left = speechReady - currentTick;
+        perActionDisabled = { kind: 'cooldown', text: `Speech ready in ${left} tick${left === 1 ? '' : 's'}`, title: `Speech cooldown — ${left} tick${left === 1 ? '' : 's'} remaining` };
+      }
     }
     if (!enabled) {
       cls += ' disabled';
@@ -1849,7 +1868,21 @@ const ACTIONS = {
   'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
   'office-hours':       { rpc: 'politician_office_hours',          label: 'Office Hours',       needsParty: true,  format: fmtLocalResult },
   'read-statute-books': { rpc: 'read_statute_books',               label: 'Read the Statute Books', needsParty: false, format: fmtStatuteBooks },
+  // Party-Member tier (20270591) — needs p_party_id.
+  'door-knock':         { rpc: 'politician_door_knock',            label: 'Door Knocking',      needsParty: true,  format: fmtDoorKnockResult },
+  'give-speech':        { rpc: 'politician_give_speech',           label: 'Give a Speech',      needsParty: true,  format: fmtSpeechResult },
 };
+
+function fmtDoorKnockResult(data) {
+  const sign = data.influence_delta > 0 ? '+' : '';
+  return `Door Knocking: rolled ${data.roll} (${sign}${data.influence_delta} Influence). Influence now ${data.political_capital}.`;
+}
+
+function fmtSpeechResult(data) {
+  return data.reward === 'skill'
+    ? `Give a Speech: gained 1 Skill (now ${data.politician_skill}).`
+    : `Give a Speech: gained 1 Capital (now ${data.politician_influence}).`;
+}
 
 function fmtStatuteBooks(data) {
   return `Read the Statute Books: Skill ${data.skill_delta > 0 ? '+' : ''}${data.skill_delta} (now ${data.new_skill}), Reputation ${data.reputation_delta > 0 ? '+' : ''}${data.reputation_delta} (now ${data.new_reputation}).`;
@@ -1911,6 +1944,7 @@ const ACTION_REASON = {
   not_in_party:             'You need to be in a party.',
   party_not_found:          'Your party can’t be found.',
   cooldown:                 'You’ve already used your action this tick.',
+  speech_cooldown:          'Speech is on its 3-tick cooldown.',
   insufficient_party_funds: 'Your party can’t cover the cost.',
   no_shard:                 'Shard not found.',
   not_advocate:             'You need to be a bar-admitted advocate (and not a Magistrate).',
@@ -2478,6 +2512,7 @@ function renderCampaignActions(ctx) {
   const turnLocked = gateTick > currentTick;
   const capital = Number(politician.politician_influence) || 0;
   const adsCanAfford = capital >= 1;
+  const endorseOutcome = activeRace?.endorsement_outcome || null;
   // No party = no actions. The Stand-for-Election flow on politician-career
   // gates by the same rule, so if there's an active race the politician
   // should still be a member; this is the defensive fallback.
@@ -2490,24 +2525,59 @@ function renderCampaignActions(ctx) {
     <button class="ci-act" type="button" data-camp-action="ads"${turnLocked || !adsCanAfford ? ' disabled' : ''}${adsTitle}>
       <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#128241;</span><span class="ci-act-name">Run Political Ads</span></div>
       <div class="ci-act-blurb">Buy attack and persuasion spots. Spend Capital to swing polling.</div>
-      <div class="ci-act-meta"><span class="ci-act-effect">+1d10 + Skill polling</span><span class="ci-act-cost">&minus;1 Capital</span></div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+1d10 + 6 polling</span><span class="ci-act-cost">&minus;1 Capital</span></div>
     </button>`;
-  const speechBtn = `
-    <button class="ci-act" type="button" data-camp-action="speech"${turnLocked ? ' disabled' : ''}>
-      <div class="ci-act-head"><span class="ci-act-icon" style="color:#d4b87a;">&#128226;</span><span class="ci-act-name">Give a Speech</span></div>
-      <div class="ci-act-blurb">Rally the faithful and reach the press.</div>
+  const rallyBtn = `
+    <button class="ci-act" type="button" data-camp-action="rally"${turnLocked ? ' disabled' : ''}>
+      <div class="ci-act-head"><span class="ci-act-icon" style="color:#d4b87a;">&#128226;</span><span class="ci-act-name">Hold a Rally</span></div>
+      <div class="ci-act-blurb">Pack a venue with your base. Energy drives polling on the day.</div>
       <div class="ci-act-meta"><span class="ci-act-effect">+1d6 polling</span><span class="ci-act-cost">no cost</span></div>
     </button>`;
+  // Endorsement collapses into a result badge once used (per race;
+  // 20270591). Three states: live button, endorsed badge, rejected badge.
+  let endorseBlock;
+  if (endorseOutcome === 'endorsed') {
+    endorseBlock = `
+      <div class="ci-act ci-endorse-badge endorsed">
+        <div class="ci-act-head"><span class="ci-act-icon">&#10004;</span><span class="ci-act-name">PARTY ENDORSED YOU</span></div>
+        <div class="ci-act-blurb">+7 polling locked in. The endorsement is one-shot per race.</div>
+      </div>`;
+  } else if (endorseOutcome === 'rejected') {
+    endorseBlock = `
+      <div class="ci-act ci-endorse-badge rejected">
+        <div class="ci-act-head"><span class="ci-act-icon">&#10006;</span><span class="ci-act-name">NO ENDORSEMENT</span></div>
+        <div class="ci-act-blurb">Polling took a hit. Endorsement is one-shot per race — no second ask.</div>
+      </div>`;
+  } else {
+    endorseBlock = `
+      <button class="ci-act" type="button" data-camp-action="endorse"${turnLocked ? ' disabled' : ''}>
+        <div class="ci-act-head"><span class="ci-act-icon" style="color:#9aa66e;">&#9873;</span><span class="ci-act-name">Request Endorsement</span></div>
+        <div class="ci-act-blurb">Pitch the party brass. Reputation tilts the roll. One shot per race.</div>
+        <div class="ci-act-meta"><span class="ci-act-effect">1d6 + Reputation: ≥3 endorse (+7), &lt;3 reject (&minus;1d3)</span><span class="ci-act-cost">no cost</span></div>
+      </button>`;
+  }
   const lockMsg = turnLocked
     ? `Already campaigned this tick &mdash; next action at tick ${gateTick}.`
     : '';
   return `
     <div class="ci-actions">
       <div class="ci-actions-lab"><span>YOUR NEXT MOVE</span><span class="remind">1 action per tick</span></div>
-      <div class="ci-act-grid">${adsBtn}${speechBtn}</div>
+      <div class="ci-act-grid cols-3">${adsBtn}${rallyBtn}${endorseBlock}</div>
       ${lockMsg ? `<div class="ci-act-lockmsg">${lockMsg}</div>` : ''}
     </div>`;
 }
+
+// Campaign-action RPC map (20270591). Keyed on data-camp-action; each
+// entry names the RPC plus an optional result formatter for the
+// post-success alert (success cases that don't need a verbose summary
+// fall through to a plain reload).
+const CAMPAIGN_RPCS = {
+  ads:     { rpc: 'politician_run_political_ads',     format: (d) => `Run Political Ads: rolled ${d.roll} + 6 = +${d.polling_delta} polling. Capital now ${d.politician_influence}.` },
+  rally:   { rpc: 'politician_campaign_rally',        format: (d) => `Hold a Rally: rolled ${d.roll} = +${d.polling_delta} polling.` },
+  endorse: { rpc: 'politician_request_endorsement',   format: (d) => d.outcome === 'endorsed'
+                ? `Party endorsement secured: rolled ${d.roll} + ${d.reputation} Reputation = ${d.total}. +7 polling.`
+                : `No endorsement: rolled ${d.roll} + ${d.reputation} Reputation = ${d.total}. Polling ${d.polling_delta} (1d${d.penalty_roll}).` },
+};
 
 function bindCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
@@ -2515,16 +2585,14 @@ function bindCampaignActions(ctx) {
   document.querySelectorAll('.ci-act[data-camp-action]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (btn.disabled) return;
+      const slug = btn.dataset.campAction;
+      const spec = CAMPAIGN_RPCS[slug];
+      if (!spec) return;
       btn.disabled = true;
-      // Disable the sibling too so the player can't double-spend the
+      // Disable the siblings too so the player can't double-spend the
       // 1-per-turn gate while the first call is in flight.
       btn.parentElement?.querySelectorAll('.ci-act').forEach(b => { b.disabled = true; });
-      // 'ads' → politician_door_knock (RPC kept for backwards-compat;
-      // body redesigned in 20270588 to run Political Ads).
-      const fn = btn.dataset.campAction === 'speech'
-        ? 'politician_give_speech'
-        : 'politician_door_knock';
-      const { data, error } = await _supabase.rpc(fn, { p_party_id: partyId });
+      const { data, error } = await _supabase.rpc(spec.rpc, { p_party_id: partyId });
       if (error) {
         alert('Action failed: ' + (error.message || 'unknown error'));
         location.reload();
@@ -2533,17 +2601,20 @@ function bindCampaignActions(ctx) {
       if (!data?.success) {
         const reason = data?.reason || 'unknown';
         const human = {
-          not_authenticated:    'You are not signed in.',
-          not_member:           'You are no longer a member of this party.',
-          party_not_found:      'Party not found.',
-          no_shard:             'Shard not found.',
-          cooldown:             `You've already taken your action this tick. Next at tick ${data?.ready_at_tick ?? '?'}.`,
-          insufficient_capital: `Need ${data?.required ?? 1} Influence to run ads (you have ${data?.have ?? 0}).`,
+          not_authenticated:        'You are not signed in.',
+          not_member:               'You are no longer a member of this party.',
+          party_not_found:          'Party not found.',
+          no_shard:                 'Shard not found.',
+          cooldown:                 `You've already taken your action this tick. Next at tick ${data?.ready_at_tick ?? '?'}.`,
+          insufficient_capital:     `Need ${data?.required ?? 1} Capital to run ads (you have ${data?.have ?? 0}).`,
+          no_active_race:           'No active race — endorsements are race-bound.',
+          endorsement_already_used: `Endorsement already ${data?.outcome || 'resolved'} for this race.`,
         }[reason] || `Action failed (${reason}).`;
         alert(human);
         location.reload();
         return;
       }
+      alert(spec.format(data));
       location.reload();
     });
   });
