@@ -1503,7 +1503,7 @@ function renderCareer() {
 function renderStats() {
   const stats = [
     { label: 'REPUTATION', value: politician.politician_reputation ?? 1, kind: 'num' },
-    { label: 'STANDING',   value: politician.politician_influence  ?? 1, kind: 'num' },
+    { label: 'CAPITAL',    value: politician.politician_influence  ?? 1, kind: 'num' },
     { label: 'SKILL',      value: politician.politician_skill      ?? 1, kind: 'num' },
     { label: 'INFLUENCE',  value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
   ];
@@ -2309,7 +2309,7 @@ function renderStateAdvocateRequestCard(r) {
         <div class="oi-meta">
           <span class="oi-corp">Reputation: <strong>${Number(r.applicant_reputation) || 0}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Standing: <strong>${Number(r.applicant_influence) || 0}</strong></span>
+          <span class="oi-corp">Capital: <strong>${Number(r.applicant_influence) || 0}</strong></span>
           <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Skill: <strong>${Number(r.applicant_skill) || 0}</strong></span>
           ${displacementLine}

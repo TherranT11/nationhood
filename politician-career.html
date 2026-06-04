@@ -578,7 +578,7 @@
     <div class="em-footer" id="em-footer" style="display:none;">
       <div class="em-your-stats">
         <div class="em-stat-block"><div class="li">POL. CAPITAL</div><div class="lv infl" id="em-stat-infl">—</div></div>
-        <div class="em-stat-block"><div class="li">STANDING</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
+        <div class="em-stat-block"><div class="li">CAPITAL</div><div class="lv cha"  id="em-stat-cha" >—</div></div>
         <div class="em-stat-block"><div class="li">SKILL</div><div class="lv cred" id="em-stat-cred">—</div></div>
       </div>
       <div class="em-footer-buttons">
@@ -1546,7 +1546,7 @@ function renderResolutionBanner(r) {
   }
   const statReward = r.stat_reward;
   if (won && statReward) {
-    const statLabel = statReward.kind === 'influence' ? 'Standing'
+    const statLabel = statReward.kind === 'influence' ? 'Capital'
                     : statReward.kind === 'skill' ? 'Skill'
                     : null;
     if (statLabel) {
@@ -2581,7 +2581,7 @@ function renderElectionOffer(offer, ctx) {
 
   const body = document.getElementById('em-body');
   body.innerHTML = `
-    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Skill</span> drives community races; <span class="cha">Standing</span> drives parliamentary ones.</div>
+    <div class="em-intro"><strong>Two races are open to you.</strong> The Community board is a low-stakes way to learn the trade — you cannot lose anything but a tick or two. Parliament is the national stage: the most you can win, the most you can lose. <span class="cred">Skill</span> drives community races; <span class="cha">Capital</span> drives parliamentary ones.</div>
     <div class="em-options">
       ${renderOptionCard('community',  com,  'LOW STAKES · COMMUNITY',     'Community Organizer', 'A volunteer seat on your neighborhood association. A small race, but real — you’d be elected by your block. Most political careers begin here.', 1)}
       ${renderOptionCard('parliament', parl, 'HIGH STAKES · NATIONAL',     'Member of Parliament','A vacant Assembly seat in a working-class district of the capital. National-level race, national-level attention.', 2)}
@@ -2612,7 +2612,7 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const odds = Number(race.odds_pct) || 0;
   const oddsClass = odds >= 60 ? 'fav' : (odds >= 40 ? 'even' : 'long');
   const oppFull = `${race.opp_first || ''} ${race.opp_last || ''}`.trim() || '—';
-  const statLabel  = tier === 'community' ? 'Skill' : 'Standing';
+  const statLabel  = tier === 'community' ? 'Skill' : 'Capital';
   const isParl     = tier === 'parliament';
   const partyName  = isParl ? (race.opp_party_name || 'Independent') : 'Independent';
   const partyColor = isParl ? race.opp_party_color : null;
