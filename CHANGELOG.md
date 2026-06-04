@@ -68,6 +68,17 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Edit + Delete on your own posts.** Both chips appear in a small
+  action row at the bottom of any post whose `author_faction_id` is
+  in the caller's faction set. Edit swaps the body for an inline
+  `contenteditable` with Save / Cancel; Save round-trips through
+  `update_forum_post` (server re-checks ownership and bounds, sets
+  `forum_posts.updated_at`). The page reloads on success so the
+  render-side sanitizer runs and an `edited <relative>` badge
+  appears beside the original timestamp. Delete confirms, calls
+  `delete_forum_post`; if the row was the only post in its thread
+  the thread row cascades (empty threads aren't a useful surface)
+  and the page bounces back to the category index.
 
 ### Added — Contracts
 
