@@ -4518,7 +4518,7 @@ function initials(s, n) {
       else if (p > Math.floor((c * 110) / 100)) { repDelta =  1; repLabel = '+1'; repClass = 'accent'; }
       else if (p < c)                            { repDelta = -3; repLabel = '−3'; repClass = 'red';    }
       else                                       { repDelta =  0; repLabel =  '0'; repClass = 'dim';    }
-      return { commission, nationTake: p - commission, profit, repDelta, repLabel, repClass };
+      return { commission, proceeds: p - commission, profit, repDelta, repLabel, repClass };
     };
 
     // Render the building-type picker once. Tier rows + nation
@@ -4998,7 +4998,7 @@ function initials(s, n) {
         // My active listings (regardless of nation — once listed, the
         // broker manages them even if the office in that nation lapses).
         const { data: myListings, error: lErr } = await _supabase.from('corp_buildings')
-          .select('id, name, building_type, tier, cost_paid, list_price, broker_fee_paid, broker_listed_at_tick, nation:nations!nation_id(name)')
+          .select('id, name, building_type, tier, cost_paid, list_price, broker_fee_paid, broker_listed_at_tick, owner_corp_id, nation:nations!nation_id(name), owner:entrepreneur_corps!owner_corp_id(name)')
           .eq('broker_corp_id', id)
           .eq('status', 'completed')
           .order('broker_listed_at_tick', { ascending: false });
@@ -5045,7 +5045,8 @@ function initials(s, n) {
                             data-bid="${b.id}"
                             data-bname="${escapeHtml(b.name)}"
                             data-cost="${cost}"
-                            data-price="${price}">Re-price</button>
+                            data-price="${price}"
+                            data-owner="${escapeHtml(b.owner?.name || '')}">Re-price</button>
                     <button class="ap-btn-small reject sh-broker-withdraw"
                             data-bid="${b.id}"
                             data-bname="${escapeHtml(b.name)}"
@@ -5082,7 +5083,8 @@ function initials(s, n) {
                   <button class="ap-btn-small list sh-broker-list"
                           data-bid="${b.id}"
                           data-bname="${escapeHtml(b.name)}"
-                          data-cost="${cost}">List for Sale</button>
+                          data-cost="${cost}"
+                          data-owner="${escapeHtml(b.owner?.name || '')}">List for Sale</button>
                 </div>`)}
               </div>`;
           }).join('');
@@ -8343,7 +8345,7 @@ const openBidModal = (contractId, label, yourCost) => {
     // ── Brokerage handlers (sh-broker-*) ──
     let brokerInFlight = false;
     let brokerModalSubmitting = false;
-    let brokerModalCtx = null;   // { mode, buildingId, buildingName, cost, currentPrice }
+    let brokerModalCtx = null;   // { mode, buildingId, buildingName, cost, currentPrice, ownerName }
 
     const openBrokerListModal = (btn, opts) => {
       brokerModalCtx = {
@@ -8352,6 +8354,11 @@ const openBidModal = (contractId, label, yourCost) => {
         buildingName: btn.dataset.bname,
         cost:         Number(btn.dataset.cost)  || 0,
         currentPrice: Number(btn.dataset.price) || 0,
+        // Empty string = nation-seeded inventory (proceeds go to host
+        // nation). Non-empty = owner-offered (proceeds go to that
+        // corp's treasury). Mirrors broker_buy_listing's v_is_owned
+        // branch in 20270207 so the preview tells the truth.
+        ownerName:    btn.dataset.owner || '',
       };
       const isReprice = brokerModalCtx.mode === 'reprice';
       document.getElementById('br-title').innerHTML = isReprice
@@ -8379,9 +8386,15 @@ const openBidModal = (contractId, label, yourCost) => {
       if (!brokerModalCtx) return;
       const price = Math.max(0, Number(document.getElementById('br-price').value) || 0);
       const preview = previewBrokerageOutcome(brokerModalCtx.cost, price);
+      // Recipient mirrors the server's v_is_owned branch (20270207):
+      // owner_corp gets the proceeds for owner-offered listings,
+      // host nation gets them for nation-seeded inventory.
+      const seller = brokerModalCtx.ownerName
+        ? `<b>${escapeHtml(brokerModalCtx.ownerName)}</b> gets`
+        : 'nation gets';
       document.getElementById('br-preview').innerHTML = price <= 0
         ? '<span class="dim">Set a price above $0 to preview the split.</span>'
-        : `If sold at <b>${fmtUsd(price)}</b>: commission <b class="accent">${fmtUsd(preview.commission)}</b> · nation gets <b>${fmtUsd(preview.nationTake)}</b> · CEO reputation <b class="${preview.repClass}">${preview.repLabel}</b>.`;
+        : `If sold at <b>${fmtUsd(price)}</b>: commission <b class="accent">${fmtUsd(preview.commission)}</b> · ${seller} <b>${fmtUsd(preview.proceeds)}</b> · CEO reputation <b class="${preview.repClass}">${preview.repLabel}</b>.`;
     };
     document.getElementById('br-price').addEventListener('input', updateBrokerPreview);
     document.getElementById('br-close').addEventListener('click', closeBrokerListModal);

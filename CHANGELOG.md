@@ -223,6 +223,22 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Brokerage modal: "nation gets" now correctly reads "owner gets"
+  for owner-offered buildings.** The Re-price / List-for-Sale modal
+  on `entrepreneur-corp.html` always rendered the proceeds split as
+  "commission $X · nation gets $Y" — misleading for any building
+  brokered on behalf of an OWNING corp (which is the common case for
+  buildings built by construction corps and offered for brokerage).
+  The server-side `broker_buy_listing` (20270207) already correctly
+  routes proceeds to the owner corp when the building is owned (and
+  only to the nation budget for nation-seeded inventory) — only the
+  UI label was wrong. Threaded the owner's name through the brokerage
+  buttons (`sh-broker-list` / `sh-broker-reprice`) and modal context;
+  preview now reads "**Monteq Building Group** gets $61M" for
+  owner-offered listings and the historical "nation gets $X" for
+  nation inventory. Also renamed the preview's `nationTake` field to
+  `proceeds` so the call sites read honestly. No money flow change
+  — the actual sale credits the owner corp either way.
 - **Corporate Contracts section on `entrepreneur-corp.html` now
   populates with binding contracts.** The `#cp-contracts` div sat
   on a hardcoded "No contracts yet." even after both CEOs signed a
