@@ -237,6 +237,9 @@
 .ti-caption .v { font-style:italic; color:#c8a26e; margin:0 4px; }
 .ti-meta { display:flex; align-items:center; gap:10px; font-size:9.5px;
   color:#888; flex-wrap:wrap; }
+.ti-forfeit { font-size:9px; color:#c89a6e; margin-top:6px;
+  letter-spacing:0.04em; }
+.ti-forfeit strong { color:#dba88c; font-weight:700; }
 .ti-side { padding:2px 8px; border-radius:3px; font-size:8.5px;
   letter-spacing:0.1em; font-weight:700; }
 .ti-side.plaintiff { background:#10130a; color:#b8cf90; border:0.5px solid #4a5a3a; }
@@ -660,6 +663,9 @@
   letter-spacing:-0.005em; margin-top:5px; line-height:1.2; }
 .trial-title .v { font-family:Georgia,serif; font-style:italic; color:#c8a26e; margin:0 4px; }
 .trial-meta { font-size:10px; color:#888; margin-top:5px; }
+.trial-forfeit { font-size:10px; color:#c89a6e; margin-top:6px;
+  letter-spacing:0.04em; }
+.trial-forfeit strong { color:#dba88c; font-weight:700; }
 .trial-meta strong { color:#dcb88a; font-weight:600; }
 
 .trial-turn-pill { padding:6px 13px; border-radius:4px; font-size:9px; letter-spacing:0.13em;
@@ -2123,6 +2129,12 @@ function renderActiveTrialCard(t) {
   // skip settlement and the judge view only applies once an SC
   // Justice is assigned (Phase 2's appointment mechanic deferred).
   const eyebrowLabel = isSC ? 'SUPREME COURT CASE' : 'ONGOING TRIAL';
+  // Auto-flip countdown (20270589/590). Server returns ticks_until_forfeit
+  // already gated on status / objection / verdict — NULL hides the line.
+  const tuf = t.ticks_until_forfeit;
+  const forfeitLine = tuf != null
+    ? `<div class="ti-forfeit">${t.your_turn ? 'Your turn forfeits in' : 'Opposing turn forfeits in'} <strong>${tuf}</strong> tick${tuf === 1 ? '' : 's'}</div>`
+    : '';
   return `
     <div class="ti-card in-progress trial-enter-card" data-trial-id="${escHtml(t.trial_id)}">
       <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
@@ -2136,6 +2148,7 @@ function renderActiveTrialCard(t) {
           <span class="ti-sep">&middot;</span>
           <span class="ti-judge">${escHtml(judge)}</span>
         </div>
+        ${forfeitLine}
       </div>
       <div class="ti-right">
         <div class="ti-status">
@@ -3294,6 +3307,13 @@ function renderTrialModal(d) {
     ? '<span class="trial-turn-pill your"><span class="dot"></span> YOUR TURN</span>'
     : '<span class="trial-turn-pill theirs">OPPOSING TURN</span>';
 
+  // Auto-flip countdown (20270589/590). Server returns ticks_until_forfeit
+  // already gated on status / objection / verdict — NULL hides the line.
+  const tuf = d.ticks_until_forfeit;
+  const forfeitLine = tuf != null
+    ? `<div class="trial-forfeit">${d.your_turn ? 'Your turn' : 'Opposing turn'} forfeits in <strong>${tuf}</strong> tick${tuf === 1 ? '' : 's'}</div>`
+    : '';
+
   const messages = Array.isArray(d.messages) ? d.messages : [];
   document.getElementById('trial-content').innerHTML = `
     <div class="trial-head">
@@ -3301,6 +3321,7 @@ function renderTrialModal(d) {
         <div class="trial-eyebrow">${escHtml(caseTag)} &middot; ${roundLabel}</div>
         <div class="trial-title">${escHtml(d.plaintiff_name || '—')} <span class="v">v.</span> ${escHtml(d.defendant_name || '—')}</div>
         <div class="trial-meta">Representing <strong>${yourSide}</strong> &middot; vs. <strong>${escHtml(d.opponent_name || 'Opposing Counsel')}</strong></div>
+        ${forfeitLine}
       </div>
       ${turnPill}
     </div>
