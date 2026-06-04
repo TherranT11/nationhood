@@ -835,11 +835,20 @@ const LEGISLATURE_RUNGS = [
     actions:     ['Advance Bill'],
   },
   {
-    name: 'Deputy Speaker / Presiding Officer',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
-    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
-    actions:     ['Recognize Speaker', 'Schedule Debate'],
+    name: 'Deputy Speaker · Presiding Officer',
+    held:        (s) => s.deputySpeakerAtTick != null,
+    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power. You hold the chair until the next general election.',
+    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power. Open to a sitting MP with 35 Reputation whose party holds the plurality. One seat per nation; held until the next general election.',
+    actions:     [{ label: 'Change Legislative Agenda', kind: 'disabled' }],
+    actionIfNot: (s) => {
+      if (s.office !== 'member_of_parliament') {
+        return { label: 'Become Deputy Speaker', kind: 'disabled' };
+      }
+      if (s.politicianReputation < 35) {
+        return { label: `Become Deputy Speaker — need 35 Reputation (have ${s.politicianReputation})`, kind: 'disabled' };
+      }
+      return { label: 'Become Deputy Speaker', kind: 'primary', action: 'become-deputy-speaker' };
+    },
   },
   {
     name: 'Speaker of the House',
@@ -1631,6 +1640,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // path. 35 Rep + 25 Influence threshold (no spend), Experienced Advocate
     // prereq. Doesn't gate or unlock Magistrate.
     stateProsecutorAtTick:   ctx?.faction?.politician_state_prosecutor_at_tick ?? null,
+    // Deputy Speaker (20270592). Stamped on appointment by
+    // politician_become_deputy_speaker; cleared at the nation's
+    // next general election. Plurality check happens server-side
+    // (the client gates only on Reputation + MP-status + not-held).
+    deputySpeakerAtTick:     ctx?.faction?.politician_deputy_speaker_at_tick ?? null,
   };
 }
 
@@ -1921,6 +1935,43 @@ function bindRungActions(ctx) {
   // (politician_register_for_office) — only the target_office differs.
   // Page reloads on success so the rung flips to "in race" and the
   // Pressing Issues card picks up the new active race.
+  // Deputy Speaker (20270592) — RPC validates all four gates server-side
+  // (sitting MP, ≥35 Reputation, party plurality, seat open). The client
+  // pre-screens on what it can see (Reputation, office, deputy-speaker
+  // already held) so the obvious-fail cases never reach the wire.
+  document.querySelectorAll('[data-action="become-deputy-speaker"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const partyId = ctx?.party?.id || null;
+      if (!partyId) { alert('Join a political party first.'); return; }
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Appointing…';
+      try {
+        const { data, error } = await _supabase.rpc('politician_become_deputy_speaker',
+          { p_party_id: partyId });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:        'Sign in to act.',
+            not_member:               'You are no longer a member of this party.',
+            no_shard:                 'Shard not found.',
+            not_mp:                   'You must be a sitting Member of Parliament.',
+            already_deputy_speaker:   'You already hold the chair.',
+            insufficient_reputation:  `Reputation too low — need ${data?.required ?? 35} (you have ${data?.have ?? 0}).`,
+            party_not_governing:      'Your party does not hold the plurality of seats.',
+            seat_filled:              'Another MP already holds the Deputy Speaker chair.',
+          };
+          alert(REASON[data?.reason] || ('Could not appoint: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
+  });
+
   document.querySelectorAll('[data-action="register-city-council"], [data-action="register-senior-mp"]')
     .forEach(btn => {
       btn.addEventListener('click', async () => {
