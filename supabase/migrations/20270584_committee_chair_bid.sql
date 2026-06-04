@@ -154,8 +154,14 @@ BEGIN
 
     -- ── Identify the incumbent + their defence stat ──
     IF v_chair_row.politician_faction_id IS NOT NULL THEN
+        -- Plain SELECT (no FOR UPDATE): we only read Skill + name. Locking
+        -- the chair's faction row here would create a cross-bid deadlock
+        -- when Player A bids on Player B's seat while Player B
+        -- simultaneously bids on Player A's seat — each tx holds its own
+        -- faction lock and waits on the other's. The bid-time stat is a
+        -- snapshot regardless of concurrent grinds, so no UPDATE is needed.
         SELECT * INTO v_chair_pol
-          FROM factions WHERE id = v_chair_row.politician_faction_id FOR UPDATE;
+          FROM factions WHERE id = v_chair_row.politician_faction_id;
         v_def_skill := COALESCE(v_chair_pol.politician_skill, 0);
         v_kind := 'player';
         v_incumbent_name := NULLIF(btrim(COALESCE(v_chair_pol.leader_first_name, '') || ' ' ||

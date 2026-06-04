@@ -1161,6 +1161,17 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} wins ${target || 'a case'} in the nation of ${meta.nation_name || 'their nation'}.`,
   lost_case: (name, target) =>
     `${name} suffers a setback with a loss in the case of ${target || 'a matter'}.`,
+  // Committee Chair bid — written by politician_bid_for_chair (20270584).
+  // target_name is the incumbent's full name (on the bidder's row) or the
+  // challenger's (on the defender's row). metadata carries both rolls.
+  bid_won_chair: (name, target) =>
+    `${name} unseated ${target || 'the incumbent'} to take the committee chair.`,
+  bid_lost_chair: (name, target) =>
+    `${name} mounted a bid for the committee chair against ${target || 'the incumbent'} and lost.`,
+  lost_chair_to_bid: (name, target) =>
+    `${name} was unseated from the committee chair by ${target || 'a challenger'}.`,
+  defended_chair_from_bid: (name, target) =>
+    `${name} held the committee chair against a bid by ${target || 'a challenger'}.`,
 };
 
 let politician = null;
