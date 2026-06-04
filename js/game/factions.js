@@ -220,6 +220,19 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
 });
 
 /**
+ * Display metadata for the three entrepreneur faction-stat columns.
+ * Single source of truth — every UI that renders a "REP / INF / SKL"
+ * (or "REPUTATION / INFLUENCE / SKILL") row reads this. Order is
+ * Reputation → Influence → Skill to match the four-stat consolidation
+ * (cash/Capital is rendered separately by each surface).
+ */
+export const ENT_STAT_DISPLAY = Object.freeze([
+    Object.freeze({ short: 'REP', long: 'REPUTATION', key: 'ent_reputation' }),
+    Object.freeze({ short: 'INF', long: 'INFLUENCE',  key: 'ent_influence'  }),
+    Object.freeze({ short: 'SKL', long: 'SKILL',      key: 'ent_skill'      }),
+]);
+
+/**
  * Single source of truth for the "Join as Politician #N" entries that
  * surface in every faction-switcher dropdown (common / entrepreneur /
  * politician / military topbars).

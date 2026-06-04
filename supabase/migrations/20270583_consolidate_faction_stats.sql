@@ -2266,6 +2266,130 @@ REVOKE EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_revie
 GRANT  EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) TO authenticated;
 
 
+
+-- ── politician_found_party — fix stale `politician_influence` reference ──
+-- Pre-existing latent bug: this function's only definition (20270379)
+-- pre-dates the 20270463 rename of politician_influence → political_capital.
+-- It has referenced a non-existent column since 20270463 (silently broken
+-- for ~120 migrations). The 20270583 rename of politician_standing →
+-- politician_influence would otherwise RESURRECT the column with WRONG
+-- semantics (the new Influence stat instead of Political Capital).
+-- Re-emit here with the correct column. Reason code updated:
+-- 'insufficient_influence' → 'insufficient_capital'.
+CREATE OR REPLACE FUNCTION public.politician_found_party(
+    p_politician_id   uuid,
+    p_name            text,
+    p_abbreviation    text,
+    p_description     text,
+    p_archetype       text,
+    p_party_color     text,
+    p_party_logo      text
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_uid          uuid := auth.uid();
+    v_pol          factions%ROWTYPE;
+    v_name         text := btrim(COALESCE(p_name, ''));
+    v_abbr         text := btrim(COALESCE(p_abbreviation, ''));
+    v_desc         text := btrim(COALESCE(p_description, ''));
+    v_arch         text := btrim(COALESCE(p_archetype, ''));
+    v_color        text := btrim(COALESCE(p_party_color, ''));
+    v_logo         text := btrim(COALESCE(p_party_logo, ''));
+    v_tick         int;
+    v_new_id       uuid := gen_random_uuid();
+BEGIN
+    IF v_uid IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated'); END IF;
+
+    SELECT * INTO v_pol FROM factions WHERE id = p_politician_id FOR UPDATE;
+    IF v_pol.id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'politician_not_found'); END IF;
+    IF v_pol.faction_type <> 'politician' THEN RETURN jsonb_build_object('success', false, 'reason', 'not_a_politician'); END IF;
+    IF v_pol.id <> v_uid AND v_pol.linked_user_id IS DISTINCT FROM v_uid THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+    IF v_pol.abandoned_at IS NOT NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'politician_inactive'); END IF;
+    IF v_pol.nation_id IS NULL THEN RETURN jsonb_build_object('success', false, 'reason', 'no_nation'); END IF;
+
+    -- Gate (not deducted): 100 Political Capital required.
+    IF COALESCE(v_pol.political_capital, 0) < 100 THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'insufficient_capital',
+            'required', 100, 'have', COALESCE(v_pol.political_capital, 0));
+    END IF;
+
+    -- Must be independent. Founding while affiliated would silently flip the
+    -- politician's politician_party_id without logging a 'left_party' event
+    -- or charging the -5 leave cost — that would let founding double as a
+    -- free escape hatch from any existing party. Force the player to leave
+    -- explicitly (paying -5) before they can found.
+    IF v_pol.politician_party_id IS NOT NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_affiliated');
+    END IF;
+
+    -- One active movement per politician (shared across all movement types).
+    IF EXISTS (
+        SELECT 1 FROM factions
+         WHERE founder_faction_id = p_politician_id
+           AND abandoned_at IS NULL
+    ) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_founded');
+    END IF;
+
+    -- Field validation (kept tight; matches admin_create_party's limits).
+    IF length(v_name) < 2 OR length(v_name) > 80 THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'invalid_name');
+    END IF;
+    IF length(v_abbr) < 1 OR length(v_abbr) > 8 THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'invalid_abbreviation');
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM factions
+         WHERE nation_id = v_pol.nation_id AND faction_type = 'movement_party'
+           AND LOWER(faction_name) = LOWER(v_name) AND abandoned_at IS NULL
+    ) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'name_exists');
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE id = v_pol.shard_id;
+    v_tick := COALESCE(v_tick, 0);
+
+    INSERT INTO factions (
+        id, faction_type, faction_name, nation_id, nation, shard_id,
+        abbreviation, seats, party_color, party_logo, party_description,
+        archetype, founder_faction_id,
+        leader_first_name, leader_last_name, leader_age,
+        founded_tick, action_points, needs_rebuild, abandoned_at
+    ) VALUES (
+        v_new_id, 'movement_party', v_name, v_pol.nation_id, v_pol.nation, v_pol.shard_id,
+        v_abbr, 0,
+        NULLIF(v_color, ''),
+        COALESCE(NULLIF(v_logo, ''), 'star'),
+        NULLIF(v_desc, ''),
+        NULLIF(v_arch, ''),
+        p_politician_id,
+        v_pol.leader_first_name, v_pol.leader_last_name, v_pol.leader_age,
+        v_tick, 0, false, NULL
+    );
+
+    -- Auto-affiliate the founder with their new party. No +3 bonus and no
+    -- 'joined_party' event — founding isn't joining, and the bonus rule
+    -- (gated on prior joined_party events) stays available for a future
+    -- actual JOIN should the politician ever leave + sign on elsewhere.
+    UPDATE factions
+       SET politician_party_id = v_new_id
+     WHERE id = p_politician_id;
+
+    INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name)
+    VALUES (p_politician_id, v_tick, 'founded_party', v_name);
+
+    RETURN jsonb_build_object('success', true,
+        'party_id',   v_new_id,
+        'party_name', v_name);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.politician_found_party(uuid, text, text, text, text, text, text) TO authenticated;
+
 NOTIFY pgrst, 'reload schema';
 
 COMMIT;

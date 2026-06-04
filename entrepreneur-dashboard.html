@@ -295,7 +295,7 @@ import { _supabase } from './js/supabase-client.js';
 import { hfFmtBig, escapeHtml, escapeAttr, titleCase, fmtValuation, pctOwned, industryTitleLabel } from './js/utils.js';
 import { computeEntrepreneurValuation } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
-import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
+import { ENTREPRENEUR_ARCHETYPES, ENT_STAT_DISPLAY } from './js/game/factions.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { mountBoardPressingIssues } from './js/corp-board-pressing-issues.js';
 import { mountAcquisitionPressingIssues } from './js/acquisition-pressing-issues.js';
@@ -821,12 +821,9 @@ async function handleMakePayment(e) {
 
     // Real stats — the three set at archetype selection (Reputation,
     // Influence, Skill). Capital is shown via net-worth above. Total
-    // is derived.
-    const stats = [
-      ['REPUTATION', f.ent_reputation],
-      ['INFLUENCE',  f.ent_influence],
-      ['SKILL',      f.ent_skill],
-    ];
+    // is derived. ENT_STAT_DISPLAY is the single source of truth for
+    // label + column mapping; see js/game/factions.js.
+    const stats = ENT_STAT_DISPLAY.map(s => [s.long, f[s.key]]);
     const total = stats.reduce((s, [, v]) => s + (Number(v) || 0), 0);
     document.getElementById('stats-row').innerHTML = stats.map(([label, v], i) => `
       <div class="stat-card${i === 0 ? ' accent' : ''}">

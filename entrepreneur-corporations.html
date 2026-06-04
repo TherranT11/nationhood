@@ -410,6 +410,7 @@ import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
+import { ENT_STAT_DISPLAY } from './js/game/factions.js';
 
 // Attach book-value aggregates to every corp in `corps` as c.bookAgg
 // (via the shared fetchCorpBookAggregates), so computeEntrepreneurValuation
@@ -891,9 +892,9 @@ function renderPositions(corps, filter) {
       const sh  = document.createElement('div'); sh.className = 'stats-head';
       sh.textContent = `${applicantName.toUpperCase()} — STATS PRESENTED TO THE BOARD`;
       const stats = document.createElement('div'); stats.className = 'stats';
-      for (const [label, key] of [['REPUTATION','ent_reputation'],['INFLUENCE','ent_influence'],['SKILL','ent_skill']]) {
+      for (const { long, key } of ENT_STAT_DISPLAY) {
         const s = document.createElement('div'); s.className = 'stat';
-        const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = label;
+        const sl = document.createElement('div'); sl.className = 'lab'; sl.textContent = long;
         const sv = document.createElement('div'); sv.className = 'v';   sv.textContent = String(f[key] ?? '—');
         s.append(sl, sv);
         stats.appendChild(s);
