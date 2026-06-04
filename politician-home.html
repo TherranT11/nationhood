@@ -1717,6 +1717,19 @@ function renderAffiliation(ctx) {
     ? '' // future: " · District N · {PARTY_ABBREV}"
     : (partyName ? ` <span class="ah-rank">· ${escHtml(partyName)}</span>` : '');
 
+  // Deputy Speaker (20270592) layers on top of the elected office —
+  // an MP can hold the chair without changing politician_office, so
+  // surface the role by amending the variant's eyebrow + name in
+  // place rather than introducing a separate variant. Held until
+  // the next general election clears it server-side.
+  const isDeputySpeaker = ctx.faction?.politician_deputy_speaker_at_tick != null;
+  const eyebrowText = isDeputySpeaker
+    ? `${variant.eyebrow} · DEPUTY SPEAKER`
+    : variant.eyebrow;
+  const nameText = isDeputySpeaker
+    ? `${variant.name} · Deputy Speaker`
+    : variant.name;
+
   // Cooldown: per-tier column. MP variants read next_mp_action_tick;
   // local-tier variants read next_local_action_tick (20270461). Each
   // tier's actions share a single column server-side.
@@ -1824,8 +1837,8 @@ function renderAffiliation(ctx) {
       <div class="ah-row">
         <div class="ah-badge">${variant.badge}</div>
         <div class="ah-info">
-          <div class="ah-eyebrow">${escHtml(variant.eyebrow)}</div>
-          <div class="ah-name">${escHtml(variant.name)}${rankHtml}</div>
+          <div class="ah-eyebrow">${escHtml(eyebrowText)}</div>
+          <div class="ah-name">${escHtml(nameText)}${rankHtml}</div>
           <div class="ah-desc">${descHtml}</div>
         </div>
         ${tenureHtml}
