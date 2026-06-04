@@ -2042,11 +2042,14 @@ function initials(s, n) {
       }
     }
 
-    // Aircraft trade (20270364): mirrors engines, but the seller picks a
-    // fulfilment_mode at Set Price time — 'stock' settles instantly from
-    // inventory_on_hand; 'build_to_order' queues a production run on a seller
-    // plant that delivers into the buyer's corp_aircraft over its run. Buyer
-    // pays full quote up front for either mode.
+    // Aircraft trade (20270364, settlement 20270586): mirrors engines, but
+    // the seller picks a fulfilment_mode at Set Price time — 'stock' settles
+    // cash instantly from inventory_on_hand; 'build_to_order' queues a
+    // production run on a seller plant that delivers into the buyer's
+    // corp_aircraft over its run, and the buyer is debited per delivery as
+    // each unit lands (no upfront BTO payment — fixes a seller-drain bug).
+    // Buyer must hold the full quote on hand at accept either way (commitment
+    // check) but only the stock branch debits it at that moment.
     async function openBuyAircraftModal() {
       const overlay = document.getElementById('ad-engtrade-overlay');
       if (!overlay) return;
@@ -2064,7 +2067,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:520px;">
           <div class="bm-head"><div class="ti">Buy <em>Aircraft</em></div><div class="bm-x" id="ba-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request aircraft from a manufacturer. They name a price and pick delivery mode — from stock (instant) or build-to-order (delivered over the build window). You accept; the cash settles on accept either way. Bought aircraft join your fleet.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request aircraft from a manufacturer. They name a price and pick delivery mode — from stock (instant) or build-to-order (delivered over the build window). Stock orders debit your treasury on accept; build-to-order debits as each unit lands. Bought aircraft join your fleet.</div>
             ${opts.length ? `
               <div class="bm-label">Aircraft</div>
               <div class="be-engines" id="ba-design-list">${opts.map((d, i) => {
