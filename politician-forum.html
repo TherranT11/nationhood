@@ -476,6 +476,7 @@ async function loadForum(ctx) {
     }
     totalEl.textContent = fmtInt(data.total_threads);
     host.innerHTML = renderZones(Array.isArray(data.categories) ? data.categories : []);
+    bindCategoryClicks();
   } catch (e) {
     console.error('politician-forum: load failed', e);
     host.innerHTML = `<div class="res-empty">Failed to load forum: ${escHtml(e?.message || e)}</div>`;
@@ -549,6 +550,18 @@ function renderCategoryRow(c) {
       </div>
       ${latestBlock}
     </div>`;
+}
+
+function bindCategoryClicks() {
+  // Each row navigates to its slug-keyed detail page. URL is
+  // deterministic per category — same target regardless of viewer's
+  // nation or faction.
+  document.querySelectorAll('.cat-row[data-cat-slug]').forEach(row => {
+    row.addEventListener('click', () => {
+      const slug = row.dataset.catSlug;
+      if (slug) window.location.href = `politician-forum-category.html?slug=${encodeURIComponent(slug)}`;
+    });
+  });
 }
 
 function bindSubtabs() {
