@@ -68,6 +68,15 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Entrepreneur forum parity.** Renamed the entrepreneur `LOBBYING`
+  tab to `FORUM` and cloned the four `politician-forum-*.html`
+  pages into `entrepreneur-forum-*.html` siblings with the
+  entrepreneur topbar mount. Entrepreneurs see the same threads
+  as politicians (forum is global, one DB) and can post / reply /
+  edit / delete under any of their owned faction identities — the
+  identity selector and the `_forum_resolve_author` ownership gate
+  already accept entrepreneur and corporation types, no backend
+  change needed. `entrepreneur-lobbying.html` removed.
 - **Discord notification on new threads.** New `create_forum_thread`
   fires a fire-and-forget `net.http_post` to a Supabase Edge Function
   (`forum-thread-discord`) which forwards a compact embed (title +

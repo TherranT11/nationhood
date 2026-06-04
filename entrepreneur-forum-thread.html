@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrepreneur — Forum Thread</title>
+<style>
+/* Topbar + body base come from entrepreneur-topbar.js. */
+* { box-sizing:border-box; }
+
+.content { padding:18px 24px 40px; max-width:1080px; margin:0 auto; }
+
+.back-link {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:10px; letter-spacing:0.14em; font-weight:700;
+  text-transform:uppercase; color:#888; text-decoration:none;
+  padding:8px 0; margin-bottom:10px;
+}
+.back-link:hover { color:#7ac8c8; }
+
+/* ─── Thread header (mirrors category cathead palette) ────────────── */
+.threadhead {
+  background:#0a0a0a;
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:6px;
+  margin-bottom:18px;
+  overflow:hidden;
+}
+.threadhead.world   { border-top:3px solid #9a7050; --zc:#9a7050; --zc-dim:#4a3020; --zc-bg:#160d08; --zc-bright:#c89070; }
+.threadhead.players { border-top:3px solid #7a9aab; --zc:#7a9aab; --zc-dim:#3a5060; --zc-bg:#0e1318; --zc-bright:#9ab8c8; }
+.threadhead.game    { border-top:3px solid #8a7aa8; --zc:#8a7aa8; --zc-dim:#403852; --zc-bg:#0f0c14; --zc-bright:#a89ac8; }
+
+.threadhead-row {
+  padding:20px 26px;
+  display:flex; flex-direction:column; gap:10px;
+}
+.threadhead-cat {
+  font-size:9px; letter-spacing:0.18em; font-weight:700;
+  color:var(--zc); text-transform:uppercase;
+}
+.threadhead-title {
+  font-family:Georgia,serif; font-size:24px; color:#fff;
+  font-weight:500; letter-spacing:-0.008em; line-height:1.2;
+}
+.threadhead-meta {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  font-size:10px; color:#888;
+}
+.threadhead-meta .stat {
+  font-size:9.5px; letter-spacing:0.04em;
+}
+.threadhead-meta .stat strong { color:#bbb; font-weight:600; }
+.threadhead-meta .sep { color:#444; }
+.thread-nation {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 11px 4px 7px; border-radius:3px;
+  background:var(--zc-bg); border:1px solid var(--zc-dim);
+  color:var(--zc-bright);
+  font-size:9px; letter-spacing:0.14em; font-weight:700; text-transform:uppercase;
+}
+.thread-nation-flag {
+  width:16px; height:11px; object-fit:cover;
+  border:0.5px solid rgba(255,255,255,0.12); border-radius:1px;
+  flex-shrink:0;
+}
+.thread-nation-name { line-height:1; }
+
+/* ─── Posts ──────────────────────────────────────────────────────── */
+.posts {
+  display:flex; flex-direction:column; gap:14px;
+  margin-bottom:24px;
+}
+.post {
+  background:#0a0a0a;
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:6px;
+  overflow:hidden;
+}
+.post.first { border-left:3px solid #5aafa5; }
+
+.post-head {
+  padding:14px 22px;
+  display:flex; align-items:center; gap:12px;
+  border-bottom:1px solid rgba(255,255,255,0.05);
+  background:rgba(255,255,255,0.01);
+}
+.post-avatar {
+  width:36px; height:36px; border-radius:50%;
+  background:linear-gradient(135deg, #142421 0%, #0d1a17 100%);
+  border:1px solid rgba(90,175,165,0.3);
+  display:flex; align-items:center; justify-content:center;
+  font-family:Georgia,serif; font-size:13px; font-style:italic;
+  color:#7ac8c8; font-weight:600;
+  flex-shrink:0;
+}
+.post-id { flex:1; min-width:0; }
+.post-author {
+  font-family:Georgia,serif; font-size:14px; color:#fff;
+  font-weight:500; line-height:1.2; letter-spacing:-0.005em;
+}
+.post-attrib {
+  font-size:9.5px; color:#888; margin-top:3px;
+  display:flex; align-items:center; gap:6px;
+}
+.post-attrib .tag {
+  font-size:8.5px; letter-spacing:0.1em; font-weight:700;
+  text-transform:uppercase; color:#7ac8c8;
+  padding:2px 7px; border-radius:2px;
+  background:rgba(90,175,165,0.06); border:1px solid rgba(90,175,165,0.2);
+}
+.post-when {
+  font-size:9.5px; color:#666; font-style:italic;
+  flex-shrink:0; text-align:right;
+}
+.post-when .edited { color:#7ac8c8; font-style:italic; }
+
+.post-actions {
+  display:flex; gap:6px; padding:8px 22px 14px;
+  border-top:1px dashed rgba(255,255,255,0.04);
+  background:rgba(255,255,255,0.005);
+}
+.post-act {
+  padding:5px 11px; border-radius:3px;
+  background:transparent; border:1px solid rgba(255,255,255,0.06);
+  color:#888;
+  font-size:8.5px; letter-spacing:0.12em; font-weight:700;
+  text-transform:uppercase; cursor:pointer; font-family:inherit;
+}
+.post-act:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.post-act.danger:hover:not(:disabled) { color:#e09898; border-color:rgba(200,120,120,0.4); }
+.post-act:disabled { opacity:0.45; cursor:not-allowed; }
+.post-act.primary {
+  background:rgba(90,175,165,0.08); border-color:#5aafa5; color:#7ac8c8;
+}
+.post-act.primary:hover:not(:disabled) { background:rgba(90,175,165,0.16); color:#fff; }
+
+.post-edit-area {
+  width:100%; min-height:140px; max-height:400px;
+  padding:14px 18px;
+  background:#0a0f10; border:1px solid rgba(90,175,165,0.3); border-radius:4px;
+  color:#d4d4d4;
+  font-family:Georgia,serif; font-size:13px; line-height:1.7;
+  outline:none; overflow-y:auto;
+}
+.post-edit-area:focus { border-color:rgba(90,175,165,0.5); }
+.post-edit-area img {
+  max-width:100%; height:auto; margin:8px 0;
+  border-radius:4px; border:1px solid rgba(90,175,165,0.25);
+  display:block;
+}
+.post-edit-msg { font-size:9.5px; color:#c87a7a; font-style:italic; padding-top:6px; }
+.post-edit-msg.ok { color:#7ac8c8; }
+
+.post-body {
+  padding:24px 28px;
+  color:#d4d4d4;
+  font-family:Georgia,serif; font-size:14px; line-height:1.8;
+}
+.post-body p { margin:0 0 10px; }
+.post-body b, .post-body strong { color:#fff; font-weight:600; }
+.post-body i, .post-body em { font-style:italic; }
+.post-body h1, .post-body h2, .post-body h3 {
+  font-family:Georgia,serif; color:#fff; line-height:1.3;
+  margin:14px 0 8px; font-weight:500;
+}
+.post-body h1 { font-size:22px; }
+.post-body h2 { font-size:18px; }
+.post-body h3 { font-size:16px; }
+.post-body ul, .post-body ol { margin:8px 0 8px 28px; }
+.post-body blockquote {
+  margin:14px 0; padding:8px 16px;
+  border-left:3px solid #5aafa5; color:#bbb; font-style:italic;
+}
+.post-body a { color:#7ac8c8; text-decoration:underline; }
+.post-body img {
+  max-width:100%; height:auto;
+  margin:14px 0; border-radius:4px;
+  border:1px solid rgba(90,175,165,0.25);
+  display:block;
+}
+
+/* ─── Reply form ─────────────────────────────────────────────────── */
+.reply-card {
+  background:#0a0a0a;
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:6px;
+  padding:18px 22px;
+}
+.reply-head {
+  font-size:9.5px; letter-spacing:0.16em; font-weight:700;
+  color:#7ac8c8; text-transform:uppercase; margin-bottom:12px;
+}
+.reply-row {
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  margin-bottom:10px;
+}
+.reply-row label {
+  font-size:9px; letter-spacing:0.14em; font-weight:700;
+  color:#888; text-transform:uppercase;
+}
+.identity-select {
+  flex:1; padding:9px 12px; border-radius:4px;
+  background:#0a0f10; border:1px solid rgba(255,255,255,0.06);
+  color:#fff; font-size:11px; font-family:inherit; min-width:240px;
+}
+.identity-select:focus { outline:none; border-color:rgba(90,175,165,0.4); }
+.identity-empty {
+  font-size:10px; color:#c87a7a; font-style:italic;
+  padding:10px 0;
+}
+
+.reply-tools {
+  background:#0a0f10;
+  border:1px solid rgba(255,255,255,0.06);
+  border-bottom:none;
+  border-radius:5px 5px 0 0;
+  padding:7px 9px;
+  display:flex; align-items:center; gap:2px; flex-wrap:wrap;
+}
+.tool-btn {
+  height:28px; padding:0 9px; border-radius:3px;
+  background:transparent; border:none; color:#888;
+  cursor:pointer; font-family:Georgia,serif; font-size:13px;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+}
+.tool-btn:hover:not(:disabled) { background:#0c1213; color:#fff; }
+.tool-btn.active { background:#0c1213; color:#7ac8c8; }
+.tool-btn.italic { font-style:italic; }
+.tool-btn.bold { font-weight:700; font-family:-apple-system,sans-serif; }
+.tool-btn.under { text-decoration:underline; }
+.tool-btn.add-image {
+  background:rgba(90,175,165,0.08);
+  border:1px solid rgba(90,175,165,0.4);
+  color:#7ac8c8;
+  padding:0 10px;
+  font-family:-apple-system,system-ui,sans-serif; font-size:9px;
+  letter-spacing:0.1em; font-weight:700; text-transform:uppercase;
+}
+.tool-btn.add-image:hover:not(:disabled) { background:rgba(90,175,165,0.16); border-color:#5aafa5; color:#fff; }
+.tool-btn.add-image:disabled { opacity:0.4; cursor:wait; }
+.tool-divider { width:1px; height:18px; background:rgba(255,255,255,0.06); margin:0 4px; }
+.tool-spacer { flex:1; }
+.tool-count { font-size:9px; color:#666; font-style:italic; padding:0 6px; }
+
+.reply-body {
+  width:100%; min-height:140px; max-height:400px;
+  padding:14px 18px;
+  background:#0a0f10; border:1px solid rgba(255,255,255,0.06); border-top:none;
+  border-radius:0 0 5px 5px;
+  color:#d4d4d4;
+  font-family:Georgia,serif; font-size:13px; line-height:1.7;
+  outline:none; overflow-y:auto;
+}
+.reply-body:focus { border-color:rgba(90,175,165,0.4); background:#0c1213; }
+.reply-body:empty::before {
+  content:attr(data-placeholder);
+  color:#666; font-style:italic;
+}
+.reply-body img {
+  max-width:100%; height:auto;
+  margin:8px 0; border-radius:4px;
+  border:1px solid rgba(90,175,165,0.25);
+  display:block;
+}
+
+.reply-actions {
+  display:flex; align-items:center; gap:10px;
+  margin-top:14px;
+}
+.reply-actions .note {
+  flex:1; font-size:9px; color:#666; font-style:italic;
+}
+.btn {
+  padding:10px 20px; border-radius:4px;
+  font-size:9.5px; letter-spacing:0.16em; font-weight:700;
+  cursor:pointer; font-family:inherit; text-transform:uppercase;
+  border:1px solid;
+}
+.btn.post {
+  background:rgba(90,175,165,0.08);
+  border-color:#5aafa5;
+  color:#7ac8c8;
+}
+.btn.post:hover:not(:disabled) { background:rgba(90,175,165,0.16); color:#fff; }
+.btn:disabled { opacity:0.45; cursor:not-allowed; }
+
+.reply-msg { font-size:10px; color:#c87a7a; font-style:italic; padding-top:6px; }
+.reply-msg.ok { color:#7ac8c8; }
+
+.loading {
+  font-family:monospace; font-size:11px; color:#4a4940;
+  text-align:center; padding:80px 20px;
+}
+</style>
+</head>
+<body>
+
+<div id="ent-topbar"></div>
+
+<div class="content" id="content" style="display:none;">
+  <a class="back-link" id="back-link" href="entrepreneur-forum.html">&lsaquo; Back</a>
+
+  <div id="threadhead-host"></div>
+  <div id="posts-host" class="posts"></div>
+
+  <div class="reply-card" id="reply-card">
+    <div class="reply-head">Post a reply</div>
+    <div class="reply-row">
+      <label for="identity-select">Reply as</label>
+      <select id="identity-select" class="identity-select"></select>
+    </div>
+
+    <div>
+      <div class="reply-tools">
+        <button class="tool-btn bold"   data-cmd="bold"      title="Bold">B</button>
+        <button class="tool-btn italic" data-cmd="italic"    title="Italic">I</button>
+        <button class="tool-btn under"  data-cmd="underline" title="Underline">U</button>
+        <div class="tool-divider"></div>
+        <button class="tool-btn" data-cmd="formatBlock" data-arg="blockquote" title="Quote">&ldquo;</button>
+        <button class="tool-btn" data-cmd="createLink"  title="Link">&#128279;</button>
+        <button class="tool-btn" data-cmd="insertUnorderedList" title="Bulleted list">&#8226;</button>
+        <div class="tool-divider"></div>
+        <button class="tool-btn add-image" id="add-image-btn">
+          <span>&#128247;</span><span>Image</span>
+        </button>
+        <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+        <div class="tool-spacer"></div>
+        <span class="tool-count"><strong id="word-count">0</strong> words</span>
+      </div>
+      <div class="reply-body" id="reply-body" contenteditable="true" data-placeholder="Add your reply…"></div>
+    </div>
+
+    <div class="reply-actions">
+      <div class="note">Replies post under the identity selected above; the author's faction type is shown alongside.</div>
+      <button type="button" class="btn post" id="reply-post-btn" disabled>Post Reply</button>
+    </div>
+    <div class="reply-msg" id="reply-msg"></div>
+  </div>
+
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { _supabase }            from './js/supabase-client.js';
+import { escHtml, sanitizeHtml, countWords, formatRelative, ZONE_META, insertImageAtCursor, renderNationChip }
+  from './js/forum-utils.js';
+
+const BODY_MIN = 4, BODY_MAX = 50000;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_MIME = new Set(['image/png','image/jpeg','image/gif','image/webp']);
+const POSTABLE_TYPES = new Set(['entrepreneur', 'corporation', 'politician']);
+
+function getThreadIdFromUrl() {
+  return new URLSearchParams(window.location.search).get('id') || '';
+}
+
+function initialsFromName(name) {
+  return String(name || '').trim().split(/\s+/).map(w => w[0] || '').join('').toUpperCase().slice(0, 2) || '—';
+}
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapEntrepreneur('forum'); }
+  catch (err) {
+    console.error('entrepreneur-forum-thread: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  const threadId = getThreadIdFromUrl();
+  if (!threadId) {
+    document.getElementById('loading').innerHTML =
+      'No thread id in the URL. <a href="entrepreneur-forum.html" style="color:#7ac8c8;text-decoration:underline;">Back to the Forum.</a>';
+    return;
+  }
+
+  const [identities, threadData] = await Promise.all([
+    fetchMyIdentities(),
+    fetchThread(ctx, threadId),
+  ]);
+
+  if (!threadData) return;        // error already surfaced by fetchThread
+
+  document.title = `${threadData.thread.title} — Forum`;
+  renderThreadHead(threadData.thread, threadData.category);
+  document.getElementById('back-link').href =
+    `entrepreneur-forum-category.html?slug=${encodeURIComponent(threadData.category.slug)}`;
+  renderPosts(threadData.posts);
+  renderIdentities(identities);
+  bindReplyForm(threadId);
+  bindPostActions();
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+async function fetchThread(ctx, threadId) {
+  try {
+    const { data, error } = await _supabase.rpc('get_forum_thread', {
+      p_thread_id:         threadId,
+      p_viewer_faction_id: ctx?.faction?.id || null,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const reason = data?.reason || 'unknown';
+      const msg = reason === 'thread_not_found'
+        ? `Thread not found.`
+        : `Could not load thread (${reason}).`;
+      document.getElementById('loading').textContent = msg;
+      return null;
+    }
+    return data;
+  } catch (e) {
+    console.error('entrepreneur-forum-thread: fetch failed', e);
+    document.getElementById('loading').textContent = `Failed to load: ${e?.message || e}`;
+    return null;
+  }
+}
+
+async function fetchMyIdentities() {
+  // Direct client SELECT on factions — RLS already permits the user
+  // to read their own faction rows. Filter to the post-eligible
+  // types (entrepreneur / corporation / politician).
+  try {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) return [];
+    const { data, error } = await _supabase.from('factions')
+      .select('id, faction_type, faction_name, leader_first_name, leader_last_name')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .is('abandoned_at', null)
+      .in('faction_type', ['entrepreneur', 'corporation', 'politician']);
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('entrepreneur-forum-thread: identity fetch failed', e);
+    return [];
+  }
+}
+
+function renderThreadHead(thread, cat) {
+  const host = document.getElementById('threadhead-host');
+  const zoneMeta = ZONE_META[cat.zone] || { eyebrow: '', name: '' };
+  const nationChip = renderNationChip(thread.nation_name, thread.nation_flag_url, { className: 'thread-nation' });
+  host.innerHTML = `
+    <div class="threadhead ${escHtml(cat.zone)}">
+      <div class="threadhead-row">
+        <div class="threadhead-cat">${escHtml(zoneMeta.eyebrow + ' · ' + zoneMeta.name)} · ${escHtml(cat.name)}</div>
+        <div class="threadhead-title">${escHtml(thread.title)}</div>
+        <div class="threadhead-meta">
+          ${nationChip}
+          <span class="sep">·</span>
+          <span class="stat"><strong>${thread.post_count}</strong> post${thread.post_count === 1 ? '' : 's'}</span>
+          <span class="sep">·</span>
+          <span class="stat">opened ${escHtml(formatRelative(thread.created_at))}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderPosts(posts) {
+  const host = document.getElementById('posts-host');
+  if (!Array.isArray(posts) || posts.length === 0) {
+    host.innerHTML = `<div class="loading">No posts yet.</div>`;
+    return;
+  }
+  host.innerHTML = posts.map((p, idx) => renderPost(p, idx === 0)).join('');
+}
+
+function renderPost(p, isFirst) {
+  const author = p.author || {};
+  const name = author.display_name || '[deleted]';
+  const typeLabel = ({
+    entrepreneur:  'Entrepreneur',
+    corporation:   'Corporation',
+    politician:    'Politician',
+    movement_party:'Movement Party',
+    military:      'Military',
+  })[author.faction_type] || '';
+  // Body sanitized at render time as a second line of defence — the
+  // client sanitizer at submit is the first.
+  const safeBody = sanitizeHtml(p.body || '');
+  const editedLine = p.updated_at
+    ? `<span class="edited">edited ${escHtml(formatRelative(p.updated_at))}</span>`
+    : '';
+  // Edit + Delete chips only show when caller_owns is true on this
+  // post (server-computed in get_forum_thread). The RPCs re-verify
+  // ownership; this is just the UX gate.
+  const ownerActions = p.caller_owns
+    ? `<div class="post-actions" data-post-id="${escHtml(p.post_id)}">
+         <button type="button" class="post-act" data-act="edit">Edit</button>
+         <button type="button" class="post-act danger" data-act="delete">Delete</button>
+       </div>`
+    : '';
+  return `
+    <div class="post${isFirst ? ' first' : ''}" data-post-id="${escHtml(p.post_id)}">
+      <div class="post-head">
+        <div class="post-avatar">${escHtml(initialsFromName(name))}</div>
+        <div class="post-id">
+          <div class="post-author">${escHtml(name)}</div>
+          <div class="post-attrib">
+            ${typeLabel ? `<span class="tag">${escHtml(typeLabel)}</span>` : ''}
+            ${author.faction_name && author.leader_name && author.faction_name !== author.leader_name
+              ? `<span>${escHtml(author.faction_name)} · ${escHtml(author.leader_name)}</span>`
+              : ''}
+          </div>
+        </div>
+        <div class="post-when">
+          ${escHtml(formatRelative(p.created_at))}
+          ${editedLine ? `<br>${editedLine}` : ''}
+        </div>
+      </div>
+      <div class="post-body" data-role="body">${safeBody}</div>
+      ${ownerActions}
+    </div>`;
+}
+
+function renderIdentities(identities) {
+  const sel = document.getElementById('identity-select');
+  const card = document.getElementById('reply-card');
+  if (!identities || identities.length === 0) {
+    card.innerHTML = `<div class="reply-head">Post a reply</div>
+      <div class="identity-empty">You don't have an Entrepreneur, Corporation, or Politician faction. Posting requires at least one.</div>`;
+    return;
+  }
+  // Group + sort: politicians first (most common author on the politician
+  // surface), then corporation, then entrepreneur. Within a group,
+  // alphabetical by display name.
+  const sortKey = (f) => `${ {politician:1, corporation:2, entrepreneur:3}[f.faction_type] || 9 }-${(f.leader_first_name + f.leader_last_name + f.faction_name || '').toLowerCase()}`;
+  identities.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  sel.innerHTML = identities.map(f => {
+    const name = (`${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()) || f.faction_name || '—';
+    const tag = ({
+      entrepreneur: 'Entrepreneur',
+      corporation:  'Corporation',
+      politician:   'Politician',
+    })[f.faction_type] || f.faction_type;
+    return `<option value="${escHtml(f.id)}">${escHtml(tag)} · ${escHtml(name)}</option>`;
+  }).join('');
+}
+
+function bindReplyForm(threadId) {
+  const bodyEl = document.getElementById('reply-body');
+  const postBtn = document.getElementById('reply-post-btn');
+  const selectEl = document.getElementById('identity-select');
+  if (!selectEl) return;          // identity-empty state already handled
+
+  const updateBtn = () => {
+    const text = (bodyEl.textContent || '').trim();
+    const hasImage = bodyEl.querySelector('img') != null;
+    const ok = !!selectEl.value && (text.length >= BODY_MIN || hasImage);
+    postBtn.disabled = !ok;
+  };
+
+  const updateCount = () => {
+    document.getElementById('word-count').textContent = countWords(bodyEl.textContent || '').toLocaleString();
+  };
+
+  bodyEl.addEventListener('input', () => { updateCount(); updateBtn(); });
+
+  document.querySelectorAll('.reply-tools .tool-btn[data-cmd]').forEach(btn => {
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', () => {
+      const cmd = btn.dataset.cmd;
+      let arg = btn.dataset.arg || null;
+      if (cmd === 'createLink') {
+        const url = prompt('Link URL (http or https only):');
+        if (!url || !/^https?:\/\//i.test(url)) return;
+        arg = url;
+      }
+      bodyEl.focus();
+      document.execCommand(cmd, false, arg);
+      updateCount(); updateBtn();
+    });
+  });
+
+  const addImgBtn  = document.getElementById('add-image-btn');
+  const imageInput = document.getElementById('image-input');
+  addImgBtn.addEventListener('click', () => imageInput.click());
+  imageInput.addEventListener('change', async () => {
+    const file = imageInput.files?.[0];
+    imageInput.value = '';
+    if (!file) return;
+    await handleImageUpload(file, bodyEl, selectEl.value, updateCount, updateBtn);
+  });
+
+  postBtn.addEventListener('click', async () => {
+    await submitReply(threadId, selectEl.value, bodyEl, postBtn);
+  });
+}
+
+async function handleImageUpload(file, bodyEl, authorFactionId, updateCount, updateBtn) {
+  const addImgBtn = document.getElementById('add-image-btn');
+  const postBtn   = document.getElementById('reply-post-btn');
+  if (!ALLOWED_MIME.has(file.type)) { setMsg(`Unsupported image type ${file.type}.`, false); return; }
+  if (file.size > MAX_IMAGE_BYTES)   { setMsg(`Image too large (${Math.round(file.size/1024)} KB). 8 MB max.`, false); return; }
+  if (!authorFactionId)              { setMsg('Pick an identity before uploading.', false); return; }
+
+  addImgBtn.disabled = true;
+  const wasDisabled = postBtn.disabled;
+  postBtn.disabled = true;
+  setMsg('Uploading…', true);
+  try {
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const path = `${authorFactionId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const { error: upErr } = await _supabase.storage
+      .from('forum-images').upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw upErr;
+    const { data: urlData } = _supabase.storage.from('forum-images').getPublicUrl(path);
+    const publicUrl = urlData?.publicUrl;
+    if (!publicUrl) throw new Error('No public URL.');
+    insertImageAtCursor(bodyEl, publicUrl, file.name);
+    updateCount();
+    setMsg('Image inserted.', true);
+  } catch (e) {
+    console.error('reply image upload failed', e);
+    setMsg(`Upload failed: ${e?.message || e}`, false);
+  } finally {
+    addImgBtn.disabled = false;
+    if (wasDisabled) updateBtn(); else postBtn.disabled = false;
+  }
+}
+
+function bindPostActions() {
+  document.querySelectorAll('.post-actions').forEach(actions => {
+    const postId = actions.dataset.postId;
+    if (!postId) return;
+    const post = actions.closest('.post');
+    actions.querySelector('[data-act="edit"]')?.addEventListener('click', () => {
+      enterEditMode(post, postId);
+    });
+    actions.querySelector('[data-act="delete"]')?.addEventListener('click', () => {
+      deletePost(post, postId);
+    });
+  });
+}
+
+function enterEditMode(postEl, postId) {
+  const bodyEl = postEl.querySelector('[data-role="body"]');
+  const actions = postEl.querySelector('.post-actions');
+  if (!bodyEl || !actions) return;
+
+  // Snapshot the rendered HTML so Cancel can restore it. The DB
+  // round-trip on save will re-render via the page reload; this is
+  // just the optimistic local rollback.
+  const originalHtml = bodyEl.innerHTML;
+
+  // Swap the rendered body for a contenteditable region pre-filled
+  // with the same HTML. The sanitizer ran at render time, so the
+  // HTML in the DOM is already trustworthy to re-edit.
+  bodyEl.classList.add('post-edit-area');
+  bodyEl.classList.remove('post-body');
+  bodyEl.setAttribute('contenteditable', 'true');
+  bodyEl.focus();
+
+  // Swap the chip row for Save + Cancel + a small message slot.
+  const msgId = `edit-msg-${postId}`;
+  actions.innerHTML = `
+    <button type="button" class="post-act primary" data-act="save">Save</button>
+    <button type="button" class="post-act" data-act="cancel">Cancel</button>
+    <span style="flex:1;"></span>
+    <span class="post-edit-msg" id="${msgId}"></span>`;
+
+  const saveBtn   = actions.querySelector('[data-act="save"]');
+  const cancelBtn = actions.querySelector('[data-act="cancel"]');
+  const msgEl     = actions.querySelector(`#${msgId}`);
+
+  const setMsg = (text, ok) => {
+    if (!msgEl) return;
+    msgEl.textContent = text || '';
+    msgEl.classList.toggle('ok', !!ok && !!text);
+  };
+
+  cancelBtn.addEventListener('click', () => {
+    bodyEl.innerHTML = originalHtml;
+    exitEditMode(postEl, postId);
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const cleaned = sanitizeHtml(bodyEl.innerHTML || '');
+    const visibleLen = cleaned.replace(/<[^>]*>/g, '').trim().length;
+    const hasImage = /<img\b/i.test(cleaned);
+    if (visibleLen < BODY_MIN && !hasImage) {
+      setMsg(`Post needs at least ${BODY_MIN} characters or an image.`, false);
+      return;
+    }
+    if (cleaned.length > BODY_MAX) {
+      setMsg(`Post exceeds ${BODY_MAX.toLocaleString()} characters.`, false);
+      return;
+    }
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    setMsg('Saving…', true);
+    try {
+      const { data, error } = await _supabase.rpc('update_forum_post', {
+        p_post_id:   postId,
+        p_body_html: cleaned,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_authenticated: 'Sign in first.',
+          not_post_owner:    'You can\'t edit that post.',
+          post_not_found:    'Post no longer exists.',
+          body_too_short:    `Post needs at least ${data?.min ?? BODY_MIN} characters or an image.`,
+          body_too_long:     `Post exceeds ${data?.max ?? BODY_MAX} characters.`,
+        };
+        setMsg(REASON[data?.reason] || `Could not save (${data?.reason || 'unknown'}).`, false);
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        return;
+      }
+      // Reload so the rendered HTML goes through render-side sanitize
+      // and the 'edited <relative>' badge appears.
+      window.location.reload();
+    } catch (e) {
+      console.error('update_forum_post failed', e);
+      setMsg(`Save failed: ${e?.message || e}`, false);
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  });
+}
+
+function exitEditMode(postEl, postId) {
+  const bodyEl = postEl.querySelector('[data-role="body"]');
+  const actions = postEl.querySelector('.post-actions');
+  if (!bodyEl || !actions) return;
+  bodyEl.classList.remove('post-edit-area');
+  bodyEl.classList.add('post-body');
+  bodyEl.removeAttribute('contenteditable');
+  actions.innerHTML = `
+    <button type="button" class="post-act" data-act="edit">Edit</button>
+    <button type="button" class="post-act danger" data-act="delete">Delete</button>`;
+  // Re-bind for the freshly-rendered chips.
+  actions.querySelector('[data-act="edit"]')?.addEventListener('click', () => enterEditMode(postEl, postId));
+  actions.querySelector('[data-act="delete"]')?.addEventListener('click', () => deletePost(postEl, postId));
+}
+
+async function deletePost(postEl, postId) {
+  if (!confirm('Delete this post? If it\'s the only post in the thread, the whole thread goes with it.')) return;
+  const actions = postEl.querySelector('.post-actions');
+  actions?.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('delete_forum_post', { p_post_id: postId });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'Sign in first.',
+        not_post_owner:    'You can\'t delete that post.',
+        post_not_found:    'Post already gone.',
+      };
+      alert(REASON[data?.reason] || `Could not delete (${data?.reason || 'unknown'}).`);
+      actions?.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    if (data.thread_gone) {
+      // Whole thread evaporated — bounce back to the category index
+      // rather than landing on a 'thread_not_found' detail page.
+      const backLink = document.getElementById('back-link');
+      window.location.href = backLink?.getAttribute('href') || 'entrepreneur-forum.html';
+    } else {
+      window.location.reload();
+    }
+  } catch (e) {
+    console.error('delete_forum_post failed', e);
+    alert(`Delete failed: ${e?.message || e}`);
+    actions?.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
+}
+
+async function submitReply(threadId, authorFactionId, bodyEl, postBtn) {
+  const bodyRaw = bodyEl.innerHTML || '';
+  const bodyClean = sanitizeHtml(bodyRaw);
+  const visibleLen = bodyClean.replace(/<[^>]*>/g, '').trim().length;
+  const hasImage = /<img\b/i.test(bodyClean);
+
+  if (!authorFactionId) { setMsg('Select an identity.', false); return; }
+  if (visibleLen < BODY_MIN && !hasImage) {
+    setMsg(`Reply needs at least ${BODY_MIN} characters or an image.`, false); return;
+  }
+  if (bodyClean.length > BODY_MAX) {
+    setMsg(`Reply exceeds ${BODY_MAX.toLocaleString()} characters.`, false); return;
+  }
+
+  postBtn.disabled = true;
+  setMsg('Posting…', true);
+  try {
+    const { data, error } = await _supabase.rpc('create_forum_post', {
+      p_thread_id:         threadId,
+      p_author_faction_id: authorFactionId,
+      p_body_html:         bodyClean,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:      'Sign in first.',
+        invalid_author_faction: 'You can\'t post as that identity.',
+        thread_not_found:       'Thread vanished.',
+        body_too_short:         `Reply needs at least ${data?.min ?? BODY_MIN} characters or an image.`,
+        body_too_long:          `Reply exceeds ${data?.max ?? BODY_MAX} characters.`,
+      };
+      setMsg(REASON[data?.reason] || `Could not post (${data?.reason || 'unknown'}).`, false);
+      postBtn.disabled = false;
+      return;
+    }
+    // Reload the page so the new reply appears in order.
+    window.location.reload();
+  } catch (e) {
+    console.error('create_forum_post failed', e);
+    setMsg(`Reply failed: ${e?.message || e}`, false);
+    postBtn.disabled = false;
+  }
+}
+
+function setMsg(text, ok) {
+  const el = document.getElementById('reply-msg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.classList.toggle('ok', !!ok && !!text);
+}
+
+init();
+</script>
+</body>
+</html>

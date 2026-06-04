@@ -14,7 +14,7 @@ const ENT_TABS = [
   { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-corporations.html' },
   { id: 'markets',      label: 'MARKETS',      href: 'entrepreneur-markets.html' },
   { id: 'assets',       label: 'CHARACTER',    href: 'entrepreneur-assets.html' },
-  { id: 'lobbying',     label: 'LOBBYING',     href: 'entrepreneur-lobbying.html' },
+  { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
 ];
 
 const STYLE_ID = 'ent-topbar-styles';
