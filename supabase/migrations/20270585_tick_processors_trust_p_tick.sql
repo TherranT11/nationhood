@@ -122,7 +122,7 @@ BEGIN
 
     RETURN jsonb_build_object('success', true, 'completed', v_count);
 END;
-$$
+$$;
 
 -- ── process_corp_loans  (last shipped in 20270260_fix_corp_loan_apr_accrual.sql; same shape — interest accrual was reading stale tick) ──
 CREATE OR REPLACE FUNCTION public.process_corp_loans(p_tick int)
@@ -191,7 +191,7 @@ BEGIN
         'defaulted', v_defaulted,
         'tick',      v_tick);
 END;
-$$
+$$;
 
 -- ── process_corp_price_anchors  (last shipped in 20270179_corp_price_anchors.sql; COALESCE(v_tick, p_tick, 0) — shard wins over p_tick) ──
 CREATE OR REPLACE FUNCTION public.process_corp_price_anchors(p_tick int)
@@ -228,7 +228,7 @@ BEGIN
 
     RETURN jsonb_build_object('success', true, 'tick', v_tick, 'written', v_written);
 END;
-$$
+$$;
 
 -- ── process_ent_aircraft_designs  (last shipped in 20270221_ent_aircraft_designs.sql; R&D progress was visiting on the stale-tick window) ──
 CREATE OR REPLACE FUNCTION public.process_ent_aircraft_designs(p_tick int)
@@ -279,7 +279,7 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'tick', v_tick,
         'advanced', v_advanced, 'completed', v_completed, 'paused', v_paused);
 END;
-$$
+$$;
 
 -- ── process_ent_aircraft_rfps  (last shipped in 20270234_ent_aircraft_production.sql; RFP timer reads were one tick behind) ──
 CREATE OR REPLACE FUNCTION public.process_ent_aircraft_rfps(p_tick int)
@@ -395,7 +395,7 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'tick', v_tick,
         'awarded', v_awarded, 'cancelled', v_cancelled, 'completed', v_completed, 'failed', v_failed);
 END;
-$$
+$$;
 
 -- ── process_ent_construction_contracts  (last shipped in 20270369_construction_distance_modifier.sql; construction progress was visiting on the stale-tick window) ──
 CREATE OR REPLACE FUNCTION public.process_ent_construction_contracts(p_tick int)
@@ -583,7 +583,7 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'tick', v_tick,
         'awarded', v_awarded, 'cancelled', v_cancelled, 'completed', v_completed, 'failed', v_failed);
 END;
-$$
+$$;
 
 -- ── process_ent_production_runs  (last shipped in 20270364_ent_aircraft_orders.sql; the smoking-gun RPC from the Falcone-Pinion DT-201 bug report) ──
 CREATE OR REPLACE FUNCTION public.process_ent_production_runs(p_tick int)
@@ -683,7 +683,7 @@ BEGIN
         'advanced', v_advanced, 'delivered', v_delivered,
         'completed', v_completed, 'paused', v_paused);
 END;
-$$
+$$;
 
 NOTIFY pgrst, 'reload schema';
 
