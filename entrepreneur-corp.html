@@ -2042,11 +2042,14 @@ function initials(s, n) {
       }
     }
 
-    // Aircraft trade (20270364): mirrors engines, but the seller picks a
-    // fulfilment_mode at Set Price time — 'stock' settles instantly from
-    // inventory_on_hand; 'build_to_order' queues a production run on a seller
-    // plant that delivers into the buyer's corp_aircraft over its run. Buyer
-    // pays full quote up front for either mode.
+    // Aircraft trade (20270364, settlement 20270586): mirrors engines, but
+    // the seller picks a fulfilment_mode at Set Price time — 'stock' settles
+    // cash instantly from inventory_on_hand; 'build_to_order' queues a
+    // production run on a seller plant that delivers into the buyer's
+    // corp_aircraft over its run, and the buyer is debited per delivery as
+    // each unit lands (no upfront BTO payment — fixes a seller-drain bug).
+    // Buyer must hold the full quote on hand at accept either way (commitment
+    // check) but only the stock branch debits it at that moment.
     async function openBuyAircraftModal() {
       const overlay = document.getElementById('ad-engtrade-overlay');
       if (!overlay) return;
@@ -2064,7 +2067,7 @@ function initials(s, n) {
         <div class="bm-modal" style="max-width:520px;">
           <div class="bm-head"><div class="ti">Buy <em>Aircraft</em></div><div class="bm-x" id="ba-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request aircraft from a manufacturer. They name a price and pick delivery mode — from stock (instant) or build-to-order (delivered over the build window). You accept; the cash settles on accept either way. Bought aircraft join your fleet.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Request aircraft from a manufacturer. They name a price and pick delivery mode — from stock (instant) or build-to-order (delivered over the build window). Stock orders debit your treasury on accept; build-to-order debits as each unit lands. Bought aircraft join your fleet.</div>
             ${opts.length ? `
               <div class="bm-label">Aircraft</div>
               <div class="be-engines" id="ba-design-list">${opts.map((d, i) => {
@@ -5358,7 +5361,7 @@ function initials(s, n) {
             <button class="sh-buy-btn" id="al-request-aircraft">Request Aircraft</button>
             <button class="sh-buy-btn" id="al-buy-aircraft">Buy Aircraft</button>
           </div>`)}
-          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. <b>Request Aircraft</b> posts an RFP (class · qty · per-unit budget); manufacturers bid a design + price, the lowest builds and delivers. <b>Buy Aircraft</b> targets a specific design — the seller names a price and picks stock-or-build-to-order; you accept and pay on the spot.</div>
+          <div class="al-hint">Cash: <b>${fmtUsd(corpCash)}</b>. <b>Request Aircraft</b> posts an RFP (class · qty · bidding window); manufacturers bid a design + a price of their choosing, you pick a winner from the bids and pay on delivery. <b>Buy Aircraft</b> targets a specific design — the seller names a price and picks stock-or-build-to-order; you accept and pay on the spot.</div>
           <div class="sh-section-head">Aircraft · ${aircraft.length}</div>
           ${acRowsHtml}
           <div class="al-hint">Flying aircraft lose condition each tick (6%/tick on routes). Overhaul restores condition (cost 0.5% of price — $300k/$450k/$600k; the cap falls 1% per cycle). Retire scraps a plane — no refund.</div>`;
@@ -5427,19 +5430,32 @@ function initials(s, n) {
           : `<div class="al-hint">No cities available — build a Regional HQ to expand beyond your HQ nation.</div>`;
 
         // Aircraft RFPs this airline has posted (open = taking bids,
-        // active = a manufacturer is building to order).
+        // active = a manufacturer is building to order). Pending bids
+        // come along so the airline can pick a winner inline; pick
+        // uses accept_aircraft_rfp_bid (20270587, manual award).
         const { data: myRfps, error: rfpErr } = await _supabase.from('ent_aircraft_rfps')
-          .select('id, aircraft_class, quantity, budget_per_unit, status, timeline_ticks, progress_ticks, winning_price_per_unit, bids:ent_aircraft_rfp_bids(count)')
+          .select('id, aircraft_class, quantity, status, timeline_ticks, progress_ticks, winning_price_per_unit, bidding_closes_tick, bids:ent_aircraft_rfp_bids(id, price_per_unit, status, design:ent_aircraft_designs!design_id(name, passengers, range_nm), bidder:entrepreneur_corps!bidder_corp_id(name))')
           .eq('airline_corp_id', id).in('status', ['open', 'active']).order('created_at_tick', { ascending: false });
         if (rfpErr) console.warn('[entrepreneur-corp] aircraft-rfps fetch error:', rfpErr.message);
         const acRfps = myRfps || [];
         const rfpRow = (r) => {
-          const n = Number(r.bids?.[0]?.count ?? 0);
+          const pendingBids = (r.bids || []).filter(b => b.status === 'pending');
+          const n = pendingBids.length;
           const prog = r.status === 'open'
             ? `<span class="num amber">bidding · ${n} bid${n === 1 ? '' : 's'}</span>`
             : `<span class="num green">building ${r.progress_ticks}/${r.timeline_ticks}${r.winning_price_per_unit ? ` · ${fmtUsd(Number(r.winning_price_per_unit))}/unit` : ''}</span>`;
-          return `<div class="sh-row"><div class="sh-row-info"><div class="sh-row-name">${r.quantity}× ${escapeHtml(AIRCRAFT[r.aircraft_class]?.label || r.aircraft_class)}</div>
-            <div class="sh-row-sub">budget ${fmtUsd(Number(r.budget_per_unit) || 0)}/unit</div></div>${prog}</div>`;
+          const ticksLeft = Math.max(0, Number(r.bidding_closes_tick) - currentTick);
+          const subLine = r.status === 'open'
+            ? (n === 0 ? `awaiting bids · window closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}` : `${n} bid${n === 1 ? '' : 's'} · pick a winner below`)
+            : '';
+          const bidsList = (r.status === 'open' && n > 0)
+            ? '<div class="sh-row-bids" style="padding:6px 14px 10px 14px;border-top:0.5px solid rgba(255,255,255,0.06);">' + pendingBids.map(b =>
+                `<div class="sh-row-bid" style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:11px;color:#cfcabf;">
+                   <div style="flex:1;min-width:0;">${escapeHtml(b.bidder?.name || 'Manufacturer')} · ${escapeHtml(b.design?.name || 'design')} · <b style="color:#fff;">${fmtUsd(Number(b.price_per_unit))}/unit</b></div>
+                   ${ownerOnly(`<button class="ap-btn-small list ac-pick-btn" data-bid="${b.id}">Pick</button>`)}
+                 </div>`).join('') + '</div>'
+            : '';
+          return `<div class="sh-row"><div class="sh-row-info"><div class="sh-row-name">${r.quantity}× ${escapeHtml(AIRCRAFT[r.aircraft_class]?.label || r.aircraft_class)}</div>${subLine ? `<div class="sh-row-sub">${subLine}</div>` : ''}</div>${prog}</div>${bidsList}`;
         };
         const rfpSection = `<div class="sh-section-head">Aircraft Orders · ${acRfps.length}</div>${acRfps.length ? acRfps.map(rfpRow).join('') : '<div class="sh-empty">No open aircraft orders — use Request Aircraft above.</div>'}`;
 
@@ -5493,15 +5509,16 @@ function initials(s, n) {
         let rfpBidSection = '';
         if (availAcDesigns.length) {
           const { data: openRfps, error: orErr } = await _supabase.from('ent_aircraft_rfps')
-            .select('id, aircraft_class, quantity, budget_per_unit, airline:entrepreneur_corps!airline_corp_id(name), mybid:ent_aircraft_rfp_bids(bidder_corp_id, price_per_unit)')
+            .select('id, aircraft_class, quantity, bidding_closes_tick, airline:entrepreneur_corps!airline_corp_id(name), mybid:ent_aircraft_rfp_bids(bidder_corp_id, price_per_unit)')
             .eq('status', 'open').neq('airline_corp_id', id).order('bidding_closes_tick', { ascending: true });
           if (orErr) console.warn('[entrepreneur-corp] open-aircraft-rfps fetch error:', orErr.message);
           const biddable = (openRfps || []).filter(r => availClasses.has(r.aircraft_class));
           const orRow = (r) => {
             const mine = (r.mybid || []).find(b => b.bidder_corp_id === id);
-            const bidBtn = ownerOnly(`<button class="ap-btn-small list ac-bid-btn" data-rid="${r.id}" data-class="${escapeHtml(r.aircraft_class)}" data-budget="${Number(r.budget_per_unit) || 0}">${mine ? `bid ${fmtUsd(Number(mine.price_per_unit))}` : 'Bid'}</button>`);
+            const bidBtn = ownerOnly(`<button class="ap-btn-small list ac-bid-btn" data-rid="${r.id}" data-class="${escapeHtml(r.aircraft_class)}">${mine ? `bid ${fmtUsd(Number(mine.price_per_unit))}` : 'Bid'}</button>`);
+            const ticksLeft = Math.max(0, Number(r.bidding_closes_tick) - currentTick);
             return `<div class="cf-row"><div><div class="who">${r.quantity}× ${escapeHtml(r.aircraft_class)} · ${escapeHtml(r.airline?.name || 'Airline')}</div>
-              <div class="sub">budget ${fmtUsd(Number(r.budget_per_unit) || 0)}/unit</div></div>
+              <div class="sub">bidding closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}</div></div>
               ${bidBtn}</div>`;
           };
           rfpBidSection = `<div class="section-heading"><span class="sans">Open Aircraft</span><span class="serif">RFPs</span></div>${biddable.length ? biddable.map(orRow).join('') : '<div class="sh-empty">No open RFPs matching your available designs.</div>'}`;
@@ -6149,7 +6166,34 @@ function initials(s, n) {
         const alBuyAc = document.getElementById('al-buy-aircraft');
         if (alBuyAc) alBuyAc.addEventListener('click', openBuyAircraftModal);
         pj.querySelectorAll('.ac-bid-btn').forEach(btn => btn.addEventListener('click', () =>
-          openAircraftBidModal(btn.dataset.rid, btn.dataset.class, Number(btn.dataset.budget))));
+          openAircraftBidModal(btn.dataset.rid, btn.dataset.class)));
+        // Airline picks a winning bid on one of their RFPs. Uses
+        // accept_aircraft_rfp_bid (20270587, manual award).
+        pj.querySelectorAll('.ac-pick-btn').forEach(btn => btn.addEventListener('click', async () => {
+          if (btn.dataset.busy === '1') return;
+          if (!confirm('Pick this bid as the winner? Production starts now and you pay on delivery. Other pending bids on this RFP will be marked lost.')) return;
+          btn.dataset.busy = '1';
+          btn.disabled = true;
+          const prev = btn.textContent;
+          btn.textContent = '…';
+          try {
+            const { data, error } = await _supabase.rpc('accept_aircraft_rfp_bid', { p_bid_id: btn.dataset.bid });
+            if (error) throw error;
+            if (!data?.success) {
+              const R = { bid_not_found: 'That bid no longer exists.', bid_not_pending: 'That bid is no longer open.',
+                rfp_not_found: 'RFP not found.', rfp_not_open: 'This RFP has already been awarded or cancelled.',
+                not_airline_owner: 'Only the airline that posted this RFP can pick a winner.',
+                design_unavailable: 'That design is no longer available — pick a different bid.' };
+              alert(R[data?.reason] || ('Could not pick: ' + (data?.reason || 'unknown')));
+              btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            alert('Failed: ' + (e?.message || e));
+            btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
+          }
+        }));
         // Aircraft-order action buttons (Open Orders panel). Same shape as the
         // .eo-* engine handlers above but go through openAircraftOrderModal +
         // cancelAircraftOrder so they target ent_aircraft_orders RPCs.
@@ -6649,7 +6693,7 @@ const openBidModal = (contractId, label, yourCost) => {
     const AR_REASON = {
       not_airline: 'Only Airline corps can request aircraft.', not_owner: 'Only the corp owner can request.',
       invalid_class: 'Pick an aircraft class.', invalid_quantity: 'Quantity must be 1–20.',
-      invalid_budget: 'Enter a per-unit budget.', corp_not_found: 'Corp not found.',
+      invalid_window: 'Bidding window must be 1–48 ticks.', corp_not_found: 'Corp not found.',
     };
     const ARB_REASON = {
       not_manufacturer: 'Only Aviation Manufacturing corps can bid.', not_owner: 'Only the corp owner can bid.',
@@ -6667,13 +6711,11 @@ const openBidModal = (contractId, label, yourCost) => {
         <div class="bm-modal" style="max-width:440px;">
           <div class="bm-head"><div class="ti">Request <em>Aircraft</em></div><div class="bm-x" id="ar-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Commission aircraft from Aviation Manufacturing corps. They bid one of their available designs of this class + a price; the lowest builds the order and delivers it. You pay price × qty on delivery.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Commission aircraft from Aviation Manufacturing corps. They bid one of their available designs of this class at a price of their choosing; you pick a winner from the bids. You pay price × qty on delivery.</div>
             <div class="bm-label">Class</div>
             <select class="bm-select" id="ar-class">${classOpts}</select>
             <div class="bm-label">Quantity</div>
             <input type="number" class="bm-input" id="ar-qty" min="1" max="20" value="1">
-            <div class="bm-label">Budget cap ($ per unit)</div>
-            <input type="number" class="bm-input" id="ar-budget" min="1" step="1000000" placeholder="e.g. 60000000">
             <div class="bm-label">Bidding window (ticks)</div>
             <input type="number" class="bm-input" id="ar-bidding" min="1" max="48" value="6">
             <div class="bm-err" id="ar-err"></div>
@@ -6689,15 +6731,13 @@ const openBidModal = (contractId, label, yourCost) => {
         const errEl = document.getElementById('ar-err');
         const cls = document.getElementById('ar-class').value;
         const qty = Math.round(Number(document.getElementById('ar-qty').value) || 0);
-        const budget = Math.round(Number(document.getElementById('ar-budget').value) || 0);
         const bidding = Math.max(1, Math.round(Number(document.getElementById('ar-bidding').value) || 6));
         if (qty < 1 || qty > 20) { errEl.textContent = 'Quantity must be 1–20.'; return; }
-        if (budget < 1) { errEl.textContent = 'Enter a per-unit budget.'; return; }
         submitting = true;
         const btn = document.getElementById('ar-submit'); btn.disabled = true; btn.textContent = 'Posting…'; errEl.textContent = '';
         try {
           const { data, error } = await _supabase.rpc('request_aircraft_build', {
-            p_airline_corp_id: id, p_class: cls, p_quantity: qty, p_budget_per_unit: budget, p_bidding_ticks: bidding });
+            p_airline_corp_id: id, p_class: cls, p_quantity: qty, p_bidding_ticks: bidding });
           if (error) throw error;
           if (!data || !data.success) {
             errEl.textContent = AR_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
@@ -6709,7 +6749,7 @@ const openBidModal = (contractId, label, yourCost) => {
       ov.classList.add('open');
     };
 
-    const openAircraftBidModal = async (rfpId, rfpClass, budget) => {
+    const openAircraftBidModal = async (rfpId, rfpClass) => {
       const ov = document.getElementById('arb-overlay');
       if (!ov) return;
       const { data: designs, error: dErr } = await _supabase.from('ent_aircraft_designs')
@@ -6725,7 +6765,7 @@ const openBidModal = (contractId, label, yourCost) => {
         <div class="bm-modal" style="max-width:440px;">
           <div class="bm-head"><div class="ti">Bid on <em>${escapeHtml(rfpClass)} order</em></div><div class="bm-x" id="arb-close">×</div></div>
           <div class="bm-body">
-            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Bid one of your available ${escapeHtml(rfpClass)} designs + a price/unit (≥ its production cost, ≤ the ${fmtUsd(budget)} budget). On award you build to order, pay the production cost, and receive your bid × qty. Lowest bid wins.</div>
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Bid one of your available ${escapeHtml(rfpClass)} designs + a price/unit ≥ its production cost. The airline picks a winner from the bids it receives. On award you build to order, pay the production cost, and receive your bid × qty.</div>
             ${opts.length ? `<div class="bm-label">Design</div><select class="bm-select" id="arb-design">${designOpts}</select>
             <div class="bm-label">Price per unit ($)</div>
             <input type="number" class="bm-input" id="arb-price" step="1000000">`
@@ -6759,8 +6799,8 @@ const openBidModal = (contractId, label, yourCost) => {
             p_corp_id: id, p_rfp_id: rfpId, p_design_id: designId, p_price_per_unit: price });
           if (error) throw error;
           if (!data || !data.success) {
-            errEl.textContent = data?.reason === 'over_budget' ? `Bid exceeds the budget (${fmtUsd(Number(data.budget) || 0)}/unit).`
-              : data?.reason === 'bid_below_cost' ? `Bid must be ≥ the design's production cost (${fmtUsd(Number(data.floor) || 0)}).`
+            errEl.textContent = data?.reason === 'bid_below_cost'
+              ? `Bid must be ≥ the design's production cost (${fmtUsd(Number(data.floor) || 0)}).`
               : (ARB_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown')));
             submitting = false; btn.disabled = false; btn.textContent = 'Place Bid'; return;
           }

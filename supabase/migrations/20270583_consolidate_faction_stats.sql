@@ -2212,6 +2212,12 @@ END $$;
 
 
 -- ── list_pending_state_advocate_requests_for_reviewer — snapshot renames ──
+-- DROP first: the RETURNS TABLE columns rename from applicant_standing/
+-- applicant_credibility to applicant_influence/applicant_skill, and
+-- Postgres rejects CREATE OR REPLACE that changes the function's return-type
+-- column names ('cannot change return type of existing function' 42P13).
+DROP FUNCTION IF EXISTS public.list_pending_state_advocate_requests_for_reviewer(uuid);
+
 CREATE OR REPLACE FUNCTION public.list_pending_state_advocate_requests_for_reviewer(
     p_faction_id uuid
 ) RETURNS TABLE (

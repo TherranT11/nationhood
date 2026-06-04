@@ -421,8 +421,7 @@ let _viewerPartyId = null;
 let _viewerStanding = 0;
 let _viewerReputation = 0;
 let _viewerPoliticalCapital = 0;
-let _viewerSpeechReadyAt = 0;
-let _viewerDoorKnockReadyAt = 0;
+let _viewerSkill = 0;
 let _viewerNextActionAt = 0;
 let _viewerNextMotionAt = 0;
 let _shardTick = 0;
@@ -448,8 +447,7 @@ async function init() {
   _viewerStanding         = Number(ctx.faction?.politician_influence) || 0;
   _viewerReputation       = Number(ctx.faction?.politician_reputation) || 0;
   _viewerPoliticalCapital = Number(ctx.faction?.political_capital) || 0;
-  _viewerSpeechReadyAt    = Number(ctx.faction?.speech_cooldown_until_tick) || 0;
-  _viewerDoorKnockReadyAt = Number(ctx.faction?.door_knock_cooldown_until_tick) || 0;
+  _viewerSkill            = Number(ctx.faction?.politician_skill) || 0;
   _viewerNextActionAt     = Number(ctx.faction?.next_member_action_tick) || 0;
   _viewerNextMotionAt     = Number(ctx.faction?.next_party_motion_tick) || 0;
   _shardTick           = Number(ctx.shard?.current_tick) || 0;
@@ -585,49 +583,41 @@ function renderSidebar(party, isMine) {
 }
 
 // Party-Members panel. Two ground-floor actions back the climb:
-// Door Knocking (1-tick cooldown) and Give a Speech (1d6 + Standing,
-// 3-tick cooldown). Both gated by the universal 1-per-turn rule via
-// next_member_action_tick; Speech also gates on its own 3-tick
-// cooldown via speech_cooldown_until_tick. First call wires the
-// scaffold (cards container + result node); subsequent calls only
-// rewrite #act-list so the flash row from the last action stays put
-// across re-renders. Click handler in onMemberAction flips .loading
-// to guard against double-fire and mutates the in-memory viewer
-// stats from the RPC return.
-// Party-Members panel. Two asymmetric ground-floor actions:
-// Door Knocking (1d6 + Reputation, 2-tick cooldown — personal upside
-// vs party-brand risk) and Give a Speech (1d6 + Charisma, 3-tick
-// cooldown — party-brand upside vs personal-Reputation risk). Both
-// gated by the universal 1-per-turn rule via next_member_action_tick;
-// each also has its own per-action cooldown. Natural 1 always crashes;
-// natural 6 always crits — keeps a risk floor even for high-stat
-// politicians. First call wires the scaffold (cards container +
-// result node); subsequent calls only rewrite #act-list so the flash
-// row from the last action stays put across re-renders.
+// Run Political Ads (politician_door_knock — RPC name kept; body
+// redesigned in 20270588 to spend 1 Influence and roll 1d10 + Skill
+// for polling) and Give a Speech (politician_give_speech — pure +1d6
+// polling). Both gated only by the shared 1-per-turn rule via
+// next_member_action_tick; per-action cooldowns (door_knock_cooldown_*,
+// speech_cooldown_*) are no longer read or stamped.
 function renderActionsPanel() {
   const body = document.getElementById('actions-body');
   if (!body.querySelector('#act-list')) {
     body.innerHTML = '<div class="act-list" id="act-list"></div><div class="act-result" id="act-result"></div>';
   }
   const list = document.getElementById('act-list');
-  const dkRemaining     = Math.max(0, Math.max(_viewerNextActionAt, _viewerDoorKnockReadyAt) - _shardTick);
-  const speechRemaining = Math.max(0, Math.max(_viewerNextActionAt, _viewerSpeechReadyAt) - _shardTick);
-  const dkReady     = dkRemaining === 0;
-  const speechReady = speechRemaining === 0;
+  const turnRemaining = Math.max(0, _viewerNextActionAt - _shardTick);
+  const turnReady     = turnRemaining === 0;
+  const capital       = Number(_viewerPoliticalCapital) || 0;
+  const adsCanAfford  = capital >= 1;
+  const adsReady      = turnReady && adsCanAfford;
+  const speechReady   = turnReady;
+  const adsLockReason = !turnReady
+    ? `Ready in ${turnRemaining} tick${turnRemaining === 1 ? '' : 's'}`
+    : (!adsCanAfford ? 'Need 1 Influence' : 'Ready');
   list.innerHTML = `
-    <div class="act-card${dkReady ? '' : ' disabled'}" data-action="door_knock">
+    <div class="act-card${adsReady ? '' : ' disabled'}" data-action="door_knock">
       <div class="act-row">
-        <div class="act-name">Door Knocking</div>
-        <div class="act-cd${dkReady ? ' ready' : ''}">${dkReady ? 'Ready' : `Ready in ${dkRemaining} tick${dkRemaining === 1 ? '' : 's'}`}</div>
+        <div class="act-name">Run Political Ads</div>
+        <div class="act-cd${adsReady ? ' ready' : ''}">${adsLockReason}</div>
       </div>
-      <div class="act-meta">1d6 + Reputation (yours: ${_viewerReputation}). Hit: +0.2 Political Capital (+0.4 on nat 6). Miss: −0.5 Party Popularity (−1 on nat 1). 2-tick cooldown.</div>
+      <div class="act-meta">Spend 1 Influence. Roll 1d10 + Skill (yours: ${_viewerSkill ?? 0}); polling moves by that amount.</div>
     </div>
     <div class="act-card${speechReady ? '' : ' disabled'}" data-action="give_speech">
       <div class="act-row">
         <div class="act-name">Give a Speech</div>
-        <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${speechRemaining} tick${speechRemaining === 1 ? '' : 's'}`}</div>
+        <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${turnRemaining} tick${turnRemaining === 1 ? '' : 's'}`}</div>
       </div>
-      <div class="act-meta">1d6 + Influence (yours: ${_viewerStanding}). Hit: +0.2 Party Popularity (+0.4 on nat 6). Miss: −2 Reputation (−3 on nat 1). 3-tick cooldown.</div>
+      <div class="act-meta">No cost. Roll 1d6; polling moves by that amount.</div>
     </div>
   `;
   list.querySelectorAll('.act-card').forEach(card => {
@@ -639,24 +629,34 @@ async function onMemberAction(actionKey, card) {
   if (card.classList.contains('disabled') || card.classList.contains('loading')) return;
   card.classList.add('loading');
   try {
-    if (actionKey === 'door_knock') {
-      const { data, error } = await _supabase.rpc('politician_door_knock', { p_party_id: _viewerPartyId });
-      if (error) throw error;
-      if (!data?.success) { flashActionResult(`Door knock failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
-      _viewerPoliticalCapital = Number(data.political_capital) || 0;
-      _viewerDoorKnockReadyAt = Number(data.cooldown_until_tick) || 0;
-      patchPopularityCell(Number(data.popularity_pct));
-      patchViewerCapitalCell(_viewerPoliticalCapital);
-      flashActionResult(formatActionMsg('Reputation', data), bracketKind(data.bracket));
-    } else if (actionKey === 'give_speech') {
-      const { data, error } = await _supabase.rpc('politician_give_speech', { p_party_id: _viewerPartyId });
-      if (error) throw error;
-      if (!data?.success) { flashActionResult(`Speech failed: ${data?.reason || 'unknown'}.`, 'bad'); return; }
-      _viewerReputation    = Number(data.politician_reputation) || 0;
-      _viewerSpeechReadyAt = Number(data.cooldown_until_tick) || 0;
-      patchPopularityCell(Number(data.popularity_pct));
-      flashActionResult(formatActionMsg('Influence', data), bracketKind(data.bracket));
+    const fn = actionKey === 'give_speech' ? 'politician_give_speech' : 'politician_door_knock';
+    const { data, error } = await _supabase.rpc(fn, { p_party_id: _viewerPartyId });
+    if (error) throw error;
+    if (!data?.success) {
+      const r = data?.reason || 'unknown';
+      const msg = r === 'insufficient_capital'
+        ? `Need ${data?.required ?? 1} Influence to run ads (you have ${data?.have ?? 0}).`
+        : r === 'cooldown'
+          ? `Already campaigned this tick. Next action at tick ${data?.ready_at_tick ?? '?'}.`
+          : `${actionKey === 'give_speech' ? 'Speech' : 'Ads'} failed: ${r}.`;
+      flashActionResult(msg, 'bad');
+      return;
     }
+    _viewerNextActionAt = Number(data.next_member_action_tick) || 0;
+    if (actionKey === 'door_knock') {
+      _viewerPoliticalCapital = Number(data.political_capital) || 0;
+      patchViewerCapitalCell(_viewerPoliticalCapital);
+    }
+    const roll  = Number(data.roll) || 0;
+    const delta = Number(data.polling_delta) || 0;
+    const verb  = actionKey === 'give_speech' ? 'Gave a speech' : 'Ran political ads';
+    const rollDetail = actionKey === 'give_speech'
+      ? `rolled ${roll}`
+      : `rolled ${roll} + ${data.skill ?? 0} Skill = ${delta}`;
+    const pollMsg = data.has_active_race
+      ? `polling ${delta > 0 ? '+' : ''}${delta}`
+      : 'no active race — polling unchanged';
+    flashActionResult(`${verb} (${rollDetail}): ${pollMsg}.`, 'ok');
   } catch (err) {
     console.warn(`[party] ${actionKey} failed`, err);
     flashActionResult('Action failed. Try again.', 'bad');
@@ -666,39 +666,6 @@ async function onMemberAction(actionKey, card) {
   }
 }
 
-// Bracket → flash kind mapping. crit/hit show as good/ok wins;
-// fail/crit_fail show as the proportional bad result.
-function bracketKind(bracket) {
-  if (bracket === 'crit')      return 'good';
-  if (bracket === 'hit')       return 'ok';
-  if (bracket === 'crit_fail') return 'bad';
-  if (bracket === 'fail')      return 'bad';
-  return 'ok';
-}
-
-// One-liner the player sees after rolling. Header is roll + stat +
-// total, optionally tagged with a natural-1/6 callout; then deltas
-// (positive shown with leading +). Always renders the header as a
-// clean sentence so "= 3 -2 Reputation" can't be misread.
-function formatActionMsg(statLabel, data) {
-  const stat = Number(data[statLabel.toLowerCase()]) || 0;
-  const total = Number(data.total) || 0;
-  const popDelta = Number(data.popularity_delta) || 0;
-  const capDelta = Number(data.political_capital_delta) || 0;
-  const repDelta = Number(data.reputation_delta) || 0;
-  const tag = data.bracket === 'crit'      ? ' &mdash; natural 6, electrifying!'
-            : data.bracket === 'crit_fail' ? ' &mdash; natural 1, disaster!'
-            : '';
-  const fmt = (n, label) => `${n > 0 ? '+' : ''}${n} ${label}`;
-  const deltas = [
-    popDelta ? fmt(popDelta, 'Party Popularity') : '',
-    capDelta ? fmt(capDelta, 'Political Capital') : '',
-    repDelta ? fmt(repDelta, 'Reputation') : '',
-  ].filter(Boolean).join(' &middot; ') || 'no change';
-  const header = `Rolled ${data.roll} + ${stat} ${statLabel} = ${total}${tag}`;
-  return `${header}${tag ? '' : '.'} ${deltas}.`;
-}
-
 function flashActionResult(html, kind) {
   const el = document.getElementById('act-result');
   if (!el) return;
@@ -706,22 +673,7 @@ function flashActionResult(html, kind) {
   el.className = `act-result show ${kind || ''}`;
 }
 
-// Patch the Popularity stat-strip cell in-place after an action moves
-// the percentage. Cheaper than re-rendering the identity card and
-// keeps the rest of the strip (seats, status, founded, members)
-// untouched.
-function patchPopularityCell(newPct) {
-  if (!Number.isFinite(newPct)) return;
-  document.querySelectorAll('.stats-strip .ss').forEach(cell => {
-    const k = cell.querySelector('.k');
-    if (k && k.textContent.trim() === 'Popularity') {
-      const v = cell.querySelector('.v');
-      if (v) v.innerHTML = `${Math.round(newPct)}%<span class="of">/ ${_partyPopCap}%</span>`;
-    }
-  });
-}
-
-// Update the viewer's own Political Capital cell in the Members panel
+// Update the viewer's own Influence cell in the Members panel
 // after an action. Finds the viewer's row by the "You" badge marker,
 // so the rest of the members list stays untouched.
 function patchViewerCapitalCell(newCap) {
@@ -1026,7 +978,7 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">
-    <span></span><span>Name</span><span>Affiliation</span><span>${escHtml(statLabel)}</span><span>Age</span><span style="text-align:right;">Pol. Capital</span>
+    <span></span><span>Name</span><span>Affiliation</span><span>${escHtml(statLabel)}</span><span>Age</span><span style="text-align:right;">Influence</span>
   </div>${body}`;
 }
 

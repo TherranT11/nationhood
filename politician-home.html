@@ -444,7 +444,7 @@
 /* ── Try a Case modal — Advocate's docket draw + choose-a-side ───
    Hidden by default; openTryCaseModal() sets .open. No X close
    button in the success path (the player must Represent or Refuse).
-   Refuse costs Political Capital; a close button appears only on
+   Refuse costs Influence; a close button appears only on
    draw-error paths so the player isn't trapped. ────────────────── */
 .tc-back { position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
   display:none; align-items:center; justify-content:center; padding:18px; }
@@ -1206,10 +1206,10 @@ async function init() {
   party      = ctx.party || null;
   currentTick  = Number(ctx.shard?.current_tick) || 0;
 
-  // Resolve any due election so the Political Capital card on this page is honest
+  // Resolve any due election so the Influence card on this page is honest
   // even when the player visits home before career. The career page is
   // where the result banner is shown; here we just want the side effects
-  // (Political Capital delta + career_events row) to land. Soft-fails so a
+  // (Influence delta + career_events row) to land. Soft-fails so a
   // missing RPC during early dev doesn't break the home page.
   try {
     const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
@@ -1503,9 +1503,9 @@ function renderCareer() {
 function renderStats() {
   const stats = [
     { label: 'REPUTATION', value: politician.politician_reputation ?? 1, kind: 'num' },
-    { label: 'INFLUENCE',  value: politician.politician_influence  ?? 1, kind: 'num' },
+    { label: 'STANDING',   value: politician.politician_influence  ?? 1, kind: 'num' },
     { label: 'SKILL',      value: politician.politician_skill      ?? 1, kind: 'num' },
-    { label: 'CAPITAL',    value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
+    { label: 'INFLUENCE',  value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
   ];
   document.getElementById('stats-row').innerHTML = stats.map((s, i) =>
     `<div class="stat-card${i === 0 ? ' accent' : ''}">
@@ -1565,7 +1565,7 @@ const CIVIL_SERVANT_ACTIONS = [
 const ADVOCATE_ACTIONS = [
   { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
   { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'A quiet afternoon with the codes. +2 Skill, -1 Reputation. Only when no cases are active.', action: 'read-statute-books' },
-  { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +3 Reputation and +5 Political Capital; lose 5 Rep and 3 PC if it stands.', action: 'appeal' },
+  { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +3 Reputation and +5 Influence; lose 5 Rep and 3 Influence if it stands.', action: 'appeal' },
 ];
 
 const AFFIL_VARIANTS = {
@@ -1912,7 +1912,7 @@ const ACTION_REASON = {
 };
 
 async function handleResignOffice(btn, officeName) {
-  if (!confirm(`Resign from your office as ${officeName}? Costs 2 Political Capital and -2 party popularity. The seat opens until the next election.`)) return;
+  if (!confirm(`Resign from your office as ${officeName}? Costs 2 Influence and -2 party popularity. The seat opens until the next election.`)) return;
   btn.disabled = true;
   const prev = btn.textContent;
   btn.textContent = 'RESIGNING…';
@@ -2309,7 +2309,7 @@ function renderStateAdvocateRequestCard(r) {
         <div class="oi-meta">
           <span class="oi-corp">Reputation: <strong>${Number(r.applicant_reputation) || 0}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Influence: <strong>${Number(r.applicant_influence) || 0}</strong></span>
+          <span class="oi-corp">Standing: <strong>${Number(r.applicant_influence) || 0}</strong></span>
           <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Skill: <strong>${Number(r.applicant_skill) || 0}</strong></span>
           ${displacementLine}
@@ -2461,10 +2461,10 @@ function renderCampaignCard(ctx) {
 
 function renderCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
-  const gateTick    = Number(politician.next_member_action_tick) || 0;
-  const speechTick  = Number(politician.speech_cooldown_until_tick) || 0;
-  const universalLocked = gateTick > currentTick;
-  const speechLocked    = universalLocked || speechTick > currentTick;
+  const gateTick = Number(politician.next_member_action_tick) || 0;
+  const turnLocked = gateTick > currentTick;
+  const capital = Number(politician.political_capital) || 0;
+  const adsCanAfford = capital >= 1;
   // No party = no actions. The Stand-for-Election flow on politician-career
   // gates by the same rule, so if there's an active race the politician
   // should still be a member; this is the defensive fallback.
@@ -2472,27 +2472,26 @@ function renderCampaignActions(ctx) {
     return `<div class="ci-actions"><div class="ci-actions-lab">YOUR NEXT MOVE</div>
       <div class="ci-act-lockmsg">Rejoin a party to take campaign actions.</div></div>`;
   }
-  const knockBtn = `
-    <button class="ci-act" type="button" data-camp-action="knock" ${universalLocked ? 'disabled' : ''}>
-      <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#9994;</span><span class="ci-act-name">Door Knocking</span></div>
-      <div class="ci-act-blurb">Walk a district, meet voters. Slow but reliable.</div>
-      <div class="ci-act-meta"><span class="ci-act-effect">+2 polling</span><span class="ci-act-cost">1 tick</span></div>
+  const adsTitle = !adsCanAfford ? ' title="Need 1 Influence."' : '';
+  const adsBtn = `
+    <button class="ci-act" type="button" data-camp-action="ads"${turnLocked || !adsCanAfford ? ' disabled' : ''}${adsTitle}>
+      <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#128241;</span><span class="ci-act-name">Run Political Ads</span></div>
+      <div class="ci-act-blurb">Buy attack and persuasion spots. Spend Influence to swing polling.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+1d10 + Skill polling</span><span class="ci-act-cost">&minus;1 Influence</span></div>
     </button>`;
   const speechBtn = `
-    <button class="ci-act" type="button" data-camp-action="speech" ${speechLocked ? 'disabled' : ''}>
+    <button class="ci-act" type="button" data-camp-action="speech"${turnLocked ? ' disabled' : ''}>
       <div class="ci-act-head"><span class="ci-act-icon" style="color:#d4b87a;">&#128226;</span><span class="ci-act-name">Give a Speech</span></div>
-      <div class="ci-act-blurb">Rally the faithful and reach the press. High variance.</div>
-      <div class="ci-act-meta"><span class="ci-act-effect var">&minus;2 to +5 polling</span><span class="ci-act-cost">3-tick cooldown</span></div>
+      <div class="ci-act-blurb">Rally the faithful and reach the press.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+1d6 polling</span><span class="ci-act-cost">no cost</span></div>
     </button>`;
-  const lockMsg = (() => {
-    if (universalLocked) return `Already campaigned this tick &mdash; next action at tick ${gateTick}.`;
-    if (speechLocked)    return `Speech cooling down until tick ${speechTick}; door knocking is still available.`;
-    return '';
-  })();
+  const lockMsg = turnLocked
+    ? `Already campaigned this tick &mdash; next action at tick ${gateTick}.`
+    : '';
   return `
     <div class="ci-actions">
       <div class="ci-actions-lab"><span>YOUR NEXT MOVE</span><span class="remind">1 action per tick</span></div>
-      <div class="ci-act-grid">${knockBtn}${speechBtn}</div>
+      <div class="ci-act-grid">${adsBtn}${speechBtn}</div>
       ${lockMsg ? `<div class="ci-act-lockmsg">${lockMsg}</div>` : ''}
     </div>`;
 }
@@ -2507,6 +2506,8 @@ function bindCampaignActions(ctx) {
       // Disable the sibling too so the player can't double-spend the
       // 1-per-turn gate while the first call is in flight.
       btn.parentElement?.querySelectorAll('.ci-act').forEach(b => { b.disabled = true; });
+      // 'ads' → politician_door_knock (RPC kept for backwards-compat;
+      // body redesigned in 20270588 to run Political Ads).
       const fn = btn.dataset.campAction === 'speech'
         ? 'politician_give_speech'
         : 'politician_door_knock';
@@ -2519,11 +2520,12 @@ function bindCampaignActions(ctx) {
       if (!data?.success) {
         const reason = data?.reason || 'unknown';
         const human = {
-          not_authenticated: 'You are not signed in.',
-          not_member:        'You are no longer a member of this party.',
-          party_not_found:   'Party not found.',
-          no_shard:          'Shard not found.',
-          cooldown:          `Action on cooldown until tick ${data?.ready_at_tick ?? '?'}.`,
+          not_authenticated:    'You are not signed in.',
+          not_member:           'You are no longer a member of this party.',
+          party_not_found:      'Party not found.',
+          no_shard:             'Shard not found.',
+          cooldown:             `You've already taken your action this tick. Next at tick ${data?.ready_at_tick ?? '?'}.`,
+          insufficient_capital: `Need ${data?.required ?? 1} Influence to run ads (you have ${data?.have ?? 0}).`,
         }[reason] || `Action failed (${reason}).`;
         alert(human);
         location.reload();
@@ -2793,7 +2795,7 @@ function subscribeChatInserts() {
 // (party summary + preliminary assessment + per-side reputation), and
 // dispatches the player's choice to represent_drawn_case (commits
 // the advocate to a side; the trial system pays out reputation on
-// victory) or refuse_drawn_case (-2 Political Capital).
+// victory) or refuse_drawn_case (-2 Influence).
 async function tryACase(factionId) {
   if (!factionId) return;
   openTryCaseModal();
@@ -2890,7 +2892,7 @@ function renderAppealList({ cases, error, factionId } = {}) {
     host.innerHTML = `
       <div class="ap-empty">
         No verdicts in the last 12 ticks are eligible for appeal.
-        <div class="ap-empty-explain">Winning a case on appeal gives <strong>+3 Reputation</strong> and <strong>+5 Political Capital</strong>; losing it costs <strong>−5 Reputation</strong> and <strong>−3 Political Capital</strong>.</div>
+        <div class="ap-empty-explain">Winning a case on appeal gives <strong>+3 Reputation</strong> and <strong>+5 Influence</strong>; losing it costs <strong>−5 Reputation</strong> and <strong>−3 Influence</strong>.</div>
       </div>`;
     return;
   }
@@ -3067,7 +3069,7 @@ function renderTryCaseModal(d, factionId) {
       </div>
       <button type="button" class="tc-refuse-btn" id="tc-refuse">
         <span>&#10005; REFUSE THE MATTER</span>
-        <span class="tc-refuse-cost">&minus;2 POLITICAL CAPITAL</span>
+        <span class="tc-refuse-cost">&minus;2 INFLUENCE</span>
       </button>
     </div>`;
 
@@ -3940,14 +3942,14 @@ init();
 <!-- Try a Case modal — Advocate docket draw + choose-a-side. Hidden
      until openTryCaseModal() sets .open. No close X in the success
      path: the player must either commit (Represent a side) or Refuse
-     (-2 Political Capital). On draw failure the status path renders
+     (-2 Influence). On draw failure the status path renders
      its own Close button so the player isn't trapped. -->
 <div class="tc-back" id="tc-back">
   <div class="tc-modal">
     <div class="tc-head">
       <div class="tc-eyebrow">A NEW MATTER &middot; FOR YOUR CONSIDERATION</div>
       <div class="tc-title">Try a <em>Case</em></div>
-      <div class="tc-sub">A case has been drawn from the docket. <strong>Choose a side to represent</strong>, or refuse the matter. <em>Refusing costs Political Capital.</em></div>
+      <div class="tc-sub">A case has been drawn from the docket. <strong>Choose a side to represent</strong>, or refuse the matter. <em>Refusing costs Influence.</em></div>
     </div>
     <div class="tc-body" id="tc-content"></div>
   </div>
