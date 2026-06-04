@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrepreneur — New Thread</title>
+<style>
+/* Topbar + body base come from entrepreneur-topbar.js. Compose surface
+   palette tracks the politician teal accent (#5aafa5 / #7ac8c8). */
+* { box-sizing:border-box; }
+
+.content { padding:18px 24px 40px; max-width:1080px; margin:0 auto; }
+
+.back-link {
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:10px; letter-spacing:0.14em; font-weight:700;
+  text-transform:uppercase; color:#888; text-decoration:none;
+  padding:8px 0; margin-bottom:10px;
+}
+.back-link:hover { color:#7ac8c8; }
+
+.wrap { display:flex; flex-direction:column; gap:18px; }
+
+/* ─── Section header (Roman numeral + label) ─────────────────────── */
+.sec { display:flex; flex-direction:column; gap:9px; }
+.sec-head { display:flex; align-items:baseline; gap:9px; }
+.sec-num {
+  width:18px; height:18px; border-radius:50%;
+  background:rgba(90,175,165,0.08); border:1px solid rgba(90,175,165,0.4);
+  color:#7ac8c8;
+  display:flex; align-items:center; justify-content:center;
+  font-family:Georgia,serif; font-size:9px; font-weight:700; font-style:italic;
+  flex-shrink:0;
+}
+.sec-lab { font-size:9px; letter-spacing:0.16em; color:#7ac8c8; font-weight:700; text-transform:uppercase; }
+.sec-req { color:#c87a7a; }
+.sec-help { margin-left:auto; font-size:8.5px; color:#666; font-style:italic; }
+
+/* ─── Category eyebrow (which forum the thread is being posted in) ── */
+.compose-target {
+  background:#0a0a0a;
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:5px;
+  padding:12px 16px;
+  display:flex; align-items:center; gap:12px;
+  margin-bottom:6px;
+}
+.compose-target.world   { border-top:3px solid #9a7050; --zc:#c89070; --zc-dim:#4a3020; --zc-bg:#160d08; }
+.compose-target.players { border-top:3px solid #7a9aab; --zc:#9ab8c8; --zc-dim:#3a5060; --zc-bg:#0e1318; }
+.compose-target.game    { border-top:3px solid #8a7aa8; --zc:#a89ac8; --zc-dim:#403852; --zc-bg:#0f0c14; }
+.compose-target-glyph {
+  width:38px; height:38px; border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px;
+  background:var(--zc-bg, #0d0d0d);
+  border:1px solid var(--zc-dim, rgba(255,255,255,0.08));
+  color:var(--zc, #888);
+  flex-shrink:0;
+}
+.compose-target-info { flex:1; min-width:0; }
+.compose-target-eyebrow {
+  font-size:8px; letter-spacing:0.18em; font-weight:700;
+  color:#666; text-transform:uppercase; margin-bottom:2px;
+}
+.compose-target-name {
+  font-family:Georgia,serif; font-size:15px; color:#fff;
+  font-weight:500; line-height:1.2; letter-spacing:-0.005em;
+}
+
+/* ─── Inputs ─────────────────────────────────────────────────────── */
+.input {
+  width:100%; padding:11px 14px;
+  background:#0a0f10; border:1px solid rgba(255,255,255,0.06); border-radius:4px;
+  color:#fff; font-size:11px; font-family:inherit;
+  transition:border-color 0.12s;
+}
+.input::placeholder { color:#666; font-style:italic; }
+.input:focus { outline:none; border-color:rgba(90,175,165,0.4); background:#0c1213; }
+
+.input.title-input {
+  font-family:Georgia,serif; font-size:21px; font-weight:500;
+  padding:18px 20px; color:#fff;
+  letter-spacing:-0.012em; line-height:1.25;
+}
+.input.title-input::placeholder { font-style:italic; color:#666; font-weight:400; font-size:18px; }
+
+/* ─── Toolbar ────────────────────────────────────────────────────── */
+.body-tools {
+  background:#0a0f10;
+  border:1px solid rgba(255,255,255,0.06);
+  border-bottom:none;
+  border-radius:5px 5px 0 0;
+  padding:9px 11px;
+  display:flex; align-items:center; gap:2px;
+}
+.tool-btn {
+  height:30px; padding:0 10px; border-radius:3px;
+  background:transparent; border:none; color:#888;
+  cursor:pointer; font-family:Georgia,serif; font-size:14px;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  transition:all 0.1s;
+}
+.tool-btn:hover { background:#0c1213; color:#fff; }
+.tool-btn.active { background:#0c1213; color:#7ac8c8; }
+.tool-btn.italic { font-style:italic; }
+.tool-btn.bold { font-weight:700; font-family:-apple-system,sans-serif; }
+.tool-btn.under { text-decoration:underline; }
+.tool-btn.add-image {
+  background:rgba(90,175,165,0.08);
+  border:1px solid rgba(90,175,165,0.4);
+  color:#7ac8c8;
+  padding:0 12px;
+  font-family:-apple-system,system-ui,sans-serif; font-size:9.5px;
+  letter-spacing:0.1em; font-weight:700; text-transform:uppercase;
+}
+.tool-btn.add-image:hover:not(:disabled) { background:rgba(90,175,165,0.16); border-color:#5aafa5; color:#fff; }
+.tool-btn.add-image:disabled { opacity:0.45; cursor:wait; }
+.tool-btn.add-image .ic { font-size:13px; }
+.tool-divider { width:1px; height:20px; background:rgba(255,255,255,0.06); margin:0 5px; }
+.tool-spacer { flex:1; }
+.tool-count { font-size:9.5px; color:#666; font-style:italic; padding:0 6px; }
+.tool-count strong { color:#bbb; font-style:normal; font-weight:600; }
+
+/* ─── Editor body ────────────────────────────────────────────────── */
+.body-area {
+  width:100%; min-height:340px;
+  padding:24px 28px;
+  background:#0a0f10; border:1px solid rgba(255,255,255,0.06); border-top:none;
+  border-radius:0 0 5px 5px;
+  color:#d4d4d4;
+  font-family:Georgia,serif; font-size:14px; line-height:1.8;
+  outline:none;
+  overflow-y:auto; max-height:600px;
+}
+.body-area:focus { border-color:rgba(90,175,165,0.4); background:#0c1213; }
+.body-area:empty::before {
+  content:attr(data-placeholder);
+  color:#666; font-style:italic;
+}
+.body-area b, .body-area strong { color:#fff; font-weight:600; }
+.body-area i, .body-area em { color:#d4d4d4; font-style:italic; }
+.body-area h1, .body-area h2, .body-area h3 {
+  font-family:Georgia,serif; color:#fff; line-height:1.3;
+  margin:12px 0 6px; font-weight:500;
+}
+.body-area h1 { font-size:22px; }
+.body-area h2 { font-size:18px; }
+.body-area h3 { font-size:16px; }
+.body-area ul, .body-area ol { margin:8px 0 8px 28px; }
+.body-area blockquote {
+  margin:14px 0; padding:8px 16px;
+  border-left:3px solid #5aafa5; color:#bbb; font-style:italic;
+}
+.body-area a { color:#7ac8c8; text-decoration:underline; }
+.body-area img {
+  max-width:100%; height:auto;
+  margin:14px 0; border-radius:4px;
+  border:1px solid rgba(90,175,165,0.25);
+}
+
+/* ─── Footer actions ─────────────────────────────────────────────── */
+.actions {
+  display:flex; align-items:center; gap:10px;
+  padding-top:18px;
+  margin-top:4px;
+  border-top:1px solid rgba(255,255,255,0.06);
+}
+.actions-note {
+  flex:1; font-size:9.5px; color:#888;
+  font-style:italic; line-height:1.5;
+}
+.actions-note .pub { color:#7ac8c8; font-style:italic; }
+.actions-note .self { color:#888; font-size:9px; }
+.field-select {
+  width:100%; padding:11px 14px;
+  background:#0a0f10; border:1px solid rgba(255,255,255,0.06); border-radius:4px;
+  color:#fff; font-size:12px; font-family:inherit;
+}
+.field-select:focus { outline:none; border-color:rgba(90,175,165,0.4); background:#0c1213; }
+.row-two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:720px) { .row-two { grid-template-columns:1fr; } }
+.btn {
+  padding:11px 22px; border-radius:4px;
+  font-size:10px; letter-spacing:0.16em; font-weight:700;
+  cursor:pointer; font-family:inherit; text-transform:uppercase;
+  border:1px solid;
+  display:flex; align-items:center; gap:7px;
+}
+.btn.cancel { background:transparent; border-color:rgba(255,255,255,0.06); color:#888; }
+.btn.cancel:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.btn.post {
+  background:rgba(90,175,165,0.08);
+  border-color:#5aafa5;
+  color:#7ac8c8;
+}
+.btn.post:hover:not(:disabled) { background:rgba(90,175,165,0.16); color:#fff; }
+.btn:disabled { opacity:0.45; cursor:not-allowed; }
+
+.compose-msg {
+  font-size:10px; color:#c87a7a; font-style:italic;
+  padding-top:6px;
+}
+.compose-msg.ok { color:#7ac8c8; }
+
+.loading {
+  font-family:monospace; font-size:11px; color:#4a4940;
+  text-align:center; padding:80px 20px;
+}
+</style>
+</head>
+<body>
+
+<div id="ent-topbar"></div>
+
+<div class="content" id="content" style="display:none;">
+  <a class="back-link" id="back-link" href="entrepreneur-forum.html">&lsaquo; Back</a>
+
+  <div class="wrap">
+
+    <div class="compose-target" id="compose-target">
+      <div class="compose-target-glyph" id="target-glyph"></div>
+      <div class="compose-target-info">
+        <div class="compose-target-eyebrow" id="target-zone"></div>
+        <div class="compose-target-name" id="target-name"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-head">
+        <span class="sec-num">I</span>
+        <span class="sec-lab">Title<span class="sec-req">*</span></span>
+        <span class="sec-help">how the thread shows up in the list</span>
+      </div>
+      <input type="text" id="title-input" class="input title-input"
+             placeholder="What's this thread about?" maxlength="200">
+    </div>
+
+    <div class="sec">
+      <div class="sec-head">
+        <span class="sec-num">II</span>
+        <span class="sec-lab">Body<span class="sec-req">*</span></span>
+        <span class="sec-help">use the toolbar to format · drop in images with <strong style="color:#7ac8c8;font-style:normal;font-weight:700;">+ ADD IMAGE</strong></span>
+      </div>
+      <div>
+        <div class="body-tools">
+          <button class="tool-btn bold"   data-cmd="bold"        title="Bold (Ctrl+B)">B</button>
+          <button class="tool-btn italic" data-cmd="italic"      title="Italic (Ctrl+I)">I</button>
+          <button class="tool-btn under"  data-cmd="underline"   title="Underline (Ctrl+U)">U</button>
+          <div class="tool-divider"></div>
+          <button class="tool-btn" data-cmd="formatBlock" data-arg="blockquote" title="Quote">&ldquo;</button>
+          <button class="tool-btn" data-cmd="formatBlock" data-arg="h2"          title="Heading" style="font-weight:700;font-size:12px;">H</button>
+          <button class="tool-btn" data-cmd="createLink"  title="Link">&#128279;</button>
+          <div class="tool-divider"></div>
+          <button class="tool-btn" data-cmd="insertUnorderedList" title="Bulleted list">&#8226;</button>
+          <button class="tool-btn" data-cmd="insertOrderedList"   title="Numbered list" style="font-size:10px;font-family:Georgia,serif;">1.</button>
+          <div class="tool-divider"></div>
+          <button class="tool-btn add-image" id="add-image-btn" title="Insert image at cursor">
+            <span class="ic">&#128247;</span>
+            <span>Add Image</span>
+          </button>
+          <input type="file" id="image-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+          <div class="tool-spacer"></div>
+          <span class="tool-count"><strong id="word-count">0</strong> word<span id="word-count-s"></span></span>
+        </div>
+        <div class="body-area" id="body-input" contenteditable="true" data-placeholder="Write the opening post for this thread…"></div>
+      </div>
+    </div>
+
+    <div class="row-two">
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-num">III</span>
+          <span class="sec-lab">Primary Nation<span class="sec-req">*</span></span>
+        </div>
+        <select id="nation-select" class="field-select">
+          <option value="">— Loading nations…</option>
+        </select>
+      </div>
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-num">IV</span>
+          <span class="sec-lab">Post As<span class="sec-req">*</span></span>
+          <span class="sec-help">your eligible factions</span>
+        </div>
+        <select id="identity-select" class="field-select">
+          <option value="">— Loading identities…</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="actions">
+      <div class="actions-note">
+        The identity you selected above is the author. The chosen Primary Nation appears as a chip on the thread.
+      </div>
+      <button type="button" class="btn cancel" id="cancel-btn">Cancel</button>
+      <button type="button" class="btn post" id="post-btn" disabled>
+        <span class="ic">&#9733;</span>Post Thread
+      </button>
+    </div>
+
+    <div class="compose-msg" id="compose-msg"></div>
+
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { _supabase }            from './js/supabase-client.js';
+import { sanitizeHtml, countWords, ZONE_META, getSlugFromUrl, insertImageAtCursor }
+  from './js/forum-utils.js';
+
+// These bounds MUST stay in sync with the same constants inside
+// create_forum_thread (20270597) — flagged duplication. Server is
+// the authoritative validator; these are here only to disable the
+// Post button + render an inline hint before the call goes out.
+const TITLE_MIN = 4, TITLE_MAX = 200;
+const BODY_MIN  = 4, BODY_MAX  = 50000;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_MIME = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapEntrepreneur('forum'); }
+  catch (err) {
+    console.error('entrepreneur-forum-compose: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  const slug = getSlugFromUrl();
+  if (!slug) {
+    document.getElementById('loading').innerHTML =
+      'No category specified. <a href="entrepreneur-forum.html" style="color:#7ac8c8;text-decoration:underline;">Back to the Forum index.</a>';
+    return;
+  }
+
+  // Fetch the category header so the user knows what they're posting
+  // to. Reusing get_forum_category which already returns this shape.
+  let cat = null;
+  try {
+    const { data, error } = await _supabase.rpc('get_forum_category', {
+      p_slug: slug,
+      p_viewer_faction_id: ctx?.faction?.id || null,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      document.getElementById('loading').textContent =
+        data?.reason === 'category_not_found'
+          ? `Category "${slug}" doesn't exist.`
+          : `Could not load category (${data?.reason || 'unknown'}).`;
+      return;
+    }
+    cat = data.category;
+  } catch (e) {
+    console.error('entrepreneur-forum-compose: category fetch failed', e);
+    document.getElementById('loading').textContent = `Failed to load: ${e?.message || e}`;
+    return;
+  }
+
+  renderTarget(cat);
+  // Populate the two dropdowns in parallel — neither blocks the
+  // other. If either fails, the button stays disabled and the
+  // user sees the empty-state option text.
+  await Promise.all([loadNations(), loadIdentities()]);
+  bindControls(ctx, cat);
+  updatePostButtonState();
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+  document.title = `New Thread — ${cat.name}`;
+}
+
+async function loadNations() {
+  const sel = document.getElementById('nation-select');
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('id, name').order('name', { ascending: true });
+    if (error) throw error;
+    const opts = [`<option value="">International</option>`]
+      .concat((data || []).map(n =>
+        `<option value="${n.id}">${(n.name || '').replace(/[<>&"']/g, '')}</option>`));
+    sel.innerHTML = opts.join('');
+  } catch (e) {
+    console.error('entrepreneur-forum-compose: nations fetch failed', e);
+    sel.innerHTML = `<option value="">International</option>`;
+  }
+}
+
+async function loadIdentities() {
+  const sel = document.getElementById('identity-select');
+  try {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { sel.innerHTML = `<option value="">— Sign in required</option>`; return; }
+    const { data, error } = await _supabase.from('factions')
+      .select('id, faction_type, faction_name, leader_first_name, leader_last_name')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .is('abandoned_at', null)
+      .in('faction_type', ['entrepreneur', 'corporation', 'politician']);
+    if (error) throw error;
+    const list = data || [];
+    if (list.length === 0) {
+      sel.innerHTML = `<option value="">— No eligible factions —</option>`;
+      return;
+    }
+    const sortKey = (f) => `${ {politician:1, corporation:2, entrepreneur:3}[f.faction_type] || 9 }-${(f.leader_first_name + f.leader_last_name + f.faction_name || '').toLowerCase()}`;
+    list.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+    sel.innerHTML = list.map(f => {
+      const name = (`${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()) || f.faction_name || '—';
+      const tag = ({entrepreneur:'Entrepreneur', corporation:'Corporation', politician:'Politician'})[f.faction_type] || f.faction_type;
+      const safeName = String(name).replace(/[<>&"']/g, '');
+      return `<option value="${f.id}">${tag} · ${safeName}</option>`;
+    }).join('');
+  } catch (e) {
+    console.error('entrepreneur-forum-compose: identity fetch failed', e);
+    sel.innerHTML = `<option value="">— Could not load identities</option>`;
+  }
+}
+
+function renderTarget(cat) {
+  const target = document.getElementById('compose-target');
+  target.classList.add(cat.zone);
+  const meta = ZONE_META[cat.zone];
+  document.getElementById('target-glyph').innerHTML = cat.icon_html || (meta ? meta.glyph : '');
+  document.getElementById('target-zone').textContent =
+    meta ? `Posting to · ${meta.eyebrow} · ${meta.name}` : `Posting to · ${cat.zone}`;
+  document.getElementById('target-name').textContent = cat.name || '';
+  document.getElementById('back-link').href = `entrepreneur-forum-category.html?slug=${encodeURIComponent(cat.slug)}`;
+}
+
+function bindControls(ctx, cat) {
+  const titleEl = document.getElementById('title-input');
+  const bodyEl  = document.getElementById('body-input');
+  const postBtn = document.getElementById('post-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+
+  titleEl.addEventListener('input', updatePostButtonState);
+  bodyEl.addEventListener('input', () => {
+    updateWordCount();
+    updatePostButtonState();
+    updateToolbarActive();
+  });
+  document.getElementById('identity-select').addEventListener('change', updatePostButtonState);
+  document.getElementById('nation-select').addEventListener('change', updatePostButtonState);
+  bodyEl.addEventListener('keyup',     updateToolbarActive);
+  bodyEl.addEventListener('mouseup',   updateToolbarActive);
+
+  // Format buttons. data-cmd matches document.execCommand names;
+  // data-arg is the (optional) value parameter for formatBlock /
+  // createLink. execCommand is deprecated-on-paper but still the
+  // most widely-supported way to drive contenteditable formatting
+  // without pulling in a 50KB editor library. We accept that trade.
+  document.querySelectorAll('.tool-btn[data-cmd]').forEach(btn => {
+    btn.addEventListener('mousedown', (e) => e.preventDefault());  // keep focus in editor
+    btn.addEventListener('click', () => {
+      const cmd = btn.dataset.cmd;
+      let arg = btn.dataset.arg || null;
+      if (cmd === 'createLink') {
+        const url = prompt('Link URL (http or https only):');
+        if (!url || !/^https?:\/\//i.test(url)) return;
+        arg = url;
+      }
+      bodyEl.focus();
+      document.execCommand(cmd, false, arg);
+      updateWordCount();
+      updatePostButtonState();
+      updateToolbarActive();
+    });
+  });
+
+  // Image upload pipe. File picker → Supabase Storage → inserted
+  // <img> at the current cursor position inside the body editor.
+  const addImgBtn  = document.getElementById('add-image-btn');
+  const imageInput = document.getElementById('image-input');
+  addImgBtn.addEventListener('click', () => imageInput.click());
+  imageInput.addEventListener('change', async () => {
+    const file = imageInput.files?.[0];
+    imageInput.value = '';            // reset so re-picking the same file refires change
+    if (!file) return;
+    await handleImageUpload(file, bodyEl);
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    if (titleEl.value.trim() || bodyEl.textContent.trim()) {
+      if (!confirm('Discard this draft and go back to the category?')) return;
+    }
+    window.location.href = `entrepreneur-forum-category.html?slug=${encodeURIComponent(cat.slug)}`;
+  });
+
+  postBtn.addEventListener('click', () => submitThread(ctx, cat));
+}
+
+async function handleImageUpload(file, bodyEl) {
+  const addImgBtn = document.getElementById('add-image-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const postBtn   = document.getElementById('post-btn');
+  // Upload path = identity-select.value/<filename>, matching the
+  // 20270598 storage policy that gates the bucket on
+  // (storage.foldername(name))[1] belonging to one of the caller's
+  // faction ids. Picking the identity AFTER opening the file picker
+  // would orphan the upload in the wrong folder — gate on selection
+  // before reaching for the file system.
+  const authorFactionId = document.getElementById('identity-select').value || '';
+  if (!authorFactionId) {
+    setMsg('Pick an identity before uploading.', false);
+    return;
+  }
+  if (!ALLOWED_MIME.has(file.type)) {
+    setMsg(`Unsupported image type ${file.type}. Use PNG / JPEG / GIF / WebP.`, false);
+    return;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    setMsg(`Image too large (${Math.round(file.size / 1024)} KB). 8 MB max.`, false);
+    return;
+  }
+  // Lock every navigation affordance while the upload is in flight.
+  // Cancelling mid-upload would orphan the file in storage because
+  // supabase-js doesn't surface an AbortSignal for storage uploads —
+  // the only way to prevent the orphan is to prevent the cancel.
+  // Post + Add Image lock too so we don't get two uploads racing or
+  // a submit firing on a body that's still mutating.
+  addImgBtn.disabled = true;
+  cancelBtn.disabled = true;
+  const postWasDisabled = postBtn.disabled;
+  postBtn.disabled   = true;
+  setMsg('Uploading…', true);
+  try {
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const path = `${authorFactionId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error: upErr } = await _supabase.storage
+      .from('forum-images').upload(path, file, { contentType: file.type, upsert: false });
+    if (upErr) throw upErr;
+    const { data: urlData } = _supabase.storage.from('forum-images').getPublicUrl(path);
+    const publicUrl = urlData?.publicUrl;
+    if (!publicUrl) throw new Error('No public URL returned for the upload.');
+    insertImageAtCursor(bodyEl, publicUrl, file.name);
+    updateWordCount();
+    setMsg('Image inserted.', true);
+  } catch (e) {
+    console.error('image upload failed', e);
+    setMsg(`Upload failed: ${e?.message || e}`, false);
+  } finally {
+    addImgBtn.disabled = false;
+    cancelBtn.disabled = false;
+    // Re-evaluate Post against current content. If the upload landed
+    // and inserted an <img>, the body now has a tag → updatePostButtonState
+    // picks that up. If it failed, restore Post's prior state.
+    if (postWasDisabled) updatePostButtonState();
+    else postBtn.disabled = false;
+  }
+}
+
+function updateWordCount() {
+  const bodyEl = document.getElementById('body-input');
+  const words = countWords(bodyEl.textContent || '');
+  document.getElementById('word-count').textContent = words.toLocaleString();
+  document.getElementById('word-count-s').textContent = words === 1 ? '' : 's';
+}
+
+function updateToolbarActive() {
+  // execCommand exposes queryCommandState for the simple toggles.
+  // Keeps the toolbar buttons in sync with the cursor's current
+  // formatting context.
+  for (const cmd of ['bold', 'italic', 'underline']) {
+    const btn = document.querySelector(`.tool-btn[data-cmd="${cmd}"]`);
+    if (!btn) continue;
+    try {
+      btn.classList.toggle('active', document.queryCommandState(cmd));
+    } catch (_) { /* some browsers throw — ignore */ }
+  }
+}
+
+function updatePostButtonState() {
+  const title = document.getElementById('title-input').value.trim();
+  const bodyEl = document.getElementById('body-input');
+  const bodyText = (bodyEl.textContent || '').trim();
+  // Image-only bodies are allowed (see 20270598 create_forum_thread
+  // body-too-short check). Mirror that on the client so the button
+  // enables when the body has an <img> even with no caption text.
+  const hasImage = bodyEl.querySelector('img') != null;
+  const bodyOk = bodyText.length >= BODY_MIN || hasImage;
+  const identity = document.getElementById('identity-select')?.value || '';
+  const ok = title.length >= TITLE_MIN
+          && title.length <= TITLE_MAX
+          && bodyOk
+          && identity !== '';
+  document.getElementById('post-btn').disabled = !ok;
+}
+
+function setMsg(text, ok) {
+  const el = document.getElementById('compose-msg');
+  el.textContent = text || '';
+  el.classList.toggle('ok', !!ok && !!text);
+}
+
+async function submitThread(ctx, cat) {
+  const titleEl = document.getElementById('title-input');
+  const bodyEl  = document.getElementById('body-input');
+  const postBtn = document.getElementById('post-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+
+  const title = titleEl.value.trim();
+  const bodyRaw = bodyEl.innerHTML || '';
+  const bodyClean = sanitizeHtml(bodyRaw);
+  const visibleLen = bodyClean.replace(/<[^>]*>/g, '').trim().length;
+  const hasImage = /<img\b/i.test(bodyClean);
+
+  if (title.length < TITLE_MIN) { setMsg(`Title needs at least ${TITLE_MIN} characters.`, false); return; }
+  if (title.length > TITLE_MAX) { setMsg(`Title can be at most ${TITLE_MAX} characters.`, false); return; }
+  if (visibleLen < BODY_MIN && !hasImage) {
+    setMsg(`Body needs at least ${BODY_MIN} characters or an image.`, false); return;
+  }
+  if (bodyClean.length > BODY_MAX) { setMsg(`Body exceeds ${BODY_MAX.toLocaleString()} character limit.`, false); return; }
+
+  postBtn.disabled   = true;
+  cancelBtn.disabled = true;
+  postBtn.querySelector('.ic').textContent = '⌛';
+  setMsg('Posting…', true);
+
+  const authorFactionId = document.getElementById('identity-select').value || null;
+  const nationIdRaw     = document.getElementById('nation-select').value || '';
+  const nationId        = nationIdRaw === '' ? null : nationIdRaw;
+  if (!authorFactionId) {
+    setMsg('Pick an identity to post as.', false);
+    postBtn.disabled = false; cancelBtn.disabled = false;
+    postBtn.querySelector('.ic').textContent = '★';
+    return;
+  }
+
+  try {
+    const { data, error } = await _supabase.rpc('create_forum_thread', {
+      p_category_slug:     cat.slug,
+      p_title:             title,
+      p_body_html:         bodyClean,
+      p_author_faction_id: authorFactionId,
+      p_nation_id:         nationId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:      'Sign in first.',
+        invalid_author_faction: 'You can\'t post as that identity.',
+        missing_category:       'Missing category.',
+        category_not_found:     'Category vanished.',
+        nation_not_found:       'Selected nation no longer exists.',
+        title_too_short:        `Title needs at least ${data?.min ?? TITLE_MIN} characters.`,
+        title_too_long:         `Title exceeds ${data?.max ?? TITLE_MAX} characters.`,
+        body_too_short:         `Body needs at least ${data?.min ?? BODY_MIN} characters or an image.`,
+        body_too_long:          `Body exceeds ${data?.max ?? BODY_MAX} characters.`,
+      };
+      setMsg(REASON[data?.reason] || `Could not post (${data?.reason || 'unknown'}).`, false);
+      postBtn.disabled = false;
+      cancelBtn.disabled = false;
+      postBtn.querySelector('.ic').textContent = '★';
+      return;
+    }
+    // Success — open the new thread directly so the author can see what
+    // they posted. The forum index / category page picks it up on next
+    // load via the cached denorm.
+    window.location.href = `entrepreneur-forum-thread.html?id=${encodeURIComponent(data.thread_id)}`;
+  } catch (e) {
+    console.error('create_forum_thread failed', e);
+    setMsg(`Post failed: ${e?.message || e}`, false);
+    postBtn.disabled = false;
+    cancelBtn.disabled = false;
+    postBtn.querySelector('.ic').textContent = '★';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
