@@ -353,7 +353,7 @@ async function init() {
   // Members with party join (party_color, faction_name, abbreviation).
   const { data: members, error: memErr } = await _supabase
     .from('committee_members')
-    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, party:factions!party_id(faction_name, abbreviation, party_color), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
+    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, seated_at_tick, party:factions!party_id(faction_name, abbreviation, party_color), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .order('slot_idx', { ascending: true });
   if (memErr) console.warn('committee: members fetch failed', memErr);
@@ -434,6 +434,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
+  const viewerSeatedAt = members.find(m => m.politician_faction_id === viewerPolId)?.seated_at_tick ?? null;
   const isChair = members.some(m => m.role === 'chair' && m.politician_faction_id === viewerPolId);
   const viewerFactionId = ctx.faction?.id || null;
   const alreadyTestified = !!(activeHearing && testimonies.some(t => t.submitter_faction_id && t.submitter_faction_id === viewerFactionId));
@@ -478,7 +479,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
 
     <div class="actions">
       <div class="ac-lab">COMMITTEE ACTIONS${onCommittee ? '' : ' &middot; MEMBERS ONLY'}</div>
-      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0)}</div>
+      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0, ctx.faction, currentTick, viewerSeatedAt)}</div>
     </div>
 
     <div class="activities">
@@ -504,6 +505,45 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       e.preventDefault();
       if (witCta.dataset.disabled === '1') return;
       openWitnessModal(activeHearing, personas);
+      return;
+    }
+    const bid = e.target.closest('[data-act="bid"].enabled');
+    if (bid) {
+      e.preventDefault();
+      if (bid.dataset.busy === '1') return;
+      if (!confirm(`Bid for Chair? You'll spend ${BID_CAPITAL_COST} Political Capital regardless of outcome and trigger an 8-tick cooldown. Win takes the seat.`)) return;
+      bid.dataset.busy = '1';
+      bid.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('politician_bid_for_chair', {
+          p_faction_id: ctx.faction?.id, p_committee_id: committeeId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const r = data?.reason || 'unknown';
+          const msg = ({
+            no_politician:         'No active politician on this account.',
+            not_member:            'You are not a member of this committee.',
+            already_chair:         'You already hold the chair.',
+            membership_too_short:  `Seated ${data.have_ticks ?? '?'} of ${data.need_ticks ?? BID_MEMBERSHIP_TICKS} required ticks.`,
+            insufficient_skill:    `Need ${data.required ?? BID_SKILL_THRESHOLD} Skill — you have ${data.have ?? '?'}.`,
+            insufficient_capital:  `Need ${data.required ?? BID_CAPITAL_COST} Political Capital — you have ${data.have ?? '?'}.`,
+            cooldown:              `Cooldown — next bid at tick ${data.next_tick ?? '?'}.`,
+            no_chair_seat:         'No chair seat to challenge (vacant or missing).',
+          })[r] || `Could not bid: ${r}.`;
+          alert(msg);
+          return;
+        }
+        const verb = data.won ? 'Won' : 'Lost';
+        const target = data.incumbent_name || 'the incumbent';
+        alert(`${verb} the bid for chair vs ${target}. Your roll ${data.bid_roll} vs their ${data.defender_roll}.`);
+        location.reload();
+      } catch (err) {
+        alert('Could not bid: ' + (err?.message || 'unknown error'));
+      } finally {
+        bid.dataset.busy = '0';
+        bid.disabled = false;
+      }
       return;
     }
     const hold = e.target.closest('[data-act="hold"].enabled');
@@ -649,7 +689,15 @@ function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified) {
   return `<div class="input-disabled"><strong>Observer access.</strong> &middot; Members of Parliament may apply for committee membership.</div>`;
 }
 
-function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued) {
+// BID FOR CHAIR client-side gate values — kept in sync with the
+// politician_bid_for_chair RPC (20270584). Server is the source of
+// truth; these only drive the disabled-tooltip wording. If they
+// drift, the RPC will still gate correctly and surface a reason.
+const BID_SKILL_THRESHOLD  = 8;
+const BID_CAPITAL_COST     = 15;
+const BID_MEMBERSHIP_TICKS = 4;
+
+function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, faction, currentTick, viewerSeatedAt) {
   // [Hold a Hearing] is CHAIR-ONLY per the 20270499 RPC gate. We
   // mirror the gate client-side: enabled iff chair AND no hearing
   // currently open AND at least one queued proposal exists.
@@ -664,11 +712,40 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued) {
           ? 'No queued proposals'
           : '';
   const holdEnabled = holdDisabledReason === '';
+
+  // [Bid for Chair] mirrors politician_bid_for_chair (20270584). Open
+  // to any seated non-chair member who's been on the committee for
+  // ≥4 ticks, has Skill ≥8, Political Capital ≥15, and isn't on the
+  // 8-tick post-bid cooldown.
+  const skill   = Number(faction?.politician_skill) || 0;
+  const capital = Number(faction?.political_capital) || 0;
+  const nextBid = Number(faction?.next_chair_bid_tick) || 0;
+  const tenure  = (viewerSeatedAt != null) ? (currentTick - viewerSeatedAt) : 0;
+  const bidDisabledReason = !onCommittee
+    ? 'Members only'
+    : isChair
+      ? 'You already hold the chair'
+      : (viewerSeatedAt == null || tenure < BID_MEMBERSHIP_TICKS)
+        ? `Seated ${tenure} of ${BID_MEMBERSHIP_TICKS} required ticks`
+        : skill < BID_SKILL_THRESHOLD
+          ? `Need ${BID_SKILL_THRESHOLD} Skill (you have ${skill})`
+          : capital < BID_CAPITAL_COST
+            ? `Need ${BID_CAPITAL_COST} Political Capital (you have ${Math.floor(capital)})`
+            : nextBid > currentTick
+              ? `Cooldown — next bid at tick ${nextBid}`
+              : '';
+  const bidEnabled = bidDisabledReason === '';
+
   const actions = [
     { act: 'hold',  ic: '☞', name: 'HOLD A HEARING',
       desc: 'Bring the top queued proposal onto the monthly agenda — opens a 3-tick testimony window for witnesses.',
       enabled: holdEnabled,
       title: holdDisabledReason || '',
+      stub: false },
+    { act: 'bid',  ic: '☖', name: 'BID FOR CHAIR',
+      desc: `Challenge the incumbent. Roll 1d6 + your Skill vs the chair's 1d6 + Skill. Win takes the seat (+2 Reputation); loss costs 1 Reputation. Either way: -${BID_CAPITAL_COST} Political Capital, 8-tick cooldown.`,
+      enabled: bidEnabled,
+      title: bidDisabledReason || '',
       stub: false },
     { ic: '☇', name: 'VOTE ON APPROPRIATIONS', desc: 'Approve, modify, or deny funding for ministries and programs in the committee’s remit.',
       enabled: onCommittee, title: onCommittee ? '' : 'Members only', stub: true },
