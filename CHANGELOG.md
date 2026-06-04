@@ -200,6 +200,29 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Aircraft production: own-designed engines were billed twice.**
+  An aviation-manufacturing corp that designed both an engine and an
+  aircraft using that engine was being charged the engine cost twice:
+  once when producing the engine into `ent_engine_inventory`, and
+  again as part of the bundled `design.cost_per_unit` when producing
+  the aircraft. Root cause: `20270368` ("plumb per_unit_cost
+  through ent_queue_production_run") rebased its body from `20270235`,
+  which still had the original own-vs-foreign-engine branch — so it
+  silently reverted the `20270356` unification fix that had
+  intentionally collapsed both paths ("no own-vs-foreign branch — if
+  you don't have the engines on hand, you can't build the aircraft").
+  For own-designed engines, `v_engine.entrepreneur_corp_id ==
+  p_corp_id`, so the foreign-only block was skipped: no inventory
+  consumption, no engine-cost subtraction from `v_per_unit`,
+  manufacturer charged the full bundled cost. Migration `20270608`
+  re-issues `ent_queue_production_run` with the unified body
+  (functionally `20270363`'s version + the `per_unit_cost` write
+  `20270368` was after). Foreign-corp aircraft orders via
+  `ent_accept_aircraft_order` (20270586) were already on the unified
+  pattern — only DIY production runs were affected. Existing in-flight
+  / completed runs aren't retro-fixed; their `cost_per_tick` was
+  stamped at queue time. Any cash restitution for engines already
+  double-billed is a separate per-corp one-shot.
 - **Airlines: route panel shows lane demand pool, not last-tick
   carried.** The "Total passengers on lane" line under each active
   route was summing `last_tick_pax` across every airline on the city
