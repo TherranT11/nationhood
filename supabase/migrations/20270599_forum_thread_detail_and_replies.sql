@@ -74,7 +74,11 @@ END;
 $$;
 
 REVOKE EXECUTE ON FUNCTION public._forum_resolve_author(uuid) FROM PUBLIC;
-GRANT  EXECUTE ON FUNCTION public._forum_resolve_author(uuid) TO authenticated;
+-- NOT granted to authenticated. The helper is called by the
+-- SECURITY DEFINER write RPCs (create_forum_thread,
+-- create_forum_post) which execute with elevated privileges; the
+-- caller's grant doesn't apply. Keeping it un-grantable to
+-- authenticated reduces the API surface on the wire.
 
 -- ── 3. create_forum_thread v3 ─────────────────────────────────────
 -- Adds p_author_faction_id (replaces the implicit "oldest non-abandoned

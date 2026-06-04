@@ -289,9 +289,8 @@
     </div>
 
     <div class="actions">
-      <div class="actions-note" id="actions-note">
-        Posting as <span class="pub" id="actions-pub">—</span><br>
-        <span class="self" id="actions-self"></span>
+      <div class="actions-note">
+        The identity you selected above is the author. The chosen Primary Nation appears as a chip on the thread.
       </div>
       <button type="button" class="btn cancel" id="cancel-btn">Cancel</button>
       <button type="button" class="btn post" id="post-btn" disabled>
@@ -366,7 +365,6 @@ async function init() {
   // other. If either fails, the button stays disabled and the
   // user sees the empty-state option text.
   await Promise.all([loadNations(), loadIdentities()]);
-  renderActionsFooter(ctx);
   bindControls(ctx, cat);
   updatePostButtonState();
 
@@ -432,25 +430,6 @@ function renderTarget(cat) {
   document.getElementById('back-link').href = `politician-forum-category.html?slug=${encodeURIComponent(cat.slug)}`;
 }
 
-function renderActionsFooter(ctx) {
-  // v2 just shows the faction name as the publishing identity.
-  // Separate-publication entity ("posting AS a paper, with caller
-  // name below") lands in a follow-up slice — the spec calls for
-  // it but the schema doesn't have publications yet.
-  const f = ctx?.faction;
-  const personal = `${f?.leader_first_name || ''} ${f?.leader_last_name || ''}`.trim();
-  document.getElementById('actions-pub').textContent =
-    f?.faction_name || personal || '—';
-  // If we have both a faction name and a leader name, show the leader
-  // beneath as the human behind the byline. This is the small-print
-  // affordance the user described for the publication identity.
-  if (f?.faction_name && personal && f.faction_name !== personal) {
-    document.getElementById('actions-self').textContent = `as ${personal}`;
-  } else {
-    document.getElementById('actions-self').textContent = '';
-  }
-}
-
 function bindControls(ctx, cat) {
   const titleEl = document.getElementById('title-input');
   const bodyEl  = document.getElementById('body-input');
@@ -500,7 +479,7 @@ function bindControls(ctx, cat) {
     const file = imageInput.files?.[0];
     imageInput.value = '';            // reset so re-picking the same file refires change
     if (!file) return;
-    await handleImageUpload(file, ctx, bodyEl);
+    await handleImageUpload(file, bodyEl);
   });
 
   cancelBtn.addEventListener('click', () => {
@@ -513,10 +492,21 @@ function bindControls(ctx, cat) {
   postBtn.addEventListener('click', () => submitThread(ctx, cat));
 }
 
-async function handleImageUpload(file, ctx, bodyEl) {
+async function handleImageUpload(file, bodyEl) {
   const addImgBtn = document.getElementById('add-image-btn');
   const cancelBtn = document.getElementById('cancel-btn');
   const postBtn   = document.getElementById('post-btn');
+  // Upload path = identity-select.value/<filename>, matching the
+  // 20270598 storage policy that gates the bucket on
+  // (storage.foldername(name))[1] belonging to one of the caller's
+  // faction ids. Picking the identity AFTER opening the file picker
+  // would orphan the upload in the wrong folder — gate on selection
+  // before reaching for the file system.
+  const authorFactionId = document.getElementById('identity-select').value || '';
+  if (!authorFactionId) {
+    setMsg('Pick an identity before uploading.', false);
+    return;
+  }
   if (!ALLOWED_MIME.has(file.type)) {
     setMsg(`Unsupported image type ${file.type}. Use PNG / JPEG / GIF / WebP.`, false);
     return;
@@ -538,7 +528,7 @@ async function handleImageUpload(file, ctx, bodyEl) {
   setMsg('Uploading…', true);
   try {
     const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-    const path = `${ctx.faction.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const path = `${authorFactionId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error: upErr } = await _supabase.storage
       .from('forum-images').upload(path, file, { contentType: file.type, upsert: false });
     if (upErr) throw upErr;
