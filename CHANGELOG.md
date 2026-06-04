@@ -68,6 +68,18 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Wiki subtab now functional on both Forum surfaces.** The
+  previously-placeholder "No wiki entries yet" pane in
+  `politician-forum.html` and `entrepreneur-forum.html` now renders
+  a flat alphabetical list of all `wiki_pages` (title + template
+  type chip) with an inline reader on click — title, infobox,
+  body with `[[wiki-links]]` resolved via the existing
+  `renderWikiLinks` helper. Links to other wiki pages stay inside
+  the Forum shell; missing-link clicks fall through to
+  `wiki.html` so the user can land on the standalone editor for
+  the new slug. Shared `js/forum-wiki.js` module so the two Forum
+  pages don't duplicate the list/reader code (single
+  `mountWikiPane(hostEl, supabase)` entry point).
 - **Entrepreneur forum parity.** Renamed the entrepreneur `LOBBYING`
   tab to `FORUM` and cloned the four `politician-forum-*.html`
   pages into `entrepreneur-forum-*.html` siblings with the

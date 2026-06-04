@@ -396,10 +396,8 @@
 
   </div>
 
-  <!-- ─── Wiki pane (placeholder until that surface is designed) ──── -->
-  <div class="res-pane" data-pane="wiki" style="display:none;">
-    <div class="res-empty">No wiki entries yet.</div>
-  </div>
+  <!-- ─── Wiki pane: list + inline reader (forum-wiki.js mounts here) ─ -->
+  <div class="res-pane" data-pane="wiki" id="wiki-pane" style="display:none;"></div>
 
 </div>
 
@@ -410,6 +408,7 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
 import { escHtml, fmtInt, formatRelative, ZONE_META, ZONE_ORDER }
   from './js/forum-utils.js';
+import { mountWikiPane } from './js/forum-wiki.js';
 
 function initialsFromName(name) {
   return String(name || '')
@@ -429,6 +428,10 @@ async function init() {
 
   bindSubtabs();
   await loadForum(ctx);
+  // Eager mount of the Wiki subtab so the list is ready the first
+  // time the user clicks it; fire-and-forget so a slow wiki fetch
+  // doesn't delay the Forum pane.
+  mountWikiPane(document.getElementById('wiki-pane'), _supabase);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
