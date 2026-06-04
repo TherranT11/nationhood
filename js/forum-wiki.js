@@ -18,6 +18,7 @@
 // on the standalone editor surface for that slug.
 
 import { fetchPageList, fetchPage, renderWikiLinks, renderInfobox } from './wiki.js';
+import { escHtml } from './forum-utils.js';
 
 const STYLE_ID = 'forum-wiki-styles';
 
@@ -142,11 +143,6 @@ function ensureStyles() {
     document.head.appendChild(s);
 }
 
-const ESC = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
-function escapeText(s) {
-    return String(s ?? '').replace(/[&<>"']/g, (c) => ESC[c]);
-}
-
 export async function mountWikiPane(hostEl, supabase) {
     if (!hostEl) return;
     ensureStyles();
@@ -158,7 +154,7 @@ export async function mountWikiPane(hostEl, supabase) {
         existingSlugs = new Set((pages || []).map(p => p.slug));
     } catch (e) {
         console.error('forum-wiki: fetch list failed', e);
-        hostEl.innerHTML = `<div class="fw-empty">Failed to load wiki: ${escapeText(e?.message || e)}</div>`;
+        hostEl.innerHTML = `<div class="fw-empty">Failed to load wiki: ${escHtml(e?.message || e)}</div>`;
         return;
     }
     if (!pages || pages.length === 0) {
@@ -170,10 +166,10 @@ export async function mountWikiPane(hostEl, supabase) {
 
     function renderList() {
         const rows = pages.map(p => `
-            <button class="fw-row" type="button" data-slug="${escapeText(p.slug)}">
-                <span class="fw-row-title">${escapeText(p.title)}</span>
+            <button class="fw-row" type="button" data-slug="${escHtml(p.slug)}">
+                <span class="fw-row-title">${escHtml(p.title)}</span>
                 ${p.template_type
-                    ? `<span class="fw-row-tag">${escapeText(p.template_type)}</span>`
+                    ? `<span class="fw-row-tag">${escHtml(p.template_type)}</span>`
                     : ''}
             </button>
         `).join('');
@@ -190,11 +186,11 @@ export async function mountWikiPane(hostEl, supabase) {
             page = await fetchPage(supabase, slug);
         } catch (e) {
             console.error('forum-wiki: fetch page failed', e);
-            hostEl.innerHTML = `<div class="fw-empty">Failed to load page: ${escapeText(e?.message || e)}</div>`;
+            hostEl.innerHTML = `<div class="fw-empty">Failed to load page: ${escHtml(e?.message || e)}</div>`;
             return;
         }
         if (!page) {
-            hostEl.innerHTML = `<div class="fw-empty">Page "${escapeText(slug)}" not found. <button type="button" class="fw-back" style="display:inline-flex;margin-left:8px;">‹ Back</button></div>`;
+            hostEl.innerHTML = `<div class="fw-empty">Page "${escHtml(slug)}" not found. <button type="button" class="fw-back" style="display:inline-flex;margin-left:8px;">‹ Back</button></div>`;
             const back = hostEl.querySelector('.fw-back');
             if (back) back.addEventListener('click', renderList);
             return;
@@ -209,13 +205,13 @@ export async function mountWikiPane(hostEl, supabase) {
         );
         const infobox = renderInfobox(page);
         const tag = page.template_type
-            ? `<span class="fw-reader-tag">${escapeText(page.template_type)}</span>`
+            ? `<span class="fw-reader-tag">${escHtml(page.template_type)}</span>`
             : '';
         hostEl.innerHTML = `
             <div class="fw-reader">
                 <button class="fw-back" type="button">‹ Back to wiki list</button>
                 <div class="fw-reader-head">
-                    <h1>${escapeText(page.title)}</h1>
+                    <h1>${escHtml(page.title)}</h1>
                     ${tag}
                 </div>
                 <div class="fw-reader-grid">
