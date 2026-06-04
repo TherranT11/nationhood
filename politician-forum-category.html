@@ -203,6 +203,15 @@ function zoneLabel(zone) {
   return meta ? `${meta.eyebrow} · ${meta.name}` : (zone || '');
 }
 
+function bindThreadRowClicks() {
+  document.querySelectorAll('.thread-row[data-thread-id]').forEach(row => {
+    row.addEventListener('click', () => {
+      const id = row.dataset.threadId;
+      if (id) window.location.href = `politician-forum-thread.html?id=${encodeURIComponent(id)}`;
+    });
+  });
+}
+
 function bindNewThreadButton(slug) {
   const btn = document.getElementById('new-thread-btn');
   if (!btn || !slug) return;
@@ -260,8 +269,7 @@ async function loadCategory(ctx, slug) {
     list.innerHTML = renderThreadList(data.threads);
     meta.textContent = `${fmtInt(data.thread_count)} thread${data.thread_count === 1 ? '' : 's'} in this category`;
     bindNewThreadButton(data.category.slug);
-    // Thread-row clicks land in a follow-up slice with the thread-
-    // detail page. Until then, rows render but aren't clickable.
+    bindThreadRowClicks();
   } catch (e) {
     console.error('politician-forum-category: load failed', e);
     head.innerHTML = `<div class="cathead"><div class="cathead-row"><div class="cathead-info"><div class="cathead-title">—</div><div class="cathead-desc">Failed to load: ${escHtml(e?.message || e)}</div></div></div></div>`;
