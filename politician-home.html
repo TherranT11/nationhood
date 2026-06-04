@@ -2461,10 +2461,10 @@ function renderCampaignCard(ctx) {
 
 function renderCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
-  const gateTick    = Number(politician.next_member_action_tick) || 0;
-  const speechTick  = Number(politician.speech_cooldown_until_tick) || 0;
-  const universalLocked = gateTick > currentTick;
-  const speechLocked    = universalLocked || speechTick > currentTick;
+  const gateTick = Number(politician.next_member_action_tick) || 0;
+  const turnLocked = gateTick > currentTick;
+  const capital = Number(politician.political_capital) || 0;
+  const adsCanAfford = capital >= 1;
   // No party = no actions. The Stand-for-Election flow on politician-career
   // gates by the same rule, so if there's an active race the politician
   // should still be a member; this is the defensive fallback.
@@ -2472,27 +2472,26 @@ function renderCampaignActions(ctx) {
     return `<div class="ci-actions"><div class="ci-actions-lab">YOUR NEXT MOVE</div>
       <div class="ci-act-lockmsg">Rejoin a party to take campaign actions.</div></div>`;
   }
-  const knockBtn = `
-    <button class="ci-act" type="button" data-camp-action="knock" ${universalLocked ? 'disabled' : ''}>
-      <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#9994;</span><span class="ci-act-name">Door Knocking</span></div>
-      <div class="ci-act-blurb">Walk a district, meet voters. Slow but reliable.</div>
-      <div class="ci-act-meta"><span class="ci-act-effect">+2 polling</span><span class="ci-act-cost">1 tick</span></div>
+  const adsTitle = !adsCanAfford ? ' title="Need 1 Influence."' : '';
+  const adsBtn = `
+    <button class="ci-act" type="button" data-camp-action="ads"${turnLocked || !adsCanAfford ? ' disabled' : ''}${adsTitle}>
+      <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#128241;</span><span class="ci-act-name">Run Political Ads</span></div>
+      <div class="ci-act-blurb">Buy attack and persuasion spots. Spend Influence to swing polling.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+1d10 + Skill polling</span><span class="ci-act-cost">&minus;1 Influence</span></div>
     </button>`;
   const speechBtn = `
-    <button class="ci-act" type="button" data-camp-action="speech" ${speechLocked ? 'disabled' : ''}>
+    <button class="ci-act" type="button" data-camp-action="speech"${turnLocked ? ' disabled' : ''}>
       <div class="ci-act-head"><span class="ci-act-icon" style="color:#d4b87a;">&#128226;</span><span class="ci-act-name">Give a Speech</span></div>
-      <div class="ci-act-blurb">Rally the faithful and reach the press. High variance.</div>
-      <div class="ci-act-meta"><span class="ci-act-effect var">&minus;2 to +5 polling</span><span class="ci-act-cost">3-tick cooldown</span></div>
+      <div class="ci-act-blurb">Rally the faithful and reach the press.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+1d6 polling</span><span class="ci-act-cost">no cost</span></div>
     </button>`;
-  const lockMsg = (() => {
-    if (universalLocked) return `Already campaigned this tick &mdash; next action at tick ${gateTick}.`;
-    if (speechLocked)    return `Speech cooling down until tick ${speechTick}; door knocking is still available.`;
-    return '';
-  })();
+  const lockMsg = turnLocked
+    ? `Already campaigned this tick &mdash; next action at tick ${gateTick}.`
+    : '';
   return `
     <div class="ci-actions">
       <div class="ci-actions-lab"><span>YOUR NEXT MOVE</span><span class="remind">1 action per tick</span></div>
-      <div class="ci-act-grid">${knockBtn}${speechBtn}</div>
+      <div class="ci-act-grid">${adsBtn}${speechBtn}</div>
       ${lockMsg ? `<div class="ci-act-lockmsg">${lockMsg}</div>` : ''}
     </div>`;
 }
@@ -2507,6 +2506,8 @@ function bindCampaignActions(ctx) {
       // Disable the sibling too so the player can't double-spend the
       // 1-per-turn gate while the first call is in flight.
       btn.parentElement?.querySelectorAll('.ci-act').forEach(b => { b.disabled = true; });
+      // 'ads' → politician_door_knock (RPC kept for backwards-compat;
+      // body redesigned in 20270588 to run Political Ads).
       const fn = btn.dataset.campAction === 'speech'
         ? 'politician_give_speech'
         : 'politician_door_knock';
@@ -2519,11 +2520,12 @@ function bindCampaignActions(ctx) {
       if (!data?.success) {
         const reason = data?.reason || 'unknown';
         const human = {
-          not_authenticated: 'You are not signed in.',
-          not_member:        'You are no longer a member of this party.',
-          party_not_found:   'Party not found.',
-          no_shard:          'Shard not found.',
-          cooldown:          `Action on cooldown until tick ${data?.ready_at_tick ?? '?'}.`,
+          not_authenticated:    'You are not signed in.',
+          not_member:           'You are no longer a member of this party.',
+          party_not_found:      'Party not found.',
+          no_shard:             'Shard not found.',
+          cooldown:             `You've already taken your action this tick. Next at tick ${data?.ready_at_tick ?? '?'}.`,
+          insufficient_capital: `Need ${data?.required ?? 1} Influence to run ads (you have ${data?.have ?? 0}).`,
         }[reason] || `Action failed (${reason}).`;
         alert(human);
         location.reload();
