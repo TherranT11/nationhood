@@ -1080,7 +1080,7 @@ const JUDICIARY_RUNGS = [
         return { label: `Seek Appointment · Need 35 Rep (${s.politicianReputation}/35)`, kind: 'disabled' };
       }
       if (s.politicalCapital < 25) {
-        return { label: `Seek Appointment · Need 25 PC (${s.politicalCapital}/25)`, kind: 'disabled' };
+        return { label: `Seek Appointment · Need 25 Influence (${s.politicalCapital}/25)`, kind: 'disabled' };
       }
       // Pending request flips the CTA to a disabled awaiting state
       // (20270555). Idempotent re-clicks would just hit the RPC's
@@ -1107,7 +1107,7 @@ const JUDICIARY_RUNGS = [
         return { label: 'Step up first', kind: 'disabled' };
       }
       if (s.politicalCapital < 35) {
-        return { label: `Take the Bench · Need 35 PC (${s.politicalCapital}/35)`, kind: 'disabled' };
+        return { label: `Take the Bench · Need 35 Influence (${s.politicalCapital}/35)`, kind: 'disabled' };
       }
       return { label: 'Take the Bench', kind: 'primary', action: 'take-the-bench' };
     },
@@ -1621,13 +1621,13 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // here would conflate "not stepped up" with "stepped up at
     // tick 0" and render the rung as not-held.
     experiencedAdvocateAtTick: ctx?.faction?.politician_experienced_advocate_at_tick ?? null,
-    // Magistrate take-the-bench (20270531). 35 PC threshold (not
+    // Magistrate take-the-bench (20270531). 35 Influence threshold (not
     // deducted), gated on Experienced Advocate. magistrateAtTick
     // set once and never cleared.
     politicalCapital:        Number(ctx?.faction?.political_capital) || 0,
     magistrateAtTick:        ctx?.faction?.politician_magistrate_at_tick ?? null,
     // State Prosecutor (20270532) — parallel sidestep to the bench
-    // path. 35 Rep + 25 PC threshold (no spend), Experienced Advocate
+    // path. 35 Rep + 25 Influence threshold (no spend), Experienced Advocate
     // prereq. Doesn't gate or unlock Magistrate.
     stateProsecutorAtTick:   ctx?.faction?.politician_state_prosecutor_at_tick ?? null,
   };
@@ -2472,7 +2472,7 @@ function renderBarResultView(result) {
 
   // Close reloads the page so the Advocate rung flips to held +
   // Affiliations updates. Either outcome benefits from a refresh
-  // (loss applied PC delta).
+  // (loss applied Influence delta).
   document.getElementById('bar-close-btn').onclick = () => { location.reload(); };
 }
 
@@ -2624,15 +2624,15 @@ function renderOptionCard(tier, race, eyebrow, titleLead, blurb, resolveTicks) {
   const badgeBorder = hasColor ? partyColor : 'rgba(255,255,255,0.07)';
   const stakeWin   = Number(race.stake_win)  || 0;
   const stakeLose  = Number(race.stake_lose) || 0;
-  const winValTxt  = `+${stakeWin} Pol. Capital`;
+  const winValTxt  = `+${stakeWin} Influence`;
   // Parliament loss also costs the party -0.5 Popularity (20270452).
   // Community losses stay party-neutral. Magnitudes hardcoded here
   // because they're rules-constant, not per-race dynamic.
   const loseValTxt = isParl
     ? (stakeLose === 0
         ? '−0.5 Party Popularity'
-        : `${stakeLose} Pol. Capital · −0.5 Party Popularity`)
-    : (stakeLose === 0 ? 'No cost' : `${stakeLose} Pol. Capital`);
+        : `${stakeLose} Influence · −0.5 Party Popularity`)
+    : (stakeLose === 0 ? 'No cost' : `${stakeLose} Influence`);
   const loseClass  = (isParl || stakeLose !== 0) ? 'lose' : 'zero';
   // Entry fee — parliament only, $50K from party treasury, win or lose.
   const entryFeeRow = isParl
