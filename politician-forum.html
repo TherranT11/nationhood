@@ -408,43 +408,13 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
-
-// Zone shells are structural (the three top-level Forum surfaces), so
-// they're declared here rather than per-row in the DB. The 20270595
-// RPC supplies the per-category contents that hang under each.
-const ZONE_META = {
-  world:   { eyebrow: 'Zone I',   title: 'The <em>World</em>',   glyph: '&#127760;',
-             desc: 'In-character narrative · press, diplomacy, character lives, and the ongoing record of the game' },
-  players: { eyebrow: 'Zone II',  title: 'The <em>Players</em>', glyph: '&#9737;',
-             desc: 'Out-of-character · community discussion, help, feedback, and conversation among players themselves' },
-  game:    { eyebrow: 'Zone III', title: 'The <em>Game</em>',    glyph: '&#128203;',
-             desc: 'Administration · announcements from the moderators, rules, schedule, recruitment' },
-};
-const ZONE_ORDER = ['world', 'players', 'game'];
-
-const ESCAPE_LOOKUP = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
-const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESCAPE_LOOKUP[c]);
-const fmtInt  = (n) => Number(n || 0).toLocaleString();
+import { escHtml, fmtInt, formatRelative, ZONE_META, ZONE_ORDER }
+  from './js/forum-utils.js';
 
 function initialsFromName(name) {
   return String(name || '')
     .trim().split(/\s+/).map(w => w[0] || '').join('')
     .toUpperCase().slice(0, 2) || '—';
-}
-
-function formatRelative(iso) {
-  if (!iso) return '';
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return '';
-  const diff = Math.max(0, Date.now() - then);
-  const m = Math.round(diff / 60000);
-  if (m < 1)    return 'just now';
-  if (m < 60)   return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24)   return `${h} hour${h === 1 ? '' : 's'} ago`;
-  const d = Math.round(h / 24);
-  if (d < 30)   return `${d} day${d === 1 ? '' : 's'} ago`;
-  return new Date(iso).toLocaleDateString();
 }
 
 async function init() {

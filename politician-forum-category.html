@@ -192,30 +192,15 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
+import { escHtml, fmtInt, formatRelative, ZONE_META }
+  from './js/forum-utils.js';
 
-const ZONE_LABEL = {
-  world:   'Zone I · The World',
-  players: 'Zone II · The Players',
-  game:    'Zone III · The Game',
-};
-
-const ESCAPE_LOOKUP = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
-const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESCAPE_LOOKUP[c]);
-const fmtInt  = (n) => Number(n || 0).toLocaleString();
-
-function formatRelative(iso) {
-  if (!iso) return '';
-  const then = new Date(iso).getTime();
-  if (!Number.isFinite(then)) return '';
-  const diff = Math.max(0, Date.now() - then);
-  const m = Math.round(diff / 60000);
-  if (m < 1)    return 'just now';
-  if (m < 60)   return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24)   return `${h} hour${h === 1 ? '' : 's'} ago`;
-  const d = Math.round(h / 24);
-  if (d < 30)   return `${d} day${d === 1 ? '' : 's'} ago`;
-  return new Date(iso).toLocaleDateString();
+function zoneLabel(zone) {
+  // Detail-page eyebrow combines the zone numeral + name into one
+  // breadcrumb-style string. Shape lives here because index renders
+  // them separately on two lines; detail wants them inline.
+  const meta = ZONE_META[zone];
+  return meta ? `${meta.eyebrow} · ${meta.name}` : (zone || '');
 }
 
 function getSlugFromUrl() {
@@ -235,7 +220,8 @@ async function init() {
 
   const slug = getSlugFromUrl();
   if (!slug) {
-    document.getElementById('loading').textContent = 'No category specified. Go back to the Forum index.';
+    document.getElementById('loading').innerHTML =
+      'No category specified. <a href="politician-forum.html" style="color:#7ac8c8;text-decoration:underline;">Back to the Forum index.</a>';
     return;
   }
 
@@ -283,7 +269,7 @@ function renderHead(cat) {
       <div class="cathead-row">
         <div class="cathead-glyph">${cat.icon_html || ''}</div>
         <div class="cathead-info">
-          <div class="cathead-eyebrow">${escHtml(ZONE_LABEL[cat.zone] || cat.zone || '')}</div>
+          <div class="cathead-eyebrow">${escHtml(zoneLabel(cat.zone))}</div>
           <div class="cathead-title">${escHtml(cat.name || '')}</div>
           <div class="cathead-desc">${escHtml(cat.description || '')}</div>
         </div>
