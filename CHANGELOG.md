@@ -68,6 +68,33 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Corp negotiation chat (CEO-to-CEO discussion).** The contract
+  negotiation page (`corp-contract.html`) now splits into a 2-column
+  layout: article-drafting panel left (~66%), discussion panel right
+  (~33%). Either CEO can post messages to the other in the same row
+  as the articles they're drafting. Backed by migration `20270604`:
+  new `corp_negotiation_messages` table, plus
+  `send_corp_negotiation_message` and `list_corp_negotiation_messages`
+  RPCs that reuse the existing `_corp_negotiation_validate_caller`
+  helper (from 20270571) so posting is gated on
+  "CEO of one of the two parties." 4-second poll on the client mirrors
+  the trial-modal pattern; no Supabase Realtime subscription needed.
+  Layout collapses to single-column under 920px. Hidden entirely when
+  the viewer isn't a CEO of either party (admin / observer mode).
+- **Forum Edit/Delete now show on movement-party-authored posts.**
+  User reported a post they authored under their party (a
+  `movement_party` faction, e.g. "Partido Conservador de Melizea")
+  showed no Edit/Delete chips even though they own the faction.
+  Cause: `caller_owns` in `get_forum_thread` and the ownership
+  guards in `update_forum_post` / `delete_forum_post` all required
+  `faction_type IN ('entrepreneur','corporation','politician')`,
+  filtering out historical posts authored under other faction types
+  (movement_party, military) before the 20270599 dropdown restriction
+  was added. Fix: drop the faction-type filter from those three
+  checkpoints — ownership is the only signal needed at read / edit /
+  delete time. New posts still funnel through `_forum_resolve_author`
+  which keeps the identity-selector dropdown limited to the three
+  postable types. Migration `20270603`.
 - **Wiki subtab now functional on both Forum surfaces.** The
   previously-placeholder "No wiki entries yet" pane in
   `politician-forum.html` and `entrepreneur-forum.html` now renders
