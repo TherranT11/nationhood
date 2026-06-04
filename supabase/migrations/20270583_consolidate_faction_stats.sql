@@ -43,19 +43,61 @@
 BEGIN;
 
 -- ── 1. Schema changes ───────────────────────────────────────────────
-ALTER TABLE public.factions RENAME COLUMN politician_standing    TO politician_influence;
-ALTER TABLE public.factions RENAME COLUMN politician_credibility TO politician_skill;
-ALTER TABLE public.factions RENAME COLUMN ent_ambition           TO ent_influence;
-ALTER TABLE public.factions RENAME COLUMN ent_cunning            TO ent_skill;
-ALTER TABLE public.factions DROP   COLUMN ent_vision;
+-- Wrapped in conditional DO blocks because the linked DB picked up
+-- these renames during a prior partial deploy (20270580 failed with
+-- SQLSTATE 42703 on f.politician_standing before the migration was
+-- marked applied, leaving the columns already renamed). Each block
+-- is a no-op when the old column is gone, so the migration is
+-- re-runnable from any half-applied state.
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='factions'
+                  AND column_name='politician_standing') THEN
+        ALTER TABLE public.factions RENAME COLUMN politician_standing TO politician_influence;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='factions'
+                  AND column_name='politician_credibility') THEN
+        ALTER TABLE public.factions RENAME COLUMN politician_credibility TO politician_skill;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='factions'
+                  AND column_name='ent_ambition') THEN
+        ALTER TABLE public.factions RENAME COLUMN ent_ambition TO ent_influence;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='factions'
+                  AND column_name='ent_cunning') THEN
+        ALTER TABLE public.factions RENAME COLUMN ent_cunning TO ent_skill;
+    END IF;
+END $$;
+ALTER TABLE public.factions DROP COLUMN IF EXISTS ent_vision;
 
 -- Snapshot columns on state_advocate_appointment_requests (20270555/57)
 -- mirror the politician stat names. Rename in lockstep so the snapshot
 -- column names match what they snapshot.
-ALTER TABLE public.state_advocate_appointment_requests
-    RENAME COLUMN applicant_standing    TO applicant_influence;
-ALTER TABLE public.state_advocate_appointment_requests
-    RENAME COLUMN applicant_credibility TO applicant_skill;
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='state_advocate_appointment_requests'
+                  AND column_name='applicant_standing') THEN
+        ALTER TABLE public.state_advocate_appointment_requests
+            RENAME COLUMN applicant_standing TO applicant_influence;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public' AND table_name='state_advocate_appointment_requests'
+                  AND column_name='applicant_credibility') THEN
+        ALTER TABLE public.state_advocate_appointment_requests
+            RENAME COLUMN applicant_credibility TO applicant_skill;
+    END IF;
+END $$;
 
 -- ── _apply_verdict — verdict standing/influence adjustment ──
 CREATE OR REPLACE FUNCTION public._apply_verdict(p_trial_id uuid, p_tick int)
