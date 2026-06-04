@@ -223,6 +223,31 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Aircraft production modal: shows the actual charge, not the
+  bundled cost.** The Produce modal on `entrepreneur-corp.html` was
+  reading `design.cost_per_unit` for its "Unit cost $X" line — for
+  aircraft designs that's the BUNDLED total (airframe + engines ×
+  count), but `ent_queue_production_run` (since `20270608`) only
+  charges the airframe portion (engines come from
+  `ent_engine_inventory`). The displayed cost was higher than the
+  actual debit; users reported it looked like they were being
+  billed for engines twice (once on engine purchase, again as part
+  of the aircraft). Migration `20270611`: new
+  `ent_production_cost_preview(p_corp_id, p_design_id)` RPC returns
+  the per-unit charge `ent_queue_production_run` would compute,
+  plus engine breakdown (`engine_name`, `engine_inventory_have`).
+  Modal calls it once on open, caches the value, and adds a sub-
+  line: "Engines: 2× Artigiano Passera drawn from your inventory
+  (5 on hand) — not billed again here." Warning red when stock is
+  short. Also folded the engine-discount math into
+  `_aircraft_engine_requirement`'s response (new
+  `per_unit_discount` field) so the formula now lives in exactly
+  one place — `ent_queue_production_run`,
+  `ent_accept_aircraft_order`, and the new preview RPC all read
+  the same source. **If you're still seeing the full bundled cost
+  debited from treasury after applying `20270611`, double-check
+  that `20270608` and `20270609` are also applied — the server-
+  side charge fix lives there.**
 - **Brokerage modal: "nation gets" now correctly reads "owner gets"
   for owner-offered buildings.** The Re-price / List-for-Sale modal
   on `entrepreneur-corp.html` always rendered the proceeds split as

@@ -1813,16 +1813,30 @@ function initials(s, n) {
       const compat   = isEngine ? ['engine_assembly_plant'] : (AC_PLANT_COMPAT[d.airframe_class] || []);
       const tpu      = isEngine ? 1 : (AC_TICKS_PER_UNIT[d.airframe_class] || 2);
       const subType  = isEngine ? '' : (d.airframe_class || '');
-      const [{ data: plants, error: pErr }, { data: runs, error: rErr }] = await Promise.all([
+      // Preview RPC (20270611) is the SOT for what ent_queue_production_run
+      // will actually charge per unit — engine cost is dropped because
+      // engines come from ent_engine_inventory (paid for at engine
+      // production / purchase time). Reading design.cost_per_unit
+      // directly would advertise the bundled cost (airframe + engines)
+      // and double-bill engines in the user's mental model. Engine
+      // designs have no sub-engine so per_unit_charged == design cost.
+      const [{ data: plants, error: pErr }, { data: runs, error: rErr }, { data: preview, error: previewErr }] = await Promise.all([
         _supabase.from('corp_buildings').select('id, name, building_type')
           .eq('owner_corp_id', id).eq('status', 'completed').in('building_type', compat),
         _supabase.from('ent_production_runs').select('plant_building_id').eq('status', 'active'),
+        _supabase.rpc('ent_production_cost_preview', { p_corp_id: id, p_design_id: d.id }),
       ]);
-      if (pErr) console.warn('[entrepreneur-corp] produce plants fetch error:', pErr.message);
-      if (rErr) console.warn('[entrepreneur-corp] active runs fetch error:', rErr.message);
+      if (pErr)        console.warn('[entrepreneur-corp] produce plants fetch error:', pErr.message);
+      if (rErr)        console.warn('[entrepreneur-corp] active runs fetch error:', rErr.message);
+      if (previewErr)  console.warn('[entrepreneur-corp] preview fetch error:', previewErr.message);
       const busy = new Set((runs || []).map(r => r.plant_building_id));
       const freePlants = (plants || []).filter(p => !busy.has(p.id));
-      const perUnit = Number(d.cost_per_unit) || 0;
+      // Fallback to design.cost_per_unit if the preview RPC failed —
+      // misleading but better than 0 if the server lookup is down.
+      const perUnit = (preview?.success ? Number(preview.per_unit_charged) : Number(d.cost_per_unit)) || 0;
+      const engineName  = preview?.engine_name || '';
+      const engineCount = Number(preview?.engine_count_per_aircraft) || 0;
+      const engineHave  = Number(preview?.engine_inventory_have) || 0;
       let submitting = false;
       overlay.innerHTML = `
         <div class="bm-modal" style="max-width:460px;">
@@ -1852,8 +1866,20 @@ function initials(s, n) {
         const q = Math.max(1, Math.min(100, parseInt(qtyEl.value, 10) || 1));
         const totalTicks = tpu * q, totalCost = perUnit * q;
         const costTick = Math.max(1, Math.floor(totalCost / totalTicks));
+        // Engine line: for aircraft designs with an engine, surface
+        // the from-inventory draw count so the user can see they're
+        // NOT being charged for engines a second time at production.
+        // Warning when their stock can't cover the requested qty.
+        let engineLine = '';
+        if (engineName && engineCount > 0) {
+          const need = engineCount * q;
+          const short = engineHave < need;
+          engineLine = short
+            ? `<br><span style="color:#c98a8a;">Engines: ${need}× ${escapeHtml(engineName)} needed — you have ${engineHave} in inventory.</span>`
+            : `<br><span style="color:#8a8680;">Engines: ${need}× ${escapeHtml(engineName)} drawn from your inventory (${engineHave} on hand) — not billed again here.</span>`;
+        }
         document.getElementById('apr-preview').innerHTML =
-          `Unit cost <b>${fmtUsd(perUnit)}</b> · Total <b>${fmtUsd(totalCost)}</b><br>${totalTicks} ticks @ <b>${fmtUsd(costTick)}</b>/tick (${tpu} ticks/unit)`;
+          `Unit cost <b>${fmtUsd(perUnit)}</b> · Total <b>${fmtUsd(totalCost)}</b><br>${totalTicks} ticks @ <b>${fmtUsd(costTick)}</b>/tick (${tpu} ticks/unit)${engineLine}`;
       };
       if (qtyEl) { qtyEl.oninput = upd; upd(); }
       const btn = document.getElementById('apr-submit');
