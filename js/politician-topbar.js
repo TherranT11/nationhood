@@ -189,11 +189,12 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const display = displayName(f) || 'Politician';
   const baseLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
   const pillLabel = nick ? `${baseLabel} (${nick})` : baseLabel;
-  // Politician topbar shows POLITICAL CAPITAL (was INFLUENCE — renamed
-  // 20270463, was POL CASH before that). Sourced from factions
-  // .political_capital (originally added 20270357 as politician_
-  // influence); fmtBig keeps small values plain ("0", "27") and
-  // magnitude-scales higher ones ("1.2k").
+  // Politician topbar shows INFLUENCE. Sourced from factions
+  // .political_capital (column name is a legacy from the
+  // 20270463 rename of politician_influence → political_capital;
+  // the player-facing label flipped back to Influence in 9065499).
+  // fmtBig keeps small values plain ("0", "27") and magnitude-scales
+  // higher ones ("1.2k").
   const politicalCapital = fmtBig(Number(f.political_capital) || 0);
   const age = String(currentAge(f, s.current_tick || 0));
   const nationHtml = nation
@@ -215,7 +216,7 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
         <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
       </div>
       <div class="right">
-        <div class="cash-pill"><span class="label">POLITICAL CAPITAL: </span><span class="value">${esc(politicalCapital)}</span></div>
+        <div class="cash-pill"><span class="label">INFLUENCE: </span><span class="value">${esc(politicalCapital)}</span></div>
         <div class="pol-switcher">
           <span class="pol-pill" id="pol-pill" title="Switch faction">${esc(pillLabel)} &#x25BE;</span>
           <div class="pol-dd" id="pol-dd"></div>
