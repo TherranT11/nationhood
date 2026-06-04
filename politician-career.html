@@ -835,18 +835,47 @@ const LEGISLATURE_RUNGS = [
     actions:     ['Advance Bill'],
   },
   {
-    name: 'Deputy Speaker / Presiding Officer',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
-    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power.',
-    actions:     ['Recognize Speaker', 'Schedule Debate'],
+    name: 'Deputy Speaker · Presiding Officer',
+    held:        (s) => s.deputySpeakerAtTick != null,
+    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power. You hold the chair until the next general election or you resign.',
+    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power. Open to a sitting MP with 35 Reputation whose party holds the plurality. One seat per nation; held until the next general election.',
+    actions:     [{ label: 'Change Legislative Agenda', kind: 'disabled' }],
+    actionIfHeld: { label: 'Resign Chair · Back to MP', kind: 'secondary', action: 'resign-chair' },
+    actionIfNot: (s) => {
+      if (s.office !== 'member_of_parliament') {
+        return { label: 'Become Deputy Speaker', kind: 'disabled' };
+      }
+      if (s.politicianReputation < 35) {
+        return { label: `Become Deputy Speaker — need 35 Reputation (have ${s.politicianReputation})`, kind: 'disabled' };
+      }
+      if (s.speakerAtTick != null) {
+        return { label: 'Already Speaker — resign first', kind: 'disabled' };
+      }
+      return { label: 'Become Deputy Speaker', kind: 'primary', action: 'become-deputy-speaker' };
+    },
   },
   {
-    name: 'Speaker of the House',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'The top — institutional, not partisan.',
-    descIfNot:   ()  => 'The top — institutional, not partisan.',
-    actions:     ['Set Legislative Calendar', 'Convene Legislature'],
+    name: 'Speaker of the Assembly',
+    held:        (s) => s.speakerAtTick != null,
+    descIfHeld:  ()  => 'The top — institutional, not partisan. You hold the chair until the next general election or you resign.',
+    descIfNot:   ()  => 'The top — institutional, not partisan. Open to a sitting MP with 35 Reputation whose party holds the Head of Government role. One seat per nation; held until the next general election.',
+    actions:     [{ label: 'Set Legislative Calendar', kind: 'disabled' }, { label: 'Convene Legislature', kind: 'disabled' }],
+    actionIfHeld: { label: 'Resign Chair · Back to MP', kind: 'secondary', action: 'resign-chair' },
+    actionIfNot: (s) => {
+      if (s.office !== 'member_of_parliament') {
+        return { label: 'Run as Speaker', kind: 'disabled' };
+      }
+      if (s.politicianReputation < 35) {
+        return { label: `Run as Speaker — need 35 Reputation (have ${s.politicianReputation})`, kind: 'disabled' };
+      }
+      if (s.partyStatus !== 'Governing') {
+        return { label: 'Run as Speaker — your party must hold the HoG role', kind: 'disabled' };
+      }
+      if (s.deputySpeakerAtTick != null) {
+        return { label: 'Resign Deputy Speaker first', kind: 'disabled' };
+      }
+      return { label: 'Run as Speaker', kind: 'primary', action: 'run-for-speaker' };
+    },
   },
 ];
 
@@ -1312,13 +1341,14 @@ const NAVY_RUNGS = [
     ],
   },
   {
-    name: 'Department Head · Lieutenant Commander',
+    name: 'Capital Ship Commander · Captain',
     held:        ()  => false,
-    descIfHeld:  ()  => 'You run a department aboard a larger warship, or command a patrol craft of your own.',
-    descIfNot:   ()  => 'You run a department aboard a larger warship — operations, weapons, engineering, navigation — or you command a patrol craft of your own. Your first taste of real responsibility: men reporting to you, decisions you sign for, watches you set rather than stand.',
+    descIfHeld:  ()  => 'You hold command of a cruiser or carrier — the heaviest hull the Republic puts to sea.',
+    descIfNot:   ()  => 'Command of a cruiser or aircraft carrier — the heaviest warship in the Fleet. A thousand-plus crew, a flight deck or main batteries, and the kind of ship that defines a Navy. The Ministry follows your name; foreign attachés track your deployments.',
     actions: [
-      'Command a Patrol Boat',
-      'Run a Department',
+      'Command a Capital Ship',
+      'Lead a Strike Group',
+      { label: 'Conduct a Surface Action', dark: true },
     ],
   },
   {
@@ -1333,7 +1363,7 @@ const NAVY_RUNGS = [
     ],
   },
   {
-    name: 'Squadron Commander · Captain',
+    name: 'Squadron Commander · Admiral',
     held:        ()  => false,
     descIfHeld:  ()  => 'You direct multiple ships — a squadron in formation or a heavy cruiser with its auxiliaries.',
     descIfNot:   ()  => 'Command of multiple ships — a squadron of three to five vessels operating in formation, or a heavy cruiser with its own auxiliaries. You no longer steer the ship; you direct ships. Officers junior to you have their own commands and report up.',
@@ -1354,7 +1384,7 @@ const NAVY_RUNGS = [
     ],
   },
   {
-    name: 'Chief of Naval Operations · Admiral',
+    name: 'Chief of Naval Operations · Fleet Admiral',
     tierName: 'APEX',
     held:        ()  => false,
     descIfHeld:  ()  => 'You head the Navy — the Fleet is yours to direct, modernize, commit, or keep in port.',
@@ -1630,6 +1660,21 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // path. 35 Rep + 25 Influence threshold (no spend), Experienced Advocate
     // prereq. Doesn't gate or unlock Magistrate.
     stateProsecutorAtTick:   ctx?.faction?.politician_state_prosecutor_at_tick ?? null,
+    // Deputy Speaker (20270592). Stamped on appointment by
+    // politician_become_deputy_speaker; cleared at the nation's
+    // next general election. Plurality check happens server-side
+    // (the client gates only on Reputation + MP-status + not-held).
+    deputySpeakerAtTick:     ctx?.faction?.politician_deputy_speaker_at_tick ?? null,
+    // Speaker of the Assembly (20270593). Same lifecycle as Deputy
+    // Speaker; gated server-side on party_status='Governing' (the
+    // HoG-filled flag) instead of plurality. Mutually exclusive with
+    // Deputy Speaker at the holder level — server rejects with
+    // holds_other_chair if the caller already holds the Deputy seat.
+    speakerAtTick:           ctx?.faction?.politician_speaker_of_assembly_at_tick ?? null,
+    // party_status reaches the Speaker rung's actionIfNot gate so the
+    // button greys out with a useful hint when the caller's party
+    // isn't in Governing status, instead of failing on the wire.
+    partyStatus:             party?.party_status || null,
   };
 }
 
@@ -1920,6 +1965,84 @@ function bindRungActions(ctx) {
   // (politician_register_for_office) — only the target_office differs.
   // Page reloads on success so the rung flips to "in race" and the
   // Pressing Issues card picks up the new active race.
+  // Chair appointments (20270592 Deputy Speaker, 20270593 Speaker).
+  // Each RPC validates the full gate chain server-side; the client
+  // pre-screens what it can see so the obvious-fail cases don't hit
+  // the wire. Shared reason map covers both RPCs — the additional
+  // codes only the Speaker RPC raises (holds_other_chair, already_speaker,
+  // party_not_governing as HoG-flag rather than plurality) get
+  // distinct strings; everything else is shared.
+  const CHAIR_RPC = {
+    'become-deputy-speaker': { rpc: 'politician_become_deputy_speaker', verb: 'appointing' },
+    'run-for-speaker':       { rpc: 'politician_run_for_speaker',       verb: 'running for Speaker' },
+  };
+  const CHAIR_REASON = {
+    not_authenticated:        'Sign in to act.',
+    not_member:               'You are no longer a member of this party.',
+    party_not_found:          'Party not found.',
+    no_shard:                 'Shard not found.',
+    not_mp:                   'You must be a sitting Member of Parliament.',
+    already_deputy_speaker:   'You already hold the Deputy Speaker chair.',
+    already_speaker:          'You already hold the Speaker chair.',
+    holds_other_chair:        'Resign your current chair before taking another.',
+    seat_filled:              'Another MP already holds that chair.',
+    party_not_governing:      'Your party isn’t in the governing position required for this chair.',
+  };
+  document.querySelectorAll('[data-action="become-deputy-speaker"], [data-action="run-for-speaker"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const partyId = ctx?.party?.id || null;
+      if (!partyId) { alert('Join a political party first.'); return; }
+      const spec = CHAIR_RPC[btn.dataset.action];
+      if (!spec) return;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = `${spec.verb[0].toUpperCase()}${spec.verb.slice(1)}…`;
+      try {
+        const { data, error } = await _supabase.rpc(spec.rpc, { p_party_id: partyId });
+        if (error) throw error;
+        if (!data?.success) {
+          const msg = data?.reason === 'insufficient_reputation'
+            ? `Reputation too low — need ${data?.required ?? 35} (you have ${data?.have ?? 0}).`
+            : (CHAIR_REASON[data?.reason] || ('Could not appoint: ' + (data?.reason || 'unknown')));
+          alert(msg);
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
+  });
+
+  // Chair resignation (20270593). Clears whichever chair the caller
+  // currently holds; politician_office stays MP per spec.
+  document.querySelectorAll('[data-action="resign-chair"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Resign your chair? You return to Member of Parliament.')) return;
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Resigning…';
+      try {
+        const { data, error } = await _supabase.rpc('politician_resign_chair');
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated: 'Sign in to act.',
+            no_politician:     'No politician on this account.',
+            no_chair_held:     'You don’t hold a chair to resign from.',
+          };
+          alert(REASON[data?.reason] || ('Could not resign: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
+  });
+
   document.querySelectorAll('[data-action="register-city-council"], [data-action="register-senior-mp"]')
     .forEach(btn => {
       btn.addEventListener('click', async () => {

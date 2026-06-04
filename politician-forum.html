@@ -5,27 +5,326 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Politician — Forum</title>
 <style>
-/* Topbar / nav / body base live in js/politician-topbar.js. This page styles
-   only its own body: a subtab row (Wiki / Ledger) above an empty pane.
-   Both panes are placeholders until the content under them is designed. */
-* { box-sizing:border-box; margin:0; padding:0; }
-.content { padding:32px 24px 24px; }
+/* Body base + topbar styles come from js/politician-topbar.js. This
+   page styles the forum surface only: the Forum/Wiki sub-tabs above
+   a masthead + zone-list. Wiki pane stays empty placeholder until
+   that surface is designed. Static content below is mockup data;
+   wiring real threads / counts is a follow-up. */
+* { box-sizing:border-box; }
 
-.res-tabs { display:flex; gap:0; margin-bottom:18px;
-  border-bottom:0.5px solid rgba(255,255,255,0.08); }
-.res-tab { padding:10px 18px; font-family:monospace; font-size:11px; letter-spacing:0.1em;
-  text-transform:uppercase; color:#888; background:transparent; border:none;
-  border-bottom:1px solid transparent; cursor:pointer; transition:all 0.15s;
-  margin-bottom:-0.5px; }
-.res-tab:hover:not(.active) { color:#d4d4d4; }
-.res-tab.active { color:#5aafa5; border-bottom-color:#5aafa5; }
+.content { padding:18px 24px 40px; max-width:1280px; margin:0 auto; }
 
-.res-pane  { min-height:200px; }
-.res-empty { color:#666; font-size:12px; font-style:italic; text-align:center;
-  padding:60px 20px; background:#121212; border:0.5px dashed rgba(255,255,255,0.10);
-  border-radius:4px; }
+/* ─── Sub-tabs (Forum / Wiki) ─────────────────────────────────────── */
+.res-tabs {
+  display:flex;
+  gap:0;
+  margin-bottom:14px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.res-tab {
+  padding:13px 26px;
+  font-size:11px; letter-spacing:0.18em; font-weight:700;
+  text-transform:uppercase;
+  color:#888;
+  background:transparent;
+  border:1px solid rgba(255,255,255,0.06);
+  border-bottom:none;
+  border-radius:6px 6px 0 0;
+  cursor:pointer;
+  font-family:inherit;
+  position:relative;
+  margin-right:4px;
+  margin-bottom:-1px;
+  display:flex; align-items:center; gap:8px;
+  transition:all 0.15s;
+}
+.res-tab .tab-ic { font-size:13px; color:#888; }
+.res-tab:hover { color:#bbb; background:rgba(255,255,255,0.02); }
+.res-tab.active {
+  color:#fff;
+  background:#0d0d0d;
+  border-color:rgba(255,255,255,0.06);
+  border-bottom:1px solid #0d0d0d;
+}
+.res-tab.active::before {
+  content:"";
+  position:absolute;
+  top:0; left:0; right:0;
+  height:3px;
+  background:#5aafa5;
+  border-radius:6px 6px 0 0;
+}
+.res-tab.active .tab-ic { color:#7ac8c8; }
 
-.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+.res-pane { min-height:200px; }
+.res-empty {
+  color:#666; font-size:12px; font-style:italic; text-align:center;
+  padding:60px 20px; background:#121212;
+  border:0.5px dashed rgba(255,255,255,0.10);
+  border-radius:4px;
+}
+
+/* ─── Masthead ────────────────────────────────────────────────────── */
+.masthead {
+  border:1px solid rgba(255,255,255,0.06);
+  border-top:3px double #2a2a2a;
+  border-bottom:3px double #2a2a2a;
+  background:linear-gradient(180deg, #0d0d0d 0%, #060606 100%);
+  padding:24px 32px;
+  margin-bottom:18px;
+  display:flex; align-items:center; gap:24px;
+  position:relative;
+}
+.mast-mark {
+  width:54px; height:54px;
+  border:1.5px solid #3a3a3a;
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:Georgia,serif; font-size:24px;
+  font-style:italic; font-weight:600;
+  color:#fff;
+  flex-shrink:0;
+  box-shadow:inset 0 0 0 1px #1a1a1a;
+}
+.mast-info { flex:1; }
+.mast-title {
+  font-family:Georgia,serif; font-size:32px; color:#fff;
+  font-weight:500; letter-spacing:-0.012em; line-height:1.1;
+}
+.mast-title em { font-style:italic; }
+.mast-sub {
+  font-size:11px; color:#888; margin-top:6px;
+  font-style:italic; letter-spacing:0.04em;
+}
+.mast-meta { display:flex; align-items:center; gap:18px; flex-shrink:0; }
+.mast-stat { text-align:right; }
+.mast-stat-num {
+  font-family:Georgia,serif; font-size:18px; color:#fff;
+  font-weight:500; font-style:italic;
+  letter-spacing:-0.005em; line-height:1;
+}
+.mast-stat-lab {
+  font-size:7.5px; letter-spacing:0.18em; color:#666;
+  font-weight:700; text-transform:uppercase; margin-top:4px;
+}
+.mast-divider { width:1px; height:34px; background:rgba(255,255,255,0.06); }
+
+/* ─── Forum-local navbar ──────────────────────────────────────────── */
+.fnav {
+  background:#0a0a0a;
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:5px;
+  margin-bottom:18px;
+  display:flex; align-items:stretch;
+}
+.fnav-link {
+  padding:13px 18px;
+  font-size:10px; letter-spacing:0.14em; font-weight:700;
+  color:#888; text-decoration:none;
+  text-transform:uppercase;
+  border-right:1px solid rgba(255,255,255,0.06);
+  transition:all 0.12s;
+  display:flex; align-items:center; gap:7px;
+}
+.fnav-link:hover { color:#fff; background:#0d0d0d; }
+.fnav-link.active { color:#fff; background:#0f0f0f; }
+.fnav-link .ic { font-size:11px; color:#888; }
+.fnav-link.active .ic { color:#7ac8c8; }
+.fnav-search {
+  margin-left:auto;
+  display:flex; align-items:center;
+  padding:0 14px; gap:10px;
+}
+.fnav-search-input {
+  background:transparent; border:none;
+  color:#fff; font-size:11px; font-family:inherit;
+  padding:6px 0; width:240px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.fnav-search-input::placeholder { color:#666; font-style:italic; }
+.fnav-search-input:focus { outline:none; border-bottom-color:#3a3a3a; }
+.fnav-post-btn {
+  margin:6px 8px 6px 6px;
+  padding:9px 14px; border-radius:3px;
+  background:transparent;
+  border:1px solid rgba(90,175,165,0.5);
+  color:#7ac8c8;
+  font-size:9px; letter-spacing:0.14em; font-weight:700;
+  cursor:pointer; font-family:inherit; text-transform:uppercase;
+}
+.fnav-post-btn:hover { background:rgba(90,175,165,0.08); color:#fff; }
+
+/* ─── Zones ──────────────────────────────────────────────────────── */
+.zones { display:flex; flex-direction:column; gap:20px; }
+
+.zone {
+  background:#0a0a0a;
+  border:1px solid rgba(255,255,255,0.06);
+  border-radius:6px;
+  overflow:hidden;
+}
+.zone.world   { border-top:3px solid #9a7050; --zc:#9a7050; --zc-dim:#4a3020; --zc-bg:#160d08; --zc-bright:#c89070; }
+.zone.players { border-top:3px solid #7a9aab; --zc:#7a9aab; --zc-dim:#3a5060; --zc-bg:#0e1318; --zc-bright:#9ab8c8; }
+.zone.game    { border-top:3px solid #8a7aa8; --zc:#8a7aa8; --zc-dim:#403852; --zc-bg:#0f0c14; --zc-bright:#a89ac8; }
+
+.zone-head {
+  padding:16px 24px 14px;
+  display:flex; align-items:center; gap:16px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+  background:linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 100%);
+}
+.zone-glyph {
+  width:42px; height:42px;
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px;
+  flex-shrink:0;
+  background:var(--zc-bg);
+  border:1px solid var(--zc-dim);
+  color:var(--zc-bright);
+}
+.zone-info { flex:1; }
+.zone-eyebrow {
+  font-size:8.5px; letter-spacing:0.22em; font-weight:700;
+  text-transform:uppercase; margin-bottom:3px;
+  color:var(--zc);
+}
+.zone-title {
+  font-family:Georgia,serif; font-size:22px; color:#fff;
+  font-weight:500; letter-spacing:-0.008em; line-height:1.15;
+}
+.zone-title em { font-style:italic; }
+.zone-desc {
+  font-size:10.5px; color:#888; margin-top:5px;
+  font-style:italic; line-height:1.5;
+}
+.zone-stat {
+  padding:7px 12px; border-radius:3px;
+  font-size:8.5px; letter-spacing:0.14em; font-weight:700;
+  text-transform:uppercase; flex-shrink:0;
+  background:var(--zc-bg);
+  border:1px solid var(--zc-dim);
+  color:var(--zc-bright);
+}
+
+/* ─── Category rows ──────────────────────────────────────────────── */
+.cat-list { display:flex; flex-direction:column; }
+.cat-row {
+  display:grid;
+  grid-template-columns:36px 1.4fr 110px 1fr 130px;
+  align-items:center;
+  padding:14px 24px;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  cursor:pointer;
+  transition:background 0.12s;
+  gap:18px;
+}
+.cat-row:last-child { border-bottom:none; }
+.cat-row:hover { background:#0d0d0d; }
+.cat-row.unread { background:rgba(90,175,165,0.025); }
+.cat-row.unread:hover { background:rgba(90,175,165,0.04); }
+
+.cat-ic {
+  width:34px; height:34px; border-radius:5px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px;
+  background:#0d0d0d;
+  border:1px solid rgba(255,255,255,0.06);
+  color:#888;
+}
+.cat-row.unread .cat-ic { color:var(--zc-bright); border-color:var(--zc-dim); }
+
+.cat-info { min-width:0; }
+.cat-name {
+  font-family:Georgia,serif; font-size:15px;
+  color:#fff; font-weight:500;
+  letter-spacing:-0.005em; line-height:1.25;
+  display:flex; align-items:center; gap:8px;
+}
+.cat-name .new-dot {
+  width:6px; height:6px; border-radius:50%;
+  background:#5aafa5;
+  flex-shrink:0;
+  box-shadow:0 0 6px #5aafa5;
+}
+.cat-row:not(.unread) .cat-name .new-dot { display:none; }
+.cat-desc {
+  font-size:10.5px; color:#888;
+  margin-top:4px; line-height:1.45;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.cat-count { text-align:right; }
+.cat-count-num {
+  font-family:Georgia,serif; font-size:16px; color:#ddd;
+  font-weight:500; font-style:italic;
+  line-height:1; letter-spacing:-0.005em;
+}
+.cat-count-lab {
+  font-size:7.5px; letter-spacing:0.16em; color:#666;
+  font-weight:700; text-transform:uppercase; margin-top:4px;
+}
+
+.cat-latest {
+  font-size:10px; color:#888;
+  line-height:1.45; overflow:hidden; min-width:0;
+}
+.cat-latest-title {
+  color:#ccc; font-style:italic; font-family:Georgia,serif;
+  font-size:11.5px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cat-latest-meta { font-size:9px; color:#666; margin-top:3px; }
+.cat-latest-meta .author { color:#7ac8c8; }
+
+.cat-posted {
+  display:flex; align-items:center; gap:10px;
+  justify-content:flex-end;
+}
+.cat-avatar {
+  width:28px; height:28px; border-radius:50%;
+  background:linear-gradient(135deg, #142421 0%, #0d1a17 100%);
+  border:1px solid rgba(90,175,165,0.25);
+  display:flex; align-items:center; justify-content:center;
+  font-family:Georgia,serif; font-size:11px; font-style:italic;
+  color:#7ac8c8; font-weight:600;
+  flex-shrink:0;
+}
+.cat-posted-info {
+  text-align:right; line-height:1.3;
+  min-width:0; overflow:hidden;
+}
+.cat-posted-author {
+  font-size:9.5px; color:#bbb; font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cat-posted-time {
+  font-size:8.5px; color:#666; margin-top:2px;
+  font-style:italic;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────── */
+.foot {
+  margin-top:24px;
+  padding-top:18px;
+  border-top:1px solid rgba(255,255,255,0.06);
+  display:flex; align-items:center; justify-content:space-between;
+  font-size:9px; color:#666; letter-spacing:0.06em;
+}
+.foot .left {
+  font-family:Georgia,serif; font-style:italic; font-size:10px;
+}
+.foot a {
+  color:#888; text-decoration:none; margin-left:14px;
+  text-transform:uppercase; letter-spacing:0.12em;
+  font-weight:700; font-size:8.5px;
+}
+.foot a:hover { color:#fff; }
+
+.loading {
+  font-family:monospace; font-size:11px; color:#4a4940;
+  text-align:center; padding:80px 20px;
+}
 </style>
 </head>
 <body>
@@ -33,23 +332,120 @@
 <div id="pol-topbar-container"></div>
 
 <div class="content" id="content" style="display:none;">
+
+  <!-- ─── Sub-tabs ────────────────────────────────────────────────── -->
   <div class="res-tabs" id="res-tabs">
-    <button class="res-tab active" data-tab="wiki">Wiki</button>
-    <button class="res-tab" data-tab="ledger">Ledger</button>
+    <button class="res-tab active" data-tab="forum"><span class="tab-ic">&#128172;</span>Forum</button>
+    <button class="res-tab" data-tab="wiki"><span class="tab-ic">&#128218;</span>Wiki</button>
   </div>
 
-  <div class="res-pane" data-pane="wiki">
+  <!-- ─── Forum pane (mockup content; real data wiring TBD) ───────── -->
+  <div class="res-pane" data-pane="forum">
+
+    <div class="masthead">
+      <div class="mast-mark">N</div>
+      <div class="mast-info">
+        <div class="mast-title">Nationhood <em>Forum</em></div>
+        <div class="mast-sub">a record of stories, politics, and consequence across the Continent</div>
+      </div>
+      <div class="mast-meta">
+        <div class="mast-stat">
+          <div class="mast-stat-num" id="mast-threads">—</div>
+          <div class="mast-stat-lab">Threads</div>
+        </div>
+        <div class="mast-divider"></div>
+        <div class="mast-stat">
+          <div class="mast-stat-num">—</div>
+          <div class="mast-stat-lab">Online</div>
+        </div>
+        <div class="mast-divider"></div>
+        <div class="mast-stat">
+          <div class="mast-stat-num">—</div>
+          <div class="mast-stat-lab">Members</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fnav">
+      <a class="fnav-link active"><span class="ic">&#9733;</span>All Zones</a>
+      <a class="fnav-link"><span class="ic">&#9737;</span>The World</a>
+      <a class="fnav-link"><span class="ic">&#9737;</span>The Players</a>
+      <a class="fnav-link"><span class="ic">&#9737;</span>The Game</a>
+      <a class="fnav-link"><span class="ic">&#128279;</span>Archive</a>
+      <a class="fnav-link"><span class="ic">&#9881;</span>Profile</a>
+      <div class="fnav-search">
+        <input type="text" class="fnav-search-input" placeholder="Search threads, members, tags...">
+      </div>
+      <button class="fnav-post-btn">&#9999; New Thread</button>
+    </div>
+
+    <div class="zones" id="forum-zones">
+      <div class="loading" style="padding:60px 20px;">Loading forum…</div>
+    </div>
+
+    <div class="foot">
+      <span class="left">&copy; Nationhood &middot; <em>established 2010</em></span>
+      <span>
+        <a href="#">Rules</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+        <a href="#">Archive</a>
+        <a href="#">Members</a>
+      </span>
+    </div>
+
+  </div>
+
+  <!-- ─── Wiki pane (placeholder until that surface is designed) ──── -->
+  <div class="res-pane" data-pane="wiki" style="display:none;">
     <div class="res-empty">No wiki entries yet.</div>
   </div>
-  <div class="res-pane" data-pane="ledger" style="display:none;">
-    <div class="res-empty">No ledger entries yet.</div>
-  </div>
+
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase }            from './js/supabase-client.js';
+
+// Zone shells are structural (the three top-level Forum surfaces), so
+// they're declared here rather than per-row in the DB. The 20270595
+// RPC supplies the per-category contents that hang under each.
+const ZONE_META = {
+  world:   { eyebrow: 'Zone I',   title: 'The <em>World</em>',   glyph: '&#127760;',
+             desc: 'In-character narrative · press, diplomacy, character lives, and the ongoing record of the game' },
+  players: { eyebrow: 'Zone II',  title: 'The <em>Players</em>', glyph: '&#9737;',
+             desc: 'Out-of-character · community discussion, help, feedback, and conversation among players themselves' },
+  game:    { eyebrow: 'Zone III', title: 'The <em>Game</em>',    glyph: '&#128203;',
+             desc: 'Administration · announcements from the moderators, rules, schedule, recruitment' },
+};
+const ZONE_ORDER = ['world', 'players', 'game'];
+
+const ESCAPE_LOOKUP = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESCAPE_LOOKUP[c]);
+const fmtInt  = (n) => Number(n || 0).toLocaleString();
+
+function initialsFromName(name) {
+  return String(name || '')
+    .trim().split(/\s+/).map(w => w[0] || '').join('')
+    .toUpperCase().slice(0, 2) || '—';
+}
+
+function formatRelative(iso) {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const diff = Math.max(0, Date.now() - then);
+  const m = Math.round(diff / 60000);
+  if (m < 1)    return 'just now';
+  if (m < 60)   return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24)   return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24);
+  if (d < 30)   return `${d} day${d === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 async function init() {
   let ctx = null;
@@ -62,8 +458,97 @@ async function init() {
   if (!ctx) return;
 
   bindSubtabs();
+  await loadForum(ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
+}
+
+async function loadForum(ctx) {
+  const host = document.getElementById('forum-zones');
+  const totalEl = document.getElementById('mast-threads');
+  try {
+    const { data, error } = await _supabase.rpc('list_forum_categories',
+      { p_viewer_faction_id: ctx?.faction?.id || null });
+    if (error) throw error;
+    if (!data?.success) {
+      host.innerHTML = `<div class="res-empty">Could not load forum (${escHtml(data?.reason || 'unknown')}).</div>`;
+      return;
+    }
+    totalEl.textContent = fmtInt(data.total_threads);
+    host.innerHTML = renderZones(Array.isArray(data.categories) ? data.categories : []);
+  } catch (e) {
+    console.error('politician-forum: load failed', e);
+    host.innerHTML = `<div class="res-empty">Failed to load forum: ${escHtml(e?.message || e)}</div>`;
+  }
+}
+
+function renderZones(categories) {
+  const byZone = { world: [], players: [], game: [] };
+  for (const c of categories) {
+    if (byZone[c.zone]) byZone[c.zone].push(c);
+  }
+  return ZONE_ORDER.map(zone => renderZone(zone, byZone[zone])).join('');
+}
+
+function renderZone(zone, cats) {
+  const meta = ZONE_META[zone];
+  const threadTotal = cats.reduce((acc, c) => acc + Number(c.thread_count || 0), 0);
+  const rows = cats.length
+    ? cats.map(renderCategoryRow).join('')
+    : `<div class="res-empty" style="margin:0;border-radius:0;">No categories in this zone.</div>`;
+  return `
+    <div class="zone ${zone}">
+      <div class="zone-head">
+        <div class="zone-glyph">${meta.glyph}</div>
+        <div class="zone-info">
+          <div class="zone-eyebrow">${meta.eyebrow}</div>
+          <div class="zone-title">${meta.title}</div>
+          <div class="zone-desc">${meta.desc}</div>
+        </div>
+        <span class="zone-stat">${fmtInt(threadTotal)} Thread${threadTotal === 1 ? '' : 's'}</span>
+      </div>
+      <div class="cat-list">${rows}</div>
+    </div>`;
+}
+
+function renderCategoryRow(c) {
+  const unread = !!c.unread;
+  const latest = c.latest || null;
+  const latestBlock = latest
+    ? `<div class="cat-latest">
+         <div class="cat-latest-title">${escHtml(latest.title || '')}</div>
+         <div class="cat-latest-meta">by <span class="author">${escHtml(latest.author_name || '—')}</span></div>
+       </div>
+       <div class="cat-posted">
+         <div class="cat-avatar">${escHtml(initialsFromName(latest.author_name))}</div>
+         <div class="cat-posted-info">
+           <div class="cat-posted-author">${escHtml(latest.author_name || '—')}</div>
+           <div class="cat-posted-time">${escHtml(formatRelative(latest.last_post_at))}</div>
+         </div>
+       </div>`
+    : `<div class="cat-latest">
+         <div class="cat-latest-title" style="color:#666;">No threads yet</div>
+         <div class="cat-latest-meta">be the first to post</div>
+       </div>
+       <div class="cat-posted">
+         <div class="cat-posted-info">
+           <div class="cat-posted-time" style="text-align:right;">—</div>
+         </div>
+       </div>`;
+  const posts = Number(c.post_count || 0);
+  return `
+    <div class="cat-row${unread ? ' unread' : ''}" data-cat-slug="${escHtml(c.slug || '')}">
+      <div class="cat-ic">${c.icon_html || ''}</div>
+      <div class="cat-info">
+        <div class="cat-name">${escHtml(c.name || '')}<span class="new-dot"></span></div>
+        <div class="cat-desc">${escHtml(c.description || '')}</div>
+      </div>
+      <div class="cat-count">
+        <div class="cat-count-num">${fmtInt(posts)}</div>
+        <div class="cat-count-lab">Post${posts === 1 ? '' : 's'}</div>
+      </div>
+      ${latestBlock}
+    </div>`;
 }
 
 function bindSubtabs() {
