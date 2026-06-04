@@ -68,6 +68,13 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Nation flag + name on every thread row.** Category-list rows
+  now carry a small chip beside the title with the thread's
+  Primary Nation (flag image + name) or "International" when
+  unset. Same chip pattern on the thread detail header. Server-
+  side join in `get_forum_category` + `get_forum_thread` pulls
+  `nations.flag_url`; client-side render goes through a shared
+  `renderNationChip()` helper in `forum-utils.js`.
 - **Edit + Delete on your own posts.** Both chips appear in a small
   action row at the bottom of any post whose `author_faction_id` is
   in the caller's faction set. Edit swaps the body for an inline

@@ -130,6 +130,25 @@
 }
 .thread-opener .author { color:#7ac8c8; }
 
+/* Nation chip beside the thread title. International (no flag URL,
+   no name) renders the chip without an <img>, so the layout stays
+   consistent. */
+.nation-chip {
+  display:inline-flex; align-items:center; gap:5px;
+  margin-left:8px; vertical-align:middle;
+  padding:2px 8px 2px 6px; border-radius:3px;
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);
+  font-size:8.5px; letter-spacing:0.12em; font-weight:700;
+  text-transform:uppercase; color:#bbb;
+}
+.nation-chip-flag {
+  width:14px; height:10px; object-fit:cover;
+  border:0.5px solid rgba(255,255,255,0.1); border-radius:1px;
+  flex-shrink:0;
+}
+.nation-chip-name { line-height:1; }
+
 .thread-count { text-align:right; }
 .thread-count-num {
   font-family:Georgia,serif; font-size:16px; color:#ddd;
@@ -192,7 +211,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
-import { escHtml, fmtInt, formatRelative, ZONE_META, getSlugFromUrl }
+import { escHtml, fmtInt, formatRelative, ZONE_META, getSlugFromUrl, renderNationChip }
   from './js/forum-utils.js';
 
 function zoneLabel(zone) {
@@ -309,7 +328,7 @@ function renderThreadRow(t) {
   return `
     <div class="thread-row${unread ? ' unread' : ''}" data-thread-id="${escHtml(t.thread_id || '')}">
       <div>
-        <div class="thread-title">${escHtml(t.title || '')}<span class="new-dot"></span></div>
+        <div class="thread-title">${escHtml(t.title || '')}${renderNationChip(t.nation_name, t.nation_flag_url)}<span class="new-dot"></span></div>
         <div class="thread-opener">opened by <span class="author">${escHtml(t.opener_name || '—')}</span></div>
       </div>
       <div class="thread-count">

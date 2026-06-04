@@ -51,13 +51,19 @@
 }
 .threadhead-meta .stat strong { color:#bbb; font-weight:600; }
 .threadhead-meta .sep { color:#444; }
-.threadhead-nation {
-  display:inline-flex; align-items:center; gap:5px;
-  padding:4px 10px; border-radius:3px;
+.thread-nation {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 11px 4px 7px; border-radius:3px;
   background:var(--zc-bg); border:1px solid var(--zc-dim);
   color:var(--zc-bright);
   font-size:9px; letter-spacing:0.14em; font-weight:700; text-transform:uppercase;
 }
+.thread-nation-flag {
+  width:16px; height:11px; object-fit:cover;
+  border:0.5px solid rgba(255,255,255,0.12); border-radius:1px;
+  flex-shrink:0;
+}
+.thread-nation-name { line-height:1; }
 
 /* ─── Posts ──────────────────────────────────────────────────────── */
 .posts {
@@ -338,7 +344,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
-import { escHtml, sanitizeHtml, countWords, formatRelative, ZONE_META, insertImageAtCursor }
+import { escHtml, sanitizeHtml, countWords, formatRelative, ZONE_META, insertImageAtCursor, renderNationChip }
   from './js/forum-utils.js';
 
 const BODY_MIN = 4, BODY_MAX = 50000;
@@ -437,9 +443,7 @@ async function fetchMyIdentities() {
 function renderThreadHead(thread, cat) {
   const host = document.getElementById('threadhead-host');
   const zoneMeta = ZONE_META[cat.zone] || { eyebrow: '', name: '' };
-  const nationChip = thread.nation_name
-    ? `<span class="threadhead-nation">${escHtml(thread.nation_name)}</span>`
-    : `<span class="threadhead-nation">International</span>`;
+  const nationChip = renderNationChip(thread.nation_name, thread.nation_flag_url, { className: 'thread-nation' });
   host.innerHTML = `
     <div class="threadhead ${escHtml(cat.zone)}">
       <div class="threadhead-row">

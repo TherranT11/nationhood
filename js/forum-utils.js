@@ -138,6 +138,25 @@ export function getSlugFromUrl() {
   return new URLSearchParams(window.location.search).get('slug') || '';
 }
 
+// Renders a small nation chip (flag + name) for use beside thread
+// titles on the category list and inside the thread header. Returns
+// HTML. nationName is null/empty for International threads — caller
+// gets a flag-less "International" chip in that case so the field is
+// never blank. flagUrl is optional; absent or falsy hides the flag.
+//
+// The chip's container class comes from the consumer page so each
+// surface can tune its own padding / typography — this helper is
+// markup-only, no CSS.
+const ESC_LOOKUP_LOCAL = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+const escLocal = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC_LOOKUP_LOCAL[c]);
+export function renderNationChip(nationName, flagUrl, { className = 'nation-chip' } = {}) {
+  const label = nationName ? String(nationName) : 'International';
+  const flag  = flagUrl
+    ? `<img class="${escLocal(className)}-flag" src="${escLocal(flagUrl)}" alt="" loading="lazy">`
+    : '';
+  return `<span class="${escLocal(className)}">${flag}<span class="${escLocal(className)}-name">${escLocal(label)}</span></span>`;
+}
+
 // Inserts an <img src=url alt=altText> at the current cursor position
 // inside a contenteditable element, or appends if the selection isn't
 // inside that element. Used by both compose (opening post) and
