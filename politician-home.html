@@ -2476,7 +2476,7 @@ function renderCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
   const gateTick = Number(politician.next_member_action_tick) || 0;
   const turnLocked = gateTick > currentTick;
-  const capital = Number(politician.political_capital) || 0;
+  const capital = Number(politician.politician_influence) || 0;
   const adsCanAfford = capital >= 1;
   // No party = no actions. The Stand-for-Election flow on politician-career
   // gates by the same rule, so if there's an active race the politician
@@ -2485,12 +2485,12 @@ function renderCampaignActions(ctx) {
     return `<div class="ci-actions"><div class="ci-actions-lab">YOUR NEXT MOVE</div>
       <div class="ci-act-lockmsg">Rejoin a party to take campaign actions.</div></div>`;
   }
-  const adsTitle = !adsCanAfford ? ' title="Need 1 Influence."' : '';
+  const adsTitle = !adsCanAfford ? ' title="Need 1 Capital."' : '';
   const adsBtn = `
     <button class="ci-act" type="button" data-camp-action="ads"${turnLocked || !adsCanAfford ? ' disabled' : ''}${adsTitle}>
       <div class="ci-act-head"><span class="ci-act-icon" style="color:#7a9aab;">&#128241;</span><span class="ci-act-name">Run Political Ads</span></div>
-      <div class="ci-act-blurb">Buy attack and persuasion spots. Spend Influence to swing polling.</div>
-      <div class="ci-act-meta"><span class="ci-act-effect">+1d10 + Skill polling</span><span class="ci-act-cost">&minus;1 Influence</span></div>
+      <div class="ci-act-blurb">Buy attack and persuasion spots. Spend Capital to swing polling.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">+1d10 + Skill polling</span><span class="ci-act-cost">&minus;1 Capital</span></div>
     </button>`;
   const speechBtn = `
     <button class="ci-act" type="button" data-camp-action="speech"${turnLocked ? ' disabled' : ''}>
