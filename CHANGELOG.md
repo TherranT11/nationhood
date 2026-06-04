@@ -68,6 +68,18 @@ All notable changes to Nationhood are recorded here. Format inspired by
   permitted.
 - **Per-faction unread state** via `forum_reads`; the index page
   flags categories with new activity.
+- **Discord notification on new threads.** New `create_forum_thread`
+  fires a fire-and-forget `net.http_post` to a Supabase Edge Function
+  (`forum-thread-discord`) which forwards a compact embed (title +
+  author + link) to a configured Discord webhook. Edge function holds
+  the Discord webhook URL in `DISCORD_FORUM_WEBHOOK_URL` env var;
+  shared bearer secret in `FORUM_DISCORD_EDGE_SECRET` keeps the
+  endpoint locked. Three matching `system_config` rows
+  (`forum_discord_edge_url`, `forum_discord_edge_secret`,
+  `forum_public_base_url`) carry the DB-side config. Notification
+  is skipped (no-op) when any of the three are blank — thread
+  creation always succeeds; Discord is best-effort. Replies don't
+  fire (scope was new threads only).
 - **Nation flag + name on every thread row.** Category-list rows
   now carry a small chip beside the title with the thread's
   Primary Nation (flag image + name) or "International" when
