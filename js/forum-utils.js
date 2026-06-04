@@ -137,3 +137,26 @@ export function countWords(text) {
 export function getSlugFromUrl() {
   return new URLSearchParams(window.location.search).get('slug') || '';
 }
+
+// Inserts an <img src=url alt=altText> at the current cursor position
+// inside a contenteditable element, or appends if the selection isn't
+// inside that element. Used by both compose (opening post) and
+// thread-detail (reply) editors.
+export function insertImageAtCursor(bodyEl, url, altText) {
+  bodyEl.focus();
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = altText || '';
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && bodyEl.contains(sel.anchorNode)) {
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  } else {
+    bodyEl.appendChild(img);
+  }
+}

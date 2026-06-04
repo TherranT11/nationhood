@@ -171,6 +171,14 @@
 }
 .actions-note .pub { color:#7ac8c8; font-style:italic; }
 .actions-note .self { color:#888; font-size:9px; }
+.field-select {
+  width:100%; padding:11px 14px;
+  background:#0a0f10; border:1px solid rgba(255,255,255,0.06); border-radius:4px;
+  color:#fff; font-size:12px; font-family:inherit;
+}
+.field-select:focus { outline:none; border-color:rgba(90,175,165,0.4); background:#0c1213; }
+.row-two { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+@media (max-width:720px) { .row-two { grid-template-columns:1fr; } }
 .btn {
   padding:11px 22px; border-radius:4px;
   font-size:10px; letter-spacing:0.16em; font-weight:700;
@@ -258,10 +266,31 @@
       </div>
     </div>
 
+    <div class="row-two">
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-num">III</span>
+          <span class="sec-lab">Primary Nation<span class="sec-req">*</span></span>
+        </div>
+        <select id="nation-select" class="field-select">
+          <option value="">— Loading nations…</option>
+        </select>
+      </div>
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-num">IV</span>
+          <span class="sec-lab">Post As<span class="sec-req">*</span></span>
+          <span class="sec-help">your eligible factions</span>
+        </div>
+        <select id="identity-select" class="field-select">
+          <option value="">— Loading identities…</option>
+        </select>
+      </div>
+    </div>
+
     <div class="actions">
-      <div class="actions-note" id="actions-note">
-        Posting as <span class="pub" id="actions-pub">—</span><br>
-        <span class="self" id="actions-self"></span>
+      <div class="actions-note">
+        The identity you selected above is the author. The chosen Primary Nation appears as a chip on the thread.
       </div>
       <button type="button" class="btn cancel" id="cancel-btn">Cancel</button>
       <button type="button" class="btn post" id="post-btn" disabled>
@@ -279,7 +308,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
-import { sanitizeHtml, countWords, ZONE_META, getSlugFromUrl }
+import { sanitizeHtml, countWords, ZONE_META, getSlugFromUrl, insertImageAtCursor }
   from './js/forum-utils.js';
 
 // These bounds MUST stay in sync with the same constants inside
@@ -332,13 +361,62 @@ async function init() {
   }
 
   renderTarget(cat);
-  renderActionsFooter(ctx);
+  // Populate the two dropdowns in parallel — neither blocks the
+  // other. If either fails, the button stays disabled and the
+  // user sees the empty-state option text.
+  await Promise.all([loadNations(), loadIdentities()]);
   bindControls(ctx, cat);
   updatePostButtonState();
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
   document.title = `New Thread — ${cat.name}`;
+}
+
+async function loadNations() {
+  const sel = document.getElementById('nation-select');
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('id, name').order('name', { ascending: true });
+    if (error) throw error;
+    const opts = [`<option value="">International</option>`]
+      .concat((data || []).map(n =>
+        `<option value="${n.id}">${(n.name || '').replace(/[<>&"']/g, '')}</option>`));
+    sel.innerHTML = opts.join('');
+  } catch (e) {
+    console.error('politician-forum-compose: nations fetch failed', e);
+    sel.innerHTML = `<option value="">International</option>`;
+  }
+}
+
+async function loadIdentities() {
+  const sel = document.getElementById('identity-select');
+  try {
+    const { data: { user } } = await _supabase.auth.getUser();
+    if (!user) { sel.innerHTML = `<option value="">— Sign in required</option>`; return; }
+    const { data, error } = await _supabase.from('factions')
+      .select('id, faction_type, faction_name, leader_first_name, leader_last_name')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .is('abandoned_at', null)
+      .in('faction_type', ['entrepreneur', 'corporation', 'politician']);
+    if (error) throw error;
+    const list = data || [];
+    if (list.length === 0) {
+      sel.innerHTML = `<option value="">— No eligible factions —</option>`;
+      return;
+    }
+    const sortKey = (f) => `${ {politician:1, corporation:2, entrepreneur:3}[f.faction_type] || 9 }-${(f.leader_first_name + f.leader_last_name + f.faction_name || '').toLowerCase()}`;
+    list.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+    sel.innerHTML = list.map(f => {
+      const name = (`${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()) || f.faction_name || '—';
+      const tag = ({entrepreneur:'Entrepreneur', corporation:'Corporation', politician:'Politician'})[f.faction_type] || f.faction_type;
+      const safeName = String(name).replace(/[<>&"']/g, '');
+      return `<option value="${f.id}">${tag} · ${safeName}</option>`;
+    }).join('');
+  } catch (e) {
+    console.error('politician-forum-compose: identity fetch failed', e);
+    sel.innerHTML = `<option value="">— Could not load identities</option>`;
+  }
 }
 
 function renderTarget(cat) {
@@ -350,25 +428,6 @@ function renderTarget(cat) {
     meta ? `Posting to · ${meta.eyebrow} · ${meta.name}` : `Posting to · ${cat.zone}`;
   document.getElementById('target-name').textContent = cat.name || '';
   document.getElementById('back-link').href = `politician-forum-category.html?slug=${encodeURIComponent(cat.slug)}`;
-}
-
-function renderActionsFooter(ctx) {
-  // v2 just shows the faction name as the publishing identity.
-  // Separate-publication entity ("posting AS a paper, with caller
-  // name below") lands in a follow-up slice — the spec calls for
-  // it but the schema doesn't have publications yet.
-  const f = ctx?.faction;
-  const personal = `${f?.leader_first_name || ''} ${f?.leader_last_name || ''}`.trim();
-  document.getElementById('actions-pub').textContent =
-    f?.faction_name || personal || '—';
-  // If we have both a faction name and a leader name, show the leader
-  // beneath as the human behind the byline. This is the small-print
-  // affordance the user described for the publication identity.
-  if (f?.faction_name && personal && f.faction_name !== personal) {
-    document.getElementById('actions-self').textContent = `as ${personal}`;
-  } else {
-    document.getElementById('actions-self').textContent = '';
-  }
 }
 
 function bindControls(ctx, cat) {
@@ -383,6 +442,8 @@ function bindControls(ctx, cat) {
     updatePostButtonState();
     updateToolbarActive();
   });
+  document.getElementById('identity-select').addEventListener('change', updatePostButtonState);
+  document.getElementById('nation-select').addEventListener('change', updatePostButtonState);
   bodyEl.addEventListener('keyup',     updateToolbarActive);
   bodyEl.addEventListener('mouseup',   updateToolbarActive);
 
@@ -418,7 +479,7 @@ function bindControls(ctx, cat) {
     const file = imageInput.files?.[0];
     imageInput.value = '';            // reset so re-picking the same file refires change
     if (!file) return;
-    await handleImageUpload(file, ctx, bodyEl);
+    await handleImageUpload(file, bodyEl);
   });
 
   cancelBtn.addEventListener('click', () => {
@@ -431,9 +492,21 @@ function bindControls(ctx, cat) {
   postBtn.addEventListener('click', () => submitThread(ctx, cat));
 }
 
-async function handleImageUpload(file, ctx, bodyEl) {
-  const msgEl = document.getElementById('compose-msg');
+async function handleImageUpload(file, bodyEl) {
   const addImgBtn = document.getElementById('add-image-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const postBtn   = document.getElementById('post-btn');
+  // Upload path = identity-select.value/<filename>, matching the
+  // 20270598 storage policy that gates the bucket on
+  // (storage.foldername(name))[1] belonging to one of the caller's
+  // faction ids. Picking the identity AFTER opening the file picker
+  // would orphan the upload in the wrong folder — gate on selection
+  // before reaching for the file system.
+  const authorFactionId = document.getElementById('identity-select').value || '';
+  if (!authorFactionId) {
+    setMsg('Pick an identity before uploading.', false);
+    return;
+  }
   if (!ALLOWED_MIME.has(file.type)) {
     setMsg(`Unsupported image type ${file.type}. Use PNG / JPEG / GIF / WebP.`, false);
     return;
@@ -442,11 +515,20 @@ async function handleImageUpload(file, ctx, bodyEl) {
     setMsg(`Image too large (${Math.round(file.size / 1024)} KB). 8 MB max.`, false);
     return;
   }
+  // Lock every navigation affordance while the upload is in flight.
+  // Cancelling mid-upload would orphan the file in storage because
+  // supabase-js doesn't surface an AbortSignal for storage uploads —
+  // the only way to prevent the orphan is to prevent the cancel.
+  // Post + Add Image lock too so we don't get two uploads racing or
+  // a submit firing on a body that's still mutating.
   addImgBtn.disabled = true;
+  cancelBtn.disabled = true;
+  const postWasDisabled = postBtn.disabled;
+  postBtn.disabled   = true;
   setMsg('Uploading…', true);
   try {
     const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-    const path = `${ctx.faction.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const path = `${authorFactionId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error: upErr } = await _supabase.storage
       .from('forum-images').upload(path, file, { contentType: file.type, upsert: false });
     if (upErr) throw upErr;
@@ -455,32 +537,18 @@ async function handleImageUpload(file, ctx, bodyEl) {
     if (!publicUrl) throw new Error('No public URL returned for the upload.');
     insertImageAtCursor(bodyEl, publicUrl, file.name);
     updateWordCount();
-    updatePostButtonState();
     setMsg('Image inserted.', true);
   } catch (e) {
     console.error('image upload failed', e);
     setMsg(`Upload failed: ${e?.message || e}`, false);
   } finally {
     addImgBtn.disabled = false;
-  }
-}
-
-function insertImageAtCursor(bodyEl, url, altText) {
-  bodyEl.focus();
-  const img = document.createElement('img');
-  img.src = url;
-  img.alt = altText || '';
-  const sel = window.getSelection();
-  if (sel && sel.rangeCount > 0 && bodyEl.contains(sel.anchorNode)) {
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(img);
-    range.setStartAfter(img);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  } else {
-    bodyEl.appendChild(img);
+    cancelBtn.disabled = false;
+    // Re-evaluate Post against current content. If the upload landed
+    // and inserted an <img>, the body now has a tag → updatePostButtonState
+    // picks that up. If it failed, restore Post's prior state.
+    if (postWasDisabled) updatePostButtonState();
+    else postBtn.disabled = false;
   }
 }
 
@@ -506,10 +574,18 @@ function updateToolbarActive() {
 
 function updatePostButtonState() {
   const title = document.getElementById('title-input').value.trim();
-  const bodyText = (document.getElementById('body-input').textContent || '').trim();
+  const bodyEl = document.getElementById('body-input');
+  const bodyText = (bodyEl.textContent || '').trim();
+  // Image-only bodies are allowed (see 20270598 create_forum_thread
+  // body-too-short check). Mirror that on the client so the button
+  // enables when the body has an <img> even with no caption text.
+  const hasImage = bodyEl.querySelector('img') != null;
+  const bodyOk = bodyText.length >= BODY_MIN || hasImage;
+  const identity = document.getElementById('identity-select')?.value || '';
   const ok = title.length >= TITLE_MIN
           && title.length <= TITLE_MAX
-          && bodyText.length >= BODY_MIN;
+          && bodyOk
+          && identity !== '';
   document.getElementById('post-btn').disabled = !ok;
 }
 
@@ -529,10 +605,13 @@ async function submitThread(ctx, cat) {
   const bodyRaw = bodyEl.innerHTML || '';
   const bodyClean = sanitizeHtml(bodyRaw);
   const visibleLen = bodyClean.replace(/<[^>]*>/g, '').trim().length;
+  const hasImage = /<img\b/i.test(bodyClean);
 
   if (title.length < TITLE_MIN) { setMsg(`Title needs at least ${TITLE_MIN} characters.`, false); return; }
   if (title.length > TITLE_MAX) { setMsg(`Title can be at most ${TITLE_MAX} characters.`, false); return; }
-  if (visibleLen < BODY_MIN)    { setMsg(`Body needs at least ${BODY_MIN} characters.`, false); return; }
+  if (visibleLen < BODY_MIN && !hasImage) {
+    setMsg(`Body needs at least ${BODY_MIN} characters or an image.`, false); return;
+  }
   if (bodyClean.length > BODY_MAX) { setMsg(`Body exceeds ${BODY_MAX.toLocaleString()} character limit.`, false); return; }
 
   postBtn.disabled   = true;
@@ -540,23 +619,36 @@ async function submitThread(ctx, cat) {
   postBtn.querySelector('.ic').textContent = '⌛';
   setMsg('Posting…', true);
 
+  const authorFactionId = document.getElementById('identity-select').value || null;
+  const nationIdRaw     = document.getElementById('nation-select').value || '';
+  const nationId        = nationIdRaw === '' ? null : nationIdRaw;
+  if (!authorFactionId) {
+    setMsg('Pick an identity to post as.', false);
+    postBtn.disabled = false; cancelBtn.disabled = false;
+    postBtn.querySelector('.ic').textContent = '★';
+    return;
+  }
+
   try {
     const { data, error } = await _supabase.rpc('create_forum_thread', {
-      p_category_slug: cat.slug,
-      p_title:         title,
-      p_body_html:     bodyClean,
+      p_category_slug:     cat.slug,
+      p_title:             title,
+      p_body_html:         bodyClean,
+      p_author_faction_id: authorFactionId,
+      p_nation_id:         nationId,
     });
     if (error) throw error;
     if (!data?.success) {
       const REASON = {
-        not_authenticated:   'Sign in first.',
-        no_faction:          'No faction on this account.',
-        missing_category:    'Missing category.',
-        category_not_found:  'Category vanished.',
-        title_too_short:     `Title needs at least ${data?.min ?? TITLE_MIN} characters.`,
-        title_too_long:      `Title exceeds ${data?.max ?? TITLE_MAX} characters.`,
-        body_too_short:      `Body needs at least ${data?.min ?? BODY_MIN} characters.`,
-        body_too_long:       `Body exceeds ${data?.max ?? BODY_MAX} characters.`,
+        not_authenticated:      'Sign in first.',
+        invalid_author_faction: 'You can\'t post as that identity.',
+        missing_category:       'Missing category.',
+        category_not_found:     'Category vanished.',
+        nation_not_found:       'Selected nation no longer exists.',
+        title_too_short:        `Title needs at least ${data?.min ?? TITLE_MIN} characters.`,
+        title_too_long:         `Title exceeds ${data?.max ?? TITLE_MAX} characters.`,
+        body_too_short:         `Body needs at least ${data?.min ?? BODY_MIN} characters or an image.`,
+        body_too_long:          `Body exceeds ${data?.max ?? BODY_MAX} characters.`,
       };
       setMsg(REASON[data?.reason] || `Could not post (${data?.reason || 'unknown'}).`, false);
       postBtn.disabled = false;
@@ -564,8 +656,10 @@ async function submitThread(ctx, cat) {
       postBtn.querySelector('.ic').textContent = '★';
       return;
     }
-    // Success — back to the category so the new thread appears in the list.
-    window.location.href = `politician-forum-category.html?slug=${encodeURIComponent(data.category_slug || cat.slug)}`;
+    // Success — open the new thread directly so the author can see what
+    // they posted. The forum index / category page picks it up on next
+    // load via the cached denorm.
+    window.location.href = `politician-forum-thread.html?id=${encodeURIComponent(data.thread_id)}`;
   } catch (e) {
     console.error('create_forum_thread failed', e);
     setMsg(`Post failed: ${e?.message || e}`, false);

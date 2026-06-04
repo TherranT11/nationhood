@@ -8,7 +8,7 @@
 // ===== APP VERSION =====
 
 // Single source of truth for the build label shown in every faction navbar.
-export const APP_VERSION = 'Alpha 2.8.0';
+export const APP_VERSION = 'ALPA — 2.9';
 
 // ===== AGE / CAREER MATH =====
 // Single source of truth for the politician age + career-years derivation.
