@@ -53,6 +53,9 @@
 .ladder .rung { font-size:11px; color:#5aafa5; display:flex; align-items:center; gap:6px; }
 .ladder .rung.empty { color:#555; }
 .ladder .rung .dot { display:inline-block; width:6px; height:6px; background:#5aafa5; border-radius:50%; }
+.ladder__chosen { font-size:8px; letter-spacing:0.18em; color:#c8a64e; font-weight:700;
+  text-transform:uppercase; border:0.5px solid rgba(200,166,78,0.4);
+  padding:3px 8px; border-radius:2px; margin-right:8px; flex-shrink:0; }
 .ladder .body  { padding:0 18px 14px; }
 .ladder .empty-row { color:#555; font-size:12px; font-style:italic; text-align:center; padding:14px 0 6px; }
 
@@ -245,6 +248,66 @@
 #examModal .exam-result__title { font-size:14px; font-weight:600; margin-bottom:8px; letter-spacing:0.02em; }
 #examModal .exam-result__body  { font-size:12px; color:#cfcfcf; line-height:1.6; }
 #examModal .exam-result__body strong { color:#fff; }
+
+/* Agency picker — opened by the [Apply for Promotion] button on the
+   Agency Head rung (Government Service Tier 2). Single-purpose modal:
+   lists the 5 agencies of the caller's ministry; click submits via
+   politician_apply_for_promotion(p_agency_key). Lives here rather
+   than on politician-home.html since the rung is the canonical UI
+   surface for this action. */
+#ahPickModal { position:fixed; inset:0; background:rgba(0,0,0,0.78);
+  display:none; align-items:center; justify-content:center; padding:14px;
+  z-index:200; }
+#ahPickModal.open { display:flex; }
+#ahPickModal .ah-modal { width:100%; max-width:560px;
+  background:linear-gradient(180deg, #0d1014 0%, #080a0c 100%);
+  border:1px solid #3a5060; border-radius:8px;
+  box-shadow:0 0 0 1px rgba(122,154,171,0.05), 0 25px 60px rgba(0,0,0,0.8);
+  overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
+#ahPickModal .ah-head { padding:14px 22px; border-bottom:1px solid #3a5060;
+  background:linear-gradient(180deg, rgba(122,154,171,0.06) 0%, transparent 100%);
+  display:flex; align-items:flex-start; gap:14px; flex-shrink:0; }
+#ahPickModal .ah-head-info { flex:1; min-width:0; }
+#ahPickModal .ah-eyebrow { font-size:8px; letter-spacing:0.18em; color:#7a9aab;
+  font-weight:700; text-transform:uppercase; }
+#ahPickModal .ah-title { font-family:Georgia,serif; font-size:16px; color:#fff;
+  font-weight:500; letter-spacing:-0.005em; margin-top:3px; line-height:1.2; }
+#ahPickModal .ah-title em { font-style:italic; color:#9ab8c8; }
+#ahPickModal .ah-meta { font-size:9.5px; color:#888; margin-top:4px; line-height:1.5; }
+#ahPickModal .ah-meta strong { color:#bbb; }
+#ahPickModal .ah-close { padding:8px 12px; font-size:9px; letter-spacing:0.1em;
+  color:#888; background:transparent; border:1px solid rgba(255,255,255,0.06);
+  border-radius:3px; cursor:pointer; font-family:inherit; font-weight:700;
+  text-transform:uppercase; flex-shrink:0; }
+#ahPickModal .ah-close:hover { color:#fff; border-color:#3a3a3a; }
+#ahPickModal .ah-body { flex:1; overflow-y:auto; padding:16px 20px;
+  display:flex; flex-direction:column; gap:4px; }
+#ahPickModal .ah-opt { padding:9px 11px; background:#0a0807;
+  border:1px solid rgba(255,255,255,0.06); border-radius:3px; color:#888;
+  font-size:10px; font-weight:500; cursor:pointer; font-family:inherit;
+  text-align:left; display:flex; align-items:center; gap:8px;
+  transition:all 0.12s; }
+#ahPickModal .ah-opt:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+#ahPickModal .ah-opt:disabled { opacity:0.45; cursor:not-allowed; }
+#ahPickModal .ah-opt-num { font-family:Georgia,serif; font-size:9px; color:#9ab8c8;
+  font-style:italic; font-weight:600; flex-shrink:0; min-width:18px; }
+#ahPickModal .ah-opt-desc { margin-left:auto; font-size:8.5px; color:#666;
+  font-style:italic; }
+#ahPickModal .ah-empty { padding:14px; color:#666; font-size:10px; font-style:italic;
+  text-align:center; border:1px dashed rgba(255,255,255,0.06); border-radius:3px; }
+#ahPickModal .ah-foot { padding:12px 20px; background:#080606;
+  border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;
+  display:flex; justify-content:flex-end; gap:8px; }
+#ahPickModal .ah-result { padding:12px 14px; border-radius:4px; margin-bottom:10px;
+  font-size:10.5px; line-height:1.55; }
+#ahPickModal .ah-result.miss { background:rgba(200,122,122,0.06);
+  border:1px solid #5a3030; color:#e09898; }
+#ahPickModal .ah-result strong { color:#fff; font-weight:600; }
+#ahPickModal .ah-btn { padding:10px 16px; border-radius:4px; font-size:10px;
+  letter-spacing:0.14em; font-weight:700; cursor:pointer; font-family:inherit;
+  text-transform:uppercase; border:1px solid rgba(255,255,255,0.06);
+  background:transparent; color:#888; }
+#ahPickModal .ah-btn:hover { color:#fff; border-color:#3a3a3a; }
 
 #electionModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
   display:none; align-items:flex-start; justify-content:center; padding:30px 22px;
@@ -655,11 +718,33 @@
   </div>
 </div>
 
+<!-- Agency picker modal — opened by the Agency Head rung's [Apply for
+     Promotion] button (Government Service Tier 2). Body populated by
+     openAgencyPicker(); each option submits via politician_apply_for_
+     promotion(p_agency_key). -->
+<div id="ahPickModal" aria-hidden="true">
+  <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="ah-pick-title">
+    <div class="ah-head">
+      <div class="ah-head-info">
+        <div class="ah-eyebrow">Civil Service · Apply for Promotion</div>
+        <div class="ah-title" id="ah-pick-title">Choose your <em>Agency</em></div>
+        <div class="ah-meta" id="ah-pick-meta"></div>
+      </div>
+      <button class="ah-close" type="button" id="ah-pick-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="ah-body" id="ah-pick-body"></div>
+    <div class="ah-foot">
+      <button class="ah-btn" type="button" id="ah-pick-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
 import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears } from './js/utils.js';
+import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
 // Career ladders. `branch: true` ladders render as a two-column pair
@@ -918,10 +1003,34 @@ const GOVT_SERVICE_RUNGS = [
     tierNum: 2,
     name: 'Agency Head',
     trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You advise upward on policy detail but cannot decide alone.',
+    held:        (s) => s.seniorCivilServantAtTick != null,
+    descIfHeld:  (s) => {
+      const m = s.politicianMinistry;
+      const a = s.agencyHeadOf && PAPERWORK_MINISTRIES[m]
+        ? PAPERWORK_MINISTRIES[m].agencies.find(x => x.key === s.agencyHeadOf)
+        : null;
+      return a
+        ? `You head the ${a.label} within the Ministry of ${ministryName(m) || '—'}. Real responsibility on policy detail; you advise upward but cannot decide alone.`
+        : 'You advise upward on policy detail but cannot decide alone.';
+    },
     descIfNot:   ()  => 'A middle-rank official running an agency within a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
     actions:     ['Draft a Memo', 'Brief a Minister'],
+    // Apply for Promotion — civil servants only, 10 Skill gate. The
+    // server validates again; the disabled states here just keep the
+    // button honest so a player doesn't open a picker they can't use.
+    // Picker modal lives at #ah-pick-* below; clicked via the
+    // apply-for-promotion data-action.
+    actionIfNot: (s) => {
+      if (!s.politicianMinistry) {
+        return { label: 'Civil Service only', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 10) {
+        const shown = Number.isInteger(skill) ? String(skill) : skill.toFixed(1).replace(/\.0$/, '');
+        return { label: `Apply · Need 10 Skill (have ${shown})`, kind: 'disabled' };
+      }
+      return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
+    },
   },
   {
     tierNum: 3,
@@ -1009,15 +1118,31 @@ const GOVERNMENT_RUNGS = [
     held:        (s) => s.office === 'city_council_member',
     descIfHeld:  ()  => 'You hold an elected seat on the city council, voting on budgets and ordinances.',
     descIfNot:   ()  => 'An elected seat on a city or town council. You vote on local budgets and ordinances.',
-    // Eligible only when holding Community Organizer AND ≥ 9 ticks
-    // since winning the seat. Returns null if the holder isn't on the
-    // Community Organizer rung (e.g. they're an MP) so the button
-    // doesn't render on the wrong ladder.
+    // Eligibility (20270635): must currently hold OR have ever held
+    // Community Organizer (politician_former_community_organizer
+    // flag). Returns the gate copy as the disabled label rather than
+    // null so a non-CO holder on a different ladder still sees why
+    // the rung is locked. The 9-tick post-CO-win cooldown applies
+    // only while the caller still holds CO — once the term elapses
+    // (CO → null + flag retained), there's nothing to wait for.
     actionIfNot: (s) => {
-      if (s.office !== 'community_organizer') return null;
-      const opens = (s.officeWonAtTick || 0) + 9;
-      if (s.currentTick < opens) return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
-      return { label: 'Register to Run', kind: 'primary', action: 'register-city-council' };
+      const currentCO = s.office === 'community_organizer';
+      const formerCO  = !!s.formerCommunityOrganizer;
+      if (!currentCO && !formerCO) {
+        return { label: 'Must be or have been a Community Organizer', kind: 'disabled' };
+      }
+      if (currentCO) {
+        const opens = (s.officeWonAtTick || 0) + 9;
+        if (s.currentTick < opens) {
+          return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+        }
+      }
+      // Race-in-flight + party-required guards mirror the entry
+      // checks in runForElectionAction so the button doesn't open
+      // a modal that can only fail.
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-city-council' };
     },
   },
   {
@@ -1658,6 +1783,18 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     office:                  office || null,
     officeWonAtTick:         Number(ctx?.faction?.politician_office_won_at_tick) || 0,
     politicianMinistry:      ctx?.faction?.politician_ministry || null,
+    // Civil-service Tier 2 (Agency Head, 20270633/20270634). Skill is
+    // the promotion gate (≥ 10); seniorCivilServantAtTick stamped on
+    // promotion is the held() check; agencyHeadOf is the specific
+    // agency for the descIfHeld line.
+    politicianSkill:         Number(ctx?.faction?.politician_skill) || 0,
+    seniorCivilServantAtTick: ctx?.faction?.politician_senior_civil_servant_at_tick ?? null,
+    agencyHeadOf:            ctx?.faction?.politician_agency_head_of || null,
+    // Sticky "ever held Community Organizer" flag (20270635) — gates
+    // City Council Member [Run for Election] beyond the 12-tick CO
+    // term. politician_resolve_due_elections stamps it on every
+    // community win; backfilled from current CO + career events.
+    formerCommunityOrganizer: !!ctx?.faction?.politician_former_community_organizer,
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
@@ -1767,6 +1904,20 @@ function render(politician, shard, nation, party) {
     SUSPICION_SUB[suspicion] || 'level not recognised';
 }
 
+// Pick the ladder ID for the politician's current stacked-section
+// career. Branch ladders (party / local govt) sit above this section
+// and aren't candidates here. Precedence picks the highest stake
+// when multiple apply (e.g. an MP who's also bar-admitted reads as
+// Legislature, not Judiciary).
+function chosenCareerLadderId(ctx) {
+  const f = ctx?.faction || {};
+  const office = f.politician_office;
+  if (office === 'member_of_parliament' || office === 'senior_mp') return 'legislature';
+  if (f.politician_ministry) return 'govt_service';
+  if (f.bar_admitted_nation_id) return 'judiciary';
+  return null;
+}
+
 function renderLadders(state, ctx) {
   const host = document.getElementById('ladders');
   // 1) Tier 0 — Party Member, always visible above the branch.
@@ -1780,6 +1931,24 @@ function renderLadders(state, ctx) {
   //    via per-rung actionIfNot; no separate centered CTA.
   const branchLadders = LADDERS.filter(l => l.branch);
   const restLadders   = LADDERS.filter(l => !l.branch);
+
+  // Chosen career — surfaces the ladder the politician is currently
+  // climbing in the stacked section. Tagged with a pill in the summary
+  // and hoisted to the top of restLadders so the active track is the
+  // first card the player sees. Precedence: ministry → govt service,
+  // MP-tier office → legislature, bar admission → judiciary. Returns
+  // null when the player has no stacked-ladder career yet (party
+  // membership / local office only — those sit in the branch row
+  // above).
+  const chosenId = chosenCareerLadderId(ctx);
+  if (chosenId) {
+    const idx = restLadders.findIndex(l => l.id === chosenId);
+    if (idx > 0) {
+      const [chosen] = restLadders.splice(idx, 1);
+      restLadders.unshift(chosen);
+    }
+  }
+
   const ladderHtmlFor = (l, open) => {
     const rungs = typeof l.rungs === 'function' ? l.rungs() : l.rungs;
     const body  = rungs ? renderRungs(rungs, state) : '<div class="empty-row">Not on this ladder yet.</div>';
@@ -1796,11 +1965,15 @@ function renderLadders(state, ctx) {
            </div>
          </div>`
       : '';
+    const chosenTag = (chosenId === l.id)
+      ? '<span class="ladder__chosen">CHOSEN CAREER</span>'
+      : '';
     return `
     <details class="ladder"${open ? ' open' : ''}>
       <summary>
         <span class="icon">${l.icon}</span>
         <span class="name">${escHtml(l.name)}</span>
+        ${chosenTag}
         <span class="rung empty">—</span>
       </summary>
       <div class="body">${banner}${body}${footer}</div>
@@ -1809,7 +1982,9 @@ function renderLadders(state, ctx) {
   const branchHtml = branchLadders.length
     ? `<div class="ladder-branch">${branchLadders.map(l => ladderHtmlFor(l, false)).join('')}</div>`
     : '';
-  const restHtml = restLadders.map(l => ladderHtmlFor(l, false)).join('');
+  // Chosen career ladder opens by default; the rest stay collapsed so
+  // the active track is immediately visible.
+  const restHtml = restLadders.map(l => ladderHtmlFor(l, chosenId === l.id)).join('');
 
   host.innerHTML = tier0Html + branchHtml + restHtml;
   // Stash ctx for the bar exam modal — its open handler needs the
@@ -2060,12 +2235,10 @@ function bindRungActions(ctx) {
     });
   });
 
-  document.querySelectorAll('[data-action="register-city-council"], [data-action="register-senior-mp"]')
+  document.querySelectorAll('[data-action="register-senior-mp"]')
     .forEach(btn => {
       btn.addEventListener('click', async () => {
-        const target = btn.dataset.action === 'register-city-council'
-          ? 'city_council_member'
-          : 'senior_mp';
+        const target = 'senior_mp';
         const prev = btn.textContent;
         btn.disabled = true; btn.textContent = 'Registering…';
         try {
@@ -2105,6 +2278,25 @@ function bindRungActions(ctx) {
   });
   document.querySelectorAll('#examModal [data-exam-close]').forEach(btn => {
     btn.addEventListener('click', () => closeSitTheExamModal(false));
+  });
+
+  // Apply for Promotion — Civil Servant → Agency Head (Tier 2,
+  // Government Service). Opens the agency picker; the picker owns
+  // the RPC call. Disabled-state rung buttons (e.g. "Civil Service
+  // only", "Need 10 Skill") render without data-action, so this
+  // selector only matches when the gate is open.
+  document.querySelectorAll('[data-action="apply-for-promotion"]').forEach(btn => {
+    btn.addEventListener('click', () => openAgencyPicker(ctx));
+  });
+
+  // Run for Election — City Council Member (Tier 2, Government &
+  // State). Opens the matchup-style confirm modal; the modal owns
+  // the politician_register_for_office RPC call. The rung's
+  // actionIfNot pre-filters non-eligibility (must be or have been
+  // a Community Organizer, 9-tick post-CO wait, race-in-flight),
+  // so anything reaching here has passed the obvious gates.
+  document.querySelectorAll('[data-action="run-for-city-council"]').forEach(btn => {
+    btn.addEventListener('click', () => openCityCouncilModal(ctx));
   });
 
   // Seek the Bar — Advocate (Judiciary Tier 1). Opens its own modal
@@ -2346,6 +2538,113 @@ function renderExamModalResult({ kind, title, body, reload }) {
       <button type="button" class="exam-btn exam-btn--primary" id="exam-close">Close</button>
     </div>`;
   document.getElementById('exam-close').addEventListener('click', () => closeSitTheExamModal(!!reload));
+}
+
+// ─── Agency picker (Apply for Promotion) ──────────────────────────
+// Civil Servant → Agency Head (Government Service Tier 2). Opens
+// from the rung's [Apply for Promotion] button (bindRungActions).
+// Lists the 5 agencies of the caller's ministry from PAPERWORK_
+// MINISTRIES (the SoT taxonomy shared with the server-side helper
+// _paperwork_valid_ministry_agency). Click on an agency calls
+// politician_apply_for_promotion(p_agency_key); the server
+// re-validates the 10-Skill gate, the ministry × agency pair, and
+// the no-double-promotion guard.
+//
+// Roman numerals match the Sit-the-Exam / File Paperwork modal
+// numbering style on the rest of the page.
+const AH_ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+
+function closeAgencyPicker() {
+  const overlay = document.getElementById('ahPickModal');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+function openAgencyPicker(ctx) {
+  const overlay = document.getElementById('ahPickModal');
+  if (!overlay) return;
+
+  const ministrySlug = ctx?.faction?.politician_ministry || null;
+  const ministry     = ministrySlug ? PAPERWORK_MINISTRIES[ministrySlug] : null;
+  const ministryLbl  = ministryName(ministrySlug) || ministrySlug || '—';
+  const skillRaw     = Number(ctx?.faction?.politician_skill) || 0;
+  const skillTxt     = Number.isInteger(skillRaw)
+    ? String(skillRaw)
+    : skillRaw.toFixed(1).replace(/\.0$/, '');
+
+  const meta = document.getElementById('ah-pick-meta');
+  const body = document.getElementById('ah-pick-body');
+  const foot = overlay.querySelector('.ah-foot');
+
+  // Clear any stale error banner from a previous open.
+  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
+
+  if (meta) {
+    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>10 Skill</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
+  }
+
+  if (!ministry || !ministry.agencies?.length) {
+    // Defense civil servants land here today — the politician_
+    // ministry slug 'defense' has no paperwork-taxonomy entry
+    // (paperwork uses 'security'). Flagged in 20270634 as a
+    // follow-up to align the two slug sets.
+    body.innerHTML = `<div class="ah-empty">No Agency Head openings are configured for the Ministry of ${escHtml(ministryLbl)} yet.</div>`;
+  } else {
+    body.innerHTML = ministry.agencies.map((a, i) => `
+      <button type="button" class="ah-opt" data-agency="${escHtml(a.key)}">
+        <span class="ah-opt-num">${AH_ROMAN[i] || (i + 1)}.</span>
+        <span>${escHtml(a.label)}</span>
+        <span class="ah-opt-desc">${escHtml(a.hint || '')}</span>
+      </button>`).join('');
+    body.querySelectorAll('button[data-agency]').forEach(btn => {
+      btn.addEventListener('click', () => submitAgencyPromotion(btn.dataset.agency, btn));
+    });
+  }
+
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.getElementById('ah-pick-close')?.addEventListener('click', closeAgencyPicker, { once: true });
+  document.getElementById('ah-pick-cancel')?.addEventListener('click', closeAgencyPicker, { once: true });
+}
+
+async function submitAgencyPromotion(agencyKey, btn) {
+  if (btn?.dataset.busy === '1') return;
+  if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
+  try {
+    const { data, error } = await _supabase.rpc('politician_apply_for_promotion',
+      { p_agency_key: agencyKey });
+    if (error) throw error;
+    if (!data?.success) {
+      const have = data?.have != null
+        ? Number(data.have).toFixed(1).replace(/\.0$/, '')
+        : '?';
+      const msg = data?.reason === 'insufficient_skill'
+        ? `Petition denied — you need 10 Skill. You have ${have}.`
+        : data?.reason === 'already_senior'   ? 'You are already an Agency Head.'
+        : data?.reason === 'not_civil_servant' ? 'Only Civil Servants can apply for this promotion.'
+        : data?.reason === 'invalid_agency'   ? "That agency isn't in your ministry."
+        : data?.reason === 'missing_agency'   ? 'Pick an agency from the list.'
+        : data?.reason === 'not_authenticated' ? 'Sign in to act.'
+        : data?.reason === 'no_politician'    ? 'No politician on this account.'
+        : ('Petition failed: ' + (data?.reason || 'unknown'));
+      const foot = document.getElementById('ahPickModal')?.querySelector('.ah-foot');
+      if (foot) {
+        foot.querySelectorAll('.ah-result').forEach(n => n.remove());
+        const err = document.createElement('div');
+        err.className = 'ah-result miss';
+        err.style.cssText = 'flex:1;margin-right:8px;';
+        err.textContent = msg;
+        foot.insertBefore(err, foot.firstChild);
+      }
+      if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Petition failed: ' + (e?.message || 'network or server error'));
+    if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+  }
 }
 
 // ─── Stand for Election modal ─────────────────────────────────────
@@ -2882,6 +3181,146 @@ async function confirmElection(ctx) {
   // Reload so the Stand for Election callout swaps to "race in progress"
   // and the 1-per-turn gate is reflected everywhere it's read.
   location.reload();
+}
+
+// ─── City Council Member · Run for Election ───────────────────────
+// Tier-2 Government & State race, fired from the City Council Member
+// rung's right-side primary button. Reuses the #electionModal shell
+// (same visual language as the Community Organizer / MP picker —
+// user explicitly asked for the same modal) but renders a single
+// focused card and routes confirm to politician_register_for_office
+// instead of the picker's stand_for_election RPC. Opponent + odds
+// are determined server-side at registration (1d3+1 Skill, see
+// 20270635); the card shows the matchup descriptively rather than
+// pre-rolling.
+function openCityCouncilModal(ctx) {
+  const modal = document.getElementById('electionModal');
+  if (!modal) return;
+  const partyName = ctx?.party?.faction_name || 'your party';
+  const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
+  const skillTxt  = Number.isInteger(skillVal) ? String(skillVal) : skillVal.toFixed(1).replace(/\.0$/, '');
+
+  modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
+  modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">City Council</span>';
+  document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · race resolves next tick`;
+  document.getElementById('em-body').innerHTML = renderCityCouncilCard(skillTxt);
+
+  // Footer stat strip — match the existing picker's three blocks
+  // (labels are fixed in the markup; just refresh the values).
+  const f = ctx.faction || {};
+  document.getElementById('em-stat-infl').textContent = Math.floor(Number(f.political_capital) || 0);
+  document.getElementById('em-stat-cha' ).textContent = Number(f.politician_influence) || 0;
+  document.getElementById('em-stat-cred').textContent = skillVal;
+  document.getElementById('em-footer').style.display = '';
+  const confirmBtn = document.getElementById('em-confirm');
+  confirmBtn.disabled = false;
+  confirmBtn.innerHTML = '&#9873; RUN FOR ELECTION';
+  confirmBtn.onclick = () => confirmCityCouncilRun(ctx);
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  modal.querySelectorAll('[data-em-close]').forEach(btn => {
+    btn.onclick = closeElectionModal;
+  });
+  modal.onclick = (e) => { if (e.target === modal) closeElectionModal(); };
+  document.addEventListener('keydown', emEscHandler);
+}
+
+function renderCityCouncilCard(skillTxt) {
+  // Single focused card — no .em-options grid wrapping, no click-to-
+  // select. The em-opt.community styling carries the same green
+  // accent the user already associates with local-tier races.
+  return `
+    <div class="em-options" style="grid-template-columns:1fr;">
+      <div class="em-opt community selected" data-tier="city_council">
+        <div class="em-opt-head">
+          <div class="em-opt-eyebrow">LOCAL STAKES · CITY COUNCIL</div>
+          <div class="em-opt-title">City Council Member · <span class="serif">Local Ward</span></div>
+          <div class="em-opt-blurb">An elected seat on the city council — you vote on local budgets and ordinances. Steps up from a Community Organizer term.</div>
+        </div>
+        <div class="em-opt-detail">
+          <div class="em-det-row">
+            <span class="em-det-lab">OPPONENT</span>
+            <div style="flex:1;">
+              <div class="em-opp-block">
+                <div class="em-opp-badge" style="background:#101010;color:#9a9a9a;border:0.5px solid rgba(255,255,255,0.07);">?</div>
+                <div class="em-opp-info">
+                  <div class="em-opp-name">Auto-generated candidate</div>
+                  <div class="em-opp-from">Independent · drawn at registration with Skill 1d3 + 1</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="em-det-row">
+            <span class="em-det-lab">TIMEFRAME</span>
+            <span class="em-det-val">1 tick</span>
+          </div>
+          <div class="em-matchup">
+            <div class="em-match-lab">SKILL MATCHUP</div>
+            <div class="em-match-row">
+              <div class="em-match-side em-match-you">
+                <div class="em-match-who">YOU</div>
+                <div class="em-match-val">${escHtml(skillTxt)}</div>
+                <div class="em-match-stat">Skill</div>
+              </div>
+              <span class="em-match-vs">VS</span>
+              <div class="em-match-side">
+                <div class="em-match-who">CANDIDATE</div>
+                <div class="em-match-val">2-4</div>
+                <div class="em-match-stat">Skill (1d3 + 1)</div>
+              </div>
+            </div>
+          </div>
+          <div class="em-stakes">
+            <div class="em-stake win">
+              <div class="em-stake-lab">IF YOU WIN</div>
+              <div class="em-stake-val">+1 Reputation · +1 Party Popularity · +1 Pop. Ceiling · +$100K Party Funds · 12-tick term</div>
+            </div>
+            <div class="em-stake zero">
+              <div class="em-stake-lab">IF YOU LOSE</div>
+              <div class="em-stake-val">No cost</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function confirmCityCouncilRun(ctx) {
+  const btn = document.getElementById('em-confirm');
+  if (!btn) return;
+  btn.disabled = true;
+  const originalLabel = btn.innerHTML;
+  btn.textContent = 'Registering…';
+  try {
+    const { data, error } = await _supabase.rpc('politician_register_for_office',
+      { p_target_office: 'city_council_member' });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:     'Sign in to register.',
+        no_politician:         'No politician on this account.',
+        not_in_party:          'Join a political party first.',
+        no_nation:             'Your politician has no nation.',
+        race_in_progress:      'You are already in a race.',
+        wrong_current_office:  'You must be — or have been — a Community Organizer to run.',
+        too_early:             data.opens_at_tick
+                                 ? `Registration opens at tick ${data.opens_at_tick}.`
+                                 : 'Your Community Organizer term is still settling in.',
+        invalid_target_office: 'Unknown target office.',
+        no_shard:              'Game state unavailable. Try again.',
+      };
+      alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.innerHTML = originalLabel;
+      return;
+    }
+    closeElectionModal();
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.innerHTML = originalLabel;
+  }
 }
 
 init();
