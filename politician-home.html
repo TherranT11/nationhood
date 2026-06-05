@@ -1743,7 +1743,7 @@ const LEGISLATURE_ACTIONS = [
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
   { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route an incoming dispatch to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Draft a memo that lands on the right desk inside the ministry.' },
+  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +1 Capital. −1 Influence.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
@@ -1837,9 +1837,11 @@ const AFFIL_VARIANTS = {
     name:    'Civil Servant',
     descFn:  (ctx) => `You serve in the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. You process cases, handle paperwork, and learn how the state actually works from the inside.`,
     actions: CIVIL_SERVANT_ACTIONS,
-    actionsEnabled: true,  // FILE PAPERWORK (20270630) is wired; the
-                           // other two entries stay disabled because
-                           // they have no `action` key on the entry.
+    actionsEnabled: true,
+    cooldownColumn: 'next_civil_service_action_tick',  // 20270632
+                  // shared lock between FILE PAPERWORK + FILE A MEMO
+                  // so the two career actions are mutually exclusive
+                  // per tick.
   },
 };
 
@@ -2086,7 +2088,16 @@ const ACTIONS = {
   // Party-Member tier (20270591) — needs p_party_id.
   'door-knock':         { rpc: 'politician_door_knock',            label: 'Door Knocking',      needsParty: true,  format: fmtDoorKnockResult },
   'give-speech':        { rpc: 'politician_give_speech',           label: 'Give a Speech',      needsParty: true,  format: fmtSpeechResult },
+  // Civil-service tier (20270632) — arg-less, sets next_civil_
+  // service_action_tick so the per-tick lock is shared with FILE
+  // PAPERWORK (which lives on its own modal handler and isn't in
+  // this catalog).
+  'file-a-memo':        { rpc: 'politician_file_a_memo',           label: 'File a Memo',        needsParty: false, format: fmtMemoResult },
 };
+
+function fmtMemoResult(data) {
+  return `Filed a Memo: +1 Capital (now ${data.new_capital}), −1 Influence (now ${data.new_influence}).`;
+}
 
 function fmtDoorKnockResult(data) {
   const sign = data.influence_delta > 0 ? '+' : '';
@@ -2164,6 +2175,7 @@ const ACTION_REASON = {
   no_shard:                 'Shard not found.',
   not_advocate:             'You need to be a bar-admitted advocate (and not a Magistrate).',
   active_cases:             'Resolve your active cases before studying the codes.',
+  not_civil_servant:        'You need to be a Civil Servant for this action.',
 };
 
 async function handleResignOffice(btn, officeName) {
@@ -4493,6 +4505,7 @@ async function submitFilePaperwork() {
       dispatch_not_approved:    'Dispatch isn’t in the rotation pool.',
       cannot_grade_own_authoring: 'You can’t route a dispatch you authored.',
       on_cooldown:              'You’ve handled this dispatch in the last 12 ticks.',
+      cooldown:                 'You’ve already used your Civil Service action this tick.',
     })[resp?.reason] || ('Submit failed: ' + (resp?.reason || 'unknown'));
     alert(reason);
     fpState.busy = false;
@@ -4534,14 +4547,15 @@ function showFilePaperworkResult(resp) {
       <strong>Rewards:</strong> ${rewards}
     </div>`;
 
+  // Tick is burned after submit (20270632 next_civil_service_action_
+  // tick), so no "Next Dispatch" — close reloads the page so the
+  // role card's cooldown / new stat values land.
   foot.innerHTML = `
     <div class="fp-btn-row">
-      <button class="fp-btn cancel" id="fp-close-result-btn">Close</button>
-      <button class="fp-btn send"   id="fp-next-btn">Next Dispatch</button>
+      <button class="fp-btn send" id="fp-close-result-btn">Close</button>
     </div>`;
 
-  document.getElementById('fp-close-result-btn')?.addEventListener('click', closeFilePaperworkModal);
-  document.getElementById('fp-next-btn')?.addEventListener('click', openFilePaperworkModal);
+  document.getElementById('fp-close-result-btn')?.addEventListener('click', () => location.reload());
 }
 
 init();
