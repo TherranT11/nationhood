@@ -223,7 +223,7 @@
 
   /* ============ SECTION VI · WITNESSES ============
      Optional section; up to 3 witnesses per case, each with up to
-     3 direct and 3 cross Q&A pairs. Each answer carries supports
+     5 direct and 5 cross Q&A pairs. Each answer carries supports
      (plaintiff/defendant) + strength (1-10), same pattern as the
      beats above — the trial system will treat called testimony as
      mini-beats during verdict tally.
@@ -646,7 +646,7 @@ import { LITIGATION_BY_TYPE, BEAT_TYPES, BEAT_TYPE_LABEL } from './js/courtcase-
 
 const MAX_BEATS = 10;
 const MAX_WITNESSES = 3;
-const MAX_QA_PER_PHASE = 3;
+const MAX_QA_PER_PHASE = 5;
 const QA_TEXT_LIMIT = 240;
 const DRAFT_KEY = 'courtcase_draft_v1';
 
@@ -1040,9 +1040,16 @@ function addWitness(prefill) {
   const node = document.createElement('div');
   node.className = 'witness';
   const gender = prefill?.gender === 'female' ? 'female' : (prefill?.gender === 'male' ? 'male' : '');
+  const side   = prefill?.side === 'defendant' ? 'defendant' : (prefill?.side === 'plaintiff' ? 'plaintiff' : '');
   node.innerHTML = `
     <div class="w-head">
       <span class="w-num"></span>
+      <span class="w-gender-lab">Witness for</span>
+      <select class="w-gender-select w-side-select">
+        <option value=""          ${side === ''          ? 'selected' : ''}>&mdash;</option>
+        <option value="plaintiff" ${side === 'plaintiff' ? 'selected' : ''}>PLAINTIFF</option>
+        <option value="defendant" ${side === 'defendant' ? 'selected' : ''}>DEFENDANT</option>
+      </select>
       <span class="w-gender-lab">Gender</span>
       <select class="w-gender-select">
         <option value="" ${gender === '' ? 'selected' : ''}>&mdash;</option>
@@ -1214,7 +1221,11 @@ function refreshAllRequiresBeatSelects() {
 
 function collectWitnesses() {
   return Array.from(document.querySelectorAll('#witnesses-list .witness')).map(w => ({
-    gender:      w.querySelector('.w-gender-select').value || '',
+    // Gender lives on the second .w-gender-select; the first is the
+    // side selector (.w-side-select) — query that explicitly to
+    // avoid the wrong slot.
+    side:        w.querySelector('.w-side-select').value || '',
+    gender:      w.querySelector('.w-gender-select:not(.w-side-select)').value || '',
     description: (w.querySelector('.w-desc').value || '').trim(),
     direct:      collectQA(w, 'direct'),
     cross:       collectQA(w, 'cross'),
@@ -1238,6 +1249,7 @@ function validateWitnesses(witnesses) {
   for (let i = 0; i < witnesses.length; i++) {
     const w = witnesses[i];
     const label0 = `Witness ${i + 1}`;
+    if (!w.side)   return `${label0}: pick which side calls this witness (Plaintiff or Defendant).`;
     if (!w.gender) return `${label0}: pick a gender. (Name auto-draws at trial time.)`;
     if (w.direct.length === 0 && w.cross.length === 0) {
       return `${label0}: a witness needs at least one direct or cross question.`;

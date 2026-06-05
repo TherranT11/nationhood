@@ -25,8 +25,21 @@ All notable changes to Nationhood are recorded here. Format inspired by
   to Entrepreneur or Politician and the Create button is
   hard-disabled (the underlying `proceed()` is overridden to a
   redirect so a devtools-stripped disabled attribute can't insert a
-  party row). Reversal: re-apply the `20270583` body of
-  `politician_found_party` and revert the four UI changes.
+  party row).
+  Faction switcher + login pickup also hide existing parties:
+  `isHiddenFromSwitcher` in `js/game/factions.js` (the SoT all four
+  topbars — common / corp / entrepreneur / military / politician —
+  read from) now returns true for `party` and `movement_party`
+  alongside the existing `corporation` retirement, so party rows
+  drop out of the dropdown for current owners. `js/common.js`'s
+  active-faction picker filters parties out of the pool, so a
+  stale `sessionStorage.active_faction_id` pointing at a party
+  redirects to a Politician or Entrepreneur the user owns; the
+  stale stamp is rewritten so the override sticks across reloads.
+  Existing party rows still exist — `party.html` continues to load
+  for anyone who navigates directly, and the politics engine reads
+  them all the same. Reversal: re-apply the `20270583` body of
+  `politician_found_party` and revert the affected UI files.
 
 ### Added — Career roles
 
@@ -243,6 +256,51 @@ All notable changes to Nationhood are recorded here. Format inspired by
   (`entrepreneur-corp.html:1877` + `:2216`) don't move. Now: one
   place to change the engine-discount math, one place to change the
   draw semantics, no more drift risk.
+
+### Added
+
+- **Board of Directors: CFO / COO roles + resign + COO succession
+  (Phase 1).** Extends the existing CEO + Director board with two
+  named officer roles, a voluntary-resignation path, and a COO-first
+  CEO-succession rule. Migration `20270614`:
+  • `corp_board_seats.role` (`NULL` / `'cfo'` / `'coo'`) with a
+    partial unique index so only one CFO and one COO per corp.
+  • `factions.next_board_apply_tick` cooldown stamp set by voluntary
+    resignation; blocks `corp_board_request_join` until expiry
+    (5-tick window).
+  • `corp_appoint_role` (CEO appoints a seated Director to CFO/COO;
+    auto-swaps any existing holder), `corp_clear_role` (drops a
+    CFO/COO back to plain Director), `corp_board_resign` (caller
+    self-resigns, stamps cooldown, fires `politician_career_events`
+    'removed_from_board' with reason 'voluntary' and an `event_log`
+    world entry), `corp_remove_director` (CEO kicks a board member —
+    no cooldown applied, same career + world events with reason
+    'forced').
+  • `corp_no_confidence_resolve` re-issued so the ousted-CEO
+    successor selection prefers the seated COO over the highest
+    shareholder (`ORDER BY (s.role = 'coo') DESC NULLS LAST`,
+    shares desc, joined_tick asc).
+  Board card on `entrepreneur-corp.html` now surfaces role badges
+  (`DIRECTOR · CFO` / `DIRECTOR · COO`) and a uniform action strip
+  per director: CEO sees Appoint CFO / Appoint COO / Clear Role /
+  Remove; the seated member sees Resign. Phase 2 (CFO-initiated
+  dividend voting) and Phase 3 (per-tick Reputation / Skill /
+  Influence drips for tenure) are separate follow-ups.
+
+### Changed
+
+- **Case-drafting witnesses: side dropdown + 5 questions per phase.**
+  Each witness on `courtcase.html` now carries a "Witness for"
+  selector (Plaintiff / Defendant) at the top of the card next to
+  Gender, so the drafter records which side is calling the witness
+  rather than leaving it implicit. `MAX_QA_PER_PHASE` bumped from 3
+  to 5 — Direct and Cross examinations can each hold up to five
+  Q&A pairs (up from three). Server-side `submit_court_case_draft`
+  only caps witness count, not Q&A per phase, so this is a
+  pure client change. New `side` field is stored verbatim in
+  `court_case_drafts.witnesses[]`; surfacing it on the trial UI
+  during play (the "Witness for Plaintiff" label during examination)
+  is a follow-up — `get_trial_state` doesn't return it yet.
 
 ### Fixed
 

@@ -2451,8 +2451,8 @@ function renderCampaignCard(ctx) {
     ? `<div class="ci-time">${resolveTick}</div><div class="ci-time-l">RESOLVES ON</div>`
     : `<div class="ci-time">—</div><div class="ci-time-l">RESOLVES ON</div>`;
 
-  // Stat label tracks the tier — community uses Credibility, parliament Charisma.
-  const statLabel = isParl ? 'CHARISMA' : 'CREDIBILITY';
+  // Stat label tracks the tier — community uses Credibility, parliament Skill.
+  const statLabel = isParl ? 'SKILL' : 'CREDIBILITY';
 
   const youFirst = politician.leader_first_name || '';
   const youLast  = politician.leader_last_name  || '';
