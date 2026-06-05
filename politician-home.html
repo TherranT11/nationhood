@@ -1821,6 +1821,16 @@ const LOCAL_GOV_ACTIONS = [
   { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local.',           action: 'civic-meeting' },
   { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront and let constituents come to you.',                 action: 'office-hours' },
 ];
+// City Council Member (Tier 2 Local) — distinct action trio from
+// Community Organizer's. Busy-work / craft / risk, mapped to
+// Mobilize Volunteers / Build the Base / Lobby a Minister (20270641).
+// All three share next_local_action_tick so the "one each tick" rule
+// is consistent with the Tier-1 set.
+const CITY_COUNCIL_ACTIONS = [
+  { ic: '👥', name: 'MOBILIZE VOLUNTEERS', cost: '−1 Capital',     desc: 'Direct your volunteers to canvass for the party. +0.1 Party Popularity per Volunteer, capped at the party ceiling.',                               action: 'mobilize-volunteers' },
+  { ic: '🛠', name: 'BUILD THE BASE',      cost: 'no cost',        desc: 'Spend the month organising in your district. Roll 1d6: 2–5 → +1 Capital; 6 → +2 Capital; 1 → no gain.',                                            action: 'build-the-base' },
+  { ic: '🏛', name: 'LOBBY A MINISTER',    cost: '−1 Influence',   desc: 'Petition a randomly-assigned Cabinet minister for your ward. Roll 1d6: 5–6 → +1 Capital, +1 Reputation; 2–4 → null; 1 → −1 Reputation. 8-tick cooldown.', action: 'lobby-minister' },
+];
 const LEGISLATURE_ACTIONS = [
   { ic: '☞',         name: 'FLOOR SPEECH',       cost: 'no cost',           desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.', action: 'floor-speech' },
   { ic: '⚛',         name: 'HOLD A RALLY',       cost: '−$10K party funds', desc: 'Hold a rally with local party members to build support.',                             action: 'hold-rally' },
@@ -1885,7 +1895,7 @@ const AFFIL_VARIANTS = {
     badge:   '☴',
     name:    'City Council Member',
     desc:    'You hold an elected seat on the city council, voting on budgets and ordinances. The retail work continues — your district expects to see you — but the leverage is now municipal.',
-    actions: LOCAL_GOV_ACTIONS,  // Tier 2 keeps the Tier 1 action set
+    actions: CITY_COUNCIL_ACTIONS,
     actionsEnabled: true,
     cooldownColumn: 'next_local_action_tick',
   },
@@ -2222,7 +2232,38 @@ const ACTIONS = {
   // PAPERWORK (which lives on its own modal handler and isn't in
   // this catalog).
   'file-a-memo':        { rpc: 'politician_file_a_memo',           label: 'File a Memo',        needsParty: false, format: fmtMemoResult },
+  // City Council Member tier (20270641) — needs p_party_id (party
+  // popularity write on Mobilize Volunteers; format consistency
+  // across the trio).
+  'mobilize-volunteers':{ rpc: 'politician_mobilize_volunteers',    label: 'Mobilize Volunteers',needsParty: true,  format: fmtMobilizeResult },
+  'build-the-base':     { rpc: 'politician_build_the_base',         label: 'Build the Base',     needsParty: true,  format: fmtBuildTheBaseResult },
+  'lobby-minister':     { rpc: 'politician_lobby_minister',         label: 'Lobby a Minister',   needsParty: true,  format: fmtLobbyMinisterResult },
 };
+
+function fmtMobilizeResult(data) {
+  const popDelta = Number(data.popularity_delta) || 0;
+  const newPop = Number(data.new_popularity);
+  const popTxt = Number.isFinite(newPop) ? ` (party popularity now ${newPop.toFixed(1)}%)` : '';
+  return `Mobilized ${data.volunteers} Volunteer${data.volunteers === 1 ? '' : 's'}: Party Popularity +${popDelta.toFixed(1)}${popTxt}. Capital now ${data.new_capital}.`;
+}
+
+function fmtBuildTheBaseResult(data) {
+  if (data.capital_delta === 0) {
+    return `Built the Base: rolled a 1 — no gain this month.`;
+  }
+  return `Built the Base: rolled ${data.roll}, +${data.capital_delta} Capital (now ${data.new_capital}).`;
+}
+
+function fmtLobbyMinisterResult(data) {
+  const ministry = data.ministry_name || 'a minister';
+  if (data.bracket === 'delivered') {
+    return `Lobbied the Minister of ${ministry}: rolled ${data.roll}. +1 Capital (now ${data.new_capital}), +1 Reputation (now ${data.new_reputation}). 8-tick cooldown.`;
+  }
+  if (data.bracket === 'rebuffed') {
+    return `Minister of ${ministry} publicly rebuffed you: rolled 1. −1 Reputation (now ${data.new_reputation}). 8-tick cooldown.`;
+  }
+  return `Lobbied the Minister of ${ministry}: rolled ${data.roll}, no result. Influence consumed. 8-tick cooldown.`;
+}
 
 function fmtMemoResult(data) {
   return `Filed a Memo: +1 Capital (now ${data.new_capital}), −1 Influence (now ${data.new_influence}).`;
@@ -2305,6 +2346,11 @@ const ACTION_REASON = {
   not_advocate:             'You need to be a bar-admitted advocate (and not a Magistrate).',
   active_cases:             'Resolve your active cases before studying the codes.',
   not_civil_servant:        'You need to be a Civil Servant for this action.',
+  not_city_council:         'You need to hold a City Council seat for this action.',
+  no_volunteers:            'You need at least 1 Volunteer before mobilizing.',
+  insufficient_capital:     'You don’t have enough Capital.',
+  insufficient_influence:   'You don’t have enough Influence.',
+  lobby_cooldown:           'Lobbying a Minister is on its 8-tick cooldown.',
 };
 
 async function handleResignOffice(btn, officeName) {
