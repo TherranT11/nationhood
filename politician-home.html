@@ -1749,7 +1749,7 @@ const CIVIL_SERVANT_ACTIONS = [
   // a civil servant can submit a promotion application alongside one
   // of the three career actions. Promotion gated server-side on
   // politician_reputation ≥ 10.
-  { ic: '↑', name: 'APPLY FOR PROMOTION', cost: 'no cost', desc: 'Petition the Ministry for a Tier 2 appointment. Requires 10 Reputation. Available at any tick.', action: 'apply-for-promotion' },
+  { ic: '↑', name: 'APPLY FOR PROMOTION', cost: 'no cost', desc: 'Petition the Ministry for an Agency Head appointment. Requires 10 Skill. Available at any tick.', action: 'apply-for-promotion' },
 ];
 
 // Agency Head (Tier 2) placeholder actions — slots from the
@@ -1870,7 +1870,17 @@ const AFFIL_VARIANTS = {
     eyebrow: 'CIVIL SERVICE · TIER 2',
     badge:   '⚒',
     name:    'Agency Head',
-    descFn:  (ctx) => `You run an agency within the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`,
+    descFn:  (ctx) => {
+      const ministrySlug = ctx.faction?.politician_ministry;
+      const ministryLbl  = ministryName(ministrySlug) || ministrySlug || '—';
+      const agencyKey    = ctx.faction?.politician_agency_head_of;
+      const agency       = agencyKey && PAPERWORK_MINISTRIES[ministrySlug]
+        ? PAPERWORK_MINISTRIES[ministrySlug].agencies.find(a => a.key === agencyKey)
+        : null;
+      return agency
+        ? `You head the <strong>${escHtml(agency.label)}</strong>, an agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`
+        : `You run an agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`;
+    },
     actions: AGENCY_HEAD_ACTIONS,
     // actionsEnabled left undefined → placeholder slots render greyed.
   },
@@ -2102,7 +2112,7 @@ function renderAffiliation(ctx) {
         // reads better outside the role card's footprint.
         window.location.href = 'auditministry.html';
       } else if (btn.dataset.action === 'apply-for-promotion') {
-        applyForPromotion(btn);
+        applyForPromotion();
       } else {
         handleMpAction(btn);
       }
@@ -2238,43 +2248,130 @@ async function handleResignOffice(btn, officeName) {
   }
 }
 
-// Apply for Promotion (20270633) — civil servant → Agency Head.
-// Opts out of the per-tick action lock so it can fire alongside
-// FILE PAPERWORK / FILE A MEMO in the same tick. insufficient_
-// reputation surfaces the "have / need" numbers from the RPC
-// envelope so the player knows exactly how short they are.
-// (Schema reason 'already_senior' kept as-is; the display label
-// flipped to Agency Head but the column stayed politician_senior_
-// civil_servant_at_tick.)
-async function applyForPromotion(btn) {
-  if (!confirm('Petition the Ministry for promotion to Agency Head? Requires 10 Reputation.')) return;
-  const prevHtml = btn.innerHTML;
-  btn.classList.add('cooldown');
-  btn.removeAttribute('data-action');
+// Apply for Promotion (20270633 / 20270634) — civil servant → Agency
+// Head of a specific agency within their ministry. 10 Skill threshold;
+// agency choice is the player's, gated to the 5 agencies in their
+// ministry via the paperwork-taxonomy SoT.
+//
+// Opts out of the per-tick action lock so the petition can fire
+// alongside FILE PAPERWORK / FILE A MEMO in the same tick. The
+// schema column politician_senior_civil_servant_at_tick keeps its
+// pre-rename name; the display label flipped to "Agency Head".
+function applyForPromotion() {
+  // Resolve the caller's ministry from ctx.faction (loaded at bootstrap).
+  const ministrySlug = politician?.politician_ministry;
+  const ministry = ministrySlug ? PAPERWORK_MINISTRIES[ministrySlug] : null;
+  openAgencyPickerModal(ministrySlug, ministry);
+}
+
+function openAgencyPickerModal(ministrySlug, ministry) {
+  const back = document.getElementById('ap-pick-back');
+  const content = document.getElementById('ap-pick-content');
+  const ministryLbl = ministryName(ministrySlug) || ministrySlug || '—';
+
+  if (!ministry || !ministry.agencies?.length) {
+    content.innerHTML = `
+      <div class="fp-head">
+        <div class="fp-head-info">
+          <div class="fp-head-eyebrow">Civil Service · Apply for Promotion</div>
+          <div class="fp-head-name">No agencies available</div>
+          <div class="fp-head-meta">There are no Agency Head openings configured for the Ministry of ${escHtml(ministryLbl)} yet.</div>
+        </div>
+        <button class="fp-head-close" id="ap-pick-close-btn">&#10005;</button>
+      </div>
+      <div class="fp-foot">
+        <div class="fp-btn-row">
+          <button class="fp-btn cancel" id="ap-pick-cancel-btn">Close</button>
+        </div>
+      </div>`;
+    back.classList.add('open');
+    document.getElementById('ap-pick-close-btn')?.addEventListener('click', closeAgencyPickerModal);
+    document.getElementById('ap-pick-cancel-btn')?.addEventListener('click', closeAgencyPickerModal);
+    return;
+  }
+
+  const skill = Number(politician?.politician_skill || 0);
+  const skillTxt = Number.isInteger(skill) ? String(skill) : skill.toFixed(1).replace(/\.0$/, '');
+  const skillShort = skill < 10;
+
+  content.innerHTML = `
+    <div class="fp-head">
+      <div class="fp-head-info">
+        <div class="fp-head-eyebrow">Civil Service · Apply for Promotion</div>
+        <div class="fp-head-name">Choose your <em>Agency</em></div>
+        <div class="fp-head-meta">Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>10 Skill</strong>; you have <strong>${escHtml(skillTxt)}</strong>.</div>
+      </div>
+      <button class="fp-head-close" id="ap-pick-close-btn">&#10005;</button>
+    </div>
+    <div class="fp-form-body">
+      <div class="fp-agency-list" id="ap-pick-list">
+        ${ministry.agencies.map((a, i) => `
+          <button type="button" class="fp-agency-opt" data-agency="${escHtml(a.key)}" ${skillShort ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>
+            <span class="fp-agency-num">${ROMAN[i] || (i + 1)}.</span>
+            <span>${escHtml(a.label)}</span>
+            <span class="fp-agency-desc">${escHtml(a.hint)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
+    <div class="fp-foot">
+      ${skillShort ? `<div class="fp-result miss" style="margin-bottom:10px;">Petition denied — you need <strong>10 Skill</strong>. You have <strong>${escHtml(skillTxt)}</strong>.</div>` : ''}
+      <div class="fp-btn-row">
+        <button class="fp-btn cancel" id="ap-pick-cancel-btn">Cancel</button>
+      </div>
+    </div>`;
+  back.classList.add('open');
+  document.getElementById('ap-pick-close-btn')?.addEventListener('click', closeAgencyPickerModal);
+  document.getElementById('ap-pick-cancel-btn')?.addEventListener('click', closeAgencyPickerModal);
+  if (!skillShort) {
+    document.getElementById('ap-pick-list')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-agency]');
+      if (!btn) return;
+      submitAgencyPromotion(btn.dataset.agency, btn);
+    });
+  }
+}
+
+function closeAgencyPickerModal() {
+  document.getElementById('ap-pick-back')?.classList.remove('open');
+}
+
+// ROMAN const is declared further down for the File Paperwork modal —
+// re-using it here rather than redeclaring (two module-scope `const`
+// with the same name is a SyntaxError). openAgencyPickerModal runs on
+// click, well after init has bound all module consts, so TDZ isn't a
+// concern.
+
+async function submitAgencyPromotion(agencyKey, btn) {
+  if (btn.dataset.busy === '1') return;
+  btn.dataset.busy = '1';
+  btn.disabled = true;
   try {
-    const { data, error } = await _supabase.rpc('politician_apply_for_promotion');
+    const { data, error } = await _supabase.rpc('politician_apply_for_promotion', { p_agency_key: agencyKey });
     if (error) throw error;
     if (!data?.success) {
-      const reason = data?.reason === 'insufficient_reputation'
-        ? `Petition denied — you need 10 Reputation. You have ${Number(data?.have ?? 0).toFixed(1).replace(/\.0$/, '')}.`
+      const reason = data?.reason === 'insufficient_skill'
+        ? `Petition denied — you need 10 Skill. You have ${Number(data?.have ?? 0).toFixed(1).replace(/\.0$/, '')}.`
         : data?.reason === 'already_senior'
             ? 'You are already an Agency Head.'
             : data?.reason === 'not_civil_servant'
                 ? 'Only Civil Servants can apply for this promotion.'
-                : ACTION_REASON[data?.reason] || ('Petition failed: ' + (data?.reason || 'unknown'));
+                : data?.reason === 'invalid_agency'
+                    ? 'That agency isn’t in your ministry.'
+                    : data?.reason === 'missing_agency'
+                        ? 'Pick an agency from the list.'
+                        : ACTION_REASON[data?.reason] || ('Petition failed: ' + (data?.reason || 'unknown'));
       alert(reason);
-      btn.classList.remove('cooldown');
-      btn.dataset.action = 'apply-for-promotion';
-      btn.innerHTML = prevHtml;
+      btn.dataset.busy = '0';
+      btn.disabled = false;
       return;
     }
     alert('Promoted to Agency Head.');
     location.reload();
   } catch (e) {
     alert('Petition failed: ' + (e?.message || 'network or server error'));
-    btn.classList.remove('cooldown');
-    btn.dataset.action = 'apply-for-promotion';
-    btn.innerHTML = prevHtml;
+    btn.dataset.busy = '0';
+    btn.disabled = false;
   }
 }
 
@@ -4690,6 +4787,15 @@ init();
 <div class="fp-back" id="fp-back">
   <div class="fp-modal" id="fp-modal">
     <div id="fp-content"></div>
+  </div>
+</div>
+
+<!-- Agency picker modal (20270634) — Civil Servant chooses which agency
+     to head when applying for promotion. Reuses the .fp-back overlay
+     pattern; populated by openAgencyPickerModal(). -->
+<div class="fp-back" id="ap-pick-back">
+  <div class="fp-modal" id="ap-pick-modal" style="max-width:560px;">
+    <div id="ap-pick-content"></div>
   </div>
 </div>
 
