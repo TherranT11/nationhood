@@ -1283,6 +1283,43 @@ function initials(s, n) {
     // Founder is NOT a row here — the chairman row above renders them
     // from owner_faction_id (one source). Phase B will add the Join
     // flow that populates this table; today it's expected to be empty.
+    // Shared shape for the four board actions: confirm prompt →
+    // RPC → reload on success, alert reason on failure. One helper
+    // so the appoint/clear/remove/resign paths can't drift on
+    // error-handling shape. Declared BEFORE the if (extraEl) block
+    // so the click handler's closure can resolve these references
+    // without tripping TDZ during init under bundlers that hoist
+    // the assignment.
+    async function runBoardAction(rpcName, args, confirmMsg, errPrefix) {
+      if (!confirm(confirmMsg)) return;
+      try {
+        const { data, error } = await _supabase.rpc(rpcName, args);
+        if (error) throw error;
+        if (!data?.success) { alert(`${errPrefix}: ${data?.reason || 'unknown'}`); return; }
+        location.reload();
+      } catch (e) { alert(`${errPrefix}: ${e?.message || e}`); }
+    }
+    const appointBoardRole    = (fid, role) => runBoardAction(
+      'corp_appoint_role',
+      { p_corp_id: id, p_member_faction_id: fid, p_role: role },
+      `Appoint this Director as ${role.toUpperCase()}?`,
+      'Could not appoint');
+    const clearBoardRole      = (fid) => runBoardAction(
+      'corp_clear_role',
+      { p_corp_id: id, p_member_faction_id: fid },
+      'Demote this Officer back to plain Director?',
+      'Could not clear role');
+    const removeBoardDirector = (fid, name) => runBoardAction(
+      'corp_remove_director',
+      { p_corp_id: id, p_member_faction_id: fid },
+      `Remove ${name || 'this Director'} from the Board? A "Removed from Board" career event will land on their record.`,
+      'Could not remove');
+    const resignFromBoard     = () => runBoardAction(
+      'corp_board_resign',
+      { p_corp_id: id },
+      'Resign from this Board? A 5-tick cooldown will block re-applying to any corp board.',
+      'Could not resign');
+
     const extraEl = document.getElementById('cp-board-extra');
     const subEl   = document.getElementById('cp-board-sub');
     if (extraEl) {
@@ -1346,40 +1383,6 @@ function initials(s, n) {
         if (btn.classList.contains('b-resign')) return resignFromBoard();
       };
     }
-
-    // Shared shape for the four board actions: confirm prompt →
-    // RPC → reload on success, alert reason on failure. One helper
-    // so the appoint/clear/remove/resign paths can't drift on
-    // error-handling shape.
-    async function runBoardAction(rpcName, args, confirmMsg, errPrefix) {
-      if (!confirm(confirmMsg)) return;
-      try {
-        const { data, error } = await _supabase.rpc(rpcName, args);
-        if (error) throw error;
-        if (!data?.success) { alert(`${errPrefix}: ${data?.reason || 'unknown'}`); return; }
-        location.reload();
-      } catch (e) { alert(`${errPrefix}: ${e?.message || e}`); }
-    }
-    const appointBoardRole    = (fid, role) => runBoardAction(
-      'corp_appoint_role',
-      { p_corp_id: id, p_member_faction_id: fid, p_role: role },
-      `Appoint this Director as ${role.toUpperCase()}?`,
-      'Could not appoint');
-    const clearBoardRole      = (fid) => runBoardAction(
-      'corp_clear_role',
-      { p_corp_id: id, p_member_faction_id: fid },
-      'Demote this Officer back to plain Director?',
-      'Could not clear role');
-    const removeBoardDirector = (fid, name) => runBoardAction(
-      'corp_remove_director',
-      { p_corp_id: id, p_member_faction_id: fid },
-      `Remove ${name || 'this Director'} from the Board? A "Removed from Board" career event will land on their record.`,
-      'Could not remove');
-    const resignFromBoard     = () => runBoardAction(
-      'corp_board_resign',
-      { p_corp_id: id },
-      'Resign from this Board? A 5-tick cooldown will block re-applying to any corp board.',
-      'Could not resign');
 
     set('cp-d-owner', ownerName);
     set('cp-d-listing', listing);
