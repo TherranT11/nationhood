@@ -49,7 +49,7 @@ const APPLY_REJECT_HUMAN = {
   committee_not_found: 'Committee not found.',
   wrong_nation:        'This committee is not in your nation.',
   already_member:      'You are already a member of this committee.',
-  committee_cap:       'You are at the 2-committee cap.',
+  committee_cap:       'You are at the 3-committee cap (members + pending applications).',
   vote_pending:        'An admission vote is already in progress.',
   no_open_seat:        'No open member seat on this committee right now.',
 };
