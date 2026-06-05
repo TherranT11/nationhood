@@ -2936,6 +2936,12 @@ let emSelectedTier = 'community';
 function openElectionModal(ctx) {
   const modal = document.getElementById('electionModal');
   if (!modal) return;
+  // Reset eyebrow + title — openCityCouncilModal (20270635) reuses
+  // this same modal shell and overwrites both. Without this restore,
+  // opening Stand-for-Election after a City Council cancel would
+  // show "Run for City Council" in the header.
+  modal.querySelector('.em-titles .eyebrow').textContent = '— PARTY OFFICE · RUN FOR ELECTION —';
+  modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">Office</span>';
   // Subtitle = party name affiliation. Falls back to a generic line if the
   // party row didn't come through (politician should always be a member to
   // see this button, but defend anyway).
