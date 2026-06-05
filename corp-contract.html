@@ -528,6 +528,13 @@ async function refresh() {
   const { data, error } = contractRes;
   if (error) { showError(error.message || 'Failed to load.'); return; }
   if (!data?.success) { showError(reasonText(data?.reason)); return; }
+  // Shard fetch is auxiliary (drives the expiry picker default). Failure
+  // is non-fatal — currentTick falls back to 0, picker shows Jan 2000 +
+  // 6 months. Surfacing the error to the console so a silent fallback
+  // doesn't get blamed on the picker logic.
+  if (shardRes.error) {
+    console.warn('[corp-contract] shard fetch error:', shardRes.error.message);
+  }
   state.contract     = data.contract;
   state.currentTick  = Number(shardRes.data?.current_tick) || 0;
   state.activeCorpId = (data.contract.caller_corp_ids || [])[0] || null;
