@@ -1148,6 +1148,12 @@ const CAREER_EVENT_TEMPLATES = {
     `${name}'s civil service exam application to the Ministry of ${target || 'a ministry'} was rejected.`,
   resigned_office: (name, target) =>
     `${name} resigns from their office as ${target || 'an elected official'}.`,
+  // term_ended: written by politician_resolve_expired_terms (20270625)
+  // when a community_organizer / city_council_member's 12-tick term
+  // runs out. Distinct from resigned_office — no penalty, ran its
+  // course.
+  term_ended: (name, target) =>
+    `${name}'s term as ${target || 'an elected official'} has ended.`,
   // Propose New Law — written by committee_propose_law (20270500).
   // target_name is the proposal's section (acts as a stand-in title
   // until a dedicated title field lands on the modal).
@@ -1233,6 +1239,28 @@ async function init() {
     const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
     if (!error && data?.resolved) {
       politician.political_capital = data.political_capital;
+    }
+  } catch (_) { /* non-fatal */ }
+
+  // Resolve expired 12-tick terms (community_organizer / city_council_
+  // member) so the role card flips back to Party Member as soon as the
+  // term runs out, instead of sitting at "0 TICKS REMAINING" forever
+  // (20270625). Same lazy "resolve due things on page load" pattern.
+  // On a positive count we refetch THIS politician's office state — the
+  // RPC scope is caller-wide so an expiry could belong to a sibling
+  // politician; refetching keeps us from clobbering an unrelated active
+  // office in the local cache.
+  try {
+    const { data } = await _supabase.rpc('politician_resolve_expired_terms');
+    if (data?.expired_count > 0) {
+      const { data: f } = await _supabase.from('factions')
+        .select('politician_office, politician_office_won_at_tick')
+        .eq('id', politician.id)
+        .maybeSingle();
+      if (f) {
+        politician.politician_office             = f.politician_office;
+        politician.politician_office_won_at_tick = f.politician_office_won_at_tick;
+      }
     }
   } catch (_) { /* non-fatal */ }
 
@@ -1385,21 +1413,26 @@ function renderHero(shard) {
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
   renderNicknameRow((politician.nickname || '').trim());
-  // Affiliation reads from the looked-up movement_party (ctx.party set
-  // by bootstrapPolitician) plus the politician's office. When an
-  // office is held, the surface collapses to "{Office} · {Party}"
-  // (membership is implicit in holding the office). Same source as
-  // politician-career.html's affiliation block — single OFFICE_TITLES
-  // map in js/utils.js so the two surfaces never disagree.
+  // Affiliation: held role + party affiliation, in whichever
+  // combination applies. Role text comes from office first, then
+  // ministry; collapses with the party name into "{Role} · {Party}"
+  // when both exist, mirroring the office+party form. Previously
+  // dropped ministry on party+ministry players (rendered as just
+  // "Party Member of X") and dropped office on office-only players
+  // with no party (rendered as NO_AFFILIATION_MESSAGE). Same OFFICE_
+  // TITLES + ministryName SoT as politician-career.html and the
+  // careerLabel() helper.
   const office   = politician.politician_office || null;
   const ministry = politician.politician_ministry || null;
-  document.getElementById('hero-affiliation').textContent = party
-    ? (office
-        ? `${officeTitle(office)} · ${party.faction_name}`
-        : `Party Member of ${party.faction_name}`)
-    : (ministry
-        ? `Civil Servant in the Ministry of ${ministryName(ministry) || ministry}`
-        : NO_AFFILIATION_MESSAGE);
+  const roleText = office
+    ? officeTitle(office)
+    : (ministry ? `Civil Servant of ${ministryName(ministry) || ministry}` : '');
+  let affiliation;
+  if (roleText && party)  affiliation = `${roleText} · ${party.faction_name}`;
+  else if (roleText)      affiliation = roleText;
+  else if (party)         affiliation = `Party Member of ${party.faction_name}`;
+  else                    affiliation = NO_AFFILIATION_MESSAGE;
+  document.getElementById('hero-affiliation').textContent = affiliation;
 }
 
 // Paint the split hero name. first goes in the bold span, last + any

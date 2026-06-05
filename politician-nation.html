@@ -12,7 +12,7 @@
 .content { padding:32px 24px 24px; }
 
 .nation-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
-  border-radius:6px; padding:24px; margin-bottom:24px; }
+  border-radius:6px; padding:24px; }
 .nation-card__top { display:flex; align-items:flex-start; gap:18px; margin-bottom:20px; }
 .nation-card__flag { width:88px; height:60px; object-fit:cover; border:0.5px solid rgba(255,255,255,0.1);
   border-radius:3px; flex-shrink:0; background:#121212; }
@@ -21,6 +21,24 @@
   letter-spacing:-0.01em; }
 .nation-card__title h1 .name { font-family:Georgia,'Times New Roman',serif; font-style:italic; color:#c8a64e; }
 .nation-card__title .subtitle { font-size:12px; color:#888; margin-bottom:10px; line-height:1.5; }
+
+/* Top-row layout: map column (placeholder + scope buttons) on the left,
+   nation-card on the right. Stacks vertically below 900px. */
+.hero-row { display:grid; grid-template-columns:minmax(280px, 1fr) 1.6fr;
+  gap:24px; margin-bottom:24px; align-items:stretch; }
+.map-col { display:flex; flex-direction:column; gap:10px; }
+.map-card { background:#0d0d0c; border:0.5px solid rgba(200,166,78,0.15);
+  border-radius:6px; flex:1; min-height:280px; padding:24px;
+  display:flex; align-items:center; justify-content:center; }
+.map-placeholder { color:#555; font-size:10px; letter-spacing:0.14em;
+  text-transform:uppercase; font-style:italic; }
+.map-scope { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+.map-scope button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
+  text-transform:uppercase; color:#888; background:#121212;
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:3px;
+  padding:10px 14px; cursor:pointer; transition:all 0.15s; }
+.map-scope button:hover { color:#5aafa5; border-color:rgba(90,175,165,0.4); }
+.map-scope button.active { color:#c8a64e; border-color:rgba(200,166,78,0.4); background:#1a1612; }
 .tags { display:flex; gap:6px; flex-wrap:wrap; }
 .tag { font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:#c8a64e;
   border:0.5px solid rgba(200,166,78,0.4); padding:4px 10px; border-radius:3px; }
@@ -336,6 +354,10 @@
 /* Mobile refresh — tighter padding on the whole content, wrap the hero,
    collapse the info / stats grids to 2 columns, shrink the jump-nav pills
    and the section padding so the page breathes on a phone. */
+@media (max-width:900px) {
+  .hero-row { grid-template-columns:1fr; gap:14px; }
+  .map-card { min-height:200px; }
+}
 @media (max-width:700px) {
   .content { padding:18px 12px 16px; }
   .nation-card { padding:16px; }
@@ -368,7 +390,21 @@
 <div id="pol-topbar-container"></div>
 
 <div class="content" id="content" style="display:none;">
-  <div class="nation-card" id="nation-card">
+  <!-- Hero row: map placeholder + scope buttons (left), nation card (right).
+       Stacks vertically below 900px. Map view is wired only to the scope-
+       button active state for now; the map itself is a follow-up. -->
+  <div class="hero-row">
+    <aside class="map-col">
+      <div class="map-card" id="nc-map">
+        <div class="map-placeholder">Map · coming soon</div>
+      </div>
+      <div class="map-scope" id="nc-map-scope">
+        <button type="button" data-scope="world">World</button>
+        <button type="button" data-scope="continent">Continent</button>
+        <button type="button" data-scope="nation" class="active">Nation</button>
+      </div>
+    </aside>
+    <div class="nation-card" id="nation-card">
     <div class="nation-card__top">
       <img class="nation-card__flag" id="nc-flag" alt="" onerror="this.style.visibility='hidden'">
       <div class="nation-card__title">
@@ -400,6 +436,7 @@
     </div>
 
     <div class="stats-grid" id="nc-stats"></div>
+  </div>
   </div>
 
   <nav class="jump-nav" id="jump-nav">
@@ -740,6 +777,7 @@ async function init() {
 
   renderCard(nation, pmMinistry);
   bindJumpNav();
+  bindMapScope();
 
   // Resolve any due admission votes for this nation before reading the
   // committee + voting surfaces. Lazy resolver mirrors the election
@@ -976,6 +1014,19 @@ function bindJumpNav() {
     if (!btn) return;
     const target = document.getElementById(btn.dataset.target);
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+// Map scope buttons (World / Continent / Nation) under the map placeholder.
+// Active state only for now — wire to actual map-view switching when the
+// map itself lands.
+function bindMapScope() {
+  const scope = document.getElementById('nc-map-scope');
+  if (!scope) return;
+  scope.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-scope]');
+    if (!btn || btn.parentElement !== scope) return;
+    scope.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
   });
 }
 
