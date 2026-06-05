@@ -372,7 +372,10 @@ WITH evidence AS (
        AND d.airframe_class      IS NOT NULL
 ),
 unique_design AS (
-    SELECT corp_id, klass, MIN(design_id) AS design_id
+    -- PG has no MIN(uuid); the HAVING guarantees exactly one
+    -- distinct design per group, so array_agg + [1] picks that
+    -- single value cleanly.
+    SELECT corp_id, klass, (array_agg(DISTINCT design_id))[1] AS design_id
       FROM evidence
      GROUP BY corp_id, klass
     HAVING COUNT(DISTINCT design_id) = 1
