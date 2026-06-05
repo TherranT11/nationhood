@@ -61,6 +61,10 @@ BEGIN
            AND abandoned_at IS NULL
            AND politician_office IN ('community_organizer', 'city_council_member')
            AND politician_office_won_at_tick IS NOT NULL
+           -- "+ 12" is the local-office term length. js/utils.js
+           -- termEndTickFor() uses the same constant for the
+           -- "TERM ENDS · N TICKS REMAINING" display — keep the two
+           -- in sync if the term length ever changes.
            AND v_tick >= politician_office_won_at_tick + 12
          FOR UPDATE
     LOOP

@@ -1246,8 +1246,22 @@ async function init() {
   // member) so the role card flips back to Party Member as soon as the
   // term runs out, instead of sitting at "0 TICKS REMAINING" forever
   // (20270625). Same lazy "resolve due things on page load" pattern.
+  // On a positive count we refetch THIS politician's office state — the
+  // RPC scope is caller-wide so an expiry could belong to a sibling
+  // politician; refetching keeps us from clobbering an unrelated active
+  // office in the local cache.
   try {
-    await _supabase.rpc('politician_resolve_expired_terms');
+    const { data } = await _supabase.rpc('politician_resolve_expired_terms');
+    if (data?.expired_count > 0) {
+      const { data: f } = await _supabase.from('factions')
+        .select('politician_office, politician_office_won_at_tick')
+        .eq('id', politician.id)
+        .maybeSingle();
+      if (f) {
+        politician.politician_office             = f.politician_office;
+        politician.politician_office_won_at_tick = f.politician_office_won_at_tick;
+      }
+    }
   } catch (_) { /* non-fatal */ }
 
   try {

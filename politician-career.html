@@ -1455,14 +1455,22 @@ async function init() {
   // Resolve expired 12-tick terms (community_organizer / city_council_
   // member) so the rung's held() flips off and the career card's
   // affiliation / positions count update on the next render (20270625).
-  // Same lazy "resolve due things on page load" pattern. If any term
-  // expired, clear politician_office on ctx.faction so the in-memory
-  // state matches the DB without a refetch.
+  // Same lazy "resolve due things on page load" pattern. On a positive
+  // count we refetch THIS politician's office state — the RPC scope is
+  // caller-wide so an expiry could belong to a sibling politician;
+  // refetching keeps us from clobbering an unrelated active office
+  // (e.g. an MP role on this faction) in the local cache.
   try {
     const { data } = await _supabase.rpc('politician_resolve_expired_terms');
     if (data?.expired_count > 0 && ctx.faction) {
-      ctx.faction.politician_office = null;
-      ctx.faction.politician_office_won_at_tick = null;
+      const { data: f } = await _supabase.from('factions')
+        .select('politician_office, politician_office_won_at_tick')
+        .eq('id', ctx.faction.id)
+        .maybeSingle();
+      if (f) {
+        ctx.faction.politician_office             = f.politician_office;
+        ctx.faction.politician_office_won_at_tick = f.politician_office_won_at_tick;
+      }
     }
   } catch (_) { /* non-fatal */ }
 

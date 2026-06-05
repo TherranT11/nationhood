@@ -366,6 +366,10 @@ export function termEndTickFor(state) {
         return Number(state.nextGeneralElectionTick) || null;
     }
     if (office === 'community_organizer' || office === 'city_council_member') {
+        // The "+ 12" is the local-office term length. The server-side
+        // expiry RPC (supabase/migrations/20270625) uses the same
+        // constant — keep the two in sync if the term length ever
+        // changes.
         return (Number(state.officeWonAtTick) || 0) + 12;
     }
     return null;
