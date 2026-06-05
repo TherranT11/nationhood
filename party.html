@@ -22,30 +22,10 @@
 .side-col { display:flex; flex-direction:column; gap:14px; }
 .side-panel { padding:16px 18px; }
 .actions-head, .chat-head { display:flex; align-items:baseline; justify-content:space-between; }
-.actions-sub, .chat-sub { text-transform:none; letter-spacing:0.02em; font-size:9px; color:#555;
+.chat-sub { text-transform:none; letter-spacing:0.02em; font-size:9px; color:#555;
   display:inline-flex; align-items:center; gap:6px; font-weight:500; }
 .chat-dot { width:6px; height:6px; border-radius:50%; background:#5aafa5; display:inline-block; }
 .actions-body { display:flex; flex-direction:column; gap:8px; padding:10px 0 4px; }
-.act-card { background:#101010; border:0.5px solid rgba(255,255,255,0.08);
-  border-radius:5px; padding:11px 13px; cursor:pointer; text-align:left;
-  transition:background 0.12s, border-color 0.12s; }
-.act-card:hover { background:#141414; border-color:rgba(255,255,255,0.16); }
-.act-card.disabled { cursor:not-allowed; opacity:0.55; }
-.act-card.disabled:hover { background:#101010; border-color:rgba(255,255,255,0.08); }
-.act-card.loading { opacity:0.7; cursor:wait; }
-.act-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
-.act-name { font-size:12px; color:#fff; font-weight:600; letter-spacing:0.02em; }
-.act-meta { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
-.act-cd { font-size:8px; letter-spacing:0.11em; color:#888;
-  text-transform:uppercase; font-weight:600; flex-shrink:0; }
-.act-cd.ready { color:#5aafa5; }
-.act-result { font-size:11px; line-height:1.5; padding:8px 11px;
-  border-radius:4px; background:#0e0e0e; border:0.5px solid rgba(255,255,255,0.05);
-  color:#cfcabf; display:none; margin-top:2px; }
-.act-result.show { display:block; }
-.act-result.good { background:#0e1611; color:#a5c79a; border-color:rgba(122,170,106,0.3); }
-.act-result.ok   { background:#0e1416; color:#9cb9c4; border-color:rgba(90,150,180,0.3); }
-.act-result.bad  { background:#1a0e0e; color:#c89e9e; border-color:rgba(200,110,110,0.3); }
 
 /* Chat thread: scrolling column of messages, oldest at top. Newest
    slides in at the bottom via the JS append; the thread auto-scrolls
@@ -358,8 +338,7 @@
     <aside class="side-col" id="side-col" style="display:none;">
       <div class="panel side-panel actions-panel" id="actions-panel">
         <div class="panel-lab actions-head">
-          <span>Party Members</span>
-          <span class="actions-sub">1 action per turn</span>
+          <span>Party Member Actions</span>
         </div>
         <div class="actions-body" id="actions-body"></div>
       </div>
@@ -418,11 +397,6 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
-let _viewerStanding = 0;
-let _viewerReputation = 0;
-let _viewerPoliticalCapital = 0;
-let _viewerSkill = 0;
-let _viewerNextActionAt = 0;
 let _viewerNextMotionAt = 0;
 let _shardTick = 0;
 let _partyPopCap = 40;
@@ -444,12 +418,7 @@ async function init() {
 
   _viewerPolId         = ctx.faction?.id || null;
   _viewerPartyId       = ctx.faction?.politician_party_id || null;
-  _viewerStanding         = Number(ctx.faction?.politician_influence) || 0;
-  _viewerReputation       = Number(ctx.faction?.politician_reputation) || 0;
-  _viewerPoliticalCapital = Number(ctx.faction?.political_capital) || 0;
-  _viewerSkill            = Number(ctx.faction?.politician_skill) || 0;
-  _viewerNextActionAt     = Number(ctx.faction?.next_member_action_tick) || 0;
-  _viewerNextMotionAt     = Number(ctx.faction?.next_party_motion_tick) || 0;
+  _viewerNextMotionAt  = Number(ctx.faction?.next_party_motion_tick) || 0;
   _shardTick           = Number(ctx.shard?.current_tick) || 0;
 
   // Party + members in parallel. Members filter on faction_type so a
@@ -578,113 +547,7 @@ function renderSidebar(party, isMine) {
   }
   side.style.display = 'flex';
   bodyGrid.classList.add('has-side');
-  renderActionsPanel();
   loadAndPollChat(party).catch(err => console.warn('[party] chat init failed', err));
-}
-
-// Party-Members panel. Two ground-floor actions back the climb:
-// Run Political Ads (politician_door_knock — RPC name kept; body
-// redesigned in 20270588 to spend 1 Influence and roll 1d10 + Skill
-// for polling) and Give a Speech (politician_give_speech — pure +1d6
-// polling). Both gated only by the shared 1-per-turn rule via
-// next_member_action_tick; per-action cooldowns (door_knock_cooldown_*,
-// speech_cooldown_*) are no longer read or stamped.
-function renderActionsPanel() {
-  const body = document.getElementById('actions-body');
-  if (!body.querySelector('#act-list')) {
-    body.innerHTML = '<div class="act-list" id="act-list"></div><div class="act-result" id="act-result"></div>';
-  }
-  const list = document.getElementById('act-list');
-  const turnRemaining = Math.max(0, _viewerNextActionAt - _shardTick);
-  const turnReady     = turnRemaining === 0;
-  const capital       = Number(_viewerPoliticalCapital) || 0;
-  const adsCanAfford  = capital >= 1;
-  const adsReady      = turnReady && adsCanAfford;
-  const speechReady   = turnReady;
-  const adsLockReason = !turnReady
-    ? `Ready in ${turnRemaining} tick${turnRemaining === 1 ? '' : 's'}`
-    : (!adsCanAfford ? 'Need 1 Influence' : 'Ready');
-  list.innerHTML = `
-    <div class="act-card${adsReady ? '' : ' disabled'}" data-action="door_knock">
-      <div class="act-row">
-        <div class="act-name">Run Political Ads</div>
-        <div class="act-cd${adsReady ? ' ready' : ''}">${adsLockReason}</div>
-      </div>
-      <div class="act-meta">Spend 1 Influence. Roll 1d10 + Skill (yours: ${_viewerSkill ?? 0}); polling moves by that amount.</div>
-    </div>
-    <div class="act-card${speechReady ? '' : ' disabled'}" data-action="give_speech">
-      <div class="act-row">
-        <div class="act-name">Give a Speech</div>
-        <div class="act-cd${speechReady ? ' ready' : ''}">${speechReady ? 'Ready' : `Ready in ${turnRemaining} tick${turnRemaining === 1 ? '' : 's'}`}</div>
-      </div>
-      <div class="act-meta">No cost. Roll 1d6; polling moves by that amount.</div>
-    </div>
-  `;
-  list.querySelectorAll('.act-card').forEach(card => {
-    card.onclick = () => onMemberAction(card.dataset.action, card);
-  });
-}
-
-async function onMemberAction(actionKey, card) {
-  if (card.classList.contains('disabled') || card.classList.contains('loading')) return;
-  card.classList.add('loading');
-  try {
-    const fn = actionKey === 'give_speech' ? 'politician_give_speech' : 'politician_door_knock';
-    const { data, error } = await _supabase.rpc(fn, { p_party_id: _viewerPartyId });
-    if (error) throw error;
-    if (!data?.success) {
-      const r = data?.reason || 'unknown';
-      const msg = r === 'insufficient_capital'
-        ? `Need ${data?.required ?? 1} Influence to run ads (you have ${data?.have ?? 0}).`
-        : r === 'cooldown'
-          ? `Already campaigned this tick. Next action at tick ${data?.ready_at_tick ?? '?'}.`
-          : `${actionKey === 'give_speech' ? 'Speech' : 'Ads'} failed: ${r}.`;
-      flashActionResult(msg, 'bad');
-      return;
-    }
-    _viewerNextActionAt = Number(data.next_member_action_tick) || 0;
-    if (actionKey === 'door_knock') {
-      _viewerPoliticalCapital = Number(data.political_capital) || 0;
-      patchViewerCapitalCell(_viewerPoliticalCapital);
-    }
-    const roll  = Number(data.roll) || 0;
-    const delta = Number(data.polling_delta) || 0;
-    const verb  = actionKey === 'give_speech' ? 'Gave a speech' : 'Ran political ads';
-    const rollDetail = actionKey === 'give_speech'
-      ? `rolled ${roll}`
-      : `rolled ${roll} + ${data.skill ?? 0} Skill = ${delta}`;
-    const pollMsg = data.has_active_race
-      ? `polling ${delta > 0 ? '+' : ''}${delta}`
-      : 'no active race — polling unchanged';
-    flashActionResult(`${verb} (${rollDetail}): ${pollMsg}.`, 'ok');
-  } catch (err) {
-    console.warn(`[party] ${actionKey} failed`, err);
-    flashActionResult('Action failed. Try again.', 'bad');
-  } finally {
-    card.classList.remove('loading');
-    renderActionsPanel();
-  }
-}
-
-function flashActionResult(html, kind) {
-  const el = document.getElementById('act-result');
-  if (!el) return;
-  el.innerHTML = html;
-  el.className = `act-result show ${kind || ''}`;
-}
-
-// Update the viewer's own Influence cell in the Members panel
-// after an action. Finds the viewer's row by the "You" badge marker,
-// so the rest of the members list stays untouched.
-function patchViewerCapitalCell(newCap) {
-  if (!Number.isFinite(newCap)) return;
-  // Viewer may sit in either panel — patch wherever the You badge lives.
-  document.querySelectorAll('#mps-host .mem-row, #members-host .mem-row').forEach(row => {
-    if (row.querySelector('.mem-name .you')) {
-      const cell = row.querySelector('.mem-cap');
-      if (cell) cell.textContent = newCap;
-    }
-  });
 }
 
 async function loadAndPollChat(party) {
