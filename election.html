@@ -148,7 +148,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear, fmtBig } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToDate, fmtBig } from './js/utils.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function showFail(msg) {
@@ -217,7 +217,7 @@ function render(nation, parties, currentTick) {
   // Hero
   document.getElementById('hero-nation').textContent = nation.name || '—';
   document.getElementById('hero-when').textContent =
-    hasElection ? String(tickToYear(nextTick)) : 'No elections scheduled';
+    hasElection ? tickToDate(nextTick) : 'No elections scheduled';
   document.getElementById('hero-sub').textContent = !hasElection
     ? `${nation.government_type || 'This government type'} does not hold general elections.`
     : ticksAway <= 0 ? 'Overdue — pending. The next politician visit will trigger the resolver.'

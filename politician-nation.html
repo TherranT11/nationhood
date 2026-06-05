@@ -641,7 +641,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear, fmtMoney } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 
@@ -871,7 +871,9 @@ function renderElections(n, currentTick) {
   }
 
   const ticksAway  = nextTick - Number(currentTick);
-  const year       = tickToYear(nextTick);
+  // tickToDate returns "Month, Year" off the shared 2000-anchor —
+  // single source the rest of the politician verse reads from.
+  const dateLabel  = tickToDate(nextTick);
   const totalSeats = Math.max(0, Number(n.total_seats) || 0);
   const countdown  = ticksAway <= 0
     ? 'overdue &mdash; pending'
@@ -887,7 +889,7 @@ function renderElections(n, currentTick) {
       <a class="gov-card gov" href="election.html?nation=${encodeURIComponent(n.id)}"
          style="text-decoration:none; cursor:pointer;">
         <div class="gck">NEXT GENERAL ELECTION &mdash; click for full breakdown</div>
-        <div class="gcv">${year}</div>
+        <div class="gcv">${dateLabel}</div>
         <div class="gcd">${countdown} &middot; ${stake}</div>
       </a>
     </div>
