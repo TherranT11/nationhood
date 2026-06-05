@@ -110,10 +110,12 @@ body {
     <div class="subtitle">How will you shape the world? Choose your path, then select a nation to join.</div>
   </div>
   <div style="width:100%;max-width:640px;padding:0 16px 48px;">
-    <div id="opt-party" onclick="selectFactionOption('party')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--blue-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
-      <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Political Party</div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
-    </div>
+    <!-- Political Party option REMOVED in Sunset Phase 1 (20270612).
+         Players choose Politician or Entrepreneur; existing parties
+         keep operating but no new ones are accepted. The opt-party
+         id is kept in the DOM as a hidden stub so the JS chooser
+         logic at selectFactionOption() doesn't null-deref. -->
+    <div id="opt-party" style="display:none;"></div>
     <div id="opt-corp" onclick="selectFactionOption('corporation')" style="display:none;background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
@@ -167,17 +169,11 @@ async function init() {
     }
   }
 
-  // Load pending nation from sessionStorage (set by select-nation.html).
-  // Only auto-skip to party creation when we're actually in the party flow —
-  // a stale nation in storage shouldn't hijack the military or chooser flow.
-  const raw = sessionStorage.getItem('nationhood_pending_nation');
-  const hasNation = raw && JSON.parse(raw).id;
-  if (hasNation && (pendingType === 'party' || !pendingType)) {
-    // Nation selected → straight to party creation. The old ideology-picker
-    // step was removed in Phase 5C-4 (sectors replaced ideology axes).
-    window.location.href = 'createparty.html';
-    return;
-  }
+  // Auto-skip to party creation: REMOVED in Sunset Phase 1
+  // (migration 20270612). The Political Party option is no longer
+  // offered to new players; a stale pendingType='party' from before
+  // sunset falls through to the chooser, which now hides the party
+  // card and offers Entrepreneur / Politician / Military instead.
   // No nation selected (or wrong flow) — show faction type chooser
   document.getElementById('loading').style.display = 'none';
   document.getElementById('faction-chooser').style.display = 'flex';
@@ -186,14 +182,12 @@ async function init() {
 const MILITARY_ALPHA_CODE = 'Commander1';
 
 function chooseFactionType(type) {
-  if (type === 'military') {
-    sessionStorage.setItem('pending_faction_type', 'military');
-    window.location.href = 'select-nation.html';
-  } else {
-    sessionStorage.setItem('pending_faction_type', 'party');
-    // Party flow: pick nation, then ideology
-    window.location.href = 'select-nation.html';
-  }
+  // Sunset Phase 1 (20270612): the old 'party' fallback for non-
+  // military types is dead — opt-party and opt-corp are hidden, and
+  // entrepreneur routes directly from confirmFactionChoice. Only
+  // military reaches here in practice.
+  sessionStorage.setItem('pending_faction_type', type);
+  window.location.href = 'select-nation.html';
 }
 
 let selectedFaction = null;

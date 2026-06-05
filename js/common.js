@@ -867,14 +867,10 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__abbr">[${f.abbreviation || '—'}]</span>
             </div>`;
         }
-        // "Found a Party" option if no party exists
-        const hasParty = _userFactions.some(f => f.faction_type === 'party');
-        if (!hasParty) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','party'); window.location.href='select-nation.html'">
-                <span class="faction-dropdown__type" style="color:var(--amber)">+</span>
-                <span class="faction-dropdown__name">Found a Political Party</span>
-            </div>`;
-        }
+        // Political Party founding option: REMOVED in Sunset Phase 1
+        // (migration 20270612). Players now only create Entrepreneurs
+        // and Politicians; existing parties keep operating but no new
+        // ones are accepted from this dropdown.
         // "Join a Military Faction" option if no military faction exists
         const hasMilitary = _userFactions.some(f => f.faction_type === 'military');
         if (!hasMilitary) {

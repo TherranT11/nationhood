@@ -249,13 +249,13 @@
   </div>
 
   <div class="pm-actions">
-    <div class="pm-action is-live" data-action="start-party" id="pm-start-party">
+    <div class="pm-action" data-action="start-party" id="pm-start-party" style="opacity:0.5;cursor:not-allowed;">
       <div class="ic">+</div>
       <div class="body">
         <div class="nm">Start a Political Party</div>
-        <div class="ds">Found a new political party in your nation. Requires 100 Influence.</div>
+        <div class="ds">No longer accepting new parties — existing parties continue to operate. Sunset Phase 1.</div>
       </div>
-      <div class="tag">Open</div>
+      <div class="tag">Sunset</div>
     </div>
     <div class="pm-action" data-action="start-ngo">
       <div class="ic">+</div>
@@ -639,8 +639,9 @@ const FP_ARCHETYPES = [
 let _fpArchKey = 'ref';
 
 function bindFoundCard() {
-  const card = document.getElementById('pm-start-party');
-  if (card) card.addEventListener('click', openFoundModal);
+  // Sunset Phase 1 (20270612): party founding is closed. The card
+  // stays visible but doesn't open the modal — see openFoundModal
+  // for the sunset gate when the modal IS reached via a stale link.
 }
 
 function bindFoundModal() {
