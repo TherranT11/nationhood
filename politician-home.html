@@ -1750,11 +1750,11 @@ function renderAffiliation(ctx) {
   const remaining = endTick != null ? Math.max(0, endTick - currentTick) : null;
   // Elected line surfaces politician_office_won_at_tick (already stored
   // since 20270418) so the card shows when the term began alongside
-  // when it ends. Check the raw column rather than wonAt because the
-  // Number(...) || 0 coalesces NULL to 0 and we'd otherwise hide the
-  // elected line for a legitimate genesis-tick win.
-  const hasWonAt = ctx.faction?.politician_office_won_at_tick != null;
-  const electedHtml = (endTick != null && hasWonAt)
+  // when it ends. Read off wonAtRaw (not wonAt) — the || 0 coercion on
+  // wonAt collapses NULL into the genesis tick, which would render a
+  // bogus "Elected January, 2000" for an MP whose won-at was never
+  // stamped. wonAtRaw != null distinguishes the two cleanly.
+  const electedHtml = (endTick != null && wonAtRaw != null)
     ? `<span class="ah-tenure-elected">Elected <strong>${escHtml(tickToDate(wonAt))}</strong></span>`
     : '';
   const tenureHtml = endTick != null
