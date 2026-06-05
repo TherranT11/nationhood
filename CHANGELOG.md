@@ -322,6 +322,21 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Shipping corps: Revenue Change card now stamps per-tick payout.**
+  Third in the bypass-the-ledger sweep (after oil & gas in `20270605`
+  and airlines in `20270616`). User confirmed their shipping corp
+  earning from an active freighter route while the card showed "$0
+  · no data yet" — same diagnosis. Migration `20270618` re-issues
+  `process_trade_agreement_shipping_multiwinner` (live body
+  confirmed via `pg_get_functiondef` probe — `always_manual_accept`
+  variant, no auto-fill window) with the per-bid `UPDATE
+  entrepreneur_corps` extended to stamp `last_tick_revenue` /
+  `last_revenue_tick` alongside the treasury credit. Multi-bid
+  aggregation per tick handled by the same CASE pattern as
+  airlines: a corp winning multiple bids in one tick accumulates
+  the payouts in one stamp. Legacy faction-corp bidders (writing
+  to `corp_cash_reserves`) are unchanged. Apartment-rent
+  (`20270445`) and share-trade paths still pending follow-ups.
 - **Airline corps: Revenue Change card now stamps per-tick net.**
   User reported two airline routes generating "net +$1,500" each
   per tick (=$3,000/tick total treasury inflow), but the Revenue
