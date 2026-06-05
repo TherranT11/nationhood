@@ -34,15 +34,14 @@
 }
 .howto-back:hover { text-decoration: underline; }
 </style>
-  <script type="module" crossorigin src="/assets/how-to-rPDBX56V.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <script type="module" crossorigin src="/assets/how-to-Ce0jLit-.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-CNjNcIHN.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-structure-DVzKGcwP.js">
-  <link rel="modulepreload" crossorigin href="/assets/factions-qe2qC_cj.js">
-  <link rel="modulepreload" crossorigin href="/assets/corp-topbar-Dar6x8XP.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
-  <link rel="modulepreload" crossorigin href="/assets/common-DL2fQz67.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BeJIFjWQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-structure-DBjJ7E-l.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/common-D2-5e1SV.js">
   <link rel="stylesheet" crossorigin href="/assets/dashboard-vpNbURZY.css">
 </head>
 <body>
@@ -100,7 +99,6 @@
 <tr><td>Seats</td><td>0</td><td>Won at the next election. Until then you can't form government.</td></tr>
 <tr><td>Approval Rating</td><td>50</td><td>How popular you are with voters. Moves with outcomes, promises, scandals.</td></tr>
 <tr><td>Momentum</td><td>0</td><td>Short-term political energy. Rallies, statements, and positive events add; every tick burns some down.</td></tr>
-<tr><td>Standing</td><td>30</td><td>Institutional reputation. Damaged by failed attacks, lost lawsuits, embezzlement. Affects endorsement chances.</td></tr>
 </table>
 
 <h3>4. Your first in-game hour</h3>
@@ -166,7 +164,7 @@
 <li>Corp monthly income: government contracts pay out, private operating revenue lands, loan interest/premium installments collect</li>
 <li>Construction projects advance, consume materials, pay labor, risk events</li>
 <li>Shipping routes generate, expire, or reassign; vessels leave port, transit, arrive, unload revenue</li>
-<li>Finance: loan repayments collected, bond coupons paid, insurance premiums flow, equity dividends distribute</li>
+<li>Finance: loan repayments collected, insurance premiums flow, equity dividends distribute</li>
 <li>Reputation decay: 0.25/tick baseline, 1.0/tick if a corp has zero workforce</li>
 </ul>
 
@@ -185,7 +183,7 @@
 
 <p>You lead a <strong>political party</strong> inside one nation. Everything you do in the game flows through that party &mdash; winning seats, forming governments, proposing laws, campaigning, fundraising, coalition deals, diplomacy.</p>
 
-<p>Your party's profile lives on the <strong>Politics &rarr; Parties</strong> tab. That's the single page where you can see your standing and compare it to every rival party in the nation.</p>
+<p>Your party's profile lives on the <strong>Politics &rarr; Parties</strong> tab. That's the single page where you can see your party's metrics and compare them to every rival party in the nation.</p>
 
 <h3>What the card shows you</h3>
 
@@ -200,7 +198,6 @@
 <tr><td><strong>National Vote Share</strong></td><td>Your percentage of the last election's votes (not seats). Can diverge from seats if the nation has entrenchment thresholds or seat bonuses.</td></tr>
 <tr><td><strong>Approval</strong></td><td>How popular your party is with voters right now, 0&ndash;100. Drives your next election result more than any other stat. Rises from fulfilled platforms, successful rallies, positive crisis resolution. Falls from missed platform promises, failed lawsuits, scandals, and unpopular legislation you voted for.</td></tr>
 <tr><td><strong>Momentum</strong></td><td>Short-term political energy. Rallies, statements, press conferences, and winning news cycles add; every tick burns some off. A momentum spike right before an election can flip a result &mdash; momentum directly buffs turnout bonuses on your bloc.</td></tr>
-<tr><td><strong>Standing</strong></td><td>Institutional reputation, 0&ndash;100. Damaged by losing lawsuits, failed attack actions, embezzlement, betraying coalitions. Rewarded when you win a lawsuit, honor a promise under pressure, or complete a full term. Drives presidential endorsement odds and is referenced by several foundational law thresholds.</td></tr>
 <tr><td><strong>Ideology</strong></td><td>Two ideology tags chosen at founding, plus a numeric position on <em>five</em> axes (see below). Voter blocs match against this; caucuses inside large parties track their own dominant axis against yours.</td></tr>
 <tr><td><strong>Coalition Status</strong></td><td><em>GOVERNING-LEAD</em> (your party holds the PM or presidency), <em>GOVERNING-JUNIOR</em> (you're in the coalition but not the lead), or <em>OPPOSITION</em>. Different statuses unlock different actions &mdash; only governing parties appoint ministers; only opposition parties can file no-confidence.</td></tr>
 <tr><td><strong>Ticks in Power</strong></td><td>On governing parties only. How long the current administration has lasted. Long tenure applies incumbency fatigue &mdash; a slow drip of approval loss that grows with time in power.</td></tr>
@@ -257,7 +254,7 @@
 <ul>
 <li><strong>Hold a Rally</strong> &mdash; targets a voter bloc, consumes AP, returns momentum and approval. Diminishing returns if you repeat the same bloc; escalation cost climbs.</li>
 <li><strong>Press Conference</strong> &mdash; 1 AP; small momentum boost; escalation cost climbs with use.</li>
-<li><strong>Attack a rival party</strong> &mdash; AP cost scales with nation polarization. Outcome rolled from a weighted table: crit success, success, mixed, backfire, disaster. Winning damages target's approval/standing; losing hurts you.</li>
+<li><strong>Attack a rival party</strong> &mdash; AP cost scales with nation polarization. Outcome rolled from a weighted table: crit success, success, mixed, backfire, disaster. Winning damages target's approval; losing hurts you.</li>
 <li><strong>Fundraise</strong> &mdash; 5 tiers of diminishing returns per cycle:
     <table>
     <tr><th>Use #</th><th>Cash per seat</th><th>Momentum cost</th></tr>
@@ -302,16 +299,13 @@
 
 <p>Traits are rolled at leader creation &mdash; both at founding and at each succession. You can see your leader's trait on the party card and its effects on the actions panel; some traits only apply in specific contexts (e.g. presidential traits only matter if your party is running a president).</p>
 
-<h3>Standing, embezzlement, and reputational damage</h3>
+<h3>Approval, embezzlement, and reputational damage</h3>
 
-<p>Three related meters track the <em>reputation</em> layer of your party:</p>
+<p>Two meters track the <em>reputation</em> layer of your party:</p>
 <ul>
 <li><strong>Approval</strong> &mdash; voter-facing, drives elections. Fast to move.</li>
-<li><strong>Standing</strong> &mdash; institution-facing, drives endorsements, confirmation bill outcomes, and some foundational law thresholds. Slow to move.</li>
 <li><strong>Embezzled Funds</strong> &mdash; a counter that increments when you take certain AP-cheap but legally-dubious actions. At threshold, triggers scandals; starts a <em>consecutive embezzle ticks</em> clock that makes lawsuits against you easier for opposition agitators.</li>
 </ul>
-
-<p>Damage to standing is harder to reverse than approval. Lost lawsuits, failed coup attempts, and betrayed coalitions all leave standing scars that take dozens of ticks to erase.</p>
 
 <h3>Nation context &amp; limits</h3>
 

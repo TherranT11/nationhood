@@ -348,35 +348,9 @@ body {
   text-align: right;
 }
 
-/* Crisis section */
-.crisis-section {
-  margin-top: 8px;
-}
-.crisis-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-}
-.crisis-pip {
-  width: 3px;
-  height: 14px;
-  background: var(--red);
-  flex-shrink: 0;
-}
-.crisis-name {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--red);
-}
-.no-crisis {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--text-muted);
-  padding: 2px 0;
-  font-style: italic;
-}
+/* Crisis sunset (Phase 3): .crisis-section / .crisis-row / .crisis-pip /
+   .crisis-name / .no-crisis CSS rules removed along with the
+   active_crises read + render block. */
 
 /* Card footer */
 .nation-card__footer {
@@ -675,14 +649,16 @@ body {
   .modal { width: 95%; padding: 16px; }
 }
 </style>
-  <script type="module" crossorigin src="/assets/select-nation-PgkWVnii.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
-  <link rel="modulepreload" crossorigin href="/assets/factions-qe2qC_cj.js">
-  <link rel="modulepreload" crossorigin href="/assets/config-BdOpHGNJ.js">
-  <link rel="modulepreload" crossorigin href="/assets/government-types-CNjNcIHN.js">
-  <link rel="modulepreload" crossorigin href="/assets/stats-Nd7eW9dF.js">
-  <link rel="modulepreload" crossorigin href="/assets/political-actions-BCfwIhEF.js">
+  <script type="module" crossorigin src="/assets/select-nation-DtR4SHt0.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/config-BER7HlcX.js">
+  <link rel="modulepreload" crossorigin href="/assets/government-types-BeJIFjWQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/diplomacy-constants-DDYAx-fT.js">
+  <link rel="modulepreload" crossorigin href="/assets/stats-C5reUrev.js">
+  <link rel="modulepreload" crossorigin href="/assets/political-actions-gAjzq9PT.js">
+  <link rel="modulepreload" crossorigin href="/assets/nation-descriptions-DuWq_iJP.js">
 </head>
 <body>
 
@@ -761,6 +737,31 @@ body {
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" onclick="closeMilitaryModal()">CANCEL</button>
         <button class="modal__btn modal__btn--confirm" id="military-modal-confirm-btn" onclick="confirmMilitaryJoin()">JOIN</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="entrepreneur-modal-overlay">
+  <div class="modal">
+    <div class="modal__header">
+      <div class="modal__dot" style="background:var(--purple,#8b5cf6);"></div>
+      <span class="modal__title">Found Your Business</span>
+    </div>
+    <div class="modal__body">
+      <div class="modal__text">Your businessman is from:</div>
+      <div class="modal__nation-name" id="entrepreneur-modal-name"></div>
+      <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Gender</div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button type="button" id="ent-gender-male" onclick="setEntrepreneurGender('male')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-3);border:1px solid var(--purple,#8b5cf6);color:var(--text-bright);cursor:pointer;">Male</button>
+        <button type="button" id="ent-gender-female" onclick="setEntrepreneurGender('female')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-muted);cursor:pointer;">Female</button>
+      </div>
+      <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Name</div>
+      <select id="entrepreneur-modal-name-select" style="width:100%;margin-top:6px;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;"></select>
+      <div id="entrepreneur-modal-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;line-height:1.5;"></div>
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--cancel" onclick="closeEntrepreneurModal()">CANCEL</button>
+        <button class="modal__btn modal__btn--confirm" id="entrepreneur-modal-confirm-btn" onclick="confirmEntrepreneurJoin()">CONFIRM</button>
       </div>
     </div>
   </div>

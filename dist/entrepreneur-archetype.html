@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Choose Your Archetype | Nationhood Alpha</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-0:#0e0e0c; --bg-1:#1a1a1a; --bg-2:#1a1a17; --bg-3:#252525;
+  --text-bright:#f0efe6; --text-primary:#c4c2b8; --text-muted:#666; --text-dim:#4a4940;
+  --border-0:rgba(255,255,255,0.06); --border-1:rgba(255,255,255,0.08);
+  --purple:#8b5cf6; --red:#c0564e;
+  --font-mono:'JetBrains Mono',monospace; --font-ui:'IBM Plex Sans',sans-serif; --font-serif:'IBM Plex Serif',serif;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg-0); color:var(--text-primary); font-family:var(--font-ui);
+  min-height:100vh; padding:40px 20px; }
+.wrap { max-width:760px; margin:0 auto; }
+.kicker { font-family:var(--font-mono); font-size:10px; font-weight:700; letter-spacing:0.12em;
+  text-transform:uppercase; color:var(--purple); margin-bottom:6px; }
+h1 { font-family:var(--font-serif); font-size:26px; color:var(--text-bright); margin-bottom:4px; }
+.sub { font-size:12px; color:var(--text-muted); margin-bottom:24px; }
+.arch-card { background:var(--bg-2); border:1px solid var(--border-1); border-left:3px solid var(--border-1);
+  padding:20px; margin-bottom:12px; cursor:pointer; transition:border-color .15s, background .15s; }
+.arch-card:hover { border-left-color:var(--purple); }
+.arch-card.sel { border-color:var(--purple); border-left-color:var(--purple); background:var(--bg-3); }
+.arch-name { font-family:var(--font-mono); font-size:15px; font-weight:800; letter-spacing:0.06em;
+  color:var(--text-bright); margin-bottom:8px; }
+.arch-quote { font-family:var(--font-serif); font-style:italic; font-size:13px; color:var(--purple);
+  line-height:1.5; margin-bottom:10px; }
+.arch-desc { font-size:12px; line-height:1.6; color:var(--text-primary); }
+.stat-panel { background:var(--bg-2); border:1px solid var(--border-1); margin:18px 0; display:none; }
+.stat-panel.show { display:block; }
+.stat-row { display:flex; justify-content:space-between; padding:11px 18px; border-bottom:1px solid var(--border-0);
+  font-size:13px; }
+.stat-row:last-child { border-bottom:none; }
+.stat-row .k { color:var(--text-primary); }
+.stat-row .v { font-family:var(--font-mono); color:var(--text-bright); }
+.stat-row.head { background:var(--bg-3); font-family:var(--font-mono); font-size:10px;
+  text-transform:uppercase; letter-spacing:0.1em; color:var(--purple); }
+.stat-row.total .k, .stat-row.total .v { font-weight:800; color:var(--text-bright); }
+.stat-row.cash .v { color:#5cb85c; }
+.btn { width:100%; padding:14px; font-family:var(--font-mono); font-size:12px; font-weight:700;
+  letter-spacing:0.08em; text-transform:uppercase; background:var(--bg-3); border:1px solid var(--border-0);
+  color:var(--text-dim); cursor:not-allowed; transition:all .15s; }
+.btn.on { background:rgba(139,92,246,0.12); border-color:var(--purple); color:var(--text-bright); cursor:pointer; }
+.err { display:none; font-family:var(--font-mono); font-size:11px; color:var(--red); margin-top:10px; line-height:1.5; }
+
+/* Mobile refresh — single-column flow already; just tighten padding and
+   shrink the heading so the card stack reads cleanly at 375px / 360px. */
+@media (max-width: 640px) {
+  body { padding: 24px 16px; }
+  h1 { font-size: 22px; }
+  .arch-card { padding: 16px; }
+  .arch-name { font-size: 14px; }
+  .stat-row { padding: 11px 14px; font-size: 12px; }
+}
+@media (max-width: 360px) {
+  body { padding: 20px 12px; }
+  .arch-card { padding: 14px; }
+}
+</style>
+  <script type="module" crossorigin src="/assets/entrepreneur-archetype-Dglw_mQT.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+</head>
+<body>
+  <div class="wrap">
+    <div class="kicker">Final Step</div>
+    <h1>Choose Your Archetype</h1>
+    <div class="sub" id="who">&nbsp;</div>
+    <div id="cards"></div>
+    <div class="stat-panel" id="stat-panel"></div>
+    <button class="btn" id="create-btn" disabled>Create Entrepreneur</button>
+    <div class="err" id="err"></div>
+  </div>
+</body>
+</html>

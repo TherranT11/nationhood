@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — Resources</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. This page styles
+   only its own body: a subtab row (Wiki / Ledger) above an empty pane.
+   Both panes are placeholders until the content under them is designed. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.res-tabs { display:flex; gap:0; margin-bottom:18px;
+  border-bottom:0.5px solid rgba(255,255,255,0.08); }
+.res-tab { padding:10px 18px; font-family:monospace; font-size:11px; letter-spacing:0.1em;
+  text-transform:uppercase; color:#888; background:transparent; border:none;
+  border-bottom:1px solid transparent; cursor:pointer; transition:all 0.15s;
+  margin-bottom:-0.5px; }
+.res-tab:hover:not(.active) { color:#d4d4d4; }
+.res-tab.active { color:#5aafa5; border-bottom-color:#5aafa5; }
+
+.res-pane  { min-height:200px; }
+.res-empty { color:#666; font-size:12px; font-style:italic; text-align:center;
+  padding:60px 20px; background:#121212; border:0.5px dashed rgba(255,255,255,0.10);
+  border-radius:4px; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940; text-align:center; padding:80px 20px; }
+</style>
+  <script type="module" crossorigin src="/assets/politician-resources-Ctpae4al.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-topbar-5igJjSS-.js">
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="res-tabs" id="res-tabs">
+    <button class="res-tab active" data-tab="wiki">Wiki</button>
+    <button class="res-tab" data-tab="ledger">Ledger</button>
+  </div>
+
+  <div class="res-pane" data-pane="wiki">
+    <div class="res-empty">No wiki entries yet.</div>
+  </div>
+  <div class="res-pane" data-pane="ledger" style="display:none;">
+    <div class="res-empty">No ledger entries yet.</div>
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+</body>
+</html>

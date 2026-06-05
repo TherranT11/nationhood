@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Corporations — Entrepreneur</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
+  .ec-actions { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:28px; }
+  .ec-action { background:#0f120e; border:0.5px solid rgba(138,170,106,0.2); border-radius:6px;
+    padding:18px 20px; display:flex; align-items:center; gap:16px; }
+  .ec-action.disabled { opacity:0.45; border-color:rgba(255,255,255,0.08); }
+  .ec-action.go { cursor:pointer; }
+  .ec-action.go:hover { border-color:#6a8a4a; background:#131613; }
+  .ec-action .ic { width:38px; height:38px; flex-shrink:0; border-radius:4px; display:flex;
+    align-items:center; justify-content:center; font-size:20px; background:#1f2a1a;
+    border:0.5px solid #4a6a4a; color:#8aaa6a; }
+  .ec-action .nm { font-size:15px; font-weight:500; color:#fff; margin-bottom:3px; }
+  .ec-action .ds { font-size:11px; color:#888; line-height:1.5; }
+  .ec-action .cost { margin-left:auto; font-size:11px; color:#8aaa6a; letter-spacing:0.05em; white-space:nowrap; }
+  .ec-section { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .ec-section .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+  .ec-section .sans { font-size:22px; font-weight:500; color:#fff; }
+  .ec-section .serif { font-size:22px; font-family:Georgia,serif; font-style:italic; color:#8aaa6a; }
+  .ec-section .meta { margin-left:auto; color:#555; font-size:10px; letter-spacing:0.1em; }
+  .ec-filters { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .ec-filter { font-size:10px; letter-spacing:0.08em; padding:5px 11px; border-radius:3px; cursor:pointer;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.1); color:#888; }
+  .ec-filter.active { background:#131613; border-color:#6a8a4a; color:#8aaa6a; }
+  .ec-pos { display:flex; flex-direction:column; gap:10px; }
+  .ec-corp { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-left:2px solid #8aaa6a;
+    border-radius:4px; padding:14px 18px;
+    display:grid; grid-template-columns:1.4fr 0.7fr 1fr 0.9fr 0.6fr auto;
+    gap:18px; align-items:center; cursor:pointer; }
+  .ec-corp:hover { background:#141614; border-color:rgba(138,170,106,0.3); }
+  .ec-corp .cn { font-size:15px; font-weight:500; color:#fff; margin-bottom:3px; }
+  .ec-corp .ci { font-size:10px; letter-spacing:0.1em; color:#888; text-transform:uppercase; }
+  .ec-corp .cl { font-size:9px; color:#555; letter-spacing:0.13em; text-align:right; margin-bottom:3px; }
+  .ec-corp .cv { font-size:16px; font-weight:500; color:#d4d4d4; text-align:right; }
+  .ec-corp .cv.muted { color:#555; }
+  .ec-corp .arr { color:#555; font-size:16px; }
+  .ec-corp .mid { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+  /* Category + Position pills. Industry colours mirror the markets
+     directory; position pill is rank-coloured (founder/director/share). */
+  .ec-pill { display:inline-block; padding:4px 9px; border-radius:3px;
+    font-size:9px; letter-spacing:0.13em; font-weight:500; }
+  .ec-pill.construction { background:#1f2a1a; color:#8aaa6a; }
+  .ec-pill.banking      { background:#1a2535; color:#7a9aab; }
+  .ec-pill.shipping     { background:#2a2419; color:#c89e6e; }
+  .ec-pill.real_estate  { background:#2a1f2a; color:#aa7aaa; }
+  .ec-pill.airline      { background:#16242e; color:#7ab8d0; }
+  .ec-pill.oil_and_gas  { background:#2a1612; color:#c87a6a; }
+  .ec-pill.founder      { background:#1f2a1a; color:#8aaa6a; }
+  .ec-pill.director     { background:#2a2419; color:#c89e6e; }
+  .ec-pill.shareholder  { background:#1a2535; color:#7a9aab; }
+  .ec-empty { background:#121212; border:0.5px dashed rgba(255,255,255,0.10); border-radius:4px;
+    padding:26px 18px; color:#666; font-size:12px; text-align:center; line-height:1.6; }
+
+  .ec-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
+    align-items:center; justify-content:center; padding:30px; z-index:500; }
+  .ec-overlay.open { display:flex; }
+  .ec-modal { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1); border-radius:6px;
+    width:100%; max-width:920px; max-height:92vh; display:flex; flex-direction:column; overflow:hidden; }
+  .ec-mh { padding:18px 24px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    display:flex; align-items:center; gap:14px; background:linear-gradient(180deg,rgba(138,170,106,0.04),#0c0c0c); }
+  .ec-mh .ic { width:36px; height:36px; background:#1f2a1a; border:0.5px solid #4a6a4a;
+    border-radius:3px; display:flex; align-items:center; justify-content:center; color:#8aaa6a; font-size:18px; }
+  .ec-mh .eb { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; }
+  .ec-mh .ti { font-size:20px; font-weight:500; color:#fff; }
+  .ec-mh .ti em { font-family:Georgia,serif; color:#8aaa6a; }
+  .ec-mh .rt { margin-left:auto; display:flex; align-items:center; gap:18px; }
+  .ec-mh .rt .lab { color:#666; font-size:9px; letter-spacing:0.12em; }
+  .ec-mh .rt .val { color:#8aaa6a; font-size:13px; margin-top:2px; }
+  .ec-x { border:0.5px solid rgba(255,255,255,0.15); color:#888; width:26px; height:26px;
+    border-radius:3px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; }
+  .ec-x:hover { color:#8aaa6a; border-color:rgba(138,170,106,0.4); }
+  .ec-mb { flex:1; overflow-y:auto; padding:22px 24px; }
+  .ec-h { font-size:14px; color:#fff; margin:22px 0 12px; font-weight:500; }
+  .ec-h:first-child { margin-top:0; }
+  .ec-h em { font-family:Georgia,serif; color:#8aaa6a; font-style:italic; }
+  .ec-grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  /* Industry picker is now 4 sectors — 2x2 reads better than 3+1. */
+  #ec-ind.ec-grid3 { grid-template-columns:repeat(2,1fr); }
+  .ec-conts { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .ec-cont { font-size:10px; letter-spacing:0.08em; padding:6px 12px; border-radius:3px; cursor:pointer;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.1); color:#888; }
+  .ec-cont:hover { color:#d4d4d4; }
+  .ec-cont.active { background:#131613; border-color:#6a8a4a; color:#8aaa6a; }
+  .ec-pick { background:#121212; border:0.5px solid rgba(255,255,255,0.1); border-radius:4px;
+    padding:14px 16px; cursor:pointer; }
+  .ec-pick:hover { border-color:rgba(138,170,106,0.3); }
+  .ec-pick.sel { background:#131613; border-color:#6a8a4a; }
+  .ec-pick.dis { opacity:0.4; cursor:not-allowed; }
+  .ec-pick .pn { font-size:14px; font-weight:500; color:#fff; margin-bottom:4px; }
+  .ec-pick .pd { font-size:11px; color:#888; line-height:1.5; }
+  .ec-pick .pd b { color:#8aaa6a; font-weight:600; }
+  .ec-input { width:100%; background:transparent; border:none; border-bottom:1px solid rgba(138,170,106,0.3);
+    color:#fff; font-size:20px; font-weight:500; font-family:inherit; outline:none; padding:4px 0; }
+  .ec-input::placeholder { color:#444; font-style:italic; }
+  .ec-cap { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
+  .ec-cap .amt { color:#8aaa6a; font-size:30px; font-weight:500; }
+  .ec-cap .aft { color:#888; font-size:12px; }
+  .ec-fbreak { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px;
+    font-size:11px; color:#888; }
+  .ec-fbreak b { color:#cfcabf; font-variant-numeric:tabular-nums; font-weight:500; }
+  .ec-range { width:100%; accent-color:#8aaa6a; }
+  .ec-rl { display:flex; justify-content:space-between; font-size:9px; color:#555; letter-spacing:0.1em; margin-top:6px; }
+  .ec-ipo { margin-top:12px; font-size:11px; color:#888; line-height:1.6;
+    background:#131613; border:0.5px solid rgba(138,170,106,0.25); border-radius:4px; padding:10px 12px; }
+  .ec-ipo b { color:#8aaa6a; font-weight:600; }
+  .ec-mf { padding:14px 24px; border-top:0.5px solid rgba(255,255,255,0.08); background:#0d0d0d;
+    display:flex; align-items:center; gap:14px; }
+  .ec-mf .st { font-size:10px; color:#666; letter-spacing:0.1em; }
+  .ec-mf .st b { color:#8aaa6a; font-weight:500; }
+  .ec-btn { padding:10px 18px; font-size:11px; letter-spacing:0.06em; border-radius:3px; cursor:pointer; }
+  .ec-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ec-btn.sec:hover { color:#d4d4d4; }
+  .ec-btn.pri { background:#1f2a1a; border:0.5px solid #8aaa6a; color:#8aaa6a; font-weight:500; }
+  .ec-btn.pri:hover { background:#243a1f; }
+  .ec-btn.pri:disabled { opacity:0.45; cursor:not-allowed; }
+  .ec-err { color:#c47a7a; font-size:11px; margin-left:auto; display:none; }
+  /* Leave Board modal: one row per seat. Reuses .ec-empty / .ec-btn. */
+  .ec-lr { display:grid; grid-template-columns:1fr auto; gap:14px; padding:12px 16px;
+    background:#0f120e; border:0.5px solid rgba(138,170,106,0.15); border-radius:4px;
+    margin-bottom:8px; align-items:center; }
+  .ec-lr .nm { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
+  .ec-lr .sub { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; }
+  .ec-lr .ec-btn.pri { padding:8px 14px; }
+  /* Join Board modal: corp picker grid + confirm panel. */
+  .ec-jl-head { display:grid; grid-template-columns:2fr 0.7fr 1.2fr 1fr 1fr 0.6fr 70px;
+    gap:12px; padding:8px 14px; font-size:9px; color:#555; letter-spacing:0.13em;
+    border-bottom:0.5px solid rgba(255,255,255,0.06); margin-bottom:4px; }
+  .ec-jl-head .right { text-align:right; }
+  .ec-jr { display:grid; grid-template-columns:2fr 0.7fr 1.2fr 1fr 1fr 0.6fr 70px;
+    gap:12px; padding:11px 14px; align-items:center;
+    background:#0f120e; border:0.5px solid rgba(138,170,106,0.12); border-radius:4px;
+    margin-bottom:6px; }
+  .ec-jr .nm { font-size:13px; font-weight:500; color:#fff; line-height:1.2; }
+  .ec-jr .sub { font-size:9px; letter-spacing:0.1em; margin-top:3px; font-weight:500; color:#888; }
+  .ec-jr .sub.construction { color:#8aaa6a; }
+  .ec-jr .sub.banking      { color:#7a9aab; }
+  .ec-jr .sub.shipping     { color:#c89e6e; }
+  .ec-jr .sub.real_estate  { color:#aa7aaa; }
+  .ec-jr .sub.airline      { color:#7ab8d0; }
+  .ec-jr .sub.oil_and_gas  { color:#c87a6a; }
+  .ec-jr .tp { display:inline-block; padding:3px 8px; border-radius:3px;
+    font-size:9px; letter-spacing:0.12em; font-weight:500; }
+  .ec-jr .tp.public  { background:#1a2535; color:#7a9aab; }
+  .ec-jr .tp.private { background:#1a1a1a; color:#888; }
+  .ec-jr .ceo { font-size:11px; color:#d4d4d4; }
+  .ec-jr .num { text-align:right; font-size:12px; color:#d4d4d4; font-weight:500;
+    font-variant-numeric:tabular-nums; }
+  .ec-jr .num.muted { color:#555; }
+  .ec-jr .ec-btn.pri { padding:6px 10px; font-size:10px; }
+  .ec-jc { background:#0f120e; border:0.5px solid rgba(138,170,106,0.2); border-radius:4px;
+    padding:16px 18px; margin-bottom:10px; }
+  .ec-jc .corp-nm { font-size:14px; color:#fff; font-weight:500; margin-bottom:4px; }
+  .ec-jc .corp-sub { font-size:10px; color:#888; letter-spacing:0.08em; margin-bottom:14px; }
+  .ec-jc .stats-head { font-size:9px; color:#666; letter-spacing:0.14em; margin-bottom:6px; }
+  .ec-jc .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:14px; }
+  .ec-jc .stat { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.06);
+    border-radius:3px; padding:10px 12px; text-align:center; }
+  .ec-jc .stat .lab { font-size:9px; color:#666; letter-spacing:0.13em; }
+  .ec-jc .stat .v   { font-size:18px; color:#fff; font-weight:500; margin-top:4px;
+    line-height:1; font-variant-numeric:tabular-nums; }
+  .ec-jc .note { font-size:10px; color:#888; line-height:1.6; }
+  .ec-jl-msg { font-size:11px; margin-top:10px; min-height:16px; }
+  .ec-jl-msg.err { color:#c47a7a; }
+  .ec-jl-msg.ok  { color:#8aaa6a; }
+
+  /* ── Mobile (≤700px): stack actions / pos rows / Found-corp modal */
+  @media (max-width:700px) {
+    .ent-content { padding-left:12px; padding-right:12px; }
+    .ec-actions { grid-template-columns:1fr; gap:10px; margin-bottom:20px; }
+    .ec-filters { gap:4px; margin-bottom:10px; flex-wrap:wrap; }
+    .ec-filter { padding:7px 10px; flex:1 0 auto; text-align:center; }
+    /* Corp directory rows — collapse the 7-col layout into a stacked card */
+    .ec-jl-head { display:none; }
+    .ec-jr { grid-template-columns:1fr; gap:6px; padding:12px 14px; }
+    .ec-jr > div { width:100%; text-align:left; }
+    .ec-jr .num { text-align:left; }
+    .ec-jr .ec-btn.pri { width:100%; padding:9px 12px; }
+    /* Found Corp modal */
+    .ec-overlay { padding:12px; }
+    .ec-modal { max-width:100%; }
+    .ec-mh { padding:14px 16px; flex-wrap:wrap; gap:10px; }
+    .ec-mh .rt { margin-left:0; width:100%; flex-wrap:wrap; justify-content:space-between; }
+    .ec-mb { padding:16px; }
+    .ec-mf { padding:12px 16px; flex-wrap:wrap; gap:10px; }
+    .ec-grid3 { grid-template-columns:1fr; gap:8px; }
+    #ec-ind.ec-grid3 { grid-template-columns:1fr; }
+    .ec-conts { gap:4px; }
+    .ec-conts .ec-cont { flex:1 0 auto; text-align:center; }
+    /* Leave Board / Join Board rows */
+    .ec-lr { grid-template-columns:1fr; gap:8px; padding:12px 14px; }
+  }
+
+  /* Mobile refresh — phone-class viewport. The 700px rule above stacks
+     actions / directory / modal; this adds the missing .ec-corp stack,
+     brings every actionable control up to a 44px touch target, and
+     trims hero typography so the section headings don't dwarf cards. */
+  @media (max-width:640px) {
+    .ec-section .sans, .ec-section .serif { font-size:18px; }
+    .ec-action { padding:14px 16px; gap:12px; min-height:64px; }
+    .ec-action .nm { font-size:14px; }
+    .ec-action .cost { margin-left:0; }
+    .ec-filter { min-height:44px; padding:11px 14px; font-size:11px; }
+    /* Positions Held — collapse the 6-col layout same as the directory. */
+    .ec-corp { grid-template-columns:1fr; gap:8px; padding:14px 14px; }
+    .ec-corp > div { width:100%; text-align:left; }
+    .ec-corp .cl, .ec-corp .cv { text-align:left; }
+    .ec-corp .mid { align-items:flex-start; }
+    .ec-corp .arr { display:none; }
+    /* Buttons: 44px floor across primary / secondary / leave-row. */
+    .ec-btn { min-height:44px; padding:12px 18px; font-size:12px; }
+    .ec-lr .ec-btn.pri, .ec-jr .ec-btn.pri { min-height:44px; padding:12px 14px; font-size:12px; }
+    /* Modal overlay safe-area. */
+    .ec-overlay { padding:12px; }
+    .ec-modal { max-height:94vh; }
+    .ec-input { font-size:16px; }    /* prevent iOS auto-zoom on focus */
+  }
+  @media (max-width:360px) {
+    /* .ent-content padding tightens via topbar.js (the rule's owner). */
+    .ec-overlay { padding:8px; }
+    .ec-mh, .ec-mf { padding-left:14px; padding-right:14px; }
+    .ec-mb { padding:14px; }
+  }
+</style>
+  <script type="module" crossorigin src="/assets/entrepreneur-corporations-CSteLi-Y.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/entrepreneur-topbar-BMZMuYND.js">
+  <link rel="modulepreload" crossorigin href="/assets/corp-book-value-DgYVf8Wy.js">
+</head>
+<body>
+<div id="ent-topbar"></div>
+<div class="ent-content">
+
+  <div class="ec-actions">
+    <div class="ec-action go" id="ec-start">
+      <div class="ic">+</div>
+      <div><div class="nm">Start a Corporation</div><div class="ds">Found a new corporation in Construction, Banking, Shipping, or Real Estate. You become founder and 100% owner.</div></div>
+      <div class="cost">FROM $5M</div>
+    </div>
+    <div class="ec-action go" id="ec-join">
+      <div class="ic">↗</div>
+      <div><div class="nm">Join a Board</div><div class="ds">Apply to a corporation's board — needs 51% YES from the CEO + current directors within 3 ticks.</div></div>
+      <div class="cost">—</div>
+    </div>
+    <div class="ec-action go" id="ec-leave">
+      <div class="ic">↙</div>
+      <div><div class="nm">Leave a Board</div><div class="ds">Resign from a board seat you currently hold.</div></div>
+      <div class="cost">—</div>
+    </div>
+  </div>
+
+  <div class="ec-section">
+    <span class="roman">I.</span><span class="sans">Active</span><span class="serif">Positions</span>
+    <span class="meta" id="ec-pos-meta">CLICK A CORPORATION TO MANAGE</span>
+  </div>
+  <div class="ec-filters" id="ec-filters">
+    <div class="ec-filter active" data-f="all">ALL</div>
+    <div class="ec-filter" data-f="construction">CONSTRUCTION</div>
+    <div class="ec-filter" data-f="banking">BANKING</div>
+    <div class="ec-filter" data-f="shipping">SHIPPING</div>
+    <div class="ec-filter" data-f="real_estate">REAL ESTATE</div>
+    <div class="ec-filter" data-f="airline">AIRLINE</div>
+    <div class="ec-filter" data-f="oil_and_gas">OIL &amp; GAS</div>
+  </div>
+  <div class="ec-pos" id="ec-pos"><div class="ec-empty">Loading…</div></div>
+
+</div>
+
+<div class="ec-overlay" id="ec-overlay">
+  <div class="ec-modal">
+    <div class="ec-mh">
+      <div class="ic">+</div>
+      <div><div class="eb">— BUSINESSMAN ACTION —</div><div class="ti">Start a <em>Corporation</em></div></div>
+      <div class="rt">
+        <div><div class="lab">YOUR CASH</div><div class="val" id="ec-cash">—</div></div>
+        <div><div class="lab">FOUNDING FEE</div><div class="val">$1M</div></div>
+        <div class="ec-x" id="ec-close">×</div>
+      </div>
+    </div>
+    <div class="ec-mb">
+      <div class="ec-h">I. Choose Your <em>Industry</em></div>
+      <div class="ec-grid3" id="ec-ind">
+        <div class="ec-pick sel" data-ind="construction"><div class="pn">Construction</div><div class="pd">Build infrastructure and projects. Lumpy, contract-driven revenue; scales with Reputation.</div></div>
+        <div class="ec-pick" data-ind="banking"><div class="pn">Banking</div><div class="pd">Loans, deposits, underwriting. Steady interest-spread revenue; scales with Cunning.</div></div>
+        <div class="ec-pick" data-ind="shipping"><div class="pn">Shipping</div><div class="pd">Charter routes and move cargo. Cyclical, asset-heavy revenue; scales with Vision.</div></div>
+        <div class="ec-pick" data-ind="real_estate"><div class="pn">Real Estate</div><div class="pd">Acquire finished buildings from Construction corps and collect rent. Steady tenant revenue; scales with Reputation.</div></div>
+        <div class="ec-pick" data-ind="airline"><div class="pn">Airline</div><div class="pd">Buy aircraft, claim terminals, and fly passenger routes. Demand scales with each nation's standard of living. Capital-intensive — founds with two regional jets and two starter terminals.</div></div>
+        <div class="ec-pick" data-ind="aviation_manufacturing"><div class="pn">Aviation Manufacturing</div><div class="pd">Build aircraft and engines. Founds with one Assembly Plant in your HQ nation — a 1D6 roll: 1-5 a Light Assembly Plant, 6 the rarer Engine Assembly Plant.</div></div>
+        <div class="ec-pick" data-ind="oil_and_gas"><div class="pn">Oil &amp; Gas</div><div class="pd">Drill pump jacks for crude oil into reserve, refine through small/regular/large refineries, retail through gas stations. Vertical integration captures the full $20k → $130k spread per barrel; specialists sell crude or refined to spot market manually. $30M flat founding fee covers a 1D3 starter (Pump Jack / Small Refinery / 3 Gas Stations) — outcome is rolled once and locked.</div></div>
+      </div>
+      <!-- Oil & Gas starter notice — populated by oil_and_gas_starter_roll
+           RPC the first time the player picks Oil & Gas. Roll is saved
+           on the faction server-side, so closing this modal doesn't
+           reroll — every reopen shows the same starter. -->
+      <div id="ec-og-starter-wrap" style="display:none;margin-top:14px;padding:12px 14px;background:#1a0f08;border:0.5px solid #4a2418;border-radius:5px;">
+        <div style="font-size:10px;letter-spacing:0.12em;color:#c87a6a;font-weight:600;margin-bottom:6px;">YOUR STARTER ROLL</div>
+        <div style="font-size:14px;color:#cfcabf;margin-bottom:4px;"><b id="ec-og-starter-label">—</b> in your HQ nation</div>
+        <div style="font-size:11px;color:#8a8680;">Locked the first time you considered Oil &amp; Gas — closing this modal won't reroll. Founding this corp consumes the roll; the next Oil &amp; Gas founding rolls fresh.</div>
+      </div>
+
+      <div class="ec-h">II. <em>Headquarters</em></div>
+      <div id="ec-hq-note" style="font-size:11px;color:#8a8680;margin-bottom:8px;"></div>
+      <div class="ec-conts" id="ec-conts">
+        <div class="ec-cont active" data-cont="Crucera">CRUCERA</div>
+        <div class="ec-cont" data-cont="Meridian">MERIDIAN</div>
+        <div class="ec-cont" data-cont="Al-Makir">AL-MAKIR</div>
+        <div class="ec-cont" data-cont="Faresia">FARESIA</div>
+      </div>
+      <div class="ec-grid3" id="ec-hq"><div class="ec-empty">Loading nations…</div></div>
+
+      <div class="ec-h">III. Corporation <em>Name</em></div>
+      <input type="text" class="ec-input" id="ec-name" maxlength="80" placeholder="e.g. Ion Construction Group" />
+
+      <div class="ec-h">IV. Starting <em>Capital</em></div>
+      <div class="ec-cap">
+        <div class="amt" id="ec-cap-amt">$20M</div>
+        <div class="aft">Your cash after founding: <span id="ec-cap-aft">—</span></div>
+      </div>
+      <input type="range" class="ec-range" id="ec-cap" min="5" max="500" step="1" value="20" />
+      <div class="ec-rl"><span>MIN · $5M</span><span>MAX · $500M</span></div>
+      <div class="ec-fbreak" id="ec-fbreak">
+        <span>Founding fee (5%): <b id="ec-f-fee">—</b></span>
+        <span>Starter building: <b id="ec-f-bld">—</b></span>
+        <span id="ec-f-fleet-wrap" style="display:none;">Starter fleet: <b id="ec-f-fleet">—</b></span>
+        <span>Total at founding: <b id="ec-f-total">—</b></span>
+      </div>
+
+      <div class="ec-h">V. Listing <em>Structure</em></div>
+      <div class="ec-grid3" id="ec-listing">
+        <div class="ec-pick sel" data-listing="private" style="grid-column:span 1;"><div class="pn">Private</div><div class="pd">You own 100%. Full control, no outside shareholders. Recommended.</div></div>
+        <div class="ec-pick" data-listing="public"><div class="pn">Public (IPO)</div><div class="pd">20 shares issued at founding. Starting price = your capital ÷ 20; the capital seeds the corp treasury.</div></div>
+      </div>
+      <div class="ec-ipo" id="ec-ipo" style="display:none;">
+        Public listing — starting share price <b id="ec-ipo-price">—</b> · 20 shares issued · treasury <b id="ec-ipo-treasury">—</b>
+      </div>
+    </div>
+    <div class="ec-mf">
+      <div class="st">STATUS: <b>READY TO INCORPORATE</b></div>
+      <span class="ec-err" id="ec-err"></span>
+      <button class="ec-btn sec" id="ec-cancel">CANCEL</button>
+      <button class="ec-btn pri" id="ec-found">FOUND CORPORATION →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Leave Board modal (Phase A). Join Board stays SOON until Phase B
+     ships the request/vote infrastructure. -->
+<div class="ec-overlay" id="ec-leave-overlay">
+  <div class="ec-modal">
+    <div class="ec-mh">
+      <div class="ic">↙</div>
+      <div><div class="eb">— BUSINESSMAN ACTION —</div><div class="ti">Leave a <em>Board</em></div></div>
+      <div class="rt">
+        <div class="ec-x" id="ec-leave-close">×</div>
+      </div>
+    </div>
+    <div class="ec-mb">
+      <div class="ec-h">Your <em>Board Seats</em></div>
+      <div id="ec-leave-list"><div class="ec-empty">Loading…</div></div>
+    </div>
+    <div class="ec-mf">
+      <button class="ec-btn sec" id="ec-leave-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Join Board modal (Phase B). Two steps: corp picker → confirm. -->
+<div class="ec-overlay" id="ec-join-overlay">
+  <div class="ec-modal">
+    <div class="ec-mh">
+      <div class="ic">↗</div>
+      <div><div class="eb">— BUSINESSMAN ACTION —</div><div class="ti">Join a <em>Board</em></div></div>
+      <div class="rt">
+        <div class="ec-x" id="ec-join-close">×</div>
+      </div>
+    </div>
+    <div class="ec-mb">
+      <!-- Step 1: corp picker -->
+      <div id="ec-join-step1">
+        <div class="ec-h"><em>Pick</em> a Corporation</div>
+        <div class="ec-jl-head">
+          <div>CORPORATION</div>
+          <div>TYPE</div>
+          <div>CEO</div>
+          <div class="right">VALUATION</div>
+          <div class="right">CASH</div>
+          <div class="right">DEBT</div>
+          <div></div>
+        </div>
+        <div id="ec-join-list"><div class="ec-empty">Loading corporations…</div></div>
+      </div>
+      <!-- Step 2: confirm -->
+      <div id="ec-join-step2" style="display:none;">
+        <div class="ec-h">Confirm <em>Application</em></div>
+        <div id="ec-join-confirm-body"></div>
+        <div class="ec-jl-msg" id="ec-join-msg"></div>
+      </div>
+    </div>
+    <div class="ec-mf">
+      <button class="ec-btn sec" id="ec-join-cancel">CANCEL</button>
+      <button class="ec-btn pri" id="ec-join-submit" style="display:none;">SEND APPLICATION</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

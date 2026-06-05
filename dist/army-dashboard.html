@@ -462,12 +462,14 @@ body {
   font-weight: 500;
 }
 </style>
-  <script type="module" crossorigin src="/assets/army-dashboard-BGU_8qnY.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <script type="module" crossorigin src="/assets/army-dashboard-CHqD5jNk.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/factions-qe2qC_cj.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
-  <link rel="modulepreload" crossorigin href="/assets/military-topbar-Dt58u9TP.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/military-topbar-my5rYLvp.js">
+  <link rel="modulepreload" crossorigin href="/assets/military-units-B_oSYk7U.js">
+  <link rel="modulepreload" crossorigin href="/assets/create-unit-DaU66o6M.js">
 </head>
 <body>
 
@@ -526,12 +528,12 @@ body {
         <div class="force-comp__grid">
           <div class="fc-card">
             <div class="fc-card__label">Personnel</div>
-            <div class="fc-card__value">0</div>
+            <div class="fc-card__value" id="fc-personnel">0</div>
             <div class="fc-card__desc">— soldiers under arms</div>
           </div>
           <div class="fc-card">
             <div class="fc-card__label">Order of Battle</div>
-            <div class="fc-card__value">0<span class="fc-card__unit">brigades</span></div>
+            <div class="fc-card__value"><span id="fc-brigades">0</span><span class="fc-card__unit">brigades</span></div>
             <div class="fc-card__desc">— combat formations</div>
           </div>
           <div class="fc-card">

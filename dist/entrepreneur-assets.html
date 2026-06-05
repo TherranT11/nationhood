@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Character — Entrepreneur</title>
+<style>
+  /* Topbar/nav/body-base come from js/entrepreneur-topbar.js (one source,
+     shared by every entrepreneur page). This page styles only its own body.
+     The identity header mirrors entrepreneur-dashboard.html's .identity-body
+     look (this codebase inlines per-page body styles). */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
+  .ch-content { padding:32px 24px 24px; max-width:1280px; }
+
+  .ch-identity { margin-bottom:28px; }
+  .ch-identity .eyebrow { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+  .ch-identity .name { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .ch-identity .first { font-size:46px; font-weight:500; color:#fff; letter-spacing:-0.01em; line-height:1; }
+  .ch-identity .last {
+    font-size:46px; font-family:Georgia,'Times New Roman',serif; font-style:italic;
+    color:#8aaa6a; letter-spacing:-0.01em; line-height:1;
+  }
+  .ch-identity .meta-row { display:flex; gap:28px; font-size:11px; letter-spacing:0.08em; color:#888; flex-wrap:wrap; }
+  .ch-identity .meta-row .label { color:#555; margin-right:6px; }
+  .ch-identity .meta-row .val { color:#d4d4d4; }
+
+  /* Status row: Current Location (with the Travel action) · Asset Status ·
+     Warrants — three equal cards that wrap on narrow screens. */
+  .ch-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
+  .ch-card {
+    min-width:0;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:16px 18px;
+  }
+  .ch-card-label { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-card-empty { color:#555; font-size:11px; letter-spacing:0.04em; }
+  .ch-loc-value { font-size:20px; font-weight:500; color:#fff; display:flex; align-items:center; gap:10px; }
+  .ch-loc-tag {
+    font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
+    border-radius:3px; padding:2px 6px;
+  }
+
+  /* Leaderboard row: shares the 3-column grid so the boards line up under the
+     status cards (Reputable under Current Location, Net Worth under Asset
+     Status). Reputation board: top 3 green, bottom 5 red (top wins on overlap). */
+  .ch-boards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
+  .ch-rep {
+    min-width:0; height:420px;
+    background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    display:flex; flex-direction:column;
+  }
+  @media (max-width:860px) { .ch-cards, .ch-boards { grid-template-columns:1fr; } }
+  .ch-rep-head {
+    flex:none; padding:14px 16px; border-bottom:0.5px solid rgba(255,255,255,0.08);
+    color:#8aaa6a; font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+  }
+  .ch-rep-list { flex:1; overflow-y:auto; }
+  .ch-rep-row {
+    display:flex; align-items:center; gap:8px; padding:9px 16px; font-size:12px;
+    border-bottom:0.5px solid rgba(255,255,255,0.04);
+  }
+  .ch-rep-row .rk { flex:none; width:22px; color:#555; font-size:10px; }
+  .ch-rep-row .nm { flex:1; min-width:0; display:flex; align-items:center; gap:6px; }
+  .ch-rep-row .who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#d4d4d4; }
+  .ch-rep-row .nat { flex:none; font-size:9px; letter-spacing:0.06em; text-transform:uppercase;
+    color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3); border-radius:3px; padding:1px 5px; }
+  .ch-rep-row .rp { flex:none; font-weight:600; color:#d4d4d4; font-variant-numeric:tabular-nums; }
+  .ch-rep-row.rep-top .who, .ch-rep-row.rep-top .rp { color:#8aaa6a; }
+  .ch-rep-row.rep-bottom .who, .ch-rep-row.rep-bottom .rp { color:#d88d82; }
+  .ch-rep-empty { padding:16px; color:#555; font-size:11px; letter-spacing:0.06em; }
+
+  /* Personal liability — post-bankruptcy debt recourse. Shown only when owed. */
+  .ch-liability { display:none; margin-top:20px; max-width:420px;
+    background:#1a1212; border:0.5px solid rgba(216,141,130,0.45); border-radius:4px; padding:16px 18px; }
+  .ch-liability.show { display:block; }
+  .ch-liability .lab { color:#d88d82; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
+  .ch-liability .amt { font-size:20px; font-weight:500; color:#d88d82; }
+  .ch-liability .note { color:#888; font-size:11px; line-height:1.5; margin:8px 0 12px; }
+  .ch-liability .settle-btn { font-size:11px; letter-spacing:0.06em; color:#d4d4d4; background:#1a1a1a;
+    border:0.5px solid rgba(255,255,255,0.15); border-radius:3px; padding:7px 14px; cursor:pointer; }
+  .ch-liability .settle-btn:disabled { opacity:0.5; cursor:default; }
+  .ch-liability .msg { font-size:10px; margin-top:8px; color:#888; min-height:12px; }
+
+  /* Travel — relocate the founder for $20k personal funds. */
+  .ch-travel-btn { margin-top:10px; font-size:11px; letter-spacing:0.05em; color:#d4b87a; background:#1a160d;
+    border:0.5px solid rgba(212,184,122,0.4); border-radius:3px; padding:7px 14px; cursor:pointer; font-family:inherit; }
+  .ch-travel-btn:hover { background:#221c10; }
+  .ch-travel-btn:disabled { opacity:0.5; cursor:default; }
+  .ch-travel-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:700;
+    align-items:center; justify-content:center; padding:30px; }
+  .ch-travel-overlay.show { display:flex; }
+  .ch-travel-modal { background:#0c0c0c; border:0.5px solid rgba(212,184,122,0.3); border-radius:6px; width:100%;
+    max-width:420px; font-family:var(--font-mono,monospace); overflow:hidden; }
+  .ch-travel-modal .ct-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px;
+    border-bottom:0.5px solid rgba(255,255,255,0.08); }
+  .ch-travel-modal .ct-eyebrow { color:#d4b87a; font-size:10px; letter-spacing:0.15em; }
+  .ch-travel-modal .ct-x { background:none; border:none; color:#888; font-size:18px; cursor:pointer; line-height:1; }
+  .ch-travel-modal .ct-title { font-size:20px; color:#fff; padding:14px 18px 2px; }
+  .ch-travel-modal .ct-sub { font-size:11px; color:#9a9a92; line-height:1.5; padding:0 18px 12px; }
+  .ch-travel-modal .ct-cost { font-size:11px; color:#888; padding:0 18px 12px; letter-spacing:0.03em; }
+  .ch-travel-modal .ct-cost b { color:#d4d4d4; } .ch-travel-modal .ct-cost b.ok { color:#8aaa6a; } .ch-travel-modal .ct-cost b.no { color:#d88d82; }
+  .ch-travel-modal .ct-select { width:calc(100% - 36px); margin:0 18px 12px; background:#161616; color:#d4d4d4;
+    border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:9px 10px; font-size:13px; font-family:inherit; }
+  .ch-travel-modal .ct-empty { padding:0 18px 12px; font-size:12px; color:#888; }
+  .ch-travel-modal .ct-msg { padding:0 18px 10px; font-size:11px; color:#d88d82; }
+  .ch-travel-modal .ct-foot { display:flex; gap:8px; justify-content:flex-end; padding:14px 18px;
+    border-top:0.5px solid rgba(255,255,255,0.08); background:#0d0d0d; }
+  .ch-travel-modal .ct-btn { padding:9px 16px; font-size:11px; letter-spacing:0.06em; border-radius:3px; cursor:pointer; font-family:inherit; }
+  .ch-travel-modal .ct-btn.sec { border:0.5px solid rgba(255,255,255,0.15); color:#888; background:transparent; }
+  .ch-travel-modal .ct-btn.pri { background:#2a2210; border:0.5px solid #d4b87a; color:#e8d8b0; font-weight:600; }
+
+  @media (max-width:600px) {
+    .ch-identity .first, .ch-identity .last { font-size:34px; }
+    .ch-identity .meta-row { gap:16px; }
+  }
+
+  /* Mobile refresh — phone-class viewport. Tighten container padding,
+     shrink the modal overlay safe-area, and bring every actionable
+     control up to a 44px tap target. The 860px / 600px rules above
+     handle stacking + hero shrink at tablet; this block is phone-only. */
+  @media (max-width:640px) {
+    .ch-content { padding:20px 14px 20px; }
+    .ch-identity { margin-bottom:20px; }
+    .ch-identity .first, .ch-identity .last { font-size:28px; }
+    .ch-cards, .ch-boards { gap:12px; margin-top:16px; }
+    .ch-card { padding:14px 14px; }
+    .ch-rep { height:360px; }
+
+    /* Touch targets: travel / settle / modal buttons hit 44px. */
+    .ch-travel-btn, .ch-liability .settle-btn,
+    .ch-travel-modal .ct-btn { min-height:44px; padding:12px 16px; font-size:12px; }
+    .ch-travel-modal .ct-x { min-width:44px; min-height:44px; font-size:22px; }
+    .ch-travel-modal .ct-select { min-height:44px; padding:11px 12px; font-size:14px; }
+
+    /* Modal overlay: drop the 30px safe-area down to 16px so the modal
+       has full viewport width minus a thin gutter. */
+    .ch-travel-overlay { padding:16px; }
+    .ch-travel-modal { max-width:100%; max-height:90vh; overflow:auto; }
+  }
+  @media (max-width:360px) {
+    .ch-content { padding:16px 10px 16px; }
+    .ch-identity .first, .ch-identity .last { font-size:24px; }
+    .ch-travel-overlay { padding:10px; }
+  }
+</style>
+  <script type="module" crossorigin src="/assets/entrepreneur-assets-B5mHaN7j.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/entrepreneur-topbar-BMZMuYND.js">
+</head>
+<body>
+<div id="ent-topbar"></div>
+<div class="ch-content">
+  <div class="ch-identity">
+    <div class="eyebrow">— ENTREPRENEUR —</div>
+    <div class="name"><span class="first" id="ch-first">—</span><span class="last" id="ch-last"></span></div>
+    <div class="meta-row">
+      <div><span class="label">AGE</span><span class="val" id="ch-age">—</span></div>
+      <div><span class="label">ORIGIN</span><span class="val" id="ch-origin">—</span></div>
+      <div><span class="label">ARCHETYPE</span><span class="val" id="ch-archetype">—</span></div>
+    </div>
+  </div>
+
+  <div class="ch-cards">
+    <div class="ch-card">
+      <div class="ch-card-label">CURRENT LOCATION</div>
+      <div class="ch-loc-value"><span id="ch-location">—</span><span class="ch-loc-tag" id="ch-loc-tag">HOME</span></div>
+      <button class="ch-travel-btn" id="ch-travel-btn">&#9992; Travel — $20,000</button>
+    </div>
+    <div class="ch-card">
+      <div class="ch-card-label">ASSET STATUS</div>
+      <div class="ch-card-empty" id="ch-asset-status"></div>
+    </div>
+    <div class="ch-card">
+      <div class="ch-card-label">WARRANTS</div>
+      <div id="ch-warrants"></div>
+    </div>
+  </div>
+
+  <div class="ch-liability" id="ch-liability">
+    <div class="lab">PERSONAL LIABILITY</div>
+    <div class="amt" id="ch-liab-amt">—</div>
+    <div class="note">Unpaid debt from a bankrupt corporation follows you personally. You cannot found new corporations until it is settled from your personal funds.</div>
+    <button class="settle-btn" id="ch-settle-btn">Settle from personal funds</button>
+    <div class="msg" id="ch-settle-msg"></div>
+  </div>
+
+  <div class="ch-boards">
+    <div class="ch-rep">
+      <div class="ch-rep-head">Reputable Entrepreneurs</div>
+      <div class="ch-rep-list" id="ch-rep-list"></div>
+    </div>
+    <div class="ch-rep">
+      <div class="ch-rep-head">Entrepreneur Net Worth</div>
+      <div class="ch-rep-list" id="ch-nw-list"></div>
+    </div>
+  </div>
+</div>
+<div class="ch-travel-overlay" id="ch-travel-overlay"></div>
+</body>
+</html>

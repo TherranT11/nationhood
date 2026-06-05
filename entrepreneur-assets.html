@@ -223,6 +223,7 @@
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
 import { ENTREPRENEUR_ARCHETYPES } from './js/game/factions.js';
 import { _supabase } from './js/supabase-client.js';
+import { homeNationName } from './js/utils.js';
 
 (async () => {
   // bootstrapEntrepreneur already fetches the character fields we need
@@ -245,20 +246,18 @@ import { _supabase } from './js/supabase-client.js';
   set('ch-location', f.nation ? String(f.nation) : 'Home Nation');
 
   // ── Travel: $20k personal funds relocates the founder to any nation. ──
-  // ORIGIN (birthplace) is immutable — read it from ent_origin_nation, falling
-  // back to the current nation if the column isn't migrated yet. (usd is defined
-  // above; esc below — both in scope by the time the modal renders on click.)
+  // ORIGIN (birthplace) is immutable. Sourced via homeNationName(f) — the
+  // one helper that all client + server callers agree on (js/utils.js),
+  // with a fallback to current nation for legacy rows missed by the
+  // 20270490 backfill. (usd is defined above; esc below — both in scope
+  // by the time the modal renders on click.)
   const TRAVEL_COST = 20000;
-  let originName = f.nation;
-  try {
-    const { data: o } = await _supabase.from('factions').select('ent_origin_nation').eq('id', f.id).maybeSingle();
-    if (o && o.ent_origin_nation) originName = o.ent_origin_nation;
-  } catch (_) { /* column not migrated yet → origin = current location */ }
-  set('ch-origin', originName ? String(originName).toUpperCase() : '—');
+  const originName = homeNationName(f);
+  set('ch-origin', originName ? originName.toUpperCase() : '—');
   // Citizenship anchors to home nation (origin), not current location —
   // a traveller still belongs to the country they were born in.
   // Buttons are placeholders today (no RPC); the click is silent.
-  set('ch-citizenship', originName ? String(originName) : '—');
+  set('ch-citizenship', originName ? originName : '—');
   const locTag = document.getElementById('ch-loc-tag');
   const setTag = (loc) => { if (locTag) locTag.textContent = (String(loc || '') === String(originName || '')) ? 'HOME' : 'ABROAD'; };
   setTag(f.nation);

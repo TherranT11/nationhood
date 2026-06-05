@@ -96,9 +96,9 @@ body {
   padding: 80px 20px;
 }
 </style>
-  <script type="module" crossorigin src="/assets/faction-select-CpMPdV0Y.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
-  <link rel="modulepreload" crossorigin href="/assets/factions-qe2qC_cj.js">
+  <script type="module" crossorigin src="/assets/faction-select-Cl_0danM.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
 </head>
 <body>
 
@@ -117,7 +117,7 @@ body {
       <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Political Party</div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
     </div>
-    <div id="opt-corp" onclick="selectFactionOption('corporation')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+    <div id="opt-corp" onclick="selectFactionOption('corporation')" style="display:none;background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
       </div>
@@ -135,6 +135,13 @@ body {
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">Enter the alpha tester code to proceed.</div>
       <input id="military-alpha-input" type="text" placeholder="Alpha code" autocomplete="off" style="width:100%;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;">
       <div id="military-alpha-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;"></div>
+    </div>
+    <div id="opt-entrepreneur" onclick="selectFactionOption('entrepreneur')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--purple,#8b5cf6)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.06em;">Entrepreneur</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
+      </div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Invest in corporations, be a CEO, join a board of directors, merge, acquire and do hostile takeovers.</div>
     </div>
     <button id="btn-confirm-faction" onclick="confirmFactionChoice()" disabled style="width:100%;padding:12px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;transition:all 0.15s;">CONFIRM</button>
   </div>

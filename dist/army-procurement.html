@@ -60,6 +60,8 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .ap-variant__tag { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
 .ap-variant__qty { font-family: var(--font-mono); font-size: 13px; color: var(--text-primary); }
+.ap-variant__cap { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em;
+  color: var(--text-dim); text-transform: uppercase; margin-top: 4px; }
 .ap-qbar { height: 6px; background: rgba(255,255,255,0.05); position: relative; }
 .ap-qbar__fill { position: absolute; inset: 0 auto 0 0; background: var(--army); }
 .ap-empty { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
@@ -67,14 +69,74 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   border: 1px solid var(--border-0); }
 .ap-loading { padding: 60px; text-align: center; font-family: var(--font-mono);
   font-size: 12px; color: var(--text-dim); }
+
+/* — World Market — */
+.wm-offer { display: grid; grid-template-columns: 1fr 64px 96px 120px 96px 92px;
+  align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border-0); }
+.wm-offer:last-child { border-bottom: 0; }
+.wm-flag { width: 30px; height: 20px; object-fit: cover; border-radius: 2px;
+  border: 0.5px solid var(--border-1); margin-top: 4px; display: block; }
+.wm-flag--fallback { background: #1a1a17; }
+.wm-offer__name { font-size: 13px; font-weight: 600; color: var(--text-bright); }
+.wm-offer__tag { font-family: var(--font-mono); font-size: 9px; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+.wm-col__l { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+  color: var(--text-dim); text-transform: uppercase; }
+.wm-col__v { font-size: 14px; color: var(--text-primary); margin-top: 3px; }
+.wm-col__v.is-dim { color: var(--text-dim); }
+.wm-buy { justify-self: end; font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; padding: 8px 16px; border: 1px solid var(--army);
+  border-radius: 2px; background: rgba(182,83,63,0.12); color: #e0a090; cursor: pointer; transition: background .12s; }
+.wm-buy:hover { background: rgba(182,83,63,0.25); }
+.wm-buy:disabled { color: var(--text-dim); border-color: var(--border-1); background: none; cursor: default; }
+
+/* Buy modal */
+.wm-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.66);
+  align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.wm-modal { width: 100%; max-width: 440px; background: var(--bg-2); border: 1px solid var(--border-1);
+  border-radius: 6px; overflow: hidden; }
+.wm-modal__head { display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 18px 20px; border-bottom: 1px solid var(--border-0); }
+.wm-modal__eyebrow { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.18em;
+  color: var(--army); font-weight: 700; text-transform: uppercase; }
+.wm-modal__title { font-size: 18px; font-weight: 700; color: var(--text-bright); margin-top: 4px; }
+.wm-modal__sub { font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
+.wm-x { font-size: 22px; color: var(--text-dim); cursor: pointer; line-height: 1; padding: 2px 6px; }
+.wm-x:hover { color: var(--text-bright); }
+.wm-modal__body { padding: 18px 20px; }
+.wm-qty { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+.wm-qty__l { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em;
+  color: var(--text-secondary); text-transform: uppercase; }
+.wm-qty input { width: 120px; background: var(--bg-0); border: 1px solid var(--border-1); border-radius: 3px;
+  color: var(--text-bright); font-family: var(--font-mono); font-size: 15px; padding: 8px 10px; text-align: right; }
+.wm-sum { display: grid; grid-template-columns: repeat(2,1fr); gap: 14px; background: var(--bg-0);
+  border: 1px solid var(--border-0); border-radius: 4px; padding: 14px 16px; }
+.wm-sum__l { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em;
+  color: var(--text-dim); text-transform: uppercase; }
+.wm-sum__v { font-size: 17px; font-weight: 600; color: var(--text-primary); margin-top: 4px; }
+.wm-sum__v.gold { color: #d4b87a; }
+.wm-sum__v.warn { color: #c47a7a; }
+.wm-err { margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: #c47a7a;
+  background: rgba(196,122,122,0.1); border: 1px solid rgba(196,122,122,0.3); border-radius: 3px; padding: 9px 12px; }
+.wm-modal__foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 20px;
+  border-top: 1px solid var(--border-0); background: var(--bg-0); }
+.wm-btn { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+  padding: 9px 18px; border-radius: 3px; cursor: pointer; border: 1px solid; }
+.wm-btn.ghost { background: none; border-color: var(--border-1); color: var(--text-secondary); }
+.wm-btn.ghost:hover { color: var(--text-bright); }
+.wm-btn.buy { background: var(--army); border-color: var(--army); color: #fff; }
+.wm-btn.buy:hover { filter: brightness(1.1); }
+.wm-btn.buy:disabled { background: none; border-color: var(--border-1); color: var(--text-dim); cursor: default; }
 </style>
-  <script type="module" crossorigin src="/assets/army-procurement-JhjdICT3.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-client-CiYoFhIh.js">
+  <script type="module" crossorigin src="/assets/army-procurement-Cm4gZghQ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
   <link rel="modulepreload" crossorigin href="/assets/preload-helper-BXl3LOEh.js">
-  <link rel="modulepreload" crossorigin href="/assets/factions-qe2qC_cj.js">
-  <link rel="modulepreload" crossorigin href="/assets/utils-oN1e812_.js">
-  <link rel="modulepreload" crossorigin href="/assets/military-topbar-Dt58u9TP.js">
-  <link rel="modulepreload" crossorigin href="/assets/army-page-L2dCufP_.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/military-topbar-my5rYLvp.js">
+  <link rel="modulepreload" crossorigin href="/assets/army-page-Cib0CuJO.js">
+  <link rel="modulepreload" crossorigin href="/assets/military-units-B_oSYk7U.js">
+  <link rel="modulepreload" crossorigin href="/assets/create-unit-DaU66o6M.js">
 </head>
 <body>
   <div id="mil-topbar-host"></div>

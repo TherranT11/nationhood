@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>War Fronts Admin | Nationhood</title>
+<style>
+  :root{ --bg:#0e0e0c; --card:#1a1a17; --b0:rgba(255,255,255,0.06); --b1:rgba(255,255,255,0.12);
+    --txt:#f0efe6; --dim:#888; --faint:#4a4940; --accent:#b6533f; --gold:#c8a832; --green:#46c46a; --red:#c47a7a; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:#c4c2b8;font-family:'IBM Plex Sans',system-ui,sans-serif;}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px 24px 80px;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  h1{font-size:22px;color:var(--txt);font-weight:700;}
+  .eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:0.22em;color:var(--accent);font-weight:700;text-transform:uppercase;}
+  .gate{padding:60px;text-align:center;font-family:'JetBrains Mono',monospace;color:var(--dim);}
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:18px 0;padding-bottom:14px;border-bottom:1px solid var(--b1);}
+  select,input,textarea{background:#121210;border:1px solid var(--b1);border-radius:4px;color:var(--txt);font:inherit;padding:7px 9px;}
+  select{font-family:'JetBrains Mono',monospace;font-size:13px;}
+  button{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    padding:8px 14px;border-radius:4px;border:1px solid;cursor:pointer;}
+  .btn-gen{background:rgba(182,83,63,0.16);border-color:var(--accent);color:#e0a090;}
+  .btn-save{background:var(--gold);border-color:var(--gold);color:#1a1a17;padding:6px 12px;font-size:11px;}
+  .btn-save:disabled{opacity:0.5;cursor:default;}
+  .msg{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);}
+  .front{margin-bottom:22px;border:1px solid var(--b0);border-radius:6px;background:var(--card);}
+  .front-head{padding:11px 15px;border-bottom:1px solid var(--b0);display:flex;align-items:center;gap:10px;}
+  .front-head .lab{font-size:14px;font-weight:700;color:var(--txt);}
+  .front-head .meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:0.1em;}
+  .air-status{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);}
+  .sec{display:grid;grid-template-columns:64px 1fr 130px 90px 1fr 70px;gap:10px;align-items:start;
+    padding:10px 15px;border-bottom:1px solid var(--b0);}
+  .sec:last-child{border-bottom:0;}
+  .sec .code{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);padding-top:8px;}
+  .sec .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.1em;
+    padding:2px 5px;border-radius:2px;margin-top:4px;}
+  .tag.border{background:#2a1515;color:var(--red);} .tag.cap{background:#2a2410;color:var(--gold);}
+  .sec input.name{width:100%;} .sec textarea{width:100%;min-height:38px;resize:vertical;font-size:12px;}
+  .sec input.infra{width:100%;text-align:right;}
+  .lbl{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.1em;color:var(--faint);text-transform:uppercase;display:block;margin-bottom:3px;}
+  .cap-row{background:#15130c;}
+</style>
+  <script type="module" crossorigin src="/assets/frontadmin-BKYi6eqM.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+</head>
+<body>
+  <div class="wrap" id="root">
+    <div class="gate">Loading…</div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Politician — National Modifiers</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; }
+
+.crumb { font-size:10px; letter-spacing:0.12em; color:#666; text-transform:uppercase;
+  margin-bottom:18px; font-weight:600; }
+.crumb a { color:#888; text-decoration:none; }
+.crumb a:hover { color:#5aafa5; }
+.crumb .sep { margin:0 8px; color:#444; }
+.crumb .here { color:#cfcabf; }
+
+.page-head { margin-bottom:26px; padding-bottom:18px;
+  border-bottom:0.5px solid rgba(255,255,255,0.07); }
+.page-eyebrow { font-size:10px; letter-spacing:0.18em; color:#7a4a4a;
+  text-transform:uppercase; font-weight:600; margin-bottom:8px; }
+.page-title { font-size:30px; font-weight:500; color:#fff; letter-spacing:-0.01em;
+  font-family:Georgia,'Times New Roman',serif; font-style:italic; }
+.page-sub { font-size:13px; color:#888; margin-top:8px; letter-spacing:0.02em; }
+
+.mod-empty { padding:80px 20px; text-align:center; color:#5a5a5a;
+  font-size:13px; line-height:1.55; max-width:520px; margin:0 auto; }
+.mod-empty strong { color:#888; font-weight:600; }
+
+/* Per-category section */
+.mod-section { margin-bottom:28px; }
+.mod-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
+  color:#7a7468; font-weight:600; padding-bottom:8px; margin-bottom:12px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+/* Two-up grid for the cards within a category: first card sits on the
+   left half, the next on the right; subsequent rows wrap the same way.
+   The grid gap replaces the per-card bottom margin so spacing is even
+   in both directions; .mod-card keeps its 10px margin for any
+   non-gridded reuse. Single column on phone. */
+.mod-section__grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+.mod-section__grid > .mod-card { margin-bottom:0; }
+
+/* Modifier card — every dimension here is scaled 1.5x from the
+   pre-resize baseline (padding, accent bar, gaps, type, chip sizing).
+   Mobile breakpoint below scales the padding the same way. */
+.mod-card { background:#0f1212; border:0.5px solid rgba(255,255,255,0.05);
+  border-left:6px solid var(--sev, #5aafa5);
+  border-radius:8px; padding:21px 27px; margin-bottom:10px; }
+.mod-card[data-sev="green"]  { --sev:#4ec98a; }
+.mod-card[data-sev="yellow"] { --sev:#c8a64e; }
+.mod-card[data-sev="red"]    { --sev:#d97070; }
+
+.mod-card__top { display:flex; justify-content:space-between; align-items:baseline;
+  gap:18px; flex-wrap:wrap; }
+.mod-card__name { font-size:22px; color:#fff; font-weight:600; letter-spacing:0.01em; }
+.mod-card__sev { font-size:13px; letter-spacing:0.14em; text-transform:uppercase;
+  font-weight:700; color:var(--sev); padding:3px 12px;
+  border:0.5px solid var(--sev); border-radius:4px;
+  background:rgba(255,255,255,0.02); }
+.mod-card__desc { font-style:italic; font-size:18px; color:#888; line-height:1.55;
+  margin-top:12px; }
+
+.mod-effects { display:flex; flex-wrap:wrap; gap:9px; margin-top:15px;
+  padding-top:15px; border-top:0.5px dashed rgba(255,255,255,0.05); }
+.mod-effects__label { font-size:13px; letter-spacing:0.14em; text-transform:uppercase;
+  color:#5a5a5a; font-weight:600; align-self:center; margin-right:6px; }
+.mod-chip { font-size:16px; color:var(--sev, #cfcabf); background:rgba(255,255,255,0.03);
+  border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+  padding:5px 14px; letter-spacing:0.01em; }
+
+.loading { font-family:monospace; font-size:11px; color:#4a4940;
+  text-align:center; padding:80px 20px; }
+.fail { font-family:monospace; font-size:11px; color:#c87a7a;
+  text-align:center; padding:80px 20px; }
+
+@media (max-width:700px) {
+  .content { padding:20px 14px 16px; }
+  .page-title { font-size:24px; }
+  .mod-card { padding:18px 21px; }
+  .mod-section__grid { grid-template-columns:1fr; }
+}
+</style>
+  <script type="module" crossorigin src="/assets/politician-modifiers-BKlFu79g.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-client-BXEzLDpS.js">
+  <link rel="modulepreload" crossorigin href="/assets/utils-CzgKGX6o.js">
+  <link rel="modulepreload" crossorigin href="/assets/factions-C2s734Ze.js">
+  <link rel="modulepreload" crossorigin href="/assets/politician-topbar-5igJjSS-.js">
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <div class="crumb">
+    <a href="politician-nation.html">NATION</a>
+    <span class="sep">&rsaquo;</span>
+    <span class="here">NATIONAL MODIFIERS</span>
+  </div>
+  <div class="page-head">
+    <div class="page-eyebrow" id="ph-eyebrow">— Active Situations —</div>
+    <div class="page-title">National <span style="font-style:normal;font-family:inherit;color:#fff;">Modifiers</span></div>
+    <div class="page-sub" id="ph-sub">—</div>
+  </div>
+  <div id="mod-host"></div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+</body>
+</html>
