@@ -135,11 +135,32 @@
 
 /* Stats row + cards (existing; minor mockup spacing tweak) */
 .stats-row { display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:28px; }
-.stat-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
-.stat-card.accent { border-top:2px solid #5aafa5; }
-.stat-card .stat-label { color:#666; font-size:10px; letter-spacing:0.13em; margin-bottom:8px; }
-.stat-card .stat-value { font-size:24px; font-weight:500; color:#fff; line-height:1; }
+.stat-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:4px; padding:16px 18px 18px; border-top:2px solid #5aafa5;
+  display:flex; flex-direction:column; }
+.stat-card.rep   { border-top-color:#7a9aab; }
+.stat-card.cap   { border-top-color:#c8a64e; }
+.stat-card.skill { border-top-color:#8aaa6a; }
+.stat-card.inf   { border-top-color:#9ab8c4; }
+.stat-card .stat-label { font-size:10px; letter-spacing:0.13em; font-weight:700;
+  margin-bottom:10px; text-transform:uppercase; color:#666; }
+.stat-card.rep   .stat-label { color:#7a9aab; }
+.stat-card.cap   .stat-label { color:#c8a64e; }
+.stat-card.skill .stat-label { color:#8aaa6a; }
+.stat-card.inf   .stat-label { color:#9ab8c4; }
+.stat-card .stat-value { font-size:28px; font-weight:500; color:#fff; line-height:1; }
 .stat-card .stat-value.text { font-size:18px; color:#5aafa5; }
+.stat-card .stat-quote { font-style:italic; font-size:11px; color:#888;
+  margin-top:8px; padding-bottom:12px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.stat-card .stat-sec { margin-top:11px; }
+.stat-card .stat-sec-lab { font-size:9px; letter-spacing:0.13em; color:#666;
+  font-weight:600; margin-bottom:5px; display:flex; align-items:center; gap:6px;
+  text-transform:uppercase; }
+.stat-card .stat-sec-lab .ic { color:#444; font-size:11px; line-height:1; }
+.stat-card .stat-sec-body { font-size:10.5px; color:#a8a39a; line-height:1.55; }
+.stat-card .stat-sec-body em { color:#888; }
+.stat-card .stat-sec-body b { color:#fff; font-weight:600; }
 
 .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
 .section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
@@ -1691,19 +1712,87 @@ function renderCareer() {
     </div>`).join('');
 }
 
+// Stat reference cards — value + the EARNS / SPENDS / CAREER / PARTY
+// breakdown so a new player can read what each stat actually does
+// without leaving the home page. Descriptions are static reference
+// copy; the value reads from the live politician row each render.
+//
+// Column-rename history note (20270632): the "CAPITAL" pill reads
+// politician_influence and the "INFLUENCE" pill reads political_
+// capital. The display labels stayed put when the underlying
+// columns were renamed.
+const STAT_CARDS = [
+  {
+    key:   'rep',
+    label: 'REPUTATION',
+    quote: '"Do peers and press respect you?"',
+    earns:  `Clean play. Correct flags. Sustained audits. Won races. <em>Surviving a term without scandal.</em>`,
+    spends: `Doesn't deplete. <b>Passive stat</b> — eligibility, not currency.`,
+    career: `Gates the appointed ladder — <b>Junior Minister, Deputy Minister, Minister</b> all require Rep.`,
+    party:  `Scales your popularity contribution. High-Rep MPs raise the party's ceiling.`,
+  },
+  {
+    key:   'cap',
+    label: 'CAPITAL',
+    quote: '"Money and favors banked."',
+    earns:  `Salaries. Party funds. <b>Kickbacks (risky).</b> File a Memo. Race payouts.`,
+    spends: `Race entry fees. Party donations. Action costs.`,
+    career: `Pays entry to higher races. <em>Leadership runs scale up substantially.</em>`,
+    party:  `Flows two ways — you donate, or the party pays your race fees.`,
+  },
+  {
+    key:   'skill',
+    label: 'SKILL',
+    quote: '"Are you good at the job?"',
+    earns:  `Routing paperwork correctly. Winning races. <b>AH dispositions.</b>`,
+    spends: `Rolled in races and dispositions. <em>Never depleted otherwise.</em>`,
+    career: `Technical ladder — <b>CS → AH → Deputy Minister.</b> Each rung has a Skill floor.`,
+    party:  `Indirect — high-Skill members win more races, so more seats.`,
+  },
+  {
+    key:   'inf',
+    label: 'INFLUENCE',
+    quote: '"Who owes you, who returns your calls?"',
+    earns:  `Chamber time. MP race wins. <b>Speeches.</b> Fundraising. Sponsoring resolutions.`,
+    spends: `Lobby a minister. Whip a vote. Call in favors. Push for appointments.`,
+    career: `Currency for political maneuvers. <b>Not a hard gate</b> — spend it to make appointed offices happen.`,
+    party:  `Cashed in on party-internal moves — whipping a bloc, securing seats for colleagues.`,
+  },
+];
+
 function renderStats() {
-  const stats = [
-    { label: 'REPUTATION', value: politician.politician_reputation ?? 1, kind: 'num' },
-    { label: 'CAPITAL',    value: politician.politician_influence  ?? 1, kind: 'num' },
-    { label: 'SKILL',      value: politician.politician_skill      ?? 1, kind: 'num' },
-    { label: 'INFLUENCE',  value: fmtBig(Number(politician.political_capital) || 0), kind: 'num' },
-  ];
-  document.getElementById('stats-row').innerHTML = stats.map((s, i) =>
-    `<div class="stat-card${i === 0 ? ' accent' : ''}">
+  // Live values per card, keyed by STAT_CARDS.key. The label-to-column
+  // mapping preserves the 20270632 display swap: CAPITAL pill reads
+  // politician_influence; INFLUENCE pill reads political_capital
+  // (money-formatted via fmtBig).
+  const values = {
+    rep:   politician.politician_reputation ?? 1,
+    cap:   politician.politician_influence  ?? 1,
+    skill: politician.politician_skill      ?? 1,
+    inf:   fmtBig(Number(politician.political_capital) || 0),
+  };
+  document.getElementById('stats-row').innerHTML = STAT_CARDS.map(s => `
+    <div class="stat-card ${s.key}">
       <div class="stat-label">${escHtml(s.label)}</div>
-      <div class="stat-value${s.kind === 'text' ? ' text' : ''}">${escHtml(s.value)}</div>
-    </div>`
-  ).join('');
+      <div class="stat-value">${escHtml(values[s.key])}</div>
+      <div class="stat-quote">${escHtml(s.quote)}</div>
+      <div class="stat-sec">
+        <div class="stat-sec-lab"><span class="ic">&#9651;</span>Earns</div>
+        <div class="stat-sec-body">${s.earns}</div>
+      </div>
+      <div class="stat-sec">
+        <div class="stat-sec-lab"><span class="ic">&#9661;</span>Spends</div>
+        <div class="stat-sec-body">${s.spends}</div>
+      </div>
+      <div class="stat-sec">
+        <div class="stat-sec-lab"><span class="ic">&#8801;</span>Career</div>
+        <div class="stat-sec-body">${s.career}</div>
+      </div>
+      <div class="stat-sec">
+        <div class="stat-sec-lab"><span class="ic">&#9733;</span>Party</div>
+        <div class="stat-sec-body">${s.party}</div>
+      </div>
+    </div>`).join('');
 }
 
 // ── Current Affiliation ─────────────────────────────────────────────
