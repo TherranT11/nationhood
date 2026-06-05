@@ -317,6 +317,21 @@ export const MINISTRY_NAMES = {
 };
 export function ministryName(slug) { return MINISTRY_NAMES[slug] || ''; }
 
+// One-paragraph descriptive blurb per ministry — used as the CTA
+// subtitle on politician-nation.html and as the Overview-card body
+// on politician-ministry.html. Single source so an edit lands on
+// both surfaces at once.
+export const MINISTRY_BLURBS = {
+    defense:
+        `Commands the armed forces, oversees national security strategy and military procurement, sets defense doctrine, and represents the Republic in security alliances and matters of war.`,
+    foreign_affairs:
+        `Conducts the Republic's foreign relations, negotiates treaties and trade agreements, manages embassies and consulates, and represents the nation before international bodies.`,
+    economic_development:
+        `Plans national economic policy, manages industrial concessions, oversees infrastructure investment and public works, and represents the Republic in international trade and finance forums.`,
+    interior:
+        `Administers domestic affairs, supervises sub-national government, oversees policing and the civil registry, manages internal security, and coordinates disaster response.`,
+};
+
 // Single-line career standing for politician hero cards (the H1 on
 // politician-career, the hero-career pill on politician-home). Same
 // precedence everywhere it's read: a held state role IS your standing,

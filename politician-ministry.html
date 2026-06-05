@@ -105,34 +105,17 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, currentAge, escapeHtml, ministryName } from './js/utils.js';
+import { officeTitle, currentAge, escapeHtml, ministryName, MINISTRY_BLURBS } from './js/utils.js';
 
-// Per-ministry page chrome — title HTML (the italic subordinate
-// matches the foreign page's "Ministry of Foreign Affairs & Trade"
-// pattern), badge glyph, and the descriptive blurb. The display
-// name itself comes from MINISTRY_NAMES in utils.js — the SoT every
-// surface reads from.
+// Per-ministry page-only chrome — badge glyph + italicized-
+// subordinate title HTML. Display name comes from MINISTRY_NAMES
+// and the blurb comes from MINISTRY_BLURBS (both in js/utils.js,
+// shared with politician-nation.html's CTA cards).
 const MINISTRIES_META = {
-  defense: {
-    badge:   '&#9876;',
-    titleHtml: 'Ministry of <span class="ital">Defense</span>',
-    blurb: `Commands the armed forces, oversees national security strategy and military procurement, sets defense doctrine, and represents the Republic in security alliances and matters of war.`,
-  },
-  foreign_affairs: {
-    badge:   '&#9742;',
-    titleHtml: 'Ministry of Foreign Affairs <span class="ital">&amp; Trade</span>',
-    blurb: `Conducts the Republic's foreign relations, negotiates treaties and trade agreements, manages embassies and consulates, and represents the nation before international bodies.`,
-  },
-  economic_development: {
-    badge:   '&#128202;',
-    titleHtml: 'Ministry of Economic <span class="ital">Development</span>',
-    blurb: `Plans national economic policy, manages industrial concessions, oversees infrastructure investment and public works, and represents the Republic in international trade and finance forums.`,
-  },
-  interior: {
-    badge:   '&#127963;',
-    titleHtml: 'Ministry of the <span class="ital">Interior</span>',
-    blurb: `Administers domestic affairs, supervises sub-national government, oversees policing and the civil registry, manages internal security, and coordinates disaster response.`,
-  },
+  defense:              { badge: '&#9876;',   titleHtml: 'Ministry of <span class="ital">Defense</span>' },
+  foreign_affairs:      { badge: '&#9742;',   titleHtml: 'Ministry of Foreign Affairs <span class="ital">&amp; Trade</span>' },
+  economic_development: { badge: '&#128202;', titleHtml: 'Ministry of Economic <span class="ital">Development</span>' },
+  interior:             { badge: '&#127963;', titleHtml: 'Ministry of the <span class="ital">Interior</span>' },
 };
 
 function resolveMinistrySlug() {
@@ -148,7 +131,7 @@ function paintHeader(slug) {
   document.title = `Politician — ${ministryName(slug) || 'Ministry'}`;
   document.getElementById('ministry-badge').innerHTML = meta.badge;
   document.getElementById('ministry-title').innerHTML = meta.titleHtml;
-  document.getElementById('ministry-desc').textContent = meta.blurb;
+  document.getElementById('ministry-desc').textContent = MINISTRY_BLURBS[slug] || '';
 }
 
 async function renderActors(slug, nationId, currentTick) {
