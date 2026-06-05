@@ -31,6 +31,34 @@
 -- Body is byte-identical to 20270621 except the FLIGHTS_PER_TICK
 -- declaration and the two multiplications.
 --
+-- ── DESIGN-CALL NOTE (deviation from 20270109 precedent) ──────────
+-- 20270109_airline_flights_per_tick_scaling.sql made the same kind
+-- of scaling move for the legacy process_airline_route_tick (now
+-- defunct factions-based airline corps) with v_flights_per_tick=30
+-- and explicitly chose to scale revenue/capacity/lane_demand but
+-- LEAVE OPS COST UNSCALED — "airlines become substantially more
+-- profitable by design".
+--
+-- This migration scales BOTH v_pax (→ revenue) AND v_ops_cost,
+-- matching the literal request ("the price they are × 30 × 3" →
+-- net × 90). Consequence: idle routes (aircraft assigned, 0 pax
+-- demand) now lose 90× the prior ops cost (~$45K/tick regional vs
+-- $500 before). The plane is conceptually flying 90 times whether
+-- or not seats fill, so empty-flight ops cost is real. lifetime_*
+-- columns mix units across history (pre-change per-flight, post-
+-- change per-month) — same call as 20270109's header explicitly
+-- accepted: "a rebalance, not a retroactive correction".
+--
+-- ── KNOWN UI INCONSISTENCY ────────────────────────────────────────
+-- entrepreneur-corp.html renders "Lane demand: X · last tick: Y
+-- pax — You Y" inline. Post-this-migration, lane demand stays at
+-- ~28 (per-flight, what the share allocation upstream uses) while
+-- last-tick pax becomes ~900 (per-month, post-× 90). The two
+-- numbers in the same line are now different units. Internally
+-- consistent (allocation IS per-flight; output IS per-month) but
+-- reads oddly. Easy follow-up: also × 90 inside lane_demand() so
+-- everything in the display matches monthly.
+--
 -- Apply after 20270622.
 -- ════════════════════════════════════════════════════════════════════
 
@@ -120,7 +148,11 @@ BEGIN
         -- before computing revenue. v_pax stamps and the lifetime
         -- counter become monthly numbers from this tick forward.
         v_pax     := COALESCE(v_pax, 0) * FLIGHTS_PER_TICK;
-        v_revenue := (v_pax * COALESCE(v_route.ticket_price, 0))::bigint;
+        -- Cast to bigint BEFORE the multiplication so a high-ticket /
+        -- high-pax combo can't overflow int*int (~2.1B). Realistic
+        -- max v_pax ≈ 54K (widebody seats × 90), so a ~$40K ticket
+        -- crosses the boundary; the cast keeps us in bigint space.
+        v_revenue := v_pax::bigint * COALESCE(v_route.ticket_price, 0);
 
         SELECT COUNT(*) INTO v_ac_count
           FROM corp_aircraft WHERE route_id = v_route.id;

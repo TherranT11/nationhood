@@ -5530,6 +5530,12 @@ function initials(s, n) {
                 ? [...lane.byCorp.entries()].sort((a, b) => b[1] - a[1])
                     .map(([n, p]) => `<span class="${n === 'You' ? 'accent' : 'dim'}">${escapeHtml(n)} ${p}</span>`).join(' · ')
                 : `<span class="accent">You 0</span>`;
+              // 20270623 known mixed-units: `demand` is per-flight
+              // (the share allocation upstream is per-flight too) while
+              // `lane.total` and the breakdown numbers are per-month
+              // (last_tick_pax post-× 90). Internally consistent — the
+              // display label stays terse. Tighten by also × 90 in
+              // lane_demand() when we want both per-month.
               const laneHtml = `<div class="sh-row-sub" style="margin-top:3px;">Lane demand: <span class="accent">${demand}</span> · last tick: ${lane?.total ?? 0} — ${breakdown}</div>`;
               const rDist = distFor(r.origin_city_id, r.dest_city_id);
               const distBadge = rDist != null ? ` <span class="dim">· distance ${rDist}</span>` : '';
