@@ -5,6 +5,29 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ## [ALPA — 2.9] — 2026-06-04
 
+### Removed
+
+- **Political Party founding — Sunset Phase 1.** The first phase of
+  the political-party sunset. Players going forward create only
+  Entrepreneurs and Politicians; existing parties keep operating
+  unchanged. Phase 1 only freezes the on-ramp — no data is touched,
+  no other mechanics are affected. Active player parties continue to
+  function exactly as before, and the politics engine (Head of
+  Government auto-install, Deputy Speaker, Speaker of the Assembly,
+  general-election seat allocation) keeps reading them the same way.
+  Migration `20270612` short-circuits `politician_found_party` to
+  return `success:false reason:'sunset'`. UI on-ramps removed:
+  `politician-movements.html` "Start a Political Party" action greyed
+  out + tag flipped Open → Sunset; `faction-select.html` Political
+  Party card hidden + the auto-redirect to `createparty.html`
+  removed; `js/common.js` "Found a Political Party" dropdown item
+  dropped; `createparty.html` carries a banner directing newcomers
+  to Entrepreneur or Politician and the Create button is
+  hard-disabled (the underlying `proceed()` is overridden to a
+  redirect so a devtools-stripped disabled attribute can't insert a
+  party row). Reversal: re-apply the `20270583` body of
+  `politician_found_party` and revert the four UI changes.
+
 ### Added — Career roles
 
 - **Deputy Speaker** rung on the Legislature ladder. Sitting MP with
@@ -223,6 +246,18 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Trial chat: opposing counsel can now read the text of played
+  evidence.** When a beat was played as part of a trial message,
+  the chat card surfaced only "FACT · The Three Workers" — opposing
+  counsel saw a label but had no way to read what the evidence
+  actually said. The description text lived on the beat row and was
+  already returned for the calling side's own hand, so this was a
+  read-permission gap, not a missing field. Migration `20270613`
+  adds `beat_description` to the message jsonb returned by
+  `get_trial_state` (played beats are public to both sides, so no
+  privacy gate). `politician-home.html`'s `renderTrialChat` now
+  renders the description under the beat name in italics, separated
+  by a thin rule.
 - **Aircraft production modal: shows the actual charge, not the
   bundled cost.** The Produce modal on `entrepreneur-corp.html` was
   reading `design.cost_per_unit` for its "Unit cost $X" line — for

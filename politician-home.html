@@ -750,7 +750,8 @@
 .trial-msg-text { font-size:11px; line-height:1.6; color:#ddd; }
 .trial-msg-beat { margin-top:8px; padding:7px 10px; background:#0a0807;
   border:0.5px solid #2a2218; border-radius:4px; border-left:2.5px solid;
-  display:flex; align-items:center; gap:8px; }
+  display:flex; flex-direction:column; gap:6px; }
+.trial-msg-beat-head { display:flex; align-items:center; gap:8px; }
 .trial-msg-beat.evid   { border-left-color:#d4b87a; }
 .trial-msg-beat.law    { border-left-color:#9aab7a; }
 .trial-msg-beat.fact   { border-left-color:#7a9aab; }
@@ -767,6 +768,9 @@
 .trial-msg-beat-type.expert { background:#0a1614; color:#7abcaa; border:0.5px solid #3a5a55; }
 .trial-msg-beat-name { font-family:Georgia,serif; font-size:10.5px;
   color:#d8cfb8; font-weight:500; flex:1; }
+.trial-msg-beat-desc { font-family:Georgia,serif; font-size:11px;
+  color:#b0a890; line-height:1.55; font-style:italic;
+  padding:4px 2px 2px; border-top:0.5px solid #1a1410; }
 
 /* ── Beat hand: armed / armable / played states ─────────────── */
 .trial-beat.armable { cursor:pointer; transition:transform 0.15s, box-shadow 0.15s; }
@@ -3712,11 +3716,20 @@ function renderTrialChat(messages, yourSide) {
     // strengths stay hidden until verdict).
     const strHtml = (m.beat_played_index != null && m.beat_strength != null)
       ? `<span class="trial-msg-beat-str" title="Hidden strength (judge sees)">STR ${escHtml(m.beat_strength)}</span>` : '';
+    // beat_description surfaces in 20270613 so opposing counsel can
+    // read the body of played evidence, not just its title. Played
+    // beats are public, so no privacy gate — show it whenever it's
+    // returned.
+    const descHtml = (m.beat_played_index != null && m.beat_description)
+      ? `<div class="trial-msg-beat-desc">${escHtml(m.beat_description)}</div>` : '';
     const beat = m.beat_played_index != null
       ? `<div class="trial-msg-beat ${escHtml(m.beat_type || '')}">
-           <span class="trial-msg-beat-type ${escHtml(m.beat_type || '')}">${escHtml((BEAT_TYPE_LABEL[m.beat_type] || '').toUpperCase())}</span>
-           <span class="trial-msg-beat-name">${escHtml(m.beat_name || '—')}</span>
-           ${strHtml}
+           <div class="trial-msg-beat-head">
+             <span class="trial-msg-beat-type ${escHtml(m.beat_type || '')}">${escHtml((BEAT_TYPE_LABEL[m.beat_type] || '').toUpperCase())}</span>
+             <span class="trial-msg-beat-name">${escHtml(m.beat_name || '—')}</span>
+             ${strHtml}
+           </div>
+           ${descHtml}
          </div>` : '';
     return divider + `
       <div class="${cls}">
