@@ -180,11 +180,12 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
-import { ministryName } from './js/utils.js';
+import { ministryName, escapeHtml as escHtml } from './js/utils.js';
 
+// Roman numerals for agency labels (5 max per ministry — paperwork-
+// taxonomy ships 5). Pre-existing dup with handlepaperwork.html and
+// politician-home; aligning to a single SoT export is a backlog item.
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
-const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
-    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 function showGate(msg) {
   document.getElementById('loading').innerHTML = `<div class="gate">${msg}</div>`;
