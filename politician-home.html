@@ -1084,7 +1084,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel } from './js/utils.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
@@ -1366,14 +1366,13 @@ function renderHero(shard) {
   const last  = politician.leader_last_name  || '';
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const display = (first || last) ? (first + ' ' + last).trim() : (politician.faction_name || 'Politician');
-  // Hero pill — Affiliation. Derives from the live party FK
-  // (politician_party_id → `party`), not from the politician_career
-  // text column. The text column was added in 20270355 with DEFAULT
-  // 'Independent' and is never updated by the join / leave flow, so
-  // it goes stale the moment a politician joins. Reading the joined
-  // party row keeps this in agreement with the Tier 0 rung on the
-  // Career page and the party-member surfaces.
-  const career = party?.faction_name || 'Independent';
+  // Hero pill — Career standing. Held office > civil-service post >
+  // party affiliation > Independent, computed in careerLabel()
+  // (js/utils.js) so this and politician-career's H1 stay locked.
+  // Previously read just party.faction_name || 'Independent', which
+  // dropped civil-servant identity entirely and showed party for
+  // any card-carrier even when they held a state role.
+  const career = careerLabel(politician, party);
   // Politicians age 1 year per 12 ticks, starting at 25. Same formula as the
   // topbar's currentAge (kept inline here because this page renders age into
   // the body too; if we ever need a third reader, extract to a helper).
