@@ -153,7 +153,9 @@ function buildSwitcher(facs) {
     });
   }
   const creates = [
-    { has: 'party',       name: 'Found a Political Party', type: 'party',    url: 'select-nation.html' },
+    // Political Party founding REMOVED in Sunset Phase 1 (20270612).
+    // Players going forward create only Politicians and Entrepreneurs;
+    // existing parties keep operating but no new ones are accepted.
     { has: 'military',    name: 'Join a Military Faction', type: 'military', url: 'faction-select.html' },
   ];
   for (const c of creates) {
