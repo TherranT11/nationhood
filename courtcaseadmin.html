@@ -67,6 +67,30 @@
   .editor-pane{background:var(--panel);border:0.5px solid var(--line);border-radius:7px;overflow:hidden;}
   .ed-empty{padding:60px 24px;text-align:center;color:var(--faint);font-style:italic;font-size:12px;}
 
+  /* Paperwork dispatches expand-in-place card (20270627). Lives inside
+     the same .list-body the row sits in so the expanded view doesn't
+     ride on a separate editor pane like court cases do. */
+  .pw-expand{padding:14px 16px;background:#0a0a0a;border-bottom:0.5px solid var(--line);border-left:2px solid var(--brass);display:grid;grid-template-columns:1.4fr 1fr;gap:14px;align-items:start;}
+  .pw-doc{background:var(--paper);border:0.5px solid var(--paper-line);border-radius:5px;padding:13px 16px;color:var(--paper-text);}
+  .pw-doc-eyebrow{font-size:7.5px;letter-spacing:0.16em;color:#9a8f76;font-weight:700;text-transform:uppercase;margin-bottom:3px;}
+  .pw-doc-office{font-family:Georgia,serif;font-style:italic;font-size:12px;color:#9ab8c8;margin-bottom:8px;}
+  .pw-doc-sender{font-family:Georgia,serif;font-size:11px;color:var(--paper-text);margin-bottom:10px;font-weight:600;}
+  .pw-doc-body{font-family:Georgia,serif;font-size:11.5px;line-height:1.6;color:var(--paper-text);white-space:pre-wrap;max-height:280px;overflow-y:auto;border-top:0.5px dashed var(--paper-line);padding-top:8px;}
+  .pw-key{background:#0d0d0c;border:0.5px solid var(--line);border-radius:5px;padding:11px 14px;display:flex;flex-direction:column;gap:8px;}
+  .pw-key-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:10.5px;}
+  .pw-key-lab{font-size:8px;letter-spacing:0.14em;color:var(--brass);font-weight:700;text-transform:uppercase;}
+  .pw-key-val{color:#fff;text-align:right;font-weight:500;}
+  .pw-actions{grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end;padding-top:8px;border-top:0.5px solid var(--line);}
+  .pw-btn{padding:8px 14px;border-radius:3px;font-size:9.5px;letter-spacing:0.12em;font-weight:700;cursor:pointer;font-family:inherit;text-transform:uppercase;border:0.5px solid;}
+  .pw-btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .pw-btn.reject{background:transparent;border-color:var(--red-dim);color:#c87a7a;}
+  .pw-btn.reject:hover:not(:disabled){background:var(--red-bg);color:#fff;border-color:var(--red);}
+  .pw-btn.approve{background:var(--brass-bg);border-color:var(--brass);color:var(--brass-bright);}
+  .pw-btn.approve:hover:not(:disabled){background:#2a1f10;color:#fff;}
+  .pw-note{grid-column:1 / -1;padding:8px 12px;background:#0a0807;border:0.5px solid var(--line);border-radius:3px;font-size:10px;color:var(--mut);font-style:italic;}
+
+  @media (max-width: 880px) { .pw-expand{grid-template-columns:1fr;} }
+
   /* form bits — share vocab with courtcase.html so muscle memory holds */
   .section{border-bottom:0.5px solid var(--line);}
   .section:last-of-type{border-bottom:none;}
@@ -198,6 +222,32 @@
       <div class="ed-empty">Select a case from the queue to review.</div>
     </div>
   </div>
+
+  <!-- PAPERWORK DISPATCHES — separate queue, separate RPCs (20270627).
+       Authors submit via /handlepaperwork.html; admins approve/reject
+       here. Read-only display for MVP; edit-before-approve is a planned
+       follow-up (approve_paperwork_dispatch already accepts a p_edits
+       payload). -->
+  <div class="page-head" style="margin-top:22px;">
+    <div class="ph-row">
+      <div class="ph-icon" style="background:#1a1408;border-color:#5a4628;color:#dcb878;">&#9999;</div>
+      <div class="ph-info">
+        <div class="ph-eyebrow" style="color:#dcb878;">CIVIL SERVICE &middot; MODERATION QUEUE</div>
+        <div class="ph-name">Submitted <em>Paperwork Dispatches</em></div>
+        <div class="ph-meta">Review player-authored dispatches before they enter the Civil Servant rotation pool. <strong>Approve</strong> to publish; <strong>Reject</strong> to discard with a note for the author.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="list-pane" id="pw-list-pane">
+    <div class="list-head">
+      <span class="lh-title">DISPATCHES</span>
+      <span class="lh-count"><em id="pw-count">0</em></span>
+    </div>
+    <div class="list-body" id="pw-list-body">
+      <div class="list-empty">Loading…</div>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -230,6 +280,10 @@ async function bootstrap() {
   document.getElementById('wrap').style.display = 'block';
   wireFilters();
   await refresh();
+  // Paperwork dispatches load alongside court cases. RPC is a separate
+  // is_admin() gate so a court-only moderator (no global admin) sees
+  // the section render an empty state instead of breaking.
+  await refreshPaperwork();
 }
 
 function wireFilters() {
@@ -578,6 +632,154 @@ function escapeHtml(s) {
     ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
+
+// ── Paperwork Dispatches moderation ────────────────────────────────
+// Authors submit via /handlepaperwork.html (20270627). The list RPC is
+// admin-only; the page-level is_court_admin gate above doesn't grant
+// is_admin, so a non-global moderator just sees an empty list.
+import { PAPERWORK_MINISTRIES, findAgency, findStat } from './js/paperwork-taxonomy.js';
+
+const paperState = { dispatches: [], expandedId: null };
+
+async function refreshPaperwork() {
+  const body = document.getElementById('pw-list-body');
+  body.innerHTML = '<div class="list-empty">Loading…</div>';
+  try {
+    const { data, error } = await _supabase.rpc('list_pending_paperwork_dispatches');
+    if (error) throw error;
+    if (!data?.success) {
+      // not_admin from the RPC means this court-mod isn't a global
+      // admin; show a neutral message rather than an error.
+      body.innerHTML = `<div class="list-empty">${data?.reason === 'not_admin'
+        ? 'Paperwork moderation requires global admin.'
+        : 'Couldn’t load paperwork dispatches.'}</div>`;
+      return;
+    }
+    paperState.dispatches = data.dispatches || [];
+    renderPaperList();
+  } catch (e) {
+    body.innerHTML = '<div class="list-empty">Network or server error loading dispatches.</div>';
+    console.warn('[courtcaseadmin] paperwork list fetch error:', e?.message || e);
+  }
+}
+
+function renderPaperList() {
+  const body = document.getElementById('pw-list-body');
+  const count = document.getElementById('pw-count');
+  count.textContent = paperState.dispatches.filter(d => d.status === 'pending_approval').length;
+  if (!paperState.dispatches.length) {
+    body.innerHTML = '<div class="list-empty">No dispatches submitted yet.</div>';
+    return;
+  }
+  body.innerHTML = paperState.dispatches.map(d => renderPaperRow(d)).join('');
+}
+
+function renderPaperRow(d) {
+  const expanded = paperState.expandedId === d.id;
+  const ministry = PAPERWORK_MINISTRIES[d.correct_ministry];
+  const agency   = findAgency(d.correct_ministry, d.correct_agency);
+  const stat     = findStat(d.affected_stat);
+  const statusPill = d.status === 'pending_approval'
+    ? '<span class="pill pending">PENDING</span>'
+    : d.status === 'approved'
+      ? '<span class="pill approved">APPROVED</span>'
+      : '<span class="pill" style="background:#160e0e;border-color:#5a3030;color:#c87a7a;">REJECTED</span>';
+  const flagPill = d.should_flag
+    ? '<span class="pill" style="background:#161208;border-color:#5a4d2e;color:#d4b87a;">&#9873; FLAG</span>'
+    : '';
+  const head = `
+    <div class="list-item ${expanded ? 'selected' : ''}" data-pw-id="${escapeAttr(d.id)}" data-pw-toggle>
+      <div class="li-title">${escapeHtml(d.doc_title)}</div>
+      <div class="li-meta">
+        ${statusPill}${flagPill}
+        <span style="margin-right:8px;">${escapeHtml(d.display_id)}</span>
+        <span style="color:#666;">by ${escapeHtml(d.author_name || '—')}</span>
+      </div>
+    </div>`;
+  if (!expanded) return head;
+
+  // Expanded card: full document + answer key + actions.
+  const ministryLabel = ministry ? `${ministry.icon} ${ministry.label}` : d.correct_ministry;
+  const agencyLabel = agency ? agency.label : d.correct_agency;
+  const statLabel = stat ? `${stat.label} ${d.stat_direction === 'up' ? '↑' : '↓'}` : '—';
+  const isPending = d.status === 'pending_approval';
+  return head + `
+    <div class="pw-expand" data-pw-card="${escapeAttr(d.id)}">
+      <div class="pw-doc">
+        <div class="pw-doc-eyebrow">Office of</div>
+        <div class="pw-doc-office">${escapeHtml(d.office_of)}</div>
+        <div class="pw-doc-sender">${escapeHtml(d.sender_title)}</div>
+        <div class="pw-doc-body">${escapeHtml(d.body)}</div>
+      </div>
+      <div class="pw-key">
+        <div class="pw-key-row"><span class="pw-key-lab">Ministry</span><span class="pw-key-val">${escapeHtml(ministryLabel)}</span></div>
+        <div class="pw-key-row"><span class="pw-key-lab">Agency</span><span class="pw-key-val">${escapeHtml(agencyLabel)}</span></div>
+        <div class="pw-key-row"><span class="pw-key-lab">Should flag</span><span class="pw-key-val">${d.should_flag ? 'Yes' : 'No'}</span></div>
+        <div class="pw-key-row"><span class="pw-key-lab">Affected stat</span><span class="pw-key-val">${escapeHtml(statLabel)}</span></div>
+      </div>
+      ${isPending ? `
+        <div class="pw-actions">
+          <button class="pw-btn reject" data-pw-reject="${escapeAttr(d.id)}">&times; Reject</button>
+          <button class="pw-btn approve" data-pw-approve="${escapeAttr(d.id)}">&#10003; Approve</button>
+        </div>
+      ` : (d.review_note ? `<div class="pw-note">Reviewer note: ${escapeHtml(d.review_note)}</div>` : '')}
+    </div>`;
+}
+
+// Delegated handlers on the list container — toggle / approve / reject.
+document.getElementById('pw-list-body').addEventListener('click', async (e) => {
+  const approveBtn = e.target.closest('[data-pw-approve]');
+  if (approveBtn) { await approvePaper(approveBtn.dataset.pwApprove, approveBtn); return; }
+  const rejectBtn = e.target.closest('[data-pw-reject]');
+  if (rejectBtn) { await rejectPaper(rejectBtn.dataset.pwReject, rejectBtn); return; }
+  const toggle = e.target.closest('[data-pw-toggle]');
+  if (toggle) {
+    const id = toggle.dataset.pwId;
+    paperState.expandedId = paperState.expandedId === id ? null : id;
+    renderPaperList();
+  }
+});
+
+async function approvePaper(id, btn) {
+  if (btn.dataset.busy === '1') return;
+  if (!confirm('Approve this dispatch? It will enter the rotation pool.')) return;
+  btn.dataset.busy = '1'; btn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('approve_paperwork_dispatch', {
+      p_dispatch_id: id, p_edits: null,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Approve failed: ' + (data?.reason || 'unknown'));
+      btn.dataset.busy = '0'; btn.disabled = false; return;
+    }
+    await refreshPaperwork();
+  } catch (e) {
+    alert('Approve failed: ' + (e?.message || 'network or server error'));
+    btn.dataset.busy = '0'; btn.disabled = false;
+  }
+}
+
+async function rejectPaper(id, btn) {
+  if (btn.dataset.busy === '1') return;
+  const note = prompt('Reason for rejecting (shown to the author):', '');
+  if (note === null) return;  // cancelled
+  btn.dataset.busy = '1'; btn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('reject_paperwork_dispatch', {
+      p_dispatch_id: id, p_note: note,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Reject failed: ' + (data?.reason || 'unknown'));
+      btn.dataset.busy = '0'; btn.disabled = false; return;
+    }
+    await refreshPaperwork();
+  } catch (e) {
+    alert('Reject failed: ' + (e?.message || 'network or server error'));
+    btn.dataset.busy = '0'; btn.disabled = false;
+  }
+}
 </script>
 </body>
 </html>
