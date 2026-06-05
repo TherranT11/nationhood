@@ -1744,7 +1744,7 @@ const LEGISLATURE_ACTIONS = [
 const CIVIL_SERVANT_ACTIONS = [
   { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route an incoming dispatch to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
   { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Draft a memo that lands on the right desk inside the ministry.' },
-  { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.' },
+  { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
@@ -2056,6 +2056,11 @@ function renderAffiliation(ctx) {
         openAppealModal(ctx.faction?.id);
       } else if (btn.dataset.action === 'file-paperwork') {
         openFilePaperworkModal();
+      } else if (btn.dataset.action === 'audit-ministry') {
+        // Full-page navigation rather than a modal — the audit surface
+        // is dense (per-agency accordions across the ministry) and
+        // reads better outside the role card's footprint.
+        window.location.href = 'auditministry.html';
       } else {
         handleMpAction(btn);
       }
