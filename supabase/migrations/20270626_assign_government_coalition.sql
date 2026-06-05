@@ -135,13 +135,12 @@ BEGIN
     IF COALESCE(v_largest.leader_first_name, '') <> ''
        AND COALESCE(v_largest.leader_last_name, '')  <> ''
        AND v_largest.leader_age IS NOT NULL THEN
-        -- Deactivate any prior active PM ministry for this nation.
-        UPDATE ministries
-           SET is_active = false
-         WHERE nation_id    = p_nation_id
-           AND ministry_key = 'prime_minister'
-           AND is_active    = true;
-
+        -- ministries has a UNIQUE (nation_id, ministry_key) that ignores
+        -- is_active, so a row already exists for any nation that's ever
+        -- had a PM. ON CONFLICT updates in place instead of failing on
+        -- duplicate. (head_of_government below uses a PARTIAL unique on
+        -- (nation_id) WHERE active = true, so the deactivate-then-insert
+        -- pattern stays correct there.)
         INSERT INTO ministries (
             nation_id, ministry_key, ministry_name, party_id,
             minister_first_name, minister_last_name, minister_age,
@@ -152,7 +151,14 @@ BEGIN
             v_largest.leader_last_name,
             v_largest.leader_age,
             true, now()
-        );
+        )
+        ON CONFLICT (nation_id, ministry_key) DO UPDATE SET
+            ministry_name       = EXCLUDED.ministry_name,
+            party_id            = EXCLUDED.party_id,
+            minister_first_name = EXCLUDED.minister_first_name,
+            minister_last_name  = EXCLUDED.minister_last_name,
+            minister_age        = EXCLUDED.minister_age,
+            is_active           = true;
 
         -- head_of_government table mirror (partial unique on (nation_id)
         -- WHERE active = true — deactivate prior, insert new).
