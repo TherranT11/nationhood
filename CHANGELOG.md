@@ -302,6 +302,24 @@ All notable changes to Nationhood are recorded here. Format inspired by
   during play (the "Witness for Plaintiff" label during examination)
   is a follow-up — `get_trial_state` doesn't return it yet.
 
+### Changed
+
+- **Apartment occupancy now tier-aware.** Previously all three
+  apartment tiers in a nation projected the same occupancy because
+  the formula was `clamp(0.4, stab/100, 1.0)` — pure function of
+  nation stability, no tier input. Realistically a luxury unit
+  serves a smaller renter pool than a basic one. Migration
+  `20270617` adds a tier multiplier inside the clamp: basic ×1.00,
+  modest ×0.85, luxury ×0.65. So a nation at stab=91 now projects
+  91% / 77% / 59% for basic / modest / luxury instead of 91% across
+  the board. Floor (0.4) still applies to all tiers in low-stab
+  nations. JS-side helper renamed `apartmentOccupancyFromStability`
+  → `apartmentOccupancy(buildingType, stab)`; `APARTMENT_DEFS`
+  gains an `occMult` field as the SoT, with the SQL CASE in lockstep
+  per the existing "Keep them in sync" pattern. Modal projection
+  and the sparkline both pass building_type so live numbers match
+  the actual tick math.
+
 ### Fixed
 
 - **Airline corps: Revenue Change card now stamps per-tick net.**

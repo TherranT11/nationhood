@@ -1188,7 +1188,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancyFromStability, tickToDate, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancy, tickToDate, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -4764,16 +4764,20 @@ function initials(s, n) {
       // (0.4–1.0) computeApartmentRent uses keeps the visual band
       // consistent with the actual occupancy floor.
       const occClass = (occ) => occ >= 0.85 ? 'occ-good' : (occ >= 0.70 ? 'occ-warn' : 'occ-bad');
-      const renderOccSparkline = (history) => {
+      // Sparkline takes the apartment's building_type now (20270617) so
+      // the tier multiplier (luxury < modest < basic) lands on the
+      // history points too — otherwise the live "Occupancy 59%" pill
+      // would diverge from a sparkline drawn against basic-tier curve.
+      const renderOccSparkline = (buildingType, history) => {
         if (!history || history.length < 2) return '';
         const W = 56, H = 14;
         const points = history.map((h, i) => {
           const x = (i / (history.length - 1)) * (W - 2) + 1;
-          const occ = apartmentOccupancyFromStability(h.politician_stability);
+          const occ = apartmentOccupancy(buildingType, h.politician_stability);
           const y = (H - 2) - (occ - 0.4) / 0.6 * (H - 4);
           return `${x.toFixed(1)},${y.toFixed(1)}`;
         }).join(' ');
-        const lastOcc = apartmentOccupancyFromStability(history[history.length - 1].politician_stability);
+        const lastOcc = apartmentOccupancy(buildingType, history[history.length - 1].politician_stability);
         return `<svg class="ap-spark ${occClass(lastOcc)}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Occupancy trend, last ${history.length} ticks"><polyline points="${points}" /></svg>`;
       };
 
@@ -4879,7 +4883,7 @@ function initials(s, n) {
               const rent = computeApartmentRent(b.building_type, b.nation);
               const rentRow = rent
                 ? `<div class="ap-rent">
-                     <span class="${occClass(rent.occupancy)}">Occupancy <b>${Math.round(rent.occupancy * 100)}%</b></span>${renderOccSparkline(nationHistory.get(b.nation_id))}
+                     <span class="${occClass(rent.occupancy)}">Occupancy <b>${Math.round(rent.occupancy * 100)}%</b></span>${renderOccSparkline(b.building_type, nationHistory.get(b.nation_id))}
                      <span>Gross <b>${fmtUsd(rent.gross)}</b>/tick</span>
                      <span>Maintenance <b>${fmtUsd(rent.maintenance)}</b>/tick</span>
                      <span class="${rent.net < 0 ? 'neg' : 'pos'}">Net <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick</span>

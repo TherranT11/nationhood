@@ -199,24 +199,29 @@ export function industryTitleLabel(s) {
  * Keep them in sync.
  */
 export const APARTMENT_DEFS = {
-    apartment_basic:  { cost: 12000000, ticks: 24, sensitivity: 1.0, baseRent: 40000  },
-    apartment_modest: { cost: 25000000, ticks: 27, sensitivity: 1.3, baseRent: 90000  },
-    apartment_luxury: { cost: 60000000, ticks: 30, sensitivity: 1.7, baseRent: 250000 },
+    apartment_basic:  { cost: 12000000, ticks: 24, sensitivity: 1.0, baseRent: 40000,  occMult: 1.00 },
+    apartment_modest: { cost: 25000000, ticks: 27, sensitivity: 1.3, baseRent: 90000,  occMult: 0.85 },
+    apartment_luxury: { cost: 60000000, ticks: 30, sensitivity: 1.7, baseRent: 250000, occMult: 0.65 },
 };
 
 /**
- * Apartment occupancy as a function of nation stability. Single source —
- * computeApartmentRent below calls it for the live rent calc; the
- * occupancy sparkline in entrepreneur-corp.html calls it per-history-tick
- * via nations_history.politician_stability. Nullish-coalesces to 50 so
- * stability=0 stays 0 (correctly clamped to the 0.4 floor) rather than
- * being treated as missing.
+ * Apartment occupancy as a function of nation stability AND tier.
+ * Single source — computeApartmentRent below calls it for the live
+ * rent calc; the occupancy sparkline in entrepreneur-corp.html calls
+ * it per-history-tick via nations_history.politician_stability.
  *
- *   occupancy = clamp(0.4, 1.0, stability / 100)
+ * Tier multiplier (APARTMENT_DEFS.occMult, 20270617): luxury units
+ * serve a smaller renter pool than basic. So at any nation stability,
+ * basic occupancy >= modest >= luxury. Multiply BEFORE clamp so the
+ * 0.4 floor still applies — at very-bad stability all tiers floor
+ * out together (no negative-occupancy weirdness).
+ *
+ *   occupancy = clamp(0.4, 1.0, stability * occMult / 100)
  */
-export function apartmentOccupancyFromStability(stab) {
+export function apartmentOccupancy(buildingType, stab) {
+    const mult = APARTMENT_DEFS[buildingType]?.occMult ?? 1.0;
     const s = Number(stab ?? 50);
-    return Math.max(0.4, Math.min(1.0, s / 100));
+    return Math.max(0.4, Math.min(1.0, s * mult / 100));
 }
 
 /**
@@ -225,7 +230,7 @@ export function apartmentOccupancyFromStability(stab) {
  * in lockstep with that function.
  *
  *   gross       = base × (standard_of_living + infrastructure) / 100
- *   occupancy   = apartmentOccupancyFromStability(nation.politician_stability)
+ *   occupancy   = apartmentOccupancy(buildingType, nation.politician_stability)
  *   maintenance = base × (100 - infrastructure) / 200
  *   net         = round(gross × occupancy - maintenance)
  *
@@ -241,7 +246,7 @@ export function computeApartmentRent(buildingType, nation) {
     const sol  = Number(nation?.standard_of_living ?? 50);
     const inf  = Number(nation?.infrastructure    ?? 50);
     const gross       = base * (sol + inf) / 100;
-    const occupancy   = apartmentOccupancyFromStability(nation?.politician_stability);
+    const occupancy   = apartmentOccupancy(buildingType, nation?.politician_stability);
     const maintenance = base * (100 - inf) / 200;
     const net         = Math.round(gross * occupancy - maintenance);
     return {
