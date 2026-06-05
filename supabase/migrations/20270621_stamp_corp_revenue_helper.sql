@@ -18,9 +18,8 @@
 -- everywhere" rule.
 --
 -- Fix: extract a single helper. Each RPC keeps its business logic
--- (compute v_net / v_payout / v_retail_revenue) and ends each
--- per-iteration block with a PERFORM call to the helper. The CASE
--- lives in exactly one place.
+-- (compute the per-iteration revenue / net) and ends each block with
+-- a PERFORM call to the helper. The CASE lives in exactly one place.
 --
 -- Behavior unchanged from the four shipped versions, with two minor
 -- consolidations:
@@ -326,9 +325,7 @@ DECLARE
     v_bid                 RECORD;
     v_demand              int;
     v_remaining           int;
-    v_rate                numeric;
     v_units               int;
-    v_payout              bigint;
     v_total_payout        bigint;
     v_buyer_budget_a      numeric;
     v_buyer_budget_r      numeric;
