@@ -40,12 +40,28 @@ export function isFactionInactive(f) {
 }
 
 /**
- * Legacy corporations are retired — hidden from every faction-switcher
- * dropdown (common / corp / entrepreneur / military topbars). Single source
- * for that rule; remove this and its call sites when corps are fully culled.
+ * Faction types hidden from every faction-switcher dropdown (common /
+ * corp / entrepreneur / military / politician topbars). Single source
+ * for that rule:
+ *
+ *   • 'corporation'   — legacy corps fully retired.
+ *   • 'party' +
+ *     'movement_party' — political-party sunset Phase 1 (20270612).
+ *                        Players can no longer switch INTO a party
+ *                        from the topbar; the row also gets filtered
+ *                        out of the active-faction picker in
+ *                        js/common.js so a stale sessionStorage
+ *                        active_faction_id pointing at a party
+ *                        redirects to a Politician or Entrepreneur
+ *                        the user owns.
+ *
+ * Existing party rows are NOT deleted — the politics engine still
+ * reads them and the party.html page still loads for anyone who
+ * navigates directly. This is only the switcher / picker gate.
  */
 export function isHiddenFromSwitcher(f) {
-    return f?.faction_type === 'corporation';
+    const t = f?.faction_type;
+    return t === 'corporation' || t === 'party' || t === 'movement_party';
 }
 
 /**

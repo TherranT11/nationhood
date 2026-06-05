@@ -25,8 +25,21 @@ All notable changes to Nationhood are recorded here. Format inspired by
   to Entrepreneur or Politician and the Create button is
   hard-disabled (the underlying `proceed()` is overridden to a
   redirect so a devtools-stripped disabled attribute can't insert a
-  party row). Reversal: re-apply the `20270583` body of
-  `politician_found_party` and revert the four UI changes.
+  party row).
+  Faction switcher + login pickup also hide existing parties:
+  `isHiddenFromSwitcher` in `js/game/factions.js` (the SoT all four
+  topbars — common / corp / entrepreneur / military / politician —
+  read from) now returns true for `party` and `movement_party`
+  alongside the existing `corporation` retirement, so party rows
+  drop out of the dropdown for current owners. `js/common.js`'s
+  active-faction picker filters parties out of the pool, so a
+  stale `sessionStorage.active_faction_id` pointing at a party
+  redirects to a Politician or Entrepreneur the user owns; the
+  stale stamp is rewritten so the override sticks across reloads.
+  Existing party rows still exist — `party.html` continues to load
+  for anyone who navigates directly, and the politics engine reads
+  them all the same. Reversal: re-apply the `20270583` body of
+  `politician_found_party` and revert the affected UI files.
 
 ### Added — Career roles
 

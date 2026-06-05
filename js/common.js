@@ -302,11 +302,28 @@ export async function loadGameState(requireFaction = true) {
                 return null;
             }
         } else {
-            // Pick the active faction from sessionStorage, or default to primary
+            // Pick the active faction from sessionStorage, or default to
+            // primary. Sunset Phase 1 (20270612): party / movement_party
+            // factions are filtered out of the pick so a stale
+            // sessionStorage active_faction_id pointing at a party row
+            // is overridden — the user lands on a Politician or
+            // Entrepreneur they own instead. Existing party rows still
+            // exist; this is only the entry-point gate. If a user owns
+            // *only* parties (degenerate post-sunset edge case), fall
+            // through to the unfiltered list so the app still loads.
+            const switchable = ownedFactions.filter(f => !isHiddenFromSwitcher(f));
+            const pool       = switchable.length ? switchable : ownedFactions;
             const activeFactionId = sessionStorage.getItem('active_faction_id');
-            faction = ownedFactions.find(f => f.id === activeFactionId)
-                || ownedFactions.find(f => f.id === user.id)
-                || ownedFactions[0];
+            faction = pool.find(f => f.id === activeFactionId)
+                || pool.find(f => f.id === user.id)
+                || pool[0];
+            // If the previously-stored active was a party, clear the
+            // sessionStorage stamp so the next visit doesn't keep
+            // re-targeting it (the line above already overrode it for
+            // this load; this just stops the stale value from sticking).
+            if (activeFactionId && !pool.find(f => f.id === activeFactionId)) {
+                sessionStorage.setItem('active_faction_id', faction.id);
+            }
         }
     }
 
@@ -858,7 +875,7 @@ export function updateTopBarInfo(faction, shard, nation) {
     if (dropdown && _userFactions.length > 0) {
         let html = '';
         for (const f of _userFactions) {
-            if (isHiddenFromSwitcher(f)) continue;   // legacy corps retired from switcher
+            if (isHiddenFromSwitcher(f)) continue;   // legacy corps + parties hidden from switcher
             const isActive = faction && f.id === faction.id;
             const { label, color } = getFactionTypeBadge(f.faction_type);
             html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}')">
