@@ -916,23 +916,23 @@ const GOVT_SERVICE_RUNGS = [
   },
   {
     tierNum: 2,
-    name: 'Senior Civil Servant / Section Head',
+    name: 'Agency Head',
     trackPill:   { label: 'CIVIL SERVICE', kind: 'field' },
     held:        ()  => false,
     descIfHeld:  ()  => 'You advise upward on policy detail but cannot decide alone.',
-    descIfNot:   ()  => 'A middle-rank official running a section of a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
+    descIfNot:   ()  => 'A middle-rank official running an agency within a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
     actions:     ['Draft a Memo', 'Brief a Minister'],
   },
   {
     tierNum: 3,
-    name: 'Department Head / Permanent Secretary',
+    name: 'Deputy Minister',
     trackPill:    { label: 'CIVIL SERVICE', kind: 'field' },
     held:         ()  => false,
     descIfHeld:   ()  => 'You run a ministry between political changes — the institutional memory.',
     descIfNot:    ()  => 'Top of the permanent civil service. You run a ministry between political changes — the institutional memory who tells whichever Minister gets appointed what is and is not possible.',
     actions:      ['Approve Policy', 'Implement Reform'],
     // Held-state exit: surfaces once the held() check is wired so a
-    // Permanent Secretary can resign and stand for election.
+    // Deputy Minister can resign and stand for election.
     actionIfHeld: { label: 'Resign · Enter Politics', kind: 'secondary' },
   },
 
@@ -947,7 +947,7 @@ const GOVT_SERVICE_RUNGS = [
   // ── POLITICAL APPOINTMENT CANOPY ──────────────────────────────────
   {
     tierNum: 4,
-    name: 'Deputy Minister / Junior Minister',
+    name: 'Junior Minister',
     trackPill:   { label: 'APPOINTED', kind: 'appointed' },
     held:        ()  => false,
     descIfHeld:  ()  => 'You carry legislation through the chamber and answer for the Minister when absent.',
@@ -956,6 +956,15 @@ const GOVT_SERVICE_RUNGS = [
   },
   {
     tierNum: 5,
+    name: 'Deputy Minister',
+    trackPill:   { label: 'APPOINTED', kind: 'appointed' },
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You deputise for the Minister and own specific portfolio areas across Cabinet.',
+    descIfNot:   ()  => 'A senior appointed deputy to the Minister. You own discrete policy areas of the portfolio, deputise for the Minister in Cabinet when they are unavailable, and represent the ministry externally.',
+    actions:     ['Oversee Policy', 'Represent the Ministry'],
+  },
+  {
+    tierNum: 6,
     name: 'Minister / Cabinet Member',
     trackPill:   { label: 'APPOINTED', kind: 'appointed' },
     held:        ()  => false,
@@ -964,7 +973,7 @@ const GOVT_SERVICE_RUNGS = [
     actions:     ['Direct a Ministry', 'Defend the Budget'],
   },
   {
-    tierNum: 6, tierName: 'APEX',
+    tierNum: 7, tierName: 'APEX',
     name: 'Prime Minister',
     trackPill:   { label: 'APEX', kind: 'appointed' },
     held:        ()  => false,
