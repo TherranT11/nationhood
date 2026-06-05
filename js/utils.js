@@ -304,6 +304,14 @@ export const OFFICE_TITLES = {
 };
 export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
+// MP-tier predicate — the two politician_office values that count as
+// "sitting Member of Parliament" for legislative gates (Propose New
+// Law, Committee admission, etc.). Single source: every "is this
+// caller an MP?" check across the politician pages reads from here
+// so that adding a third MP-tier office is a one-line change.
+export const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
+export function isMpOffice(office) { return MP_OFFICES.has(office); }
+
 // Civil-service ministry slug → display name. Source of truth for the
 // politician_ministry column (factions; CHECK constraint enumerates the
 // four slugs in migration 20270471). Read by politician-career.html's
@@ -388,7 +396,7 @@ export function tickToYear(tick) {
  */
 export function termEndTickFor(state) {
     const office = state && state.office;
-    if (office === 'member_of_parliament' || office === 'senior_mp') {
+    if (isMpOffice(office)) {
         return Number(state.nextGeneralElectionTick) || null;
     }
     if (office === 'community_organizer' || office === 'city_council_member') {

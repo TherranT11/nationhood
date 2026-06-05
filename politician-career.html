@@ -743,7 +743,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1912,7 +1912,7 @@ function render(politician, shard, nation, party) {
 function chosenCareerLadderId(ctx) {
   const f = ctx?.faction || {};
   const office = f.politician_office;
-  if (office === 'member_of_parliament' || office === 'senior_mp') return 'legislature';
+  if (isMpOffice(office)) return 'legislature';
   if (f.politician_ministry) return 'govt_service';
   if (f.bar_admitted_nation_id) return 'judiciary';
   return null;

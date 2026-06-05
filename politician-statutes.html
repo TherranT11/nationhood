@@ -316,6 +316,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { COMMITTEES } from './js/committees.js';
+import { isMpOffice } from './js/utils.js';
 
 // Article tag suggestions cycle by position; user can't pick yet (v1
 // keeps the modal narrow). 4+ falls back to operative so big bills
@@ -368,7 +369,7 @@ let submitInFlight = false;
   document.getElementById('content').style.display = 'block';
 
   const office = ctx.faction?.politician_office || null;
-  const isMP = office === 'member_of_parliament' || office === 'senior_mp';
+  const isMP = isMpOffice(office);
   const proposeBtn = document.getElementById('propose-law-btn');
   if (proposeBtn) {
     proposeBtn.disabled = !isMP;

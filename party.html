@@ -390,7 +390,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, officeTitle, fmtMoney, displayName } from './js/utils.js';
+import { safeHexColor, factionInitials, officeTitle, fmtMoney, displayName, isMpOffice, MP_OFFICES } from './js/utils.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -560,7 +560,7 @@ function renderSidebar(party, isMine) {
 function renderMpActions() {
   const body = document.getElementById('actions-body');
   if (!body) return;
-  const isMP = _viewerOffice === 'member_of_parliament' || _viewerOffice === 'senior_mp';
+  const isMP = isMpOffice(_viewerOffice);
   body.innerHTML = isMP
     ? `<a class="biz-btn biz-btn-pri" href="politician-statutes.html?propose=1" style="display:block;text-align:center;text-decoration:none;">Propose New Law</a>`
     : `<button class="biz-btn biz-btn-sec" type="button" disabled title="Member of Parliament required" style="width:100%;">Propose New Law</button>`;
@@ -792,15 +792,11 @@ function leadCard(name, role, accent) {
   </div>`;
 }
 
-// MP offices that bubble a member up into the Members of Parliament panel.
-// Senior MP is included so a Tier 2 promotion stays in the MP list.
-const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
-
 function renderMembers(members, accent) {
   // Partition once: anyone holding an MP-class office goes to the
   // National Government panel; everyone else stays in Local Government.
-  // Office is the only signal — keep this lookup in lockstep with MP_OFFICES.
-  const mps = members.filter(m => MP_OFFICES.has(m.politician_office));
+  // MP_OFFICES is the SoT, imported from js/utils.js.
+  const mps  = members.filter(m => MP_OFFICES.has(m.politician_office));
   const rest = members.filter(m => !MP_OFFICES.has(m.politician_office));
   renderMemberPanel(
     document.getElementById('mps-host'),
