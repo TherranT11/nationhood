@@ -5592,14 +5592,24 @@ function initials(s, n) {
           const subLine = r.status === 'open'
             ? (n === 0 ? `awaiting bids · window closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}` : `${n} bid${n === 1 ? '' : 's'} · pick a winner below`)
             : '';
+          // Cancel button is owner-only, open-RFP-only, and gated on
+          // zero pending bids — matches the cancel_ent_aircraft_rfp
+          // precondition so the UI doesn't tease an action the RPC
+          // will refuse.
+          const cancelBtn = (r.status === 'open' && n === 0)
+            ? ownerOnly(`<button class="ap-btn-small list ac-rfp-cancel-btn" data-rid="${r.id}">Cancel</button>`)
+            : '';
+          const rightCell = cancelBtn
+            ? `<div class="sh-row-actions" style="align-items:center;gap:8px;">${prog}${cancelBtn}</div>`
+            : prog;
           const bidsList = (r.status === 'open' && n > 0)
             ? '<div class="sh-row-bids" style="padding:6px 14px 10px 14px;border-top:0.5px solid rgba(255,255,255,0.06);">' + pendingBids.map(b =>
                 `<div class="sh-row-bid" style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:11px;color:#cfcabf;">
                    <div style="flex:1;min-width:0;">${escapeHtml(b.bidder?.name || 'Manufacturer')} · ${escapeHtml(b.design?.name || 'design')} · <b style="color:#fff;">${fmtUsd(Number(b.price_per_unit))}/unit</b></div>
-                   ${ownerOnly(`<button class="ap-btn-small list ac-pick-btn" data-bid="${b.id}">Pick</button>`)}
+                   ${ownerOnly(`<button class="ap-btn-small list ac-pick-btn" data-bid="${b.id}">Pick</button><button class="ap-btn-small list ac-reject-btn" data-bid="${b.id}">Reject</button>`)}
                  </div>`).join('') + '</div>'
             : '';
-          return `<div class="sh-row"><div class="sh-row-info"><div class="sh-row-name">${r.quantity}× ${escapeHtml(AIRCRAFT[r.aircraft_class]?.label || r.aircraft_class)}</div>${subLine ? `<div class="sh-row-sub">${subLine}</div>` : ''}</div>${prog}</div>${bidsList}`;
+          return `<div class="sh-row"><div class="sh-row-info"><div class="sh-row-name">${r.quantity}× ${escapeHtml(AIRCRAFT[r.aircraft_class]?.label || r.aircraft_class)}</div>${subLine ? `<div class="sh-row-sub">${subLine}</div>` : ''}</div>${rightCell}</div>${bidsList}`;
         };
         const rfpSection = `<div class="sh-section-head">Aircraft Orders · ${acRfps.length}</div>${acRfps.length ? acRfps.map(rfpRow).join('') : '<div class="sh-empty">No open aircraft orders — use Request Aircraft above.</div>'}`;
 
@@ -6338,6 +6348,59 @@ function initials(s, n) {
             btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
           }
         }));
+        // Airline rejects a single bid (20270622). The manufacturer
+        // is locked out of re-bidding on this RFP. RFP stays open.
+        pj.querySelectorAll('.ac-reject-btn').forEach(btn => btn.addEventListener('click', async () => {
+          if (btn.dataset.busy === '1') return;
+          if (!confirm('Reject this bid? The manufacturer will be locked out of re-bidding on this order.')) return;
+          btn.dataset.busy = '1';
+          btn.disabled = true;
+          const prev = btn.textContent;
+          btn.textContent = '…';
+          try {
+            const { data, error } = await _supabase.rpc('reject_ent_aircraft_rfp_bid', { p_bid_id: btn.dataset.bid });
+            if (error) throw error;
+            if (!data?.success) {
+              const R = { bid_not_found: 'That bid no longer exists.', bid_not_pending: 'That bid is no longer open.',
+                rfp_not_found: 'RFP not found.', rfp_not_open: 'This RFP is no longer open.',
+                not_airline_owner: 'Only the airline that posted this RFP can reject bids.' };
+              alert(R[data?.reason] || ('Could not reject: ' + (data?.reason || 'unknown')));
+              btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            alert('Failed: ' + (e?.message || e));
+            btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
+          }
+        }));
+        // Airline cancels an open RFP with zero pending bids (20270622).
+        // Lets the airline kill a stalled order and post a fresh one with
+        // different specs. UI gates on n===0 but the RPC double-checks.
+        pj.querySelectorAll('.ac-rfp-cancel-btn').forEach(btn => btn.addEventListener('click', async () => {
+          if (btn.dataset.busy === '1') return;
+          if (!confirm('Cancel this aircraft order? You can post a new one with different specs after.')) return;
+          btn.dataset.busy = '1';
+          btn.disabled = true;
+          const prev = btn.textContent;
+          btn.textContent = '…';
+          try {
+            const { data, error } = await _supabase.rpc('cancel_ent_aircraft_rfp', { p_rfp_id: btn.dataset.rid });
+            if (error) throw error;
+            if (!data?.success) {
+              const R = { rfp_not_found: 'Order not found.', rfp_not_open: 'This order is no longer open.',
+                not_airline_owner: 'Only the airline that posted this order can cancel it.',
+                has_bids: 'A new bid arrived — reject it before cancelling.' };
+              alert(R[data?.reason] || ('Could not cancel: ' + (data?.reason || 'unknown')));
+              btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            alert('Failed: ' + (e?.message || e));
+            btn.dataset.busy = '0'; btn.disabled = false; btn.textContent = prev;
+          }
+        }));
         // Aircraft-order action buttons (Open Orders panel). Same shape as the
         // .eo-* engine handlers above but go through openAircraftOrderModal +
         // cancelAircraftOrder so they target ent_aircraft_orders RPCs.
@@ -6843,6 +6906,7 @@ const openBidModal = (contractId, label, yourCost) => {
       not_manufacturer: 'Only Aviation Manufacturing corps can bid.', not_owner: 'Only the corp owner can bid.',
       design_unavailable: 'Pick one of your available aircraft designs.', class_mismatch: 'That design isn’t the requested class.',
       not_open: 'Bidding has closed.', own_rfp: 'You can’t bid on your own RFP.', rfp_not_found: 'RFP not found.',
+      already_rejected: 'The airline rejected your earlier bid on this order — you can’t re-bid.',
     };
 
     const openAircraftRfpModal = () => {
