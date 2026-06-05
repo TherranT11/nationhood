@@ -5375,7 +5375,7 @@ function initials(s, n) {
           _supabase.from('airline_cities')
             .select('id, name, nation_id, population_pct, is_capital, nation:nations!nation_id(name)').order('name'),
           _supabase.from('corp_aircraft')
-            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id, design:ent_aircraft_designs!ent_design_id(range_nm)')
+            .select('id, aircraft_class, condition, overhaul_count, is_overhauling, route_id, design:ent_aircraft_designs!ent_design_id(name, thrust, weight, range_nm, passengers, airframe_class)')
             .eq('entrepreneur_corp_id', id)
             .order('aircraft_class', { ascending: true })
             .order('created_at', { ascending: true }),
@@ -5467,7 +5467,21 @@ function initials(s, n) {
               const cls  = AIRCRAFT[a.aircraft_class];
               const cond = Math.round(Number(a.condition) || 0);
               const condCls = cond < 30 ? 'red' : cond < 60 ? 'dim' : 'accent';
-              const range = Math.round(Number(a.design?.range_nm) || 0);
+              const d = a.design || null;
+              const range = Math.round(Number(d?.range_nm) || 0);
+              // Design-aware title: when the FK landed (post-20270639
+              // delivery, or the backfill resolved it), the plane row
+              // leads with the model name; otherwise we fall back to the
+              // generic class label (legitimate for off-the-shelf
+              // class-only buys + the founding starter seed).
+              const titleHtml = d?.name
+                ? `<b>${escapeHtml(d.name)}</b> <span class="dim">· ${escapeHtml(cls?.label || a.aircraft_class)}</span>`
+                : escapeHtml(cls?.label || a.aircraft_class);
+              const statBits = [`range ${range}`];
+              if (d?.passengers) statBits.push(`${d.passengers} pax`);
+              if (d?.thrust != null && d.thrust !== '') statBits.push(`thrust ${d.thrust}`);
+              if (d?.weight != null && d.weight !== '') statBits.push(`weight ${d.weight}`);
+              if (a.overhaul_count > 0) statBits.push(`${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}`);
               const assign = a.is_overhauling
                 ? '<span class="dim">In overhaul</span>'
                 : a.route_id
@@ -5479,9 +5493,9 @@ function initials(s, n) {
               return `
                 <div class="sh-row">
                   <div class="sh-row-info">
-                    <div class="sh-row-name">${cls?.label || a.aircraft_class}
+                    <div class="sh-row-name">${titleHtml}
                       <span class="al-cond ${condCls}">${cond}%</span>
-                      <span class="dim">· range ${range}</span>${a.overhaul_count > 0 ? ` <span class="dim">· ${a.overhaul_count} overhaul${a.overhaul_count > 1 ? 's' : ''}</span>` : ''}</div>
+                      <span class="dim">· ${statBits.join(' · ')}</span></div>
                     <div class="sh-row-sub">${assign}</div>
                   </div>
                   ${ownerOnly(`<div class="sh-row-actions">

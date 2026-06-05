@@ -1742,7 +1742,7 @@ const LEGISLATURE_ACTIONS = [
 // existing render logic at renderAffiliation treats them as disabled.
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
-  { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route an incoming dispatch to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
+  { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route up to 3 incoming dispatches to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
   { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +1 Capital. −1 Influence.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
 ];
@@ -4302,19 +4302,35 @@ async function endTrialTurn(trialId) {
 // civil servant for 12 ticks.
 // ════════════════════════════════════════════════════════════════
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
+// One [File Paperwork] click yields up to 3 dispatches (20270638).
+// batchPosition is the ordinal of the dispatch CURRENTLY in the modal
+// (1 → first, 2 → after first submit, 3 → after second submit).
+const FP_BATCH_SIZE = 3;
 const fpState = {
-  dispatch: null,   // current dispatch payload
-  ministry: null,   // selected ministry key
-  agency:   null,   // selected agency key within ministry
-  flagged:  false,  // flag toggle
-  busy:     false,  // submit lock
+  dispatch:      null,   // current dispatch payload
+  ministry:      null,   // selected ministry key
+  agency:        null,   // selected agency key within ministry
+  flagged:       false,  // flag toggle
+  busy:          false,  // submit lock
+  batchPosition: 1,      // 1..FP_BATCH_SIZE — which dispatch in the batch this is
+  anyRouted:     false,  // true once at least one submit has graded — drives close-reload
 };
 
+// Entry point for the role-card click. Opens the modal in a loading
+// state, then pulls the first dispatch via the shared fetch helper.
 async function openFilePaperworkModal() {
-  const back = document.getElementById('fp-back');
+  document.getElementById('fp-back').classList.add('open');
+  fpState.batchPosition = 1;
+  fpState.anyRouted     = false;
+  await loadNextFilePaperworkDispatch();
+}
+
+// Pulls the next dispatch and either renders the routing UI for it
+// or paints an empty/error state. Shared by the initial open and the
+// "Next Dispatch" button between batch slots.
+async function loadNextFilePaperworkDispatch() {
   const content = document.getElementById('fp-content');
   content.innerHTML = `<div class="fp-empty">Loading next dispatch…</div>`;
-  back.classList.add('open');
 
   let resp;
   try {
@@ -4323,7 +4339,8 @@ async function openFilePaperworkModal() {
     resp = data;
   } catch (err) {
     content.innerHTML = `<div class="fp-empty">Couldn't load dispatch — ${escHtml(err?.message || 'network or server error')}.<br><br>
-      <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
+      <button class="fp-btn cancel" id="fp-err-close-btn">Close</button></div>`;
+    document.getElementById('fp-err-close-btn')?.addEventListener('click', closeFilePaperworkModal);
     return;
   }
 
@@ -4333,17 +4350,24 @@ async function openFilePaperworkModal() {
       not_civil_servant: 'Only civil servants can file paperwork.',
     })[resp?.reason] || ('Couldn’t load: ' + (resp?.reason || 'unknown'));
     content.innerHTML = `<div class="fp-empty">${escHtml(reason)}<br><br>
-      <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
+      <button class="fp-btn cancel" id="fp-err-close-btn">Close</button></div>`;
+    document.getElementById('fp-err-close-btn')?.addEventListener('click', closeFilePaperworkModal);
     return;
   }
   if (!resp.dispatch) {
-    content.innerHTML = `<div class="fp-empty">No dispatches in your queue right now.<br>
-      All caught up, or everything you've seen is still on its 12-tick cooldown.<br><br>
-      <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
+    // Queue exhausted. Wording depends on whether anything was routed
+    // earlier in this batch. closeFilePaperworkModal handles the
+    // reload-if-anyRouted side.
+    const exhaustedCopy = fpState.anyRouted
+      ? `You've routed ${fpState.batchPosition - 1} of ${FP_BATCH_SIZE}. No more dispatches available — your queue is dry, or everything left is on its 12-tick cooldown.`
+      : `No dispatches in your queue right now. All caught up, or everything you've seen is still on its 12-tick cooldown.`;
+    content.innerHTML = `<div class="fp-empty">${escHtml(exhaustedCopy)}<br><br>
+      <button class="fp-btn cancel" id="fp-empty-close-btn">Close</button></div>`;
+    document.getElementById('fp-empty-close-btn')?.addEventListener('click', closeFilePaperworkModal);
     return;
   }
 
-  // Reset state for the new dispatch — ministry, agency, flag all blank.
+  // Reset per-dispatch selection state; keep batchPosition.
   fpState.dispatch = resp.dispatch;
   fpState.ministry = null;
   fpState.agency   = null;
@@ -4359,7 +4383,7 @@ function renderFilePaperworkModal() {
   content.innerHTML = `
     <div class="fp-head">
       <div class="fp-head-info">
-        <div class="fp-head-eyebrow">Civil Servant &middot; Handle Paperwork</div>
+        <div class="fp-head-eyebrow">Civil Servant &middot; Handle Paperwork &middot; Dispatch ${fpState.batchPosition} of ${FP_BATCH_SIZE}</div>
         <div class="fp-head-name">Route <em>Incoming Dispatch</em></div>
         <div class="fp-head-meta">Review the document. Select the receiving <strong>ministry</strong> and <strong>agency</strong>. Flag for Senior review if the matter warrants escalation.</div>
       </div>
@@ -4509,6 +4533,9 @@ function wireFilePaperworkHandlers() {
 
 function closeFilePaperworkModal() {
   document.getElementById('fp-back')?.classList.remove('open');
+  // If any dispatch in this batch already graded, reload so the role
+  // card picks up the new stat values + the per-tick lock.
+  if (fpState.anyRouted) location.reload();
 }
 
 async function submitFilePaperwork() {
@@ -4546,6 +4573,7 @@ async function submitFilePaperwork() {
       dispatch_not_approved:    'Dispatch isn’t in the rotation pool.',
       cannot_grade_own_authoring: 'You can’t route a dispatch you authored.',
       on_cooldown:              'You’ve handled this dispatch in the last 12 ticks.',
+      batch_full:               'You’ve already routed the 3 dispatches for this action.',
       cooldown:                 'You’ve already used your Civil Service action this tick.',
     })[resp?.reason] || ('Submit failed: ' + (resp?.reason || 'unknown'));
     alert(reason);
@@ -4555,7 +4583,10 @@ async function submitFilePaperwork() {
     return;
   }
 
-  // Reveal the answer key + rewards.
+  // Reveal the answer key + rewards. anyRouted gates the close-reload
+  // path so an X / Stop after at least one successful submit refreshes
+  // the role card.
+  fpState.anyRouted = true;
   showFilePaperworkResult(resp);
 }
 
@@ -4588,15 +4619,32 @@ function showFilePaperworkResult(resp) {
       <strong>Rewards:</strong> ${rewards}
     </div>`;
 
-  // Tick is burned after submit (20270632 next_civil_service_action_
-  // tick), so no "Next Dispatch" — close reloads the page so the
-  // role card's cooldown / new stat values land.
-  foot.innerHTML = `
-    <div class="fp-btn-row">
-      <button class="fp-btn send" id="fp-close-result-btn">Close</button>
-    </div>`;
-
-  document.getElementById('fp-close-result-btn')?.addEventListener('click', () => location.reload());
+  // Batch-aware footer (20270638): if this wasn't the 3rd dispatch
+  // of the batch, offer "Next Dispatch" to chain into another route.
+  // Server-side batch_done is the source of truth; the client mirror
+  // (fpState.batchPosition + 1 > FP_BATCH_SIZE) is just a defensive
+  // fallback when the field is missing.
+  const batchDone = resp.batch_done === true
+    || (Number(resp.batch_position) || fpState.batchPosition) >= FP_BATCH_SIZE;
+  if (batchDone) {
+    foot.innerHTML = `
+      <div class="fp-btn-row">
+        <button class="fp-btn send" id="fp-close-result-btn">Done &middot; Close</button>
+      </div>`;
+    document.getElementById('fp-close-result-btn')?.addEventListener('click', () => location.reload());
+  } else {
+    const remaining = FP_BATCH_SIZE - (Number(resp.batch_position) || fpState.batchPosition);
+    foot.innerHTML = `
+      <div class="fp-btn-row">
+        <button class="fp-btn cancel" id="fp-stop-batch-btn">Stop here</button>
+        <button class="fp-btn send" id="fp-next-dispatch-btn">Next Dispatch &middot; ${remaining} left</button>
+      </div>`;
+    document.getElementById('fp-stop-batch-btn')?.addEventListener('click', () => location.reload());
+    document.getElementById('fp-next-dispatch-btn')?.addEventListener('click', () => {
+      fpState.batchPosition = (Number(resp.batch_position) || fpState.batchPosition) + 1;
+      loadNextFilePaperworkDispatch();
+    });
+  }
 }
 
 init();

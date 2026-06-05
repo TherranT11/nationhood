@@ -576,13 +576,11 @@
   <details id="sec-ministries" class="sec">
     <summary>Ministries</summary>
     <div class="sec-body">
-      <a class="sec-cta" href="politician-ministry-foreign.html">
-        <div class="cta-arrow">&rsaquo;</div>
-        <div>
-          <div class="cta-title">Foreign Affairs &amp; Trade</div>
-          <div class="cta-sub">Conducts the Republic's foreign relations, negotiates treaties and trade agreements, manages embassies and consulates, and represents the nation before international bodies.</div>
-        </div>
-      </a>
+      <!-- CTA cards populated at init() from MINISTRY_NAMES + MINISTRY_
+           BLURBS (js/utils.js) so adding a 5th ministry is a one-line
+           change at the SoT, and the blurb stays in lockstep with
+           politician-ministry.html's Overview card. -->
+      <div id="ministry-ctas-host"></div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -641,7 +639,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 
@@ -816,6 +814,7 @@ async function init() {
     pendingVoteKeys = new Set((data || []).map(v => v.committee?.committee_key).filter(Boolean));
   }
 
+  renderMinistryCtas();
   renderCommittees(ctx.faction?.politician_office || null, viewerMemberships, pendingVoteKeys);
   try {
     await loadVoting(nation.id, Number(ctx.shard?.current_tick) || 0);
@@ -1031,6 +1030,22 @@ function bindMapScope() {
     if (!btn || btn.parentElement !== scope) return;
     scope.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
   });
+}
+
+// Paints the four Ministry CTAs from the SoT maps in js/utils.js.
+// Iteration order follows MINISTRY_NAMES; extending the maps with a
+// fifth ministry lights up a new card here automatically.
+function renderMinistryCtas() {
+  const host = document.getElementById('ministry-ctas-host');
+  if (!host) return;
+  host.innerHTML = Object.entries(MINISTRY_NAMES).map(([slug, name]) => `
+    <a class="sec-cta" href="politician-ministry.html?ministry=${escHtml(slug)}">
+      <div class="cta-arrow">&rsaquo;</div>
+      <div>
+        <div class="cta-title">${escHtml(name)}</div>
+        <div class="cta-sub">${escHtml(MINISTRY_BLURBS[slug] || '')}</div>
+      </div>
+    </a>`).join('');
 }
 
 // Render the Committees panel. Tints the requirement chip on each
