@@ -257,6 +257,36 @@ All notable changes to Nationhood are recorded here. Format inspired by
   place to change the engine-discount math, one place to change the
   draw semantics, no more drift risk.
 
+### Added
+
+- **Board of Directors: CFO / COO roles + resign + COO succession
+  (Phase 1).** Extends the existing CEO + Director board with two
+  named officer roles, a voluntary-resignation path, and a COO-first
+  CEO-succession rule. Migration `20270614`:
+  • `corp_board_seats.role` (`NULL` / `'cfo'` / `'coo'`) with a
+    partial unique index so only one CFO and one COO per corp.
+  • `factions.next_board_apply_tick` cooldown stamp set by voluntary
+    resignation; blocks `corp_board_request_join` until expiry
+    (5-tick window).
+  • `corp_appoint_role` (CEO appoints a seated Director to CFO/COO;
+    auto-swaps any existing holder), `corp_clear_role` (drops a
+    CFO/COO back to plain Director), `corp_board_resign` (caller
+    self-resigns, stamps cooldown, fires `politician_career_events`
+    'removed_from_board' with reason 'voluntary' and an `event_log`
+    world entry), `corp_remove_director` (CEO kicks a board member —
+    no cooldown applied, same career + world events with reason
+    'forced').
+  • `corp_no_confidence_resolve` re-issued so the ousted-CEO
+    successor selection prefers the seated COO over the highest
+    shareholder (`ORDER BY (s.role = 'coo') DESC NULLS LAST`,
+    shares desc, joined_tick asc).
+  Board card on `entrepreneur-corp.html` now surfaces role badges
+  (`DIRECTOR · CFO` / `DIRECTOR · COO`) and a uniform action strip
+  per director: CEO sees Appoint CFO / Appoint COO / Clear Role /
+  Remove; the seated member sees Resign. Phase 2 (CFO-initiated
+  dividend voting) and Phase 3 (per-tick Reputation / Skill /
+  Influence drips for tenure) are separate follow-ups.
+
 ### Changed
 
 - **Case-drafting witnesses: side dropdown + 5 questions per phase.**
