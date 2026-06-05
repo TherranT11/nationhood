@@ -1736,11 +1736,16 @@ function renderAffiliation(ctx) {
   // nation's next_election_tick; local seats run a 12-tick term from
   // when they won. Renders nothing for offices without a scheduled
   // end (no office, or office without term tracking).
-  const wonAt = Number(ctx.faction?.politician_office_won_at_tick) || 0;
+  // Pass the raw column to termEndTickFor (not the || 0 coerced wonAt
+  // below) so NULL-won-at orphans return endTick=null and the tenure
+  // block hides instead of rendering a fake "Jan 2001" — same case
+  // the 20270629 server-side cleanup clears.
+  const wonAtRaw = ctx.faction?.politician_office_won_at_tick;
+  const wonAt = Number(wonAtRaw) || 0;
   const endTick = termEndTickFor({
     office,
     nextGeneralElectionTick: Number(ctx.nation?.next_election_tick) || 0,
-    officeWonAtTick: wonAt,
+    officeWonAtTick: wonAtRaw,
   });
   const remaining = endTick != null ? Math.max(0, endTick - currentTick) : null;
   // Elected line surfaces politician_office_won_at_tick (already stored
