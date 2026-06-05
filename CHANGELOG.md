@@ -257,6 +257,21 @@ All notable changes to Nationhood are recorded here. Format inspired by
   place to change the engine-discount math, one place to change the
   draw semantics, no more drift risk.
 
+### Changed
+
+- **Case-drafting witnesses: side dropdown + 5 questions per phase.**
+  Each witness on `courtcase.html` now carries a "Witness for"
+  selector (Plaintiff / Defendant) at the top of the card next to
+  Gender, so the drafter records which side is calling the witness
+  rather than leaving it implicit. `MAX_QA_PER_PHASE` bumped from 3
+  to 5 — Direct and Cross examinations can each hold up to five
+  Q&A pairs (up from three). Server-side `submit_court_case_draft`
+  only caps witness count, not Q&A per phase, so this is a
+  pure client change. New `side` field is stored verbatim in
+  `court_case_drafts.witnesses[]`; surfacing it on the trial UI
+  during play (the "Witness for Plaintiff" label during examination)
+  is a follow-up — `get_trial_state` doesn't return it yet.
+
 ### Fixed
 
 - **Trial chat: opposing counsel can now read the text of played
