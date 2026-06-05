@@ -1118,15 +1118,31 @@ const GOVERNMENT_RUNGS = [
     held:        (s) => s.office === 'city_council_member',
     descIfHeld:  ()  => 'You hold an elected seat on the city council, voting on budgets and ordinances.',
     descIfNot:   ()  => 'An elected seat on a city or town council. You vote on local budgets and ordinances.',
-    // Eligible only when holding Community Organizer AND ≥ 9 ticks
-    // since winning the seat. Returns null if the holder isn't on the
-    // Community Organizer rung (e.g. they're an MP) so the button
-    // doesn't render on the wrong ladder.
+    // Eligibility (20270635): must currently hold OR have ever held
+    // Community Organizer (politician_former_community_organizer
+    // flag). Returns the gate copy as the disabled label rather than
+    // null so a non-CO holder on a different ladder still sees why
+    // the rung is locked. The 9-tick post-CO-win cooldown applies
+    // only while the caller still holds CO — once the term elapses
+    // (CO → null + flag retained), there's nothing to wait for.
     actionIfNot: (s) => {
-      if (s.office !== 'community_organizer') return null;
-      const opens = (s.officeWonAtTick || 0) + 9;
-      if (s.currentTick < opens) return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
-      return { label: 'Register to Run', kind: 'primary', action: 'register-city-council' };
+      const currentCO = s.office === 'community_organizer';
+      const formerCO  = !!s.formerCommunityOrganizer;
+      if (!currentCO && !formerCO) {
+        return { label: 'Must be or have been a Community Organizer', kind: 'disabled' };
+      }
+      if (currentCO) {
+        const opens = (s.officeWonAtTick || 0) + 9;
+        if (s.currentTick < opens) {
+          return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+        }
+      }
+      // Race-in-flight + party-required guards mirror the entry
+      // checks in runForElectionAction so the button doesn't open
+      // a modal that can only fail.
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-city-council' };
     },
   },
   {
@@ -1774,6 +1790,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     politicianSkill:         Number(ctx?.faction?.politician_skill) || 0,
     seniorCivilServantAtTick: ctx?.faction?.politician_senior_civil_servant_at_tick ?? null,
     agencyHeadOf:            ctx?.faction?.politician_agency_head_of || null,
+    // Sticky "ever held Community Organizer" flag (20270635) — gates
+    // City Council Member [Run for Election] beyond the 12-tick CO
+    // term. politician_resolve_due_elections stamps it on every
+    // community win; backfilled from current CO + career events.
+    formerCommunityOrganizer: !!ctx?.faction?.politician_former_community_organizer,
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
@@ -2214,12 +2235,10 @@ function bindRungActions(ctx) {
     });
   });
 
-  document.querySelectorAll('[data-action="register-city-council"], [data-action="register-senior-mp"]')
+  document.querySelectorAll('[data-action="register-senior-mp"]')
     .forEach(btn => {
       btn.addEventListener('click', async () => {
-        const target = btn.dataset.action === 'register-city-council'
-          ? 'city_council_member'
-          : 'senior_mp';
+        const target = 'senior_mp';
         const prev = btn.textContent;
         btn.disabled = true; btn.textContent = 'Registering…';
         try {
@@ -2268,6 +2287,16 @@ function bindRungActions(ctx) {
   // selector only matches when the gate is open.
   document.querySelectorAll('[data-action="apply-for-promotion"]').forEach(btn => {
     btn.addEventListener('click', () => openAgencyPicker(ctx));
+  });
+
+  // Run for Election — City Council Member (Tier 2, Government &
+  // State). Opens the matchup-style confirm modal; the modal owns
+  // the politician_register_for_office RPC call. The rung's
+  // actionIfNot pre-filters non-eligibility (must be or have been
+  // a Community Organizer, 9-tick post-CO wait, race-in-flight),
+  // so anything reaching here has passed the obvious gates.
+  document.querySelectorAll('[data-action="run-for-city-council"]').forEach(btn => {
+    btn.addEventListener('click', () => openCityCouncilModal(ctx));
   });
 
   // Seek the Bar — Advocate (Judiciary Tier 1). Opens its own modal
@@ -3152,6 +3181,146 @@ async function confirmElection(ctx) {
   // Reload so the Stand for Election callout swaps to "race in progress"
   // and the 1-per-turn gate is reflected everywhere it's read.
   location.reload();
+}
+
+// ─── City Council Member · Run for Election ───────────────────────
+// Tier-2 Government & State race, fired from the City Council Member
+// rung's right-side primary button. Reuses the #electionModal shell
+// (same visual language as the Community Organizer / MP picker —
+// user explicitly asked for the same modal) but renders a single
+// focused card and routes confirm to politician_register_for_office
+// instead of the picker's stand_for_election RPC. Opponent + odds
+// are determined server-side at registration (1d3+1 Skill, see
+// 20270635); the card shows the matchup descriptively rather than
+// pre-rolling.
+function openCityCouncilModal(ctx) {
+  const modal = document.getElementById('electionModal');
+  if (!modal) return;
+  const partyName = ctx?.party?.faction_name || 'your party';
+  const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
+  const skillTxt  = Number.isInteger(skillVal) ? String(skillVal) : skillVal.toFixed(1).replace(/\.0$/, '');
+
+  modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
+  modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">City Council</span>';
+  document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · race resolves next tick`;
+  document.getElementById('em-body').innerHTML = renderCityCouncilCard(skillTxt);
+
+  // Footer stat strip — match the existing picker's three blocks
+  // (labels are fixed in the markup; just refresh the values).
+  const f = ctx.faction || {};
+  document.getElementById('em-stat-infl').textContent = Math.floor(Number(f.political_capital) || 0);
+  document.getElementById('em-stat-cha' ).textContent = Number(f.politician_influence) || 0;
+  document.getElementById('em-stat-cred').textContent = skillVal;
+  document.getElementById('em-footer').style.display = '';
+  const confirmBtn = document.getElementById('em-confirm');
+  confirmBtn.disabled = false;
+  confirmBtn.innerHTML = '&#9873; RUN FOR ELECTION';
+  confirmBtn.onclick = () => confirmCityCouncilRun(ctx);
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  modal.querySelectorAll('[data-em-close]').forEach(btn => {
+    btn.onclick = closeElectionModal;
+  });
+  modal.onclick = (e) => { if (e.target === modal) closeElectionModal(); };
+  document.addEventListener('keydown', emEscHandler);
+}
+
+function renderCityCouncilCard(skillTxt) {
+  // Single focused card — no .em-options grid wrapping, no click-to-
+  // select. The em-opt.community styling carries the same green
+  // accent the user already associates with local-tier races.
+  return `
+    <div class="em-options" style="grid-template-columns:1fr;">
+      <div class="em-opt community selected" data-tier="city_council">
+        <div class="em-opt-head">
+          <div class="em-opt-eyebrow">LOCAL STAKES · CITY COUNCIL</div>
+          <div class="em-opt-title">City Council Member · <span class="serif">Local Ward</span></div>
+          <div class="em-opt-blurb">An elected seat on the city council — you vote on local budgets and ordinances. Steps up from a Community Organizer term.</div>
+        </div>
+        <div class="em-opt-detail">
+          <div class="em-det-row">
+            <span class="em-det-lab">OPPONENT</span>
+            <div style="flex:1;">
+              <div class="em-opp-block">
+                <div class="em-opp-badge" style="background:#101010;color:#9a9a9a;border:0.5px solid rgba(255,255,255,0.07);">?</div>
+                <div class="em-opp-info">
+                  <div class="em-opp-name">Auto-generated candidate</div>
+                  <div class="em-opp-from">Independent · drawn at registration with Skill 1d3 + 1</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="em-det-row">
+            <span class="em-det-lab">TIMEFRAME</span>
+            <span class="em-det-val">1 tick</span>
+          </div>
+          <div class="em-matchup">
+            <div class="em-match-lab">SKILL MATCHUP</div>
+            <div class="em-match-row">
+              <div class="em-match-side em-match-you">
+                <div class="em-match-who">YOU</div>
+                <div class="em-match-val">${escHtml(skillTxt)}</div>
+                <div class="em-match-stat">Skill</div>
+              </div>
+              <span class="em-match-vs">VS</span>
+              <div class="em-match-side">
+                <div class="em-match-who">CANDIDATE</div>
+                <div class="em-match-val">2-4</div>
+                <div class="em-match-stat">Skill (1d3 + 1)</div>
+              </div>
+            </div>
+          </div>
+          <div class="em-stakes">
+            <div class="em-stake win">
+              <div class="em-stake-lab">IF YOU WIN</div>
+              <div class="em-stake-val">+1 Reputation · +1 Party Popularity · +1 Pop. Ceiling · +$100K Party Funds · 12-tick term</div>
+            </div>
+            <div class="em-stake zero">
+              <div class="em-stake-lab">IF YOU LOSE</div>
+              <div class="em-stake-val">No cost</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function confirmCityCouncilRun(ctx) {
+  const btn = document.getElementById('em-confirm');
+  if (!btn) return;
+  btn.disabled = true;
+  const originalLabel = btn.innerHTML;
+  btn.textContent = 'Registering…';
+  try {
+    const { data, error } = await _supabase.rpc('politician_register_for_office',
+      { p_target_office: 'city_council_member' });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:     'Sign in to register.',
+        no_politician:         'No politician on this account.',
+        not_in_party:          'Join a political party first.',
+        no_nation:             'Your politician has no nation.',
+        race_in_progress:      'You are already in a race.',
+        wrong_current_office:  'You must be — or have been — a Community Organizer to run.',
+        too_early:             data.opens_at_tick
+                                 ? `Registration opens at tick ${data.opens_at_tick}.`
+                                 : 'Your Community Organizer term is still settling in.',
+        invalid_target_office: 'Unknown target office.',
+        no_shard:              'Game state unavailable. Try again.',
+      };
+      alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.innerHTML = originalLabel;
+      return;
+    }
+    closeElectionModal();
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.innerHTML = originalLabel;
+  }
 }
 
 init();
