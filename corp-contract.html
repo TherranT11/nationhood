@@ -13,16 +13,16 @@
     --red:#c87a7a; --red-dim:#5a3030; --red-bg:#160e0e;
     --line:rgba(255,255,255,0.06); --line2:rgba(255,255,255,0.04);
     --txt:#d4d4d4; --mut:#888; --faint:#666;
-    /* Politician teal palette (matches .sec-cta, .lcase-card, etc.
-       in politician-nation.html). Replaces the earlier brass/legal
-       palette so the negotiation surface reads as part of the
-       politician UI family. */
-    --legal:#5aafa5; --legal-bright:#7ec5bc; --legal-dim:#2d5a55; --legal-bg:#0d1614;
-    --oil:#5aafa5; --ship:#5aafa5;
-    /* "Paper" is now a dark cool panel rather than warm parchment so
-       the document area matches the rest of the politician dark
-       theme — same shape, different palette. */
-    --paper:#0d1416; --paper-line:rgba(90,175,165,0.18); --paper-text:#d4d4d4;
+    /* --legal / --oil / --ship are aliases for the green palette above.
+       Both surfaces (agreement checkmarks via --green, article headings
+       and eyebrows via --legal) now share one accent so the page reads
+       in a single colour family — was previously a teal #5aafa5 set
+       that sat awkwardly next to the green --green-family checkmarks. */
+    --legal:var(--green); --legal-bright:var(--green-bright); --legal-dim:var(--green-dim); --legal-bg:var(--green-bg);
+    --oil:var(--green); --ship:var(--green);
+    /* "Paper" is a dark green-tinted panel so the document area sits
+       in the same colour family as the rest of the page. */
+    --paper:var(--green-bg); --paper-line:rgba(122,176,122,0.18); --paper-text:#d4d4d4;
   }
   body { background:var(--bg); color:var(--txt);
     font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
