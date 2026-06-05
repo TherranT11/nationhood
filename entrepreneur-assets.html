@@ -26,8 +26,10 @@
   .ch-identity .meta-row .val { color:#d4d4d4; }
 
   /* Status row: Current Location (with the Travel action) · Asset Status ·
-     Warrants — three equal cards that wrap on narrow screens. */
-  .ch-cards { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:20px; }
+     Warrants · Citizenship — four equal cards that wrap on narrow screens.
+     The .ch-boards row below stays at 3 columns (its own visual band),
+     intentionally not aligned 1:1 with these four. */
+  .ch-cards { display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-top:20px; }
   .ch-card {
     min-width:0;
     background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
@@ -40,6 +42,21 @@
     font-size:9px; letter-spacing:0.1em; color:#8aaa6a; border:0.5px solid rgba(138,170,106,0.3);
     border-radius:3px; padding:2px 6px;
   }
+
+  /* Citizenship card buttons — secondary visual weight; the Travel
+     button on the location card is the only primary action in this
+     row. Buttons are placeholders for now (no RPC), so render as
+     subdued borderless pills. */
+  .ch-cit-value { font-size:17px; font-weight:500; color:#fff; }
+  .ch-cit-btns { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+  .ch-cit-btn {
+    padding:7px 10px; font-size:9.5px; letter-spacing:0.08em;
+    color:#8aaa6a; background:transparent;
+    border:0.5px solid rgba(138,170,106,0.3); border-radius:3px;
+    cursor:pointer; font-family:inherit; font-weight:600;
+    text-align:left; text-transform:uppercase;
+  }
+  .ch-cit-btn:hover { background:rgba(138,170,106,0.08); color:#fff; }
 
   /* Leaderboard row: shares the 3-column grid so the boards line up under the
      status cards (Reputable under Current Location, Net Worth under Asset
@@ -172,6 +189,14 @@
       <div class="ch-card-label">WARRANTS</div>
       <div id="ch-warrants"></div>
     </div>
+    <div class="ch-card">
+      <div class="ch-card-label">CITIZENSHIP</div>
+      <div class="ch-cit-value" id="ch-citizenship">—</div>
+      <div class="ch-cit-btns">
+        <button class="ch-cit-btn" id="ch-visa-btn" type="button" title="Apply for Visa (coming soon)">Apply for Visa</button>
+        <button class="ch-cit-btn" id="ch-citizenship-btn" type="button" title="Apply for Citizenship (coming soon)">Apply for Citizenship</button>
+      </div>
+    </div>
   </div>
 
   <div class="ch-liability" id="ch-liability">
@@ -230,6 +255,10 @@ import { _supabase } from './js/supabase-client.js';
     if (o && o.ent_origin_nation) originName = o.ent_origin_nation;
   } catch (_) { /* column not migrated yet → origin = current location */ }
   set('ch-origin', originName ? String(originName).toUpperCase() : '—');
+  // Citizenship anchors to home nation (origin), not current location —
+  // a traveller still belongs to the country they were born in.
+  // Buttons are placeholders today (no RPC); the click is silent.
+  set('ch-citizenship', originName ? String(originName) : '—');
   const locTag = document.getElementById('ch-loc-tag');
   const setTag = (loc) => { if (locTag) locTag.textContent = (String(loc || '') === String(originName || '')) ? 'HOME' : 'ABROAD'; };
   setTag(f.nation);
