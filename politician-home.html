@@ -1827,9 +1827,9 @@ const LOCAL_GOV_ACTIONS = [
 // All three share next_local_action_tick so the "one each tick" rule
 // is consistent with the Tier-1 set.
 const CITY_COUNCIL_ACTIONS = [
-  { ic: '👥', name: 'MOBILIZE VOLUNTEERS', cost: '−1 Capital',     desc: 'Direct your volunteers to canvass for the party. +0.1 Party Popularity per Volunteer, capped at the party ceiling.',                               action: 'mobilize-volunteers' },
+  { ic: '👥', name: 'MOBILIZE VOLUNTEERS', cost: '−1 Capital',     desc: 'Direct your volunteers to canvass for the party. +0.05 Party Popularity per Volunteer, capped at the party ceiling.',                              action: 'mobilize-volunteers' },
   { ic: '🛠', name: 'BUILD THE BASE',      cost: 'no cost',        desc: 'Spend the month organising in your district. Roll 1d6: 2–5 → +1 Capital; 6 → +2 Capital; 1 → no gain.',                                            action: 'build-the-base' },
-  { ic: '🏛', name: 'LOBBY A MINISTER',    cost: '−1 Influence',   desc: 'Petition a randomly-assigned Cabinet minister for your ward. Roll 1d6: 5–6 → +1 Capital, +1 Reputation; 2–4 → null; 1 → −1 Reputation. 8-tick cooldown.', action: 'lobby-minister' },
+  { ic: '🏛', name: 'LOBBY A MINISTER',    cost: '−1 Influence',   desc: 'Petition a randomly-assigned Cabinet minister for your ward. Roll 1d6: 5–6 → +1 Capital, +1 Reputation; 2–4 → null; 1 → −1 Reputation, −1 Volunteer. 3-tick cooldown.', action: 'lobby-minister' },
 ];
 const LEGISLATURE_ACTIONS = [
   { ic: '☞',         name: 'FLOOR SPEECH',       cost: 'no cost',           desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.', action: 'floor-speech' },
@@ -2257,12 +2257,12 @@ function fmtBuildTheBaseResult(data) {
 function fmtLobbyMinisterResult(data) {
   const ministry = data.ministry_name || 'a minister';
   if (data.bracket === 'delivered') {
-    return `Lobbied the Minister of ${ministry}: rolled ${data.roll}. +1 Capital (now ${data.new_capital}), +1 Reputation (now ${data.new_reputation}). 8-tick cooldown.`;
+    return `Lobbied the Minister of ${ministry}: rolled ${data.roll}. +1 Capital (now ${data.new_capital}), +1 Reputation (now ${data.new_reputation}). 3-tick cooldown.`;
   }
   if (data.bracket === 'rebuffed') {
-    return `Minister of ${ministry} publicly rebuffed you: rolled 1. −1 Reputation (now ${data.new_reputation}). 8-tick cooldown.`;
+    return `Minister of ${ministry} publicly rebuffed you: rolled 1. −1 Reputation (now ${data.new_reputation}), −1 Volunteer (now ${data.new_volunteers}). 3-tick cooldown.`;
   }
-  return `Lobbied the Minister of ${ministry}: rolled ${data.roll}, no result. Influence consumed. 8-tick cooldown.`;
+  return `Lobbied the Minister of ${ministry}: rolled ${data.roll}, no result. Influence consumed. 3-tick cooldown.`;
 }
 
 function fmtMemoResult(data) {
