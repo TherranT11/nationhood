@@ -425,6 +425,9 @@
 .ah-tenure-val { font-size:13px; color:var(--acc-bright); font-weight:700;
   font-variant-numeric:tabular-nums; display:block; line-height:1; }
 .ah-tenure-lab { font-size:8px; color:#666; margin-top:3px; }
+.ah-tenure-elected { font-size:8px; color:#888; margin-top:6px;
+  padding-top:5px; border-top:0.5px dashed rgba(255,255,255,0.06); letter-spacing:0.04em; }
+.ah-tenure-elected strong { color:#bbb; font-weight:600; font-variant-numeric:tabular-nums; }
 
 .act-row { padding:14px 20px; }
 .ar-lab { font-size:8.5px; letter-spacing:0.14em; color:#666; font-weight:600; margin-bottom:10px; }
@@ -1733,17 +1736,32 @@ function renderAffiliation(ctx) {
   // nation's next_election_tick; local seats run a 12-tick term from
   // when they won. Renders nothing for offices without a scheduled
   // end (no office, or office without term tracking).
-  const wonAt = Number(ctx.faction?.politician_office_won_at_tick) || 0;
+  // Pass the raw column to termEndTickFor (not the || 0 coerced wonAt
+  // below) so NULL-won-at orphans return endTick=null and the tenure
+  // block hides instead of rendering a fake "Jan 2001" — same case
+  // the 20270629 server-side cleanup clears.
+  const wonAtRaw = ctx.faction?.politician_office_won_at_tick;
+  const wonAt = Number(wonAtRaw) || 0;
   const endTick = termEndTickFor({
     office,
     nextGeneralElectionTick: Number(ctx.nation?.next_election_tick) || 0,
-    officeWonAtTick: wonAt,
+    officeWonAtTick: wonAtRaw,
   });
   const remaining = endTick != null ? Math.max(0, endTick - currentTick) : null;
+  // Elected line surfaces politician_office_won_at_tick (already stored
+  // since 20270418) so the card shows when the term began alongside
+  // when it ends. Check the raw column rather than wonAt because the
+  // Number(...) || 0 coalesces NULL to 0 and we'd otherwise hide the
+  // elected line for a legitimate genesis-tick win.
+  const hasWonAt = ctx.faction?.politician_office_won_at_tick != null;
+  const electedHtml = (endTick != null && hasWonAt)
+    ? `<span class="ah-tenure-elected">Elected <strong>${escHtml(tickToDate(wonAt))}</strong></span>`
+    : '';
   const tenureHtml = endTick != null
     ? `<div class="ah-tenure">
          <span class="ah-tenure-val">${escHtml(tickToDate(endTick))}</span>
          <span class="ah-tenure-lab">TERM ENDS · ${remaining} TICK${remaining === 1 ? '' : 'S'} REMAINING</span>
+         ${electedHtml}
        </div>`
     : '';
 

@@ -378,10 +378,18 @@ export function termEndTickFor(state) {
     }
     if (office === 'community_organizer' || office === 'city_council_member') {
         // The "+ 12" is the local-office term length. The server-side
-        // expiry RPC (supabase/migrations/20270625) uses the same
-        // constant — keep the two in sync if the term length ever
-        // changes.
-        return (Number(state.officeWonAtTick) || 0) + 12;
+        // expiry RPC (supabase/migrations/20270625, extended in
+        // 20270629) uses the same constant — keep the two in sync if
+        // the term length ever changes.
+        //
+        // Number.isFinite guard rejects NULL / undefined won-at-tick
+        // (which would otherwise coerce to NaN → || 0 → "+ 12 = tick
+        // 12 → Jan 2001"). An orphaned local role with no anchor
+        // returns null so the caller hides the tenure pill until the
+        // server-side cleanup (20270629) lands.
+        const wonAt = Number(state.officeWonAtTick);
+        if (!Number.isFinite(wonAt)) return null;
+        return wonAt + 12;
     }
     return null;
 }
