@@ -34,7 +34,7 @@
    everyone but disabled unless the viewing politician holds
    politician_office IN ('member_of_parliament','senior_mp'), matching
    the gate used by the existing MP-actions RPCs (20270485 etc.). */
-.mof-action { flex-shrink:0; padding-top:4px; }
+.mof-action { flex-shrink:0; padding-top:4px; display:flex; flex-direction:column; gap:6px; }
 .statute-action { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; color:#5aafa5; background:transparent;
   border:0.5px solid rgba(90,175,165,0.4); border-radius:3px;
@@ -226,6 +226,8 @@
     <div class="mof-action">
       <button class="statute-action" id="propose-law-btn" type="button" disabled
               title="Member of Parliament required">Propose New Law</button>
+      <button class="statute-action" id="amend-law-btn" type="button" disabled
+              title="Member of Parliament required">Amend Law</button>
     </div>
   </div>
 
@@ -312,6 +314,50 @@
   </div>
 </div>
 
+<!-- Amend Law modal — same .pnl-* chrome as the Propose New Law
+     modal, narrower body: just a statute picker (enacted laws,
+     grouped by category) + a single textarea for the amendment
+     text. Committee + category + section are inherited from the
+     parent statute server-side; no committee picker here. -->
+<div class="pnl-overlay" id="aml-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="pnl-modal" id="aml-modal">
+    <div class="pnl-head">
+      <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
+      <div class="pnl-title">Amend an <em>Existing Law</em></div>
+      <div class="pnl-sub">Select an enacted statute and describe the change. The amendment is referred to the same committee that enacted the parent. <strong>600 characters.</strong></div>
+      <button class="pnl-close" id="aml-close" type="button" title="Cancel">&#10005;</button>
+    </div>
+
+    <div class="pnl-body">
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">STATUTE TO AMEND<span class="req">*</span></div>
+        <div class="pnl-fg-hint" id="aml-statute-hint">Loading enacted statutes&hellip;</div>
+        <div class="pnl-ss" id="aml-statute-list"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">PROPOSED CHANGE<span class="req">*</span></div>
+        <div class="pnl-fg-hint">Describe how the statute should be modified. The committee will draft the operative text.</div>
+        <textarea id="aml-text" maxlength="600"
+                  placeholder="e.g. Strike subsection (b); replace with: &quot;Eligibility extends to permanent residents of two years' standing.&quot;"
+                  style="width:100%;min-height:120px;padding:10px 12px;background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.1);border-radius:4px;color:#cfcabf;font-family:Georgia,serif;font-size:13px;line-height:1.55;resize:vertical;box-sizing:border-box;"></textarea>
+        <div class="pnl-art-counter" id="aml-counter" style="margin-top:6px;">0 / 600 characters</div>
+      </div>
+
+    </div>
+
+    <div class="pnl-err" id="aml-err"></div>
+
+    <div class="pnl-foot">
+      <div class="pnl-foot-note">
+        Amendments enter the committee's queue alongside new bills. <strong>You retain authorship.</strong>
+      </div>
+      <button type="button" class="pnl-submit" id="aml-submit">&#9999; SEND TO COMMITTEE</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
@@ -376,16 +422,24 @@ let submitInFlight = false;
     proposeBtn.title = isMP ? '' : 'Member of Parliament required';
     if (isMP) proposeBtn.addEventListener('click', openModal);
   }
+  const amendBtn = document.getElementById('amend-law-btn');
+  if (amendBtn) {
+    amendBtn.disabled = !isMP;
+    amendBtn.title = isMP ? '' : 'Member of Parliament required';
+    if (isMP) amendBtn.addEventListener('click', openAmendModal);
+  }
 
   wireModalChrome();
+  wireAmendModalChrome();
 
-  // ?propose=1 deep-link from party.html's Member of Parliament
-  // panel — open the modal straight away when the viewer qualifies.
-  // Non-MPs hitting the link still see the static page with the
-  // disabled button explaining the gate.
-  if (isMP && new URLSearchParams(location.search).get('propose') === '1') {
-    openModal();
-  }
+  // ?propose=1 / ?amend=1 deep-links from party.html's Member of
+  // Parliament panel — open the matching modal straight away when
+  // the viewer qualifies. Non-MPs hitting either link still land
+  // on the static page with the disabled-button gate.
+  const queryAction = new URLSearchParams(location.search).get('propose')
+    ? 'propose' : new URLSearchParams(location.search).get('amend') ? 'amend' : null;
+  if (isMP && queryAction === 'propose') openModal();
+  if (isMP && queryAction === 'amend')   openAmendModal();
   // Defensive try/catch — the renderer already null-guards every
   // host element and bucket, but an unexpected DOM throw here
   // shouldn't take down the whole page.
@@ -680,6 +734,178 @@ async function submit() {
     err.classList.add('show');
     submitInFlight = false;
     refreshSubmitState();
+  }
+}
+
+// ─── Amend Law ────────────────────────────────────────────────────
+// Same .pnl-* chrome as the propose-new-law modal; narrower body.
+// The user picks an enacted statute and writes free-text describing
+// the change; the server inherits committee + category + section
+// from the parent so there's no committee picker here.
+const amendDraft = {
+  amendsProposalId: null,
+  text:             '',
+};
+let amendInFlight = false;
+let amendStatutes = [];   // cached enacted-laws snapshot for the picker
+
+const AMEND_CATEGORY_LABELS = {
+  constitutional: 'Constitutional',
+  criminal:       'Criminal',
+  civil:          'Civil',
+  commercial:     'Commercial',
+  electoral:      'Electoral',
+};
+
+const AMEND_REASON_HUMAN = {
+  not_authenticated:        'Sign in to amend a law.',
+  no_politician:            'No politician faction found.',
+  not_mp:                   'Only Members of Parliament may submit amendments.',
+  invalid_target:           'Pick a statute to amend.',
+  target_not_found:         'That statute no longer exists.',
+  target_not_enacted:       'That proposal is not enacted — pick an enacted statute.',
+  wrong_nation:             'That statute belongs to a different nation.',
+  empty_amendment:          'Write what you want changed.',
+  amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
+  parent_committee_missing: 'The original committee for that statute is gone — try a different statute.',
+};
+
+async function openAmendModal() {
+  if (!politicianCtx?.nation?.id) {
+    alert('No nation associated with this politician.');
+    return;
+  }
+  amendDraft.amendsProposalId = null;
+  amendDraft.text = '';
+  document.getElementById('aml-text').value = '';
+  document.getElementById('aml-err').classList.remove('show');
+  document.getElementById('aml-err').textContent = '';
+  refreshAmendCounter();
+  refreshAmendSubmitState();
+
+  const hint = document.getElementById('aml-statute-hint');
+  const list = document.getElementById('aml-statute-list');
+  hint.textContent = 'Loading enacted statutes…';
+  list.innerHTML = '';
+
+  const { data, error } = await _supabase.from('committee_proposals')
+    .select('id, category, section')
+    .eq('nation_id', politicianCtx.nation.id)
+    .eq('status', 'enacted')
+    .order('category', { ascending: true })
+    .order('section',  { ascending: true });
+  if (error) {
+    hint.textContent = 'Could not load statutes — ' + (error.message || 'try again').slice(0, 80) + '.';
+    return;
+  }
+  amendStatutes = data || [];
+  if (!amendStatutes.length) {
+    hint.textContent = 'No enacted statutes yet — nothing to amend.';
+  } else {
+    hint.textContent = `${amendStatutes.length} enacted statute${amendStatutes.length === 1 ? '' : 's'} — click one to select.`;
+    list.innerHTML = amendStatutes.map(s => `
+      <button type="button" class="pnl-ss-chip" data-id="${escapeHtml(s.id)}"
+              style="font-size:10px;padding:6px 11px;">
+        <span style="color:#7a9aab;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;font-size:8px;margin-right:6px;">${escapeHtml(AMEND_CATEGORY_LABELS[s.category] || s.category || '')}</span>${escapeHtml(s.section || '')}
+      </button>`).join('');
+  }
+
+  const ov = document.getElementById('aml-overlay');
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden', 'false');
+}
+
+function closeAmendModal() {
+  if (amendInFlight) return;
+  const ov = document.getElementById('aml-overlay');
+  ov.classList.remove('show');
+  ov.setAttribute('aria-hidden', 'true');
+}
+
+function wireAmendModalChrome() {
+  document.getElementById('aml-close').addEventListener('click', closeAmendModal);
+  document.getElementById('aml-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'aml-overlay') closeAmendModal();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('aml-overlay').classList.contains('show')) {
+      closeAmendModal();
+    }
+  });
+  document.getElementById('aml-statute-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-id]');
+    if (!btn) return;
+    amendDraft.amendsProposalId = btn.dataset.id;
+    document.querySelectorAll('#aml-statute-list .pnl-ss-chip').forEach(c => {
+      c.classList.toggle('selected', c === btn);
+      // Visual selection — borrow the .pnl-cat.selected accent via inline style
+      // since .pnl-ss-chip has no .selected rule of its own.
+      c.style.background = c === btn ? 'var(--leg-bg)' : '#0a0807';
+      c.style.borderColor = c === btn ? 'var(--leg)' : 'var(--line)';
+      c.style.color = c === btn ? 'var(--leg-bright)' : 'var(--text-dim)';
+    });
+    refreshAmendSubmitState();
+  });
+  document.getElementById('aml-text').addEventListener('input', (e) => {
+    amendDraft.text = e.target.value;
+    refreshAmendCounter();
+    refreshAmendSubmitState();
+  });
+  document.getElementById('aml-submit').addEventListener('click', submitAmendment);
+}
+
+function refreshAmendCounter() {
+  const len = amendDraft.text.length;
+  const el = document.getElementById('aml-counter');
+  el.textContent = `${len} / 600 characters`;
+  el.classList.toggle('warn', len > 480 && len <= 600);
+  el.classList.toggle('over', len > 600);
+}
+
+function refreshAmendSubmitState() {
+  const ok = amendDraft.amendsProposalId && amendDraft.text.trim().length > 0
+    && amendDraft.text.length <= 600;
+  document.getElementById('aml-submit').disabled = !ok || amendInFlight;
+}
+
+async function submitAmendment() {
+  if (amendInFlight) return;
+  const err = document.getElementById('aml-err');
+  err.classList.remove('show'); err.textContent = '';
+
+  if (!amendDraft.amendsProposalId || !amendDraft.text.trim()) return;
+
+  amendInFlight = true;
+  refreshAmendSubmitState();
+
+  try {
+    const { data, error } = await _supabase.rpc('committee_propose_amendment', {
+      p_amends_proposal_id: amendDraft.amendsProposalId,
+      p_amendment_text:     amendDraft.text.trim(),
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const reason = data?.reason || 'unknown';
+      err.textContent = AMEND_REASON_HUMAN[reason] || `Could not submit (${reason}).`;
+      err.classList.add('show');
+      amendInFlight = false;
+      refreshAmendSubmitState();
+      return;
+    }
+    // Send the player to the receiving committee so they see the
+    // amendment land in the queue. Same pattern as propose_law.
+    const goKey = data.committee_key;
+    if (goKey) {
+      window.location.href = `committee.html?key=${encodeURIComponent(goKey)}`;
+    } else {
+      closeAmendModal();
+      location.reload();
+    }
+  } catch (e) {
+    err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    amendInFlight = false;
+    refreshAmendSubmitState();
   }
 }
 

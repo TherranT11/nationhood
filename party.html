@@ -561,9 +561,14 @@ function renderMpActions() {
   const body = document.getElementById('actions-body');
   if (!body) return;
   const isMP = isMpOffice(_viewerOffice);
-  body.innerHTML = isMP
-    ? `<a class="biz-btn biz-btn-pri" href="politician-statutes.html?propose=1" style="display:block;text-align:center;text-decoration:none;">Propose New Law</a>`
-    : `<button class="biz-btn biz-btn-sec" type="button" disabled title="Member of Parliament required" style="width:100%;">Propose New Law</button>`;
+  // Two parallel CTAs — Propose New Law and Amend Law — both deep-
+  // link to politician-statutes.html with ?propose=1 / ?amend=1 so
+  // the matching modal auto-opens on arrival rather than duplicating
+  // the modal markup here.
+  const cta = (label, query) => isMP
+    ? `<a class="biz-btn biz-btn-pri" href="politician-statutes.html?${query}=1" style="display:block;text-align:center;text-decoration:none;">${label}</a>`
+    : `<button class="biz-btn biz-btn-sec" type="button" disabled title="Member of Parliament required" style="width:100%;">${label}</button>`;
+  body.innerHTML = cta('Propose New Law', 'propose') + cta('Amend Law', 'amend');
 }
 
 async function loadAndPollChat(party) {
