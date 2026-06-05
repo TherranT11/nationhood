@@ -40,8 +40,14 @@
 
   .body{display:grid;grid-template-columns:1.05fr 1fr;gap:14px;margin-bottom:14px;align-items:start;}
 
-  .doc-side{background:var(--paper);border:1px solid var(--paper-line);border-radius:7px;overflow:hidden;display:flex;flex-direction:column;}
-  .doc-head{padding:16px 24px 12px;border-bottom:1px solid var(--paper-line);background:#1e1916;}
+  .doc-side{background:var(--paper);border:1px solid var(--paper-line);border-radius:7px;display:flex;flex-direction:column;position:relative;z-index:5;}
+  /* overflow visible (not hidden) so the stat dropdown can escape the
+     bottom of the card. position:relative + z-index:5 keeps the
+     overflowing dropdown above the .foot submit bar which follows in
+     DOM order. Top + bottom inner sections take their own rounded
+     corners so the inner backgrounds still hug the parent's rounded
+     edge now that overflow doesn't clip them. */
+  .doc-head{padding:16px 24px 12px;border-bottom:1px solid var(--paper-line);background:#1e1916;border-top-left-radius:6px;border-top-right-radius:6px;}
   .doc-eyebrow{font-size:8px;letter-spacing:0.16em;color:var(--paper-mut);font-weight:700;text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
   .doc-eyebrow .preview-pill{font-size:7.5px;letter-spacing:0.13em;color:var(--paper-text);background:var(--paper);border:1px solid var(--paper-line);padding:2px 7px;border-radius:2px;}
 
@@ -98,7 +104,7 @@
   .stat-help strong{color:#aaa;font-style:normal;font-weight:600;}
   .stat-help em{color:var(--auth-bright);font-style:italic;}
 
-  .doc-foot{padding:11px 24px;background:#1e1916;border-top:1px solid var(--paper-line);display:flex;align-items:center;gap:10px;}
+  .doc-foot{padding:11px 24px;background:#1e1916;border-top:1px solid var(--paper-line);display:flex;align-items:center;gap:10px;border-bottom-left-radius:6px;border-bottom-right-radius:6px;}
   .doc-foot-lab{font-size:8.5px;letter-spacing:0.14em;color:var(--paper-mut);font-weight:700;text-transform:uppercase;flex-shrink:0;}
   .doc-foot-id{font-family:monospace;font-size:9.5px;color:var(--paper-text);letter-spacing:0.06em;margin-left:auto;}
 
