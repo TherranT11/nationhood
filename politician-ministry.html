@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Politician — Ministry of Foreign Affairs &amp; Trade</title>
+<title>Politician — Ministry</title>
 <style>
 /* Topbar / nav / body base live in js/politician-topbar.js. Per-page
    styles match the section-card chrome used on politician-nation /
@@ -16,7 +16,7 @@
 .mn-head .lab { color:#fff; font-size:18px; font-weight:600; letter-spacing:0.02em; }
 .mn-head .ital { font-family:Georgia, serif; font-style:italic; color:#5aafa5; margin-left:6px; }
 
-/* Overview card — phone badge + title + description on the left, stats on the right. */
+/* Overview card — badge + title + description on the left, stats on the right. */
 .mof-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:7px;
   border-left:3px solid #5aafa5; padding:18px 22px; display:flex; gap:20px; align-items:flex-start; }
 .mof-badge { width:48px; height:48px; flex-shrink:0; border-radius:6px;
@@ -65,21 +65,17 @@
 
 <div class="content" id="content" style="display:none;">
 
-  <!-- Overview -->
+  <!-- Overview — populated by render() once the ministry slug resolves. -->
   <div class="mn-head">
     <span class="mn-num">I.</span>
     <span class="lab">Overview</span>
   </div>
   <div class="mof-card">
-    <div class="mof-badge">&#9742;</div>
+    <div class="mof-badge" id="ministry-badge">&#9742;</div>
     <div class="mof-info">
       <div class="mof-eyebrow">EXECUTIVE BRANCH · CABINET MINISTRY</div>
-      <div class="mof-title">Ministry of Foreign Affairs <span class="ital">&amp; Trade</span></div>
-      <div class="mof-desc">
-        Conducts the Republic's foreign relations, negotiates treaties and trade agreements,
-        manages embassies and consulates, and represents the nation before international
-        bodies. <b>Located at San Maria, Melizea.</b>
-      </div>
+      <div class="mof-title" id="ministry-title">Ministry</div>
+      <div class="mof-desc" id="ministry-desc">Loading…</div>
     </div>
     <div class="mof-stats">
       <div class="mof-stat"><div class="lab">ANNUAL BUDGET</div><div class="val">$0</div></div>
@@ -109,24 +105,68 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, currentAge, escapeHtml } from './js/utils.js';
+import { officeTitle, currentAge, escapeHtml, ministryName } from './js/utils.js';
 
-async function renderActors(nationId, currentTick) {
+// Per-ministry page chrome — title HTML (the italic subordinate
+// matches the foreign page's "Ministry of Foreign Affairs & Trade"
+// pattern), badge glyph, and the descriptive blurb. The display
+// name itself comes from MINISTRY_NAMES in utils.js — the SoT every
+// surface reads from.
+const MINISTRIES_META = {
+  defense: {
+    badge:   '&#9876;',
+    titleHtml: 'Ministry of <span class="ital">Defense</span>',
+    blurb: `Commands the armed forces, oversees national security strategy and military procurement, sets defense doctrine, and represents the Republic in security alliances and matters of war.`,
+  },
+  foreign_affairs: {
+    badge:   '&#9742;',
+    titleHtml: 'Ministry of Foreign Affairs <span class="ital">&amp; Trade</span>',
+    blurb: `Conducts the Republic's foreign relations, negotiates treaties and trade agreements, manages embassies and consulates, and represents the nation before international bodies.`,
+  },
+  economic_development: {
+    badge:   '&#128202;',
+    titleHtml: 'Ministry of Economic <span class="ital">Development</span>',
+    blurb: `Plans national economic policy, manages industrial concessions, oversees infrastructure investment and public works, and represents the Republic in international trade and finance forums.`,
+  },
+  interior: {
+    badge:   '&#127963;',
+    titleHtml: 'Ministry of the <span class="ital">Interior</span>',
+    blurb: `Administers domestic affairs, supervises sub-national government, oversees policing and the civil registry, manages internal security, and coordinates disaster response.`,
+  },
+};
+
+function resolveMinistrySlug() {
+  const slug = new URLSearchParams(location.search).get('ministry');
+  // Fall back to foreign_affairs so a bookmark of the old single-
+  // ministry URL (or a missing param) still lands somewhere useful
+  // rather than rendering an empty shell.
+  return MINISTRIES_META[slug] ? slug : 'foreign_affairs';
+}
+
+function paintHeader(slug) {
+  const meta = MINISTRIES_META[slug];
+  document.title = `Politician — ${ministryName(slug) || 'Ministry'}`;
+  document.getElementById('ministry-badge').innerHTML = meta.badge;
+  document.getElementById('ministry-title').innerHTML = meta.titleHtml;
+  document.getElementById('ministry-desc').textContent = meta.blurb;
+}
+
+async function renderActors(slug, nationId, currentTick) {
   const host = document.getElementById('actors-host');
   if (!host || !nationId) return;
-  // Civil Servants posted to Foreign Affairs & Trade in this nation.
-  // politician_ministry slug = 'foreign_affairs' (set by
-  // politician_sit_the_exam, 20270471). Sorted by founded_tick so the
-  // most senior servant lists first.
+  // Civil Servants posted to this ministry in this nation. The
+  // politician_ministry slug values are set by politician_sit_the_
+  // exam (20270471). Sorted by founded_tick so the most senior
+  // servant lists first.
   const { data, error } = await _supabase.from('factions')
     .select('id, leader_first_name, leader_last_name, founded_tick, politician_office, political_capital')
     .eq('faction_type', 'politician')
     .eq('nation_id', nationId)
-    .eq('politician_ministry', 'foreign_affairs')
+    .eq('politician_ministry', slug)
     .is('abandoned_at', null)
     .order('founded_tick', { ascending: true });
   if (error) {
-    console.warn('[politician-ministry-foreign] actors fetch error:', error.message);
+    console.warn('[politician-ministry] actors fetch error:', error.message);
     return;
   }
   const rows = (data || []).map(a => {
@@ -157,10 +197,12 @@ async function renderActors(nationId, currentTick) {
 (async () => {
   let ctx;
   try { ctx = await bootstrapPolitician('nation'); }
-  catch (e) { console.warn('[politician-ministry-foreign] bootstrap failed:', e?.message || e); return; }
+  catch (e) { console.warn('[politician-ministry] bootstrap failed:', e?.message || e); return; }
   if (!ctx) return;
+  const slug = resolveMinistrySlug();
+  paintHeader(slug);
   document.getElementById('content').style.display = 'block';
-  await renderActors(ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0);
+  await renderActors(slug, ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0);
 })();
 </script>
 
