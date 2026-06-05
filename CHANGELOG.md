@@ -304,6 +304,22 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Airline corps: Revenue Change card now stamps per-tick net.**
+  User reported two airline routes generating "net +$1,500" each
+  per tick (=$3,000/tick total treasury inflow), but the Revenue
+  Change card on `entrepreneur-corp.html` stayed at "$0 · no data
+  yet". Cause: `process_entrepreneur_airline_routes` writes to
+  `treasury_cash` but didn't stamp `last_tick_revenue` /
+  `last_revenue_tick` on `entrepreneur_corps` — the two columns
+  `corp_revenue_change_this_month` reads from. Already flagged as
+  a follow-up in `20270605`'s commit body (oil & gas got the same
+  treatment; airlines / share trades / apartment rents were
+  pending). Migration `20270616` re-issues the airline tick
+  processor with the entrepreneur_corps UPDATE extended to stamp
+  the two columns alongside the treasury credit. Multi-route
+  aggregation per tick handled via CASE: corps running multiple
+  routes accumulate the net across them in one stamp.
+  Share-trade and apartment-rent paths remain pending follow-ups.
 - **Trial chat: opposing counsel can now read the text of played
   evidence.** When a beat was played as part of a trial message,
   the chat card surfaced only "FACT · The Three Workers" — opposing

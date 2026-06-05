@@ -204,13 +204,9 @@ export function renderMilitaryTopBar(container, opts = {}) {
             </div>`;
         }).join('');
     }
-    const hasParty = (allUserFactions || []).some(f => f.faction_type === 'party');
-    if (!hasParty) {
-        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="found-party">
-            <span class="mil-dd-type" style="color:var(--amber)">+</span>
-            <span class="mil-dd-name">Found a Political Party</span>
-        </div>`;
-    }
+    // Political Party founding REMOVED in Sunset Phase 1 (20270612).
+    // Players going forward create only Politicians and Entrepreneurs;
+    // existing parties keep operating but no new ones are accepted.
     // Founding a legacy corporation is retired (corp-cull Phase 1). No entry.
     const hasEntrepreneur = (allUserFactions || []).some(f => f.faction_type === 'entrepreneur');
     if (!hasEntrepreneur) {
@@ -295,11 +291,9 @@ export function renderMilitaryTopBar(container, opts = {}) {
         dd.addEventListener('click', (e) => {
             const item = e.target.closest('.mil-dd-item');
             if (!item) return;
-            if (item.dataset.action === 'found-party') {
-                sessionStorage.setItem('pending_faction_type', 'party');
-                window.location.href = 'select-nation.html';
-                return;
-            }
+            // 'found-party' branch REMOVED in Sunset Phase 1 (20270612).
+            // The render above no longer emits the item, so the click
+            // routing has nothing to dispatch.
             if (item.dataset.action === 'become-entrepreneur') {
                 sessionStorage.setItem('pending_faction_type', 'entrepreneur');
                 window.location.href = 'faction-select.html';
