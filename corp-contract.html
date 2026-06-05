@@ -925,9 +925,11 @@ function renderSignaturesHtml() {
     const blockClass = isSigned ? 'signed' : '';
     let line;
     if (isSigned) {
-      // "Signed" wordmark + tick label. Use the corp name as the
-      // mark so it reads as a corporate signature.
-      line = `<span class="sig-signature">${escapeHtml(partyName || which)}</span>`;
+      // CEO's name on the line — that's who actually signed. Falls back
+      // to the corp name if the signing faction was deleted (FK SET NULL
+      // upstream) so the line never renders blank.
+      const signerName = sig.signed_by_name || partyName || which;
+      line = `<span class="sig-signature">${escapeHtml(signerName)}</span>`;
     } else {
       line = `<span class="sig-signature empty">&mdash; sign here &mdash;</span>`;
     }
