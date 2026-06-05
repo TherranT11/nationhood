@@ -1452,6 +1452,20 @@ async function init() {
     }
   } catch (_) { /* non-fatal — banner just won't show */ }
 
+  // Resolve expired 12-tick terms (community_organizer / city_council_
+  // member) so the rung's held() flips off and the career card's
+  // affiliation / positions count update on the next render (20270625).
+  // Same lazy "resolve due things on page load" pattern. If any term
+  // expired, clear politician_office on ctx.faction so the in-memory
+  // state matches the DB without a refetch.
+  try {
+    const { data } = await _supabase.rpc('politician_resolve_expired_terms');
+    if (data?.expired_count > 0 && ctx.faction) {
+      ctx.faction.politician_office = null;
+      ctx.faction.politician_office_won_at_tick = null;
+    }
+  } catch (_) { /* non-fatal */ }
+
   // Active race row (if any) — drives the Stand for Election callout
   // swap (CTA → "race in progress" pointer to Pressing Issues). Read
   // directly via PostgREST; the RPCs are write paths and returning the

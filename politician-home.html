@@ -1148,6 +1148,12 @@ const CAREER_EVENT_TEMPLATES = {
     `${name}'s civil service exam application to the Ministry of ${target || 'a ministry'} was rejected.`,
   resigned_office: (name, target) =>
     `${name} resigns from their office as ${target || 'an elected official'}.`,
+  // term_ended: written by politician_resolve_expired_terms (20270625)
+  // when a community_organizer / city_council_member's 12-tick term
+  // runs out. Distinct from resigned_office — no penalty, ran its
+  // course.
+  term_ended: (name, target) =>
+    `${name}'s term as ${target || 'an elected official'} has ended.`,
   // Propose New Law — written by committee_propose_law (20270500).
   // target_name is the proposal's section (acts as a stand-in title
   // until a dedicated title field lands on the modal).
@@ -1234,6 +1240,14 @@ async function init() {
     if (!error && data?.resolved) {
       politician.political_capital = data.political_capital;
     }
+  } catch (_) { /* non-fatal */ }
+
+  // Resolve expired 12-tick terms (community_organizer / city_council_
+  // member) so the role card flips back to Party Member as soon as the
+  // term runs out, instead of sitting at "0 TICKS REMAINING" forever
+  // (20270625). Same lazy "resolve due things on page load" pattern.
+  try {
+    await _supabase.rpc('politician_resolve_expired_terms');
   } catch (_) { /* non-fatal */ }
 
   try {
