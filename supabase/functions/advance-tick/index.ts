@@ -14,10 +14,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// AP DEPRECATED (Phase A): the accumulate_ap / deduct_ap preflight
-// check has been removed. Both RPCs still exist in the database as
-// SQL no-ops so any external caller stays green; nothing the tick
-// processor does depends on them anymore.
+// AP REMOVED: the Action Points system has been fully culled. The tick
+// no longer reads, grants, or deducts AP anywhere.
 
 // ===== GAME LOGIC (from js/game/*.js modules) =====
 
@@ -33,10 +31,8 @@ const GAME_CONFIG = {
     QUORUM_THRESHOLD: 0.5,           // 50% of seats must participate (yes+no+abstain) for quorum
     COMMITTEE_EXPIRY_TICKS: 6,
     VETO_APPROVAL_COST: 3,
-    NO_CONFIDENCE_AP_COST: 0,                 // free to file (was 5; party-action redesign)
     NO_CONFIDENCE_VOTING_TICKS: 6,
     NO_CONFIDENCE_COOLDOWN_TICKS: 12,         // 12-tick cooldown per TARGETED PM party (was 6 on caller)
-    FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
     EARLY_ELECTION_TICKS: 0,
@@ -51,11 +47,9 @@ const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
-    MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
     // (Budget bill system removed)
     // Impeachment (Presidential systems only)
-    IMPEACHMENT_AP_COST: 7,
     IMPEACHMENT_COMMITTEE_TICKS: 2,        // debate period before floor vote
     IMPEACHMENT_MOTION_VOTING_TICKS: 6,    // floor vote window for impeachment motion
     IMPEACHMENT_TRIAL_TICKS: 3,            // trial period (conviction vote window)
@@ -196,27 +190,6 @@ function initGameConfigForNation(nation) {
 }
 
 const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window — applied both pre- and post-snap
-
-/**
- * AP system has been deprecated (Phase A of removal — see CLAUDE.md history).
- *
- * deductAP / accumulateAP are now no-ops that always succeed without
- * touching the database. Every JS callsite (rallies, attacks, press
- * conferences, ministry actions, etc.) keeps working without code
- * changes; the cost simply isn't applied. The DB column, table, and
- * RPCs are still in place for Phase A — they're stripped in Phase C.
- *
- * The `ledger` argument is accepted and ignored so callers don't need
- * to be updated. The returned shape matches the old success path so
- * `if (result.success)` branches still take the happy path.
- */
-async function deductAP(_supabase, _factionId, _cost, _ledger) {
-    return { success: true, newAp: 0 };
-}
-
-async function accumulateAP(_supabase, _factionId, _gain, _maxAp) {
-    return { success: true, newAp: 0 };
-}
 
 /**
  * Atomically switch a party endorsement target.
@@ -16954,9 +16927,6 @@ function canEndorseProtest(faction, currentTick, isOpposition, callingFactionId,
     if (alreadyEndorsed) {
         return { allowed: false, reason: 'Already endorsed this protest.' };
     }
-    if ((faction.action_points || 0) < 1) {
-        return { allowed: false, reason: 'Need 1 AP to endorse.' };
-    }
     return { allowed: true };
 }
 
@@ -17039,13 +17009,13 @@ function getStatHintColor(statKey, value) {
  * 2. Atomically deduct AP + insert protest_log via RPC
  * 3. Protest enters 'resolving' state (1-tick delay before turnout rolls)
  *
- * Returns { success, protestId, apCost, newAp, useCount } or { success: false, error }
+ * Returns { success, protestId, useCount } or { success: false, error }
  */
 async function executeProtest(supabase, factionId, nationId, grievanceType, grievanceData, demandLabel, currentTick) {
     // ── 1. Load faction ──
     const { data: faction } = await supabase
         .from('factions')
-        .select('id, action_points, protest_use_count, protest_last_use_tick, protest_cooldown_until_tick, protest_locked_by, nation_id')
+        .select('id, protest_use_count, protest_last_use_tick, protest_cooldown_until_tick, protest_locked_by, nation_id')
         .eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
 
@@ -17067,23 +17037,18 @@ async function executeProtest(supabase, factionId, nationId, grievanceType, grie
     const check = canCallProtest(faction, currentTick, isOpposition, activeProtest);
     if (!check.allowed) return { success: false, error: check.reason };
 
-    // ── 4. Compute decayed use count and AP cost ──
+    // ── 4. Compute decayed use count ──
     const decayedUseCount = getDecayedUseCount(
         faction.protest_use_count || 0,
         faction.protest_last_use_tick,
         currentTick
     );
-    const apCost = getProtestCost(decayedUseCount);
 
-    if ((faction.action_points || 0) < apCost) {
-        return { success: false, error: `Not enough AP. Need ${apCost}, have ${faction.action_points || 0}.` };
-    }
-
-    // ── 5. Atomic RPC: deduct AP + insert protest_log ──
+    // ── 5. Atomic RPC: insert protest_log ──
     const { data: protestId, error: rpcError } = await supabase.rpc('execute_protest', {
         p_faction_id: factionId,
         p_nation_id: nationId,
-        p_ap_cost: apCost,
+        p_ap_cost: 0,
         p_grievance_type: grievanceType,
         p_grievance_data: grievanceData || {},
         p_demand_label: demandLabel || '',
@@ -17100,13 +17065,9 @@ async function executeProtest(supabase, factionId, nationId, grievanceType, grie
     return {
         success: true,
         protestId,
-        apCost,
-        newAp: (faction.action_points || 0) - apCost,
         useCount: decayedUseCount + 1,
         headline: 'Protest Organised',
-        effects: [
-            { label: 'AP Spent', value: -apCost },
-        ],
+        effects: [],
         demandText: demandLabel || grievanceType,
         outcomeName: 'Gathering momentum — outcome resolves next tick',
     };
@@ -17122,7 +17083,7 @@ async function endorseProtest(supabase, factionId, nationId, protestId, currentT
     // ── 1. Load faction ──
     const { data: faction } = await supabase
         .from('factions')
-        .select('id, action_points')
+        .select('id')
         .eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
 
@@ -17205,30 +17166,7 @@ async function callOffProtest(supabase, factionId, protestId, currentTick) {
         return { success: false, error: 'Tier 7 protests cannot be called off.' };
     }
 
-    // ── 2. Load faction for AP check ──
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, action_points')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < PROTEST_CONFIG.CALL_OFF_AP) {
-        return { success: false, error: `Not enough AP. Need ${PROTEST_CONFIG.CALL_OFF_AP}.` };
-    }
-
-    // ── 3. Deduct AP ──
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: PROTEST_CONFIG.CALL_OFF_AP,
-    });
-    if (apErr) {
-        console.error('[Protest] deduct_ap failed for call-off:', apErr.message);
-        return { success: false, error: apErr.message };
-    }
-    if (newAp < 0) {
-        return { success: false, error: 'Insufficient AP.' };
-    }
-
-    // ── 4. Set crisis to wind down — tick processor will end it after 2 ticks ──
+    // ── 2. Set crisis to wind down — tick processor will end it after 2 ticks ──
     const windDownEndTick = currentTick + PROTEST_CONFIG.CALL_OFF_WIND_DOWN_TICKS;
     await protestUpdate(supabase, protestId, {
         crisis_ended_tick: windDownEndTick,
@@ -17250,7 +17188,6 @@ async function callOffProtest(supabase, factionId, protestId, currentTick) {
 
     return {
         success: true,
-        newAp: newAp,
         windDownEndTick,
     };
 }
@@ -17335,7 +17272,7 @@ async function fireProtestEvent(supabase, nationId, triggerKey, tick, placeholde
  * Costs 1 AP, 3-tick cooldown. Reduces civil unrest accumulation by 1 that tick,
  * gives +1 moderate bloc approval to the RULING party.
  *
- * Returns { success, newAp, cooldownUntilTick } or { success: false, error }
+ * Returns { success, cooldownUntilTick } or { success: false, error }
  */
 async function executePublicAddress(supabase, factionId, nationId, protestId, currentTick) {
     // ── 1. Load the protest crisis ──
@@ -17378,15 +17315,7 @@ async function executePublicAddress(supabase, factionId, nationId, protestId, cu
         return { success: false, error: 'Cannot use Public Address in the same tick as Enforce Public Order or National Emergency.' };
     }
 
-    // ── 5. Deduct 1 AP ──
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: PROTEST_CONFIG.PUBLIC_ADDRESS_AP,
-    });
-    if (apErr) return { success: false, error: apErr.message };
-    if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
-
-    // ── 6. Roll for crisis resolution ──
+    // ── 5. Roll for crisis resolution ──
     // T6: 40% chance to end crisis. T7: 15% chance.
     const resolveChance = protest.tier === 7 ? 0.15 : 0.40;
     const roll = Math.random();
@@ -17411,7 +17340,6 @@ async function executePublicAddress(supabase, factionId, nationId, protestId, cu
 
         return {
             success: true,
-            newAp,
             outcome: 'resolved',
             cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
         };
@@ -17429,7 +17357,6 @@ async function executePublicAddress(supabase, factionId, nationId, protestId, cu
 
     return {
         success: true,
-        newAp,
         outcome: 'continued',
         cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
     };
@@ -17475,24 +17402,7 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
         return { success: false, error: 'Cannot use EPO in the same tick as Public Address.' };
     }
 
-    // ── 4. AP cost — use the normal EPO action cost from ministry config ──
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, action_points')
-        .eq('id', factionId).single();
-    const epoApCost = 2; // Base EPO cost
-    if ((faction?.action_points || 0) < epoApCost) {
-        return { success: false, error: `Not enough AP. Need ${epoApCost}, have ${faction?.action_points || 0}.` };
-    }
-
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: epoApCost,
-    });
-    if (apErr) return { success: false, error: apErr.message };
-    if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
-
-    // ── 5. Roll: 33% success, 66% escalation ──
+    // ── 4. Roll: 33% success, 66% escalation ──
     const roll = Math.random();
     const success = roll < PROTEST_CONFIG.TIER6_ENFORCE_SUCCESS_CHANCE;
 
@@ -17518,7 +17428,7 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
         dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
             'The Interior Ministry\'s enforcement action successfully ended the protest crisis.', 1, currentTick, protestId);
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
-        return { success: true, outcome: 'resolved', newAp };
+        return { success: true, outcome: 'resolved' };
     } else {
         // Escalation: T6 → T7. Crisis sunset (Phase 2): the original
         // "2+ other active_crises rows must exist" gate (an active_crises
@@ -17588,7 +17498,7 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
         fireProtestEvent(supabase, nationId, 'protest:epo_escalated', currentTick, {
             protest_id: protestId, demand: demand?.label || '',
         });
-        return { success: true, outcome: 'escalated', newAp, demand };
+        return { success: true, outcome: 'escalated', demand };
     }
 }
 
@@ -17598,7 +17508,7 @@ async function executeEPOOnCrisis(supabase, factionId, nationId, protestId, curr
  * civil_unrest +15, political_violence +10, happiness -10, gov_approval -10.
  * Only the ruling faction can invoke this.
  *
- * Returns { success, newAp } or { success: false, error }
+ * Returns { success } or { success: false, error }
  */
 async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, protestId, currentTick) {
     // ── 1. Load the protest crisis ──
@@ -17629,16 +17539,7 @@ async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, 
         return { success: false, error: 'Cannot declare National Emergency in the same tick as Public Address.' };
     }
 
-    // ── 4. AP cost: 5 AP ──
-    const neCost = 5;
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: neCost,
-    });
-    if (apErr) return { success: false, error: apErr.message };
-    if (newAp < 0) return { success: false, error: `Insufficient AP. Need ${neCost}.` };
-
-    // ── 5. End the crisis immediately ──
+    // ── 4. End the crisis immediately ──
     // Crisis sunset (Phase 2): the matching T6/T7 active_crises row
     // delete is gone; protest_log.status='resolved' is the canonical
     // end signal.
@@ -17674,7 +17575,6 @@ async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, 
 
     return {
         success: true,
-        newAp,
         statPenalties: { civil_unrest: +15, political_violence: +10, happiness: -10, gov_approval: -10 },
     };
 }
@@ -19005,15 +18905,10 @@ function buildAttackVectors(evidence) {
  * Returns { success, outcomeId, outcomeName, headline, effects, weights, opensCounter, newAp }
  */
 async function executeAttack(supabase, factionId, nationId, targetFactionId, vectorId, currentTick) {
-    // ── 1. Validate AP (with leader trait modifiers + polarization scaling) ──
+    // ── 1. Load faction ──
     const { data: faction } = await supabase
-        .from('factions').select('action_points, faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
+        .from('factions').select('faction_name, leader_positive_traits, leader_negative_traits, last_action_tick').eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
-    const baseAttackCost = getAttackAPCost(0);
-    const attackApMod = getTraitAPModifier('attack', faction, currentTick);
-    const effectiveAttackCost = Math.max(1, baseAttackCost + attackApMod);
-    if ((faction.action_points || 0) < effectiveAttackCost)
-        return { success: false, error: `Not enough AP. Need ${effectiveAttackCost}.` };
 
     // ── 2. Load target ──
     const { data: targetFaction } = await supabase
@@ -19079,9 +18974,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         effects.push({ label: 'Polarization', value: outcome.polarization });
     }
 
-    // ── 8. Deduct AP + track last_action_tick ──
-    const attackDetail = 'Campaign Attack' + (attackApMod !== 0 ? ' (trait ' + (attackApMod > 0 ? '+' : '') + attackApMod + ')' : '');
-    const apResult = await deductAP(supabase, factionId, effectiveAttackCost, { reason: 'attack', detail: attackDetail, tick: currentTick });
+    // ── 8. Track last_action_tick ──
     await supabase.from('factions').update({ last_action_tick: currentTick }).eq('id', factionId).then(({ error }) => { if (error) console.warn('[Attack] last_action_tick update failed:', error.message); });
 
     // ── 9. Generate headline ──
@@ -19093,7 +18986,7 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         party_id: factionId,
         nation_id: nationId,
         action_type: 'attack',
-        ap_cost: effectiveAttackCost,
+        ap_cost: 0,
         money_cost: 0,
         tick_performed: currentTick,
         result: {
@@ -19126,7 +19019,6 @@ async function executeAttack(supabase, factionId, nationId, targetFactionId, vec
         effects,
         weights,
         opensCounter,
-        newAp: apResult.newAp ?? ((faction.action_points || 0) - effectiveAttackCost),
     };
 }
 
@@ -21483,7 +21375,6 @@ async function disbandParty(supabase, nationId, factionId, currentTick, opts = {
             nation_id: null,
             abandoned_at: new Date().toISOString(),
             disband_cooldown_until_tick: currentTick + 24,
-            action_points: 0,
             last_seen_tick: null,
             founded_tick: null
         })
@@ -30044,15 +29935,8 @@ async function processWritingRewards(supabase, nationId, currentTick) {
 
     for (const oped of (opeds || [])) {
         if (!oped.author_faction_id || !oped.reward_ap) continue;
-        const { error } = await supabase.rpc('deduct_ap', {
-            p_faction_id: oped.author_faction_id,
-            p_cost: -oped.reward_ap  // Negative cost = add AP
-        });
-        if (!error) {
-            await supabase.from('op_eds').update({ reward_granted: true }).eq('id', oped.id);
-            rewards.push({ type: 'oped', factionId: oped.author_faction_id, ap: oped.reward_ap });
-            console.log(`[processWritingRewards] Op-ed reward: +${oped.reward_ap} AP to faction ${oped.author_faction_id}`);
-        }
+        // AP rewards removed — mark processed so the row isn't re-queried each tick.
+        await supabase.from('op_eds').update({ reward_granted: true }).eq('id', oped.id);
     }
 
     // Player article rewards
@@ -30066,15 +29950,8 @@ async function processWritingRewards(supabase, nationId, currentTick) {
 
     for (const article of (articles || [])) {
         if (!article.author_faction_id || !article.reward_ap) continue;
-        const { error } = await supabase.rpc('deduct_ap', {
-            p_faction_id: article.author_faction_id,
-            p_cost: -article.reward_ap  // Negative cost = add AP
-        });
-        if (!error) {
-            await supabase.from('player_articles').update({ reward_granted: true }).eq('id', article.id);
-            rewards.push({ type: 'article', factionId: article.author_faction_id, ap: article.reward_ap });
-            console.log(`[processWritingRewards] Article reward: +${article.reward_ap} AP to faction ${article.author_faction_id}`);
-        }
+        // AP rewards removed — mark processed so the row isn't re-queried each tick.
+        await supabase.from('player_articles').update({ reward_granted: true }).eq('id', article.id);
     }
 
     return rewards;
@@ -32609,7 +32486,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Fetch active members (full members only, not observers)
                 const { data: members } = await supabase
                     .from('ipo_members')
-                    .select('faction_id, role, factions:faction_id ( id, faction_name, nation_id, action_points, seats )')
+                    .select('faction_id, role, factions:faction_id ( id, faction_name, nation_id, seats )')
                     .eq('org_id', org.id)
                     .eq('is_active', true);
                 const fullMembers = (members || []).filter(m => m.role === 'member');

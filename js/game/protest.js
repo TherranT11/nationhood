@@ -694,9 +694,6 @@ export function canEndorseProtest(faction, currentTick, isOpposition, callingFac
     if (alreadyEndorsed) {
         return { allowed: false, reason: 'Already endorsed this protest.' };
     }
-    if ((faction.action_points || 0) < 1) {
-        return { allowed: false, reason: 'Need 1 AP to endorse.' };
-    }
     return { allowed: true };
 }
 
@@ -779,13 +776,13 @@ export function getStatHintColor(statKey, value) {
  * 2. Atomically deduct AP + insert protest_log via RPC
  * 3. Protest enters 'resolving' state (1-tick delay before turnout rolls)
  *
- * Returns { success, protestId, apCost, newAp, useCount } or { success: false, error }
+ * Returns { success, protestId, useCount } or { success: false, error }
  */
 export async function executeProtest(supabase, factionId, nationId, grievanceType, grievanceData, demandLabel, currentTick) {
     // ── 1. Load faction ──
     const { data: faction } = await supabase
         .from('factions')
-        .select('id, action_points, protest_use_count, protest_last_use_tick, protest_cooldown_until_tick, protest_locked_by, nation_id')
+        .select('id, protest_use_count, protest_last_use_tick, protest_cooldown_until_tick, protest_locked_by, nation_id')
         .eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
 
@@ -807,23 +804,18 @@ export async function executeProtest(supabase, factionId, nationId, grievanceTyp
     const check = canCallProtest(faction, currentTick, isOpposition, activeProtest);
     if (!check.allowed) return { success: false, error: check.reason };
 
-    // ── 4. Compute decayed use count and AP cost ──
+    // ── 4. Compute decayed use count ──
     const decayedUseCount = getDecayedUseCount(
         faction.protest_use_count || 0,
         faction.protest_last_use_tick,
         currentTick
     );
-    const apCost = getProtestCost(decayedUseCount);
 
-    if ((faction.action_points || 0) < apCost) {
-        return { success: false, error: `Not enough AP. Need ${apCost}, have ${faction.action_points || 0}.` };
-    }
-
-    // ── 5. Atomic RPC: deduct AP + insert protest_log ──
+    // ── 5. Atomic RPC: insert protest_log ──
     const { data: protestId, error: rpcError } = await supabase.rpc('execute_protest', {
         p_faction_id: factionId,
         p_nation_id: nationId,
-        p_ap_cost: apCost,
+        p_ap_cost: 0,
         p_grievance_type: grievanceType,
         p_grievance_data: grievanceData || {},
         p_demand_label: demandLabel || '',
@@ -840,13 +832,9 @@ export async function executeProtest(supabase, factionId, nationId, grievanceTyp
     return {
         success: true,
         protestId,
-        apCost,
-        newAp: (faction.action_points || 0) - apCost,
         useCount: decayedUseCount + 1,
         headline: 'Protest Organised',
-        effects: [
-            { label: 'AP Spent', value: -apCost },
-        ],
+        effects: [],
         demandText: demandLabel || grievanceType,
         outcomeName: 'Gathering momentum — outcome resolves next tick',
     };
@@ -862,7 +850,7 @@ export async function endorseProtest(supabase, factionId, nationId, protestId, c
     // ── 1. Load faction ──
     const { data: faction } = await supabase
         .from('factions')
-        .select('id, action_points')
+        .select('id')
         .eq('id', factionId).single();
     if (!faction) return { success: false, error: 'Faction not found.' };
 
@@ -945,30 +933,7 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
         return { success: false, error: 'Tier 7 protests cannot be called off.' };
     }
 
-    // ── 2. Load faction for AP check ──
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, action_points')
-        .eq('id', factionId).single();
-    if (!faction) return { success: false, error: 'Faction not found.' };
-    if ((faction.action_points || 0) < PROTEST_CONFIG.CALL_OFF_AP) {
-        return { success: false, error: `Not enough AP. Need ${PROTEST_CONFIG.CALL_OFF_AP}.` };
-    }
-
-    // ── 3. Deduct AP ──
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: PROTEST_CONFIG.CALL_OFF_AP,
-    });
-    if (apErr) {
-        console.error('[Protest] deduct_ap failed for call-off:', apErr.message);
-        return { success: false, error: apErr.message };
-    }
-    if (newAp < 0) {
-        return { success: false, error: 'Insufficient AP.' };
-    }
-
-    // ── 4. Set crisis to wind down — tick processor will end it after 2 ticks ──
+    // ── 2. Set crisis to wind down — tick processor will end it after 2 ticks ──
     const windDownEndTick = currentTick + PROTEST_CONFIG.CALL_OFF_WIND_DOWN_TICKS;
     await protestUpdate(supabase, protestId, {
         crisis_ended_tick: windDownEndTick,
@@ -990,7 +955,6 @@ export async function callOffProtest(supabase, factionId, protestId, currentTick
 
     return {
         success: true,
-        newAp: newAp,
         windDownEndTick,
     };
 }
@@ -1075,7 +1039,7 @@ async function fireProtestEvent(supabase, nationId, triggerKey, tick, placeholde
  * Costs 1 AP, 3-tick cooldown. Reduces civil unrest accumulation by 1 that tick,
  * gives +1 moderate bloc approval to the RULING party.
  *
- * Returns { success, newAp, cooldownUntilTick } or { success: false, error }
+ * Returns { success, cooldownUntilTick } or { success: false, error }
  */
 export async function executePublicAddress(supabase, factionId, nationId, protestId, currentTick) {
     // ── 1. Load the protest crisis ──
@@ -1118,15 +1082,7 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
         return { success: false, error: 'Cannot use Public Address in the same tick as Enforce Public Order or National Emergency.' };
     }
 
-    // ── 5. Deduct 1 AP ──
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: PROTEST_CONFIG.PUBLIC_ADDRESS_AP,
-    });
-    if (apErr) return { success: false, error: apErr.message };
-    if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
-
-    // ── 6. Roll for crisis resolution ──
+    // ── 5. Roll for crisis resolution ──
     // T6: 40% chance to end crisis. T7: 15% chance.
     const resolveChance = protest.tier === 7 ? 0.15 : 0.40;
     const roll = Math.random();
@@ -1151,7 +1107,6 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
 
         return {
             success: true,
-            newAp,
             outcome: 'resolved',
             cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
         };
@@ -1169,7 +1124,6 @@ export async function executePublicAddress(supabase, factionId, nationId, protes
 
     return {
         success: true,
-        newAp,
         outcome: 'continued',
         cooldownUntilTick: currentTick + PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN,
     };
@@ -1215,24 +1169,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         return { success: false, error: 'Cannot use EPO in the same tick as Public Address.' };
     }
 
-    // ── 4. AP cost — use the normal EPO action cost from ministry config ──
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('id, action_points')
-        .eq('id', factionId).single();
-    const epoApCost = 2; // Base EPO cost
-    if ((faction?.action_points || 0) < epoApCost) {
-        return { success: false, error: `Not enough AP. Need ${epoApCost}, have ${faction?.action_points || 0}.` };
-    }
-
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: epoApCost,
-    });
-    if (apErr) return { success: false, error: apErr.message };
-    if (newAp < 0) return { success: false, error: 'Insufficient AP.' };
-
-    // ── 5. Roll: 33% success, 66% escalation ──
+    // ── 4. Roll: 33% success, 66% escalation ──
     const roll = Math.random();
     const success = roll < PROTEST_CONFIG.TIER6_ENFORCE_SUCCESS_CHANCE;
 
@@ -1258,7 +1195,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         dispatchProtestArticle(supabase, nationId, 'protest_epo_resolved', resolvedHeadline,
             'The Interior Ministry\'s enforcement action successfully ended the protest crisis.', 1, currentTick, protestId);
         fireProtestEvent(supabase, nationId, 'protest:epo_resolved', currentTick, { protest_id: protestId });
-        return { success: true, outcome: 'resolved', newAp };
+        return { success: true, outcome: 'resolved' };
     } else {
         // Escalation: T6 → T7. Crisis sunset (Phase 2): the original
         // "2+ other active_crises rows must exist" gate (an active_crises
@@ -1328,7 +1265,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
         fireProtestEvent(supabase, nationId, 'protest:epo_escalated', currentTick, {
             protest_id: protestId, demand: demand?.label || '',
         });
-        return { success: true, outcome: 'escalated', newAp, demand };
+        return { success: true, outcome: 'escalated', demand };
     }
 }
 
@@ -1338,7 +1275,7 @@ export async function executeEPOOnCrisis(supabase, factionId, nationId, protestI
  * civil_unrest +15, political_violence +10, happiness -10, gov_approval -10.
  * Only the ruling faction can invoke this.
  *
- * Returns { success, newAp } or { success: false, error }
+ * Returns { success } or { success: false, error }
  */
 export async function executeNationalEmergencyOnProtest(supabase, factionId, nationId, protestId, currentTick) {
     // ── 1. Load the protest crisis ──
@@ -1369,16 +1306,7 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
         return { success: false, error: 'Cannot declare National Emergency in the same tick as Public Address.' };
     }
 
-    // ── 4. AP cost: 5 AP ──
-    const neCost = 5;
-    const { data: newAp, error: apErr } = await supabase.rpc('deduct_ap', {
-        p_faction_id: factionId,
-        p_cost: neCost,
-    });
-    if (apErr) return { success: false, error: apErr.message };
-    if (newAp < 0) return { success: false, error: `Insufficient AP. Need ${neCost}.` };
-
-    // ── 5. End the crisis immediately ──
+    // ── 4. End the crisis immediately ──
     // Crisis sunset (Phase 2): the matching T6/T7 active_crises row
     // delete is gone; protest_log.status='resolved' is the canonical
     // end signal.
@@ -1414,7 +1342,6 @@ export async function executeNationalEmergencyOnProtest(supabase, factionId, nat
 
     return {
         success: true,
-        newAp,
         statPenalties: { civil_unrest: +15, political_violence: +10, happiness: -10, gov_approval: -10 },
     };
 }

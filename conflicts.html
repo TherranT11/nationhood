@@ -1165,12 +1165,11 @@ async function renderActionsPanel(incident) {
     const isA = incident.nation_a_id === currentNation.id;
     const role = isA ? incident.nation_a_role : incident.nation_b_role;
     const govType = isA ? incident.nation_a_gov_type : incident.nation_b_gov_type;
-    const ap = currentFaction?.action_points || 0;
 
     const header = document.getElementById('actions-header');
     header.innerHTML = `
         <span>Your Actions — ${currentNation.name} (${role})</span>
-        <span class="actions-leverage">AP: ${ap} | Leverage: ${incident.leverage_a || 0} vs ${incident.leverage_b || 0}</span>
+        <span class="actions-leverage">Leverage: ${incident.leverage_a || 0} vs ${incident.leverage_b || 0}</span>
     `;
 
     // Count active incidents for stretched-thin penalty
@@ -1214,7 +1213,7 @@ async function renderActionsPanel(incident) {
 
     list.innerHTML = actions.map(action => {
         const history = takenMap[action.action_key] || [];
-        const state = getActionState(action, history, ap, stretchedThin, incident);
+        const state = getActionState(action, history, stretchedThin, incident);
         return renderActionRow(action, state, stretchedThin);
     }).join('');
 
@@ -1228,7 +1227,7 @@ async function renderActionsPanel(incident) {
     });
 }
 
-function getActionState(action, history, ap, stretchedThin, incident) {
+function getActionState(action, history, stretchedThin, incident) {
     // One-time and already used
     if (action.is_one_time && history.length > 0) return { state: 'used', label: 'Already used' };
 
@@ -1250,10 +1249,6 @@ function getActionState(action, history, ap, stretchedThin, incident) {
         return { state: 'mediation_locked', label: 'Mediation active' };
     }
 
-    // AP check
-    const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
-    if (totalCost > ap) return { state: 'insufficient_ap', label: `Need ${totalCost} AP` };
-
     return { state: 'available', label: null };
 }
 
@@ -1267,10 +1262,6 @@ function renderActionRow(action, stateInfo, stretchedThin) {
         wait: 'action-icon--wait'
     }[action.escalation_color] || '';
 
-    const apDisplay = action.ap_cost === 0 ? 'Free'
-        : stretchedThin && action.ap_cost > 0 ? `${action.ap_cost}+1 AP`
-        : `${action.ap_cost} AP`;
-
     const levDisplay = action.leverage_min === action.leverage_max
         ? (action.leverage_min === 0 ? '' : `+${action.leverage_min}`)
         : `+${action.leverage_min} to +${action.leverage_max}`;
@@ -1281,7 +1272,7 @@ function renderActionRow(action, stateInfo, stretchedThin) {
             <div class="action-icon ${colorClass}"></div>
             <div class="action-info">
                 <div class="action-name">${action.action_name}</div>
-                <div class="action-detail">${apDisplay}${levDisplay ? ' | Lev. ' + levDisplay : ''}</div>
+                <div class="action-detail">${levDisplay ? 'Lev. ' + levDisplay : ''}</div>
                 ${stateInfo.label ? `<div class="action-state">${stateInfo.label}</div>` : ''}
             </div>
             <div class="action-role-badge">${action.required_role}</div>
@@ -1298,8 +1289,6 @@ function showActionModal(action, incident, stretchedThin) {
     const body = document.getElementById('modal-body');
     const confirmBtn = document.getElementById('modal-confirm');
 
-    const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
-    const ap = currentFaction?.action_points || 0;
     const isA = incident.nation_a_id === currentNation.id;
 
     // Concede gets a serious modal
@@ -1310,8 +1299,6 @@ function showActionModal(action, incident, stretchedThin) {
 
     let bodyHtml = `<div class="modal-description">${action.action_description}</div>`;
     bodyHtml += `<div class="modal-stats">`;
-    bodyHtml += `<div class="modal-stat-row"><span>AP Cost:</span><span>${totalCost}${stretchedThin && action.ap_cost > 0 ? ' <em>(+1 multiple crises)</em>' : ''}</span></div>`;
-    bodyHtml += `<div class="modal-stat-row"><span>Your AP:</span><span>${ap}</span></div>`;
     if (action.leverage_min > 0 || action.leverage_max > 0) {
         bodyHtml += `<div class="modal-stat-row"><span>Leverage:</span><span>+${action.leverage_min} to +${action.leverage_max}</span></div>`;
     }
@@ -1362,31 +1349,8 @@ async function executeAction(action, incident, stretchedThin) {
 
     try {
         const isA = incident.nation_a_id === currentNation.id;
-        const totalCost = action.ap_cost + (stretchedThin && action.ap_cost > 0 ? 1 : 0);
         const isMediation = action.effects_template?.mediation === true;
         const isConcede = action.action_key === 'concede';
-
-        // 1. Deduct AP (if cost > 0)
-        if (totalCost > 0) {
-            const { data: freshFaction } = await _supabase
-                .from('factions')
-                .select('action_points')
-                .eq('id', currentFaction.id)
-                .single();
-            if ((freshFaction?.action_points || 0) < totalCost) {
-                alert('Insufficient AP.');
-                return;
-            }
-            const deductResult = await _supabase.rpc('deduct_ap', {
-                p_faction_id: currentFaction.id,
-                p_cost: totalCost
-            });
-            if (deductResult.error || deductResult.data < 0) {
-                alert('Failed to deduct AP.');
-                return;
-            }
-            currentFaction.action_points = deductResult.data;
-        }
 
         // 2. Handle mediation (hidden proposal — no leverage roll)
         if (isMediation) {
@@ -1414,7 +1378,7 @@ async function executeAction(action, incident, stretchedThin) {
                 nation_id: currentNation.id,
                 action_key: action.action_key,
                 tick: currentTick,
-                ap_spent: totalCost,
+                ap_spent: 0,
                 leverage_rolled: 0,
                 effects_applied: { mediation_proposed: true }
             });
@@ -1537,7 +1501,7 @@ async function executeAction(action, incident, stretchedThin) {
             nation_id: currentNation.id,
             action_key: action.action_key,
             tick: currentTick,
-            ap_spent: totalCost,
+            ap_spent: 0,
             leverage_rolled: leverageRolled,
             backfired,
             effects_applied: backfired ? (action.backfire_effects || {}) : (action.effects_template || {}),
@@ -1618,14 +1582,6 @@ async function refreshIncidentView(incidentId) {
         .eq('id', incidentId)
         .single();
     if (!fresh) return;
-
-    // Refresh faction AP
-    const { data: freshFaction } = await _supabase
-        .from('factions')
-        .select('action_points')
-        .eq('id', currentFaction.id)
-        .single();
-    if (freshFaction) currentFaction.action_points = freshFaction.action_points;
 
     // Update the incident in allIncidents
     const idx = allIncidents.findIndex(i => i.id === incidentId);

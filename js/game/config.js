@@ -1,5 +1,5 @@
 /**
- * config.js — Game configuration constants and AP management
+ * config.js — Game configuration constants
  * Extracted from game-common.js
  */
 
@@ -12,10 +12,8 @@ export const GAME_CONFIG = {
     QUORUM_THRESHOLD: 0.5,           // 50% of seats must participate (yes+no+abstain) for quorum
     COMMITTEE_EXPIRY_TICKS: 6,
     VETO_APPROVAL_COST: 3,
-    NO_CONFIDENCE_AP_COST: 0,                 // free to file (was 5; party-action redesign)
     NO_CONFIDENCE_VOTING_TICKS: 6,
     NO_CONFIDENCE_COOLDOWN_TICKS: 12,         // 12-tick cooldown per TARGETED PM party (was 6 on caller)
-    FOUNDATIONAL_AP_COST: 3,
     FOUNDATIONAL_VOTING_TICKS: 6,
     SUPERMAJORITY_THRESHOLD: 2/3,
     EARLY_ELECTION_TICKS: 0,
@@ -30,11 +28,9 @@ export const GAME_CONFIG = {
     MINISTER_CONFIRMATION_VOTING_TICKS: 6,
     PRESIDENTIAL_TERM_LIMIT: 2,           // max terms before incumbent must step aside
     PRESIDENTIAL_CANDIDATE_LEAD_TICKS: 6, // ticks before presidential election to generate candidates
-    MAX_AP: 20,  // maximum action points a party can accumulate
     TICKS_PER_YEAR: 12,
     // (Budget bill system removed)
     // Impeachment (Presidential systems only)
-    IMPEACHMENT_AP_COST: 7,
     IMPEACHMENT_COMMITTEE_TICKS: 2,        // debate period before floor vote
     IMPEACHMENT_MOTION_VOTING_TICKS: 6,    // floor vote window for impeachment motion
     IMPEACHMENT_TRIAL_TICKS: 3,            // trial period (conviction vote window)
@@ -175,27 +171,6 @@ export function initGameConfigForNation(nation) {
 }
 
 export const FORMATION_DEADLINE_TICKS = 3; // ticks per formation window — applied both pre- and post-snap
-
-/**
- * AP system has been deprecated (Phase A of removal — see CLAUDE.md history).
- *
- * deductAP / accumulateAP are now no-ops that always succeed without
- * touching the database. Every JS callsite (rallies, attacks, press
- * conferences, ministry actions, etc.) keeps working without code
- * changes; the cost simply isn't applied. The DB column, table, and
- * RPCs are still in place for Phase A — they're stripped in Phase C.
- *
- * The `ledger` argument is accepted and ignored so callers don't need
- * to be updated. The returned shape matches the old success path so
- * `if (result.success)` branches still take the happy path.
- */
-export async function deductAP(_supabase, _factionId, _cost, _ledger) {
-    return { success: true, newAp: 0 };
-}
-
-export async function accumulateAP(_supabase, _factionId, _gain, _maxAp) {
-    return { success: true, newAp: 0 };
-}
 
 /**
  * Atomically switch a party endorsement target.

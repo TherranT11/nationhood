@@ -12,21 +12,18 @@
  * 4+ = authoritarian drift penalty (applied by tick processor).
  */
 
-import { GAME_CONFIG, deductAP } from './config.js';
+import { GAME_CONFIG } from './config.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines, NATION_STAT_COLUMN_SET } from './stats.js';
 import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, EO_DOMAIN, getMinistryDomain, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { enactBill } from './bills.js';
-import { getTraitAPModifier } from './party-leadership.js';
 
 // ─── Executive Order Config Constants ───
 
 export const EO_CONFIG = {
     ACTING_MINISTER_AP: 3,
     ACTING_MINISTER_MAX: 3,
-    TAX_ADJUSTMENT_BASE_AP: 2,
-    TAX_ADJUSTMENT_MAX_AP: 4,
     TAX_ADJUSTMENT_DELTA: 3,       // ±3 percentage points
     TAX_ADJUSTMENT_COOLDOWN: 3,    // ticks between same tax type
     PRICE_CONTROLS_AP: 4,
@@ -361,22 +358,6 @@ function randomMinisterName(nationName = '') {
     return { first, last };
 }
 
-/**
- * Get the executive order AP modifier from leader traits.
- * Returns a number to add to the base AP cost.
- */
-async function getEOTraitAPModifier(supabase, factionId) {
-    const { data: faction } = await supabase
-        .from('factions')
-        .select('leader_positive_traits, leader_negative_traits, last_action_tick')
-        .eq('id', factionId)
-        .single();
-    if (!faction) return 0;
-    // Pass tick=0 so quick_study/slow_to_act (first-action-per-tick traits) never fire for EOs —
-    // those traits only apply to campaign actions, not executive orders.
-    return getTraitAPModifier('executive_order', faction, 0);
-}
-
 async function getCurrentTick(supabase) {
     const { data: shard } = await supabase
         .from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
@@ -460,12 +441,6 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
         return { success: false, error: 'This ministry already has a confirmed minister.' };
     }
 
-    // Deduct AP (with leader trait modifier)
-    const eoMod = await getEOTraitAPModifier(supabase, factionId);
-    const effectiveEOCost = Math.max(1, EO_CONFIG.ACTING_MINISTER_AP + eoMod);
-    const apResult = await deductAP(supabase, factionId, effectiveEOCost);
-    if (!apResult.success) return apResult;
-
     // Generate name
     const name = randomMinisterName(nationName);
 
@@ -545,7 +520,7 @@ export async function issueActingMinister(supabase, nationId, factionId, ministr
         { order_type: 'acting_minister', ministry_key: ministryKey }
     );
 
-    return { success: true, newAp: apResult.newAp, ministerName: `${name.first} ${name.last}` };
+    return { success: true, ministerName: `${name.first} ${name.last}` };
 }
 
 // ─── Executive Order: Tax Adjustment ───
@@ -584,22 +559,6 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
         return { success: false, error: `Tax adjustment for ${taxType.replace('_', ' ')} on cooldown (${EO_CONFIG.TAX_ADJUSTMENT_COOLDOWN} ticks).` };
     }
 
-    // Calculate AP cost: 2 + prior uses of same tax type (capped at 4)
-    const { count: totalPriorUses } = await supabase
-        .from('executive_orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('nation_id', nationId)
-        .eq('order_type', 'tax_adjustment')
-        .contains('payload', { tax_type: taxType });
-
-    const baseApCost = Math.min(EO_CONFIG.TAX_ADJUSTMENT_BASE_AP + (totalPriorUses || 0), EO_CONFIG.TAX_ADJUSTMENT_MAX_AP);
-    const eoMod = await getEOTraitAPModifier(supabase, factionId);
-    const apCost = Math.max(1, baseApCost + eoMod);
-
-    // Deduct AP
-    const apResult = await deductAP(supabase, factionId, apCost);
-    if (!apResult.success) return apResult;
-
     // Read current rate
     const { data: nation } = await supabase
         .from('nations').select(taxType).eq('id', nationId).single();
@@ -637,7 +596,7 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
         { order_type: 'tax_adjustment', tax_type: taxType, old_rate: currentRate, new_rate: newRate }
     );
 
-    return { success: true, newAp: apResult.newAp, oldRate: currentRate, newRate, apCost };
+    return { success: true, oldRate: currentRate, newRate };
 }
 
 // ─── Executive Order: Price Controls ───
@@ -672,12 +631,6 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
     if (sameStat.length > 0) {
         return { success: false, error: `Price controls for ${stat.replace('_', ' ')} on cooldown.` };
     }
-
-    // Deduct AP (with leader trait modifier)
-    const eoModPC = await getEOTraitAPModifier(supabase, factionId);
-    const effectivePCCost = Math.max(1, EO_CONFIG.PRICE_CONTROLS_AP + eoModPC);
-    const apResult = await deductAP(supabase, factionId, effectivePCCost);
-    if (!apResult.success) return apResult;
 
     // Read current value
     const { data: nation } = await supabase
@@ -714,7 +667,7 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
         { order_type: 'price_controls', stat, frozen_value: frozenValue }
     );
 
-    return { success: true, newAp: apResult.newAp, frozenValue };
+    return { success: true, frozenValue };
 }
 
 // ─── Executive Order: National Emergency ───
@@ -754,12 +707,6 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
         return { success: false, error: 'A national emergency is already in effect.' };
     }
 
-    // Deduct AP (with leader trait modifier)
-    const eoModNE = await getEOTraitAPModifier(supabase, factionId);
-    const effectiveNECost = Math.max(1, EO_CONFIG.NATIONAL_EMERGENCY_AP + eoModNE);
-    const apResult = await deductAP(supabase, factionId, effectiveNECost);
-    if (!apResult.success) return apResult;
-
     // Insert executive order (no auto-expire)
     const { error: insertErr } = await supabase.from('executive_orders').insert({
         nation_id: nationId,
@@ -794,7 +741,7 @@ export async function issueNationalEmergency(supabase, nationId, factionId) {
         { order_type: 'national_emergency' }
     );
 
-    return { success: true, newAp: apResult.newAp };
+    return { success: true };
 }
 
 // ─── End National Emergency (free action, 0 AP) ───
@@ -864,12 +811,6 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
         return { success: false, error: 'Target faction not found in this nation.' };
     }
 
-    // Deduct AP (with leader trait modifier)
-    const eoModC = await getEOTraitAPModifier(supabase, factionId);
-    const effectiveCensureCost = Math.max(1, EO_CONFIG.CENSURE_AP + eoModC);
-    const apResult = await deductAP(supabase, factionId, effectiveCensureCost);
-    if (!apResult.success) return apResult;
-
     // Check for repeat censure against same target
     const { count: recentCensures } = await supabase
         .from('executive_orders')
@@ -915,7 +856,7 @@ export async function issueCensure(supabase, nationId, factionId, targetFactionI
         { order_type: 'censure', target_faction_id: targetFactionId, is_repeat: isRepeat }
     );
 
-    return { success: true, newAp: apResult.newAp, isRepeat, targetName: target.party_name };
+    return { success: true, isRepeat, targetName: target.party_name };
 }
 
 // ─── Emergency Bill Advancement ───
@@ -1119,12 +1060,6 @@ export async function issueStimulusOrder(supabase, nationId, factionId, stimulus
         return { success: false, error: `"${orderDef.name}" has already been used this term.` };
     }
 
-    // Deduct AP (with leader trait modifier)
-    const eoMod = await getEOTraitAPModifier(supabase, factionId);
-    const apCost = Math.max(1, EO_CONFIG.STIMULATE_ECONOMY_AP + eoMod);
-    const apResult = await deductAP(supabase, factionId, apCost);
-    if (!apResult.success) return apResult;
-
     // Apply stat changes to nation
     const { data: nation } = await supabase
         .from('nations')
@@ -1205,7 +1140,6 @@ export async function issueStimulusOrder(supabase, nationId, factionId, stimulus
 
     return {
         success: true,
-        newAp: apResult.newAp,
         orderName: orderDef.name,
         ideology: orderDef.ideology,
         effects: effectsSummary
@@ -1267,10 +1201,10 @@ export async function checkOrderAvailability(supabase, nationId, factionId, curr
 
     // Acting Minister
     const actingCount = activeOrders.filter(o => o.order_type === 'acting_minister').length;
-    const actingAvailable = actingCount < EO_CONFIG.ACTING_MINISTER_MAX && currentAP >= EO_CONFIG.ACTING_MINISTER_AP;
+    const actingAvailable = actingCount < EO_CONFIG.ACTING_MINISTER_MAX;
     const actingReason = actingCount >= EO_CONFIG.ACTING_MINISTER_MAX
         ? `Max ${EO_CONFIG.ACTING_MINISTER_MAX} acting ministers`
-        : currentAP < EO_CONFIG.ACTING_MINISTER_AP ? 'Insufficient AP' : '';
+        : '';
 
     // Tax Adjustment: check cooldowns per type
     const taxCooldowns = {};
@@ -1283,9 +1217,8 @@ export async function checkOrderAvailability(supabase, nationId, factionId, curr
         taxCooldowns[tt] = recent.length > 0;
     }
     const allTaxesCooling = Object.values(taxCooldowns).every(v => v);
-    const taxAvailable = !allTaxesCooling && currentAP >= EO_CONFIG.TAX_ADJUSTMENT_BASE_AP;
-    const taxReason = allTaxesCooling ? 'All tax types on cooldown'
-        : currentAP < EO_CONFIG.TAX_ADJUSTMENT_BASE_AP ? 'Insufficient AP' : '';
+    const taxAvailable = !allTaxesCooling;
+    const taxReason = allTaxesCooling ? 'All tax types on cooldown' : '';
 
     // Price Controls
     const activePC = activeOrders.filter(o => o.order_type === 'price_controls');
@@ -1299,23 +1232,22 @@ export async function checkOrderAvailability(supabase, nationId, factionId, curr
         pcCooldowns[s] = recent.length > 0;
     }
     const allPCCooling = Object.values(pcCooldowns).every(v => v);
-    const pcAvailable = !allPCCooling && currentAP >= EO_CONFIG.PRICE_CONTROLS_AP;
-    const pcReason = allPCCooling ? 'All price control targets on cooldown'
-        : currentAP < EO_CONFIG.PRICE_CONTROLS_AP ? 'Insufficient AP' : '';
+    const pcAvailable = !allPCCooling;
+    const pcReason = allPCCooling ? 'All price control targets on cooldown' : '';
 
     // National Emergency
     const { data: nation } = await supabase
         .from('nations').select('emergency_cooldown_until').eq('id', nationId).single();
     const hasActiveEmergency = activeOrders.some(o => o.order_type === 'national_emergency');
     const onEmergencyCooldown = nation?.emergency_cooldown_until && currentTick < nation.emergency_cooldown_until;
-    const emergencyAvailable = !hasActiveEmergency && !onEmergencyCooldown && currentAP >= EO_CONFIG.NATIONAL_EMERGENCY_AP;
+    const emergencyAvailable = !hasActiveEmergency && !onEmergencyCooldown;
     const emergencyReason = hasActiveEmergency ? 'Emergency already active'
         : onEmergencyCooldown ? `Cooldown: ${nation.emergency_cooldown_until - currentTick} ticks`
-        : currentAP < EO_CONFIG.NATIONAL_EMERGENCY_AP ? 'Insufficient AP' : '';
+        : '';
 
     // Censure
-    const censureAvailable = currentAP >= EO_CONFIG.CENSURE_AP;
-    const censureReason = currentAP < EO_CONFIG.CENSURE_AP ? 'Insufficient AP' : '';
+    const censureAvailable = true;
+    const censureReason = '';
 
     // Stimulate Economy: check which orders are still available this term
     const usedStimulusKeys = await getUsedStimulusOrders(supabase, nationId);
@@ -1324,21 +1256,20 @@ export async function checkOrderAvailability(supabase, nationId, factionId, curr
         const used = usedStimulusKeys.includes(key);
         stimulusAvailableOrders[key] = {
             ...def,
-            available: !used && currentAP >= EO_CONFIG.STIMULATE_ECONOMY_AP,
-            reason: used ? 'Already used this term'
-                : currentAP < EO_CONFIG.STIMULATE_ECONOMY_AP ? 'Insufficient AP' : '',
+            available: !used,
+            reason: used ? 'Already used this term' : '',
             used
         };
     }
     const anyStimulusAvailable = Object.values(stimulusAvailableOrders).some(o => o.available);
 
     return {
-        acting_minister: { available: actingAvailable, reason: actingReason, apCost: EO_CONFIG.ACTING_MINISTER_AP, currentCount: actingCount },
-        tax_adjustment: { available: taxAvailable, reason: taxReason, apCost: EO_CONFIG.TAX_ADJUSTMENT_BASE_AP, cooldowns: taxCooldowns },
-        price_controls: { available: pcAvailable, reason: pcReason, apCost: EO_CONFIG.PRICE_CONTROLS_AP, cooldowns: pcCooldowns, activeControls: activePC },
-        national_emergency: { available: emergencyAvailable, reason: emergencyReason, apCost: EO_CONFIG.NATIONAL_EMERGENCY_AP, hasActive: hasActiveEmergency, cooldownUntil: nation?.emergency_cooldown_until },
-        censure: { available: censureAvailable, reason: censureReason, apCost: EO_CONFIG.CENSURE_AP },
-        stimulate_economy: { available: anyStimulusAvailable, apCost: EO_CONFIG.STIMULATE_ECONOMY_AP, orders: stimulusAvailableOrders, usedThisTerm: usedStimulusKeys },
+        acting_minister: { available: actingAvailable, reason: actingReason, currentCount: actingCount },
+        tax_adjustment: { available: taxAvailable, reason: taxReason, cooldowns: taxCooldowns },
+        price_controls: { available: pcAvailable, reason: pcReason, cooldowns: pcCooldowns, activeControls: activePC },
+        national_emergency: { available: emergencyAvailable, reason: emergencyReason, hasActive: hasActiveEmergency, cooldownUntil: nation?.emergency_cooldown_until },
+        censure: { available: censureAvailable, reason: censureReason },
+        stimulate_economy: { available: anyStimulusAvailable, orders: stimulusAvailableOrders, usedThisTerm: usedStimulusKeys },
         currentTick,
         taxCooldowns,
         pcCooldowns

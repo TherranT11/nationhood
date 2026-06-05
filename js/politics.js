@@ -7,13 +7,13 @@ import { fetchActiveCoalition, loadSeats } from './game/government-structure.js'
 import { INACTIVITY_DRAIN_THRESHOLD } from './game/electorate.js';
 import { hasElectedPresident } from './game/government-types.js';
 import { initGameConfigForNation, switchPartyEndorsement } from './game/config.js';
-import { ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, getAttackAPCost, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
+import { ATTACK_CONFIG, ATTACK_OUTCOMES, getAttackOutcomeWeights, gatherAttackEvidence, buildAttackVectors, executeAttack, disbandParty, getNationNames } from './game/political-actions.js';
 import { PROTEST_CONFIG, getProtestCost, getDecayedUseCount, getProtestFatigueLevel, getStatHintColor, canCallProtest, getStatFailureScore, isExcludedStat, isHigherIsBad, getTierLabel, executeProtest, endorseProtest, callOffProtest, executePublicAddress } from './game/protest.js';
 import { ISSUE_DEFS, ISSUE_IDS } from './game/electorate.js';
 import { getStrongholdSectors } from './game/sectors.js';
 import { isGovernmentPresidential, getGovDisplayLabel } from './game/government-types.js';
 import { computeEndorsementButtonState } from './ui/endorsement-ui.js';
-import { getElectabilityTier, getTraitAPModifier } from './game/party-leadership.js';
+import { getElectabilityTier } from './game/party-leadership.js';
 
 // ── Shared helpers ──
 
@@ -509,7 +509,7 @@ async function _loadEventFeed(elementId, nationId, playerFactionId, { limit = 80
 
     const { data: entries, error } = await _supabase
         .from('activity_log')
-        .select('id, faction_id, action_type, action_label, description, outcome, ap_spent, tick, created_at')
+        .select('id, faction_id, action_type, action_label, description, outcome, tick, created_at')
         .eq('nation_id', nationId)
         .order('tick', { ascending: false })
         .order('created_at', { ascending: false })
@@ -548,7 +548,6 @@ async function _loadEventFeed(elementId, nationId, playerFactionId, { limit = 80
             <div class="pe-item-row">
                 <span class="pe-item-party" style="color:${fColor}">${escapeHtml(fLabel)}</span>
                 <span class="pe-item-label">${escapeHtml((entry.action_label || entry.action_type).replace(/_/g, ' '))}</span>
-                ${detailed && entry.ap_spent ? `<span class="pe-item-ap">${entry.ap_spent} AP</span>` : ''}
                 ${entry.outcome ? `<span class="pe-item-outcome" style="color:${outcomeColor}">${escapeHtml(entry.outcome)}</span>` : ''}
             </div>
             ${detailed && entry.description ? `<div class="pe-item-desc">${escapeHtml(entry.description)}</div>` : ''}
@@ -1101,7 +1100,6 @@ function renderEditIdentityBox(f, currentTick) {
     const color = f.party_color || '#ffcc00';
     const icon  = f.party_logo || 'flag';
     const desc  = f.party_description || '';
-    const ap    = f.action_points || 0;
     const lastRenameTick = f.last_rename_tick || 0;
     const cooldownRemaining = lastRenameTick > 0 ? Math.max(0, RENAME_COOLDOWN - (currentTick - lastRenameTick)) : 0;
     const onCooldown = cooldownRemaining > 0;
@@ -1204,7 +1202,6 @@ function renderEditIdentityBox(f, currentTick) {
         <div style="margin-bottom:14px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <span class="pol-id-section-label">Party Name</span>
-                <span class="pol-id-ap-badge">AP: <span id="pol-id-ap-display">${ap}</span></span>
             </div>
             <div class="pol-id-name-display">
                 <span id="pol-id-current-name">${escapeHtml(f.faction_name)}</span>
@@ -1312,7 +1309,6 @@ function initEditIdentityBox(f) {
     const abbrError    = document.getElementById('pol-id-abbr-error');
     const abbrDisplay  = document.getElementById('pol-id-current-abbr');
     const nameDisplay  = document.getElementById('pol-id-current-name');
-    const apDisplay    = document.getElementById('pol-id-ap-display');
     const iconSection  = document.getElementById('pol-id-icon-section');
     const uploadSection = document.getElementById('pol-id-upload-section');
     const uploadZone   = document.getElementById('pol-id-upload-zone');
@@ -1876,7 +1872,7 @@ function renderElectionResultsBox(lastParliamentary, lastPresidential, allPartie
                 <span class="pol-section-label" style="margin-bottom:0;font-size:9px">ENDORSE A CANDIDATE</span>
                 <button class="pol-endorse-panel-close">&times;</button>
             </div>
-            <div class="pol-endorse-panel-desc">Select a party's candidate to endorse for the presidential election. First endorsement is free; switching costs 1 AP.</div>
+            <div class="pol-endorse-panel-desc">Select a party's candidate to endorse for the presidential election.</div>
             <div class="pol-endorse-candidate-list">
                 ${endorseCandidatesHtml || '<div class="pol-el-empty">No eligible parties to endorse.</div>'}
             </div>
@@ -1943,7 +1939,7 @@ function initElectionResultsBox() {
                 const currentTick = Number(box.getAttribute('data-current-tick') || 0);
                 const partyName = el.querySelector('.pol-endorse-candidate-name')?.textContent || 'this party';
 
-                if (!confirm(`Endorse ${partyName}'s candidate for president? First endorsement is free; switching costs 1 AP.`)) return;
+                if (!confirm(`Endorse ${partyName}'s candidate for president?`)) return;
 
                 el.style.opacity = '0.5';
                 el.style.pointerEvents = 'none';
@@ -1964,11 +1960,9 @@ function initElectionResultsBox() {
                     badge.textContent = 'ENDORSED';
                     el.appendChild(badge);
 
-                    const apMsg = result.newAp != null ? ` (${result.newAp} AP remaining)` : '';
-                    alert(`Endorsed ${partyName}!${apMsg}`);
+                    alert(`Endorsed ${partyName}!`);
                     endorsePanel.style.display = 'none';
-                    // Refresh AP display
-                    if (result.newAp != null) await refreshAP(factionId);
+                    await refreshAP(factionId);
                 } catch (err) {
                     alert('Endorsement failed: ' + (err.message || 'Unknown error'));
                 } finally {
@@ -2222,22 +2216,10 @@ function caIsReady() {
 }
 
 function caGetCost() {
-    if (_caSelected === 'protest') {
-        const f = _currentFaction;
-        const tick = _currentShard?.current_tick || 0;
-        const decayed = getDecayedUseCount(f?.protest_use_count || 0, f?.protest_last_use_tick, tick);
-        return getProtestCost(decayed);
-    }
-    if (_caSelected === 'press_conference') {
-        const _f2 = _currentFaction;
-        const _t2 = _currentShard?.current_tick || 0;
-        return Math.max(1, 1 + (_caPressEscalation || 0) + (_f2 ? getTraitAPModifier('press_conference', _f2, _t2) : 0));
-    }
+    // Only consumed by money-cost actions (affordability check + label). The
+    // campaign actions are free since the AP cull, so the result is otherwise unused.
     const act = CA_ACTIONS.find(a => a.id === _caSelected);
-    if (!act) return 0;
-    // Campaign Attack cost scales with current polarization
-    if (act.id === 'attack') return getAttackAPCost(_currentNation?.polarization);
-    return act.ap;
+    return act?.ap ?? 0;
 }
 
 async function renderDemocracyActions(nation, faction, shard, allParties) {
@@ -2258,15 +2240,13 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
     const f = faction;
     const n = nation;
 
-    // Refresh faction AP and last_action_tick (for Quick Study trait discount accuracy)
+    // Refresh faction funds and last_action_tick (for Quick Study trait discount accuracy)
     const { data: freshF } = await _supabase.from('factions')
-        .select('action_points, party_funds, last_action_tick').eq('id', f.id).single();
+        .select('party_funds, last_action_tick').eq('id', f.id).single();
     if (freshF) {
-        f.action_points = freshF.action_points;
         f.party_funds = freshF.party_funds;
         f.last_action_tick = freshF.last_action_tick;
     }
-    const ap = f.action_points ?? 0;
 
     // Check if faction is in government (ruling party or coalition member)
     const coalition = await fetchActiveCoalition(_supabase, n.id);
@@ -2383,10 +2363,10 @@ async function renderDemocracyActions(nation, faction, shard, allParties) {
         }
     }
 
-    renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck, protestApCost);
+    renderCampaignUI(container, f, n, otherParties, tick, protestCheck, protestApCost);
 }
 
-function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck, protestApCost) {
+function renderCampaignUI(container, f, n, otherParties, tick, protestCheck, protestApCost) {
     const allActions = [...CA_ACTIONS];
 
     // Add protest action for opposition only (under momentum category)
@@ -2408,7 +2388,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
     if (f.pyrrhic_victory_until_tick && f.pyrrhic_victory_until_tick > tick) {
         const pyrrhicRemaining = f.pyrrhic_victory_until_tick - tick;
         listHtml += `<div class="protest-pyrrhic-banner">
-            <span style="font-weight:700">PYRRHIC VICTORY</span> — ${pyrrhicRemaining} tick${pyrrhicRemaining !== 1 ? 's' : ''} remaining. AP income reduced by 2/tick.
+            <span style="font-weight:700">PYRRHIC VICTORY</span> — ${pyrrhicRemaining} tick${pyrrhicRemaining !== 1 ? 's' : ''} remaining.
         </div>`;
     }
 
@@ -2418,11 +2398,11 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
         const paCooldownRemaining = pc.public_address_last_tick != null
             ? Math.max(0, PROTEST_CONFIG.PUBLIC_ADDRESS_COOLDOWN - (tick - pc.public_address_last_tick))
             : 0;
-        const paReady = ap >= PROTEST_CONFIG.PUBLIC_ADDRESS_AP && paCooldownRemaining === 0;
+        const paReady = paCooldownRemaining === 0;
         const cooldownClass = paCooldownRemaining > 0 ? ' ca-item--cooldown' : '';
         const paApLabel = paCooldownRemaining > 0
             ? `${paCooldownRemaining} TICK CD`
-            : `${PROTEST_CONFIG.PUBLIC_ADDRESS_AP} AP`;
+            : 'READY';
         listHtml += `<div class="ca-item ca-item--public-address${cooldownClass}${!paReady ? ' disabled' : ''}" data-action-id="public_address" style="${!paReady ? 'opacity:0.5;' : ''}">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -2461,22 +2441,15 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
 
             // Protest row has special state-driven rendering — spans full width
             if (isProtest) {
-                listHtml += `<div style="grid-column:1/-1">${renderProtestActionRow(act, isSel, ap, f, tick)}</div>`;
+                listHtml += `<div style="grid-column:1/-1">${renderProtestActionRow(act, isSel, f, tick)}</div>`;
                 continue;
             }
 
-            let displayCost = act.id === 'attack' ? getAttackAPCost(n?.polarization) : act.id === 'press_conference' ? (1 + (_caPressEscalation || 0)) : act.ap;
-            // Apply leader trait modifiers to displayed AP cost
-            if (['press_conference', 'attack'].includes(act.id) && f.leader_positive_traits) {
-                displayCost = Math.max(1, displayCost + getTraitAPModifier(act.id, f, tick));
-            }
-            const costLabel = `${displayCost} AP`;
             const dbActionType = act.id;
             const cdRemaining = _caCooldowns[dbActionType] || 0;
             const onCooldown = cdRemaining > 0;
             const usedThisTick = !!_caUsedThisTick[dbActionType];
-            const canAfford = ap >= displayCost;
-            const ok = canAfford && !onCooldown && !usedThisTick;
+            const ok = !onCooldown && !usedThisTick;
             const borderColor = isSel ? act.color : ok ? act.color + '55' : 'var(--dtext-3)';
             const bgStyle = isSel ? `background:${act.color}08;` : '';
             const borderStyle = isSel ? `border-color:${act.color}33;` : '';
@@ -2495,7 +2468,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
                         <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
                         ${statusBadge}
                     </div>
-                    <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : costLabel}</span>
+                    <span class="ca-item-ap">${usedThisTick ? 'USED' : onCooldown ? `${cdRemaining} TICK CD` : ''}</span>
                 </div>
                 <div class="ca-item-desc">${escapeHtml(act.desc)}</div>
                 ${usedThisTick ? `<div class="ca-item-used-msg">${escapeHtml(usedLabel)}</div>` : `<div class="ca-item-affects" style="color:${affectsColor}">This action affects ${act.affects}</div>`}
@@ -2520,15 +2493,15 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
         } else if (sel.id === 'protest' && _protestState === 'resolving') {
             panelHtml += renderProtestResolvingPanel();
         } else {
-            panelHtml += renderActionConfig(sel, otherParties, n, ap, tick);
+            panelHtml += renderActionConfig(sel, otherParties, n, tick);
             // Confirm button
             const cost = caGetCost();
             const ready = caIsReady();
             const isMoneyAct = !!sel.money;
-            const canAfford = isMoneyAct ? (f.party_funds || 0) >= cost : ap >= cost;
+            const canAfford = isMoneyAct ? (f.party_funds || 0) >= cost : true;
             const canConfirm = canAfford && ready;
-            const costLabel = isMoneyAct ? formatCurrencyShort(cost) : `${cost} AP`;
-            panelHtml += `<div class="ca-confirm-row"><div class="ca-confirm-btn${canConfirm ? '' : ' disabled'}" style="background:${canConfirm ? sel.color : 'var(--dtext-3)'}" id="ca-confirm-btn">Confirm — ${costLabel}</div></div>`;
+            const costLabel = isMoneyAct ? `Confirm — ${formatCurrencyShort(cost)}` : 'Confirm';
+            panelHtml += `<div class="ca-confirm-row"><div class="ca-confirm-btn${canConfirm ? '' : ' disabled'}" style="background:${canConfirm ? sel.color : 'var(--dtext-3)'}" id="ca-confirm-btn">${costLabel}</div></div>`;
         }
         panelHtml += `</div>`;
     }
@@ -2556,9 +2529,7 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
                 try {
                     const result = await executePublicAddress(_supabase, f.id, n.id, _govProtestCrisis.id, tick);
                     if (result.success) {
-                        f.action_points = result.newAp;
-                        const freshAp = await refreshAP(f.id);
-                        if (freshAp !== undefined) f.action_points = freshAp;
+                        await refreshAP(f.id);
                         await renderDemocracyActions(n, f, _currentShard, _currentAllParties);
                     } else {
                         _showToast(result.error || 'Public Address failed.');
@@ -2573,23 +2544,20 @@ function renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck,
                 return;
             }
 
-            const act = CA_ACTIONS.find(a => a.id === id);
-            const actCost = act?.id === 'attack' ? getAttackAPCost(n?.polarization) : act?.ap;
-            if (act && ap < actCost) return;
             if (_caSelected === id) { _caSelected = null; } else { _caSelected = id; }
             caReset();
             _caResult = null;
-            renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck, protestApCost);
+            renderCampaignUI(container, f, n, otherParties, tick, protestCheck, protestApCost);
         });
     });
 
     // Wire up config interactions
-    wireCampaignConfig(container, f, n, ap, otherParties, tick, protestCheck, protestApCost);
+    wireCampaignConfig(container, f, n, otherParties, tick, protestCheck, protestApCost);
 }
 
 // ── Render config body for each action ──
 
-function renderActionConfig(sel, otherParties, nation, ap, tick) {
+function renderActionConfig(sel, otherParties, nation, tick) {
     if (sel.id === 'attack') return renderAttackConfig(otherParties);
     if (sel.id === 'protest') return renderProtestConfig(nation, tick);
     if (sel.id === 'press_conference') return `<div class="ca-info-box">Hold a press conference to make a public statement. Result depends on your position and approval.<br><br><strong>Base roll:</strong> -2 to +2 Momentum<br><strong>Opposition bonus:</strong> +1<br><strong>Government bonus:</strong> +2 (if gov approval ≥ 40)</div>`;
@@ -2599,10 +2567,7 @@ function renderActionConfig(sel, otherParties, nation, ap, tick) {
 // ── ATTACK CONFIG ──
 
 function renderAttackConfig(otherParties) {
-    const pol = _currentNation?.polarization || 0;
-    const attackCost = getAttackAPCost(pol);
-    const costNote = attackCost > ATTACK_CONFIG.AP_COST ? ` Cost scaled to ${attackCost} AP (polarization ${Math.round(pol)}).` : '';
-    let html = `<div style="color:#ef4444;font-size:0.85em;margin-bottom:4px">Using this will increase Polarization by 0.25.${costNote}</div><div class="ca-subtitle">Select target party</div>`;
+    let html = `<div style="color:#ef4444;font-size:0.85em;margin-bottom:4px">Using this will increase Polarization by 0.25.</div><div class="ca-subtitle">Select target party</div>`;
     for (const r of otherParties) {
         const isSel = _caRival === r.id;
         html += `<div class="ca-rival-card${isSel ? ' selected' : ''}" data-rival-id="${r.id}" style="border-left-color:${isSel ? '#ef4444' : r.party_color || '#888'};${isSel ? 'border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.03)' : ''}">
@@ -2724,10 +2689,9 @@ async function loadProtestData(nation, faction, tick) {
 
 // ── Protest Action Row (left panel) ──
 
-function renderProtestActionRow(act, isSel, ap, faction, tick) {
+function renderProtestActionRow(act, isSel, faction, tick) {
     const state = _protestState;
-    const cost = act.ap;
-    const ok = ap >= cost;
+    const ok = true;
 
     // Resolving state
     if (state === 'resolving') {
@@ -2767,7 +2731,7 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
     // Active crisis state (calling party)
     if (state === 'active' && _protestActiveData) {
         const remaining = ((_protestActiveData.crisis_started_tick ?? tick) + (_protestActiveData.crisis_duration || 6)) - tick;
-        const canCallOff = _protestActiveData.tier === 6 && (faction.action_points || 0) >= PROTEST_CONFIG.CALL_OFF_AP;
+        const canCallOff = _protestActiveData.tier === 6;
         const callOffDisabled = _protestActiveData.tier === 7;
         return `<div class="ca-item ca-item--protest ca-item--active" data-action-id="protest">
             <div class="ca-item-head">
@@ -2781,7 +2745,7 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
             <div class="protest-passive-status">Running — ${Math.max(0, remaining)} tick${remaining !== 1 ? 's' : ''} remaining.</div>
             ${callOffDisabled
                 ? `<div class="protest-calloff-note">Tier 7 protests cannot be called off.</div>`
-                : `<div class="protest-calloff-btn${canCallOff ? '' : ' disabled'}" onclick="window._protestCallOff()">Call Off Protest — ${PROTEST_CONFIG.CALL_OFF_AP} AP</div>`
+                : `<div class="protest-calloff-btn${canCallOff ? '' : ' disabled'}" onclick="window._protestCallOff()">Call Off Protest</div>`
             }
         </div>`;
     }
@@ -2816,8 +2780,8 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
 
     // Endorsement opportunity (another party's protest is resolving)
     if (_endorseableProtest && !state) {
-        const canEndorse = !_alreadyEndorsed && (faction.action_points || 0) >= 1;
-        const endorseLabel = _alreadyEndorsed ? 'ENDORSED' : 'ENDORSE — 1 AP';
+        const canEndorse = !_alreadyEndorsed;
+        const endorseLabel = _alreadyEndorsed ? 'ENDORSED' : 'ENDORSE';
         return `<div class="ca-item ca-item--protest ca-item--endorse" data-action-id="protest">
             <div class="ca-item-head">
                 <div style="display:flex;align-items:center;gap:6px">
@@ -2843,7 +2807,7 @@ function renderProtestActionRow(act, isSel, ap, faction, tick) {
                 <span class="ca-item-icon" style="color:#d9534f">!</span>
                 <span class="ca-item-name" style="color:${nameColor}">${escapeHtml(act.name)}</span>
             </div>
-            <span class="ca-item-ap" style="color:#d9534f">${cost} AP</span>
+            <span class="ca-item-ap" style="color:#d9534f"></span>
         </div>
         ${isSel ? `<div class="ca-item-desc">${escapeHtml(act.desc)}</div>` : ''}
     </div>`;
@@ -3135,8 +3099,8 @@ function renderProtestResolvingPanel() {
 
 // ── Wire up config panel interactions ──
 
-function wireCampaignConfig(container, f, n, ap, otherParties, tick, protestCheck, protestApCost) {
-    const rerender = () => renderCampaignUI(container, f, n, ap, otherParties, tick, protestCheck, protestApCost);
+function wireCampaignConfig(container, f, n, otherParties, tick, protestCheck, protestApCost) {
+    const rerender = () => renderCampaignUI(container, f, n, otherParties, tick, protestCheck, protestApCost);
 
     // Rival selection (attack)
     container.querySelectorAll('[data-rival-id]').forEach(el => {
@@ -3219,7 +3183,7 @@ function wireCampaignConfig(container, f, n, ap, otherParties, tick, protestChec
         confirmBtn.addEventListener('click', () => {
             if (confirmBtn.classList.contains('disabled')) return;
             confirmBtn.classList.add('disabled');
-            handleCampaignConfirm(container, f, n, ap, otherParties, tick);
+            handleCampaignConfirm(container, f, n, otherParties, tick);
         });
     }
 }
@@ -3230,7 +3194,7 @@ let _protestEndorseLock = false;
 window._protestEndorse = async function() {
     if (_protestEndorseLock) return;
     if (!_endorseableProtest || _alreadyEndorsed) return;
-    if (!confirm('Endorse this protest? Costs 1 AP and boosts turnout (+15).')) return;
+    if (!confirm('Endorse this protest? Boosts turnout (+15).')) return;
     _protestEndorseLock = true;
     try {
         const result = await endorseProtest(_supabase, _currentFaction.id, _currentNation.id, _endorseableProtest.id, _currentShard.current_tick);
@@ -3239,9 +3203,7 @@ window._protestEndorse = async function() {
             return;
         }
         _alreadyEndorsed = true;
-        _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - 1);
-        const freshAp1 = await refreshAP(_currentFaction.id);
-        if (freshAp1 !== undefined) _currentFaction.action_points = freshAp1;
+        await refreshAP(_currentFaction.id);
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Endorse failed:', err);
@@ -3256,7 +3218,7 @@ window._protestCallOff = async function() {
     if (_protestCallOffLock) return;
     if (!_protestActiveData) return;
     if (_protestActiveData.tier === 7) { _showToast('Tier 7 protests cannot be called off.'); return; }
-    if (!confirm('Call off this protest? Costs ' + PROTEST_CONFIG.CALL_OFF_AP + ' AP. A small approval boost from moderate blocs will be applied.')) return;
+    if (!confirm('Call off this protest? A small approval boost from moderate blocs will be applied.')) return;
     _protestCallOffLock = true;
     try {
         const result = await callOffProtest(_supabase, _currentFaction.id, _protestActiveData.id, _currentShard.current_tick);
@@ -3264,9 +3226,7 @@ window._protestCallOff = async function() {
             _showToast(result.error || 'Call-off failed.');
             return;
         }
-        _currentFaction.action_points = Math.max(0, (_currentFaction.action_points || 0) - PROTEST_CONFIG.CALL_OFF_AP);
-        const freshAp2 = await refreshAP(_currentFaction.id);
-        if (freshAp2 !== undefined) _currentFaction.action_points = freshAp2;
+        await refreshAP(_currentFaction.id);
         await renderDemocracyActions(_currentNation, _currentFaction, _currentShard, _currentAllParties);
     } catch (err) {
         console.error('[Protest] Call-off failed:', err);
@@ -3278,16 +3238,16 @@ window._protestCallOff = async function() {
 
 // ── Confirm handler ──
 
-async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
+async function handleCampaignConfirm(container, f, n, otherParties, tick) {
     // Protest is not in CA_ACTIONS (added dynamically for opposition only);
     // look it up separately so the confirm handler can reach the protest branch.
     const sel = CA_ACTIONS.find(a => a.id === _caSelected)
-        || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', ap: caGetCost(), color: '#d9534f' } : null);
+        || (_caSelected === 'protest' ? { id: 'protest', name: 'Organise a Protest', color: '#d9534f' } : null);
     if (!sel) return;
     const cost = caGetCost();
     const isMoneyAct = !!sel.money;
-    const costLabel = isMoneyAct ? formatCurrencyShort(cost) : `${cost} AP`;
-    const affordable = isMoneyAct ? (f.party_funds || 0) >= cost : ap >= cost;
+    const confirmLabel = isMoneyAct ? `Confirm — ${formatCurrencyShort(cost)}` : 'Confirm';
+    const affordable = isMoneyAct ? (f.party_funds || 0) >= cost : true;
     if (!affordable || !caIsReady()) return;
 
     const btn = document.getElementById('ca-confirm-btn');
@@ -3304,51 +3264,41 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
             result = await executeProtest(_supabase, f.id, n.id, _protestTarget.type, grievanceData, demandLabel, tick);
         } else if (sel.id === 'press_conference') {
             // Press Conference: base -2 to +2 momentum, +1 if opposition, +2 if gov with approval >= 40
-            // Escalating cost: base 1 AP + escalation (+1 per use, -1 per tick)
-            const { deductAP } = await import('./game/config.js');
-            const { getTraitAPModifier: _getTraitModPC } = await import('./game/party-leadership.js');
-            const _pcTraitMod = _getTraitModPC('press_conference', f, tick);
-            const pressCost = Math.max(1, 1 + (_caPressEscalation || 0) + _pcTraitMod);
-            const pressDetail = 'Press Conference' + (_pcTraitMod !== 0 ? ' (trait ' + (_pcTraitMod > 0 ? '+' : '') + _pcTraitMod + ')' : '');
-            const apResult = await deductAP(_supabase, f.id, pressCost, { reason: 'press_conference', detail: pressDetail, tick });
-            if (!apResult.success) { result = { success: false, error: apResult.error || 'Insufficient AP' }; }
-            else {
-                let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
-                if (!_caIsGoverning) baseRoll += 1; // opposition bonus
-                else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
-                // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
-                if ((_caPressEscalation || 0) > 0 && baseRoll !== 0) {
-                    const rollSign = baseRoll > 0 ? 1 : -1;
-                    const diminish = Math.max(0.25, 1 - _caPressEscalation * 0.25);
-                    baseRoll = Math.round(baseRoll * diminish);
-                    if (baseRoll === 0) baseRoll = rollSign;
-                }
-                // Give momentum via atomic RPC (3-pillar system) — label+tick for log
-                const sign = baseRoll >= 0 ? '+' : '';
-                const { error: momErr } = await _supabase.rpc('adjust_momentum', {
-                    p_faction_id: f.id, p_delta: baseRoll,
-                    p_label: `Press Conference (${sign}${baseRoll})`, p_tick: tick
-                });
-                if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
-                await _supabase.from('campaign_actions').insert({
-                    party_id: f.id, nation_id: n.id, action_type: 'press_conference',
-                    ap_cost: pressCost, tick_performed: tick, result: { momentumDelta: baseRoll }
-                });
-                result = { success: true, newAp: apResult.newAp, headline: 'Press Conference',
-                    effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
-                    outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
+            let baseRoll = Math.floor(Math.random() * 5) - 2; // -2 to +2
+            if (!_caIsGoverning) baseRoll += 1; // opposition bonus
+            else if ((n.gov_approval || 0) >= 40) baseRoll += 2; // government with decent approval
+            // Diminishing returns: reduce effect by 25% per escalation level (min 25% of original)
+            if ((_caPressEscalation || 0) > 0 && baseRoll !== 0) {
+                const rollSign = baseRoll > 0 ? 1 : -1;
+                const diminish = Math.max(0.25, 1 - _caPressEscalation * 0.25);
+                baseRoll = Math.round(baseRoll * diminish);
+                if (baseRoll === 0) baseRoll = rollSign;
             }
+            // Give momentum via atomic RPC (3-pillar system) — label+tick for log
+            const sign = baseRoll >= 0 ? '+' : '';
+            const { error: momErr } = await _supabase.rpc('adjust_momentum', {
+                p_faction_id: f.id, p_delta: baseRoll,
+                p_label: `Press Conference (${sign}${baseRoll})`, p_tick: tick
+            });
+            if (momErr) console.warn('[PressConference] Momentum RPC failed:', momErr.message);
+            await _supabase.from('campaign_actions').insert({
+                party_id: f.id, nation_id: n.id, action_type: 'press_conference',
+                tick_performed: tick, result: { momentumDelta: baseRoll }
+            });
+            result = { success: true, headline: 'Press Conference',
+                effects: [{ label: 'Press Coverage', value: `${sign}${baseRoll}` }],
+                outcomeName: `Press conference — ${sign}${baseRoll} momentum` };
         }
     } catch (err) {
         console.error('Campaign action error:', err);
         _showToast('Action failed: ' + err.message);
-        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${costLabel}`; }
+        if (btn) { btn.classList.remove('disabled'); btn.textContent = confirmLabel; }
         return;
     }
 
     if (!result || !result.success) {
         _showToast(result?.message || result?.error || 'Action failed.');
-        if (btn) { btn.classList.remove('disabled'); btn.textContent = `Confirm — ${costLabel}`; }
+        if (btn) { btn.classList.remove('disabled'); btn.textContent = confirmLabel; }
         return;
     }
 
@@ -3356,9 +3306,7 @@ async function handleCampaignConfirm(container, f, n, ap, otherParties, tick) {
     if (isMoneyAct) {
         f.party_funds = result.newFunds ?? ((f.party_funds ?? 0) - cost);
     } else {
-        f.action_points = result.newAp ?? ((f.action_points ?? 0) - cost);
-        const freshAp = await refreshAP(f.id);
-        if (freshAp !== undefined) f.action_points = freshAp;
+        await refreshAP(f.id);
     }
 
     // Show result
@@ -3650,10 +3598,6 @@ async function renderElectionsTab(faction, currentTick, nextElection) {
                     <li>This rewards the government for managing the crisis — even if the resolution was automatic.</li>
                     <li>The government also receives a 1-6 approval boost alongside the momentum.</li>
                 </ul>
-            </div>
-            <div class="elec-explainer-section">
-                <div class="elec-explainer-heading">The Tradeoff:</div>
-                <p>You only get 5 AP per tick. Every AP spent campaigning is an AP not spent on bills. Governing parties must balance legislation (which delivers results) with campaigning (which builds Momentum). Opposition can focus on campaigning but depends on government failure for credibility.</p>
             </div>
             <div class="elec-explainer-section">
                 <div class="elec-explainer-heading">Vote Locking:</div>

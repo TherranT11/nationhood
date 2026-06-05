@@ -14,10 +14,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-// AP DEPRECATED (Phase A): the accumulate_ap / deduct_ap preflight
-// check has been removed. Both RPCs still exist in the database as
-// SQL no-ops so any external caller stays green; nothing the tick
-// processor does depends on them anymore.
+// AP REMOVED: the Action Points system has been fully culled. The tick
+// no longer reads, grants, or deducts AP anywhere.
 
 // ===== GAME LOGIC (from js/game/*.js modules) =====
 
@@ -313,15 +311,8 @@ async function processWritingRewards(supabase, nationId, currentTick) {
 
     for (const oped of (opeds || [])) {
         if (!oped.author_faction_id || !oped.reward_ap) continue;
-        const { error } = await supabase.rpc('deduct_ap', {
-            p_faction_id: oped.author_faction_id,
-            p_cost: -oped.reward_ap  // Negative cost = add AP
-        });
-        if (!error) {
-            await supabase.from('op_eds').update({ reward_granted: true }).eq('id', oped.id);
-            rewards.push({ type: 'oped', factionId: oped.author_faction_id, ap: oped.reward_ap });
-            console.log(`[processWritingRewards] Op-ed reward: +${oped.reward_ap} AP to faction ${oped.author_faction_id}`);
-        }
+        // AP rewards removed — mark processed so the row isn't re-queried each tick.
+        await supabase.from('op_eds').update({ reward_granted: true }).eq('id', oped.id);
     }
 
     // Player article rewards
@@ -335,15 +326,8 @@ async function processWritingRewards(supabase, nationId, currentTick) {
 
     for (const article of (articles || [])) {
         if (!article.author_faction_id || !article.reward_ap) continue;
-        const { error } = await supabase.rpc('deduct_ap', {
-            p_faction_id: article.author_faction_id,
-            p_cost: -article.reward_ap  // Negative cost = add AP
-        });
-        if (!error) {
-            await supabase.from('player_articles').update({ reward_granted: true }).eq('id', article.id);
-            rewards.push({ type: 'article', factionId: article.author_faction_id, ap: article.reward_ap });
-            console.log(`[processWritingRewards] Article reward: +${article.reward_ap} AP to faction ${article.author_faction_id}`);
-        }
+        // AP rewards removed — mark processed so the row isn't re-queried each tick.
+        await supabase.from('player_articles').update({ reward_granted: true }).eq('id', article.id);
     }
 
     return rewards;
@@ -2878,7 +2862,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
                 // Fetch active members (full members only, not observers)
                 const { data: members } = await supabase
                     .from('ipo_members')
-                    .select('faction_id, role, factions:faction_id ( id, faction_name, nation_id, action_points, seats )')
+                    .select('faction_id, role, factions:faction_id ( id, faction_name, nation_id, seats )')
                     .eq('org_id', org.id)
                     .eq('is_active', true);
                 const fullMembers = (members || []).filter(m => m.role === 'member');

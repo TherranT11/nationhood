@@ -111,27 +111,8 @@ body {
   </div>
   <div style="width:100%;max-width:640px;padding:0 16px 48px;">
     <div id="opt-party" onclick="selectFactionOption('party')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--blue-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
-      <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Political Party</div>
+      <div style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Politician</div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Shape laws, influence policy, and guide your nation's future through political power.</div>
-    </div>
-    <div id="opt-corp" onclick="selectFactionOption('corporation')" style="display:none;background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Corporation</span>
-      </div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Control wealth, trade, and economic power to influence the nation.</div>
-    </div>
-    <div id="opt-military" onclick="selectFactionOption('military')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--red-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.06em;">Military Branch</span>
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
-      </div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Command armies, defend borders, and project military force to protect or conquer.</div>
-    </div>
-    <div id="military-alpha-gate" style="display:none;background:var(--bg-2);border:1px solid var(--red-border);padding:16px;margin-bottom:8px;">
-      <div style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">Alpha Access Required</div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">Enter the alpha tester code to proceed.</div>
-      <input id="military-alpha-input" type="text" placeholder="Alpha code" autocomplete="off" style="width:100%;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;">
-      <div id="military-alpha-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;"></div>
     </div>
     <div id="opt-entrepreneur" onclick="selectFactionOption('entrepreneur')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--purple,#8b5cf6)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
@@ -183,33 +164,16 @@ async function init() {
   document.getElementById('faction-chooser').style.display = 'flex';
 }
 
-const MILITARY_ALPHA_CODE = 'Commander1';
-
-function chooseFactionType(type) {
-  if (type === 'military') {
-    sessionStorage.setItem('pending_faction_type', 'military');
-    window.location.href = 'select-nation.html';
-  } else {
-    sessionStorage.setItem('pending_faction_type', 'party');
-    // Party flow: pick nation, then ideology
-    window.location.href = 'select-nation.html';
-  }
-}
-
 let selectedFaction = null;
 
 function selectFactionOption(type) {
   selectedFaction = type;
   const optParty = document.getElementById('opt-party');
-  const optCorp = document.getElementById('opt-corp');
-  const optMil = document.getElementById('opt-military');
   const optEnt = document.getElementById('opt-entrepreneur');
-  const milGate = document.getElementById('military-alpha-gate');
-  const milError = document.getElementById('military-alpha-error');
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
   // Reset all cards
-  for (const opt of [optParty, optCorp, optMil, optEnt]) {
+  for (const opt of [optParty, optEnt]) {
     opt.classList.remove('fs-selected');
     opt.style.borderColor = 'var(--border-0)';
   }
@@ -217,20 +181,10 @@ function selectFactionOption(type) {
   if (type === 'party') {
     optParty.classList.add('fs-selected');
     optParty.style.borderColor = 'var(--blue-border)';
-  } else if (type === 'corporation') {
-    optCorp.classList.add('fs-selected');
-    optCorp.style.borderColor = 'var(--green-border)';
-  } else if (type === 'military') {
-    optMil.classList.add('fs-selected');
-    optMil.style.borderColor = 'var(--red-border)';
   } else if (type === 'entrepreneur') {
     optEnt.classList.add('fs-selected');
     optEnt.style.borderColor = 'var(--purple,#8b5cf6)';
   }
-
-  // Military is the only remaining alpha-gated type.
-  milGate.style.display = type === 'military' ? 'block' : 'none';
-  if (type === 'military') milError.style.display = 'none';
 
   // Enable confirm button
   confirmBtn.disabled = false;
@@ -241,32 +195,16 @@ function selectFactionOption(type) {
 }
 
 function confirmFactionChoice() {
-  if (!selectedFaction) return;
-  if (selectedFaction === 'military') {
-    const input = document.getElementById('military-alpha-input');
-    const errEl = document.getElementById('military-alpha-error');
-    const entered = (input?.value || '').trim();
-    if (entered !== MILITARY_ALPHA_CODE) {
-      errEl.textContent = entered ? 'Invalid alpha code.' : 'Please enter the alpha code.';
-      errEl.style.display = 'block';
-      input?.focus();
-      return;
-    }
-    errEl.style.display = 'none';
-  }
-  if (selectedFaction === 'entrepreneur') {
-    // No alpha gate; origin nation + gender + name are chosen next in
-    // select-nation.html (the faction is created there).
-    sessionStorage.setItem('pending_faction_type', 'entrepreneur');
-    window.location.href = 'select-nation.html';
-    return;
-  }
-  chooseFactionType(selectedFaction);
+  if (selectedFaction !== 'party' && selectedFaction !== 'entrepreneur') return;
+  // Both paths pick a nation next in select-nation.html. The party flow then
+  // returns here and init() forwards to createparty.html; the entrepreneur
+  // faction is created directly in select-nation.html.
+  sessionStorage.setItem('pending_faction_type', selectedFaction);
+  window.location.href = 'select-nation.html';
 }
 
 init();
 
-window.chooseFactionType = chooseFactionType;
 window.selectFactionOption = selectFactionOption;
 window.confirmFactionChoice = confirmFactionChoice;
 

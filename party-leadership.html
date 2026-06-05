@@ -23,7 +23,6 @@
 import { _supabase } from './js/supabase-client.js';
 import { initPage } from './js/common.js';
 import { escapeHtml } from './js/utils.js';
-import { deductAP } from './js/game/config.js';
 import { getNationNames, appendAdminLeaderChange } from './js/game/political-actions.js';
 import {
     POSITIVE_MAP, NEGATIVE_MAP,
@@ -398,7 +397,7 @@ function renderRefreshButton() {
 
     return `<div class="pl-refresh-wrap">
         <button class="pl-refresh-btn" onclick="window._refreshLeaders()">Refresh Leaders</button>
-        <div class="pl-refresh-note">5 AP — wipe all candidates and generate new ones</div>
+        <div class="pl-refresh-note">Wipe all candidates and generate new ones</div>
     </div>`;
 }
 
@@ -414,21 +413,13 @@ window._refreshLeaders = async function() {
         return;
     }
 
-    if (!confirm('Refresh all leadership candidates?\n\nThis will wipe the current candidates and generate new ones.\nCost: 5 AP')) return;
+    if (!confirm('Refresh all leadership candidates?\n\nThis will wipe the current candidates and generate new ones.')) return;
 
     isAppointing = true; // reuse the lock to prevent concurrent actions
     const btn = document.querySelector('.pl-refresh-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
 
     try {
-        // Deduct 5 AP
-        const apResult = await deductAP(_supabase, currentFaction.id, 5);
-        if (!apResult.success) {
-            alert('Not enough AP. Need 5 AP, have ' + (apResult.currentAp ?? '?') + '.');
-            return;
-        }
-        currentFaction.action_points = apResult.newAp;
-
         // Generate fresh candidates
         const nationName = currentNation.name || '';
         const newCandidates = generateLeadershipCandidates(nationName, getNationNames, 3, 'leader');
@@ -510,7 +501,6 @@ window._appointLeader = async function() {
 
     const confirmLines = [
         `Appoint ${candidate.firstName} ${candidate.lastName} as Party Leader?\n`,
-        `Cost: ${getAPCostLabel(candidate.apCost)}`,
         `Ideology: ${candidate.ideology}`,
     ];
     if (candidate.electability != null) {
@@ -530,16 +520,6 @@ window._appointLeader = async function() {
 
     try {
         const currentTick = currentShard?.current_tick || 0;
-
-        // Deduct AP if cost > 0
-        if (candidate.apCost > 0) {
-            const apResult = await deductAP(_supabase, currentFaction.id, candidate.apCost);
-            if (!apResult.success) {
-                alert('Not enough AP. Need ' + candidate.apCost + ' AP.');
-                return;
-            }
-            currentFaction.action_points = apResult.newAp;
-        }
 
         // Update faction with new leader data
         const updateFields = {
