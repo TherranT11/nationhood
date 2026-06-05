@@ -254,12 +254,10 @@ BEGIN
         v_rep_delta := 0.3;
     END IF;
 
-    -- Apply stat deltas. politician_reputation is int, politician_skill
-    -- is numeric (see 20270462 + 20270583). Reputation reward is also
-    -- 0.3 but rounded down via int arithmetic — first 4 successful
-    -- flag calls produce no rep change; the 5th would tip into +1.
-    -- Acceptable per the user's "+0.3" spec (matches the politician_
-    -- skill cumulative shape from politician_office_hours).
+    -- Apply stat deltas. politician_skill has been numeric since
+    -- 20270461; politician_reputation widens to numeric in 20270631
+    -- (sibling migration to this one) so the +0.3 deltas here
+    -- actually accumulate instead of rounding to zero on assignment.
     IF v_skill_delta <> 0 OR v_rep_delta <> 0 THEN
         UPDATE factions
            SET politician_skill      = COALESCE(politician_skill, 0)      + v_skill_delta,

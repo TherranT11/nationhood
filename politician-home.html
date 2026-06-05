@@ -4252,11 +4252,6 @@ const fpState = {
   busy:     false,  // submit lock
 };
 
-function fpEsc(s) {
-  return String(s ?? '').replace(/[&<>"']/g,
-    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
 async function openFilePaperworkModal() {
   const back = document.getElementById('fp-back');
   const content = document.getElementById('fp-content');
@@ -4269,7 +4264,7 @@ async function openFilePaperworkModal() {
     if (error) throw error;
     resp = data;
   } catch (err) {
-    content.innerHTML = `<div class="fp-empty">Couldn't load dispatch — ${fpEsc(err?.message || 'network or server error')}.<br><br>
+    content.innerHTML = `<div class="fp-empty">Couldn't load dispatch — ${escHtml(err?.message || 'network or server error')}.<br><br>
       <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
     return;
   }
@@ -4279,7 +4274,7 @@ async function openFilePaperworkModal() {
       not_authenticated: 'You must be logged in.',
       not_civil_servant: 'Only civil servants can file paperwork.',
     })[resp?.reason] || ('Couldn’t load: ' + (resp?.reason || 'unknown'));
-    content.innerHTML = `<div class="fp-empty">${fpEsc(reason)}<br><br>
+    content.innerHTML = `<div class="fp-empty">${escHtml(reason)}<br><br>
       <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
     return;
   }
@@ -4310,7 +4305,7 @@ function renderFilePaperworkModal() {
         <div class="fp-head-name">Route <em>Incoming Dispatch</em></div>
         <div class="fp-head-meta">Review the document. Select the receiving <strong>ministry</strong> and <strong>agency</strong>. Flag for Senior review if the matter warrants escalation.</div>
       </div>
-      <span class="fp-head-stat">${fpEsc(d.display_id || '')}</span>
+      <span class="fp-head-stat">${escHtml(d.display_id || '')}</span>
       <button class="fp-head-close" id="fp-close-btn">&#10005;</button>
     </div>
     <div class="fp-body">
@@ -4318,13 +4313,13 @@ function renderFilePaperworkModal() {
         <div class="fp-doc-head">
           <div class="fp-doc-stamp-row">
             <span class="fp-doc-stamp received">&#x25CF; Received</span>
-            <span class="fp-doc-id">${fpEsc(d.display_id || '')}</span>
+            <span class="fp-doc-id">${escHtml(d.display_id || '')}</span>
           </div>
-          <div class="fp-doc-eyebrow">${fpEsc(d.office_of || '')}</div>
-          <div class="fp-doc-title">${fpEsc(d.doc_title || '')}</div>
-          <div class="fp-doc-from">From: <strong>${fpEsc(d.sender_title || '')}</strong></div>
+          <div class="fp-doc-eyebrow">${escHtml(d.office_of || '')}</div>
+          <div class="fp-doc-title">${escHtml(d.doc_title || '')}</div>
+          <div class="fp-doc-from">From: <strong>${escHtml(d.sender_title || '')}</strong></div>
         </div>
-        <div class="fp-doc-body">${fpEsc(d.body || '')}</div>
+        <div class="fp-doc-body">${escHtml(d.body || '')}</div>
       </div>
       <div class="fp-form">
         <div class="fp-form-head">
@@ -4391,8 +4386,8 @@ function renderFpMinistryGrid() {
   const grid = document.getElementById('fp-ministry-grid');
   if (!grid) return;
   grid.innerHTML = Object.entries(PAPERWORK_MINISTRIES).map(([key, m]) => `
-    <button type="button" class="fp-pill ${fpState.ministry === key ? 'selected' : ''}" data-ministry="${fpEsc(key)}">
-      <span class="fp-pill-ic">${fpEsc(m.icon)}</span>${fpEsc(m.label)}
+    <button type="button" class="fp-pill ${fpState.ministry === key ? 'selected' : ''}" data-ministry="${escHtml(key)}">
+      <span class="fp-pill-ic">${escHtml(m.icon)}</span>${escHtml(m.label)}
     </button>
   `).join('');
 }
@@ -4409,10 +4404,10 @@ function renderFpAgencyList() {
   }
   help.textContent = `within ${m.label}`;
   list.innerHTML = m.agencies.map((a, i) => `
-    <button type="button" class="fp-agency-opt ${fpState.agency === a.key ? 'selected' : ''}" data-agency="${fpEsc(a.key)}">
+    <button type="button" class="fp-agency-opt ${fpState.agency === a.key ? 'selected' : ''}" data-agency="${escHtml(a.key)}">
       <span class="fp-agency-num">${ROMAN[i] || (i + 1)}.</span>
-      <span>${fpEsc(a.label)}</span>
-      <span class="fp-agency-desc">${fpEsc(a.hint)}</span>
+      <span>${escHtml(a.label)}</span>
+      <span class="fp-agency-desc">${escHtml(a.hint)}</span>
     </button>
   `).join('');
 }
@@ -4521,8 +4516,8 @@ function showFilePaperworkResult(resp) {
   formBody.innerHTML = `
     <div class="fp-result ${resp.routing_correct ? 'win' : 'miss'}">
       <strong>${routingWord} routing.</strong>
-      The correct destination was <em>${fpEsc((correctMinistry && correctMinistry.label) || resp.correct_ministry)}</em>
-       &raquo; <em>${fpEsc((correctAgency && correctAgency.label) || resp.correct_agency)}</em>.
+      The correct destination was <em>${escHtml((correctMinistry && correctMinistry.label) || resp.correct_ministry)}</em>
+       &raquo; <em>${escHtml((correctAgency && correctAgency.label) || resp.correct_agency)}</em>.
     </div>
     <div class="fp-result ${resp.flag_correct ? 'win' : 'miss'}">
       <strong>${flagWord} flag judgment.</strong>
