@@ -515,14 +515,21 @@ const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XI
 const romanize = (n) => ROMAN[n] || String(n + 1);
 
 // Module-level state. Repopulated by refresh() on every server round-trip.
-let state = { contract: null, activeCorpId: null, isCancelled: false };
+let state = { contract: null, activeCorpId: null, isCancelled: false, currentTick: 0 };
 
 async function refresh() {
-  const { data, error } = await _supabase.rpc('get_corp_contract',
-    { p_contract_id: contractId });
+  // Contract + shard fetched in parallel — currentTick anchors the
+  // expiry picker's default/min to the in-game calendar (tick 0 = Jan
+  // 2000, 1 tick = 1 month) rather than the browser's real-world date.
+  const [contractRes, shardRes] = await Promise.all([
+    _supabase.rpc('get_corp_contract', { p_contract_id: contractId }),
+    _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle(),
+  ]);
+  const { data, error } = contractRes;
   if (error) { showError(error.message || 'Failed to load.'); return; }
   if (!data?.success) { showError(reasonText(data?.reason)); return; }
   state.contract     = data.contract;
+  state.currentTick  = Number(shardRes.data?.current_tick) || 0;
   state.activeCorpId = (data.contract.caller_corp_ids || [])[0] || null;
   state.isCancelled  = data.contract.status === 'cancelled';
   state.isBinding    = data.contract.status === 'binding';
@@ -877,15 +884,23 @@ function renderSignaturesHtml() {
                           && !state.hasAnySig
                           && !!state.activeCorpId;
 
-  // Expiry control / display.
+  // Expiry control / display. value + min are anchored to the in-game
+  // calendar (state.currentTick), so the browser-native month picker
+  // opens on the in-game year (tick 0 = Jan 2000) instead of the real-
+  // world year and disallows picking past in-game months. Default lands
+  // 6 in-game months ahead when no expiry has been set yet.
+  const expiryValue = c.expires_at_tick != null
+    ? tickToMonthString(c.expires_at_tick)
+    : tickToMonthString(state.currentTick + 6);
+  const expiryMin = tickToMonthString(state.currentTick + 1);
   const expiryHtml = expiryEditable
     ? `<div class="expiry-row">
          <div class="expiry-lab">
            This agreement <em>expires</em> on the selected month.
-           <div class="expiry-help">Pick a future month. Once either CEO signs the expiry locks.</div>
+           <div class="expiry-help">Pick a future in-game month. Once either CEO signs the expiry locks.</div>
          </div>
          <input type="month" class="expiry-input" id="cc-expiry-input"
-                value="${escapeHtml(tickToMonthString(c.expires_at_tick))}" />
+                value="${escapeHtml(expiryValue)}" min="${escapeHtml(expiryMin)}" />
          <button type="button" class="sig-btn primary" id="cc-set-expiry-btn">Set Expiry</button>
        </div>`
     : `<div class="expiry-row">
