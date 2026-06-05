@@ -455,6 +455,143 @@
   .ar-buttons.cols-2 { grid-template-columns:1fr; }
 }
 
+/* ── File Paperwork modal — Civil Servant routes one approved dispatch ──
+   Doc on the left (read-only), routing form on the right (ministry pills
+   + agency list + flag toggle), grading on submit. */
+.fp-back { position:fixed; inset:0; background:rgba(0,0,0,0.78); z-index:9000;
+  display:none; align-items:stretch; justify-content:center; padding:14px; }
+.fp-back.open { display:flex; }
+.fp-modal { width:100%; max-width:1080px; background:linear-gradient(180deg, #0d1014 0%, #080a0c 100%);
+  border:1px solid #3a5060; border-radius:8px;
+  box-shadow:0 0 0 1px rgba(122,154,171,0.05), 0 25px 60px rgba(0,0,0,0.8);
+  overflow:hidden; max-height:96vh; display:flex; flex-direction:column; }
+.fp-head { padding:14px 24px; border-bottom:1px solid #3a5060;
+  background:linear-gradient(180deg, rgba(122,154,171,0.06) 0%, transparent 100%);
+  display:flex; align-items:center; gap:14px; flex-shrink:0; }
+.fp-head-info { flex:1; min-width:0; }
+.fp-head-eyebrow { font-size:8px; letter-spacing:0.18em; color:#7a9aab; font-weight:700;
+  text-transform:uppercase; }
+.fp-head-name { font-family:Georgia,serif; font-size:16px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; margin-top:3px; line-height:1.2; }
+.fp-head-name em { font-style:italic; color:#9ab8c8; }
+.fp-head-meta { font-size:9.5px; color:#888; margin-top:3px; line-height:1.45; }
+.fp-head-meta strong { color:#bbb; }
+.fp-head-stat { padding:7px 13px; border-radius:3px; font-size:9px; letter-spacing:0.13em;
+  font-weight:700; background:#0e1318; color:#9ab8c8; border:1px solid #3a5060;
+  flex-shrink:0; text-transform:uppercase; }
+.fp-head-close { padding:8px 12px; font-size:9px; letter-spacing:0.1em; color:#888;
+  background:transparent; border:1px solid rgba(255,255,255,0.06); border-radius:3px;
+  cursor:pointer; font-family:inherit; font-weight:700; text-transform:uppercase;
+  flex-shrink:0; }
+.fp-head-close:hover { color:#fff; border-color:#3a3a3a; }
+.fp-body { display:grid; grid-template-columns:1.05fr 1fr; flex:1; min-height:0; }
+@media (max-width:880px) { .fp-body { grid-template-columns:1fr; } }
+.fp-doc { background:#1a1612; border-right:1px solid #2a2218; display:flex;
+  flex-direction:column; min-height:0; }
+.fp-doc-head { padding:18px 26px 14px; border-bottom:1px solid #2a2218; background:#1e1916; }
+.fp-doc-stamp-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.fp-doc-stamp { display:inline-flex; align-items:center; gap:6px; padding:4px 9px;
+  border:1px solid #9a8f76; border-radius:3px; font-size:8px; letter-spacing:0.18em;
+  color:#9a8f76; font-weight:700; text-transform:uppercase; }
+.fp-doc-stamp.received { border-color:#5a3030; color:#e09898; background:rgba(200,122,122,0.05); }
+.fp-doc-id { margin-left:auto; font-family:monospace; font-size:9.5px; color:#9a8f76;
+  letter-spacing:0.06em; }
+.fp-doc-eyebrow { font-size:9.5px; letter-spacing:0.22em; color:#9a8f76; font-weight:700;
+  text-transform:uppercase; margin-bottom:7px; }
+.fp-doc-title { font-family:Georgia,serif; font-size:17px; color:#d8cfb8; font-weight:500;
+  letter-spacing:-0.005em; line-height:1.3; }
+.fp-doc-from { font-size:10px; color:#9a8f76; margin-top:8px; font-style:italic;
+  font-family:Georgia,serif; }
+.fp-doc-from strong { color:#d8cfb8; font-style:normal; font-weight:600; }
+.fp-doc-body { flex:1; overflow-y:auto; padding:22px 28px; font-family:Georgia,serif;
+  color:#d8cfb8; line-height:1.75; font-size:12px; min-height:0; white-space:pre-wrap; }
+.fp-form { display:flex; flex-direction:column; min-height:0; background:#0a0a0a; }
+.fp-form-head { padding:13px 20px; border-bottom:1px solid rgba(255,255,255,0.06);
+  background:#0d0d0d; }
+.fp-form-eyebrow { font-size:8.5px; letter-spacing:0.16em; color:#9ab8c8; font-weight:700;
+  text-transform:uppercase; margin-bottom:4px; }
+.fp-form-title { font-family:Georgia,serif; font-size:14px; color:#fff; font-weight:500;
+  letter-spacing:-0.005em; }
+.fp-form-title em { font-style:italic; color:#9ab8c8; }
+.fp-form-sub { font-size:9.5px; color:#888; margin-top:4px; line-height:1.5;
+  font-style:italic; }
+.fp-form-body { flex:1; overflow-y:auto; padding:18px 20px; display:flex;
+  flex-direction:column; gap:18px; min-height:0; }
+.fp-sec-head { display:flex; align-items:baseline; gap:8px; margin-bottom:9px; }
+.fp-sec-num { display:flex; align-items:center; justify-content:center; width:18px;
+  height:18px; border-radius:50%; background:#0e1318; border:1px solid #3a5060;
+  color:#9ab8c8; font-family:Georgia,serif; font-size:9px; font-weight:700;
+  font-style:italic; flex-shrink:0; }
+.fp-sec-lab { font-size:9px; letter-spacing:0.14em; color:#9ab8c8; font-weight:700;
+  text-transform:uppercase; }
+.fp-sec-help { margin-left:auto; font-size:8.5px; color:#666; font-style:italic; }
+.fp-pill-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:5px; }
+.fp-pill { padding:8px 10px; background:#0a0807; border:1px solid rgba(255,255,255,0.06);
+  border-radius:3px; color:#888; font-size:10px; font-weight:600; cursor:pointer;
+  font-family:inherit; text-align:left; display:flex; align-items:center; gap:7px;
+  transition:all 0.12s; }
+.fp-pill:hover { color:#fff; border-color:#3a3a3a; }
+.fp-pill.selected { background:#0e1318; border-color:#7a9aab; color:#fff;
+  box-shadow:0 0 0 1px #3a5060; }
+.fp-pill.selected .fp-pill-ic { color:#9ab8c8; }
+.fp-pill-ic { font-size:11px; color:#666; flex-shrink:0; }
+.fp-agency-list { display:flex; flex-direction:column; gap:4px; }
+.fp-agency-opt { padding:8px 11px; background:#0a0807; border:1px solid rgba(255,255,255,0.06);
+  border-radius:3px; color:#888; font-size:10px; font-weight:500; cursor:pointer;
+  font-family:inherit; text-align:left; display:flex; align-items:center; gap:8px;
+  transition:all 0.12s; }
+.fp-agency-opt:hover { color:#fff; border-color:#3a3a3a; }
+.fp-agency-opt.selected { background:#0e1318; border-color:#7a9aab; color:#fff;
+  border-left:2px solid #7a9aab; padding-left:9px; }
+.fp-agency-num { font-family:Georgia,serif; font-size:9px; color:#9ab8c8;
+  font-style:italic; font-weight:600; flex-shrink:0; }
+.fp-agency-desc { margin-left:auto; font-size:8.5px; color:#666; font-style:italic; }
+.fp-agency-opt.selected .fp-agency-desc { color:#9ab8c8; }
+.fp-agency-empty { padding:14px; color:#666; font-size:10px; font-style:italic;
+  text-align:center; border:1px dashed rgba(255,255,255,0.06); border-radius:3px; }
+.fp-flag-box { padding:13px 14px; background:#0a0807; border:1px solid rgba(255,255,255,0.06);
+  border-radius:4px; display:flex; gap:12px; align-items:flex-start; cursor:pointer;
+  transition:all 0.12s; }
+.fp-flag-box:hover { border-color:#3a3a3a; }
+.fp-flag-box.active { background:#161208; border-color:#d4b87a;
+  box-shadow:0 0 0 1px #5a4d2e; }
+.fp-flag-check { width:18px; height:18px; border-radius:3px; border:1.5px solid rgba(255,255,255,0.06);
+  background:#080606; display:flex; align-items:center; justify-content:center;
+  font-size:11px; color:transparent; flex-shrink:0; margin-top:1px; }
+.fp-flag-box.active .fp-flag-check { background:#d4b87a; border-color:#d4b87a;
+  color:#080606; }
+.fp-flag-lab { font-size:10.5px; color:#fff; font-weight:600;
+  letter-spacing:-0.005em; display:flex; align-items:center; gap:7px; }
+.fp-flag-lab .ic { color:#d4b87a; font-size:12px; }
+.fp-flag-box:not(.active) .fp-flag-lab .ic { color:#666; }
+.fp-flag-desc { font-size:9.5px; color:#888; margin-top:5px; line-height:1.55;
+  font-style:italic; }
+.fp-flag-desc strong { color:#bbb; font-style:normal; font-weight:600; }
+.fp-foot { padding:13px 20px; background:#080606; border-top:1px solid rgba(255,255,255,0.06);
+  flex-shrink:0; }
+.fp-reward { display:flex; align-items:center; gap:10px; padding:9px 12px;
+  background:rgba(122,176,122,0.04); border:1px solid #3a5a3a; border-radius:4px;
+  margin-bottom:12px; font-size:9.5px; color:#9ac99a; line-height:1.5; }
+.fp-reward strong { color:#fff; font-weight:600; }
+.fp-reward em { font-style:italic; color:#9ac99a; }
+.fp-btn-row { display:flex; gap:8px; }
+.fp-btn { padding:11px 16px; border-radius:4px; font-size:10px; letter-spacing:0.14em;
+  font-weight:700; cursor:pointer; font-family:inherit; text-transform:uppercase;
+  border:1px solid; }
+.fp-btn:disabled { opacity:0.45; cursor:not-allowed; }
+.fp-btn.cancel { background:transparent; border-color:rgba(255,255,255,0.06); color:#888; }
+.fp-btn.cancel:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.fp-btn.send { background:#0e1318; border-color:#7a9aab; color:#9ab8c8; flex:1; }
+.fp-btn.send:hover:not(:disabled) { background:#152028; color:#fff; }
+.fp-empty { flex:1; display:flex; align-items:center; justify-content:center;
+  padding:40px 24px; color:#666; font-style:italic; font-size:13px; text-align:center; }
+.fp-result { padding:14px 20px; border-radius:4px; margin-bottom:10px;
+  font-size:11px; line-height:1.55; }
+.fp-result.win { background:rgba(122,176,122,0.06); border:1px solid #3a5a3a; color:#9ac99a; }
+.fp-result.miss { background:rgba(200,122,122,0.06); border:1px solid #5a3030; color:#e09898; }
+.fp-result strong { color:#fff; font-weight:600; }
+.fp-result em { font-style:italic; }
+
 /* ── Try a Case modal — Advocate's docket draw + choose-a-side ───
    Hidden by default; openTryCaseModal() sets .open. No X close
    button in the success path (the player must Represent or Refuse).
@@ -1088,6 +1225,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel } from './js/utils.js';
+import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
@@ -1604,7 +1742,7 @@ const LEGISLATURE_ACTIONS = [
 // existing render logic at renderAffiliation treats them as disabled.
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
-  { ic: '✉', name: 'REPORT TO MINISTER',  cost: 'no cost', desc: 'Brief the Minister on a live case. Trade access for visibility.' },
+  { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route an incoming dispatch to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
   { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Draft a memo that lands on the right desk inside the ministry.' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.' },
 ];
@@ -1699,8 +1837,9 @@ const AFFIL_VARIANTS = {
     name:    'Civil Servant',
     descFn:  (ctx) => `You serve in the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. You process cases, handle paperwork, and learn how the state actually works from the inside.`,
     actions: CIVIL_SERVANT_ACTIONS,
-    // actionsEnabled left undefined → existing render logic greys
-    // every action out (no `action` key on the entries anyway).
+    actionsEnabled: true,  // FILE PAPERWORK (20270630) is wired; the
+                           // other two entries stay disabled because
+                           // they have no `action` key on the entry.
   },
 };
 
@@ -1915,6 +2054,8 @@ function renderAffiliation(ctx) {
         tryACase(ctx.faction?.id);
       } else if (btn.dataset.action === 'appeal') {
         openAppealModal(ctx.faction?.id);
+      } else if (btn.dataset.action === 'file-paperwork') {
+        openFilePaperworkModal();
       } else {
         handleMpAction(btn);
       }
@@ -4094,6 +4235,315 @@ async function endTrialTurn(trialId) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+// File Paperwork modal — Civil Servant draws one approved dispatch
+// (20270627) and routes it (ministry + agency + flag). Submission
+// grades against the answer key (20270630): correct routing pays
+// +0.3 Skill; correctly flagging a flag-required document pays
+// +0.3 Reputation. Once handled, the dispatch is hidden from this
+// civil servant for 12 ticks.
+// ════════════════════════════════════════════════════════════════
+const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
+const fpState = {
+  dispatch: null,   // current dispatch payload
+  ministry: null,   // selected ministry key
+  agency:   null,   // selected agency key within ministry
+  flagged:  false,  // flag toggle
+  busy:     false,  // submit lock
+};
+
+function fpEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function openFilePaperworkModal() {
+  const back = document.getElementById('fp-back');
+  const content = document.getElementById('fp-content');
+  content.innerHTML = `<div class="fp-empty">Loading next dispatch…</div>`;
+  back.classList.add('open');
+
+  let resp;
+  try {
+    const { data, error } = await _supabase.rpc('fetch_civil_servant_dispatch');
+    if (error) throw error;
+    resp = data;
+  } catch (err) {
+    content.innerHTML = `<div class="fp-empty">Couldn't load dispatch — ${fpEsc(err?.message || 'network or server error')}.<br><br>
+      <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
+    return;
+  }
+
+  if (!resp?.success) {
+    const reason = ({
+      not_authenticated: 'You must be logged in.',
+      not_civil_servant: 'Only civil servants can file paperwork.',
+    })[resp?.reason] || ('Couldn’t load: ' + (resp?.reason || 'unknown'));
+    content.innerHTML = `<div class="fp-empty">${fpEsc(reason)}<br><br>
+      <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
+    return;
+  }
+  if (!resp.dispatch) {
+    content.innerHTML = `<div class="fp-empty">No dispatches in your queue right now.<br>
+      All caught up, or everything you've seen is still on its 12-tick cooldown.<br><br>
+      <button class="fp-btn cancel" onclick="document.getElementById('fp-back').classList.remove('open')">Close</button></div>`;
+    return;
+  }
+
+  // Reset state for the new dispatch — ministry, agency, flag all blank.
+  fpState.dispatch = resp.dispatch;
+  fpState.ministry = null;
+  fpState.agency   = null;
+  fpState.flagged  = false;
+  fpState.busy     = false;
+  renderFilePaperworkModal();
+}
+
+function renderFilePaperworkModal() {
+  const d = fpState.dispatch;
+  if (!d) return;
+  const content = document.getElementById('fp-content');
+  content.innerHTML = `
+    <div class="fp-head">
+      <div class="fp-head-info">
+        <div class="fp-head-eyebrow">Civil Servant &middot; Handle Paperwork</div>
+        <div class="fp-head-name">Route <em>Incoming Dispatch</em></div>
+        <div class="fp-head-meta">Review the document. Select the receiving <strong>ministry</strong> and <strong>agency</strong>. Flag for Senior review if the matter warrants escalation.</div>
+      </div>
+      <span class="fp-head-stat">${fpEsc(d.display_id || '')}</span>
+      <button class="fp-head-close" id="fp-close-btn">&#10005;</button>
+    </div>
+    <div class="fp-body">
+      <div class="fp-doc">
+        <div class="fp-doc-head">
+          <div class="fp-doc-stamp-row">
+            <span class="fp-doc-stamp received">&#x25CF; Received</span>
+            <span class="fp-doc-id">${fpEsc(d.display_id || '')}</span>
+          </div>
+          <div class="fp-doc-eyebrow">${fpEsc(d.office_of || '')}</div>
+          <div class="fp-doc-title">${fpEsc(d.doc_title || '')}</div>
+          <div class="fp-doc-from">From: <strong>${fpEsc(d.sender_title || '')}</strong></div>
+        </div>
+        <div class="fp-doc-body">${fpEsc(d.body || '')}</div>
+      </div>
+      <div class="fp-form">
+        <div class="fp-form-head">
+          <div class="fp-form-eyebrow">Routing Instructions</div>
+          <div class="fp-form-title">Where does this <em>belong</em>?</div>
+          <div class="fp-form-sub">Choose ministry, agency, and whether to flag. <strong>Once submitted</strong> the dispatch leaves your queue for 12 ticks.</div>
+        </div>
+        <div class="fp-form-body">
+          <div>
+            <div class="fp-sec-head">
+              <span class="fp-sec-num">I</span>
+              <span class="fp-sec-lab">Receiving Ministry</span>
+              <span class="fp-sec-help">select one</span>
+            </div>
+            <div class="fp-pill-grid" id="fp-ministry-grid"></div>
+          </div>
+          <div>
+            <div class="fp-sec-head">
+              <span class="fp-sec-num">II</span>
+              <span class="fp-sec-lab">Receiving Agency</span>
+              <span class="fp-sec-help" id="fp-agency-help">pick a ministry first</span>
+            </div>
+            <div class="fp-agency-list" id="fp-agency-list">
+              <div class="fp-agency-empty">Select a ministry to choose an agency.</div>
+            </div>
+          </div>
+          <div>
+            <div class="fp-sec-head">
+              <span class="fp-sec-num">III</span>
+              <span class="fp-sec-lab">Escalation</span>
+              <span class="fp-sec-help">optional</span>
+            </div>
+            <div class="fp-flag-box" id="fp-flag-box">
+              <div class="fp-flag-check">&#10003;</div>
+              <div>
+                <div class="fp-flag-lab"><span class="ic">&#9873;</span> Flag for Senior Civil Servant</div>
+                <div class="fp-flag-desc">Mark if politically sensitive, involves named corporations, or could escalate.
+                  Correctly flagging a flag-required document pays <strong>+0.3 Reputation</strong>.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="fp-foot">
+          <div class="fp-reward">
+            <span>&#9733;</span>
+            <span>Correct routing: <strong>+0.3 Skill</strong> &middot; Correct flag (when required): <strong>+0.3 Reputation</strong></span>
+          </div>
+          <div class="fp-btn-row">
+            <button class="fp-btn cancel" id="fp-cancel-btn">Defer</button>
+            <button class="fp-btn send" id="fp-send-btn" disabled>&#9993; Send Routing</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  renderFpMinistryGrid();
+  renderFpAgencyList();
+  renderFpFlag();
+  renderFpSendBtn();
+  wireFilePaperworkHandlers();
+}
+
+function renderFpMinistryGrid() {
+  const grid = document.getElementById('fp-ministry-grid');
+  if (!grid) return;
+  grid.innerHTML = Object.entries(PAPERWORK_MINISTRIES).map(([key, m]) => `
+    <button type="button" class="fp-pill ${fpState.ministry === key ? 'selected' : ''}" data-ministry="${fpEsc(key)}">
+      <span class="fp-pill-ic">${fpEsc(m.icon)}</span>${fpEsc(m.label)}
+    </button>
+  `).join('');
+}
+
+function renderFpAgencyList() {
+  const list = document.getElementById('fp-agency-list');
+  const help = document.getElementById('fp-agency-help');
+  if (!list || !help) return;
+  const m = fpState.ministry ? PAPERWORK_MINISTRIES[fpState.ministry] : null;
+  if (!m) {
+    help.textContent = 'pick a ministry first';
+    list.innerHTML = '<div class="fp-agency-empty">Select a ministry to choose an agency.</div>';
+    return;
+  }
+  help.textContent = `within ${m.label}`;
+  list.innerHTML = m.agencies.map((a, i) => `
+    <button type="button" class="fp-agency-opt ${fpState.agency === a.key ? 'selected' : ''}" data-agency="${fpEsc(a.key)}">
+      <span class="fp-agency-num">${ROMAN[i] || (i + 1)}.</span>
+      <span>${fpEsc(a.label)}</span>
+      <span class="fp-agency-desc">${fpEsc(a.hint)}</span>
+    </button>
+  `).join('');
+}
+
+function renderFpFlag() {
+  const box = document.getElementById('fp-flag-box');
+  if (box) box.classList.toggle('active', fpState.flagged);
+}
+
+function renderFpSendBtn() {
+  const btn = document.getElementById('fp-send-btn');
+  if (!btn) return;
+  btn.disabled = !(fpState.ministry && fpState.agency) || fpState.busy;
+}
+
+function wireFilePaperworkHandlers() {
+  document.getElementById('fp-close-btn')?.addEventListener('click', closeFilePaperworkModal);
+  document.getElementById('fp-cancel-btn')?.addEventListener('click', closeFilePaperworkModal);
+  document.getElementById('fp-ministry-grid')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-ministry]');
+    if (!btn) return;
+    fpState.ministry = btn.dataset.ministry;
+    fpState.agency = null;
+    renderFpMinistryGrid();
+    renderFpAgencyList();
+    renderFpSendBtn();
+  });
+  document.getElementById('fp-agency-list')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-agency]');
+    if (!btn) return;
+    fpState.agency = btn.dataset.agency;
+    renderFpAgencyList();
+    renderFpSendBtn();
+  });
+  document.getElementById('fp-flag-box')?.addEventListener('click', () => {
+    fpState.flagged = !fpState.flagged;
+    renderFpFlag();
+  });
+  document.getElementById('fp-send-btn')?.addEventListener('click', submitFilePaperwork);
+}
+
+function closeFilePaperworkModal() {
+  document.getElementById('fp-back')?.classList.remove('open');
+}
+
+async function submitFilePaperwork() {
+  if (fpState.busy || !fpState.dispatch) return;
+  if (!fpState.ministry || !fpState.agency) return;
+  fpState.busy = true;
+  const sendBtn = document.getElementById('fp-send-btn');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Sending…'; }
+
+  let resp;
+  try {
+    const { data, error } = await _supabase.rpc('submit_paperwork_routing', {
+      p_dispatch_id: fpState.dispatch.id,
+      p_ministry:    fpState.ministry,
+      p_agency:      fpState.agency,
+      p_flag:        fpState.flagged,
+    });
+    if (error) throw error;
+    resp = data;
+  } catch (err) {
+    alert('Submit failed: ' + (err?.message || 'network or server error'));
+    fpState.busy = false;
+    renderFpSendBtn();
+    if (sendBtn) sendBtn.textContent = '✉ Send Routing';
+    return;
+  }
+
+  if (!resp?.success) {
+    const reason = ({
+      not_authenticated:        'You must be logged in.',
+      not_civil_servant:        'Only civil servants can file paperwork.',
+      missing_routing:          'Pick a ministry AND agency.',
+      invalid_routing:          'That ministry / agency pair isn’t valid.',
+      dispatch_not_found:       'Dispatch no longer exists.',
+      dispatch_not_approved:    'Dispatch isn’t in the rotation pool.',
+      cannot_grade_own_authoring: 'You can’t route a dispatch you authored.',
+      on_cooldown:              'You’ve handled this dispatch in the last 12 ticks.',
+    })[resp?.reason] || ('Submit failed: ' + (resp?.reason || 'unknown'));
+    alert(reason);
+    fpState.busy = false;
+    renderFpSendBtn();
+    if (sendBtn) sendBtn.textContent = '✉ Send Routing';
+    return;
+  }
+
+  // Reveal the answer key + rewards.
+  showFilePaperworkResult(resp);
+}
+
+function showFilePaperworkResult(resp) {
+  const formBody = document.querySelector('#fp-content .fp-form-body');
+  const foot     = document.querySelector('#fp-content .fp-foot');
+  if (!formBody || !foot) { closeFilePaperworkModal(); return; }
+
+  const correctMinistry = PAPERWORK_MINISTRIES[resp.correct_ministry];
+  const correctAgency   = findAgency(resp.correct_ministry, resp.correct_agency);
+  const routingWord = resp.routing_correct ? 'Correct' : 'Misrouted';
+  const flagWord    = resp.flag_correct    ? 'Correct' : 'Off the mark';
+  const skillTxt = resp.skill_delta > 0 ? `<strong>+${resp.skill_delta} Skill</strong>` : '';
+  const repTxt   = resp.reputation_delta > 0 ? `<strong>+${resp.reputation_delta} Reputation</strong>` : '';
+  const rewards = [skillTxt, repTxt].filter(Boolean).join(' &middot; ') || '<em>No rewards earned</em>';
+
+  formBody.innerHTML = `
+    <div class="fp-result ${resp.routing_correct ? 'win' : 'miss'}">
+      <strong>${routingWord} routing.</strong>
+      The correct destination was <em>${fpEsc((correctMinistry && correctMinistry.label) || resp.correct_ministry)}</em>
+       &raquo; <em>${fpEsc((correctAgency && correctAgency.label) || resp.correct_agency)}</em>.
+    </div>
+    <div class="fp-result ${resp.flag_correct ? 'win' : 'miss'}">
+      <strong>${flagWord} flag judgment.</strong>
+      ${resp.should_flag
+        ? 'This document <em>should</em> have been flagged for Senior review.'
+        : 'This document <em>did not</em> need flagging.'}
+    </div>
+    <div class="fp-result win">
+      <strong>Rewards:</strong> ${rewards}
+    </div>`;
+
+  foot.innerHTML = `
+    <div class="fp-btn-row">
+      <button class="fp-btn cancel" id="fp-close-result-btn">Close</button>
+      <button class="fp-btn send"   id="fp-next-btn">Next Dispatch</button>
+    </div>`;
+
+  document.getElementById('fp-close-result-btn')?.addEventListener('click', closeFilePaperworkModal);
+  document.getElementById('fp-next-btn')?.addEventListener('click', openFilePaperworkModal);
+}
+
 init();
 </script>
 
@@ -4137,6 +4587,15 @@ init();
       <div class="tc-sub">Pick a verdict to challenge. <strong>You will represent the losing side.</strong> Experienced Advocates and State Advocates can also escalate resolved appeals to the <em>Supreme Court</em>.</div>
     </div>
     <div class="tc-body" id="ap-content"></div>
+  </div>
+</div>
+
+<!-- File Paperwork modal — Civil Servant draws one approved dispatch and
+     routes it (ministry + agency + flag). Empty by default; openFile
+     PaperworkModal() fetches and paints into #fp-content. -->
+<div class="fp-back" id="fp-back">
+  <div class="fp-modal" id="fp-modal">
+    <div id="fp-content"></div>
   </div>
 </div>
 
