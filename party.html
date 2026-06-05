@@ -399,7 +399,6 @@ let _viewerPolId = null;
 let _viewerPartyId = null;
 let _viewerNextMotionAt = 0;
 let _shardTick = 0;
-let _partyPopCap = 40;
 let _chatPollId = null;
 
 async function init() {
@@ -461,7 +460,6 @@ function render(party, members) {
   const initials   = factionInitials(party.faction_name, party.abbreviation);
   const totalSeats = Math.max(0, Number(party.nation?.total_seats) || 0);
   const majority   = totalSeats > 0 ? Math.floor(totalSeats / 2) + 1 : 0;
-  _partyPopCap     = Math.round(Number(party.popularity_cap_pct) || 40);
   const seats      = Math.max(0, Number(party.seats) || 0);
   const isGov      = totalSeats > 0 && seats >= majority;
   const isMine     = _viewerPartyId && _viewerPartyId === party.id;
