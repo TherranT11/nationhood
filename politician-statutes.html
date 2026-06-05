@@ -377,6 +377,14 @@ let submitInFlight = false;
   }
 
   wireModalChrome();
+
+  // ?propose=1 deep-link from party.html's Member of Parliament
+  // panel — open the modal straight away when the viewer qualifies.
+  // Non-MPs hitting the link still see the static page with the
+  // disabled button explaining the gate.
+  if (isMP && new URLSearchParams(location.search).get('propose') === '1') {
+    openModal();
+  }
   // Defensive try/catch — the renderer already null-guards every
   // host element and bucket, but an unexpected DOM throw here
   // shouldn't take down the whole page.

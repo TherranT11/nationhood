@@ -338,7 +338,7 @@
     <aside class="side-col" id="side-col" style="display:none;">
       <div class="panel side-panel actions-panel" id="actions-panel">
         <div class="panel-lab actions-head">
-          <span>Party Member Actions</span>
+          <span>Member of Parliament</span>
         </div>
         <div class="actions-body" id="actions-body"></div>
       </div>
@@ -397,6 +397,7 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = s
 
 let _viewerPolId = null;
 let _viewerPartyId = null;
+let _viewerOffice = null;
 let _viewerNextMotionAt = 0;
 let _shardTick = 0;
 let _chatPollId = null;
@@ -417,6 +418,7 @@ async function init() {
 
   _viewerPolId         = ctx.faction?.id || null;
   _viewerPartyId       = ctx.faction?.politician_party_id || null;
+  _viewerOffice        = ctx.faction?.politician_office || null;
   _viewerNextMotionAt  = Number(ctx.faction?.next_party_motion_tick) || 0;
   _shardTick           = Number(ctx.shard?.current_tick) || 0;
 
@@ -545,7 +547,23 @@ function renderSidebar(party, isMine) {
   }
   side.style.display = 'flex';
   bodyGrid.classList.add('has-side');
+  renderMpActions();
   loadAndPollChat(party).catch(err => console.warn('[party] chat init failed', err));
+}
+
+// Single MP-only action surface — [Propose New Law] — surfacing the
+// committee_propose_law modal that lives on politician-statutes.html.
+// MP-gated on politician_office (member_of_parliament / senior_mp);
+// non-MPs see a disabled button with the requirement spelled out.
+// The link carries ?propose=1 so the statutes page auto-opens the
+// modal on arrival — no second click to find the same button there.
+function renderMpActions() {
+  const body = document.getElementById('actions-body');
+  if (!body) return;
+  const isMP = _viewerOffice === 'member_of_parliament' || _viewerOffice === 'senior_mp';
+  body.innerHTML = isMP
+    ? `<a class="biz-btn biz-btn-pri" href="politician-statutes.html?propose=1" style="display:block;text-align:center;text-decoration:none;">Propose New Law</a>`
+    : `<button class="biz-btn biz-btn-sec" type="button" disabled title="Member of Parliament required" style="width:100%;">Propose New Law</button>`;
 }
 
 async function loadAndPollChat(party) {
