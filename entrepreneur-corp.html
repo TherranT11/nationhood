@@ -1279,6 +1279,24 @@ function initials(s, n) {
         : `<div class="pct">100%</div>`;
     }
 
+    // Viewer-role resolution: must run BEFORE the board card render
+    // because the per-Director action strip below gates Appoint /
+    // Remove buttons on isOwner. Moved up from its original spot
+    // further down in init (was line ~1400) so the board for-loop
+    // can read isOwner without tripping TDZ. Same ownership semantics
+    // as the canonical declaration: isOwner is exact-faction match
+    // on owner_faction_id; isDirector reads the seat row.
+    const isOwner = !!entId && c.owner_faction_id === entId;
+    let isDirector = false;
+    if (!!entId && !isOwner) {
+      const { data: _seat, error: _seatErr } = await _supabase.from('corp_board_seats')
+        .select('corp_id').eq('corp_id', id).eq('member_faction_id', entId).maybeSingle();
+      if (_seatErr) console.warn('[entrepreneur-corp] director-seat fetch error:', _seatErr.message);
+      isDirector = !!_seat;
+    }
+    const canView   = isOwner || isDirector;
+    const ownerOnly = (html) => (isOwner ? html : '');
+
     // Non-founder board members from corp_board_seats (20270158).
     // Founder is NOT a row here — the chairman row above renders them
     // from owner_faction_id (one source). Phase B will add the Join
@@ -1397,22 +1415,9 @@ function initials(s, n) {
     // one-way in v1. Reload on success so every derived figure
     // (valuation seed→market, trade card, board) repaints from the DB.
     // Mirrors the trade card's lock/reason/reload conventions.
-    const isOwner = !!entId && c.owner_faction_id === entId;
-
-    // ── Viewer role (one source of truth). Board directors (corp_board_seats,
-    //    which excludes the founder — the founder is the owner/chairman) get
-    //    full READ-ONLY visibility of every operational panel; all management
-    //    actions stay owner-only. Reused below by the director-equity,
-    //    no-confidence, and operational-panel gates. ──
-    let isDirector = false;
-    if (!!entId && !isOwner) {
-      const { data: _seat, error: _seatErr } = await _supabase.from('corp_board_seats')
-        .select('corp_id').eq('corp_id', id).eq('member_faction_id', entId).maybeSingle();
-      if (_seatErr) console.warn('[entrepreneur-corp] director-seat fetch error:', _seatErr.message);
-      isDirector = !!_seat;
-    }
-    const canView   = isOwner || isDirector;       // may see operational panels
-    const ownerOnly = (html) => (isOwner ? html : ''); // strip management affordances for directors
+    // (isOwner / isDirector / canView / ownerOnly are computed earlier
+    // — moved up so the board card render can gate Appoint/Remove
+    // buttons on isOwner without tripping TDZ.)
 
     // ── Rebrand action (owner-only): logo + name + ticker. $1M from corp
     //    treasury, 12-tick cooldown. RPC: entrepreneur_rebrand_corp. ──
