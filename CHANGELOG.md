@@ -302,8 +302,41 @@ All notable changes to Nationhood are recorded here. Format inspired by
   during play (the "Witness for Plaintiff" label during examination)
   is a follow-up — `get_trial_state` doesn't return it yet.
 
+### Changed
+
+- **Apartment occupancy now tier-aware.** Previously all three
+  apartment tiers in a nation projected the same occupancy because
+  the formula was `clamp(0.4, stab/100, 1.0)` — pure function of
+  nation stability, no tier input. Realistically a luxury unit
+  serves a smaller renter pool than a basic one. Migration
+  `20270617` adds a tier multiplier inside the clamp: basic ×1.00,
+  modest ×0.85, luxury ×0.65. So a nation at stab=91 now projects
+  91% / 77% / 59% for basic / modest / luxury instead of 91% across
+  the board. Floor (0.4) still applies to all tiers in low-stab
+  nations. JS-side helper renamed `apartmentOccupancyFromStability`
+  → `apartmentOccupancy(buildingType, stab)`; `APARTMENT_DEFS`
+  gains an `occMult` field as the SoT, with the SQL CASE in lockstep
+  per the existing "Keep them in sync" pattern. Modal projection
+  and the sparkline both pass building_type so live numbers match
+  the actual tick math.
+
 ### Fixed
 
+- **Shipping corps: Revenue Change card now stamps per-tick payout.**
+  Third in the bypass-the-ledger sweep (after oil & gas in `20270605`
+  and airlines in `20270616`). User confirmed their shipping corp
+  earning from an active freighter route while the card showed "$0
+  · no data yet" — same diagnosis. Migration `20270618` re-issues
+  `process_trade_agreement_shipping_multiwinner` (live body
+  confirmed via `pg_get_functiondef` probe — `always_manual_accept`
+  variant, no auto-fill window) with the per-bid `UPDATE
+  entrepreneur_corps` extended to stamp `last_tick_revenue` /
+  `last_revenue_tick` alongside the treasury credit. Multi-bid
+  aggregation per tick handled by the same CASE pattern as
+  airlines: a corp winning multiple bids in one tick accumulates
+  the payouts in one stamp. Legacy faction-corp bidders (writing
+  to `corp_cash_reserves`) are unchanged. Apartment-rent
+  (`20270445`) and share-trade paths still pending follow-ups.
 - **Airline corps: Revenue Change card now stamps per-tick net.**
   User reported two airline routes generating "net +$1,500" each
   per tick (=$3,000/tick total treasury inflow), but the Revenue
