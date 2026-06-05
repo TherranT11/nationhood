@@ -246,6 +246,18 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Trial chat: opposing counsel can now read the text of played
+  evidence.** When a beat was played as part of a trial message,
+  the chat card surfaced only "FACT · The Three Workers" — opposing
+  counsel saw a label but had no way to read what the evidence
+  actually said. The description text lived on the beat row and was
+  already returned for the calling side's own hand, so this was a
+  read-permission gap, not a missing field. Migration `20270613`
+  adds `beat_description` to the message jsonb returned by
+  `get_trial_state` (played beats are public to both sides, so no
+  privacy gate). `politician-home.html`'s `renderTrialChat` now
+  renders the description under the beat name in italics, separated
+  by a thin rule.
 - **Aircraft production modal: shows the actual charge, not the
   bundled cost.** The Produce modal on `entrepreneur-corp.html` was
   reading `design.cost_per_unit` for its "Unit cost $X" line — for
