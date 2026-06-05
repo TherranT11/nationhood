@@ -87,10 +87,15 @@ BEGIN
        SET politician_senior_civil_servant_at_tick = v_tick
      WHERE id = v_pol.id;
 
+    -- target_name is the human-readable label that lands on the career
+    -- timeline. event_type stays 'promoted_senior_civil_servant' as
+    -- the stable analytics key (the rename to "Agency Head" was a
+    -- display swap only — schema and event-type strings keep their
+    -- original names so historical greps still work).
     INSERT INTO politician_career_events
         (faction_id, event_tick, event_type, target_name)
     VALUES
-        (v_pol.id, v_tick, 'promoted_senior_civil_servant', 'Senior Civil Servant');
+        (v_pol.id, v_tick, 'promoted_senior_civil_servant', 'Agency Head');
 
     RETURN jsonb_build_object(
         'success',       true,

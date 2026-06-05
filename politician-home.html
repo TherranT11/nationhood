@@ -1752,12 +1752,14 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '↑', name: 'APPLY FOR PROMOTION', cost: 'no cost', desc: 'Petition the Ministry for a Tier 2 appointment. Requires 10 Reputation. Available at any tick.', action: 'apply-for-promotion' },
 ];
 
-// Senior Civil Servant (Tier 2) placeholder actions — slots from the
+// Agency Head (Tier 2) placeholder actions — slots from the
 // politician-career rung copy. No action keys → render disabled until
-// each surfaces its own RPC.
-const SENIOR_CIVIL_SERVANT_ACTIONS = [
+// each surfaces its own RPC. (Senior Civil Servant was renamed to
+// Agency Head; the schema column politician_senior_civil_servant_at_
+// tick stays named for now — display-only swap.)
+const AGENCY_HEAD_ACTIONS = [
   { ic: '📝', name: 'DRAFT A MEMO',   cost: 'no cost', desc: 'Frame the policy question for the people who actually decide.' },
-  { ic: '✉', name: 'BRIEF A MINISTER', cost: 'no cost', desc: 'Walk the Minister through your section’s view of the brief.' },
+  { ic: '✉', name: 'BRIEF A MINISTER', cost: 'no cost', desc: 'Walk the Minister through your agency’s view of the brief.' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
@@ -1857,18 +1859,19 @@ const AFFIL_VARIANTS = {
                   // per tick. APPLY FOR PROMOTION opts out via the
                   // per-action gating block in renderAffiliation.
   },
-  // Senior Civil Servant (20270633) — Tier 2 of the Civil Service
-  // ladder. politician_senior_civil_servant_at_tick gates entry to
-  // this variant in the fallback ladder above the civil_servant
-  // check. Actions are placeholders; the promotion mechanic is
-  // the only Tier-2 wire today.
+  // Agency Head (20270633) — Tier 2 of the Civil Service ladder.
+  // politician_senior_civil_servant_at_tick gates entry to this
+  // variant in the fallback ladder above the civil_servant check.
+  // Schema column keeps its old name; the display swap is just label.
+  // Actions are placeholders; the promotion mechanic is the only
+  // Tier-2 wire today.
   senior_civil_servant: {
     variant: 'var-civ',
     eyebrow: 'CIVIL SERVICE · TIER 2',
     badge:   '⚒',
-    name:    'Senior Civil Servant / Section Head',
-    descFn:  (ctx) => `You run a section within the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`,
-    actions: SENIOR_CIVIL_SERVANT_ACTIONS,
+    name:    'Agency Head',
+    descFn:  (ctx) => `You run an agency within the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`,
+    actions: AGENCY_HEAD_ACTIONS,
     // actionsEnabled left undefined → placeholder slots render greyed.
   },
 };
@@ -2235,13 +2238,16 @@ async function handleResignOffice(btn, officeName) {
   }
 }
 
-// Apply for Promotion (20270633) — civil servant → senior civil
-// servant. Opts out of the per-tick action lock so it can fire
-// alongside FILE PAPERWORK / FILE A MEMO in the same tick.
-// insufficient_reputation surfaces the "have / need" numbers from
-// the RPC envelope so the player knows exactly how short they are.
+// Apply for Promotion (20270633) — civil servant → Agency Head.
+// Opts out of the per-tick action lock so it can fire alongside
+// FILE PAPERWORK / FILE A MEMO in the same tick. insufficient_
+// reputation surfaces the "have / need" numbers from the RPC
+// envelope so the player knows exactly how short they are.
+// (Schema reason 'already_senior' kept as-is; the display label
+// flipped to Agency Head but the column stayed politician_senior_
+// civil_servant_at_tick.)
 async function applyForPromotion(btn) {
-  if (!confirm('Petition the Ministry for promotion to Senior Civil Servant? Requires 10 Reputation.')) return;
+  if (!confirm('Petition the Ministry for promotion to Agency Head? Requires 10 Reputation.')) return;
   const prevHtml = btn.innerHTML;
   btn.classList.add('cooldown');
   btn.removeAttribute('data-action');
@@ -2252,7 +2258,7 @@ async function applyForPromotion(btn) {
       const reason = data?.reason === 'insufficient_reputation'
         ? `Petition denied — you need 10 Reputation. You have ${Number(data?.have ?? 0).toFixed(1).replace(/\.0$/, '')}.`
         : data?.reason === 'already_senior'
-            ? 'You are already a Senior Civil Servant.'
+            ? 'You are already an Agency Head.'
             : data?.reason === 'not_civil_servant'
                 ? 'Only Civil Servants can apply for this promotion.'
                 : ACTION_REASON[data?.reason] || ('Petition failed: ' + (data?.reason || 'unknown'));
@@ -2262,7 +2268,7 @@ async function applyForPromotion(btn) {
       btn.innerHTML = prevHtml;
       return;
     }
-    alert('Promoted to Senior Civil Servant.');
+    alert('Promoted to Agency Head.');
     location.reload();
   } catch (e) {
     alert('Petition failed: ' + (e?.message || 'network or server error'));
