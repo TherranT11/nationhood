@@ -1745,6 +1745,19 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route an incoming dispatch to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
   { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +1 Capital. −1 Influence.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
+  // Apply for Promotion (20270633): opt-out of the per-tick lock —
+  // a civil servant can submit a promotion application alongside one
+  // of the three career actions. Promotion gated server-side on
+  // politician_reputation ≥ 10.
+  { ic: '↑', name: 'APPLY FOR PROMOTION', cost: 'no cost', desc: 'Petition the Ministry for a Tier 2 appointment. Requires 10 Reputation. Available at any tick.', action: 'apply-for-promotion' },
+];
+
+// Senior Civil Servant (Tier 2) placeholder actions — slots from the
+// politician-career rung copy. No action keys → render disabled until
+// each surfaces its own RPC.
+const SENIOR_CIVIL_SERVANT_ACTIONS = [
+  { ic: '📝', name: 'DRAFT A MEMO',   cost: 'no cost', desc: 'Frame the policy question for the people who actually decide.' },
+  { ic: '✉', name: 'BRIEF A MINISTER', cost: 'no cost', desc: 'Walk the Minister through your section’s view of the brief.' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
@@ -1841,7 +1854,22 @@ const AFFIL_VARIANTS = {
     cooldownColumn: 'next_civil_service_action_tick',  // 20270632
                   // shared lock between FILE PAPERWORK + FILE A MEMO
                   // so the two career actions are mutually exclusive
-                  // per tick.
+                  // per tick. APPLY FOR PROMOTION opts out via the
+                  // per-action gating block in renderAffiliation.
+  },
+  // Senior Civil Servant (20270633) — Tier 2 of the Civil Service
+  // ladder. politician_senior_civil_servant_at_tick gates entry to
+  // this variant in the fallback ladder above the civil_servant
+  // check. Actions are placeholders; the promotion mechanic is
+  // the only Tier-2 wire today.
+  senior_civil_servant: {
+    variant: 'var-civ',
+    eyebrow: 'CIVIL SERVICE · TIER 2',
+    badge:   '⚒',
+    name:    'Senior Civil Servant / Section Head',
+    descFn:  (ctx) => `You run a section within the Ministry of <strong>${escHtml(ministryName(ctx.faction?.politician_ministry) || ctx.faction?.politician_ministry || '—')}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`,
+    actions: SENIOR_CIVIL_SERVANT_ACTIONS,
+    // actionsEnabled left undefined → placeholder slots render greyed.
   },
 };
 
@@ -1856,11 +1884,16 @@ function renderAffiliation(ctx) {
   // party-member default. Each tier is mutually exclusive in practice;
   // the sit-the-exam gate blocks ministry assignment while an office
   // is held, and bar_exam_start blocks while a career already exists.
+  // Civil-service tier 2 outranks tier 1 — politician_senior_civil_
+  // servant_at_tick is the gate (20270633). NULL = still Tier 1.
+  const isSeniorCS = !!ministry
+    && ctx.faction?.politician_senior_civil_servant_at_tick != null;
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
-    : (ministry ? AFFIL_VARIANTS.civil_servant
-                : (barNation ? AFFIL_VARIANTS.advocate
-                             : AFFIL_VARIANTS.party_member));
+    : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
+                  : (ministry ? AFFIL_VARIANTS.civil_servant
+                              : (barNation ? AFFIL_VARIANTS.advocate
+                                           : AFFIL_VARIANTS.party_member)));
   const partyName = ctx.party?.faction_name || '';
 
   // Description: variants with a static `desc` use it; variants with
@@ -1990,10 +2023,12 @@ function renderAffiliation(ctx) {
     } else if (perActionDisabled) {
       cls += ' cooldown';
       attrs = ` aria-disabled="true" title="${escHtml(perActionDisabled.title)}"`;
-    } else if (onCooldown && a.action !== 'appeal') {
+    } else if (onCooldown && a.action !== 'appeal' && a.action !== 'apply-for-promotion') {
       // Variant-level cooldown still applies to actions that don't
       // have their own per-action handling (other than try-case which
-      // checked it above and APPEAL which opts out).
+      // checked it above and APPEAL / APPLY-FOR-PROMOTION which opt
+      // out — apply-for-promotion is "at any tick" per the 20270633
+      // spec).
       cls += ' cooldown';
       attrs = ` aria-disabled="true" title="Cooldown — ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'} remaining"`;
     } else {
@@ -2063,6 +2098,8 @@ function renderAffiliation(ctx) {
         // is dense (per-agency accordions across the ministry) and
         // reads better outside the role card's footprint.
         window.location.href = 'auditministry.html';
+      } else if (btn.dataset.action === 'apply-for-promotion') {
+        applyForPromotion(btn);
       } else {
         handleMpAction(btn);
       }
@@ -2195,6 +2232,43 @@ async function handleResignOffice(btn, officeName) {
   } catch (e) {
     alert('Failed: ' + (e?.message || e));
     btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+// Apply for Promotion (20270633) — civil servant → senior civil
+// servant. Opts out of the per-tick action lock so it can fire
+// alongside FILE PAPERWORK / FILE A MEMO in the same tick.
+// insufficient_reputation surfaces the "have / need" numbers from
+// the RPC envelope so the player knows exactly how short they are.
+async function applyForPromotion(btn) {
+  if (!confirm('Petition the Ministry for promotion to Senior Civil Servant? Requires 10 Reputation.')) return;
+  const prevHtml = btn.innerHTML;
+  btn.classList.add('cooldown');
+  btn.removeAttribute('data-action');
+  try {
+    const { data, error } = await _supabase.rpc('politician_apply_for_promotion');
+    if (error) throw error;
+    if (!data?.success) {
+      const reason = data?.reason === 'insufficient_reputation'
+        ? `Petition denied — you need 10 Reputation. You have ${Number(data?.have ?? 0).toFixed(1).replace(/\.0$/, '')}.`
+        : data?.reason === 'already_senior'
+            ? 'You are already a Senior Civil Servant.'
+            : data?.reason === 'not_civil_servant'
+                ? 'Only Civil Servants can apply for this promotion.'
+                : ACTION_REASON[data?.reason] || ('Petition failed: ' + (data?.reason || 'unknown'));
+      alert(reason);
+      btn.classList.remove('cooldown');
+      btn.dataset.action = 'apply-for-promotion';
+      btn.innerHTML = prevHtml;
+      return;
+    }
+    alert('Promoted to Senior Civil Servant.');
+    location.reload();
+  } catch (e) {
+    alert('Petition failed: ' + (e?.message || 'network or server error'));
+    btn.classList.remove('cooldown');
+    btn.dataset.action = 'apply-for-promotion';
+    btn.innerHTML = prevHtml;
   }
 }
 
