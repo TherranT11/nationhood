@@ -659,7 +659,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, currentAge as ageNow, careerYears } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears } from './js/utils.js';
 
 
 // Career ladders. `branch: true` ladders render as a two-column pair
@@ -1679,19 +1679,14 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
 }
 
 function render(politician, shard, nation, party) {
-  // Career label derives from the live party FK (politician_party_id
-  // → ctx.party). The old factions.politician_career text column was
-  // dropped after every surface stopped reading it (see commit log
-  // around 20270410); the Tier 0 Party Member rung reads the same FK
-  // so the header and the rung always agree.
-  // If the politician is a civil servant (no party but assigned to a
-  // ministry), surface that in the header in place of "Independent".
-  // splitCareerTitle turns "Civil Servant of Defense" into
-  // lead="Civil Servant" + tail="of Defense" for the italic split.
-  const ministrySlug = politician.politician_ministry || null;
-  const career = party?.faction_name
-              || (ministrySlug ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}` : 'Independent');
+  // Career label: held office > civil-service post > party affiliation
+  // > Independent. Lifted into careerLabel() in js/utils.js so this and
+  // politician-home's hero pill always agree. splitCareerTitle turns
+  // "Civil Servant of Defense" into lead="Civil Servant" + tail="of
+  // Defense" for the italic split.
+  const career = careerLabel(politician, party);
   const { lead, tail } = splitCareerTitle(career);
+  const office = politician.politician_office || null;
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
   const age = ageNow(politician, shard?.current_tick);
   const years = careerYears(politician, shard?.current_tick);
@@ -1702,21 +1697,12 @@ function render(politician, shard, nation, party) {
   document.getElementById('cc-title-lead').textContent = lead;
   document.getElementById('cc-title-tail').textContent = tail;
 
-  // Subtitle: age · nation · affiliation note (when there is one).
-  // Office-holders read "{Office Title} of {party}"; un-officed party
-  // members read "member of {party}". Independents (no office, no
-  // party — e.g. civil servants whose role is conveyed by the title
-  // line above) drop the segment entirely so the subtitle doesn't
-  // contradict the title. Office title comes from OFFICE_TITLES (the
-  // same map used in the rung descriptions), so the surfaces never
-  // disagree.
-  const office = politician.politician_office || null;
-  const positionNote = office && party
-    ? `${officeTitle(office)} of ${party.faction_name}`
-    : (party ? `member of ${party.faction_name}` : null);
-  document.getElementById('cc-subtitle').textContent = positionNote
-    ? `Age ${age} · ${nationName} · ${positionNote}`
-    : `Age ${age} · ${nationName}`;
+  // Subtitle: age · nation · "member of {party}" when card-carrying.
+  // The H1 already carries the role distinction for office-holders /
+  // civil servants, so the old combined "{Office} of {party}" tail is
+  // gone — party-membership context lives here either way.
+  const subtitleTail = party ? ` · member of ${party.faction_name}` : '';
+  document.getElementById('cc-subtitle').textContent = `Age ${age} · ${nationName}${subtitleTail}`;
 
   // Positions held — 1 when an office is held, 0 otherwise.
   document.getElementById('cc-positions').textContent = office ? '1' : '0';

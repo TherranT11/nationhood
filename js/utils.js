@@ -287,7 +287,9 @@ export function buildingTypeLabel(t) {
 // constraint (see migration 20270418).
 export const OFFICE_TITLES = {
     community_organizer:  'Community Organizer',
+    city_council_member:  'City Council Member',
     member_of_parliament: 'Member of Parliament',
+    senior_mp:            'Senior MP',
 };
 export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
@@ -303,6 +305,25 @@ export const MINISTRY_NAMES = {
     interior:             'Interior',
 };
 export function ministryName(slug) { return MINISTRY_NAMES[slug] || ''; }
+
+// Single-line career standing for politician hero cards (the H1 on
+// politician-career, the hero-career pill on politician-home). Same
+// precedence everywhere it's read: a held state role IS your standing,
+// so an elected office beats a civil-service post which beats card-
+// carrying party membership which beats nothing. Used to live inline
+// on each page with subtly different fallback chains — politician-home
+// didn't even fall through to ministry, so a civil-servant card-
+// carrier would render as just the party name there. SoT here so both
+// surfaces stay locked.
+export function careerLabel(politician, party) {
+    const office       = politician?.politician_office  || null;
+    const ministrySlug = politician?.politician_ministry || null;
+    const officeText   = office ? officeTitle(office) : '';
+    const ministryText = ministrySlug
+        ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}`
+        : '';
+    return officeText || ministryText || party?.faction_name || 'Independent';
+}
 
 // ===== GAME DATE =====
 
