@@ -21,6 +21,12 @@
  * Returns one of 'abandoned' | 'unassigned' | 'banned' | null.
  * null means the faction is structurally active.
  */
+
+// OFFICE_TITLES / officeTitle live in utils.js — the same source the
+// career-page rungs render from. Importing here means a new office
+// value only needs to land in one place to flow through both surfaces.
+import { officeTitle } from '../utils.js';
+
 export function getFactionInactiveReason(f) {
     if (!f) return null;
     if (f.abandoned_at) return 'abandoned';
@@ -133,7 +139,13 @@ export function getPoliticianRoleLabel(faction) {
         if (faction.politician_experienced_advocate_at_tick != null) return 'Experienced Advocate';
         return 'Advocate';
     }
-    if (faction.politician_office === 'member_of_parliament') return 'MP';
+    // Elected office — covers Community Organizer / City Council Member
+    // / Member of Parliament / Senior MP. OFFICE_TITLES (utils.js) is
+    // the single source for the display strings shared with the career
+    // page rungs, so adding a new office value there flows through here
+    // automatically. Falsy return ('' from unknown values) collapses to
+    // null at the caller's `role ? ...` check.
+    if (faction.politician_office) return officeTitle(faction.politician_office) || null;
     if (faction.politician_ministry) return 'Civil Servant';
     return null;
 }
