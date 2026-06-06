@@ -242,7 +242,11 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
     </a>`).join('');
   document.body.appendChild(bottom);
 
-  buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && !isHiddenFromSwitcher(x)));
+  // Military factions are intentionally excluded from the politician
+  // switcher — politician + military are separate experiences and the
+  // army faction shouldn't be reachable from the politician topbar.
+  buildSwitcher((allUserFactions || []).filter(x =>
+    !isFactionInactive(x) && !isHiddenFromSwitcher(x) && x.faction_type !== 'military'));
   startCountdown(s.next_tick_at);
 
   const pill = document.getElementById('pol-pill');
