@@ -440,7 +440,7 @@ const FEE_PCT = 5;
 const IPO_SHARES = 20;
 let entFunds = 0;
 let sel = { industry: 'construction', hqNationId: null, listing: 'private' };
-let nationsByCont = {};   // continent -> [{id,name,corporate_tax}]
+let nationsByCont = {};   // continent -> nation rows (see loadNations SELECT)
 let entCorpCounts = {};   // `${industry}|${nationId}` -> count
 let activeCont = 'Crucera';
 
