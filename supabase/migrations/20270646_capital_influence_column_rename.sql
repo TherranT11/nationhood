@@ -14,9 +14,11 @@
 --   politician_influence → politician_capital
 --   political_capital   → politician_influence
 --
--- The ALTER + the re-emits all run in one transaction so any function
--- referencing the old names breaks atomically and can be caught at
--- migration apply time, not silently at next call.
+-- Section 1 reconciles the live column shape: target state is a no-op,
+-- fresh pre-rename state does the atomic swap, anything else raises.
+-- Section 2 re-emits the 30 functions whose bodies bound to the old
+-- names so their next parse picks up the new identifiers. Everything
+-- runs in one transaction; partial application is impossible.
 --
 -- Apply after 20270645.
 -- ════════════════════════════════════════════════════════════════════
@@ -674,8 +676,6 @@ BEGIN
     );
 END $$;
 
--- ── begin_construction — building start, increments Influence ──
-
 -- From 20270499_committee_hearings.sql — public.accept_hearing_testimony
 CREATE OR REPLACE FUNCTION public.accept_hearing_testimony(p_testimony_id uuid)
 RETURNS jsonb
@@ -759,10 +759,6 @@ BEGIN
 END $$;
 
 GRANT EXECUTE ON FUNCTION public.accept_hearing_testimony(uuid) TO authenticated;
-
--- ── 7. close_committee_hearing ──────────────────────────────────────
--- Committee member only. Marks hearing closed. Idempotent — closing
--- an already-closed hearing is a no-op success.
 
 -- From 20270505_bar_exam_active_politician.sql — public.bar_exam_submit
 CREATE OR REPLACE FUNCTION public.bar_exam_submit(
@@ -1113,8 +1109,6 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'alerts', v_alerts);
 END $$;
 
--- ── politician_civic_meeting — local action, Skill check ──
-
 -- From 20270583_consolidate_faction_stats.sql — public.list_pending_state_advocate_requests_for_reviewer
 CREATE OR REPLACE FUNCTION public.list_pending_state_advocate_requests_for_reviewer(
     p_faction_id uuid
@@ -1168,18 +1162,6 @@ END $$;
 
 REVOKE EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) TO authenticated;
-
-
-
--- ── politician_found_party — fix stale `politician_capital` reference ──
--- Pre-existing latent bug: this function's only definition (20270379)
--- pre-dates the 20270463 rename of politician_capital → politician_influence.
--- It has referenced a non-existent column since 20270463 (silently broken
--- for ~120 migrations). The 20270583 rename of politician_standing →
--- politician_capital would otherwise RESURRECT the column with WRONG
--- semantics (the new Influence stat instead of Political Capital).
--- Re-emit here with the correct column. Reason code updated:
--- 'insufficient_influence' → 'insufficient_capital'.
 
 -- From 20270584_committee_chair_bid.sql — public.politician_bid_for_chair
 CREATE OR REPLACE FUNCTION public.politician_bid_for_chair(
@@ -1498,7 +1480,6 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.politician_build_the_base(uuid) TO authenticated;
 
--- ── 4. politician_lobby_minister ──────────────────────────────────
 -- Random ministry pick mirrors the politician_sit_the_exam slug list
 -- (20270471) — keep the four-slot CASE in lockstep when ministries
 -- are added or renamed. Ministry display name comes back in the
@@ -1569,11 +1550,6 @@ BEGIN
 END;
 $$;
 
--- ── 3. politician_give_speech — Skill/Capital random 50/50 ─────────
--- Replaces the 20270588 1d6-polling body. Coin-flip between +1 Skill
--- (politician_skill) and +1 Capital (politician_capital). 3-tick
--- speech-specific cooldown on top of the shared 1-per-tick gate.
-
 -- From 20270632_civil_servant_file_memo_and_action_lock.sql — public.politician_file_a_memo
 CREATE OR REPLACE FUNCTION public.politician_file_a_memo()
 RETURNS jsonb
@@ -1634,7 +1610,6 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.politician_file_a_memo() TO authenticated;
 
--- ── 3. submit_paperwork_routing — share the per-tick lock ─────────
 -- Body byte-identical to 20270630 except (a) the cooldown check
 -- before any work and (b) the cooldown stamp on the post-grade
 -- UPDATE. The per-dispatch 12-tick cooldown stays unchanged.
@@ -1849,8 +1824,6 @@ BEGIN
 END;
 $$;
 
--- ── politician_register_for_office — senior_mp branch reads Skill ──
-
 -- From 20270591_campaign_actions_member_candidate_split.sql — public.politician_give_speech
 CREATE OR REPLACE FUNCTION public.politician_give_speech(p_party_id uuid)
 RETURNS jsonb
@@ -1930,9 +1903,6 @@ BEGIN
 END;
 $$;
 
--- ── 4. politician_run_political_ads — candidate Ads ────────────────
--- 1d10 + 6 → polling. Cost 1 Capital (politician_capital). Shared gate.
-
 -- From 20270463_rename_influence_to_political_capital.sql — public.politician_join_party
 CREATE OR REPLACE FUNCTION public.politician_join_party(
     p_politician_id uuid,
@@ -1994,11 +1964,6 @@ BEGIN
 END;
 $$;
 
--- ── 5. politician_leave_party — -5 Political Capital cost preserved ─
--- Re-paste of the 20270372 body with the column + return-key renamed.
--- The -5 cost is intact (clamp at 0). First-join +3 is in
--- politician_join_party; the combination makes leave + rejoin a net
--- loss, killing affiliation-churn farming.
 
 -- From 20270463_rename_influence_to_political_capital.sql — public.politician_leave_party
 CREATE OR REPLACE FUNCTION public.politician_leave_party(
@@ -2044,8 +2009,6 @@ BEGIN
         'politician_influence_delta', -5);
 END;
 $$;
-
--- ── 6. politician_mp_fundraising_dinner ─────────────────────────────
 
 -- From 20270642_city_council_actions_tuning.sql — public.politician_lobby_minister
 CREATE OR REPLACE FUNCTION public.politician_lobby_minister(p_party_id uuid)
@@ -2252,8 +2215,6 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.politician_mobilize_volunteers(uuid) TO authenticated;
 
--- ── 2. politician_lobby_minister — 3-tick cooldown, rebuff costs a volunteer ─
-
 -- From 20270484_politician_resign_decrement_seats.sql — public.politician_resign_office
 CREATE OR REPLACE FUNCTION public.politician_resign_office()
 RETURNS jsonb
@@ -2343,35 +2304,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.politician_resign_office() TO authenticated;
-
--- ── One-time backfill ──────────────────────────────────────────────
--- Any existing parliament-tier resignation event (logged by the
--- previous version of politician_resign_office) didn't decrement
--- factions.seats. Mark each affected event with
--- metadata.seats_decremented = true after we apply the -1, so a
--- re-run of this migration is a no-op.
-
-WITH pending AS (
-    SELECT e.id AS event_id, f.politician_party_id
-      FROM politician_career_events e
-      JOIN factions f ON f.id = e.faction_id
-     WHERE e.event_type = 'resigned_office'
-       AND e.target_name IN ('Member of Parliament', 'Senior MP')
-       AND f.politician_party_id IS NOT NULL
-       AND NOT COALESCE((e.metadata->>'seats_decremented')::boolean, false)
-),
-seats_decremented AS (
-    UPDATE factions
-       SET seats = GREATEST(0, COALESCE(seats, 0) - 1)
-      FROM pending
-     WHERE factions.id = pending.politician_party_id
-       AND factions.faction_type = 'movement_party'
-       AND factions.abandoned_at IS NULL
-    RETURNING factions.id
-)
-UPDATE politician_career_events
-   SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"seats_decremented": true}'::jsonb
- WHERE id IN (SELECT event_id FROM pending);
 
 -- From 20270635_city_council_run_or_former_co.sql — public.politician_resolve_due_elections
 CREATE OR REPLACE FUNCTION public.politician_resolve_due_elections()
@@ -2706,11 +2638,6 @@ BEGIN
 END;
 $$;
 
--- ── 5. politician_campaign_rally — candidate Rally ─────────────────
--- +1d6 polling. No cost. Shared 1-per-tick gate.
--- Named *_campaign_rally to disambiguate from the existing
--- politician_mp_hold_rally (the MP-in-office Hold a Rally, unrelated).
-
 -- From 20270583_consolidate_faction_stats.sql — public.politician_seek_state_prosecutor_appointment
 CREATE OR REPLACE FUNCTION public.politician_seek_state_prosecutor_appointment(
     p_faction_id uuid
@@ -2832,8 +2759,6 @@ BEGIN
     RETURN jsonb_build_object('success', true,
         'appointed', true, 'displaced', true, 'at_tick', v_tick);
 END $$;
-
--- ── read_statute_books — +Skill action ──
 
 -- From 20270507_sit_the_exam_active_politician.sql — public.politician_sit_the_exam
 CREATE OR REPLACE FUNCTION public.politician_sit_the_exam(p_faction_id uuid)
