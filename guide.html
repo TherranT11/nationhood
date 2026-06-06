@@ -7,55 +7,100 @@
 <link rel="stylesheet" href="css/dashboard.css">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
-#content-area { margin: 16px 20px; padding: 20px; overflow-y: auto; }
-.guide-container { max-width: 760px; margin: 0 auto; }
-.guide-hero {
-    text-align: center; padding: 40px 20px 30px;
-    border-bottom: 1px solid var(--border-main);
-    margin-bottom: 24px;
+/* Politician-page styling vocabulary. Universal topbar (#top-bar) still
+   handles cross-faction navigation via initPage; the body chrome below
+   matches politician-nation / politician-economy / politician-ministry
+   so the guide reads as a polished part of the game rather than a
+   leftover help screen. */
+* { box-sizing:border-box; }
+:root {
+    --bg:#080808; --panel:#0d0d0d;
+    --line:rgba(255,255,255,0.07);
+    --txt:#cfcabf; --txt-strong:#fff; --txt-em:#a8a39a;
+    --mut:#888; --faint:#666; --dim:#555;
+    --teal:#5aafa5; --teal-dim:rgba(90,175,165,0.4); --teal-bg:#0e1212;
+    --amber:#c8a64e; --amber-dim:rgba(200,166,78,0.4);
 }
-.guide-hero-title {
-    font-family: var(--font-mono); font-size: 1.6rem; font-weight: 800;
-    color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase;
-    margin-bottom: 8px;
+
+#content-area { background:var(--bg); }
+.content { max-width:840px; margin:18px auto; padding:0 24px 48px; }
+
+.page-head { margin:18px 0 26px; padding-bottom:22px;
+    border-bottom:0.5px solid var(--line); }
+.page-eyebrow { font-size:9px; letter-spacing:0.18em; color:var(--teal);
+    text-transform:uppercase; font-weight:600; margin-bottom:9px; }
+.page-title { font-size:32px; font-weight:500; color:#fff; line-height:1.1;
+    letter-spacing:-0.012em; }
+.page-title .serif { font-family:Georgia,'Times New Roman',serif;
+    font-style:italic; color:var(--teal); }
+.page-sub { font-size:12.5px; color:var(--mut); margin-top:10px;
+    line-height:1.6; max-width:640px; }
+
+/* Collapsible sections — matches .sec on politician-nation.html. Native
+   <details> with a +/− chevron via summary::after. */
+.sec { background:var(--panel); border:0.5px solid var(--line);
+    border-radius:6px; margin-bottom:10px; scroll-margin-top:18px; }
+.sec summary { padding:16px 20px; cursor:pointer; list-style:none;
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--mut); font-weight:600;
+    display:flex; align-items:baseline; justify-content:space-between; gap:14px; }
+.sec summary::-webkit-details-marker { display:none; }
+.sec summary::after { content:'+'; color:var(--dim); font-size:16px;
+    font-weight:400; flex-shrink:0; }
+.sec[open] summary { color:#d4d4d4;
+    border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.sec[open] summary::after { content:'−'; }
+.sec summary .num { color:var(--faint); margin-right:10px;
+    font-family:monospace; letter-spacing:0.08em; font-weight:600; }
+.sec summary .lab { flex:1; }
+.sec summary .lab .ital { font-family:Georgia,'Times New Roman',serif;
+    font-style:italic; color:var(--teal); text-transform:none;
+    letter-spacing:0; margin-left:4px; }
+
+/* Section body — paragraphs, h3 subsections, lists. Body cream is the
+   politician-pages reading colour (#cfcabf); h3 white; em dim cream;
+   strong/b crisp white for stat names and emphasised nouns. */
+.sec-body { padding:20px 24px 24px; }
+.sec-body > h3 { color:#fff; font-size:14px; font-weight:600;
+    margin:20px 0 10px; letter-spacing:0.005em; }
+.sec-body > h3:first-child { margin-top:0; }
+.sec-body > p { color:var(--txt); font-size:12.5px; line-height:1.7;
+    margin-bottom:13px; }
+.sec-body > p:last-child { margin-bottom:0; }
+.sec-body p strong, .sec-body p b { color:var(--txt-strong); font-weight:600; }
+.sec-body p em, .sec-body li em { font-style:italic; color:var(--txt-em); }
+.sec-body > ul { margin:0 0 14px 22px; color:var(--txt);
+    font-size:12.5px; line-height:1.7; }
+.sec-body > ul li { margin-bottom:7px; }
+.sec-body > ul li:last-child { margin-bottom:0; }
+.sec-body > ul li strong, .sec-body > ul li b { color:var(--txt-strong);
+    font-weight:600; }
+
+@media (max-width:700px) {
+    .content { padding:0 16px 36px; }
+    .page-title { font-size:24px; }
+    .sec summary { padding:14px 16px; font-size:11px; letter-spacing:0.06em; }
+    .sec-body { padding:16px 18px 20px; }
 }
-.guide-hero-sub {
-    font-family: var(--font-ui); font-size: 0.9rem;
-    color: var(--text-secondary); max-width: 540px; margin: 0 auto;
-}
-.guide-hero-version {
-    font-family: var(--font-mono); font-size: 0.65rem;
-    color: var(--text-dim); margin-top: 12px; letter-spacing: 0.1em;
-}
-.guide-back {
-    display: inline-block; margin-bottom: 16px;
-    font-family: var(--font-mono); font-size: 0.72rem;
-    color: var(--accent); text-decoration: none;
-    letter-spacing: 0.04em;
-}
-.guide-back:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
 
 <div id="top-bar"></div>
 <div id="content-area">
-<div class="guide-container">
+<div class="content">
 
-<a href="dashboard.html" class="guide-back">&larr; Back to Game</a>
-
-<div class="guide-hero">
-    <div class="guide-hero-title">Nationhood &mdash; Player Guide</div>
-    <div class="guide-hero-sub">
+<div class="page-head">
+    <div class="page-eyebrow">— Player Guide · Nationhood Alpha —</div>
+    <div class="page-title">A guide to <span class="serif">Nationhood</span></div>
+    <div class="page-sub">
         A multiplayer political simulation. Pick a nation, pick a role, build a career
         in a world that runs on its own clock.
     </div>
-    <div class="guide-hero-version">ALPHA &middot; CRUCERA SHARD</div>
 </div>
 
-<div class="guide-panel" style="max-width:100%;border:none;padding:0;">
-
-<details open><summary>What is Nationhood?</summary><div>
+<details class="sec" open><summary><span class="lab"><span class="num">I.</span>What is <span class="ital">Nationhood</span>?</span></summary>
+<div class="sec-body">
 
 <p>Nationhood is a persistent, multiplayer political simulation. You pick a real-world-inspired nation on a shared map and step into it as a single person &mdash; a politician, an entrepreneur, a military officer &mdash; not as a faceless government. Every other person in that nation is either another human player or an AI filling the room, and they're all making their own moves at the same time you are.</p>
 
@@ -70,14 +115,15 @@
 <ul>
 <li><strong>Politician</strong> &mdash; climb the career ladder from grassroots organising to Parliament, the judiciary, or the civil service. Up to four politician slots per account.</li>
 <li><strong>Entrepreneur</strong> &mdash; found and run corporations across industries from banking to aviation.</li>
-<li><strong>Military Officer</strong> &mdash; command an army faction inside a nation. (Currently outside the politician build path.)</li>
+<li><strong>Military Officer</strong> &mdash; command an army faction inside a nation.</li>
 </ul>
 
 <p>Each role has its own dashboard, its own stat sheet, and its own ways of accruing power. They share a world, though &mdash; an entrepreneur's bank sues a rival corp in the same courts your Magistrate politician sits on; a Parliament-passed tax policy lands on the entrepreneur's revenue the same tick it hits everyone else's.</p>
 
 </div></details>
 
-<details open><summary>Getting Started &mdash; pick your direction</summary><div>
+<details class="sec" open><summary><span class="lab"><span class="num">II.</span>Getting <span class="ital">Started</span> &mdash; pick your direction</span></summary>
+<div class="sec-body">
 
 <p>Three faction types &mdash; three different games sitting on top of the same world. You're not locked in: switching between factions you already own is free, and most veteran players end up running two or three at once (a politician, an entrepreneur, maybe an army). But for your first character, lean into whichever of these descriptions sounds like the kind of session <em>you</em> want to log into.</p>
 
@@ -119,7 +165,8 @@
 
 </div></details>
 
-<details><summary>The Politician path</summary><div>
+<details class="sec"><summary><span class="lab"><span class="num">III.</span>The Politician <span class="ital">path</span></span></summary>
+<div class="sec-body">
 
 <p>The politician role is about becoming someone in your nation &mdash; not running a party from above, but rising through one as an individual. You start as a young Party Member with nothing but a name and a free first action, and the shape of your career depends on which ladder you decide to climb.</p>
 
@@ -158,13 +205,14 @@
 
 <p><strong>National politics &mdash; Parliament.</strong> A parliamentary race plays for the national stage. The Skill matchup is bigger (a wider opponent range and a higher die), the stake on the win side is the largest single payout a low-tier politician can take, and the stake on the loss side hurts &mdash; reputation, influence, capital, all real. You also wait several ticks for the result instead of one. This is the race you take after you've banked some Skill at the local level, or that you take cold if you're feeling brave.</p>
 
-<p><strong>How a race actually resolves.</strong> <span style="font-family:var(--font-mono);font-size:0.78rem;">Skill</span> drives both races: your Skill stat is rolled against the opponent's, the matchup converts to a polling percentage that gets snapshotted on the active-race card, and the result lands at the resolve tick. You can spend the ticks in between running campaign actions to nudge the polling &mdash; ads, rallies, door-knocking &mdash; or sitting tight and trusting the matchup. Win and the system stamps your office, pays out the rewards, and adds the entry to your career log. Lose and the loss is logged just as visibly: a defeat sits in your career history alongside your wins, and people remember.</p>
+<p><strong>How a race actually resolves.</strong> Skill drives both races: your Skill stat is rolled against the opponent's, the matchup converts to a polling percentage that gets snapshotted on the active-race card, and the result lands at the resolve tick. You can spend the ticks in between running campaign actions to nudge the polling &mdash; ads, rallies, door-knocking &mdash; or sitting tight and trusting the matchup. Win and the system stamps your office, pays out the rewards, and adds the entry to your career log. Lose and the loss is logged just as visibly: a defeat sits in your career history alongside your wins, and people remember.</p>
 
 <p><strong>Recommended first arc.</strong> Join a party. Run for the Community Organizer seat. Serve the 9-tick term using the Tier-1 action card (Door Knock, Speech, Build the Base). When the term ends, decide whether you want to climb laterally to City Council Member &mdash; another local race, slightly more contested &mdash; or jump straight to a Parliament run on a strong Skill stat. By the time that decision lands, you'll have a feel for whether your home is in the local trenches or the national chamber.</p>
 
 </div></details>
 
-<details><summary>The Entrepreneur path</summary><div>
+<details class="sec"><summary><span class="lab"><span class="num">IV.</span>The Entrepreneur <span class="ital">path</span></span></summary>
+<div class="sec-body">
 
 <p>The entrepreneur role is about <strong>building businesses</strong> inside the same political economy your politician characters are arguing over. You found a corporation, choose an industry, raise capital, sign contracts, and try to make the company outlast the policy environment.</p>
 
@@ -206,7 +254,6 @@
 
 </div></details>
 
-</div>
 </div>
 </div>
 

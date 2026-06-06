@@ -17,16 +17,15 @@
  * to surface WHY (e.g., for a UI label), use getFactionInactiveReason(f).
  */
 
+// officeTitle resolves a politician_office enum to its display string.
+// Shared with the career-page rungs so a new office value only lands
+// in one place (utils.js OFFICE_TITLES) to flow through both surfaces.
+import { officeTitle } from '../utils.js';
+
 /**
  * Returns one of 'abandoned' | 'unassigned' | 'banned' | null.
  * null means the faction is structurally active.
  */
-
-// OFFICE_TITLES / officeTitle live in utils.js — the same source the
-// career-page rungs render from. Importing here means a new office
-// value only needs to land in one place to flow through both surfaces.
-import { officeTitle } from '../utils.js';
-
 export function getFactionInactiveReason(f) {
     if (!f) return null;
     if (f.abandoned_at) return 'abandoned';
