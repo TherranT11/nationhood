@@ -224,10 +224,10 @@ function confirmFactionChoice() {
     window.location.href = 'first-steps.html';
     return;
   }
-  // Legacy party / corporation routes (both hidden post-sunset) still
-  // fall through to select-nation.html via pending_faction_type.
-  sessionStorage.setItem('pending_faction_type', selectedFaction);
-  window.location.href = 'select-nation.html';
+  // The other two faction types (party, corporation) are hidden DOM
+  // stubs post-sunset — neither is selectable, so no fallthrough is
+  // needed. If a future un-sunset re-enables them, add their explicit
+  // branches above.
 }
 
 init();
