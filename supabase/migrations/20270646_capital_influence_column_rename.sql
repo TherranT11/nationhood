@@ -1159,7 +1159,6 @@ BEGIN
      ORDER BY r.created_at_tick ASC, r.id ASC;
 END $$;
 
-
 REVOKE EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) TO authenticated;
 
@@ -1963,7 +1962,6 @@ BEGIN
     END;
 END;
 $$;
-
 
 -- From 20270463_rename_influence_to_political_capital.sql — public.politician_leave_party
 CREATE OR REPLACE FUNCTION public.politician_leave_party(

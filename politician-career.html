@@ -3185,13 +3185,15 @@ function renderElectionOffer(offer, ctx) {
 
   // Footer stats are read live off ctx.faction so they match the topbar
   // / mockup. Influence is numeric in the DB; floor to int for display.
+  // (DOM ids `em-stat-{infl,cha,cred}` are pre-rename aliases for the
+  // Influence/Capital/Skill slots — IDs preserved to avoid markup churn.)
   const f = ctx.faction || {};
-  const cap  = Math.floor(Number(f.politician_influence)      || 0);
-  const sta  = Number(f.politician_capital)   || 0;
-  const cred = Number(f.politician_skill)       || 0;
-  document.getElementById('em-stat-infl').textContent = cap;
-  document.getElementById('em-stat-cha' ).textContent = sta;
-  document.getElementById('em-stat-cred').textContent = cred;
+  const influence = Math.floor(Number(f.politician_influence) || 0);
+  const capital   = Number(f.politician_capital) || 0;
+  const skill     = Number(f.politician_skill)   || 0;
+  document.getElementById('em-stat-infl').textContent = influence;
+  document.getElementById('em-stat-cha' ).textContent = capital;
+  document.getElementById('em-stat-cred').textContent = skill;
 
   const body = document.getElementById('em-body');
   body.innerHTML = `
