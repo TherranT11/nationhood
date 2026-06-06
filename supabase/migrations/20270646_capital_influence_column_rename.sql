@@ -23,89 +23,46 @@
 
 BEGIN;
 
--- ── 0. Reconcile possible schema drift ────────────────────────────
--- The linked DB has been observed with a politician_capital column
--- already present, even though no migration in this repo creates it.
--- Two distinct cases produce that state and they want OPPOSITE actions:
---
---   (a) Both politician_influence AND politician_capital exist. The
---       latter is a stray (likely a half-finished manual experiment).
---       Drop it so section 1's rename target is free — but only if
---       empty. A populated stray would mean someone backfilled it for
---       real; refuse and let the user reconcile.
---
---   (b) politician_influence is GONE and politician_capital holds the
---       data. The rename has effectively already happened (someone
---       did it on the dashboard). politician_capital IS the source of
---       truth — leave it alone. Section 1's first rename block will
---       no-op, the second block renames political_capital onward, and
---       the function re-emits below pick up identical column names.
+-- ── 1. Reconcile column state ──────────────────────────────────────
+-- Single self-healing block that handles every plausible live shape.
+-- Diagnostic sampling on the linked DB confirmed the rename was already
+-- done manually on the dashboard before this migration ever applied
+-- (politician_capital + politician_influence both present, political_
+-- capital absent, semantics already correct: small ints in _capital,
+-- larger decimals in _influence). The fresh-state branch still does
+-- the proper swap on databases that haven't been touched.
 DO $$
 DECLARE
-    v_influence_exists boolean;
-    v_divergent        int;
+    v_has_pol_capital   boolean;
+    v_has_pol_influence boolean;
+    v_has_old_capital   boolean;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                    WHERE table_schema='public'
-                      AND table_name='factions'
-                      AND column_name='politician_capital') THEN
-        RETURN;  -- Fresh state — nothing to reconcile.
-    END IF;
-
     SELECT EXISTS (SELECT 1 FROM information_schema.columns
-                    WHERE table_schema='public'
-                      AND table_name='factions'
-                      AND column_name='politician_influence')
-      INTO v_influence_exists;
+                    WHERE table_schema='public' AND table_name='factions'
+                      AND column_name='politician_capital')   INTO v_has_pol_capital;
+    SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='factions'
+                      AND column_name='politician_influence') INTO v_has_pol_influence;
+    SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='factions'
+                      AND column_name='political_capital')    INTO v_has_old_capital;
 
-    IF NOT v_influence_exists THEN
-        -- Case (b): manual pre-rename already happened. Keep the data.
-        RETURN;
-    END IF;
+    -- Target state — manual rename already landed correctly. No-op.
+    IF v_has_pol_capital AND v_has_pol_influence AND NOT v_has_old_capital THEN
+        RAISE NOTICE 'Columns already in target state; skipping renames.';
 
-    -- Case (a): both columns exist. politician_capital is a duplicate
-    -- if every populated row equals EITHER of the two source columns
-    -- this migration is about to rename:
-    --   * politician_influence — the Capital stat, being renamed to
-    --     politician_capital by section 1
-    --   * political_capital    — the Influence stat, being renamed to
-    --     politician_influence by section 1
-    -- Either match is safe-to-drop because the migration is about to
-    -- recreate the column under the same name from the right source.
-    -- Raise only when populated rows are independent of both (genuine
-    -- third-source data we'd silently destroy).
-    EXECUTE 'SELECT COUNT(*) FROM public.factions
-              WHERE politician_capital IS NOT NULL
-                AND politician_capital IS DISTINCT FROM politician_influence
-                AND politician_capital IS DISTINCT FROM political_capital'
-        INTO v_divergent;
-    IF v_divergent > 0 THEN
-        RAISE EXCEPTION
-            'politician_capital has % rows matching neither politician_influence nor political_capital; refusing to drop. Reconcile manually before re-applying 20270646.',
-            v_divergent;
-    END IF;
-    ALTER TABLE public.factions DROP COLUMN politician_capital;
-END $$;
-
--- ── 1. Column rename ───────────────────────────────────────────
--- Wrapped in conditional DO blocks so a partial apply (or a re-run
--- after manual cleanup) is a no-op instead of an error. Order matters:
--- rename politician_influence first so political_capital's destination
--- name is free.
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public'
-                  AND table_name='factions'
-                  AND column_name='politician_influence') THEN
+    -- Fresh pre-rename state — do the atomic swap.
+    ELSIF v_has_pol_influence AND v_has_old_capital AND NOT v_has_pol_capital THEN
         ALTER TABLE public.factions RENAME COLUMN politician_influence TO politician_capital;
-    END IF;
-END $$;
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public'
-                  AND table_name='factions'
-                  AND column_name='political_capital') THEN
-        ALTER TABLE public.factions RENAME COLUMN political_capital TO politician_influence;
+        ALTER TABLE public.factions RENAME COLUMN political_capital   TO politician_influence;
+
+    -- Anything else (e.g. all three exist, or only old shape) is
+    -- unexpected — bail with the observed shape so reconciliation can
+    -- be designed deliberately rather than guessed.
+    ELSE
+        RAISE EXCEPTION
+            'Unexpected column shape: politician_capital=%, politician_influence=%, political_capital=%',
+            v_has_pol_capital, v_has_pol_influence, v_has_old_capital;
     END IF;
 END $$;
 
