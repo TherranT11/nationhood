@@ -829,15 +829,21 @@ const PARTY_OFFICE_RUNGS = [
     held:        (s) => s.office === 'senior_mp',
     descIfHeld:  ()  => 'You are a senior MP — committee assignments and a name the press knows.',
     descIfNot:   ()  => 'A second-term backbencher with committee assignments and a name the press knows.',
-    // Eligible only when holding Member of Parliament AND within 3
-    // ticks of the nation's next general election. Same window the
-    // resolver ties to: the race itself resolves at the general-election
-    // tick. Returns null when the rung isn't the next-up for this
-    // ladder (e.g. holder is Community Organizer, not MP).
+    // Eligible when (a) currently MP, (b) survived at least one full
+    // parliamentary term, and (c) within 6 ticks of the nation's next
+    // general election. Term gate (20270664) blocks instant promotion
+    // on the first general-election window after Stand-for-Election;
+    // window matches the server (was 3, widened to 6).
     actionIfNot: (s) => {
       if (s.office !== 'member_of_parliament') return null;
       if (!s.nextGeneralElectionTick) return { label: 'No election scheduled', kind: 'disabled' };
-      const opens = s.nextGeneralElectionTick - 3;
+      const termTicks  = Number(s.parliamentaryTermTicks) || 24;
+      const eligibleAt = (s.officeWonAtTick || 0) + termTicks;
+      if (s.currentTick < eligibleAt) {
+        const left = eligibleAt - s.currentTick;
+        return { label: `Term not yet served (${left} ticks)`, kind: 'disabled' };
+      }
+      const opens = s.nextGeneralElectionTick - 6;
       if (s.currentTick > s.nextGeneralElectionTick) return { label: 'Window closed', kind: 'disabled' };
       if (s.currentTick < opens) return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
       return { label: 'Register', kind: 'primary', action: 'register-senior-mp' };
@@ -1984,6 +1990,7 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
+    parliamentaryTermTicks:  Number(ctx?.nation?.parliamentary_term_ticks) || 24,
     committeeCount:          Number(committeeCount) || 0,
     committeeApplicationPending: !!committeeApplicationPending,
     // Bar exam (20270503). barAdmittedNationId tracks the nation
@@ -2444,6 +2451,9 @@ function bindRungActions(ctx) {
                 : 'Registration window has not opened yet.',
               window_closed:         'The registration window has closed for this election.',
               invalid_target_office: 'Unknown target office.',
+              term_too_short:        data.eligible_at_tick
+                ? `You haven’t served a full parliamentary term yet. Eligible at tick ${data.eligible_at_tick}.`
+                : 'You haven’t served a full parliamentary term yet.',
             };
             alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
             btn.disabled = false; btn.textContent = prev;
