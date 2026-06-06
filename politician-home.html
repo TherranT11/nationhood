@@ -2867,28 +2867,63 @@ function partyAbbrFrom(name) {
 
 function renderCampaignCard(ctx) {
   const tier = activeRace.race_tier;
-  const isParl = tier === 'parliament';
+  // Per-tier display config. Was a binary isParl check that broke
+  // when city_council (20270432), senior_mp (20270432), and
+  // city_council_president (20270654) tiers landed — anything not
+  // strictly 'parliament' fell through to Community Organizer copy.
+  // Single dispatch table so the next tier is a one-row addition.
+  // Fallback to community for unknown tiers (defensive — server gates
+  // race_tier, so an unknown should never reach here).
+  const nationName = ctx.nation?.name || 'the capital';
+  const TIER_DISPLAY = {
+    community: {
+      eyebrow:   'ACTIVE CAMPAIGN · LOW-STAKES · COMMUNITY',
+      titleLead: 'Community Organizer',
+      blurb:     'A volunteer seat on your neighborhood association.',
+      statLabel: 'CREDIBILITY',
+    },
+    parliament: {
+      eyebrow:   'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL',
+      titleLead: 'Member of Parliament',
+      blurb:     `An Assembly seat in ${escHtml(nationName)}.`,
+      statLabel: 'SKILL',
+    },
+    city_council: {
+      eyebrow:   'ACTIVE CAMPAIGN · MEDIUM-STAKES · LOCAL',
+      titleLead: 'City Council Member',
+      blurb:     'A seat on the city council — local budgets, ordinances, retail politics.',
+      statLabel: 'SKILL',
+    },
+    city_council_president: {
+      eyebrow:   'ACTIVE CAMPAIGN · MEDIUM-STAKES · LOCAL',
+      titleLead: 'City Council President',
+      blurb:     'Leadership of the city council — agenda, votes, brokered deals.',
+      statLabel: 'SKILL',
+    },
+    senior_mp: {
+      eyebrow:   'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL',
+      titleLead: 'Senior MP',
+      blurb:     `A Senior MP slot in ${escHtml(nationName)}.`,
+      statLabel: 'SKILL',
+    },
+  };
+  const cfg = TIER_DISPLAY[tier] || TIER_DISPLAY.community;
   // Display the resolve tick directly rather than a countdown — countdown
   // clamps at 0 once current ticks past resolve_tick, which would pin the
   // badge in a stuck state if resolve_due_elections fails to clear the
   // row (race condition fixed in 20270558, but the badge should be honest
   // either way). The label reads naturally as "RESOLVES ON {tick}".
   const resolveTick = Number(activeRace.resolve_tick);
-  const eyebrow = isParl ? 'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL'
-                         : 'ACTIVE CAMPAIGN · LOW-STAKES · COMMUNITY';
-  const titleLead = isParl ? 'Member of Parliament' : 'Community Organizer';
+  const eyebrow = cfg.eyebrow;
+  const titleLead = cfg.titleLead;
   const partyName = ctx.party?.faction_name || 'your party';
   const oppPartyName = activeRace.opp_party_name || 'an independent challenger';
-  const baseBlurb = isParl
-    ? `An Assembly seat in ${escHtml(ctx.nation?.name || 'the capital')}.`
-    : 'A volunteer seat on your neighborhood association.';
-  const subline = `${baseBlurb} Running as a member of <strong>${escHtml(partyName)}</strong> against ${escHtml(oppPartyName)}.`;
+  const subline = `${cfg.blurb} Running as a member of <strong>${escHtml(partyName)}</strong> against ${escHtml(oppPartyName)}.`;
   const timeBlock = Number.isFinite(resolveTick)
     ? `<div class="ci-time">${resolveTick}</div><div class="ci-time-l">RESOLVES ON</div>`
     : `<div class="ci-time">—</div><div class="ci-time-l">RESOLVES ON</div>`;
 
-  // Stat label tracks the tier — community uses Credibility, parliament Skill.
-  const statLabel = isParl ? 'SKILL' : 'CREDIBILITY';
+  const statLabel = cfg.statLabel;
 
   const youFirst = politician.leader_first_name || '';
   const youLast  = politician.leader_last_name  || '';
