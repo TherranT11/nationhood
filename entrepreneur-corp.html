@@ -5749,7 +5749,7 @@ function initials(s, n) {
             .select('id, design_type, name, status, research_ticks_total, research_ticks_remaining, quality, cost_per_unit, airframe_class, engine_count, passengers, range_nm, demand_score, safety_score, thrust, weight, efficiency, reliability, inventory_on_hand')
             .eq('entrepreneur_corp_id', id).order('created_at', { ascending: false }),
           _supabase.from('ent_engine_inventory')
-            .select('engine_design_id, quantity, engine:ent_aircraft_designs!engine_design_id(name)')
+            .select('engine_design_id, quantity, engine:ent_aircraft_designs!engine_design_id(name, thrust, weight)')
             .eq('entrepreneur_corp_id', id).gt('quantity', 0),
         ]);
         if (adErr) console.warn('[entrepreneur-corp] designs fetch error:', adErr.message);
@@ -5821,9 +5821,24 @@ function initials(s, n) {
           : '';
 
         // Engine holdings — own-produced + bought, single inventory source.
+        // Each row shows thrust + weight from the joined design so the
+        // holdings card is informational at a glance and doesn't require
+        // cross-referencing the Aircraft Designs section above.
         const inventorySection = (invData && invData.length)
           ? `<div class="section-heading"><span class="sans">Engine</span><span class="serif">Holdings</span></div>` +
-            invData.map(r => `<div class="cf-row"><div class="who">${escapeHtml(r.engine?.name || 'Engine')}</div><span class="num green">${r.quantity} units</span></div>`).join('')
+            invData.map(r => {
+              const e = r.engine || {};
+              const stats = (e.thrust != null && e.weight != null)
+                ? `thrust ${e.thrust} · weight ${e.weight}`
+                : '';
+              return `<div class="cf-row">
+                <div>
+                  <div class="who">${escapeHtml(e.name || 'Engine')}</div>
+                  ${stats ? `<div class="sub">${stats}</div>` : ''}
+                </div>
+                <span class="num green">${r.quantity} units</span>
+              </div>`;
+            }).join('')
           : '';
 
         aviationPanelHtml = `
