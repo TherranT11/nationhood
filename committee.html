@@ -793,14 +793,49 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
     ? truncate(bill.bill_name, 80)
     : (firstArticle?.text ? truncate(firstArticle.text, 80) : (bill.section || 'Proposal'));
 
-  // Threshold counts only seated politicians — NPC seats can't vote
-  // and would otherwise inflate the denominator (matches the SQL
-  // gate in mp_vote_on_report). Single source for both surfaces is
-  // a follow-up (see audit notes); for now, both compute identically.
-  const reportCount = votes.filter(v => v.vote === 'report').length;
-  const tableCount  = votes.filter(v => v.vote === 'table').length;
-  const memberCount = members.filter(m => m.politician_faction_id).length;
-  const threshold   = Math.floor(memberCount / 2) + 1;
+  // Party-bloc tally (Phase A.1.5, 20270663). Each player vote stands
+  // in for every seat their party holds; parties with no player on
+  // the committee abstain. First player vote per party drives the
+  // bloc — subsequent same-party votes don't move the count.
+  // Mirrors the SQL in mp_vote_on_report; both must agree.
+  const partyOfFaction = new Map(
+    members
+      .filter(m => m.politician_faction_id)
+      .map(m => [m.politician_faction_id, m.party_id])
+  );
+  const seatsByParty = new Map();
+  for (const m of members) {
+    if (!m.party_id) continue;
+    seatsByParty.set(m.party_id, (seatsByParty.get(m.party_id) || 0) + 1);
+  }
+  const playerPartiesOnCommittee = new Set(
+    members.filter(m => m.politician_faction_id && m.party_id).map(m => m.party_id)
+  );
+  // First player vote per party (stable by voted_at_tick, then index).
+  const sortedVotes = [...votes].sort((a, b) =>
+    (a.voted_at_tick ?? 0) - (b.voted_at_tick ?? 0)
+  );
+  const firstVoteByParty = new Map();
+  for (const v of sortedVotes) {
+    const partyId = partyOfFaction.get(v.voter_faction_id);
+    if (!partyId) continue;
+    if (!firstVoteByParty.has(partyId)) firstVoteByParty.set(partyId, v.vote);
+  }
+  let reportCount = 0;
+  let tableCount  = 0;
+  for (const [partyId, vote] of firstVoteByParty) {
+    const seats = seatsByParty.get(partyId) || 0;
+    if (vote === 'report') reportCount += seats;
+    else if (vote === 'table') tableCount += seats;
+  }
+  // Votable seats: sum of seats held by parties with at least one
+  // player on the committee. NPCs of parties with no player driver
+  // are NOT part of the denominator (they abstain).
+  let memberCount = 0;
+  for (const [partyId, seats] of seatsByParty) {
+    if (playerPartiesOnCommittee.has(partyId)) memberCount += seats;
+  }
+  const threshold = Math.floor(memberCount / 2) + 1;
   const myVote      = votes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
   const canVote     = onCommittee && !myVote;
 
@@ -820,7 +855,7 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
         <span class="rv-section">${escHtml(bill.section || '')}</span>
       </div>
       <div class="rv-title">${escHtml(title)}</div>
-      <div class="rv-sub">Sponsor <b>${escHtml(sponsor)}</b> &middot; ${members.length} committee member${members.length === 1 ? '' : 's'} &middot; needs ${threshold} to resolve</div>
+      <div class="rv-sub">Sponsor <b>${escHtml(sponsor)}</b> &middot; ${memberCount} votable seat${memberCount === 1 ? '' : 's'} of ${members.length} &middot; needs ${threshold} to resolve</div>
     </div>
     <div class="rv-tally">
       <div class="rv-tally-row rv-tally-report">
