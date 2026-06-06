@@ -2223,7 +2223,7 @@ const ACTIONS = {
   'fundraising-call':   { rpc: 'politician_fundraising_call',      label: 'Fundraising Call',   needsParty: true,  format: fmtLocalResult },
   'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
   'office-hours':       { rpc: 'politician_office_hours',          label: 'Office Hours',       needsParty: true,  format: fmtLocalResult },
-  'read-statute-books': { rpc: 'read_statute_books',               label: 'Read the Statute Books', needsParty: false, format: fmtStatuteBooks },
+  'read-statute-books': { rpc: 'read_statute_books',               label: 'Read the Statute Books', needsParty: false, needsFaction: true, format: fmtStatuteBooks },
   // Party-Member tier (20270591) — needs p_party_id.
   'door-knock':         { rpc: 'politician_door_knock',            label: 'Door Knocking',      needsParty: true,  format: fmtDoorKnockResult },
   'give-speech':        { rpc: 'politician_give_speech',           label: 'Give a Speech',      needsParty: true,  format: fmtSpeechResult },
@@ -2381,7 +2381,13 @@ async function handleMpAction(btn) {
   btn.classList.add('cooldown');
   btn.removeAttribute('data-action');
   try {
-    const args = spec.needsParty ? { p_party_id: party?.id || null } : undefined;
+    // Three arg shapes today: arg-less, p_party_id, p_faction_id.
+    // needsFaction routes to the active politician's id (avoids the
+    // multi-politician oldest-first selection bug — same pattern
+    // accept_drawn_case uses; see 20270643 for context).
+    let args;
+    if (spec.needsParty)        args = { p_party_id:   party?.id || null };
+    else if (spec.needsFaction) args = { p_faction_id: politician?.id || null };
     const { data, error } = await _supabase.rpc(spec.rpc, args);
     if (error) throw error;
     if (!data?.success) {
