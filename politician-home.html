@@ -1807,7 +1807,7 @@ function renderStats() {
 // rest of this file. Full consolidation to the imported version is a
 // future cleanup pass.
 const PARTY_MEMBER_ACTIONS = [
-  { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct. Roll 1d6 — a 1 costs you 1 Influence, 2–5 gains 1, a 6 gains 2.', action: 'door-knock' },
+  { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct for the party. Roll 1d6 + Influence. Total ≤1 → −0.2 Party Popularity; total 2–5 → +0.2; total ≥6 → +0.3.', action: 'door-knock' },
   { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost · 3-tick cooldown', desc: 'Climb a stump. Random 50/50: +1 Skill or +1 Capital.', action: 'give-speech' },
 ];
 // LOCAL_GOV bracket effects mirror the RPC bodies in 20270583_
@@ -2267,8 +2267,9 @@ function fmtMemoResult(data) {
 }
 
 function fmtDoorKnockResult(data) {
-  const sign = data.influence_delta > 0 ? '+' : '';
-  return `Door Knocking: rolled ${data.roll} (${sign}${data.influence_delta} Influence). Influence now ${data.politician_influence}.`;
+  const sign = data.popularity_delta > 0 ? '+' : '';
+  const inf  = Number(data.influence_used) || 0;
+  return `Door Knocking: rolled ${data.roll} + ${inf} Influence = ${data.total}. ${sign}${data.popularity_delta} Party Popularity (now ${Number(data.new_popularity).toFixed(1)}%).`;
 }
 
 function fmtSpeechResult(data) {
