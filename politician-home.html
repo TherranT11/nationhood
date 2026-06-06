@@ -1838,7 +1838,7 @@ const LEGISLATURE_ACTIONS = [
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
   { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route up to 3 incoming dispatches to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +1 Capital. −1 Influence.', action: 'file-a-memo' },
+  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +0.5 Skill.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
 ];
 
@@ -2263,7 +2263,7 @@ function fmtLobbyMinisterResult(data) {
 }
 
 function fmtMemoResult(data) {
-  return `Filed a Memo: +1 Capital (now ${data.new_capital}), −1 Influence (now ${data.new_influence}).`;
+  return `Filed a Memo: +0.5 Skill (now ${data.new_skill}).`;
 }
 
 function fmtDoorKnockResult(data) {
