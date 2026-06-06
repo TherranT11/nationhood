@@ -770,6 +770,7 @@ const LADDERS = [
   { id: 'army',       icon: '\u{2694}\u{FE0F}',  name: 'Army', rungs: () => ARMY_RUNGS },
   { id: 'navy',       icon: '\u{2693}',  name: 'Navy', rungs: () => NAVY_RUNGS,
     footer: 'Admirals do not retire to fish. They retire to boards of directors, to ministries, to embassies — the Republic does not waste a man who has commanded the Fleet. Industry chairmanships, cabinet appointments, ambassadorial posts; the Fleet’s last command picks the path.' },
+  { id: 'air_force',  icon: '\u{2708}\u{FE0F}',  name: 'Air Force', rungs: () => AIR_FORCE_RUNGS },
 ];
 
 // Shared rung shape consumed by renderRungs():
@@ -1617,6 +1618,84 @@ const NAVY_RUNGS = [
       { label: 'Command the Fleet', signature: true },
       'Brief the Defense Council',
       'Project Naval Power',
+    ],
+  },
+];
+
+// Air Force rungs — the uniformed air-service climb, Pilot Officer
+// through Chief of Air Staff. Same shape as ARMY_RUNGS / NAVY_RUNGS
+// (rank in the title after a middle dot, combat-flavoured actions
+// take dark: true, the apex carries signature: true). Six tiers
+// matching Navy — the Air Force track tops out one tier earlier
+// than Army because there's no equivalent of the Army's brigade /
+// division split (squadron → wing → group covers the same
+// progression in fewer rungs). No air-service office tracking yet,
+// so every held() returns false; rungs render as inert flavour.
+const AIR_FORCE_RUNGS = [
+  {
+    name: 'Pilot Officer · Lieutenant',
+    tierName: 'FIRST OFFICE',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You fly the wing of a two- or four-ship formation, learning the trade in the air.',
+    descIfNot:   ()  => 'Newly commissioned and recently winged. Posted to a squadron as a wingman in two-ship or four-ship formations. You fly where you are told, when you are told, and learn the discipline of the air by following pilots who have flown longer than you have lived in uniform.',
+    actions: [
+      'Stand Alert',
+      'Fly a Sortie',
+    ],
+  },
+  {
+    name: 'Section Lead · Captain',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You lead a flight — the wingmen are now yours.',
+    descIfNot:   ()  => 'You lead a flight — two to four aircraft in formation — on training or operational missions. The wingmen are now yours. You are the one whose mistakes will be remembered after the debrief; you are also the one who brings them home.',
+    actions: [
+      'Lead a Flight',
+      'Train New Pilots',
+      'Conduct an Intercept',
+    ],
+  },
+  {
+    name: 'Squadron Commander · Major',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a squadron — the rung where Air Force careers take off or fall away.',
+    descIfNot:   ()  => 'Command of a full squadron — twelve to eighteen aircraft, two hundred personnel, a base of operations of your own. This is the rung where Air Force careers either take off or fall away: a squadron commander who runs his unit well goes to the higher ranks; one whose readiness slips or whose pilots crash does not.',
+    actions: [
+      'Command a Squadron',
+      'Lead a Strike',
+      { label: 'Conduct a Combat Mission', dark: true },
+    ],
+  },
+  {
+    name: 'Wing Commander · Lieutenant Colonel',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You direct a wing — multiple squadrons under one command.',
+    descIfNot:   ()  => 'Command of a wing — multiple squadrons operating from one base or in one operational area. You no longer fly every sortie; you fly the ones that matter, and you sign for the rest. Pilots junior to you have their own squadrons and report up to you.',
+    actions: [
+      'Command a Wing',
+      'Conduct an Air Operation',
+      { label: 'Enforce a No-Fly Zone', dark: true },
+    ],
+  },
+  {
+    name: 'Air Group Commander · Air Vice-Marshal',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a functional branch — Strike, Air Defense, or Maritime Patrol.',
+    descIfNot:   ()  => 'Command of a functional group — Strike Command, Air Defense Command, or Maritime Patrol Command. Strategic-level work. You attend Defense Ministry briefings, you brief the Chief of Air Staff, you sign for the operational readiness of an entire branch of the service.',
+    actions: [
+      'Command Air Operations',
+      'Plan a Campaign',
+    ],
+  },
+  {
+    name: 'Chief of Air Staff · Air Marshal',
+    tierName: 'APEX',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You head the Air Force — the aircraft of the Republic answer to you.',
+    descIfNot:   ()  => 'The apex of the uniformed service. Head of the entire Air Force. You sit at the table with the Chief of Naval Operations and the Chief of Army; you brief the Defense Council and the President; you carry the institutional voice of the Air Force in every room where airpower questions are at stake. The aircraft of the Republic are yours to fly, to modernize, to commit, or to keep on the ground.',
+    actions: [
+      { label: 'Command the Air Force', signature: true },
+      'Brief the Defense Council',
+      'Project Air Power',
     ],
   },
 ];
