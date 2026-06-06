@@ -446,27 +446,15 @@ let activeCont = 'Crucera';
 
 function capRaw() { return (parseInt(document.getElementById('ec-cap').value, 10) || 5) * 1_000_000; }
 
-// Corp founding restricted to these origin nations (20270656).
-// One policy, three live copies — if you edit this list, keep them
-// in sync (or pull them all into one source):
-//   • SERVER (authoritative): 20270656_corp_founding_nation_allowlist.sql
-//     — the IN (…) clause in found_entrepreneur_corp.
-//   • CLIENT (this file): the HQ picker filter below.
-//   • RELATED (different policy, same values today):
-//     select-nation.html ENTREPRENEUR_ALLOWED_NATIONS — gates which
-//     nations a NEW entrepreneur can be created in. If you ever want
-//     to allow entrepreneurs from a nation that can't host corps
-//     (or vice versa), the two lists separate cleanly.
-const CORP_FOUNDING_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla']);
-
 function renderHqList() {
   const wrap = document.getElementById('ec-hq');
   // Two layered filters (server enforces both in found_entrepreneur_corp):
   //   • Shipping corps need a coastline.
-  //   • Founding is restricted to the CORP_FOUNDING_ALLOWED_NATIONS set.
+  //   • Founding is gated by nations.foundable_for_corp (20270657 —
+  //     single server-side source of truth, toggled via admin tooling).
   // The client filter just hides ineligible cards so the user can't
   // pick one in the first place.
-  const raw = (nationsByCont[activeCont] || []).filter(n => CORP_FOUNDING_ALLOWED_NATIONS.has(n.name));
+  const raw = (nationsByCont[activeCont] || []).filter(n => n.foundable_for_corp);
   const list = sel.industry === 'shipping' ? raw.filter(n => !n.is_landlocked) : raw;
   wrap.replaceChildren();
   if (list.length === 0) {
@@ -723,7 +711,7 @@ function renderPositions(corps, filter) {
     // by (industry, hq nation) for the per-nation count.
     const [natRes, cntRes] = await Promise.all([
       _supabase.from('nations')
-        .select('id, name, continent, corporate_tax, is_landlocked')
+        .select('id, name, continent, corporate_tax, is_landlocked, foundable_for_corp')
         .not('continent', 'is', null)
         .order('name'),
       _supabase.from('entrepreneur_corps').select('industry, hq_nation_id'),
