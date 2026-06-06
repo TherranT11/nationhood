@@ -1399,7 +1399,7 @@ async function init() {
   try {
     const { data, error } = await _supabase.rpc('politician_resolve_due_elections');
     if (!error && data?.resolved) {
-      politician.political_capital = data.political_capital;
+      politician.politician_influence = data.politician_influence;
     }
   } catch (_) { /* non-fatal */ }
 
@@ -1715,11 +1715,6 @@ function renderCareer() {
 // breakdown so a new player can read what each stat actually does
 // without leaving the home page. Descriptions are static reference
 // copy; the value reads from the live politician row each render.
-//
-// Column-rename history note (20270632): the "CAPITAL" pill reads
-// politician_influence and the "INFLUENCE" pill reads political_
-// capital. The display labels stayed put when the underlying
-// columns were renamed.
 const STAT_CARDS = [
   {
     key:   'rep',
@@ -1760,15 +1755,14 @@ const STAT_CARDS = [
 ];
 
 function renderStats() {
-  // Live values per card, keyed by STAT_CARDS.key. The label-to-column
-  // mapping preserves the 20270632 display swap: CAPITAL pill reads
-  // politician_influence; INFLUENCE pill reads political_capital
-  // (money-formatted via fmtBig).
+  // Live values per card, keyed by STAT_CARDS.key. Column names
+  // match display labels since 20270646: CAPITAL pill reads
+  // politician_capital, INFLUENCE pill reads politician_influence.
   const values = {
     rep:   politician.politician_reputation ?? 1,
-    cap:   politician.politician_influence  ?? 1,
+    cap:   politician.politician_capital  ?? 1,
     skill: politician.politician_skill      ?? 1,
-    inf:   fmtBig(Number(politician.political_capital) || 0),
+    inf:   fmtBig(Number(politician.politician_influence) || 0),
   };
   document.getElementById('stats-row').innerHTML = STAT_CARDS.map(s => `
     <div class="stat-card ${s.key}">
@@ -2157,7 +2151,7 @@ function renderAffiliation(ctx) {
 
   // Resign affordance — only rendered when the politician actually
   // holds an office (no point on the Party Member fallback variant).
-  // RPC: politician_resign_office (-2 political_capital, -2 party
+  // RPC: politician_resign_office (-2 politician_influence, -2 party
   // popularity, clears the office, logs a resigned_office career row).
   const resignHtml = office
     ? `<div style="padding:6px 20px 12px; text-align:right;">
@@ -2271,13 +2265,13 @@ function fmtMemoResult(data) {
 
 function fmtDoorKnockResult(data) {
   const sign = data.influence_delta > 0 ? '+' : '';
-  return `Door Knocking: rolled ${data.roll} (${sign}${data.influence_delta} Influence). Influence now ${data.political_capital}.`;
+  return `Door Knocking: rolled ${data.roll} (${sign}${data.influence_delta} Influence). Influence now ${data.politician_influence}.`;
 }
 
 function fmtSpeechResult(data) {
   return data.reward === 'skill'
     ? `Give a Speech: gained 1 Skill (now ${data.politician_skill}).`
-    : `Give a Speech: gained 1 Capital (now ${data.politician_influence}).`;
+    : `Give a Speech: gained 1 Capital (now ${data.politician_capital}).`;
 }
 
 function fmtStatuteBooks(data) {
@@ -2918,7 +2912,7 @@ function renderCampaignActions(ctx) {
   const partyId = ctx.party?.id || null;
   const gateTick = Number(politician.next_member_action_tick) || 0;
   const turnLocked = gateTick > currentTick;
-  const capital = Number(politician.politician_influence) || 0;
+  const capital = Number(politician.politician_capital) || 0;
   const adsCanAfford = capital >= 1;
   const endorseOutcome = activeRace?.endorsement_outcome || null;
   // No party = no actions. The Stand-for-Election flow on politician-career
@@ -2980,7 +2974,7 @@ function renderCampaignActions(ctx) {
 // post-success alert (success cases that don't need a verbose summary
 // fall through to a plain reload).
 const CAMPAIGN_RPCS = {
-  ads:     { rpc: 'politician_run_political_ads',     format: (d) => `Run Political Ads: rolled ${d.roll} + 6 = +${d.polling_delta} polling. Capital now ${d.politician_influence}.` },
+  ads:     { rpc: 'politician_run_political_ads',     format: (d) => `Run Political Ads: rolled ${d.roll} + 6 = +${d.polling_delta} polling. Capital now ${d.politician_capital}.` },
   rally:   { rpc: 'politician_campaign_rally',        format: (d) => `Hold a Rally: rolled ${d.roll} = +${d.polling_delta} polling.` },
   endorse: { rpc: 'politician_request_endorsement',   format: (d) => d.outcome === 'endorsed'
                 ? `Party endorsement secured: rolled ${d.roll} + ${d.reputation} Reputation = ${d.total}. +7 polling.`

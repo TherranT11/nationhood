@@ -142,7 +142,7 @@
 .lead-card.vacant .lead-name { color:#666; font-style:italic; font-weight:500; }
 
 /* Members list — every politician faction whose politician_party_id is
-   this party. Sorted by political_capital desc. The per-member
+   this party. Sorted by politician_influence desc. The per-member
    "Career" column was dropped along with politician_career: every row
    on this surface is by definition a member of THIS party, so the cell
    carried no per-row signal. When held-office tracking lands (MP /
@@ -432,11 +432,11 @@ async function init() {
       .is('abandoned_at', null)
       .maybeSingle(),
     _supabase.from('factions')
-      .select('id, leader_first_name, leader_last_name, nickname, leader_age, political_capital, politician_reputation, politician_skill, politician_office, volunteers')
+      .select('id, leader_first_name, leader_last_name, nickname, leader_age, politician_influence, politician_reputation, politician_skill, politician_office, volunteers')
       .eq('politician_party_id', partyId)
       .eq('faction_type', 'politician')
       .is('abandoned_at', null)
-      .order('political_capital', { ascending: false }),
+      .order('politician_influence', { ascending: false }),
   ]);
 
   if (partyRes.error) {
@@ -854,7 +854,7 @@ function renderMemberPanel(host, countEl, rows, accent, emptyText, kind) {
       <div class="${affilCls}">${escHtml(affilText)}</div>
       <div class="mem-stat">${statNow} <span class="of">/ ${statCap}</span></div>
       <div class="mem-age">${escHtml(age)}</div>
-      <div class="mem-cap">${Number(m.political_capital) || 0}</div>
+      <div class="mem-cap">${Number(m.politician_influence) || 0}</div>
     </div>`;
   }).join('');
   host.innerHTML = `<div class="mem-row header">

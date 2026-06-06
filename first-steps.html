@@ -501,7 +501,7 @@ async function createPolitician() {
       leader_last_name: selectedName.last,
       leader_age: 25,         // baseline; displayed age is derived from founded_tick
       founded_tick: currentTick,
-      political_capital: 10, // starting Influence — hardcoded here so the value
+      politician_influence: 10, // starting Influence — hardcoded here so the value
                              // doesn't depend on the column default (which silently
                              // failed to apply on at least one shard, see 20270376).
     };
