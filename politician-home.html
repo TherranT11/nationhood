@@ -1811,9 +1811,9 @@ const PARTY_MEMBER_ACTIONS = [
   { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost · 3-tick cooldown', desc: 'Climb a stump. Random 50/50: +1 Skill or +1 Capital.', action: 'give-speech' },
 ];
 const LOCAL_GOV_ACTIONS = [
-  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Build the war chest.',                       action: 'fundraising-call' },
-  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local.',           action: 'civic-meeting' },
-  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront and let constituents come to you.',                 action: 'office-hours' },
+  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Roll 1d10 + Skill: 1 → −1 Skill; <5 → miss; ≥5 → party funds (roll × $1K × volunteer bonus); 10 → +1 Skill & doubled funds.',                       action: 'fundraising-call' },
+  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local. Roll 1d6 + Skill: 1 → −1 Volunteer; <5 → −0.5 Skill; ≥5 → +1 Volunteer; 6 → +2 Volunteers, +0.5 Popularity.',           action: 'civic-meeting' },
+  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6 + Reputation: 1 → −1 Reputation; <5 → −0.5 Popularity; ≥5 → +0.5 Skill; 6 → +1 Reputation.',                                                          action: 'office-hours' },
 ];
 // City Council Member (Tier 2 Local) — distinct action trio from
 // Community Organizer's. Busy-work / craft / risk, mapped to
