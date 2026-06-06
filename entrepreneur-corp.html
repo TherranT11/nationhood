@@ -1262,9 +1262,12 @@ function initials(s, n) {
     set('cp-listing2', listing);
     set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
     set('cp-founded', founded);
-    set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
+    // cp-owner-sub + cp-stake-num + cp-role-pill are set further down
+    // in the unified OWNERSHIP card block (placed after the
+    // isOwner / isDirector resolution so the viewer-centric render
+    // has the full faction context).
     // Stake-column markup is shared by the chairman row and every
     // director row — one template, two callers. Private corps short-
     // circuit to a single "100%" line (no shareholdings table state).
@@ -1296,6 +1299,47 @@ function initials(s, n) {
     }
     const canView   = isOwner || isDirector;
     const ownerOnly = (html) => (isOwner ? html : '');
+
+    // 20270645: unified OWNERSHIP card render. Both public corps and
+    // private corps that have issued shares (director investments
+    // accepted, 20270212) describe the VIEWER's stake. A private corp
+    // with no shares issued shows the founder as the sole owner.
+    // Replaces the previously-split "private says sole owner" + "if
+    // public, overwrite" pattern that left private multi-shareholder
+    // corps claiming the founder owned 100%.
+    {
+      const ownerSharesOut = Number(c.shares_outstanding) || 0;
+      if (ownerSharesOut > 0) {
+        const pct = pctOwned(yourShares, ownerSharesOut) ?? 0;
+        set('cp-stake-num', String(pct));
+        if (isOwner) {
+          set('cp-role-pill', pct >= 50 ? 'FOUNDER · CONTROLLING' : 'FOUNDER');
+        } else if (isDirector) {
+          set('cp-role-pill', 'DIRECTOR');
+        } else if (yourShares > 0) {
+          set('cp-role-pill', 'SHAREHOLDER');
+        } else {
+          set('cp-role-pill', 'OBSERVER');
+        }
+        if (isPublic) {
+          const price = Number(c.share_price) || 0;
+          set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${ownerSharesOut} shares`);
+        } else if (yourShares > 0) {
+          // Private + you hold shares. Drop the "founded by" tail when
+          // viewer IS the founder (redundant), keep it when they're not.
+          set('cp-owner-sub', isOwner
+            ? `${yourShares}/${ownerSharesOut} shares`
+            : `${yourShares}/${ownerSharesOut} shares · ${ownerName} founded`);
+        } else {
+          set('cp-owner-sub', `${ownerName} founded`);
+        }
+      } else {
+        // No shares issued — founder is genuinely sole owner.
+        set('cp-owner-sub', ownerName !== '—'
+          ? ownerName + ' · sole owner'
+          : 'Sole owner · privately held');
+      }
+    }
 
     // Non-founder board members from corp_board_seats (20270158).
     // Founder is NOT a row here — the chairman row above renders them
@@ -3993,15 +4037,14 @@ function initials(s, n) {
       const price = Number(c.share_price) || 0;
       const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
-      const pct = pctOwned(yourShares, sharesOut) ?? 0;
 
       // Fixed-supply float: available = shares_outstanding − Σ holdings.
       // totalHeld was computed during the single holdings fetch at the top.
       const available = Math.max(0, sharesOut - totalHeld);
 
-      set('cp-stake-num', String(pct));
-      set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
-      set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
+      // cp-stake-num / cp-role-pill / cp-owner-sub now set in the
+      // unified OWNERSHIP block above (20270645). The public-corp
+      // path used to duplicate those three sets; removed.
 
       // ────────── Share Price History panel ──────────
       // Backed by corp_share_price_history (migration 20270164 +
