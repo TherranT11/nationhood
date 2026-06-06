@@ -297,10 +297,11 @@ export function buildingTypeLabel(t) {
 // (hero affiliation). Extend when new office values land on the CHECK
 // constraint (see migration 20270418).
 export const OFFICE_TITLES = {
-    community_organizer:  'Community Organizer',
-    city_council_member:  'City Council Member',
-    member_of_parliament: 'Member of Parliament',
-    senior_mp:            'Senior MP',
+    community_organizer:    'Community Organizer',
+    city_council_member:    'City Council Member',
+    city_council_president: 'City Council President',
+    member_of_parliament:   'Member of Parliament',
+    senior_mp:              'Senior MP',
 };
 export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
@@ -399,11 +400,12 @@ export function termEndTickFor(state) {
     if (isMpOffice(office)) {
         return Number(state.nextGeneralElectionTick) || null;
     }
-    if (office === 'community_organizer' || office === 'city_council_member') {
-        // The "+ 12" is the local-office term length. The server-side
-        // expiry RPC (supabase/migrations/20270625, extended in
-        // 20270629) uses the same constant — keep the two in sync if
-        // the term length ever changes.
+    if (office === 'community_organizer' || office === 'city_council_member' || office === 'city_council_president') {
+        // Local-office term length by office. CO + CCM run a flat
+        // 12-tick term; CC President runs 36 ticks (3 years, per
+        // 20270654). The server-side expiry RPC
+        // (politician_resolve_expired_terms) uses the same per-office
+        // CASE — keep the two in sync if a term length ever changes.
         //
         // Number.isFinite guard rejects NULL / undefined won-at-tick
         // (which would otherwise coerce to NaN → || 0 → "+ 12 = tick
@@ -412,7 +414,7 @@ export function termEndTickFor(state) {
         // server-side cleanup (20270629) lands.
         const wonAt = Number(state.officeWonAtTick);
         if (!Number.isFinite(wonAt)) return null;
-        return wonAt + 12;
+        return wonAt + (office === 'city_council_president' ? 36 : 12);
     }
     return null;
 }

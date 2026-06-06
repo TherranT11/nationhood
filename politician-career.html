@@ -1149,9 +1149,26 @@ const GOVERNMENT_RUNGS = [
   },
   {
     name: 'City Council President',
-    held:        ()  => false,
+    held:        (s) => s.office === 'city_council_president',
     descIfHeld:  ()  => 'You lead the city council — setting the agenda and brokering the votes.',
     descIfNot:   ()  => 'Leadership of the council — you set the agenda and broker the votes.',
+    // Eligibility (20270654): must CURRENTLY hold City Council Member
+    // with the 12-tick term within 3 ticks of expiry (current_tick >=
+    // won_at + 9). The window closes when the CCM term auto-expires;
+    // no "former CCM" path by design — announcements happen while
+    // still in office.
+    actionIfNot: (s) => {
+      if (s.office !== 'city_council_member') {
+        return { label: 'Must currently be City Council Member', kind: 'disabled' };
+      }
+      const opens = (s.officeWonAtTick || 0) + 9;
+      if (s.currentTick < opens) {
+        return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+      }
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-cc-president' };
+    },
   },
   {
     name: 'Mayor',
@@ -2466,6 +2483,44 @@ function bindRungActions(ctx) {
   // so anything reaching here has passed the obvious gates.
   document.querySelectorAll('[data-action="run-for-city-council"]').forEach(btn => {
     btn.addEventListener('click', () => openCityCouncilModal(ctx));
+  });
+
+  // Run for Election — City Council President (Tier 3, 20270654).
+  // No modal — direct RPC call like register-senior-mp. The rung's
+  // actionIfNot already filters wrong-office / too-early / race-in-
+  // flight / no-party; the server re-validates each gate.
+  document.querySelectorAll('[data-action="run-for-cc-president"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Registering…';
+      try {
+        const { data, error } = await _supabase.rpc('politician_register_for_office',
+          { p_target_office: 'city_council_president' });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:     'Sign in to register.',
+            no_politician:         'No politician on this account.',
+            not_in_party:          'Join a party first.',
+            no_nation:             'No nation set.',
+            no_shard:              'Shard not found.',
+            race_in_progress:      'You already have a race in flight.',
+            invalid_target_office: 'Invalid target office.',
+            wrong_current_office:  'You must currently hold City Council Member.',
+            too_early:             data?.opens_at_tick != null
+              ? `Term must be within 3 ticks of expiry. Opens at tick ${data.opens_at_tick}.`
+              : 'Too early — term not yet within 3 ticks of expiry.',
+          };
+          alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
   });
 
   // Seek the Bar — Advocate (Judiciary Tier 1). Opens its own modal
