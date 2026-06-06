@@ -23,31 +23,55 @@
 
 BEGIN;
 
--- ── 0. Clear schema drift, if any ──────────────────────────────────
--- The linked DB has been observed to already have a `politician_capital`
--- column, even though NO migration creates it and no RPC or client
--- writes to it (likely a stray added via the Supabase dashboard during
--- an earlier experiment). The rename below needs that name free, so
--- drop it first — but only if it's empty. Non-null rows would mean
--- someone backfilled it for real, in which case we want a loud failure
--- (not silent data loss) so the situation can be reconciled by hand.
+-- ── 0. Reconcile possible schema drift ────────────────────────────
+-- The linked DB has been observed with a politician_capital column
+-- already present, even though no migration in this repo creates it.
+-- Two distinct cases produce that state and they want OPPOSITE actions:
+--
+--   (a) Both politician_influence AND politician_capital exist. The
+--       latter is a stray (likely a half-finished manual experiment).
+--       Drop it so section 1's rename target is free — but only if
+--       empty. A populated stray would mean someone backfilled it for
+--       real; refuse and let the user reconcile.
+--
+--   (b) politician_influence is GONE and politician_capital holds the
+--       data. The rename has effectively already happened (someone
+--       did it on the dashboard). politician_capital IS the source of
+--       truth — leave it alone. Section 1's first rename block will
+--       no-op, the second block renames political_capital onward, and
+--       the function re-emits below pick up identical column names.
 DO $$
 DECLARE
-    v_non_null int;
+    v_influence_exists boolean;
+    v_non_null         int;
 BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public'
-                  AND table_name='factions'
-                  AND column_name='politician_capital') THEN
-        EXECUTE 'SELECT COUNT(*) FROM public.factions WHERE politician_capital IS NOT NULL'
-            INTO v_non_null;
-        IF v_non_null > 0 THEN
-            RAISE EXCEPTION
-                'politician_capital column already exists with % non-null rows; refusing to drop. Inspect and reconcile manually before re-applying 20270646.',
-                v_non_null;
-        END IF;
-        ALTER TABLE public.factions DROP COLUMN politician_capital;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public'
+                      AND table_name='factions'
+                      AND column_name='politician_capital') THEN
+        RETURN;  -- Fresh state — nothing to reconcile.
     END IF;
+
+    SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public'
+                      AND table_name='factions'
+                      AND column_name='politician_influence')
+      INTO v_influence_exists;
+
+    IF NOT v_influence_exists THEN
+        -- Case (b): manual pre-rename already happened. Keep the data.
+        RETURN;
+    END IF;
+
+    -- Case (a): both columns exist; politician_capital is a stray.
+    EXECUTE 'SELECT COUNT(*) FROM public.factions WHERE politician_capital IS NOT NULL'
+        INTO v_non_null;
+    IF v_non_null > 0 THEN
+        RAISE EXCEPTION
+            'politician_capital column coexists with politician_influence and has % non-null rows; refusing to drop. Inspect and reconcile manually before re-applying 20270646.',
+            v_non_null;
+    END IF;
+    ALTER TABLE public.factions DROP COLUMN politician_capital;
 END $$;
 
 -- ── 1. Column rename ───────────────────────────────────────────
