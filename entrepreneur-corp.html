@@ -47,7 +47,7 @@
   .role-block .stake-sub { color:#888; font-size:11px; margin-top:4px; letter-spacing:0.05em; }
 
   /* Financial strip */
-  .financials { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:28px; }
+  .financials { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:28px; }
   .fin-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:14px 16px; }
   .fin-card .lab { color:#666; font-size:9px; letter-spacing:0.13em; margin-bottom:6px; }
   .fin-card .val { font-size:22px; font-weight:500; color:#fff; line-height:1; }
@@ -1049,6 +1049,16 @@
         <div class="delta" id="cp-income-delta">&mdash; this month</div>
       </div>
       <div class="fin-card">
+        <div class="lab">THIS YEAR'S REVENUE</div>
+        <div class="val" id="cp-rev-ytd">$0</div>
+        <div class="delta" id="cp-rev-ytd-delta">&mdash; year-to-date</div>
+      </div>
+      <div class="fin-card">
+        <div class="lab">LAST YEAR'S REVENUE</div>
+        <div class="val" id="cp-rev-prior">$0</div>
+        <div class="delta" id="cp-rev-prior-delta">&mdash; prior year</div>
+      </div>
+      <div class="fin-card">
         <div class="lab">DEBT</div>
         <div class="val" id="cp-debt">$0</div>
         <div class="delta">— none</div>
@@ -1188,7 +1198,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancy, tickToDate, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancy, tickToDate, tickToYear, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -1220,6 +1230,10 @@ function initials(s, n) {
     const holdingsByFaction = new Map();
     let yourShares = 0;
     let totalHeld  = 0;
+    // Single read of shares_outstanding — used by the holdings-fetch
+    // gate, the unified OWNERSHIP card render below, and the public-
+    // corp market panel further down. One coercion, one source.
+    const sharesOut = Number(c.shares_outstanding) || 0;
     // Public corps always have shares; private corps gain a share model once
     // a director investment is accepted (20270212) — load holdings then too.
     if (isPublic || c.shares_outstanding != null) {
@@ -1262,9 +1276,12 @@ function initials(s, n) {
     set('cp-listing2', listing);
     set('cp-hq', c.hq?.name ? (c.hq.continent ? `${c.hq.name} · ${c.hq.continent}` : c.hq.name) : '—');
     set('cp-founded', founded);
-    set('cp-owner-sub', ownerName !== '—' ? ownerName + ' · sole owner' : 'Sole owner · privately held');
     set('cp-board-ini', initials(ownerName !== '—' ? ownerName : name, 2));
     set('cp-board-name', ownerName);
+    // cp-owner-sub + cp-stake-num + cp-role-pill are set further down
+    // in the unified OWNERSHIP card block (placed after the
+    // isOwner / isDirector resolution so the viewer-centric render
+    // has the full faction context).
     // Stake-column markup is shared by the chairman row and every
     // director row — one template, two callers. Private corps short-
     // circuit to a single "100%" line (no shareholdings table state).
@@ -1296,6 +1313,44 @@ function initials(s, n) {
     }
     const canView   = isOwner || isDirector;
     const ownerOnly = (html) => (isOwner ? html : '');
+
+    // 20270645: unified OWNERSHIP card render. Both public corps and
+    // private corps that have issued shares (director investments
+    // accepted, 20270212) describe the VIEWER's stake. A private corp
+    // with no shares issued shows the founder as the sole owner.
+    // Replaces the previously-split "private says sole owner" + "if
+    // public, overwrite" pattern that left private multi-shareholder
+    // corps claiming the founder owned 100%.
+    if (sharesOut > 0) {
+      const pct = pctOwned(yourShares, sharesOut) ?? 0;
+      set('cp-stake-num', String(pct));
+      if (isOwner) {
+        set('cp-role-pill', pct >= 50 ? 'FOUNDER · CONTROLLING' : 'FOUNDER');
+      } else if (isDirector) {
+        set('cp-role-pill', 'DIRECTOR');
+      } else if (yourShares > 0) {
+        set('cp-role-pill', 'SHAREHOLDER');
+      } else {
+        set('cp-role-pill', 'OBSERVER');
+      }
+      if (isPublic) {
+        const price = Number(c.share_price) || 0;
+        set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
+      } else if (yourShares > 0) {
+        // Private + you hold shares. Drop the "founded by" tail when
+        // viewer IS the founder (redundant), keep it when they're not.
+        set('cp-owner-sub', isOwner
+          ? `${yourShares}/${sharesOut} shares`
+          : `${yourShares}/${sharesOut} shares · ${ownerName} founded`);
+      } else {
+        set('cp-owner-sub', `${ownerName} founded`);
+      }
+    } else {
+      // No shares issued — founder is genuinely sole owner.
+      set('cp-owner-sub', ownerName !== '—'
+        ? ownerName + ' · sole owner'
+        : 'Sole owner · privately held');
+    }
 
     // Non-founder board members from corp_board_seats (20270158).
     // Founder is NOT a row here — the chairman row above renders them
@@ -3968,6 +4023,50 @@ function initials(s, n) {
       // Non-fatal — leave the placeholder. Other cards keep rendering.
     }
 
+    // THIS YEAR / LAST YEAR revenue cards (20270645). One RPC reads
+    // both windows off corp_cash_events using the same year-math
+    // anchor js/utils.js tickToDate uses (tick 0 = Jan 2000, 12 ticks
+    // per year). Current tick comes from shard — single small query
+    // since the existing income block doesn't need it. Non-fatal on
+    // failure: each card falls back to "lookup failed" with the
+    // placeholder $0.
+    try {
+      const { data: shardRow } = await _supabase
+        .from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
+      const currentTick = Number(shardRow?.current_tick ?? -1);
+      if (currentTick >= 0) {
+        const { data: revRow, error: revErr } = await _supabase
+          .rpc('corp_revenue_by_year', { p_corp_id: id, p_current_tick: currentTick });
+        const paint = (valId, deltaId, val, deltaText) => {
+          const el = document.getElementById(valId);
+          if (!el) return;
+          const n = Number(val) || 0;
+          const sign = n > 0 ? '+' : (n < 0 ? '−' : '');
+          el.textContent = sign + fmtUsd(Math.abs(n));
+          el.style.color = n > 0 ? '#9ac89e' : (n < 0 ? '#e09898' : '');
+          set(deltaId, deltaText);
+        };
+        if (revErr || !revRow?.success) {
+          set('cp-rev-ytd-delta',   '— lookup failed');
+          set('cp-rev-prior-delta', '— lookup failed');
+        } else {
+          // tickToYear is the shared anchor (utils.js) — same one
+          // tickToDate uses for the rest of the per-tick date math.
+          const thisYear = tickToYear(currentTick);
+          paint('cp-rev-ytd',   'cp-rev-ytd-delta',
+            revRow.this_year_delta, `— ${thisYear} year-to-date`);
+          if (revRow.last_year_start_tick >= 0) {
+            paint('cp-rev-prior', 'cp-rev-prior-delta',
+              revRow.last_year_delta, `— ${thisYear - 1} full year`);
+          } else {
+            set('cp-rev-prior-delta', '— no prior year yet');
+          }
+        }
+      }
+    } catch (e) {
+      // Non-fatal — leave placeholders. Other cards keep rendering.
+    }
+
     // VALUATION from the shared single source (js/game/corp-valuation.js
     // §3). Both private and public corps show dynamic BOOK VALUE — feed
     // the building/loan aggregates so it matches the recommended sale/
@@ -3991,17 +4090,18 @@ function initials(s, n) {
     // never recomputed.
     if (isPublic) {
       const price = Number(c.share_price) || 0;
-      const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
-      const pct = pctOwned(yourShares, sharesOut) ?? 0;
+      // sharesOut comes from the outer scope (computed once near the
+      // holdings fetch — used here, in the OWNERSHIP card above, and
+      // the holdings-fetch gate).
 
       // Fixed-supply float: available = shares_outstanding − Σ holdings.
       // totalHeld was computed during the single holdings fetch at the top.
       const available = Math.max(0, sharesOut - totalHeld);
 
-      set('cp-stake-num', String(pct));
-      set('cp-role-pill', isOwner ? 'FOUNDER' : 'SHAREHOLDER');
-      set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
+      // cp-stake-num / cp-role-pill / cp-owner-sub now set in the
+      // unified OWNERSHIP block above (20270645). The public-corp
+      // path used to duplicate those three sets; removed.
 
       // ────────── Share Price History panel ──────────
       // Backed by corp_share_price_history (migration 20270164 +
