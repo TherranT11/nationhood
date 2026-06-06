@@ -447,7 +447,16 @@ let activeCont = 'Crucera';
 function capRaw() { return (parseInt(document.getElementById('ec-cap').value, 10) || 5) * 1_000_000; }
 
 // Corp founding restricted to these origin nations (20270656).
-// Mirrors the server-side allowlist in found_entrepreneur_corp.
+// One policy, three live copies — if you edit this list, keep them
+// in sync (or pull them all into one source):
+//   • SERVER (authoritative): 20270656_corp_founding_nation_allowlist.sql
+//     — the IN (…) clause in found_entrepreneur_corp.
+//   • CLIENT (this file): the HQ picker filter below.
+//   • RELATED (different policy, same values today):
+//     select-nation.html ENTREPRENEUR_ALLOWED_NATIONS — gates which
+//     nations a NEW entrepreneur can be created in. If you ever want
+//     to allow entrepreneurs from a nation that can't host corps
+//     (or vice versa), the two lists separate cleanly.
 const CORP_FOUNDING_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla']);
 
 function renderHqList() {
@@ -1092,7 +1101,9 @@ function renderPositions(corps, filter) {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
             not_home_nation: `You can only found corporations in your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''}. Expand to other nations by building a Regional HQ there first.`,
             not_at_home_nation: `You must travel back to your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''} to found a corporation${data?.current_location ? ' — you are currently in ' + data.current_location : ''}.`,
-            corp_nation_not_allowed: `Corporation founding is currently restricted to ${(data?.allowed || ['Melizea', 'Avelia', 'Montequilla']).join(', ')}${data?.home_nation ? ` — your home nation (${data.home_nation}) is not eligible` : ''}.`,
+            corp_nation_not_allowed: data?.allowed?.length
+              ? `Corporation founding is currently restricted to ${data.allowed.join(', ')}${data?.home_nation ? ` — your home nation (${data.home_nation}) is not eligible` : ''}.`
+              : `Corporation founding isn't available in your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''}.`,
             delinquent_debt: 'You owe personal debt from a bankrupt corporation. Settle it on your Character page before founding a new corporation.',
             insufficient_funds: data?.have != null && data?.need != null
               ? `Insufficient cash — need ${fmtM(data.need)}, have ${fmtM(data.have)}.`
