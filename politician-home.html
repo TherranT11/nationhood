@@ -2265,7 +2265,7 @@ const ACTIONS = {
   'fundraising-call':   { rpc: 'politician_fundraising_call',      label: 'Fundraising Call',   needsParty: true,  format: fmtLocalResult },
   'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
   'office-hours':       { rpc: 'politician_office_hours',          label: 'Office Hours',       needsParty: true,  format: fmtLocalResult },
-  'read-statute-books': { rpc: 'read_statute_books',               label: 'Read the Statute Books', needsParty: false, needsFaction: true, format: fmtStatuteBooks },
+  'read-statute-books': { rpc: 'read_statute_books',               label: 'Read the Statute Books', needsParty: false, format: fmtStatuteBooks },
   // Party-Member tier (20270591) — needs p_party_id.
   'door-knock':         { rpc: 'politician_door_knock',            label: 'Door Knocking',      needsParty: true,  format: fmtDoorKnockResult },
   'give-speech':        { rpc: 'politician_give_speech',           label: 'Give a Speech',      needsParty: true,  format: fmtSpeechResult },
@@ -2402,7 +2402,8 @@ async function handleResignOffice(btn, officeName) {
   const prev = btn.textContent;
   btn.textContent = 'RESIGNING…';
   try {
-    const { data, error } = await _supabase.rpc('politician_resign_office');
+    const { data, error } = await _supabase.rpc('politician_resign_office',
+      { p_faction_id: politician?.id || null });
     if (error) throw error;
     if (!data?.success) {
       alert('Resignation failed: ' + (data?.reason || 'unknown'));
@@ -2428,9 +2429,12 @@ async function handleMpAction(btn) {
     // needsFaction routes to the active politician's id (avoids the
     // multi-politician oldest-first selection bug — same pattern
     // accept_drawn_case uses; see 20270643 for context).
-    let args;
-    if (spec.needsParty)        args = { p_party_id:   party?.id || null };
-    else if (spec.needsFaction) args = { p_faction_id: politician?.id || null };
+    // 20270661: every politician RPC now grades the specific
+    // politician via p_faction_id (multi-politician fix). p_party_id
+    // is still threaded when the RPC also needs the party row
+    // (popularity / funds writes); p_faction_id is universal.
+    const args = { p_faction_id: politician?.id || null };
+    if (spec.needsParty) args.p_party_id = party?.id || null;
     const { data, error } = await _supabase.rpc(spec.rpc, args);
     if (error) throw error;
     if (!data?.success) {

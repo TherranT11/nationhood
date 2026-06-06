@@ -2429,7 +2429,7 @@ function bindRungActions(ctx) {
         btn.disabled = true; btn.textContent = 'Registering…';
         try {
           const { data, error } = await _supabase.rpc('politician_register_for_office',
-            { p_target_office: target });
+            { p_faction_id: ctx?.faction?.id || null, p_target_office: target });
           if (error) throw error;
           if (!data?.success) {
             const REASON = {
@@ -2495,7 +2495,7 @@ function bindRungActions(ctx) {
       btn.disabled = true; btn.textContent = 'Registering…';
       try {
         const { data, error } = await _supabase.rpc('politician_register_for_office',
-          { p_target_office: 'city_council_president' });
+          { p_faction_id: ctx?.faction?.id || null, p_target_office: 'city_council_president' });
         if (error) throw error;
         if (!data?.success) {
           const REASON = {
@@ -2837,7 +2837,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
   try {
     const { data, error } = await _supabase.rpc('politician_apply_for_promotion',
-      { p_agency_key: agencyKey });
+      { p_faction_id: window.__careerCtx?.faction?.id || null, p_agency_key: agencyKey });
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null
