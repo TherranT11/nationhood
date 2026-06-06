@@ -496,7 +496,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     const apply = e.target.closest('#comm-apply-cta');
     if (apply) {
       e.preventDefault();
-      submitApplication(apply, committeeId);
+      submitApplication(apply, committeeId, viewerPolId);
       return;
     }
     const witCta = e.target.closest('#witness-signup-cta');
@@ -579,12 +579,12 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
   wireWitnessModal(activeHearing, personas);
 }
 
-async function submitApplication(link, committeeId) {
+async function submitApplication(link, committeeId, factionId) {
   if (link.dataset.busy === '1') return;
   link.dataset.busy = '1';
   const originalText = link.textContent;
   link.textContent = 'Submitting…';
-  const res = await applyForCommittee(committeeId);
+  const res = await applyForCommittee(committeeId, factionId);
   if (!res.success) {
     alert(res.humanError);
     link.dataset.busy = ''; link.textContent = originalText;

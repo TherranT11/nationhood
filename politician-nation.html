@@ -866,6 +866,7 @@ async function init() {
   _viewerMyPartyId = ctx.faction?.politician_party_id || null;
   _viewerNation    = nation;
   _viewerPm        = pmMinistry;
+  _viewerPolId     = ctx.faction?.id || null;
   renderElections(nation, Number(ctx.shard?.current_tick) || 0);
   loadParliament(nation, pmMinistry);
   bindLazySections();
@@ -1010,6 +1011,10 @@ function renderSpecialElectionRow(race, pol, partyById, currentTick) {
 let _viewerMyPartyId = null;
 let _viewerNation    = null;
 let _viewerPm        = null;
+// Active politician's faction id — set at bootstrap from ctx.faction.id
+// so submitCommitteeApplication can forward it to apply_for_committee
+// (20270658 multi-politician fix; the RPC no longer picks oldest-first).
+let _viewerPolId     = null;
 function bindLazySections() {
   const govSec = document.getElementById('sec-govt');
   if (govSec) {
@@ -1129,7 +1134,7 @@ async function submitCommitteeApplication(card, btn, committeeKey) {
     btn.disabled = false; btn.textContent = originalLabel;
     return;
   }
-  const res = await applyForCommittee(committeeId);
+  const res = await applyForCommittee(committeeId, _viewerPolId);
   if (!res.success) {
     alert(res.humanError);
     btn.disabled = false; btn.textContent = originalLabel;
