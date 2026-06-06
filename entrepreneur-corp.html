@@ -1220,6 +1220,10 @@ function initials(s, n) {
     const holdingsByFaction = new Map();
     let yourShares = 0;
     let totalHeld  = 0;
+    // Single read of shares_outstanding — used by the holdings-fetch
+    // gate, the unified OWNERSHIP card render below, and the public-
+    // corp market panel further down. One coercion, one source.
+    const sharesOut = Number(c.shares_outstanding) || 0;
     // Public corps always have shares; private corps gain a share model once
     // a director investment is accepted (20270212) — load holdings then too.
     if (isPublic || c.shares_outstanding != null) {
@@ -1307,38 +1311,35 @@ function initials(s, n) {
     // Replaces the previously-split "private says sole owner" + "if
     // public, overwrite" pattern that left private multi-shareholder
     // corps claiming the founder owned 100%.
-    {
-      const ownerSharesOut = Number(c.shares_outstanding) || 0;
-      if (ownerSharesOut > 0) {
-        const pct = pctOwned(yourShares, ownerSharesOut) ?? 0;
-        set('cp-stake-num', String(pct));
-        if (isOwner) {
-          set('cp-role-pill', pct >= 50 ? 'FOUNDER · CONTROLLING' : 'FOUNDER');
-        } else if (isDirector) {
-          set('cp-role-pill', 'DIRECTOR');
-        } else if (yourShares > 0) {
-          set('cp-role-pill', 'SHAREHOLDER');
-        } else {
-          set('cp-role-pill', 'OBSERVER');
-        }
-        if (isPublic) {
-          const price = Number(c.share_price) || 0;
-          set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${ownerSharesOut} shares`);
-        } else if (yourShares > 0) {
-          // Private + you hold shares. Drop the "founded by" tail when
-          // viewer IS the founder (redundant), keep it when they're not.
-          set('cp-owner-sub', isOwner
-            ? `${yourShares}/${ownerSharesOut} shares`
-            : `${yourShares}/${ownerSharesOut} shares · ${ownerName} founded`);
-        } else {
-          set('cp-owner-sub', `${ownerName} founded`);
-        }
+    if (sharesOut > 0) {
+      const pct = pctOwned(yourShares, sharesOut) ?? 0;
+      set('cp-stake-num', String(pct));
+      if (isOwner) {
+        set('cp-role-pill', pct >= 50 ? 'FOUNDER · CONTROLLING' : 'FOUNDER');
+      } else if (isDirector) {
+        set('cp-role-pill', 'DIRECTOR');
+      } else if (yourShares > 0) {
+        set('cp-role-pill', 'SHAREHOLDER');
       } else {
-        // No shares issued — founder is genuinely sole owner.
-        set('cp-owner-sub', ownerName !== '—'
-          ? ownerName + ' · sole owner'
-          : 'Sole owner · privately held');
+        set('cp-role-pill', 'OBSERVER');
       }
+      if (isPublic) {
+        const price = Number(c.share_price) || 0;
+        set('cp-owner-sub', `${fmtUsd(yourShares * price)} · ${yourShares}/${sharesOut} shares`);
+      } else if (yourShares > 0) {
+        // Private + you hold shares. Drop the "founded by" tail when
+        // viewer IS the founder (redundant), keep it when they're not.
+        set('cp-owner-sub', isOwner
+          ? `${yourShares}/${sharesOut} shares`
+          : `${yourShares}/${sharesOut} shares · ${ownerName} founded`);
+      } else {
+        set('cp-owner-sub', `${ownerName} founded`);
+      }
+    } else {
+      // No shares issued — founder is genuinely sole owner.
+      set('cp-owner-sub', ownerName !== '—'
+        ? ownerName + ' · sole owner'
+        : 'Sole owner · privately held');
     }
 
     // Non-founder board members from corp_board_seats (20270158).
@@ -4035,8 +4036,10 @@ function initials(s, n) {
     // never recomputed.
     if (isPublic) {
       const price = Number(c.share_price) || 0;
-      const sharesOut = Number(c.shares_outstanding) || 0;
       const treasury = Number(c.treasury_cash) || 0;
+      // sharesOut comes from the outer scope (computed once near the
+      // holdings fetch — used here, in the OWNERSHIP card above, and
+      // the holdings-fetch gate).
 
       // Fixed-supply float: available = shares_outstanding − Σ holdings.
       // totalHeld was computed during the single holdings fetch at the top.
