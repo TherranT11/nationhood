@@ -1198,7 +1198,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
-import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancy, tickToDate, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
+import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancy, tickToDate, tickToYear, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
 import { GRIEVANCE_LABEL } from './js/game/lawsuit-types.js';
@@ -4050,12 +4050,14 @@ function initials(s, n) {
           set('cp-rev-ytd-delta',   '— lookup failed');
           set('cp-rev-prior-delta', '— lookup failed');
         } else {
-          const yearIdx = Math.floor(currentTick / 12);
+          // tickToYear is the shared anchor (utils.js) — same one
+          // tickToDate uses for the rest of the per-tick date math.
+          const thisYear = tickToYear(currentTick);
           paint('cp-rev-ytd',   'cp-rev-ytd-delta',
-            revRow.this_year_delta, `— ${2000 + yearIdx} year-to-date`);
+            revRow.this_year_delta, `— ${thisYear} year-to-date`);
           if (revRow.last_year_start_tick >= 0) {
             paint('cp-rev-prior', 'cp-rev-prior-delta',
-              revRow.last_year_delta, `— ${2000 + yearIdx - 1} full year`);
+              revRow.last_year_delta, `— ${thisYear - 1} full year`);
           } else {
             set('cp-rev-prior-delta', '— no prior year yet');
           }
