@@ -63,21 +63,25 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Case (a): both columns exist. politician_capital may be a
-    -- redundant copy of politician_influence (the natural result of a
-    -- stalled rename attempt that did ADD COLUMN + backfill but never
-    -- dropped the original), or it may hold independent data. Compare
-    -- pairwise — if every non-null politician_capital row exactly
-    -- matches its politician_influence sibling, the column is a safe-
-    -- to-drop duplicate. Otherwise raise with the divergence count
-    -- so the situation can be reconciled by hand.
+    -- Case (a): both columns exist. politician_capital is a duplicate
+    -- if every populated row equals EITHER of the two source columns
+    -- this migration is about to rename:
+    --   * politician_influence — the Capital stat, being renamed to
+    --     politician_capital by section 1
+    --   * political_capital    — the Influence stat, being renamed to
+    --     politician_influence by section 1
+    -- Either match is safe-to-drop because the migration is about to
+    -- recreate the column under the same name from the right source.
+    -- Raise only when populated rows are independent of both (genuine
+    -- third-source data we'd silently destroy).
     EXECUTE 'SELECT COUNT(*) FROM public.factions
               WHERE politician_capital IS NOT NULL
-                AND politician_capital IS DISTINCT FROM politician_influence'
+                AND politician_capital IS DISTINCT FROM politician_influence
+                AND politician_capital IS DISTINCT FROM political_capital'
         INTO v_divergent;
     IF v_divergent > 0 THEN
         RAISE EXCEPTION
-            'politician_capital and politician_influence disagree on % rows; refusing to drop politician_capital. Reconcile manually before re-applying 20270646.',
+            'politician_capital has % rows matching neither politician_influence nor political_capital; refusing to drop. Reconcile manually before re-applying 20270646.',
             v_divergent;
     END IF;
     ALTER TABLE public.factions DROP COLUMN politician_capital;
