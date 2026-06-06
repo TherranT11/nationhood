@@ -111,27 +111,11 @@
 .bill-vote-btn.cast.yes  { background:rgba(122,195,161,0.15); border-color:#7ac3a1; color:#7ac3a1; }
 .bill-vote-btn.cast.no   { background:rgba(200,122,122,0.15); border-color:#c87a7a; color:#c87a7a; }
 
-.propose-section { margin-top:32px; padding-top:18px;
-  border-top:0.5px solid rgba(255,255,255,0.07); }
-.propose-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
-  color:#7a7468; font-weight:600; margin-bottom:10px; }
-.propose-form { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:8px; }
-.propose-form select { background:#0d0d0d; border:0.5px solid rgba(122,154,171,0.3);
-  color:#cfcabf; padding:8px 10px; font-size:11px; border-radius:3px; min-width:200px;
-  font-family:inherit; }
-.propose-form button { font-family:monospace; font-size:9px; letter-spacing:0.13em;
-  background:transparent; border:0.5px solid rgba(200,166,78,0.5); color:#c8a64e;
-  padding:8px 14px; border-radius:3px; cursor:pointer; text-transform:uppercase; }
-.propose-form button:hover:not(:disabled) { background:rgba(200,166,78,0.12); }
-.propose-form button:disabled { opacity:0.4; cursor:default; }
-.propose-hint { font-size:11px; color:#666; margin-top:8px; line-height:1.5; }
-
 @media (max-width:700px) {
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
   .law-card { padding:18px 21px; }
   .law-section__grid { grid-template-columns:1fr; }
-  .propose-form select { min-width:0; flex:1; }
 }
 </style>
 </head>
@@ -152,7 +136,6 @@
   </div>
   <div id="bills-host"></div>
   <div id="law-host"></div>
-  <div id="propose-host"></div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
@@ -192,7 +175,7 @@ async function init() {
     `${nation.name}${nation.capital ? ` · capital ${nation.capital}` : ''}`;
 
   await renderLaws(nation.id);
-  await renderBillsAndPropose(nation.id, ctx);
+  await renderBills(nation.id, ctx);
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
@@ -305,9 +288,8 @@ function renderCard(law) {
 // ─────────────────────────────────────────────────────────────────────
 // Bills in vote — 20270423 voting MVP.
 // Renders any currently in-flight bills with yes/no buttons + a recent-
-// history strip below; plus the propose-bill form anchored to the
-// bottom of the page. Vote / propose go through the SECURITY DEFINER
-// RPCs so RLS doesn't have to grant client writes on assembly_bills /
+// history strip below. Voting goes through the cast_vote_on_bill
+// SECURITY DEFINER RPC so RLS doesn't have to grant client writes on
 // assembly_bill_votes.
 // ─────────────────────────────────────────────────────────────────────
 
@@ -323,13 +305,12 @@ function fmtStance(alignment) {
   return `<div class="bill-card__stance">${[...pos, ...neg].join(' · ')}</div>`;
 }
 
-async function renderBillsAndPropose(nationId, ctx) {
+async function renderBills(nationId, ctx) {
   const billsHost   = document.getElementById('bills-host');
-  const proposeHost = document.getElementById('propose-host');
   const viewerPolId = ctx?.faction?.id || null;
   const currentTick = Number(ctx?.shard?.current_tick) || 0;
 
-  const [billsRes, votesRes, policiesRes, optionsRes] = await Promise.all([
+  const [billsRes, votesRes] = await Promise.all([
     _supabase.from('assembly_bills')
       .select(`id, policy_id, current_option_id, proposed_option_id, archetype_alignment,
                status, proposed_at_tick, close_at_tick, yes_seats, no_seats, created_at,
@@ -344,13 +325,9 @@ async function renderBillsAndPropose(nationId, ctx) {
     viewerPolId
       ? _supabase.from('assembly_bill_votes').select('bill_id, position').eq('politician_id', viewerPolId)
       : Promise.resolve({ data: [], error: null }),
-    _supabase.from('policies').select('id, policy_name, major_sector').order('policy_name'),
-    _supabase.from('policy_options').select('id, policy_id, option_name').order('option_name'),
   ]);
-  if (billsRes.error)    console.warn('[politician-laws] bills fetch failed', billsRes.error);
-  if (votesRes.error)    console.warn('[politician-laws] votes fetch failed', votesRes.error);
-  if (policiesRes.error) console.warn('[politician-laws] policies fetch failed', policiesRes.error);
-  if (optionsRes.error)  console.warn('[politician-laws] options fetch failed', optionsRes.error);
+  if (billsRes.error) console.warn('[politician-laws] bills fetch failed', billsRes.error);
+  if (votesRes.error) console.warn('[politician-laws] votes fetch failed', votesRes.error);
 
   const bills    = billsRes.data || [];
   const voteMap  = new Map((votesRes.data || []).map(v => [v.bill_id, v.position]));
@@ -388,69 +365,6 @@ async function renderBillsAndPropose(nationId, ctx) {
     } catch (err) {
       alert('Failed: ' + (err?.message || err));
       billsHost.querySelectorAll(`[data-bill-id="${billId}"].bill-vote-btn`).forEach(b => b.disabled = false);
-    }
-  };
-
-  // ── Propose form ──────────────────────────────────────────────────
-  const policies = policiesRes.data || [];
-  const options  = optionsRes.data || [];
-  const optsByPolicy = new Map();
-  for (const o of options) {
-    if (!optsByPolicy.has(o.policy_id)) optsByPolicy.set(o.policy_id, []);
-    optsByPolicy.get(o.policy_id).push(o);
-  }
-  const cdReady = (Number(ctx?.faction?.next_bill_propose_tick) || 0) <= currentTick;
-  const inParty = !!ctx?.faction?.politician_party_id;
-  const policyOpts = policies.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.policy_name || '—')}</option>`).join('');
-  const cdNote = inParty
-    ? (cdReady ? '' : ` · ready at tick ${ctx.faction.next_bill_propose_tick}`)
-    : ' · join a party to propose';
-  proposeHost.innerHTML = `
-    <div class="propose-section">
-      <div class="propose-section__head">Propose a Bill${escapeHtml(cdNote)}</div>
-      <div class="propose-form">
-        <select id="propose-policy"><option value="">— pick a policy —</option>${policyOpts}</select>
-        <select id="propose-option" disabled><option value="">— pick a new option —</option></select>
-        <button id="propose-submit" type="button" ${(!inParty || !cdReady) ? 'disabled' : ''}>Propose</button>
-      </div>
-      <div class="propose-hint">Proposing a bill costs nothing today, but the 5-tick cooldown gates spam. Each bill enters a 3-tick voting window; on close, every party in the assembly gains or loses popularity per the diminishing-returns curve.</div>
-    </div>`;
-
-  const polSel = document.getElementById('propose-policy');
-  const optSel = document.getElementById('propose-option');
-  const submit = document.getElementById('propose-submit');
-  polSel.onchange = () => {
-    const opts = optsByPolicy.get(polSel.value) || [];
-    optSel.innerHTML = '<option value="">— pick a new option —</option>' +
-      opts.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.option_name || '—')}</option>`).join('');
-    optSel.disabled = opts.length === 0;
-  };
-  submit.onclick = async () => {
-    if (!polSel.value || !optSel.value) { alert('Pick a policy and a new option.'); return; }
-    submit.disabled = true; const prev = submit.textContent; submit.textContent = 'PROPOSING…';
-    try {
-      const { data, error } = await _supabase.rpc('propose_bill', {
-        p_policy_id: polSel.value, p_option_id: optSel.value,
-      });
-      if (error) throw error;
-      if (!data?.success) {
-        const REASON = {
-          not_authenticated: 'Sign in to propose.',
-          no_politician:     'No politician on this account.',
-          no_nation:         'Your politician has no nation.',
-          not_in_party:      'You must be a party member to propose.',
-          cooldown:          `Cooldown — ready at tick ${data.ready_at_tick}.`,
-          invalid_option:    'That option is not part of the selected policy.',
-          already_active:    'That option is already the active law.',
-          bill_in_flight:    'A bill on this policy is already in vote.',
-        };
-        alert(REASON[data?.reason] || ('Could not propose: ' + (data?.reason || 'unknown')));
-        submit.disabled = false; submit.textContent = prev; return;
-      }
-      location.reload();
-    } catch (err) {
-      alert('Failed: ' + (err?.message || err));
-      submit.disabled = false; submit.textContent = prev;
     }
   };
 }

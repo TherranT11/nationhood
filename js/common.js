@@ -1333,7 +1333,7 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     // (?nation_id= and ?faction_id=) survive the redirect — otherwise
     // the target falls back to the admin's own faction instead of the
     // inspected one.
-    const SHARED_TABS = ['news', 'wiki', 'guide'];
+    const SHARED_TABS = ['news', 'wiki'];
     const factionHome = getFactionDashboardUrl(state.faction);
     if (factionHome && factionHome !== 'dashboard.html' && !SHARED_TABS.includes(activeTab)) {
         window.location.href = factionHome + window.location.search;

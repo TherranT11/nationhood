@@ -7,11 +7,12 @@
 <link rel="stylesheet" href="css/dashboard.css">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <style>
-/* Politician-page styling vocabulary. Universal topbar (#top-bar) still
-   handles cross-faction navigation via initPage; the body chrome below
-   matches politician-nation / politician-economy / politician-ministry
-   so the guide reads as a polished part of the game rather than a
-   leftover help screen. */
+/* Self-contained reading surface. No topbar bootstrap — dashboard.css
+   gives us the body flex layout + scrollbar baseline, and the .content
+   block becomes the sole flex:1 child so scrolling works without the
+   topbar shell. Styling vocabulary still mirrors politician-nation /
+   politician-economy / politician-ministry so the guide reads as part
+   of the game rather than a leftover help screen. */
 * { box-sizing:border-box; }
 :root {
     --bg:#080808; --panel:#0d0d0d;
@@ -21,9 +22,15 @@
     --teal:#5aafa5; --teal-dim:rgba(90,175,165,0.4); --teal-bg:#0e1212;
     --amber:#c8a64e; --amber-dim:rgba(200,166,78,0.4);
 }
+body { background:var(--bg); }
 
-#content-area { background:var(--bg); }
 .content { max-width:840px; margin:18px auto; padding:0 24px 48px; }
+
+.back-link { display:inline-block; font-family:monospace;
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--mut); text-decoration:none; margin:8px 0 18px;
+    transition:color 0.12s; }
+.back-link:hover { color:var(--teal); }
 
 .page-head { margin:18px 0 26px; padding-bottom:22px;
     border-bottom:0.5px solid var(--line); }
@@ -86,9 +93,9 @@
 </head>
 <body>
 
-<div id="top-bar"></div>
-<div id="content-area">
 <div class="content">
+
+<a class="back-link" href="dashboard.html">&larr; Back to game</a>
 
 <div class="page-head">
     <div class="page-eyebrow">— Player Guide · Nationhood Alpha —</div>
@@ -255,11 +262,6 @@
 </div></details>
 
 </div>
-</div>
 
-<script type="module">
-import { initPage } from './js/common.js';
-initPage('guide', function() {});
-</script>
 </body>
 </html>
