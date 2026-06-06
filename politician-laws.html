@@ -63,54 +63,6 @@
 .fail { font-family:monospace; font-size:11px; color:#c87a7a;
   text-align:center; padding:80px 20px; }
 
-/* Bills in vote — 20270423 voting MVP. Visual rhythm matches the
-   law-cards (slate accent) but borrowed amber from the elections
-   chrome for "in flight" bills to read as "live & time-pressured". */
-.bills-section { margin-bottom:30px; padding-bottom:22px;
-  border-bottom:0.5px solid rgba(255,255,255,0.07); }
-.bills-section__head { font-size:10px; letter-spacing:0.18em; text-transform:uppercase;
-  color:#7a7468; font-weight:600; padding-bottom:8px; margin-bottom:12px;
-  border-bottom:0.5px solid rgba(255,255,255,0.06); }
-.bills-empty { font-size:12px; color:#5a5a5a; font-style:italic;
-  padding:14px 0; }
-
-.bill-card { background:#0d0d0c; border:0.5px solid rgba(122,154,171,0.18);
-  border-left:2px solid rgba(122,154,171,0.4); border-radius:5px;
-  padding:14px 16px; margin-bottom:10px; }
-.bill-card.voting { border-left-color:#c8a64e; }
-.bill-card__head { display:flex; justify-content:space-between; align-items:baseline;
-  gap:10px; margin-bottom:6px; flex-wrap:wrap; }
-.bill-card__policy { font-size:13px; font-weight:600; color:#fff; }
-.bill-card__status { font-size:9px; letter-spacing:0.13em; text-transform:uppercase;
-  color:#888; font-family:monospace; }
-.bill-card__status.passed { color:#7ac3a1; }
-.bill-card__status.failed { color:#c87a7a; }
-.bill-card__status.voting { color:#c8a64e; }
-.bill-card__status.expired { color:#666; }
-.bill-card__change { font-size:11px; color:#888; margin:6px 0; line-height:1.5; }
-.bill-card__change .from { color:#666; }
-.bill-card__change .to   { color:#7a9aab; font-weight:500; }
-.bill-card__meta { font-size:10px; color:#666; margin:4px 0 6px;
-  letter-spacing:0.03em; }
-.bill-card__stance { font-size:10px; color:#666; margin-bottom:8px;
-  letter-spacing:0.04em; line-height:1.6; }
-.bill-card__stance .pos { color:#7ac3a1; }
-.bill-card__stance .neg { color:#c87a7a; }
-.bill-card__row { display:flex; justify-content:space-between; align-items:center;
-  margin-top:8px; gap:10px; flex-wrap:wrap; }
-.bill-card__tally { font-size:11px; color:#888; font-variant-numeric:tabular-nums; }
-.bill-card__tally .y { color:#7ac3a1; }
-.bill-card__tally .n { color:#c87a7a; }
-.bill-card__actions { display:flex; gap:6px; }
-.bill-vote-btn { font-family:monospace; font-size:9px; letter-spacing:0.13em;
-  background:transparent; border:0.5px solid rgba(255,255,255,0.2); color:#cfcabf;
-  padding:6px 12px; border-radius:3px; cursor:pointer; text-transform:uppercase; }
-.bill-vote-btn.yes:hover:not(:disabled) { border-color:#7ac3a1; color:#7ac3a1; }
-.bill-vote-btn.no:hover:not(:disabled)  { border-color:#c87a7a; color:#c87a7a; }
-.bill-vote-btn:disabled  { opacity:0.4; cursor:default; }
-.bill-vote-btn.cast.yes  { background:rgba(122,195,161,0.15); border-color:#7ac3a1; color:#7ac3a1; }
-.bill-vote-btn.cast.no   { background:rgba(200,122,122,0.15); border-color:#c87a7a; color:#c87a7a; }
-
 @media (max-width:700px) {
   .content { padding:20px 14px 16px; }
   .page-title { font-size:24px; }
@@ -134,7 +86,6 @@
     <div class="page-title">Active <span style="font-style:normal;font-family:inherit;color:#fff;">Laws</span></div>
     <div class="page-sub" id="ph-sub">—</div>
   </div>
-  <div id="bills-host"></div>
   <div id="law-host"></div>
 </div>
 
@@ -175,7 +126,6 @@ async function init() {
     `${nation.name}${nation.capital ? ` · capital ${nation.capital}` : ''}`;
 
   await renderLaws(nation.id);
-  await renderBills(nation.id, ctx);
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
@@ -283,151 +233,6 @@ function renderCard(law) {
       (passedYear ? `<div class="law-card__meta">Passed ${escapeHtml(String(passedYear))}</div>` : '') +
     `</div>`
   );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Bills in vote — 20270423 voting MVP.
-// Renders any currently in-flight bills with yes/no buttons + a recent-
-// history strip below. Voting goes through the cast_vote_on_bill
-// SECURITY DEFINER RPC so RLS doesn't have to grant client writes on
-// assembly_bill_votes.
-// ─────────────────────────────────────────────────────────────────────
-
-function fmtStance(alignment) {
-  // alignment is {Archetype: ±1, …}; render as up-to-3 chips, positives
-  // first, negatives second, others (zero) suppressed. Empty stance →
-  // a muted "(no archetype tilt)" so the row reads complete.
-  if (!alignment || typeof alignment !== 'object') return '<span class="bill-card__stance">(no archetype tilt)</span>';
-  const entries = Object.entries(alignment).filter(([, v]) => Number(v) !== 0);
-  if (!entries.length) return '<span class="bill-card__stance">(no archetype tilt)</span>';
-  const pos = entries.filter(([, v]) => Number(v) > 0).map(([k]) => `<span class="pos">+${escapeHtml(k)}</span>`);
-  const neg = entries.filter(([, v]) => Number(v) < 0).map(([k]) => `<span class="neg">−${escapeHtml(k)}</span>`);
-  return `<div class="bill-card__stance">${[...pos, ...neg].join(' · ')}</div>`;
-}
-
-async function renderBills(nationId, ctx) {
-  const billsHost   = document.getElementById('bills-host');
-  const viewerPolId = ctx?.faction?.id || null;
-  const currentTick = Number(ctx?.shard?.current_tick) || 0;
-
-  const [billsRes, votesRes] = await Promise.all([
-    _supabase.from('assembly_bills')
-      .select(`id, policy_id, current_option_id, proposed_option_id, archetype_alignment,
-               status, proposed_at_tick, close_at_tick, yes_seats, no_seats, created_at,
-               policy:policies!policy_id(policy_name, major_sector),
-               current:policy_options!current_option_id(option_name),
-               proposed:policy_options!proposed_option_id(option_name),
-               proposer:factions!proposer_politician_id(leader_first_name, leader_last_name),
-               proposer_party:factions!proposer_party_id(faction_name)`)
-      .eq('nation_id', nationId)
-      .order('created_at', { ascending: false })
-      .limit(10),
-    viewerPolId
-      ? _supabase.from('assembly_bill_votes').select('bill_id, position').eq('politician_id', viewerPolId)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (billsRes.error) console.warn('[politician-laws] bills fetch failed', billsRes.error);
-  if (votesRes.error) console.warn('[politician-laws] votes fetch failed', votesRes.error);
-
-  const bills    = billsRes.data || [];
-  const voteMap  = new Map((votesRes.data || []).map(v => [v.bill_id, v.position]));
-  const voting   = bills.filter(b => b.status === 'voting');
-  const recent   = bills.filter(b => b.status !== 'voting').slice(0, 5);
-
-  // Bills section header + voting cards + recent strip.
-  const votingHtml = voting.length
-    ? voting.map(b => renderBillCard(b, voteMap.get(b.id) || null, currentTick)).join('')
-    : '<div class="bills-empty">No bills currently up for vote.</div>';
-  const recentHtml = recent.length
-    ? `<div class="bills-section__head" style="margin-top:18px;">Recent</div>` +
-      recent.map(b => renderBillCard(b, voteMap.get(b.id) || null, currentTick)).join('')
-    : '';
-  billsHost.innerHTML = `
-    <div class="bills-section">
-      <div class="bills-section__head">Bills in Vote</div>
-      ${votingHtml}
-      ${recentHtml}
-    </div>`;
-
-  // Vote button handlers — delegated to the bills-host root.
-  billsHost.onclick = async (e) => {
-    const btn = e.target.closest('.bill-vote-btn');
-    if (!btn || btn.disabled) return;
-    const billId = btn.dataset.billId;
-    const pos    = btn.dataset.pos;
-    if (!billId || !pos) return;
-    billsHost.querySelectorAll(`[data-bill-id="${billId}"].bill-vote-btn`).forEach(b => b.disabled = true);
-    try {
-      const { data, error } = await _supabase.rpc('cast_vote_on_bill', { p_bill_id: billId, p_position: pos });
-      if (error) throw error;
-      if (!data?.success) { alert('Could not vote: ' + (data?.reason || 'unknown')); return; }
-      location.reload();
-    } catch (err) {
-      alert('Failed: ' + (err?.message || err));
-      billsHost.querySelectorAll(`[data-bill-id="${billId}"].bill-vote-btn`).forEach(b => b.disabled = false);
-    }
-  };
-}
-
-function renderBillCard(b, viewerVote, currentTick) {
-  const policyName = b.policy?.policy_name || 'Unknown policy';
-  const fromName   = b.current?.option_name  || '(no current option)';
-  const toName     = b.proposed?.option_name || '(unknown option)';
-  const status     = b.status || 'voting';
-  const statusLabel = status === 'voting' ? 'In Vote'
-                    : status === 'passed'  ? 'Passed'
-                    : status === 'failed'  ? 'Failed'
-                    :                        'Expired';
-  const isVoting   = status === 'voting';
-  const ticksLeft  = isVoting ? Math.max(0, Number(b.close_at_tick) - currentTick) : null;
-  const closeNote  = isVoting
-    ? (ticksLeft === 0 ? 'closes this tick' : `closes in ${ticksLeft} tick${ticksLeft === 1 ? '' : 's'}`)
-    : '';
-
-  let row;
-  if (isVoting) {
-    const yesCls = (viewerVote === 'yes') ? 'bill-vote-btn yes cast' : 'bill-vote-btn yes';
-    const noCls  = (viewerVote === 'no')  ? 'bill-vote-btn no cast'  : 'bill-vote-btn no';
-    row = `<div class="bill-card__row">
-        <div class="bill-card__tally">${escapeHtml(closeNote)}</div>
-        <div class="bill-card__actions">
-          <button class="${yesCls}" data-bill-id="${escapeHtml(b.id)}" data-pos="yes">Yes</button>
-          <button class="${noCls}"  data-bill-id="${escapeHtml(b.id)}" data-pos="no">No</button>
-        </div>
-      </div>`;
-  } else {
-    const y = Number(b.yes_seats) || 0;
-    const n = Number(b.no_seats)  || 0;
-    row = `<div class="bill-card__row">
-        <div class="bill-card__tally">
-          <span class="y">${y} yes</span> · <span class="n">${n} no</span>
-        </div>
-      </div>`;
-  }
-
-  // Proposer attribution: "Mariana Castillo · Partido Patria Roja"
-  // when both name and party are present; falls back gracefully if
-  // either is missing (joined faction was abandoned, party deleted).
-  const proposerName = [b.proposer?.leader_first_name, b.proposer?.leader_last_name].filter(Boolean).join(' ').trim();
-  const partyName    = b.proposer_party?.faction_name || '';
-  const propTxt = proposerName && partyName ? `${proposerName} · ${partyName}`
-                : proposerName               ? proposerName
-                : partyName                  ? partyName
-                :                              '';
-  const propRow = propTxt ? `<div class="bill-card__meta">Proposed by ${escapeHtml(propTxt)}</div>` : '';
-
-  return `<div class="bill-card ${isVoting ? 'voting' : ''}">
-    <div class="bill-card__head">
-      <div class="bill-card__policy">${escapeHtml(policyName)}</div>
-      <div class="bill-card__status ${status}">${escapeHtml(statusLabel)}</div>
-    </div>
-    <div class="bill-card__change">
-      <span class="from">${escapeHtml(fromName)}</span> → <span class="to">${escapeHtml(toName)}</span>
-    </div>
-    ${propRow}
-    ${fmtStance(b.archetype_alignment)}
-    ${row}
-  </div>`;
 }
 
 init();
