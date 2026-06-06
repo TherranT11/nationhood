@@ -1808,7 +1808,7 @@ function renderStats() {
 // future cleanup pass.
 const PARTY_MEMBER_ACTIONS = [
   { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct for the party. Roll 1d6 + Influence. Total ≤1 → −0.2 Party Popularity; total 2–5 → +0.2; total ≥6 → +0.3.', action: 'door-knock' },
-  { ic: '❕', name: 'GIVE A SPEECH', cost: 'no cost · 3-tick cooldown', desc: 'Climb a stump. Random 50/50: +1 Skill or +1 Capital.', action: 'give-speech' },
+  { ic: '❕', name: 'GIVE A SPEECH', cost: '$50k party funds', desc: 'Climb a stump on the party\'s dime. Costs $50,000 from party funds. +0.3 Reputation.', action: 'give-speech' },
 ];
 // LOCAL_GOV bracket effects mirror the RPC bodies in 20270583_
 // consolidate_faction_stats.sql; keep these strings in sync when
@@ -2111,14 +2111,9 @@ function renderAffiliation(ctx) {
         perActionDisabled = { kind: 'cooldown', text: `${advocateActiveCount} active case${advocateActiveCount === 1 ? '' : 's'}`, title: `Resolve your open trials before studying.` };
       }
     } else if (enabled && a.action === 'give-speech') {
-      // Speech has its own 3-tick cooldown (next_speech_tick, 20270591)
-      // layered on top of the shared 1-per-tick gate. Door-knock isn't
-      // affected.
-      const speechReady = Number(ctx.faction?.next_speech_tick) || 0;
-      if (speechReady > currentTick) {
-        const left = speechReady - currentTick;
-        perActionDisabled = { kind: 'cooldown', text: `Speech ready in ${left} tick${left === 1 ? '' : 's'}`, title: `Speech cooldown — ${left} tick${left === 1 ? '' : 's'} remaining` };
-      }
+      // Speech rate-limit moved from cooldown to party funds in
+      // 20270652. The disabled UI for "can't afford" is handled by
+      // the server's insufficient_party_funds reason → toast.
     }
     if (!enabled) {
       cls += ' disabled';
@@ -2273,9 +2268,9 @@ function fmtDoorKnockResult(data) {
 }
 
 function fmtSpeechResult(data) {
-  return data.reward === 'skill'
-    ? `Give a Speech: gained 1 Skill (now ${data.politician_skill}).`
-    : `Give a Speech: gained 1 Capital (now ${data.politician_capital}).`;
+  const cost = Number(data.cost) || 0;
+  const rep  = Number(data.new_reputation) || 0;
+  return `Give a Speech: −$${(cost / 1000).toFixed(0)}k Party Funds. +${data.reputation_delta} Reputation (now ${rep.toFixed(1)}).`;
 }
 
 function fmtStatuteBooks(data) {
