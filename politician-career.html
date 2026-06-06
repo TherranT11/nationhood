@@ -767,6 +767,7 @@ const LADDERS = [
     } },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
+  { id: 'army',       icon: '\u{2694}\u{FE0F}',  name: 'Army', rungs: () => ARMY_RUNGS },
   { id: 'navy',       icon: '\u{2693}',  name: 'Navy', rungs: () => NAVY_RUNGS,
     footer: 'Admirals do not retire to fish. They retire to boards of directors, to ministries, to embassies — the Republic does not waste a man who has commanded the Fleet. Industry chairmanships, cabinet appointments, ambassadorial posts; the Fleet’s last command picks the path.' },
 ];
@@ -1451,6 +1452,95 @@ const NATIONAL_SECURITY_RUNGS = [
       { label: '☉ Set National Threat Doctrine', signature: true },
       { label: 'Authorize Black Programs', dark: true },
       'Sit on the NSC',
+    ],
+  },
+];
+
+// Army rungs — the uniformed land-service climb, Platoon Leader through
+// Chief of Army Staff. Same shape as NAVY_RUNGS (rank in the title after
+// a middle dot, combat-flavoured actions as dark chips, the apex action
+// as the signature chip). Seven tiers, one more than Navy because the
+// Army map distinguishes Brigade (Tier 4) from Division (Tier 5) where
+// the Navy lumps both into squadron-class command. No land-service
+// office tracking yet, so every held() returns false; the rungs render
+// as inert flavor until that schema lands.
+const ARMY_RUNGS = [
+  {
+    name: 'Platoon Leader · Lieutenant',
+    tierName: 'FIRST OFFICE',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You lead a platoon — thirty to forty soldiers and the ground they hold.',
+    descIfNot:   ()  => 'Fresh from the Military Academy. You lead a platoon — thirty to forty soldiers, a sergeant who knows more than you, and an area of ground you are expected to hold or take. Your sergeant will teach you what the academy did not, if you have the sense to let him.',
+    actions: [
+      'Lead a Patrol',
+      'Run an Exercise',
+    ],
+  },
+  {
+    name: 'Company Commander · Captain',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a company — your first independent combat formation.',
+    descIfNot:   ()  => 'One hundred and fifty soldiers under your command across three or four platoons. Your first independent combat formation. A company has its own area of operations, its own logistics, its own dead if things go wrong — and its own honors if they go right.',
+    actions: [
+      'Command a Company',
+      'Conduct Training',
+      { label: 'Lead an Assault', dark: true },
+    ],
+  },
+  {
+    name: 'Battalion Commander · Lieutenant Colonel',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a battalion — six to eight hundred soldiers and the rung where Army careers accelerate or stall.',
+    descIfNot:   ()  => 'Six to eight hundred soldiers across four or five companies. Your first staff, your first independent budget, your first conversation with the press. This is the rung where Army careers either accelerate or stall: a battalion commander who runs his unit well, who keeps his soldiers alive, and who wins the engagements he\'s given, will rise. One who cannot will not.',
+    actions: [
+      'Command a Battalion',
+      'Lead a Sector',
+      { label: 'Conduct a Counterinsurgency Op', dark: true },
+    ],
+  },
+  {
+    name: 'Brigade Commander · Colonel / Brigadier',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You direct a brigade — combined arms across multiple battalions.',
+    descIfNot:   ()  => 'Three to five thousand soldiers across multiple battalions. Combined arms — infantry, armor, artillery, engineers, signals — under one unified command. You no longer lead troops in contact; you direct units who do, and you sign for the consequences when they cannot.',
+    actions: [
+      'Command a Brigade',
+      'Lead a Joint Exercise',
+      { label: 'Conduct an Offensive', dark: true },
+    ],
+  },
+  {
+    name: 'Division Commander · Major General',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a division — the first rung at which you wear stars.',
+    descIfNot:   ()  => 'Ten to fifteen thousand soldiers across multiple brigades, with their own armor, artillery, engineers, aviation, and logistics. The first rung at which you wear stars. You attend Ministry briefings; foreign attachés know your name; you sign for the operational readiness of an entire combined-arms formation that can fight on its own.',
+    actions: [
+      'Command a Division',
+      'Plan a Campaign',
+      { label: 'Authorize Lethal Force', dark: true },
+    ],
+  },
+  {
+    name: 'Army Commander · Lieutenant General',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command a field army or theater — a public figure now.',
+    descIfNot:   ()  => 'Thirty thousand soldiers or more across multiple divisions. You command a field army or a theater. You are now a public figure. Your name appears in the newspapers. The President receives you, on request, within the day.',
+    actions: [
+      'Command a Theater',
+      'Direct a Campaign',
+      { label: 'Execute a Strategic Operation', dark: true },
+    ],
+  },
+  {
+    name: 'Chief of Army Staff · General',
+    tierName: 'APEX',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You head the Army — the entire land service answers to you.',
+    descIfNot:   ()  => 'The apex of the uniformed service. Head of the entire Army — the garrison of every important place in the Republic. You sit at the table with the Chief of Naval Operations and the Chief of Air Staff, but you are the one with the biggest army, and everyone in the room knows it. The Army of the Republic is yours to direct, to modernize, to commit — or, in the silence between sentences, to remind a President of.',
+    actions: [
+      { label: 'Command the Army', signature: true },
+      'Brief the Defense Council',
+      'Project Land Power',
     ],
   },
 ];
