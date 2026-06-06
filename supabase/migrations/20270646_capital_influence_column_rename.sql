@@ -43,7 +43,7 @@ BEGIN;
 DO $$
 DECLARE
     v_influence_exists boolean;
-    v_non_null         int;
+    v_divergent        int;
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                     WHERE table_schema='public'
@@ -63,13 +63,22 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Case (a): both columns exist; politician_capital is a stray.
-    EXECUTE 'SELECT COUNT(*) FROM public.factions WHERE politician_capital IS NOT NULL'
-        INTO v_non_null;
-    IF v_non_null > 0 THEN
+    -- Case (a): both columns exist. politician_capital may be a
+    -- redundant copy of politician_influence (the natural result of a
+    -- stalled rename attempt that did ADD COLUMN + backfill but never
+    -- dropped the original), or it may hold independent data. Compare
+    -- pairwise — if every non-null politician_capital row exactly
+    -- matches its politician_influence sibling, the column is a safe-
+    -- to-drop duplicate. Otherwise raise with the divergence count
+    -- so the situation can be reconciled by hand.
+    EXECUTE 'SELECT COUNT(*) FROM public.factions
+              WHERE politician_capital IS NOT NULL
+                AND politician_capital IS DISTINCT FROM politician_influence'
+        INTO v_divergent;
+    IF v_divergent > 0 THEN
         RAISE EXCEPTION
-            'politician_capital column coexists with politician_influence and has % non-null rows; refusing to drop. Inspect and reconcile manually before re-applying 20270646.',
-            v_non_null;
+            'politician_capital and politician_influence disagree on % rows; refusing to drop politician_capital. Reconcile manually before re-applying 20270646.',
+            v_divergent;
     END IF;
     ALTER TABLE public.factions DROP COLUMN politician_capital;
 END $$;
