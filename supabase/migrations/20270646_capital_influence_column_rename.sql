@@ -14,94 +14,57 @@
 --   politician_influence → politician_capital
 --   political_capital   → politician_influence
 --
--- The ALTER + the re-emits all run in one transaction so any function
--- referencing the old names breaks atomically and can be caught at
--- migration apply time, not silently at next call.
+-- Section 1 reconciles the live column shape: target state is a no-op,
+-- fresh pre-rename state does the atomic swap, anything else raises.
+-- Section 2 re-emits the 30 functions whose bodies bound to the old
+-- names so their next parse picks up the new identifiers. Everything
+-- runs in one transaction; partial application is impossible.
 --
 -- Apply after 20270645.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
--- ── 0. Reconcile possible schema drift ────────────────────────────
--- The linked DB has been observed with a politician_capital column
--- already present, even though no migration in this repo creates it.
--- Two distinct cases produce that state and they want OPPOSITE actions:
---
---   (a) Both politician_influence AND politician_capital exist. The
---       latter is a stray (likely a half-finished manual experiment).
---       Drop it so section 1's rename target is free — but only if
---       empty. A populated stray would mean someone backfilled it for
---       real; refuse and let the user reconcile.
---
---   (b) politician_influence is GONE and politician_capital holds the
---       data. The rename has effectively already happened (someone
---       did it on the dashboard). politician_capital IS the source of
---       truth — leave it alone. Section 1's first rename block will
---       no-op, the second block renames political_capital onward, and
---       the function re-emits below pick up identical column names.
+-- ── 1. Reconcile column state ──────────────────────────────────────
+-- Single self-healing block that handles every plausible live shape.
+-- Diagnostic sampling on the linked DB confirmed the rename was already
+-- done manually on the dashboard before this migration ever applied
+-- (politician_capital + politician_influence both present, political_
+-- capital absent, semantics already correct: small ints in _capital,
+-- larger decimals in _influence). The fresh-state branch still does
+-- the proper swap on databases that haven't been touched.
 DO $$
 DECLARE
-    v_influence_exists boolean;
-    v_divergent        int;
+    v_has_pol_capital   boolean;
+    v_has_pol_influence boolean;
+    v_has_old_capital   boolean;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                    WHERE table_schema='public'
-                      AND table_name='factions'
-                      AND column_name='politician_capital') THEN
-        RETURN;  -- Fresh state — nothing to reconcile.
-    END IF;
-
     SELECT EXISTS (SELECT 1 FROM information_schema.columns
-                    WHERE table_schema='public'
-                      AND table_name='factions'
-                      AND column_name='politician_influence')
-      INTO v_influence_exists;
+                    WHERE table_schema='public' AND table_name='factions'
+                      AND column_name='politician_capital')   INTO v_has_pol_capital;
+    SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='factions'
+                      AND column_name='politician_influence') INTO v_has_pol_influence;
+    SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='factions'
+                      AND column_name='political_capital')    INTO v_has_old_capital;
 
-    IF NOT v_influence_exists THEN
-        -- Case (b): manual pre-rename already happened. Keep the data.
-        RETURN;
-    END IF;
+    -- Target state — manual rename already landed correctly. No-op.
+    IF v_has_pol_capital AND v_has_pol_influence AND NOT v_has_old_capital THEN
+        RAISE NOTICE 'Columns already in target state; skipping renames.';
 
-    -- Case (a): both columns exist. politician_capital may be a
-    -- redundant copy of politician_influence (the natural result of a
-    -- stalled rename attempt that did ADD COLUMN + backfill but never
-    -- dropped the original), or it may hold independent data. Compare
-    -- pairwise — if every non-null politician_capital row exactly
-    -- matches its politician_influence sibling, the column is a safe-
-    -- to-drop duplicate. Otherwise raise with the divergence count
-    -- so the situation can be reconciled by hand.
-    EXECUTE 'SELECT COUNT(*) FROM public.factions
-              WHERE politician_capital IS NOT NULL
-                AND politician_capital IS DISTINCT FROM politician_influence'
-        INTO v_divergent;
-    IF v_divergent > 0 THEN
-        RAISE EXCEPTION
-            'politician_capital and politician_influence disagree on % rows; refusing to drop politician_capital. Reconcile manually before re-applying 20270646.',
-            v_divergent;
-    END IF;
-    ALTER TABLE public.factions DROP COLUMN politician_capital;
-END $$;
-
--- ── 1. Column rename ───────────────────────────────────────────
--- Wrapped in conditional DO blocks so a partial apply (or a re-run
--- after manual cleanup) is a no-op instead of an error. Order matters:
--- rename politician_influence first so political_capital's destination
--- name is free.
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public'
-                  AND table_name='factions'
-                  AND column_name='politician_influence') THEN
+    -- Fresh pre-rename state — do the atomic swap.
+    ELSIF v_has_pol_influence AND v_has_old_capital AND NOT v_has_pol_capital THEN
         ALTER TABLE public.factions RENAME COLUMN politician_influence TO politician_capital;
-    END IF;
-END $$;
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public'
-                  AND table_name='factions'
-                  AND column_name='political_capital') THEN
-        ALTER TABLE public.factions RENAME COLUMN political_capital TO politician_influence;
+        ALTER TABLE public.factions RENAME COLUMN political_capital   TO politician_influence;
+
+    -- Anything else (e.g. all three exist, or only old shape) is
+    -- unexpected — bail with the observed shape so reconciliation can
+    -- be designed deliberately rather than guessed.
+    ELSE
+        RAISE EXCEPTION
+            'Unexpected column shape: politician_capital=%, politician_influence=%, political_capital=%',
+            v_has_pol_capital, v_has_pol_influence, v_has_old_capital;
     END IF;
 END $$;
 
@@ -713,8 +676,6 @@ BEGIN
     );
 END $$;
 
--- ── begin_construction — building start, increments Influence ──
-
 -- From 20270499_committee_hearings.sql — public.accept_hearing_testimony
 CREATE OR REPLACE FUNCTION public.accept_hearing_testimony(p_testimony_id uuid)
 RETURNS jsonb
@@ -798,10 +759,6 @@ BEGIN
 END $$;
 
 GRANT EXECUTE ON FUNCTION public.accept_hearing_testimony(uuid) TO authenticated;
-
--- ── 7. close_committee_hearing ──────────────────────────────────────
--- Committee member only. Marks hearing closed. Idempotent — closing
--- an already-closed hearing is a no-op success.
 
 -- From 20270505_bar_exam_active_politician.sql — public.bar_exam_submit
 CREATE OR REPLACE FUNCTION public.bar_exam_submit(
@@ -1152,8 +1109,6 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'alerts', v_alerts);
 END $$;
 
--- ── politician_civic_meeting — local action, Skill check ──
-
 -- From 20270583_consolidate_faction_stats.sql — public.list_pending_state_advocate_requests_for_reviewer
 CREATE OR REPLACE FUNCTION public.list_pending_state_advocate_requests_for_reviewer(
     p_faction_id uuid
@@ -1207,18 +1162,6 @@ END $$;
 
 REVOKE EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.list_pending_state_advocate_requests_for_reviewer(uuid) TO authenticated;
-
-
-
--- ── politician_found_party — fix stale `politician_capital` reference ──
--- Pre-existing latent bug: this function's only definition (20270379)
--- pre-dates the 20270463 rename of politician_capital → politician_influence.
--- It has referenced a non-existent column since 20270463 (silently broken
--- for ~120 migrations). The 20270583 rename of politician_standing →
--- politician_capital would otherwise RESURRECT the column with WRONG
--- semantics (the new Influence stat instead of Political Capital).
--- Re-emit here with the correct column. Reason code updated:
--- 'insufficient_influence' → 'insufficient_capital'.
 
 -- From 20270584_committee_chair_bid.sql — public.politician_bid_for_chair
 CREATE OR REPLACE FUNCTION public.politician_bid_for_chair(
@@ -1537,7 +1480,6 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.politician_build_the_base(uuid) TO authenticated;
 
--- ── 4. politician_lobby_minister ──────────────────────────────────
 -- Random ministry pick mirrors the politician_sit_the_exam slug list
 -- (20270471) — keep the four-slot CASE in lockstep when ministries
 -- are added or renamed. Ministry display name comes back in the
@@ -1608,11 +1550,6 @@ BEGIN
 END;
 $$;
 
--- ── 3. politician_give_speech — Skill/Capital random 50/50 ─────────
--- Replaces the 20270588 1d6-polling body. Coin-flip between +1 Skill
--- (politician_skill) and +1 Capital (politician_capital). 3-tick
--- speech-specific cooldown on top of the shared 1-per-tick gate.
-
 -- From 20270632_civil_servant_file_memo_and_action_lock.sql — public.politician_file_a_memo
 CREATE OR REPLACE FUNCTION public.politician_file_a_memo()
 RETURNS jsonb
@@ -1673,7 +1610,6 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.politician_file_a_memo() TO authenticated;
 
--- ── 3. submit_paperwork_routing — share the per-tick lock ─────────
 -- Body byte-identical to 20270630 except (a) the cooldown check
 -- before any work and (b) the cooldown stamp on the post-grade
 -- UPDATE. The per-dispatch 12-tick cooldown stays unchanged.
@@ -1888,8 +1824,6 @@ BEGIN
 END;
 $$;
 
--- ── politician_register_for_office — senior_mp branch reads Skill ──
-
 -- From 20270591_campaign_actions_member_candidate_split.sql — public.politician_give_speech
 CREATE OR REPLACE FUNCTION public.politician_give_speech(p_party_id uuid)
 RETURNS jsonb
@@ -1969,9 +1903,6 @@ BEGIN
 END;
 $$;
 
--- ── 4. politician_run_political_ads — candidate Ads ────────────────
--- 1d10 + 6 → polling. Cost 1 Capital (politician_capital). Shared gate.
-
 -- From 20270463_rename_influence_to_political_capital.sql — public.politician_join_party
 CREATE OR REPLACE FUNCTION public.politician_join_party(
     p_politician_id uuid,
@@ -2033,11 +1964,6 @@ BEGIN
 END;
 $$;
 
--- ── 5. politician_leave_party — -5 Political Capital cost preserved ─
--- Re-paste of the 20270372 body with the column + return-key renamed.
--- The -5 cost is intact (clamp at 0). First-join +3 is in
--- politician_join_party; the combination makes leave + rejoin a net
--- loss, killing affiliation-churn farming.
 
 -- From 20270463_rename_influence_to_political_capital.sql — public.politician_leave_party
 CREATE OR REPLACE FUNCTION public.politician_leave_party(
@@ -2083,8 +2009,6 @@ BEGIN
         'politician_influence_delta', -5);
 END;
 $$;
-
--- ── 6. politician_mp_fundraising_dinner ─────────────────────────────
 
 -- From 20270642_city_council_actions_tuning.sql — public.politician_lobby_minister
 CREATE OR REPLACE FUNCTION public.politician_lobby_minister(p_party_id uuid)
@@ -2291,8 +2215,6 @@ END;
 $$;
 GRANT EXECUTE ON FUNCTION public.politician_mobilize_volunteers(uuid) TO authenticated;
 
--- ── 2. politician_lobby_minister — 3-tick cooldown, rebuff costs a volunteer ─
-
 -- From 20270484_politician_resign_decrement_seats.sql — public.politician_resign_office
 CREATE OR REPLACE FUNCTION public.politician_resign_office()
 RETURNS jsonb
@@ -2382,35 +2304,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.politician_resign_office() TO authenticated;
-
--- ── One-time backfill ──────────────────────────────────────────────
--- Any existing parliament-tier resignation event (logged by the
--- previous version of politician_resign_office) didn't decrement
--- factions.seats. Mark each affected event with
--- metadata.seats_decremented = true after we apply the -1, so a
--- re-run of this migration is a no-op.
-
-WITH pending AS (
-    SELECT e.id AS event_id, f.politician_party_id
-      FROM politician_career_events e
-      JOIN factions f ON f.id = e.faction_id
-     WHERE e.event_type = 'resigned_office'
-       AND e.target_name IN ('Member of Parliament', 'Senior MP')
-       AND f.politician_party_id IS NOT NULL
-       AND NOT COALESCE((e.metadata->>'seats_decremented')::boolean, false)
-),
-seats_decremented AS (
-    UPDATE factions
-       SET seats = GREATEST(0, COALESCE(seats, 0) - 1)
-      FROM pending
-     WHERE factions.id = pending.politician_party_id
-       AND factions.faction_type = 'movement_party'
-       AND factions.abandoned_at IS NULL
-    RETURNING factions.id
-)
-UPDATE politician_career_events
-   SET metadata = COALESCE(metadata, '{}'::jsonb) || '{"seats_decremented": true}'::jsonb
- WHERE id IN (SELECT event_id FROM pending);
 
 -- From 20270635_city_council_run_or_former_co.sql — public.politician_resolve_due_elections
 CREATE OR REPLACE FUNCTION public.politician_resolve_due_elections()
@@ -2745,11 +2638,6 @@ BEGIN
 END;
 $$;
 
--- ── 5. politician_campaign_rally — candidate Rally ─────────────────
--- +1d6 polling. No cost. Shared 1-per-tick gate.
--- Named *_campaign_rally to disambiguate from the existing
--- politician_mp_hold_rally (the MP-in-office Hold a Rally, unrelated).
-
 -- From 20270583_consolidate_faction_stats.sql — public.politician_seek_state_prosecutor_appointment
 CREATE OR REPLACE FUNCTION public.politician_seek_state_prosecutor_appointment(
     p_faction_id uuid
@@ -2871,8 +2759,6 @@ BEGIN
     RETURN jsonb_build_object('success', true,
         'appointed', true, 'displaced', true, 'at_tick', v_tick);
 END $$;
-
--- ── read_statute_books — +Skill action ──
 
 -- From 20270507_sit_the_exam_active_politician.sql — public.politician_sit_the_exam
 CREATE OR REPLACE FUNCTION public.politician_sit_the_exam(p_faction_id uuid)
