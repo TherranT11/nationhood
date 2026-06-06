@@ -23,11 +23,54 @@
 
 BEGIN;
 
+-- ── 0. Clear schema drift, if any ──────────────────────────────────
+-- The linked DB has been observed to already have a `politician_capital`
+-- column, even though NO migration creates it and no RPC or client
+-- writes to it (likely a stray added via the Supabase dashboard during
+-- an earlier experiment). The rename below needs that name free, so
+-- drop it first — but only if it's empty. Non-null rows would mean
+-- someone backfilled it for real, in which case we want a loud failure
+-- (not silent data loss) so the situation can be reconciled by hand.
+DO $$
+DECLARE
+    v_non_null int;
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public'
+                  AND table_name='factions'
+                  AND column_name='politician_capital') THEN
+        EXECUTE 'SELECT COUNT(*) FROM public.factions WHERE politician_capital IS NOT NULL'
+            INTO v_non_null;
+        IF v_non_null > 0 THEN
+            RAISE EXCEPTION
+                'politician_capital column already exists with % non-null rows; refusing to drop. Inspect and reconcile manually before re-applying 20270646.',
+                v_non_null;
+        END IF;
+        ALTER TABLE public.factions DROP COLUMN politician_capital;
+    END IF;
+END $$;
+
 -- ── 1. Column rename ───────────────────────────────────────────
--- Order matters: rename politician_influence first so political_
--- capital's destination name is free.
-ALTER TABLE public.factions RENAME COLUMN politician_influence TO politician_capital;
-ALTER TABLE public.factions RENAME COLUMN political_capital   TO politician_influence;
+-- Wrapped in conditional DO blocks so a partial apply (or a re-run
+-- after manual cleanup) is a no-op instead of an error. Order matters:
+-- rename politician_influence first so political_capital's destination
+-- name is free.
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public'
+                  AND table_name='factions'
+                  AND column_name='politician_influence') THEN
+        ALTER TABLE public.factions RENAME COLUMN politician_influence TO politician_capital;
+    END IF;
+END $$;
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_schema='public'
+                  AND table_name='factions'
+                  AND column_name='political_capital') THEN
+        ALTER TABLE public.factions RENAME COLUMN political_capital TO politician_influence;
+    END IF;
+END $$;
 
 COMMENT ON COLUMN public.factions.politician_capital IS
     'The "Capital" stat on the politician role card — money / favors banked. Liquid, transactional. Earned via salaries, party funds, kickbacks, File a Memo, race payouts. Spent on race entry fees, party donations, action costs. (Display label finally matches the column name as of 20270646; previously stored as politician_influence per 20270632''s swap.)';
