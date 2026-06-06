@@ -93,6 +93,21 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_committee_member');
     END IF;
 
+    -- Unaffiliated seat guard: bloc-tally is keyed off party_id. If the
+    -- caller's seat has NULL party_id (e.g., they left their party
+    -- without being removed from the committee), their vote would land
+    -- in bill_report_votes but the tally loop's "party_id IS NOT NULL"
+    -- filter would silently exclude it — the player'd see the panel
+    -- read 0 for their vote and think the system broke. Reject loudly
+    -- here instead.
+    PERFORM 1 FROM committee_members
+     WHERE committee_id          = v_prop.committee_id
+       AND politician_faction_id = v_pol.id
+       AND party_id              IS NOT NULL;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'unaffiliated_seat');
+    END IF;
+
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
