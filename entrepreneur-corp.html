@@ -5699,15 +5699,22 @@ function initials(s, n) {
         }
 
         // Active production runs (20270234): in-flight builds delivering into stock.
+        // delivery_to_corp_id is set for BTO runs delivering to a buyer
+        // corp; NULL for DIY runs that fall into the manufacturer's own
+        // inventory. Surface either case in the sub line so the
+        // manufacturer can see at a glance who each line is for.
         const { data: prData, error: prErr } = await _supabase.from('ent_production_runs')
-          .select('id, quantity, units_delivered, ticks_elapsed, total_ticks, design:ent_aircraft_designs!design_id(name, design_type, airframe_class)')
+          .select('id, quantity, units_delivered, ticks_elapsed, total_ticks, delivery_to_corp_id, design:ent_aircraft_designs!design_id(name, design_type, airframe_class), buyer:entrepreneur_corps!delivery_to_corp_id(name)')
           .eq('entrepreneur_corp_id', id).eq('status', 'active').order('created_at', { ascending: false });
         if (prErr) console.warn('[entrepreneur-corp] production runs fetch error:', prErr.message);
         const prRow = (r) => {
           const isEng = r.design?.design_type === 'engine';
           const sub   = isEng ? 'Engine' : (r.design?.airframe_class || 'Aircraft');
+          const forWhom = r.delivery_to_corp_id
+            ? `for ${escapeHtml(r.buyer?.name || 'a buyer')}`
+            : 'for own stock';
           return `<div class="cf-row"><div><div class="who">${escapeHtml(r.design?.name || (isEng ? 'Engine' : 'Aircraft'))} · ${escapeHtml(sub)}</div>
-            <div class="sub">${r.units_delivered}/${r.quantity} built · tick ${r.ticks_elapsed}/${r.total_ticks}</div></div><span class="num amber">producing</span></div>`;
+            <div class="sub">${r.units_delivered}/${r.quantity} built · tick ${r.ticks_elapsed}/${r.total_ticks} · ${forWhom}</div></div><span class="num amber">producing</span></div>`;
         };
         const productionSection = (prData && prData.length)
           ? `<div class="section-heading"><span class="sans">Active</span><span class="serif">Production</span></div>${prData.map(prRow).join('')}`
