@@ -67,6 +67,17 @@
 BEGIN;
 
 -- ── 1. Extend status CHECK + add bill_name ────────────────────────
+-- Defensive backfill BEFORE the CHECK swap: rename any legacy
+-- 'reported_out' rows to 'reported'. The original 20270498 CHECK
+-- included 'reported_out' but no live RPC has ever written it;
+-- still, ADD CONSTRAINT … CHECK validates existing rows by default,
+-- so if a row with that status existed (set manually or by a removed
+-- code path), the migration would otherwise fail mid-flight. Idempotent
+-- — re-running this is a no-op once nothing matches.
+UPDATE public.committee_proposals
+   SET status = 'reported'
+ WHERE status = 'reported_out';
+
 ALTER TABLE public.committee_proposals
     DROP CONSTRAINT IF EXISTS committee_proposals_status_check;
 ALTER TABLE public.committee_proposals
@@ -356,10 +367,14 @@ BEGIN
     END;
 
     -- Tally. Vote is irrevocable; first side to crossing the
-    -- majority threshold resolves the bill.
+    -- majority threshold resolves the bill. Threshold counts ONLY
+    -- seated politicians — NPC seats (politician_faction_id IS NULL)
+    -- can't vote, so including them in the denominator could make
+    -- bills unresolvable if NPCs hold a plurality of seats.
     SELECT COUNT(*) INTO v_member_count
       FROM committee_members
-     WHERE committee_id = v_prop.committee_id;
+     WHERE committee_id = v_prop.committee_id
+       AND politician_faction_id IS NOT NULL;
     v_threshold := (v_member_count / 2) + 1;
 
     SELECT

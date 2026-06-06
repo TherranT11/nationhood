@@ -789,11 +789,17 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
   const firstArticle = Array.isArray(bill.articles) && bill.articles.length ? bill.articles[0] : null;
   const a = bill.author || {};
   const sponsor = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
-  const title = bill.bill_name || (firstArticle?.text ? truncate(firstArticle.text, 80) : (bill.section || 'Proposal'));
+  const title = bill.bill_name
+    ? truncate(bill.bill_name, 80)
+    : (firstArticle?.text ? truncate(firstArticle.text, 80) : (bill.section || 'Proposal'));
 
+  // Threshold counts only seated politicians — NPC seats can't vote
+  // and would otherwise inflate the denominator (matches the SQL
+  // gate in mp_vote_on_report). Single source for both surfaces is
+  // a follow-up (see audit notes); for now, both compute identically.
   const reportCount = votes.filter(v => v.vote === 'report').length;
   const tableCount  = votes.filter(v => v.vote === 'table').length;
-  const memberCount = members.length || 0;
+  const memberCount = members.filter(m => m.politician_faction_id).length;
   const threshold   = Math.floor(memberCount / 2) + 1;
   const myVote      = votes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
   const canVote     = onCommittee && !myVote;
