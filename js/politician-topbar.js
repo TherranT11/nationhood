@@ -189,13 +189,11 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const display = displayName(f) || 'Politician';
   const baseLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
   const pillLabel = nick ? `${baseLabel} (${nick})` : baseLabel;
-  // Politician topbar shows INFLUENCE. Sourced from factions
-  // .political_capital (column name is a legacy from the
-  // 20270463 rename of politician_influence → political_capital;
-  // the player-facing label flipped back to Influence in 9065499).
+  // Politician topbar shows INFLUENCE — sourced from factions.politician
+  // _influence (column name matches the display label since 20270646).
   // fmtBig keeps small values plain ("0", "27") and magnitude-scales
   // higher ones ("1.2k").
-  const politicalCapital = fmtBig(Number(f.political_capital) || 0);
+  const influenceDisplay = fmtBig(Number(f.politician_influence) || 0);
   const age = String(currentAge(f, s.current_tick || 0));
   const nationHtml = nation
     ? `<img class="flag" src="${escAttr(flagFor(nation))}" alt="" onerror="this.style.visibility='hidden'">${esc(nation.name)}`
@@ -216,7 +214,7 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
         <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
       </div>
       <div class="right">
-        <div class="cash-pill"><span class="label">INFLUENCE: </span><span class="value">${esc(politicalCapital)}</span></div>
+        <div class="cash-pill"><span class="label">INFLUENCE: </span><span class="value">${esc(influenceDisplay)}</span></div>
         <div class="pol-switcher">
           <span class="pol-pill" id="pol-pill" title="Switch faction">${esc(pillLabel)} &#x25BE;</span>
           <div class="pol-dd" id="pol-dd"></div>
@@ -272,7 +270,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_influence, politician_reputation, politician_skill, political_capital, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, politician_ministry, politician_senior_civil_servant_at_tick, politician_agency_head_of, politician_former_community_organizer, civil_service_exam_cooldown_until_tick, next_member_action_tick, next_speech_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick, next_civil_service_action_tick, next_chair_bid_tick, next_lobby_minister_tick, bar_admitted_nation_id, bar_admitted_at_tick, bar_last_attempt_tick, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_deputy_speaker_at_tick, politician_speaker_of_assembly_at_tick, try_case_cooldown_until_tick, party_cooldown_until_tick')
+      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_capital, politician_reputation, politician_skill, politician_influence, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, politician_ministry, politician_senior_civil_servant_at_tick, politician_agency_head_of, politician_former_community_organizer, civil_service_exam_cooldown_until_tick, next_member_action_tick, next_speech_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick, next_civil_service_action_tick, next_chair_bid_tick, next_lobby_minister_tick, bar_admitted_nation_id, bar_admitted_at_tick, bar_last_attempt_tick, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_deputy_speaker_at_tick, politician_speaker_of_assembly_at_tick, try_case_cooldown_until_tick, party_cooldown_until_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);

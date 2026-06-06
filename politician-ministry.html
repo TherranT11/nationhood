@@ -142,7 +142,7 @@ async function renderActors(slug, nationId, currentTick) {
   // exam (20270471). Sorted by founded_tick so the most senior
   // servant lists first.
   const { data, error } = await _supabase.from('factions')
-    .select('id, leader_first_name, leader_last_name, founded_tick, politician_office, political_capital')
+    .select('id, leader_first_name, leader_last_name, founded_tick, politician_office, politician_influence')
     .eq('faction_type', 'politician')
     .eq('nation_id', nationId)
     .eq('politician_ministry', slug)
@@ -156,7 +156,7 @@ async function renderActors(slug, nationId, currentTick) {
     const name = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || '—';
     const age = currentAge(a, currentTick);
     const position = a.politician_office ? officeTitle(a.politician_office) : 'Civil Servant';
-    const pc = Math.floor(Number(a.political_capital) || 0);
+    const pc = Math.floor(Number(a.politician_influence) || 0);
     return `<tr>
       <td class="name">${escapeHtml(name)}</td>
       <td>${age}</td>
