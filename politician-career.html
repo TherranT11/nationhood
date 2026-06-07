@@ -998,7 +998,7 @@ const LEGISLATURE_RUNGS = [
       }
       const skill = Number(s.politicianSkill) || 0;
       if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
-        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${skill.toFixed(1).replace(/\.0$/, '')})`, kind: 'disabled' };
+        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       const influence = Number(s.politicianInfluence) || 0;
       if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
@@ -1123,8 +1123,7 @@ const GOVT_SERVICE_RUNGS = [
       }
       const skill = Number(s.politicianSkill) || 0;
       if (skill < 10) {
-        const shown = Number.isInteger(skill) ? String(skill) : skill.toFixed(1).replace(/\.0$/, '');
-        return { label: `Apply · Need 10 Skill (have ${shown})`, kind: 'disabled' };
+        return { label: `Apply · Need 10 Skill (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
@@ -2952,10 +2951,7 @@ function openAgencyPicker(ctx) {
   const ministrySlug = ctx?.faction?.politician_ministry || null;
   const ministry     = ministrySlug ? PAPERWORK_MINISTRIES[ministrySlug] : null;
   const ministryLbl  = ministryName(ministrySlug) || ministrySlug || '—';
-  const skillRaw     = Number(ctx?.faction?.politician_skill) || 0;
-  const skillTxt     = Number.isInteger(skillRaw)
-    ? String(skillRaw)
-    : skillRaw.toFixed(1).replace(/\.0$/, '');
+  const skillTxt     = fmtStat(ctx?.faction?.politician_skill);
 
   const meta = document.getElementById('ah-pick-meta');
   const body = document.getElementById('ah-pick-body');
@@ -3000,9 +2996,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
       { p_faction_id: window.__careerCtx?.faction?.id || null, p_agency_key: agencyKey });
     if (error) throw error;
     if (!data?.success) {
-      const have = data?.have != null
-        ? Number(data.have).toFixed(1).replace(/\.0$/, '')
-        : '?';
+      const have = data?.have != null ? fmtStat(data.have) : '?';
       const msg = data?.reason === 'insufficient_skill'
         ? `Petition denied — you need 10 Skill. You have ${have}.`
         : data?.reason === 'already_senior'   ? 'You are already an Agency Head.'
@@ -3785,7 +3779,7 @@ function openCityCouncilModal(ctx) {
   if (!modal) return;
   const partyName = ctx?.party?.faction_name || 'your party';
   const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
-  const skillTxt  = Number.isInteger(skillVal) ? String(skillVal) : skillVal.toFixed(1).replace(/\.0$/, '');
+  const skillTxt  = fmtStat(skillVal);
 
   modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
   modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">City Council</span>';
