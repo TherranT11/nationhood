@@ -922,10 +922,36 @@ const LEGISLATURE_RUNGS = [
   },
   {
     name: 'Committee Chair',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You run a committee — set its agenda, decide what gets examined.',
+    held:        (s) => s.committeeChairCount > 0,
+    descIfHeld:  ()  => 'You chair a standing committee — set its agenda, decide what gets heard.',
     descIfNot:   ()  => 'You run a committee — set its agenda, decide what gets examined.',
     actions:     ['Advance Bill'],
+    // Mirrors the politician_bid_for_chair RPC gates (20270584).
+    // Server is the authority; client gates here are pre-checks for
+    // a clean disabled label.
+    actionIfNot: (s) => {
+      if (s.committeeCount === 0) {
+        return { label: 'Apply to a committee first', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 8) {
+        return { label: `Bid for Chair — need 8 Skill (have ${skill.toFixed(1).replace(/\.0$/, '')})`, kind: 'disabled' };
+      }
+      const influence = Number(s.politicianInfluence) || 0;
+      if (influence < 15) {
+        return { label: `Bid for Chair — need 15 Influence (have ${Math.floor(influence)})`, kind: 'disabled' };
+      }
+      const seatedAt = Number(s.earliestCommitteeSeatedTick);
+      if (Number.isFinite(seatedAt) && (s.currentTick - seatedAt) < 4) {
+        const left = 4 - (s.currentTick - seatedAt);
+        return { label: `Seated too recently — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      if (s.nextChairBidTick > s.currentTick) {
+        const left = s.nextChairBidTick - s.currentTick;
+        return { label: `Bid cooldown — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      return { label: 'Bid for Chair', kind: 'primary', href: 'politician-nation.html#sec-committees' };
+    },
   },
   {
     name: 'Deputy Speaker · Presiding Officer',
@@ -1819,20 +1845,30 @@ async function init() {
     console.error('politician-career: active_election fetch threw', err);
   }
 
-  // Viewer's committee memberships — drives the Committee Member rung's
-  // held() check. One count is all we need; the rung doesn't care which
-  // committee. Soft-fail to 0 so an outage doesn't claim the rung is
+  // Viewer's committee memberships — drives both the Committee Member
+  // rung's held() check AND the Committee Chair rung (20270584).
+  // role tells us whether any seat is a chair seat; seated_at_tick
+  // gates the 4-tick "skin in the game" requirement for bidding.
+  // Soft-fail to 0 / no-chair so an outage doesn't claim the rung is
   // held when it isn't.
   let committeeCount = 0;
+  let committeeChairCount = 0;
+  let earliestCommitteeSeatedTick = null;
   try {
-    const { count, error } = await _supabase
+    const { data, error } = await _supabase
       .from('committee_members')
-      .select('id', { count: 'exact', head: true })
+      .select('id, role, seated_at_tick')
       .eq('politician_faction_id', ctx.faction.id);
-    if (error) console.warn('politician-career: committee_members count failed', error);
-    committeeCount = Number(count) || 0;
+    if (error) console.warn('politician-career: committee_members fetch failed', error);
+    const rows = data || [];
+    committeeCount = rows.length;
+    committeeChairCount = rows.filter(r => r.role === 'chair').length;
+    const seatedTicks = rows
+      .map(r => Number(r.seated_at_tick))
+      .filter(n => Number.isFinite(n));
+    if (seatedTicks.length) earliestCommitteeSeatedTick = Math.min(...seatedTicks);
   } catch (err) {
-    console.warn('politician-career: committee_members count threw', err);
+    console.warn('politician-career: committee_members fetch threw', err);
   }
 
   // Pending committee admission vote — drives the rung's "Applied for
@@ -1991,6 +2027,14 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
     parliamentaryTermTicks:  Number(ctx?.nation?.parliamentary_term_ticks) || 24,
+    // Committee Chair (20270584) — surfaces held state + bid eligibility
+    // on the LEGISLATURE_RUNGS Chair rung. Cost / cooldown match the SQL
+    // RPC's gates (Skill ≥ 8, Influence ≥ 15, seated ≥ 4 ticks, cooldown
+    // clear).
+    committeeChairCount:           Number(committeeChairCount) || 0,
+    earliestCommitteeSeatedTick:   Number.isFinite(earliestCommitteeSeatedTick) ? earliestCommitteeSeatedTick : null,
+    politicianInfluence:           Number(ctx?.faction?.politician_influence) || 0,
+    nextChairBidTick:              Number(ctx?.faction?.next_chair_bid_tick) || 0,
     committeeCount:          Number(committeeCount) || 0,
     committeeApplicationPending: !!committeeApplicationPending,
     // Bar exam (20270503). barAdmittedNationId tracks the nation

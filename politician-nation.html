@@ -815,12 +815,13 @@ async function init() {
   // Viewer's current committee memberships gate the Apply buttons
   // (already-member / 3-committee cap counting pending applications)
   // and feed the Voting panel's applicant resolution. The single
-  // SELECT covers both surfaces.
+  // SELECT covers both surfaces. role + seated_at_tick power the
+  // [Bid for Chair] surfacing in renderCommittees (20270584 RPC).
   const polId = ctx.faction?.id || null;
   let viewerMemberships = [];
   if (polId) {
     const { data, error } = await _supabase.from('committee_members')
-      .select('committee_id, committee:committees!committee_id(committee_key)')
+      .select('committee_id, role, seated_at_tick, committee:committees!committee_id(committee_key)')
       .eq('politician_faction_id', polId);
     if (error) console.warn('politician-nation: committee_members fetch failed', error);
     viewerMemberships = data || [];
@@ -838,7 +839,13 @@ async function init() {
   }
 
   renderMinistryCtas();
-  renderCommittees(ctx.faction?.politician_office || null, viewerMemberships, pendingVoteKeys);
+  renderCommittees(
+    ctx.faction?.politician_office || null,
+    viewerMemberships,
+    pendingVoteKeys,
+    ctx.faction || null,
+    Number(ctx.shard?.current_tick) || 0
+  );
   try {
     await loadVoting(nation.id, Number(ctx.shard?.current_tick) || 0);
   } catch (err) {
@@ -1083,12 +1090,26 @@ function renderMinistryCtas() {
 // applications (20270636), since a player can sit on at most three
 // committees and queuing more than three at a time would let them
 // outrun that ceiling. View link stays universally clickable.
-function renderCommittees(office, viewerMemberships, pendingVoteKeys) {
+//
+// On member-non-chair cards, also surface a [Bid for Chair] button
+// that mirrors the politician_bid_for_chair RPC gates (20270584):
+// seated ≥ 4 ticks, Skill ≥ 8, Influence ≥ 15, no active cooldown.
+function renderCommittees(office, viewerMemberships, pendingVoteKeys, viewerFaction, currentTick) {
   const isMP = office === 'member_of_parliament';
   const membershipCount = viewerMemberships.length;
   const pendingCount    = pendingVoteKeys.size;
   const atCap = (membershipCount + pendingCount) >= 3;
   const memberKeys = new Set(viewerMemberships.map(m => m.committee?.committee_key).filter(Boolean));
+  // Per-committee lookup of viewer's seat (role + seated_at_tick) for
+  // the chair-bid button.
+  const seatByKey = new Map(
+    viewerMemberships
+      .map(m => [m.committee?.committee_key, m])
+      .filter(([k]) => k)
+  );
+  const skill     = Number(viewerFaction?.politician_skill)     || 0;
+  const influence = Number(viewerFaction?.politician_influence) || 0;
+  const nextBid   = Number(viewerFaction?.next_chair_bid_tick)  || 0;
   document.querySelectorAll('#sec-committees-body .comm-card').forEach(card => {
     const chip = card.querySelector('[data-req-chip]');
     if (chip) {
@@ -1107,7 +1128,94 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys) {
     btn.disabled = !!reason;
     btn.title    = reason || 'Apply for committee membership';
     btn.onclick  = reason ? null : () => submitCommitteeApplication(card, btn, key);
+
+    // [Bid for Chair] — only on cards where the viewer is a member but
+    // not the chair. Wiped out and re-rendered on every paint so the
+    // gates stay live.
+    const seat = seatByKey.get(key);
+    const foot = card.querySelector('.comm-foot');
+    const old  = card.querySelector('[data-bid-chair]');
+    if (old) old.remove();
+    if (!foot || !seat || seat.role === 'chair') return;
+
+    const seatedAt = Number(seat.seated_at_tick);
+    let bidLabel = 'Bid for Chair';
+    let bidReason = null;
+    if (skill < 8) {
+      const shown = skill.toFixed(1).replace(/\.0$/, '');
+      bidReason = `Need 8 Skill (have ${shown})`;
+    } else if (influence < 15) {
+      bidReason = `Need 15 Influence (have ${Math.floor(influence)})`;
+    } else if (!Number.isFinite(seatedAt) || (currentTick - seatedAt) < 4) {
+      // NULL seated_at_tick triggers server's COALESCE(seated_at_tick,
+      // current_tick) → diff 0 → membership_too_short. Mirror that
+      // here so the button reflects what the RPC will say.
+      const elapsed = Number.isFinite(seatedAt) ? (currentTick - seatedAt) : 0;
+      const left = Math.max(0, 4 - elapsed);
+      bidReason = `Seated too recently — ${left} more tick${left === 1 ? '' : 's'}`;
+    } else if (nextBid > currentTick) {
+      const left = nextBid - currentTick;
+      bidReason = `Bid cooldown — ${left} more tick${left === 1 ? '' : 's'}`;
+    }
+    const bidBtn = document.createElement('button');
+    bidBtn.type = 'button';
+    bidBtn.className = 'comm-apply';
+    bidBtn.dataset.bidChair = '1';
+    bidBtn.dataset.committeeId = seat.committee_id || '';
+    bidBtn.textContent = bidLabel;
+    bidBtn.disabled = !!bidReason;
+    bidBtn.title    = bidReason || 'Spend 15 Influence to challenge for the chair';
+    if (!bidReason) {
+      bidBtn.onclick = () => submitChairBid(bidBtn, seat.committee_id);
+    }
+    foot.appendChild(bidBtn);
   });
+}
+
+async function submitChairBid(btn, committeeId) {
+  if (!committeeId || !_viewerPolId) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Bidding…';
+  try {
+    const { data, error } = await _supabase.rpc('politician_bid_for_chair', {
+      p_faction_id:   _viewerPolId,
+      p_committee_id: committeeId,
+    });
+    if (error) {
+      console.warn('politician-nation: bid_for_chair failed', error);
+      alert('The bid did not go through. Try again.');
+      btn.disabled = false; btn.textContent = original;
+      return;
+    }
+    if (!data?.success) {
+      const map = {
+        not_authenticated:     'You are not signed in.',
+        bad_args:              'Internal: missing arguments for the bid.',
+        no_politician:         'No politician on this account.',
+        not_member:            'You are not a member of this committee.',
+        already_chair:         'You already chair this committee.',
+        membership_too_short:  'You have not been seated long enough to bid.',
+        insufficient_skill:    'You need 8 Skill to bid for chair.',
+        insufficient_capital:  'You need 15 Influence to bid for chair.',
+        cooldown:              'Your bid cooldown has not expired.',
+        no_chair_seat:         'The chair seat is vacant — no bid needed.',
+      };
+      alert(map[data?.reason] || `Could not bid for chair: ${data?.reason || 'unknown'}`);
+      btn.disabled = false; btn.textContent = original;
+      return;
+    }
+    const incumbent = data.incumbent_name || 'the incumbent';
+    const msg = data.won
+      ? `You unseated ${incumbent} and took the chair! (Roll ${data.bid_roll} vs ${data.defender_roll})`
+      : `${incumbent} held the chair. (Roll ${data.bid_roll} vs ${data.defender_roll})`;
+    alert(msg);
+    location.reload();
+  } catch (err) {
+    console.warn('politician-nation: bid_for_chair threw', err);
+    alert('The bid did not go through. Try again.');
+    btn.disabled = false; btn.textContent = original;
+  }
 }
 
 async function submitCommitteeApplication(card, btn, committeeKey) {
