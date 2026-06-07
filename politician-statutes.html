@@ -715,6 +715,7 @@ async function submit() {
       p_category:     draft.category,
       p_section:      draft.section.trim(),
       p_articles:     articlesPayload,
+      p_faction_id:   ctx?.faction?.id || null,
     });
     if (error) throw error;
     if (!data?.success) {
@@ -882,6 +883,7 @@ async function submitAmendment() {
     const { data, error } = await _supabase.rpc('committee_propose_amendment', {
       p_amends_proposal_id: amendDraft.amendsProposalId,
       p_amendment_text:     amendDraft.text.trim(),
+      p_faction_id:         ctx?.faction?.id || null,
     });
     if (error) throw error;
     if (!data?.success) {

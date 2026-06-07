@@ -4696,7 +4696,9 @@ async function loadNextFilePaperworkDispatch() {
 
   let resp;
   try {
-    const { data, error } = await _supabase.rpc('fetch_civil_servant_dispatch');
+    const { data, error } = await _supabase.rpc('fetch_civil_servant_dispatch', {
+      p_faction_id: politician?.id || null,
+    });
     if (error) throw error;
     resp = data;
   } catch (err) {
@@ -4914,6 +4916,7 @@ async function submitFilePaperwork() {
       p_ministry:    fpState.ministry,
       p_agency:      fpState.agency,
       p_flag:        fpState.flagged,
+      p_faction_id:  politician?.id || null,
     });
     if (error) throw error;
     resp = data;

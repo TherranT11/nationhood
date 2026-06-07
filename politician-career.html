@@ -2428,7 +2428,10 @@ function bindRungActions(ctx) {
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = `${spec.verb[0].toUpperCase()}${spec.verb.slice(1)}…`;
       try {
-        const { data, error } = await _supabase.rpc(spec.rpc, { p_party_id: partyId });
+        const { data, error } = await _supabase.rpc(spec.rpc, {
+          p_party_id:   partyId,
+          p_faction_id: ctx?.faction?.id || null,
+        });
         if (error) throw error;
         if (!data?.success) {
           const msg = data?.reason === 'insufficient_reputation'
@@ -2454,7 +2457,9 @@ function bindRungActions(ctx) {
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = 'Resigning…';
       try {
-        const { data, error } = await _supabase.rpc('politician_resign_chair');
+        const { data, error } = await _supabase.rpc('politician_resign_chair', {
+          p_faction_id: ctx?.faction?.id || null,
+        });
         if (error) throw error;
         if (!data?.success) {
           const REASON = {
@@ -3443,8 +3448,9 @@ async function confirmElection(ctx) {
   const originalLabel = btn.textContent;
   btn.textContent = 'Submitting…';
   const { data, error } = await _supabase.rpc('politician_stand_for_election', {
-    p_party_id: partyId,
-    p_tier:     emSelectedTier,
+    p_party_id:   partyId,
+    p_tier:       emSelectedTier,
+    p_faction_id: ctx?.faction?.id || null,
   });
   if (error) {
     alert('Could not stand for election: ' + (error.message || 'unknown error'));
