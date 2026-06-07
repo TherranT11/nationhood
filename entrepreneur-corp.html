@@ -4799,10 +4799,13 @@ function initials(s, n) {
     // (20270224) — server is authoritative; this is the display copy.
     // Built by Construction corps, sold to Aviation Manufacturing corps.
     const PLANT_PROFILE = {
-      engine_assembly_plant: { cost: 45000000, ticks: 27, amb: 2 },
-      light_assembly_plant:  { cost: 75000000, ticks: 30, amb: 3 },
+      engine_assembly_plant:      { cost: 45000000,  ticks: 27, amb: 2 },
+      light_assembly_plant:       { cost: 75000000,  ticks: 30, amb: 3 },
+      aircraft_assembly_facility: { cost: 175000000, ticks: 16, amb: 4 },
     };
-    const isPlantType = (t) => t === 'engine_assembly_plant' || t === 'light_assembly_plant';
+    const isPlantType = (t) => t === 'engine_assembly_plant'
+                            || t === 'light_assembly_plant'
+                            || t === 'aircraft_assembly_facility';
 
     // Apartment Complex type definitions are imported from utils.js as
     // APARTMENT_DEFS — single JS-side source paired with the server
@@ -6818,6 +6821,7 @@ function initials(s, n) {
       construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
       light_assembly_plant: 'aviation_manufacturing',
+      aircraft_assembly_facility: 'aviation_manufacturing',
       apartment_basic: 'real_estate', apartment_modest: 'real_estate', apartment_luxury: 'real_estate',
       pump_jack: 'oil_and_gas', refinery_small: 'oil_and_gas',
       refinery_regular: 'oil_and_gas', refinery_large: 'oil_and_gas',
