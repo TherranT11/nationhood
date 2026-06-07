@@ -5041,12 +5041,7 @@ function initials(s, n) {
       }
 
       let launchBtn = '';
-      if (isOwner && isConstructionCorp) {
-        launchBtn = `<div class="ap-launch">
-             <div class="lab">Construction corp — <b>${escapeHtml(c.name || 'this corp')}</b> can break ground on a new building.</div>
-             <button class="ap-btn" id="cp-begin-construction">Begin Construction</button>
-           </div>`;
-      } else if (isOwner && isRealEstateCorp) {
+      if (isOwner && isRealEstateCorp) {
         launchBtn = `<div class="ap-launch">
              <div class="lab">Real Estate corp — browse completed buildings on the market.</div>
              <button class="ap-btn" id="cp-browse-market">Browse Market</button>
@@ -6633,9 +6628,6 @@ function initials(s, n) {
         });
       }
 
-      if (isOwner && isConstructionCorp) {
-        document.getElementById('cp-begin-construction').addEventListener('click', openBuildModal);
-      }
       if (isOwner && isRealEstateCorp) {
         document.getElementById('cp-browse-market').addEventListener('click', openMarketModal);
       }

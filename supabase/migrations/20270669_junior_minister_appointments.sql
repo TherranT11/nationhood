@@ -145,6 +145,12 @@ ALTER TABLE public.politician_junior_appointments ENABLE ROW LEVEL SECURITY;
 -- politician career page surfaces history; the PM's Pressing Issues
 -- pulls pending rows for their nation). No sensitive data — just
 -- the applicant id, portfolio, and dice math.
+--
+-- DROP IF EXISTS + CREATE keeps the migration reapply-safe; CREATE
+-- POLICY has no IF NOT EXISTS clause so a partial-apply replay
+-- (everything above is gated by IF NOT EXISTS / CREATE OR REPLACE)
+-- would otherwise trip on SQLSTATE 42710 here.
+DROP POLICY IF EXISTS junior_appts_read_all ON public.politician_junior_appointments;
 CREATE POLICY junior_appts_read_all
     ON public.politician_junior_appointments
     FOR SELECT TO authenticated
