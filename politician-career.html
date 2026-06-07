@@ -2964,10 +2964,11 @@ function openAgencyPicker(ctx) {
   }
 
   if (!ministry || !ministry.agencies?.length) {
-    // Defense civil servants land here today — the politician_
-    // ministry slug 'defense' has no paperwork-taxonomy entry
-    // (paperwork uses 'security'). Flagged in 20270634 as a
-    // follow-up to align the two slug sets.
+    // Fallback for any future ministry slug that isn't yet wired
+    // into PAPERWORK_MINISTRIES. The 20270634-era landmine for
+    // defense civil servants (paperwork-taxonomy used 'security'
+    // while politician_ministry uses 'defense') was resolved in
+    // 20270678 — defense applicants now find their ministry.
     body.innerHTML = `<div class="ah-empty">No Agency Head openings are configured for the Ministry of ${escHtml(ministryLbl)} yet.</div>`;
   } else {
     body.innerHTML = ministry.agencies.map((a, i) => `
