@@ -1291,6 +1291,7 @@ import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLa
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { COMMITTEES } from './js/committees.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
@@ -1415,6 +1416,7 @@ let pretrialCases = []; // active pre-trials in this politician's bar nation awa
 let activeTrials = [];  // in-progress trials this politician is on either side of (20270515). Surfaces as Pressing Issues + opens the trial modal.
 let stateAdvocateRequests = []; // pending state_advocate_appointment_requests where this politician is the reviewer (MoI). Surfaces as Pressing Issues cards (20270555).
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
+let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1470,7 +1472,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1511,6 +1513,10 @@ async function init() {
       // (20270669/20270670). Empty result for non-HoG callers — the
       // RPC gates server-side — so unconditional invocation is safe.
       _supabase.rpc('list_pending_junior_applications_for_hog'),
+      // Open committee hearings in the viewer's nation where they
+      // aren't a committee member and haven't testified yet
+      // (20270691). Empty result for nation-less politicians.
+      _supabase.rpc('list_open_hearings_for_witness', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
@@ -1520,6 +1526,7 @@ async function init() {
     if (trialsRes.error) console.error('politician-home: active trials fetch failed', trialsRes.error);
     if (saReqRes.error) console.error('politician-home: state advocate requests fetch failed', saReqRes.error);
     if (jmAppsRes.error) console.error('politician-home: junior minister applications fetch failed', jmAppsRes.error);
+    if (hearingsRes.error) console.error('politician-home: open hearings fetch failed', hearingsRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
@@ -1528,6 +1535,7 @@ async function init() {
     activeTrials  = (trialsRes.data?.success  ? trialsRes.data.trials    : []) || [];
     stateAdvocateRequests = saReqRes.data || [];
     juniorMinisterApplications = jmAppsRes.data || [];
+    committeeHearings = (hearingsRes.data?.success ? hearingsRes.data.hearings : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1538,6 +1546,7 @@ async function init() {
     activeTrials  = [];
     stateAdvocateRequests = [];
     juniorMinisterApplications = [];
+    committeeHearings = [];
   }
 
   renderHero(ctx.shard);
@@ -2492,6 +2501,14 @@ function renderPressingIssues(ctx) {
   // broadcasts they could join.
   activeTrials.forEach(t => blocks.push(renderActiveTrialCard(t)));
   pretrialCases.forEach(p => blocks.push(renderPretrialCard(p)));
+  // Open committee hearings (20270691) — filter out hearings the
+  // viewer dismissed this session via Close. Dismissals live in
+  // localStorage so re-opening the tab brings them back; a follow-up
+  // hearing on a different proposal gets a fresh card regardless.
+  const dismissed = getDismissedHearings();
+  committeeHearings
+    .filter(h => !dismissed.has(h.hearing_id))
+    .forEach(h => blocks.push(renderCommitteeHearingCard(h)));
   if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
     return;
@@ -2503,6 +2520,78 @@ function renderPressingIssues(ctx) {
   bindCounselOfferActions();
   bindPretrialActions();
   bindActiveTrialActions();
+  bindCommitteeHearingActions();
+}
+
+// localStorage-backed dismissal set for the committee hearing
+// Pressing Issues cards. Keyed by hearing_id so a follow-up hearing
+// on a different proposal naturally produces a fresh card. No server
+// persistence — the dismissal is low-stakes ("ignore this round")
+// and tying it to localStorage avoids a new table just for UI state.
+const DISMISSED_HEARINGS_KEY = 'dismissed_hearings_v1';
+function getDismissedHearings() {
+  try {
+    const raw = localStorage.getItem(DISMISSED_HEARINGS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+function dismissHearing(hearingId) {
+  const set = getDismissedHearings();
+  set.add(hearingId);
+  try { localStorage.setItem(DISMISSED_HEARINGS_KEY, JSON.stringify([...set])); }
+  catch (_) { /* storage full or disabled — dismissal is best-effort */ }
+}
+
+function renderCommitteeHearingCard(h) {
+  const meta         = COMMITTEES[h.committee_key] || {};
+  const committeeNm  = meta.name || 'a committee';
+  const icon         = meta.icon || '⚖';
+  const lawTitle     = h.section ? escHtml(h.section) : 'a proposal';
+  const categoryUp   = (h.category || '').toUpperCase();
+  return `
+    <div class="offer-card" data-hearing-id="${escHtml(h.hearing_id)}" data-committee-key="${escHtml(h.committee_key)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">${escHtml(icon)}</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">COMMITTEE HEARING &middot; WITNESS CALL</div>
+        <div class="oi-headline"><strong>${escHtml(committeeNm)}</strong> is seeking expert testimony on <em>${lawTitle}</em>.</div>
+        <div class="oi-meta">
+          <span class="oi-corp">${escHtml(categoryUp || 'PROPOSAL')}</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn hearing-accept-btn">&#10003; ACCEPT</button>
+        <button type="button" class="offer-reject-btn hearing-close-btn">&#10005; CLOSE</button>
+      </div>
+    </div>`;
+}
+
+function bindCommitteeHearingActions() {
+  document.querySelectorAll('.hearing-accept-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('[data-committee-key]');
+      const key  = card?.dataset?.committeeKey;
+      if (!key) return;
+      window.location.href = `committee.html?key=${encodeURIComponent(key)}`;
+    });
+  });
+  document.querySelectorAll('.hearing-close-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('[data-hearing-id]');
+      const id   = card?.dataset?.hearingId;
+      if (!id) return;
+      dismissHearing(id);
+      card.remove();
+      // Restore the empty-state placeholder when the LAST Pressing
+      // Issues card is dismissed. Use child count so we don't have to
+      // enumerate every card class (campaign, trial, offer, hearing…).
+      const host = document.getElementById('pressing-issues');
+      if (host && host.children.length === 0) {
+        host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
+      }
+    });
+  });
 }
 
 // Roman numerals 1-4 for round display.
