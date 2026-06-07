@@ -277,17 +277,18 @@ const SECTORS = [
 // Production = sum(input industry strengths) / divisor, floored at 0.
 // Single-input commodities use divisor=2 (production trails raw industry
 // strength by 50%); multi-input commodities use divisor=inputs.length
-// (the result is an arithmetic mean across contributing industries).
-// `inputs: null` parks a commodity as a render-only stub — Diplomacy
-// has no industry source today and shows '--' for production until the
-// mechanic ships.
+// 20270692: On Hand + Production are now raw values stored per nation
+// per commodity in nation_commodity_state. The previous sum/divisor
+// derivation from industry bases is gone. The 3 "service" commodities
+// (consumer_goods/services/diplomacy) have NULL production by schema
+// CHECK and render On Hand only.
 const COMMODITIES = [
-  { key: 'crude_oil',      name: 'Crude Oil',      inputs: ['oil_gas'],                                  divisor: 2 },
-  { key: 'minerals',       name: 'Minerals',       inputs: ['mining'],                                   divisor: 2 },
-  { key: 'foodstuffs',     name: 'Foodstuffs',     inputs: ['fisheries', 'agriculture'],                 divisor: 2 },
-  { key: 'consumer_goods', name: 'Consumer Goods', inputs: ['heavy_mfg', 'retail'],                      divisor: 2 },
-  { key: 'services',       name: 'Services',       inputs: ['hospitality', 'aviation', 'media_telecom'], divisor: 3 },
-  { key: 'diplomacy',      name: 'Diplomacy',      inputs: null,                                         divisor: null },
+  { key: 'crude_oil',      name: 'Crude Oil'      },
+  { key: 'minerals',       name: 'Minerals'       },
+  { key: 'foodstuffs',     name: 'Foodstuffs'     },
+  { key: 'consumer_goods', name: 'Consumer Goods' },
+  { key: 'services',       name: 'Services'       },
+  { key: 'diplomacy',      name: 'Diplomacy'      },
 ];
 
 // Stat-key → display label. Subset of modifieradmin.html's
@@ -423,11 +424,26 @@ async function renderEconomy(nationId) {
     corpsByIndustry.get(industryKey).push(c);
   }
 
+  // Commodity state (on_hand + production_per_tick) — raw per-nation
+  // values from 20270692. Missing keys fall through to a zeroed default
+  // so a nation that hasn't been seeded yet still renders without crashing.
+  const commByKey = new Map();
+  try {
+    const { data, error } = await _supabase
+      .from('nation_commodity_state')
+      .select('commodity_key, on_hand, production_per_tick')
+      .eq('nation_id', nationId);
+    if (error) throw error;
+    for (const row of (data || [])) commByKey.set(row.commodity_key, row);
+  } catch (err) {
+    console.warn('politician-economy: nation_commodity_state fetch failed (defaulting to 0)', err);
+  }
+
   // Summary strip is now commodity-driven, not sector-driven. Sector
   // corp counts (still surfaced in each sector's cat-head) are computed
   // inline by renderSectorSection so there's no shared aggregate Map
   // to maintain.
-  summaryHost.innerHTML = COMMODITIES.map(c => renderCommodityCard(c, baseByKey)).join('');
+  summaryHost.innerHTML = COMMODITIES.map(c => renderCommodityCard(c, commByKey)).join('');
   sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, corpsByIndustry, baseByKey)).join('');
 }
 
@@ -448,23 +464,20 @@ function strengthTierClass(strength) {
   return 'high';
 }
 
-// Production = sum of input industry strengths / divisor, floored at 0.
-// Returns null when the commodity has no formula yet (Diplomacy stub)
-// so the renderer can swap in '--' rather than '0.0'.
-function computeProduction(commodity, baseByKey) {
-  if (!commodity.inputs || !commodity.divisor) return null;
-  const sum = commodity.inputs.reduce((acc, key) => acc + baseOf(baseByKey.get(key)), 0);
-  return Math.max(0, sum / commodity.divisor);
-}
-
-function renderCommodityCard(commodity, baseByKey) {
-  const prod = computeProduction(commodity, baseByKey);
-  const prodStr = prod == null ? '--' : prod.toFixed(1);
+function renderCommodityCard(commodity, commByKey) {
+  const state       = commByKey.get(commodity.key) || null;
+  const onHandStr   = state ? String(Number(state.on_hand) || 0) : '0';
+  // production_per_tick is NULL by schema CHECK for consumer_goods /
+  // services / diplomacy — render the row only when there's a number.
+  const prod        = state ? state.production_per_tick : null;
+  const prodRowHtml = (prod == null || prod === undefined)
+    ? ''
+    : `<div class="sm-row"><span class="sm-row-lab">Production</span><span class="sm-row-val">${Number(prod).toFixed(1)}</span></div>`;
   return (
     `<div class="sm-card ${commodity.key}">` +
       `<div class="sm-lab">${escapeHtml(commodity.name)}</div>` +
-      `<div class="sm-row"><span class="sm-row-lab">On Hand</span><span class="sm-row-val">--</span></div>` +
-      `<div class="sm-row"><span class="sm-row-lab">Production</span><span class="sm-row-val">${prodStr}</span></div>` +
+      `<div class="sm-row"><span class="sm-row-lab">On Hand</span><span class="sm-row-val">${onHandStr}</span></div>` +
+      prodRowHtml +
     `</div>`
   );
 }
