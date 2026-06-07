@@ -1911,7 +1911,7 @@ async function init() {
 
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, committeeCount, committeeApplicationPending, stateAdvocateRequestPending), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, committeeCount, committeeChairCount, earliestCommitteeSeatedTick, committeeApplicationPending, stateAdvocateRequestPending), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -2004,7 +2004,7 @@ function renderResolutionBanner(r) {
 //                            ticks after winning Community Organizer).
 //   currentTick            → both eligibility windows.
 //   nextGeneralElectionTick → Senior MP window (opens 3 ticks before).
-function buildLadderState(party, activeRace, office, ctx, committeeCount, committeeApplicationPending, stateAdvocateRequestPending) {
+function buildLadderState(party, activeRace, office, ctx, committeeCount, committeeChairCount, earliestCommitteeSeatedTick, committeeApplicationPending, stateAdvocateRequestPending) {
   return {
     stateAdvocateRequestPending: !!stateAdvocateRequestPending,
     partyId:                 party?.id || null,
