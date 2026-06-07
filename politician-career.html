@@ -1112,7 +1112,7 @@ const GOVT_SERVICE_RUNGS = [
     },
     descIfNot:   ()  => 'A middle-rank official running an agency within a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
     actions:     ['Draft a Memo', 'Brief a Minister'],
-    // Apply for Promotion — civil servants only, 10 Skill gate. The
+    // Apply for Promotion — civil servants only, 15 Skill gate. The
     // server validates again; the disabled states here just keep the
     // button honest so a player doesn't open a picker they can't use.
     // Picker modal lives at #ah-pick-* below; clicked via the
@@ -1122,8 +1122,8 @@ const GOVT_SERVICE_RUNGS = [
         return { label: 'Civil Service only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 10) {
-        return { label: `Apply · Need 10 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < 15) {
+        return { label: `Apply · Need 15 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
@@ -2619,7 +2619,7 @@ function bindRungActions(ctx) {
   // Apply for Promotion — Civil Servant → Agency Head (Tier 2,
   // Government Service). Opens the agency picker; the picker owns
   // the RPC call. Disabled-state rung buttons (e.g. "Civil Service
-  // only", "Need 10 Experience") render without data-action, so this
+  // only", "Need 15 Experience") render without data-action, so this
   // selector only matches when the gate is open.
   document.querySelectorAll('[data-action="apply-for-promotion"]').forEach(btn => {
     btn.addEventListener('click', () => openAgencyPicker(ctx));
@@ -2930,7 +2930,7 @@ function renderExamModalResult({ kind, title, body, reload }) {
 // MINISTRIES (the SoT taxonomy shared with the server-side helper
 // _paperwork_valid_ministry_agency). Click on an agency calls
 // politician_apply_for_promotion(p_agency_key); the server
-// re-validates the 10-Skill gate, the ministry × agency pair, and
+// re-validates the 15-Skill gate, the ministry × agency pair, and
 // the no-double-promotion guard.
 //
 // Roman numerals match the Sit-the-Exam / File Paperwork modal
@@ -2961,7 +2961,7 @@ function openAgencyPicker(ctx) {
   foot.querySelectorAll('.ah-result').forEach(n => n.remove());
 
   if (meta) {
-    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>10 Experience</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
+    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>15 Experience</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
   }
 
   if (!ministry || !ministry.agencies?.length) {
@@ -2998,7 +2998,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
       const msg = data?.reason === 'insufficient_skill'
-        ? `Petition denied — you need 10 Experience. You have ${have}.`
+        ? `Petition denied — you need 15 Experience. You have ${have}.`
         : data?.reason === 'already_senior'   ? 'You are already an Agency Head.'
         : data?.reason === 'not_civil_servant' ? 'Only Civil Servants can apply for this promotion.'
         : data?.reason === 'invalid_agency'   ? "That agency isn't in your ministry."
