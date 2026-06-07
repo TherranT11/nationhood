@@ -39,7 +39,7 @@
   .corp-body .meta-row .val { color:#d4d4d4; }
 
   .role-block { text-align:right; padding-left:28px; border-left:0.5px solid rgba(255,255,255,0.08); min-width:240px; }
-  .role-block .role-eyebrow { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
+  .role-eyebrow { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; text-transform:uppercase; }
   .role-block .role-pill { display:inline-block; background:#2a3a1f; color:#9eb87a; padding:4px 10px;
     border-radius:3px; font-size:10px; letter-spacing:0.13em; font-weight:500; margin-bottom:12px; }
   .role-block .stake { font-size:40px; font-weight:500; color:#8aaa6a; line-height:1; letter-spacing:-0.02em; }
@@ -683,10 +683,11 @@
     .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
     .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
       border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
-    /* The conditional header-inline controls (Withdraw / Put Up for Sale /
-       Acquire / Bankrupt / Director Actions) go full-width once the
-       header stacks; otherwise they cluster in a narrow center column. */
-    #cp-withdraw, #cp-forsale, #cp-acquire, #cp-bankrupt, #cp-director-actions {
+    /* The remaining header-inline controls (Acquire — non-owner make-offer
+       and Director Actions) go full-width once the header stacks. Withdraw
+       / Put Up for Sale / Bankrupt / Negotiations moved into the
+       Administrative Hub below Legal Counsel and no longer need this. */
+    #cp-acquire, #cp-director-actions {
       min-width:0; width:100%; align-self:stretch;
     }
   }
@@ -980,32 +981,9 @@
           </div>
         </div>
       </div>
-      <!-- Founder-only treasury pump (private corps): WITHDRAW pulls corp
-           treasury into personal Cash on Hand; INVEST pushes personal Cash
-           on Hand into corp treasury. Shared amount input; the button
-           clicked picks the direction. Shown by JS for the owner of a
-           private corp. -->
-      <div id="cp-withdraw" style="display:none;align-self:center;min-width:260px;">
-        <div class="role-eyebrow" style="text-align:center;">PERSONAL FUNDS &harr; TREASURY</div>
-        <div class="tc-row" style="margin-top:8px;justify-content:center;">
-          <input id="cp-wd-amt" class="tc-qty" type="number" min="1" step="1" placeholder="Amount" />
-          <button id="cp-iv-btn" class="tc-btn">INVEST</button>
-          <button id="cp-wd-btn" class="tc-btn">WITHDRAW</button>
-        </div>
-        <div class="tc-msg" id="cp-wd-msg" style="text-align:center;"></div>
-      </div>
-      <!-- Put Up for Sale / Make Offer (private corps). Populated by
-           renderForSale(): owner sees list/unlist + incoming offers; a
-           non-owner viewing a for-sale corp sees Make Offer. -->
-      <div id="cp-forsale" style="display:none;align-self:center;min-width:220px;"></div>
       <!-- Acquire (2.6.8.3): non-owner sees [Acquire]; owner with an incoming
            offer sees [Review offer]. Populated by renderAcquire(). -->
       <div id="cp-acquire" style="display:none;align-self:center;min-width:160px;text-align:center;"></div>
-      <!-- Declare Bankruptcy (2.6.8.6): owner-only. Populated by JS. -->
-      <div id="cp-bankrupt" style="display:none;align-self:center;text-align:center;"></div>
-      <!-- Corporate Negotiations (20270569): owner-only entry point to start
-           or browse in-progress contract drafts. Populated by JS. -->
-      <div id="cp-negotiations" style="display:none;align-self:center;min-width:200px;text-align:center;"></div>
       <!-- Director actions (2.6.8.6.2): board directors of a PRIVATE corp see
            [Offer Investment]; [Sell Equity] also if they hold shares. JS-gated. -->
       <div id="cp-director-actions" style="display:none;align-self:center;min-width:200px;text-align:center;">
@@ -1190,6 +1168,30 @@
             <button type="button" class="ap-btn-small lawsuit" id="cp-lawsuit-btn" disabled title="Retain at least one advocate before filing.">FILE A LAWSUIT</button>
           </div>
         </div>
+
+        <!-- Administrative Hub — owner-only consolidated panel that holds
+             the founder treasury pump, put-up-for-sale flow, contract
+             negotiations entry, and the danger-zone (debt payment +
+             bankruptcy). Each slot is filled by the same JS render path
+             as before — the slots just live in a different parent now
+             and each show-path also flips the wrapping container
+             visible. Container starts display:none and any visible slot
+             promotes it. -->
+        <div class="details-card" id="cp-admin-hub" style="display:none;">
+          <div class="lab">ADMINISTRATIVE HUB</div>
+          <div id="cp-withdraw" style="display:none;margin-bottom:14px;">
+            <div class="role-eyebrow">PERSONAL FUNDS &harr; TREASURY</div>
+            <div class="tc-row" style="margin-top:8px;">
+              <input id="cp-wd-amt" class="tc-qty" type="number" min="1" step="1" placeholder="Amount" />
+              <button id="cp-iv-btn" class="tc-btn">INVEST</button>
+              <button id="cp-wd-btn" class="tc-btn">WITHDRAW</button>
+            </div>
+            <div class="tc-msg" id="cp-wd-msg"></div>
+          </div>
+          <div id="cp-forsale" style="display:none;margin-bottom:14px;"></div>
+          <div id="cp-negotiations" style="display:none;margin-bottom:14px;"></div>
+          <div id="cp-bankrupt" style="display:none;"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1304,6 +1306,11 @@ function initials(s, n) {
     // as the canonical declaration: isOwner is exact-faction match
     // on owner_faction_id; isDirector reads the seat row.
     const isOwner = !!entId && c.owner_faction_id === entId;
+    // SoT for promoting the Administrative Hub wrapper into view. Each
+    // slot inside (cp-withdraw, cp-forsale, cp-negotiations, cp-bankrupt)
+    // calls this when it flips itself visible — the hub stays display:
+    // none if no slot applies (e.g., non-owner viewing a public corp).
+    const showAdminHub = () => { const h = document.getElementById('cp-admin-hub'); if (h) h.style.display = 'block'; };
     let isDirector = false;
     if (!!entId && !isOwner) {
       const { data: _seat, error: _seatErr } = await _supabase.from('corp_board_seats')
@@ -2892,6 +2899,7 @@ function initials(s, n) {
     const cpWd = document.getElementById('cp-withdraw');
     if (cpWd && !isPublic && isOwner) {
       cpWd.style.display = 'block';
+      showAdminHub();
       const wdBtn = document.getElementById('cp-wd-btn');
       const ivBtn = document.getElementById('cp-iv-btn');
       const wdAmt = document.getElementById('cp-wd-amt');
@@ -2981,6 +2989,7 @@ function initials(s, n) {
             <div class="tc-row" style="justify-content:center;margin-top:8px;"><button id="cp-unlist-btn" class="tc-btn">UNLIST</button></div>
             ${offersHtml}<div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
           fsWrap.style.display = 'block';
+          showAdminHub();
           let busy = false;
           const msg = (t) => { const m = document.getElementById('cp-fs-msg'); if (m) m.textContent = t; };
           document.getElementById('cp-unlist-btn').addEventListener('click', async () => {
@@ -3009,6 +3018,7 @@ function initials(s, n) {
             <div class="tc-msg" style="text-align:center;">Recommended ${fmtUsd(rec)} · cash − debt + property</div>
             <div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
           fsWrap.style.display = 'block';
+          showAdminHub();
           let busy = false;
           const msg = (t) => { const m = document.getElementById('cp-fs-msg'); if (m) m.textContent = t; };
           document.getElementById('cp-fs-btn').addEventListener('click', async () => {
@@ -3038,6 +3048,7 @@ function initials(s, n) {
               <div class="tc-msg" id="cp-fs-msg" style="text-align:center;"></div>`;
           }
           fsWrap.style.display = 'block';
+          showAdminHub();
           const offerBtn = document.getElementById('cp-fs-offer-btn');
           if (offerBtn) {
             let busy = false;
@@ -3230,13 +3241,21 @@ function initials(s, n) {
       })().catch(err => console.error('[acquire] render failed:', err));
     }
 
-    // ── Declare Bankruptcy (2.6.8.6): owner-only header action ──
+    // ── Debt Payment + Declare Bankruptcy (2.6.8.6): owner-only.
+    //    Now rendered inside the Administrative Hub's danger-zone strip
+    //    (was previously a separate header-area widget). The two buttons
+    //    sit side-by-side via flex; the hub container is promoted to
+    //    visible alongside this slot. ──
     const bkWrap = document.getElementById('cp-bankrupt');
     if (bkWrap && isOwner) {
       bkWrap.innerHTML = `
-        <button class="rl-btn" id="cp-debt-pay-btn" style="padding:8px 14px;background:#16240f;color:#9ac89e;border:0.5px solid #4a6a4a;border-radius:4px;cursor:pointer;display:block;width:100%;margin-bottom:8px;">Debt Payment</button>
-        <button class="rl-btn" id="cp-bankrupt-btn" style="padding:8px 14px;background:#3a1a1a;color:#d98a8a;border:0.5px solid #6a4a4a;border-radius:4px;cursor:pointer;display:block;width:100%;">Declare Bankruptcy</button>`;
+        <div class="role-eyebrow">DANGER ZONE</div>
+        <div style="display:flex;gap:8px;">
+          <button class="rl-btn" id="cp-debt-pay-btn" style="padding:8px 14px;background:#16240f;color:#9ac89e;border:0.5px solid #4a6a4a;border-radius:4px;cursor:pointer;flex:1;">Debt Payment</button>
+          <button class="rl-btn" id="cp-bankrupt-btn" style="padding:8px 14px;background:#3a1a1a;color:#d98a8a;border:0.5px solid #6a4a4a;border-radius:4px;cursor:pointer;flex:1;">Declare Bankruptcy</button>
+        </div>`;
       bkWrap.style.display = 'block';
+      showAdminHub();
       document.getElementById('cp-debt-pay-btn').addEventListener('click', () => openDebtPaymentModal());
       let bkBusy = false;
       document.getElementById('cp-bankrupt-btn').addEventListener('click', async () => {
@@ -3269,8 +3288,10 @@ function initials(s, n) {
     const negWrap = document.getElementById('cp-negotiations');
     if (negWrap && isOwner) {
       negWrap.innerHTML = `
+        <div class="role-eyebrow">NEGOTIATE SALE DIRECTLY</div>
         <button class="rl-btn" id="cp-neg-btn" style="padding:8px 14px;background:#160e08;color:#dba88c;border:0.5px solid #5a3e2a;border-radius:4px;cursor:pointer;display:block;width:100%;">Corporate Negotiations<span id="cp-neg-count" style="margin-left:6px;color:#888;font-size:10px;"></span></button>`;
       negWrap.style.display = 'block';
+      showAdminHub();
       // Background load of the current draft count so the badge is honest
       // before the user clicks. Failure is silent — the modal lookup re-runs.
       (async () => {
