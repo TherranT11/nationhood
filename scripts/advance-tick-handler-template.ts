@@ -1255,6 +1255,23 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         console.error('[advanceTick] Corp price anchors service failed (non-fatal):', anchorErr);
     }
 
+    // 3.6h Politician age-year Experience awards (20270672). +1 Skill
+    // (displayed as Experience) for every active-career/affiliation
+    // politician whose age ticked over a year on this tick. SQL
+    // function handles the eligibility filter + idempotency via
+    // politician_career_events; we just kick it off here.
+    try {
+        const { data: ageAwardResult, error: ageAwardErr } =
+            await supabase.rpc('process_politician_age_year_experience', { p_tick: newTick });
+        if (ageAwardErr) {
+            console.error('[advanceTick] process_politician_age_year_experience failed:', ageAwardErr.message);
+        } else if (ageAwardResult && ageAwardResult.awarded > 0) {
+            console.log(`[advanceTick] Politician age-year Experience: ${ageAwardResult.awarded} awards at T${ageAwardResult.tick}`);
+        }
+    } catch (ageAwardErr) {
+        console.error('[advanceTick] Politician age-year Experience service failed (non-fatal):', ageAwardErr);
+    }
+
     // 3.6b Safety net: catch economic aid agreements missing their aid_agreement_state row
     // Runs every 5 ticks to reduce CPU load — orphaned rows are rare, no urgency
     if (newTick % 5 === 0) try {
