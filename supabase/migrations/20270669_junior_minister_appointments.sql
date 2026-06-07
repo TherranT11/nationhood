@@ -4,7 +4,10 @@
 -- Adds a new political-career rung parallel to Agency Head (Tier 2 of
 -- the Civil Service ladder, 20270634). Five portfolios — sports,
 -- culture, communications, tourism, housing — each held by at most
--- one politician per nation. Skill ≥ 20 to apply.
+-- one politician per nation. Skill ≥ 20 to apply, and the applicant
+-- must currently be an Agency Head (politician_senior_civil_servant_
+-- at_tick set) — the career ladder is strict: Civil Servant → Agency
+-- Head → Junior Minister.
 --
 -- The portfolio set is the player-facing spec, not a free-text
 -- field. CHECK constraint on politician_junior_appointments.portfolio
@@ -208,6 +211,16 @@ BEGIN
     IF COALESCE(v_pol.politician_skill, 0) < 20 THEN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_skill',
                                   'have', COALESCE(v_pol.politician_skill, 0), 'need', 20);
+    END IF;
+
+    -- Agency Head ladder gate. Civil Servants cannot skip the Agency
+    -- Head rung even if they grind to 20 Skill — the visual surface
+    -- (Junior Minister rung on politician-career.html) only renders
+    -- the Seek Appointment button when politician_senior_civil_
+    -- servant_at_tick is set, and this server check is the defence-
+    -- in-depth backstop.
+    IF v_pol.politician_senior_civil_servant_at_tick IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_agency_head');
     END IF;
 
     -- Already serving — must resign before seeking another portfolio.
