@@ -44,6 +44,39 @@ export function fmtStat(value, decimals = 1) {
     return n.toFixed(decimals).replace(/\.0+$/, '');
 }
 
+// Flag image URLs by nation name. Single source — every page that
+// renders a nation flag chip (faction switcher, market browser,
+// entrepreneur card, etc.) reads from here. Filenames follow the
+// assets/flags/ convention with mixed casing per the original
+// asset import (Sangreza.png vs sangreza.png — case matters).
+// Adding a new nation is a one-line entry below.
+//
+// Was previously duplicated in select-nation.html; that page's
+// local copy stays for now (its lookup also wraps with profile
+// flag_url overrides), but new flag-chip surfaces should call
+// flagUrlFor() from this module.
+export const FLAG_URLS = {
+    'Melizea':      'assets/flags/Melizea.png',
+    'Avelia':       'assets/flags/Avelia.png',
+    'Sangreza':     'assets/flags/sangreza.png',
+    'Montequilla':  'assets/flags/Montequilla.png',
+    'San Estrella': 'assets/flags/sanestrella.png',
+    'Palvera':      'assets/flags/Palvera.png',
+    'Calveth':      'assets/flags/Calveth.png',
+    'Flandis':      'assets/flags/Flandis.png',
+    'Vostia':       'assets/flags/Vostia.png',
+};
+
+// Returns the canonical asset path for a nation name, falling back
+// to `assets/flags/${name}.png` when the name isn't in the map.
+// The caller should pair this with `onerror="this.style.display=
+// 'none'"` so unknown nations degrade silently instead of leaving
+// a broken-image icon.
+export function flagUrlFor(nationName) {
+    if (!nationName) return null;
+    return FLAG_URLS[nationName] || `assets/flags/${nationName}.png`;
+}
+
 // ===== AGE / CAREER MATH =====
 // Single source of truth for the politician age + career-years derivation.
 // Politicians spawn at START_AGE; each TICKS_PER_AGE_YEAR ticks elapsed

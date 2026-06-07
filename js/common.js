@@ -10,8 +10,8 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
-import { escapeHtml, APP_VERSION } from './utils.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { escapeHtml, APP_VERSION, flagUrlFor } from './utils.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -877,11 +877,15 @@ export function updateTopBarInfo(faction, shard, nation) {
         for (const f of _userFactions) {
             if (isHiddenFromSwitcher(f)) continue;   // legacy corps + parties hidden from switcher
             const isActive = faction && f.id === faction.id;
-            const { label, color } = getFactionTypeBadge(f.faction_type);
+            // Nation flag replaces the legacy POL/ENTR/CORP text badge.
+            const flag = flagUrlFor(f.nation);
+            const badge = flag
+                ? `<img class="faction-dropdown__type faction-dropdown__flag" src="${escapeHtml(flag)}" alt="" onerror="this.style.display='none'">`
+                : `<span class="faction-dropdown__type"></span>`;
             html += `<div class="faction-dropdown__item${isActive ? ' active' : ''}" onclick="handleFactionSwitch('${f.id}')">
-                <span class="faction-dropdown__type" style="color:${color}">${label}</span>
-                <span class="faction-dropdown__name">${f.faction_name || 'Unnamed'}</span>
-                <span class="faction-dropdown__abbr">[${f.abbreviation || '—'}]</span>
+                ${badge}
+                <span class="faction-dropdown__name">${escapeHtml(f.faction_name || 'Unnamed')}</span>
+                <span class="faction-dropdown__abbr">[${escapeHtml(f.abbreviation || '—')}]</span>
             </div>`;
         }
         // Political Party founding option: REMOVED in Sunset Phase 1

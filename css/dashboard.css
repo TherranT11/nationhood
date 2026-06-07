@@ -292,6 +292,13 @@ body > *:not(#top-bar):not(.home-subtabs):not(.pa-subtabs):not(.gov-subtabs):not
     letter-spacing: 0.06em;
     text-transform: uppercase;
     min-width: 36px;
+    flex-shrink: 0;
+}
+.faction-dropdown__flag {
+    width: 24px; height: 16px; object-fit: cover; min-width: 24px;
+    border-radius: 2px;
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
+    display: block;
 }
 .faction-dropdown__name {
     font-family: var(--font-ui);

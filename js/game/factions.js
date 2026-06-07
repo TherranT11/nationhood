@@ -98,19 +98,6 @@ export function getBranchDisplayLabel(branch) {
 }
 
 /**
- * Badge label + color for a faction_type, used by the faction switcher
- * dropdowns in every topbar. Single source so adding or renaming a type
- * doesn't require touching every renderer.
- */
-export function getFactionTypeBadge(factionType) {
-    if (factionType === 'corporation')  return { label: 'CORP',  color: 'var(--teal)'   };
-    if (factionType === 'military')     return { label: 'MIL',   color: 'var(--red)'    };
-    if (factionType === 'entrepreneur') return { label: 'ENTR',  color: 'var(--purple)' };
-    if (factionType === 'politician')   return { label: 'POL',   color: 'var(--teal)'   };
-    return                                     { label: 'PARTY', color: 'var(--amber)'  };
-}
-
-/**
  * Role suffix for a politician faction in the switcher chips, so a
  * player with multiple politicians can tell their advocate from their
  * MP from their civil servant when switching between them.

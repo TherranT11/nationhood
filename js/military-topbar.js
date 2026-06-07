@@ -12,7 +12,6 @@
 import { _supabase } from './supabase-client.js';
 import {
     BRANCH_DASHBOARDS,
-    getFactionTypeBadge,
     getFactionDashboardUrl,
     getBranchDisplayLabel,
     getPoliticianRoleLabel,
@@ -20,7 +19,7 @@ import {
     nextPoliticianSlot,
     activatePoliticianSlot,
 } from './game/factions.js';
-import { escapeHtml as escHtml, APP_VERSION } from './utils.js';
+import { escapeHtml as escHtml, APP_VERSION, flagUrlFor } from './utils.js';
 
 // Per-area theme key, mirroring corp-topbar's THEME_STORAGE_KEY
 // ('corpThemePref') and common.js's ('nationhood_theme') — each
@@ -122,7 +121,9 @@ const _MIL_TOPBAR_CSS = `
 .mil-dd-item:hover { background: rgba(255,255,255,0.04); }
 .mil-dd-item.active { background: rgba(217,83,79,0.06); }
 .mil-dd-item--create { border-top: 1px solid var(--border-0); }
-.mil-dd-type { font-size: 8px; font-weight: 700; letter-spacing: 0.5px; min-width: 32px; }
+.mil-dd-type { font-size: 8px; font-weight: 700; letter-spacing: 0.5px; min-width: 32px; flex-shrink: 0; }
+.mil-dd-flag { width: 24px; height: 16px; object-fit: cover; min-width: 24px;
+    border-radius: 2px; border: 0.5px solid rgba(255,255,255,0.1); display: block; }
 .mil-dd-name { color: var(--text-bright); flex: 1; }
 .mil-dd-abbr { color: var(--text-dim); font-size: 9px; }
 .mil-topbar__btn {
@@ -189,7 +190,6 @@ export function renderMilitaryTopBar(container, opts = {}) {
     if (allUserFactions && allUserFactions.length > 0) {
         dropdownHtml = allUserFactions.filter(f => !isHiddenFromSwitcher(f)).map(f => {
             const isActive = faction && f.id === faction.id;
-            const { label, color } = getFactionTypeBadge(f.faction_type);
             // For military rows, prefer the branch label over the (often
             // null) abbreviation column so the row reads e.g. "[ARMY]".
             const abbr = f.faction_type === 'military'
@@ -197,8 +197,13 @@ export function renderMilitaryTopBar(container, opts = {}) {
                 : (f.abbreviation || '—');
             const role = getPoliticianRoleLabel(f);
             const name = (f.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
+            // Nation flag replaces the legacy POL/ENTR/MIL text badge.
+            const flag = flagUrlFor(f.nation);
+            const badge = flag
+                ? `<img class="mil-dd-type mil-dd-flag" src="${escHtml(flag)}" alt="" onerror="this.style.display='none'">`
+                : `<span class="mil-dd-type"></span>`;
             return `<div class="mil-dd-item${isActive ? ' active' : ''}" data-faction-id="${escHtml(f.id)}">
-                <span class="mil-dd-type" style="color:${color}">${label}</span>
+                ${badge}
                 <span class="mil-dd-name">${escHtml(name)}</span>
                 <span class="mil-dd-abbr">[${escHtml(abbr)}]</span>
             </div>`;

@@ -4,8 +4,8 @@
 // one-for-one — same patterns for styles, switcher, countdown, bootstrap —
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
-import { APP_VERSION, fmtBig, displayName, currentAge } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionTypeBadge, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { APP_VERSION, fmtBig, displayName, currentAge, flagUrlFor } from './utils.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html',      icon: '🏠' },
@@ -55,7 +55,9 @@ function ensureStyles() {
     color:#d4d4d4; cursor:pointer; border-bottom:0.5px solid rgba(255,255,255,0.06); }
   .pol-dd-item:last-child { border-bottom:none; }
   .pol-dd-item:hover { background:#1a1a17; }
-  .pol-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; }
+  .pol-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; flex-shrink:0; }
+  .pol-dd-flag { width:24px; height:16px; object-fit:cover; min-width:24px;
+    border-radius:2px; border:0.5px solid rgba(255,255,255,0.1); display:block; }
   .pol-dd-name { flex:1; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .pol-dd-empty { padding:10px; color:#666; font-size:10px; }
   .pol-dd-item.create, .pol-dd-item.create .pol-dd-name { color:#888; }
@@ -138,11 +140,17 @@ function buildSwitcher(facs) {
   const list = facs || [];
   // Existing rows — every active, non-hidden faction the user owns.
   const items = list.map(f => {
-    const { label, color } = getFactionTypeBadge(f.faction_type);
     const role = getPoliticianRoleLabel(f);
     const name = (f.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
+    // Nation flag replaces the legacy POL/ENTR/CORP text badge. Falls
+    // back to display:none on missing image so an unmapped nation
+    // degrades silently rather than showing a broken-image icon.
+    const flag = flagUrlFor(f.nation);
+    const badge = flag
+      ? `<img class="pol-dd-badge pol-dd-flag" src="${esc(flag)}" alt="" onerror="this.style.display='none'">`
+      : `<span class="pol-dd-badge"></span>`;
     return `<div class="pol-dd-item" data-id="${esc(f.id)}">
-      <span class="pol-dd-badge" style="color:${color}">${esc(label)}</span>
+      ${badge}
       <span class="pol-dd-name">${esc(name)}</span>
     </div>`;
   });
@@ -274,7 +282,7 @@ export async function bootstrapPolitician(activeTab) {
 
   const [facRes, shardRes] = await Promise.all([
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_capital, politician_reputation, politician_skill, politician_influence, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, politician_ministry, politician_senior_civil_servant_at_tick, politician_agency_head_of, politician_junior_portfolio, politician_seek_appointment_cooldown_until_tick, politician_former_community_organizer, civil_service_exam_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick, next_civil_service_action_tick, next_chair_bid_tick, next_lobby_minister_tick, bar_admitted_nation_id, bar_admitted_at_tick, bar_last_attempt_tick, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_deputy_speaker_at_tick, politician_speaker_of_assembly_at_tick, try_case_cooldown_until_tick, party_cooldown_until_tick')
+      .select('id, faction_type, faction_name, nation, nation_id, branch, leader_first_name, leader_last_name, nickname, founded_tick, party_funds, abandoned_at, is_banned, politician_capital, politician_reputation, politician_skill, politician_influence, politician_suspicion, volunteers, politician_party_id, politician_office, politician_office_won_at_tick, politician_ministry, politician_senior_civil_servant_at_tick, politician_agency_head_of, politician_junior_portfolio, politician_seek_appointment_cooldown_until_tick, politician_former_community_organizer, civil_service_exam_cooldown_until_tick, next_member_action_tick, next_party_motion_tick, next_mp_action_tick, next_local_action_tick, next_civil_service_action_tick, next_chair_bid_tick, next_lobby_minister_tick, bar_admitted_nation_id, bar_admitted_at_tick, bar_last_attempt_tick, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_deputy_speaker_at_tick, politician_speaker_of_assembly_at_tick, try_case_cooldown_until_tick, party_cooldown_until_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     _supabase.from('shard').select('current_tick, current_date, next_tick_at').eq('name', 'Alpha Shard').single(),
   ]);
