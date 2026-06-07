@@ -40,6 +40,35 @@
 
   .role-block { text-align:right; padding-left:28px; border-left:0.5px solid rgba(255,255,255,0.08); min-width:240px; }
   .role-eyebrow { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; text-transform:uppercase; }
+
+  /* Executive Actions strip (owner-only turn-based moves). Sits
+     between the corp header and the financials row. The five button
+     slots are placeholders today — each reads ACTION / (Coming Soon)
+     — and the 'N remaining' pill is hard-wired to 1 until the
+     action set + per-tick budget land. */
+  .exec-strip { background:#0d100d; border:0.5px solid rgba(122,180,122,0.18); border-radius:6px;
+    padding:18px 22px; margin-bottom:22px; }
+  .exec-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; }
+  .exec-title-line { display:flex; align-items:center; gap:14px; flex:1; justify-content:center; }
+  .exec-title-line::before, .exec-title-line::after { content:''; flex:1; max-width:140px;
+    border-top:0.5px solid rgba(122,180,122,0.28); }
+  .exec-title { font-size:11px; letter-spacing:0.4em; color:#9ac89a; font-weight:600;
+    text-transform:uppercase; }
+  .exec-remaining { font-family:Georgia,serif; font-style:italic; font-size:12px; color:#9ac89a;
+    border:0.5px solid rgba(122,180,122,0.35); border-radius:3px; padding:4px 10px;
+    white-space:nowrap; }
+  .exec-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .exec-btn { background:#0a0c0a; border:0.5px solid rgba(255,255,255,0.06); border-radius:4px;
+    padding:14px 10px; text-align:center; opacity:0.55; cursor:not-allowed; }
+  .exec-icon { font-size:14px; color:#6a8a6a; margin-bottom:8px; line-height:1; }
+  .exec-name { font-size:10px; letter-spacing:0.12em; font-weight:600; color:#d4d4d4;
+    text-transform:uppercase; }
+  .exec-sub { font-family:Georgia,serif; font-style:italic; font-size:10px; color:#5a5a5a;
+    margin-top:4px; }
+  @media (max-width:700px) {
+    .exec-grid { grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); }
+    .exec-header { flex-wrap:wrap; }
+  }
   .role-block .role-pill { display:inline-block; background:#2a3a1f; color:#9eb87a; padding:4px 10px;
     border-radius:3px; font-size:10px; letter-spacing:0.13em; font-weight:500; margin-bottom:12px; }
   .role-block .stake { font-size:40px; font-weight:500; color:#8aaa6a; line-height:1; letter-spacing:-0.02em; }
@@ -683,10 +712,12 @@
     .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
     .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
       border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
-    /* The remaining header-inline controls (Acquire — non-owner make-offer
-       and Director Actions) go full-width once the header stacks. Withdraw
-       / Put Up for Sale / Bankrupt / Negotiations moved into the
-       Administrative Hub below Legal Counsel and no longer need this. */
+    /* The remaining header-inline controls (Acquire for non-owners,
+       Director Actions for directors) go full-width once the header
+       stacks. Executive Actions moved to a full-width strip below the
+       header so it has room for the 5-button grid. Withdraw / Put Up
+       for Sale / Bankrupt / Negotiations live in the Administrative
+       Hub below Legal Counsel. */
     #cp-acquire, #cp-director-actions {
       min-width:0; width:100%; align-self:stretch;
     }
@@ -998,6 +1029,48 @@
         <div class="role-pill" id="cp-role-pill">FOUNDER · CONTROLLING</div>
         <div class="stake"><span id="cp-stake-num">100</span><span class="pct">%</span></div>
         <div class="stake-sub" id="cp-owner-sub">Sole owner · privately held</div>
+      </div>
+    </div>
+
+    <!-- Executive Actions strip — owner-only turn-based action grid.
+         5 placeholder buttons; each is a coming-soon stub until the
+         action set is designed. 'N remaining' pill is hard-wired to
+         1 for now; once the per-tick budget lands it'll read from
+         the corp row. JS at the bottom flips display:block for
+         owners only. -->
+    <div id="cp-exec-actions" class="exec-strip" style="display:none;">
+      <div class="exec-header">
+        <div class="exec-title-line">
+          <span class="exec-title">Executive Actions</span>
+        </div>
+        <span class="exec-remaining">1 remaining</span>
+      </div>
+      <div class="exec-grid">
+        <div class="exec-btn" aria-disabled="true">
+          <div class="exec-icon">—</div>
+          <div class="exec-name">Action</div>
+          <div class="exec-sub">(Coming Soon)</div>
+        </div>
+        <div class="exec-btn" aria-disabled="true">
+          <div class="exec-icon">—</div>
+          <div class="exec-name">Action</div>
+          <div class="exec-sub">(Coming Soon)</div>
+        </div>
+        <div class="exec-btn" aria-disabled="true">
+          <div class="exec-icon">—</div>
+          <div class="exec-name">Action</div>
+          <div class="exec-sub">(Coming Soon)</div>
+        </div>
+        <div class="exec-btn" aria-disabled="true">
+          <div class="exec-icon">—</div>
+          <div class="exec-name">Action</div>
+          <div class="exec-sub">(Coming Soon)</div>
+        </div>
+        <div class="exec-btn" aria-disabled="true">
+          <div class="exec-icon">—</div>
+          <div class="exec-name">Action</div>
+          <div class="exec-sub">(Coming Soon)</div>
+        </div>
       </div>
     </div>
 
@@ -2896,6 +2969,14 @@ function initials(s, n) {
     // could race against the same number with both directions).
     // Public corps distribute via the dividend card / float, not
     // this box — both RPCs reject listing='public'.
+    // Executive Actions strip — visible for any owner (public or
+    // private). Placeholder buttons today; show-toggle is all the JS
+    // needs until the action wiring lands.
+    if (isOwner) {
+      const cpExec = document.getElementById('cp-exec-actions');
+      if (cpExec) cpExec.style.display = 'block';
+    }
+
     const cpWd = document.getElementById('cp-withdraw');
     if (cpWd && !isPublic && isOwner) {
       cpWd.style.display = 'block';
