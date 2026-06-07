@@ -2619,7 +2619,7 @@ function bindRungActions(ctx) {
   // Apply for Promotion — Civil Servant → Agency Head (Tier 2,
   // Government Service). Opens the agency picker; the picker owns
   // the RPC call. Disabled-state rung buttons (e.g. "Civil Service
-  // only", "Need 10 Skill") render without data-action, so this
+  // only", "Need 10 Experience") render without data-action, so this
   // selector only matches when the gate is open.
   document.querySelectorAll('[data-action="apply-for-promotion"]').forEach(btn => {
     btn.addEventListener('click', () => openAgencyPicker(ctx));
