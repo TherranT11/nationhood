@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, JUNIOR_PORTFOLIO_HINT } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1071,26 +1071,6 @@ const LEGISLATURE_RUNGS = [
 // actionIfNot on Tier 1 ("Sit the Exam") + actionIfHeld on Tier 3
 // ("Resign — Enter Politics") are the documented entry/exit hooks
 // that the mechanics will wire when they ship.
-// Junior Minister portfolios — the player-facing SoT for the slugs
-// stored in factions.politician_junior_portfolio + politician_junior_
-// appointments.portfolio (CHECK-constrained server-side in 20270669
-// via _junior_portfolio_keys()). The order here drives the picker
-// modal numbering; keep it stable.
-const JUNIOR_PORTFOLIO_LABEL = {
-  sports:         'Sports',
-  culture:        'Culture',
-  communications: 'Communications',
-  tourism:        'Tourism',
-  housing:        'Housing',
-};
-const JUNIOR_PORTFOLIO_HINT = {
-  sports:         'leagues · federations · venues',
-  culture:        'arts · heritage · institutions',
-  communications: 'broadcasting · postal · telecoms',
-  tourism:        'inbound · marketing · attractions',
-  housing:        'affordability · construction · standards',
-};
-
 const GOVT_SERVICE_RUNGS = [
   // ── CIVIL SERVICE STEM ─────────────────────────────────────────────
   {
