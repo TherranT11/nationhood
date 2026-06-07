@@ -1287,7 +1287,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, JUNIOR_PORTFOLIO_LABEL, fmtStat } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
@@ -2888,7 +2888,9 @@ function renderJuniorMinisterApplicationCard(r) {
   const name  = [first, last].filter(Boolean).join(' ') || 'A politician';
   const party = (r.applicant_party_name || '').trim() || 'Independent';
   const age   = Number(r.applicant_age) || 0;
-  const portfolioLabel = JUNIOR_PORTFOLIO_LABEL[r.portfolio] || r.portfolio || 'a portfolio';
+  // Portfolio is no longer chosen at application time (20270677) —
+  // it's randomly assigned by the server at the moment Appoint is
+  // clicked, from whatever portfolios are vacant in the nation then.
   return `
     <div class="offer-card" data-jm-application-id="${escHtml(r.application_id)}">
       <div class="offer-icon-wrap">
@@ -2896,7 +2898,7 @@ function renderJuniorMinisterApplicationCard(r) {
       </div>
       <div class="offer-info">
         <div class="oi-eyebrow">CANDIDATE REVIEW &middot; JUNIOR MINISTER</div>
-        <div class="oi-headline"><strong>${escHtml(name)}</strong> seeks the <em>${escHtml(portfolioLabel)}</em> portfolio.</div>
+        <div class="oi-headline"><strong>${escHtml(name)}</strong> seeks a <em>Junior Minister</em> appointment.</div>
         <div class="oi-meta">
           <span class="oi-corp">${escHtml(party)}</span>
           <span class="oi-sep">&middot;</span>
@@ -2948,7 +2950,7 @@ async function resolveJuniorMinisterApplication(btn, action) {
         already_resolved:         'That application has already been resolved.',
         not_head_of_government:   'Only the active Prime Minister can decide this.',
         applicant_already_serving:'That politician already holds a portfolio.',
-        portfolio_filled:         'That portfolio has already been filled.',
+        all_portfolios_full:      'No Junior Minister portfolio is currently vacant — try again once one opens.',
         applicant_missing:        'The applicant is no longer in office.',
       };
       alert(REASON[data?.reason] || ('Could not resolve: ' + (data?.reason || 'unknown')));

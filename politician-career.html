@@ -776,26 +776,26 @@
   </div>
 </div>
 
-<!-- Junior Minister portfolio picker — opened by the Junior Minister
-     rung's [Seek Appointment] button (Government Service Tier 4,
-     20270669). Body populated by openPortfolioPicker(); each option
-     submits via politician_seek_junior_appointment(p_portfolio).
-     Same .ah-modal class shape as the agency picker above; the body
-     swaps to a dice-roll result view when the NPC-PM branch resolves
-     on the spot. -->
-<div id="jmPickModal" class="ah-pick-modal" aria-hidden="true">
-  <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="jm-pick-title">
+<!-- Junior Minister result modal — opened by submitJuniorAppointment
+     after politician_seek_junior_appointment() returns. The body is
+     populated by renderPortfolioPendingView (player-PM path) or
+     renderPortfolioRollResult (NPC-PM path). The picker step was
+     retired in 20270677: applicants no longer choose a portfolio;
+     the server randomly assigns one from the vacant set at the
+     moment of appointment. Same .ah-pick-modal class as the agency
+     picker so the chrome stays consistent. -->
+<div id="jmResultModal" class="ah-pick-modal" aria-hidden="true">
+  <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="jm-result-title">
     <div class="ah-head">
       <div class="ah-head-info">
         <div class="ah-eyebrow">Political Appointment · Seek Appointment</div>
-        <div class="ah-title" id="jm-pick-title">Choose your <em>Portfolio</em></div>
-        <div class="ah-meta" id="jm-pick-meta"></div>
+        <div class="ah-title" id="jm-result-title">Junior <em>Minister</em></div>
       </div>
-      <button class="ah-close" type="button" id="jm-pick-close" aria-label="Close">&#10005;</button>
+      <button class="ah-close" type="button" id="jm-result-close" aria-label="Close">&#10005;</button>
     </div>
-    <div class="ah-body" id="jm-pick-body"></div>
+    <div class="ah-body" id="jm-result-body"></div>
     <div class="ah-foot">
-      <button class="ah-btn" type="button" id="jm-pick-cancel">Cancel</button>
+      <button class="ah-btn" type="button" id="jm-result-close-btn">Close</button>
     </div>
   </div>
 </div>
@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, JUNIOR_PORTFOLIO_HINT, fmtStat } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1159,7 +1159,7 @@ const GOVT_SERVICE_RUNGS = [
       const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
       return `You hold the <strong>${escHtml(p)}</strong> portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
     },
-    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>20 Experience</strong>; the Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
+    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>20 Experience</strong>; on acceptance you\'re randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
     actions:     ['Carry a Bill', 'Answer Questions'],
     // Seek Appointment — Agency Head → Junior Minister. Gates layer
     // up: must be Agency Head (politician_senior_civil_servant_at_
@@ -2626,12 +2626,11 @@ function bindRungActions(ctx) {
   });
 
   // Seek Appointment — Agency Head → Junior Minister (Tier 4,
-  // Government Service, 20270669). Same disabled-state filter as
-  // above: rung labels like "Agency Heads only" or "Reapply in N
-  // ticks" render without data-action, so this selector only
-  // matches when every gate is open.
+  // Government Service, 20270669; portfolio randomly assigned at
+  // appoint per 20270677). One-click: the RPC fires immediately,
+  // result modal opens with the outcome.
   document.querySelectorAll('[data-action="seek-junior-appointment"]').forEach(btn => {
-    btn.addEventListener('click', () => openPortfolioPicker(ctx));
+    btn.addEventListener('click', () => submitJuniorAppointment(btn));
   });
 
   // Run for Election — City Council Member (Tier 2, Government &
@@ -3025,66 +3024,50 @@ async function submitAgencyPromotion(agencyKey, btn) {
   }
 }
 
-// ─── Junior Minister portfolio picker (Seek Appointment) ──────────
-// Agency Head → Junior Minister (Government Service Tier 4, 20270669).
-// Opens from the rung's [Seek Appointment] button (bindRungActions).
-// Lists the 5 portfolios from JUNIOR_PORTFOLIO_LABEL. Click on a
-// portfolio calls politician_seek_junior_appointment(p_portfolio);
-// the RPC re-validates the 20-Skill / Agency-Head / portfolio-
-// vacancy / cooldown gates. The response branches: player-PM path
-// returns {status:'pending_review'} (reload so the rung shows the
-// pending state once that surface lands); NPC-PM path returns the
-// dice breakdown and we render the result view in-modal so the
-// player sees the math.
-const JM_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+// ─── Junior Minister Seek Appointment (result modal) ──────────────
+// Agency Head → Junior Minister (Government Service Tier 4, 20270669;
+// random-portfolio assignment per 20270677). One-click from the
+// rung's [Seek Appointment] button: politician_seek_junior_
+// appointment() re-validates the 20-Experience / Agency-Head /
+// any-vacant-portfolio / cooldown gates server-side, then the
+// response routes to one of two views in #jmResultModal:
+//   • player_hog path  → renderPortfolioPendingView (queued for PM)
+//   • npc_roll path    → renderPortfolioRollResult (dice math +
+//                        randomly-assigned portfolio on the
+//                        appointed bracket)
+// Random portfolio is picked under the head_of_government FOR
+// UPDATE lock so concurrent applicants can't race onto the same seat.
 
-function closePortfolioPicker() {
-  const overlay = document.getElementById('jmPickModal');
+function closeResultModal() {
+  const overlay = document.getElementById('jmResultModal');
   if (!overlay) return;
   overlay.classList.remove('open');
   overlay.setAttribute('aria-hidden', 'true');
 }
 
-function openPortfolioPicker(ctx) {
-  const overlay = document.getElementById('jmPickModal');
+function openResultModal() {
+  const overlay = document.getElementById('jmResultModal');
   if (!overlay) return;
-
-  const skillTxt = fmtStat(ctx?.faction?.politician_skill);
-
-  const meta = document.getElementById('jm-pick-meta');
-  const body = document.getElementById('jm-pick-body');
-  const foot = overlay.querySelector('.ah-foot');
-
-  // Clear any stale banner / result view from a prior open.
-  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-
-  if (meta) {
-    meta.innerHTML = `Pick which portfolio you'd like to seek. Requires <strong>20 Experience</strong> and current Agency Head standing; you have <strong>${escHtml(skillTxt)}</strong> Experience. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot.`;
-  }
-
-  const slugs = Object.keys(JUNIOR_PORTFOLIO_LABEL);
-  body.innerHTML = slugs.map((slug, i) => `
-    <button type="button" class="ah-opt" data-portfolio="${escHtml(slug)}">
-      <span class="ah-opt-num">${JM_ROMAN[i] || (i + 1)}.</span>
-      <span>${escHtml(JUNIOR_PORTFOLIO_LABEL[slug])}</span>
-      <span class="ah-opt-desc">${escHtml(JUNIOR_PORTFOLIO_HINT[slug] || '')}</span>
-    </button>`).join('');
-  body.querySelectorAll('button[data-portfolio]').forEach(btn => {
-    btn.addEventListener('click', () => submitJuniorAppointment(btn.dataset.portfolio, btn));
-  });
-
   overlay.classList.add('open');
   overlay.setAttribute('aria-hidden', 'false');
-  document.getElementById('jm-pick-close')?.addEventListener('click', closePortfolioPicker, { once: true });
-  document.getElementById('jm-pick-cancel')?.addEventListener('click', closePortfolioPicker, { once: true });
+  // Bind close listeners once per open; the renderers below
+  // overwrite the body so prior listeners on the body itself
+  // don't survive — only the chrome buttons need rebinding.
+  document.getElementById('jm-result-close')?.addEventListener('click', () => {
+    closeResultModal();
+    location.reload();
+  }, { once: true });
+  document.getElementById('jm-result-close-btn')?.addEventListener('click', () => {
+    closeResultModal();
+    location.reload();
+  }, { once: true });
 }
 
-async function submitJuniorAppointment(portfolio, btn) {
+async function submitJuniorAppointment(btn) {
   if (btn?.dataset.busy === '1') return;
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
   try {
-    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment',
-      { p_portfolio: portfolio });
+    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment');
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
@@ -3092,42 +3075,30 @@ async function submitJuniorAppointment(portfolio, btn) {
         : data?.reason === 'not_agency_head'                  ? 'Only sitting Agency Heads may seek a Junior Minister portfolio.'
         : data?.reason === 'already_junior_minister'          ? `You already hold the ${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || '—')} portfolio.`
         : data?.reason === 'pending_application_exists'       ? 'You already have an application pending review.'
-        : data?.reason === 'portfolio_filled'                 ? `${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || 'That portfolio')} is currently held by another politician.`
+        : data?.reason === 'all_portfolios_full'              ? 'Every Junior Minister portfolio in your nation is currently held. Try again once a vacancy opens.'
         : data?.reason === 'on_cooldown'                      ? `Reapplication closed for ${data?.ticks_remaining} more tick${data?.ticks_remaining === 1 ? '' : 's'}.`
-        : data?.reason === 'invalid_portfolio'                ? "That portfolio isn't on the offered list."
-        : data?.reason === 'missing_portfolio'                ? 'Pick a portfolio from the list.'
         : data?.reason === 'no_head_of_government'            ? 'There is no sitting Prime Minister to review your application.'
         : data?.reason === 'not_authenticated'                ? 'Sign in to act.'
         : data?.reason === 'no_politician'                    ? 'No politician on this account.'
         : data?.reason === 'no_nation'                        ? 'Your politician is not yet seated in a nation.'
         : ('Application failed: ' + (data?.reason || 'unknown'));
-      const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
-      if (foot) {
-        foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-        const err = document.createElement('div');
-        err.className = 'ah-result miss';
-        err.style.cssText = 'flex:1;margin-right:8px;';
-        err.textContent = msg;
-        foot.insertBefore(err, foot.firstChild);
-      }
+      alert(msg);
       if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
       return;
     }
 
-    // Success. Branch on the path so the player sees the right
-    // closing beat: a queued message for the player-PM path, the
-    // full dice math for the NPC path.
+    // Success — open the modal and render the appropriate view.
+    openResultModal();
     if (data.path === 'player_hog') {
       renderPortfolioPendingView(data);
-      return;
-    }
-    if (data.path === 'npc_roll' && data.breakdown) {
+    } else if (data.path === 'npc_roll' && data.breakdown) {
       renderPortfolioRollResult(data);
-      return;
+    } else {
+      // Defensive fallback — unknown success shape. Close + reload
+      // so the rung re-reads state from the server rather than guess.
+      closeResultModal();
+      location.reload();
     }
-    // Defensive fallback — unknown success shape. Reload so the
-    // rung re-reads state from the server rather than guessing.
-    location.reload();
   } catch (e) {
     alert('Application failed: ' + (e?.message || 'network or server error'));
     if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
@@ -3135,35 +3106,21 @@ async function submitJuniorAppointment(portfolio, btn) {
 }
 
 function renderPortfolioPendingView(data) {
-  const body = document.getElementById('jm-pick-body');
-  const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
-  if (!body || !foot) return;
-  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'the portfolio';
+  const body = document.getElementById('jm-result-body');
+  if (!body) return;
   body.innerHTML = `
     <div class="ah-result-card">
       <div class="ah-result-eyebrow">APPLICATION SUBMITTED</div>
       <div class="ah-result-headline">Awaiting the Prime Minister</div>
-      <div class="ah-result-sub">Your application for <strong>${escHtml(label)}</strong> has been routed to the Prime Minister. They will review it from their Pressing Issues feed; you'll see the outcome on this rung once they act.</div>
+      <div class="ah-result-sub">Your application has been routed to the Prime Minister. They will review it from their Pressing Issues feed; the portfolio is randomly assigned from the vacant set at the moment they appoint, so you'll see which one on this rung once they act.</div>
     </div>`;
-  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-  // Replace Cancel with Close — the action is done, no undoing it.
-  const cancel = document.getElementById('jm-pick-cancel');
-  if (cancel) {
-    cancel.textContent = 'Close';
-    cancel.replaceWith(cancel.cloneNode(true));
-    document.getElementById('jm-pick-cancel').addEventListener('click', () => {
-      closePortfolioPicker();
-      location.reload();
-    }, { once: true });
-  }
 }
 
 function renderPortfolioRollResult(data) {
-  const body = document.getElementById('jm-pick-body');
-  const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
-  if (!body || !foot) return;
+  const body = document.getElementById('jm-result-body');
+  if (!body) return;
   const b = data.breakdown || {};
-  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'the portfolio';
+  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'a portfolio';
   const status = data.status;
   const eyebrowMap = {
     appointed:  'APPOINTED',
@@ -3176,7 +3133,7 @@ function renderPortfolioRollResult(data) {
     humiliated: `Laughed out of the cabinet room`,
   };
   const subMap = {
-    appointed:  'The press writes nicely. <strong>+2 Reputation.</strong>',
+    appointed:  `The portfolio was assigned by lot from the vacant set. The press writes nicely. <strong>+2 Reputation.</strong>`,
     rejected:   b.inf_delta === -1
       ? 'A polite rebuff in public view. <strong>−1 Influence.</strong>'
       : 'A quiet no. No public penalty.',
@@ -3203,16 +3160,6 @@ function renderPortfolioRollResult(data) {
       <div class="ah-result-sub">${subMap[status] || ''}</div>
       ${cooldownLine}
     </div>`;
-  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-  const cancel = document.getElementById('jm-pick-cancel');
-  if (cancel) {
-    cancel.textContent = 'Close';
-    cancel.replaceWith(cancel.cloneNode(true));
-    document.getElementById('jm-pick-cancel').addEventListener('click', () => {
-      closePortfolioPicker();
-      location.reload();
-    }, { once: true });
-  }
 }
 
 // ─── Stand for Election modal ─────────────────────────────────────
