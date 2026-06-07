@@ -662,7 +662,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 
@@ -1142,8 +1142,7 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys, viewerFact
     const seatedAt = Number(seat.seated_at_tick);
     let bidReason = null;
     if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
-      const shown = skill.toFixed(1).replace(/\.0$/, '');
-      bidReason = `Need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${shown})`;
+      bidReason = `Need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${fmtStat(skill)})`;
     } else if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
       bidReason = `Need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence (have ${Math.floor(influence)})`;
     } else if (!Number.isFinite(seatedAt) || (currentTick - seatedAt) < CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED) {
