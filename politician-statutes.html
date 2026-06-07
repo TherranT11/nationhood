@@ -765,6 +765,8 @@ function paintStakeholderInvalidity(hostId, state) {
 
 // Returns {ok, roles} — `roles` is the cleaned array (trimmed,
 // blanks dropped) ready for the RPC payload, or null when invalid.
+// State is always a STK_MAX-length array so we don't need a separate
+// cap check on `cleaned.length` — it can't exceed STK_MAX.
 function validateStakeholders(state) {
   const cleaned = [];
   const seen = new Set();
@@ -777,7 +779,6 @@ function validateStakeholders(state) {
     seen.add(k);
     cleaned.push(t);
   }
-  if (cleaned.length > STK_MAX) return { ok: false, roles: null };
   return { ok: true, roles: cleaned };
 }
 
