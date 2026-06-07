@@ -1889,14 +1889,16 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
-// Agency Head (Tier 2) placeholder actions — slots from the
-// politician-career rung copy. No action keys → render disabled until
-// each surfaces its own RPC. (Senior Civil Servant was renamed to
-// Agency Head; the schema column politician_senior_civil_servant_at_
-// tick stays named for now — display-only swap.)
+// Agency Head (Tier 2) placeholder actions. No `action` key on any
+// slot → renderAffiliation paints them greyed and inert. RPCs will
+// land later; the slots show the upcoming surface so a freshly-
+// promoted Agency Head sees what's coming. (Senior Civil Servant was
+// renamed to Agency Head; the schema column politician_senior_civil_
+// servant_at_tick stays named for now — display-only swap.)
 const AGENCY_HEAD_ACTIONS = [
-  { ic: '📝', name: 'DRAFT A MEMO',   cost: 'no cost', desc: 'Frame the policy question for the people who actually decide.' },
-  { ic: '✉', name: 'BRIEF A MINISTER', cost: 'no cost', desc: 'Walk the Minister through your agency’s view of the brief.' },
+  { ic: '🗂', name: 'HANDLE BACKLOG',    cost: 'no cost', desc: 'Clear stale dispatches piling up in your agency’s inbox.' },
+  { ic: '📊', name: 'MINISTRY REPORT',   cost: 'no cost', desc: 'Compile your agency’s recent work into a brief for the Minister.' },
+  { ic: '✦', name: 'AGENCY INITIATIVE', cost: 'no cost', desc: 'Propose a new programme for your agency to undertake.' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
