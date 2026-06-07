@@ -562,7 +562,13 @@
   .mk-empty { color:#666; font-size:12px; text-align:center; padding:24px 0;
     font-style:italic; letter-spacing:0.03em; }
 
-  /* Begin Construction modal */
+  /* Shared modal chrome (.bm-* family). Originally introduced for
+     the Begin Construction modal — that surface was retired in
+     4dbbc16's restructure and the leaf pieces (.bm-tiers /
+     .bm-summary etc.) were dropped in the dead-chain sweep. The
+     classes that remain here back the ~15 other modals on the
+     page (list-for-sale, rebrand, debt-payment, engine-order,
+     etc.). Edits affect every modal — keep changes generic. */
   .bm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
     align-items:center; justify-content:center; padding:30px; z-index:500; }
   .bm-overlay.open { display:flex; }
@@ -6806,8 +6812,8 @@ function initials(s, n) {
     // ── Request Construction (commission a building; 20270225) ──
     // Any corp can commission a building it can own; construction corps with
     // a completed CY in the nation bid; lowest in-capacity bid auto-wins and
-    // delivers it. Reuses TIER_TABLE / PLANT_PROFILE / scaledCost (the same
-    // mirror of the server cost formula the build modal uses).
+    // delivers it. Uses TIER_TABLE / PLANT_PROFILE / scaledCost — the
+    // single-source mirror of the server cost formula.
     const SECTOR_OF_TYPE = {
       construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
