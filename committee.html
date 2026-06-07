@@ -85,6 +85,40 @@
   .input-disabled a { color:var(--comm); text-decoration:none; }
   .input-disabled a:hover { color:var(--comm-bright); }
 
+  /* Phase A.1 (20270662) — Report Vote panel. Lives between the
+     testimony record and the committee actions grid; only renders
+     when a bill is sitting in awaiting_report_vote status. */
+  .rv { padding:16px 20px; border-top:0.5px solid var(--line); }
+  .rv-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .rv-lab { font-size:9px; letter-spacing:0.16em; color:var(--comm-bright); font-weight:700; }
+  .rv-status { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600; }
+  .rv-bill { background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px;
+    padding:12px 14px; margin-bottom:10px; }
+  .rv-meta { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
+  .rv-cat { font-size:8.5px; letter-spacing:0.14em; color:var(--comm); font-weight:700; }
+  .rv-section { font-size:9px; color:var(--faint); letter-spacing:0.08em; text-transform:uppercase; }
+  .rv-title { font-size:13px; color:#dadada; font-weight:500; line-height:1.4; margin-bottom:5px; }
+  .rv-sub { font-size:9.5px; color:var(--faint); }
+  .rv-sub b { color:#bbb; font-weight:600; }
+  .rv-tally { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+  .rv-tally-row { background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px;
+    padding:10px 12px; display:flex; align-items:center; justify-content:space-between; }
+  .rv-tally-row.rv-tally-report { border-left:2px solid #2f6e3a; }
+  .rv-tally-row.rv-tally-table  { border-left:2px solid #6e2f2f; }
+  .rv-tally-lab { font-size:9px; letter-spacing:0.12em; color:var(--faint); text-transform:uppercase; }
+  .rv-tally-val { font-size:14px; color:#dadada; font-family:monospace; font-weight:600; }
+  .rv-cast { display:flex; gap:8px; align-items:center; }
+  .rv-cast-spec { color:var(--faint); font-size:10px; font-style:italic; }
+  .rv-vote-btn { flex:1; padding:11px 14px; background:#0a0a0a; border:0.5px solid var(--line);
+    border-radius:5px; color:#bbb; font-size:11px; letter-spacing:0.08em; font-weight:600;
+    cursor:pointer; transition:all 0.15s; }
+  .rv-vote-btn:hover:not(:disabled) { background:#101010; }
+  .rv-vote-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .rv-vote-report { border-color:#2f6e3a; color:#7fb98a; }
+  .rv-vote-report:hover:not(:disabled) { background:rgba(47,110,58,0.08); }
+  .rv-vote-table  { border-color:#6e2f2f; color:#b97f7f; }
+  .rv-vote-table:hover:not(:disabled)  { background:rgba(110,47,47,0.08); }
+
   .actions { padding:16px 20px; }
   .ac-lab { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600;
     margin-bottom:10px; }
@@ -368,6 +402,28 @@ async function init() {
     .order('created_at', { ascending: false });
   if (propErr) console.warn('committee: proposals fetch failed', propErr);
 
+  // Phase A.1 (20270662) — bill currently in the Report Vote phase.
+  // committee_hold_hearing flips status to in_hearing; close flips
+  // to awaiting_report_vote. The bill stays in that state until the
+  // committee resolves it via mp_vote_on_report.
+  const { data: reportBills, error: rbErr } = await _supabase
+    .from('committee_proposals')
+    .select('id, category, section, articles, bill_name, proposed_at_tick, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .eq('committee_id', committeeId)
+    .eq('status', 'awaiting_report_vote')
+    .limit(1);
+  if (rbErr) console.warn('committee: report-vote bill fetch failed', rbErr);
+  const reportBill = (reportBills || [])[0] || null;
+  let reportVotes = [];
+  if (reportBill) {
+    const { data: rv, error: rvErr } = await _supabase
+      .from('bill_report_votes')
+      .select('voter_faction_id, vote, voted_at_tick')
+      .eq('proposal_id', reportBill.id);
+    if (rvErr) console.warn('committee: report-vote tally fetch failed', rvErr);
+    reportVotes = rv || [];
+  }
+
   // Active hearing for this committee (status='open'), if any. Joined
   // to the proposal so we can render the bill card on Monthly Agenda
   // in one round trip.
@@ -402,7 +458,7 @@ async function init() {
   }
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx));
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -430,7 +486,7 @@ function ctxShardTick(ctx) {
   return Number(ctx?.shard?.current_tick) || 0;
 }
 
-function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick) {
+function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -476,6 +532,15 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       </div>
     </div>
 
+    ${reportBill ? `
+    <div class="rv">
+      <div class="rv-head">
+        <span class="rv-lab">REPORT VOTE</span>
+        <span class="rv-status">AWAITING COMMITTEE DECISION</span>
+      </div>
+      ${renderReportVotePanel(reportBill, reportVotes || [], members, viewerPolId, onCommittee)}
+    </div>` : ''}
+
     <div class="actions">
       <div class="ac-lab">COMMITTEE ACTIONS${onCommittee ? '' : ' &middot; MEMBERS ONLY'}</div>
       <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0)}</div>
@@ -496,7 +561,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     const apply = e.target.closest('#comm-apply-cta');
     if (apply) {
       e.preventDefault();
-      submitApplication(apply, committeeId);
+      submitApplication(apply, committeeId, viewerPolId);
       return;
     }
     const witCta = e.target.closest('#witness-signup-cta');
@@ -516,7 +581,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       hold.disabled = true;
       try {
         const { data, error } = await _supabase.rpc('committee_hold_hearing', {
-          p_committee_id: committeeId, p_proposal_id: next.id,
+          p_committee_id: committeeId, p_proposal_id: next.id, p_faction_id: viewerPolId,
         });
         if (error) throw error;
         if (!data?.success) { alert('Could not open hearing: ' + (data?.reason || 'unknown')); return; }
@@ -537,7 +602,8 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       close.dataset.busy = '1';
       close.disabled = true;
       try {
-        const { data, error } = await _supabase.rpc('close_committee_hearing', { p_hearing_id: activeHearing.id });
+        const { data, error } = await _supabase.rpc('close_committee_hearing',
+          { p_hearing_id: activeHearing.id, p_faction_id: viewerPolId });
         if (error) throw error;
         if (!data?.success) { alert('Could not close hearing: ' + (data?.reason || 'unknown')); return; }
         location.reload();
@@ -546,6 +612,32 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       } finally {
         close.dataset.busy = '0';
         close.disabled = false;
+      }
+      return;
+    }
+    // Phase A.1 (20270662) — committee Report / Table vote.
+    const rvBtn = e.target.closest('.rv-vote-btn');
+    if (rvBtn) {
+      e.preventDefault();
+      if (rvBtn.dataset.busy === '1') return;
+      const propId = rvBtn.dataset.proposal;
+      const vote   = rvBtn.dataset.vote;
+      if (!propId || !vote) return;
+      if (!confirm(`Cast your vote to ${vote.toUpperCase()} this bill? Your vote is final.`)) return;
+      rvBtn.dataset.busy = '1';
+      document.querySelectorAll('.rv-vote-btn').forEach(b => { b.disabled = true; });
+      try {
+        const { data, error } = await _supabase.rpc('mp_vote_on_report', {
+          p_faction_id: viewerPolId, p_proposal_id: propId, p_vote: vote,
+        });
+        if (error) throw error;
+        if (!data?.success) { alert('Could not cast vote: ' + (data?.reason || 'unknown')); return; }
+        location.reload();
+      } catch (err) {
+        alert('Could not cast vote: ' + (err?.message || 'unknown error'));
+      } finally {
+        document.querySelectorAll('.rv-vote-btn').forEach(b => { b.disabled = false; });
+        rvBtn.dataset.busy = '0';
       }
       return;
     }
@@ -579,12 +671,12 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
   wireWitnessModal(activeHearing, personas);
 }
 
-async function submitApplication(link, committeeId) {
+async function submitApplication(link, committeeId, factionId) {
   if (link.dataset.busy === '1') return;
   link.dataset.busy = '1';
   const originalText = link.textContent;
   link.textContent = 'Submitting…';
-  const res = await applyForCommittee(committeeId);
+  const res = await applyForCommittee(committeeId, factionId);
   if (!res.success) {
     alert(res.humanError);
     link.dataset.busy = ''; link.textContent = originalText;
@@ -684,6 +776,99 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued) {
       </div>
       <div class="act-desc">${escHtml(a.desc)}</div>
     </button>`).join('');
+}
+
+// Report Vote panel — shown when a bill has finished hearing and is
+// awaiting the committee's Report / Table decision (Phase A.1,
+// 20270662). Members get clickable [Report] / [Table] buttons until
+// they've voted; everyone sees the live tally. First side to a
+// majority resolves the bill server-side; this view will refresh on
+// next load.
+function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
+  if (!bill) return '';
+  const firstArticle = Array.isArray(bill.articles) && bill.articles.length ? bill.articles[0] : null;
+  const a = bill.author || {};
+  const sponsor = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+  const title = bill.bill_name
+    ? truncate(bill.bill_name, 80)
+    : (firstArticle?.text ? truncate(firstArticle.text, 80) : (bill.section || 'Proposal'));
+
+  // Party-bloc tally (Phase A.1.5, 20270663). Each player vote stands
+  // in for every seat their party holds; parties with no player on
+  // the committee abstain. First player vote per party drives the
+  // bloc — subsequent same-party votes don't move the count.
+  // Mirrors the SQL in mp_vote_on_report; both must agree.
+  const partyOfFaction = new Map(
+    members
+      .filter(m => m.politician_faction_id)
+      .map(m => [m.politician_faction_id, m.party_id])
+  );
+  const seatsByParty = new Map();
+  for (const m of members) {
+    if (!m.party_id) continue;
+    seatsByParty.set(m.party_id, (seatsByParty.get(m.party_id) || 0) + 1);
+  }
+  const playerPartiesOnCommittee = new Set(
+    members.filter(m => m.politician_faction_id && m.party_id).map(m => m.party_id)
+  );
+  // First player vote per party (stable by voted_at_tick, then index).
+  const sortedVotes = [...votes].sort((a, b) =>
+    (a.voted_at_tick ?? 0) - (b.voted_at_tick ?? 0)
+  );
+  const firstVoteByParty = new Map();
+  for (const v of sortedVotes) {
+    const partyId = partyOfFaction.get(v.voter_faction_id);
+    if (!partyId) continue;
+    if (!firstVoteByParty.has(partyId)) firstVoteByParty.set(partyId, v.vote);
+  }
+  let reportCount = 0;
+  let tableCount  = 0;
+  for (const [partyId, vote] of firstVoteByParty) {
+    const seats = seatsByParty.get(partyId) || 0;
+    if (vote === 'report') reportCount += seats;
+    else if (vote === 'table') tableCount += seats;
+  }
+  // Votable seats: sum of seats held by parties with at least one
+  // player on the committee. NPCs of parties with no player driver
+  // are NOT part of the denominator (they abstain).
+  let memberCount = 0;
+  for (const [partyId, seats] of seatsByParty) {
+    if (playerPartiesOnCommittee.has(partyId)) memberCount += seats;
+  }
+  const threshold = Math.floor(memberCount / 2) + 1;
+  const myVote      = votes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
+  const canVote     = onCommittee && !myVote;
+
+  const buttons = onCommittee
+    ? (myVote
+        ? `<div class="rv-cast">Your vote: <strong>${escHtml(myVote.toUpperCase())}</strong> &middot; final</div>`
+        : `<div class="rv-cast">
+             <button class="rv-vote-btn rv-vote-report" type="button" data-proposal="${escHtml(bill.id)}" data-vote="report">Vote: REPORT</button>
+             <button class="rv-vote-btn rv-vote-table"  type="button" data-proposal="${escHtml(bill.id)}" data-vote="table">Vote: TABLE</button>
+           </div>`)
+    : `<div class="rv-cast rv-cast-spec">Members only</div>`;
+
+  return `
+    <div class="rv-bill">
+      <div class="rv-meta">
+        <span class="rv-cat">${escHtml((bill.category || '').toUpperCase())}</span>
+        <span class="rv-section">${escHtml(bill.section || '')}</span>
+      </div>
+      <div class="rv-title">${escHtml(title)}</div>
+      <div class="rv-sub">Sponsor <b>${escHtml(sponsor)}</b> &middot; ${memberCount} votable seat${memberCount === 1 ? '' : 's'} of ${members.length} &middot; needs ${threshold} to resolve</div>
+    </div>
+    <div class="rv-tally">
+      <div class="rv-tally-row rv-tally-report">
+        <span class="rv-tally-lab">Report to floor</span>
+        <span class="rv-tally-val">${reportCount} / ${threshold}</span>
+      </div>
+      <div class="rv-tally-row rv-tally-table">
+        <span class="rv-tally-lab">Table in committee</span>
+        <span class="rv-tally-val">${tableCount} / ${threshold}</span>
+      </div>
+    </div>
+    ${buttons}
+  `;
 }
 
 // Monthly Agenda — the bill currently in hearing. Empty state when

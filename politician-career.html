@@ -743,7 +743,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -829,15 +829,21 @@ const PARTY_OFFICE_RUNGS = [
     held:        (s) => s.office === 'senior_mp',
     descIfHeld:  ()  => 'You are a senior MP — committee assignments and a name the press knows.',
     descIfNot:   ()  => 'A second-term backbencher with committee assignments and a name the press knows.',
-    // Eligible only when holding Member of Parliament AND within 3
-    // ticks of the nation's next general election. Same window the
-    // resolver ties to: the race itself resolves at the general-election
-    // tick. Returns null when the rung isn't the next-up for this
-    // ladder (e.g. holder is Community Organizer, not MP).
+    // Eligible when (a) currently MP, (b) survived at least one full
+    // parliamentary term, and (c) within 6 ticks of the nation's next
+    // general election. Term gate (20270664) blocks instant promotion
+    // on the first general-election window after Stand-for-Election;
+    // window matches the server (was 3, widened to 6).
     actionIfNot: (s) => {
       if (s.office !== 'member_of_parliament') return null;
       if (!s.nextGeneralElectionTick) return { label: 'No election scheduled', kind: 'disabled' };
-      const opens = s.nextGeneralElectionTick - 3;
+      const termTicks  = Number(s.parliamentaryTermTicks) || 24;
+      const eligibleAt = (s.officeWonAtTick || 0) + termTicks;
+      if (s.currentTick < eligibleAt) {
+        const left = eligibleAt - s.currentTick;
+        return { label: `Term not yet served (${left} ticks)`, kind: 'disabled' };
+      }
+      const opens = s.nextGeneralElectionTick - 6;
       if (s.currentTick > s.nextGeneralElectionTick) return { label: 'Window closed', kind: 'disabled' };
       if (s.currentTick < opens) return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
       return { label: 'Register', kind: 'primary', action: 'register-senior-mp' };
@@ -916,10 +922,38 @@ const LEGISLATURE_RUNGS = [
   },
   {
     name: 'Committee Chair',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You run a committee — set its agenda, decide what gets examined.',
+    held:        (s) => s.committeeChairCount > 0,
+    descIfHeld:  ()  => 'You chair a standing committee — set its agenda, decide what gets heard.',
     descIfNot:   ()  => 'You run a committee — set its agenda, decide what gets examined.',
     actions:     ['Advance Bill'],
+    // Mirrors the politician_bid_for_chair RPC gates (20270584).
+    // Thresholds live in CHAIR_BID_THRESHOLDS (js/utils.js) so the
+    // nation-page Bid-for-Chair button and this rung agree by
+    // construction. Server is the authority; client gates here are
+    // pre-checks for a clean disabled label.
+    actionIfNot: (s) => {
+      if (s.committeeCount === 0) {
+        return { label: 'Apply to a committee first', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
+        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${skill.toFixed(1).replace(/\.0$/, '')})`, kind: 'disabled' };
+      }
+      const influence = Number(s.politicianInfluence) || 0;
+      if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
+        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence (have ${Math.floor(influence)})`, kind: 'disabled' };
+      }
+      const seatedAt = Number(s.earliestCommitteeSeatedTick);
+      if (Number.isFinite(seatedAt) && (s.currentTick - seatedAt) < CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED) {
+        const left = CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED - (s.currentTick - seatedAt);
+        return { label: `Seated too recently — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      if (s.nextChairBidTick > s.currentTick) {
+        const left = s.nextChairBidTick - s.currentTick;
+        return { label: `Bid cooldown — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      return { label: 'Bid for Chair', kind: 'primary', href: 'politician-nation.html#sec-committees' };
+    },
   },
   {
     name: 'Deputy Speaker · Presiding Officer',
@@ -1149,9 +1183,26 @@ const GOVERNMENT_RUNGS = [
   },
   {
     name: 'City Council President',
-    held:        ()  => false,
+    held:        (s) => s.office === 'city_council_president',
     descIfHeld:  ()  => 'You lead the city council — setting the agenda and brokering the votes.',
     descIfNot:   ()  => 'Leadership of the council — you set the agenda and broker the votes.',
+    // Eligibility (20270654): must CURRENTLY hold City Council Member
+    // with the 12-tick term within 3 ticks of expiry (current_tick >=
+    // won_at + 9). The window closes when the CCM term auto-expires;
+    // no "former CCM" path by design — announcements happen while
+    // still in office.
+    actionIfNot: (s) => {
+      if (s.office !== 'city_council_member') {
+        return { label: 'Must currently be City Council Member', kind: 'disabled' };
+      }
+      const opens = (s.officeWonAtTick || 0) + 9;
+      if (s.currentTick < opens) {
+        return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+      }
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-cc-president' };
+    },
   },
   {
     name: 'Mayor',
@@ -1796,20 +1847,30 @@ async function init() {
     console.error('politician-career: active_election fetch threw', err);
   }
 
-  // Viewer's committee memberships — drives the Committee Member rung's
-  // held() check. One count is all we need; the rung doesn't care which
-  // committee. Soft-fail to 0 so an outage doesn't claim the rung is
+  // Viewer's committee memberships — drives both the Committee Member
+  // rung's held() check AND the Committee Chair rung (20270584).
+  // role tells us whether any seat is a chair seat; seated_at_tick
+  // gates the 4-tick "skin in the game" requirement for bidding.
+  // Soft-fail to 0 / no-chair so an outage doesn't claim the rung is
   // held when it isn't.
   let committeeCount = 0;
+  let committeeChairCount = 0;
+  let earliestCommitteeSeatedTick = null;
   try {
-    const { count, error } = await _supabase
+    const { data, error } = await _supabase
       .from('committee_members')
-      .select('id', { count: 'exact', head: true })
+      .select('id, role, seated_at_tick')
       .eq('politician_faction_id', ctx.faction.id);
-    if (error) console.warn('politician-career: committee_members count failed', error);
-    committeeCount = Number(count) || 0;
+    if (error) console.warn('politician-career: committee_members fetch failed', error);
+    const rows = data || [];
+    committeeCount = rows.length;
+    committeeChairCount = rows.filter(r => r.role === 'chair').length;
+    const seatedTicks = rows
+      .map(r => Number(r.seated_at_tick))
+      .filter(n => Number.isFinite(n));
+    if (seatedTicks.length) earliestCommitteeSeatedTick = Math.min(...seatedTicks);
   } catch (err) {
-    console.warn('politician-career: committee_members count threw', err);
+    console.warn('politician-career: committee_members fetch threw', err);
   }
 
   // Pending committee admission vote — drives the rung's "Applied for
@@ -1967,6 +2028,15 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
+    parliamentaryTermTicks:  Number(ctx?.nation?.parliamentary_term_ticks) || 24,
+    // Committee Chair (20270584) — surfaces held state + bid eligibility
+    // on the LEGISLATURE_RUNGS Chair rung. Cost / cooldown match the SQL
+    // RPC's gates (Skill ≥ 8, Influence ≥ 15, seated ≥ 4 ticks, cooldown
+    // clear).
+    committeeChairCount:           Number(committeeChairCount) || 0,
+    earliestCommitteeSeatedTick:   Number.isFinite(earliestCommitteeSeatedTick) ? earliestCommitteeSeatedTick : null,
+    politicianInfluence:           Number(ctx?.faction?.politician_influence) || 0,
+    nextChairBidTick:              Number(ctx?.faction?.next_chair_bid_tick) || 0,
     committeeCount:          Number(committeeCount) || 0,
     committeeApplicationPending: !!committeeApplicationPending,
     // Bar exam (20270503). barAdmittedNationId tracks the nation
@@ -2412,7 +2482,7 @@ function bindRungActions(ctx) {
         btn.disabled = true; btn.textContent = 'Registering…';
         try {
           const { data, error } = await _supabase.rpc('politician_register_for_office',
-            { p_target_office: target });
+            { p_faction_id: ctx?.faction?.id || null, p_target_office: target });
           if (error) throw error;
           if (!data?.success) {
             const REASON = {
@@ -2427,6 +2497,9 @@ function bindRungActions(ctx) {
                 : 'Registration window has not opened yet.',
               window_closed:         'The registration window has closed for this election.',
               invalid_target_office: 'Unknown target office.',
+              term_too_short:        data.eligible_at_tick
+                ? `You haven’t served a full parliamentary term yet. Eligible at tick ${data.eligible_at_tick}.`
+                : 'You haven’t served a full parliamentary term yet.',
             };
             alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
             btn.disabled = false; btn.textContent = prev;
@@ -2466,6 +2539,44 @@ function bindRungActions(ctx) {
   // so anything reaching here has passed the obvious gates.
   document.querySelectorAll('[data-action="run-for-city-council"]').forEach(btn => {
     btn.addEventListener('click', () => openCityCouncilModal(ctx));
+  });
+
+  // Run for Election — City Council President (Tier 3, 20270654).
+  // No modal — direct RPC call like register-senior-mp. The rung's
+  // actionIfNot already filters wrong-office / too-early / race-in-
+  // flight / no-party; the server re-validates each gate.
+  document.querySelectorAll('[data-action="run-for-cc-president"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Registering…';
+      try {
+        const { data, error } = await _supabase.rpc('politician_register_for_office',
+          { p_faction_id: ctx?.faction?.id || null, p_target_office: 'city_council_president' });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:     'Sign in to register.',
+            no_politician:         'No politician on this account.',
+            not_in_party:          'Join a party first.',
+            no_nation:             'No nation set.',
+            no_shard:              'Shard not found.',
+            race_in_progress:      'You already have a race in flight.',
+            invalid_target_office: 'Invalid target office.',
+            wrong_current_office:  'You must currently hold City Council Member.',
+            too_early:             data?.opens_at_tick != null
+              ? `Term must be within 3 ticks of expiry. Opens at tick ${data.opens_at_tick}.`
+              : 'Too early — term not yet within 3 ticks of expiry.',
+          };
+          alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
   });
 
   // Seek the Bar — Advocate (Judiciary Tier 1). Opens its own modal
@@ -2782,7 +2893,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
   try {
     const { data, error } = await _supabase.rpc('politician_apply_for_promotion',
-      { p_agency_key: agencyKey });
+      { p_faction_id: window.__careerCtx?.faction?.id || null, p_agency_key: agencyKey });
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null

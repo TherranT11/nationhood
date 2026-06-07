@@ -806,6 +806,16 @@ let entrepreneurGender = 'male';
 // Nations that require an alpha tester code to join
 const ALPHA_CODE_NATIONS = new Set();
 
+// Entrepreneur creation is restricted to these origin nations only;
+// other nations are filtered out of the entrepreneur picker grid.
+// Related (different policy, currently-identical values): the corp
+// founding gate uses nations.foundable_for_corp (20270657) — column-
+// driven, admin-toggleable. If the entrepreneur creation policy
+// should also become admin-toggleable, mirror that pattern with a
+// nations.spawnable_for_entrepreneur column rather than adding a
+// second hardcoded list here.
+const ENTREPRENEUR_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla']);
+
 // Branches currently open for player recruitment. Navy and Air Force are
 // scaffolded but disabled until their dashboards land.
 const MILITARY_BRANCHES = [
@@ -952,9 +962,11 @@ function renderNations(nations, partiesByNation) {
   // Politician archetype. Entrepreneur / military / politician flows still
   // see every nation.
   const hideNeptune = pendingFactionType === 'party';
+  const restrictEntrepreneur = pendingFactionType === 'entrepreneur';
   const filtered = nations.filter(n =>
     (n.continent || 'Crucera') === activeContinent
     && !(hideNeptune && n.is_neptune_nation)
+    && !(restrictEntrepreneur && !ENTREPRENEUR_ALLOWED_NATIONS.has(n.name))
   );
 
   // Sort: nations with open spots first, then full nations. Within each group, by name.

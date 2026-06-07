@@ -440,7 +440,7 @@ const FEE_PCT = 5;
 const IPO_SHARES = 20;
 let entFunds = 0;
 let sel = { industry: 'construction', hqNationId: null, listing: 'private' };
-let nationsByCont = {};   // continent -> [{id,name,corporate_tax}]
+let nationsByCont = {};   // continent -> nation rows (see loadNations SELECT)
 let entCorpCounts = {};   // `${industry}|${nationId}` -> count
 let activeCont = 'Crucera';
 
@@ -448,10 +448,13 @@ function capRaw() { return (parseInt(document.getElementById('ec-cap').value, 10
 
 function renderHqList() {
   const wrap = document.getElementById('ec-hq');
-  // Shipping corps need a coastline (server enforces in
-  // found_entrepreneur_corp — this client filter just hides the
-  // ineligible cards so the user can't pick one in the first place).
-  const raw = nationsByCont[activeCont] || [];
+  // Two layered filters (server enforces both in found_entrepreneur_corp):
+  //   • Shipping corps need a coastline.
+  //   • Founding is gated by nations.foundable_for_corp (20270657 —
+  //     single server-side source of truth, toggled via admin tooling).
+  // The client filter just hides ineligible cards so the user can't
+  // pick one in the first place.
+  const raw = (nationsByCont[activeCont] || []).filter(n => n.foundable_for_corp);
   const list = sel.industry === 'shipping' ? raw.filter(n => !n.is_landlocked) : raw;
   wrap.replaceChildren();
   if (list.length === 0) {
@@ -708,7 +711,7 @@ function renderPositions(corps, filter) {
     // by (industry, hq nation) for the per-nation count.
     const [natRes, cntRes] = await Promise.all([
       _supabase.from('nations')
-        .select('id, name, continent, corporate_tax, is_landlocked')
+        .select('id, name, continent, corporate_tax, is_landlocked, foundable_for_corp')
         .not('continent', 'is', null)
         .order('name'),
       _supabase.from('entrepreneur_corps').select('industry, hq_nation_id'),
@@ -1086,6 +1089,9 @@ function renderPositions(corps, filter) {
             landlocked_no_shipping: 'Shipping corps need a coastline — pick a non-landlocked nation.',
             not_home_nation: `You can only found corporations in your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''}. Expand to other nations by building a Regional HQ there first.`,
             not_at_home_nation: `You must travel back to your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''} to found a corporation${data?.current_location ? ' — you are currently in ' + data.current_location : ''}.`,
+            corp_nation_not_allowed: data?.allowed?.length
+              ? `Corporation founding is currently restricted to ${data.allowed.join(', ')}${data?.home_nation ? ` — your home nation (${data.home_nation}) is not eligible` : ''}.`
+              : `Corporation founding isn't available in your home nation${data?.home_nation ? ' (' + data.home_nation + ')' : ''}.`,
             delinquent_debt: 'You owe personal debt from a bankrupt corporation. Settle it on your Character page before founding a new corporation.',
             insufficient_funds: data?.have != null && data?.need != null
               ? `Insufficient cash — need ${fmtM(data.need)}, have ${fmtM(data.have)}.`

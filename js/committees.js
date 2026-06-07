@@ -58,9 +58,18 @@ const APPLY_REJECT_HUMAN = {
 //   { success: true, data }            on success
 //   { success: false, humanError }     on any failure (rejection or thrown)
 // Callers handle UI state (button disable, navigation, alerts).
-export async function applyForCommittee(committeeId) {
+//
+// factionId must be the active politician's faction id (20270658 —
+// multi-politician fix). The RPC drops the oldest-first selector and
+// grades the supplied row with the standard ownership guard, so a
+// stale or missing id surfaces as 'no_politician' rather than
+// silently grading the wrong sibling.
+export async function applyForCommittee(committeeId, factionId) {
   try {
-    const { data, error } = await _supabase.rpc('apply_for_committee', { p_committee_id: committeeId });
+    const { data, error } = await _supabase.rpc('apply_for_committee', {
+      p_committee_id: committeeId,
+      p_faction_id:   factionId,
+    });
     if (error) return { success: false, humanError: error.message || 'Could not submit.' };
     if (!data?.success) {
       return { success: false, humanError: APPLY_REJECT_HUMAN[data.reason] || `Could not apply (${data.reason}).` };
