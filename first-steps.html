@@ -466,9 +466,13 @@ function confirmStep() {
 }
 
 // ─── POLITICIAN CREATION ───────────────────────────────────────────
-// Mirrors the linked-faction pattern in select-nation.html (military
-// army create, ~L1265): primary if the user has no existing faction,
-// otherwise a linked secondary with a fresh uuid + linked_user_id.
+// Server-side onboarding via create_politician_with_tier_stats
+// (20270693). The RPC computes the chosen nation's population tier
+// (A=top third busy / B=mid / C=bottom third empty), applies the
+// matching starter stat block, and INSERTs the faction row in one
+// transactional step. Moving the INSERT off the client closes the
+// devtools-tampering surface on starting stats and keeps tier logic
+// in one place.
 async function createPolitician() {
   if (createInFlight) return;
   createInFlight = true;
@@ -478,54 +482,34 @@ async function createPolitician() {
   errEl.textContent = '';
 
   try {
-    const { data: primary, error: primaryErr } = await _supabase
-      .from('factions').select('id').eq('id', currentUser.id)
-      .is('abandoned_at', null).maybeSingle();
-    if (primaryErr) throw primaryErr;
-
-    const isLinked = !!primary;
-    const factionId = isLinked ? crypto.randomUUID() : currentUser.id;
-    const fullName = selectedName.first + ' ' + selectedName.last;
-
-    const row = {
-      id: factionId,
-      faction_type: 'politician',
-      faction_name: fullName,
-      nation_id: selectedNation.id,
-      nation: selectedNation.name,
-      seats: 0,
-      action_points: 0,
-      party_funds: 0,
-      abandoned_at: null,
-      leader_first_name: selectedName.first,
-      leader_last_name: selectedName.last,
-      leader_age: 25,         // baseline; displayed age is derived from founded_tick
-      founded_tick: currentTick,
-      politician_influence: 10, // starting Influence — hardcoded here so the value
-                             // doesn't depend on the column default (which silently
-                             // failed to apply on at least one shard, see 20270376).
-    };
-    if (isLinked) row.linked_user_id = currentUser.id;
-
-    const op = isLinked
-      ? _supabase.from('factions').insert(row)
-      : _supabase.from('factions').upsert(row);
-    const { error: writeErr } = await op;
-    if (writeErr) {
-      if (writeErr.code === '23505') {
-        // After 20270371 the politician slot is independent of party / corp /
-        // military / entrepreneur in a given nation, so the only 23505 this
-        // INSERT can hit is politician × politician for the same user.
-        errEl.textContent = 'You already hold a politician in this nation.';
-      } else {
-        errEl.textContent = 'Could not create politician: ' + (writeErr.message || 'unknown error');
+    const { data, error: rpcErr } = await _supabase.rpc(
+      'create_politician_with_tier_stats',
+      {
+        p_nation_id:  selectedNation.id,
+        p_first_name: selectedName.first,
+        p_last_name:  selectedName.last,
       }
+    );
+    if (rpcErr) {
+      errEl.textContent = 'Could not create politician: ' + (rpcErr.message || 'unknown error');
+      btn.disabled = false;
+      createInFlight = false;
+      return;
+    }
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'You are not signed in.',
+        invalid_name:      'Pick a first and last name.',
+        nation_not_found:  'That nation no longer exists.',
+        already_in_nation: 'You already hold a politician in this nation.',
+      };
+      errEl.textContent = REASON[data?.reason] || ('Could not create politician (' + (data?.reason || 'unknown') + ').');
       btn.disabled = false;
       createInFlight = false;
       return;
     }
 
-    sessionStorage.setItem('active_faction_id', factionId);
+    sessionStorage.setItem('active_faction_id', data.faction_id);
     sessionStorage.removeItem('neptune_return_url');
     window.location.href = 'politician-home.html';
   } catch (err) {
