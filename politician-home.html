@@ -1883,9 +1883,9 @@ const LEGISLATURE_ACTIONS = [
 // existing render logic at renderAffiliation treats them as disabled.
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
-  { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route up to 3 incoming dispatches to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +0.5 Skill.', action: 'file-a-memo' },
-  { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
+  { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Skill each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
+  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.5 Skill. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
+  { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
 // Agency Head (Tier 2) placeholder actions — slots from the
