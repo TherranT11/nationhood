@@ -1894,7 +1894,7 @@ const LEGISLATURE_ACTIONS = [
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
   { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Experience each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.5 Experience. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
+  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.3 Reputation. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
@@ -2320,7 +2320,7 @@ function fmtLobbyMinisterResult(data) {
 }
 
 function fmtMemoResult(data) {
-  return `Filed a Memo: +0.5 Experience (now ${data.new_skill}).`;
+  return `Filed a Memo: +0.3 Reputation (now ${data.new_reputation}).`;
 }
 
 function fmtDoorKnockResult(data) {
