@@ -408,6 +408,19 @@ export const CHAIR_BID_THRESHOLDS = {
     COOLDOWN_TICKS:          8,
 };
 
+// Civil-service / political-canopy Experience thresholds — single
+// source for the GOVT_SERVICE_RUNGS gates. Each migration's RPC is
+// the authoritative gate (skill < N on the server); these constants
+// drive the client-side pre-check + the rung labels + the rung
+// descriptions + the error messages, so a retune is a one-line
+// edit here plus the matching change in the rung's migration.
+// Add deputyMinister when 20270682 ships (32 Experience per spec).
+export const CIVIL_SERVICE_THRESHOLDS = {
+    agencyHead:          15,   // 20270674 — politician_apply_for_promotion
+    permanentSecretary:  20,   // 20270679 — politician_seek_permanent_secretary
+    juniorMinister:      28,   // 20270681 — politician_seek_junior_appointment
+};
+
 // Civil-service ministry slug → display name. Source of truth for the
 // politician_ministry column (factions; CHECK constraint enumerates the
 // four slugs in migration 20270471). Read by politician-career.html's

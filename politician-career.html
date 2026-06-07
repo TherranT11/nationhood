@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1122,8 +1122,8 @@ const GOVT_SERVICE_RUNGS = [
         return { label: 'Civil Service only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 15) {
-        return { label: `Apply · Need 15 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < CIVIL_SERVICE_THRESHOLDS.agencyHead) {
+        return { label: `Apply · Need ${CIVIL_SERVICE_THRESHOLDS.agencyHead} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
@@ -1131,10 +1131,11 @@ const GOVT_SERVICE_RUNGS = [
   // Permanent Secretary (Tier 3, Civil Service, 20270679). Top of
   // the career civil-service track — runs a major ministry day to
   // day, survives political changes. Promotion is deterministic
-  // (no dice, no PM approval): 20 Experience + currently Agency
-  // Head + politician_ministry maps to one of the 4 majors via
-  // _major_ministry_of_politician + that major's PS slot in this
-  // nation isn't currently held by another player.
+  // (no dice, no PM approval): hits the Experience threshold from
+  // CIVIL_SERVICE_THRESHOLDS.permanentSecretary, currently Agency
+  // Head, politician_ministry maps to one of the 4 majors via
+  // _major_ministry_of_politician, and that major's PS slot in
+  // this nation isn't currently held by another player.
   {
     tierNum: 3,
     name: 'Permanent Secretary',
@@ -1144,15 +1145,15 @@ const GOVT_SERVICE_RUNGS = [
       const m = MAJOR_MINISTRY_LABEL[s.permanentSecretaryMinistry] || s.permanentSecretaryMinistry || 'a major ministry';
       return `You run the Ministry of <strong>${escHtml(m)}</strong> day-to-day. Permanent across political changes — Ministers come and go, you stay.`;
     },
-    descIfNot:    ()  => 'Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>20 Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. Auto-assigned to the major-ministry equivalent of your civil-service track — <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong>.',
+    descIfNot:    ()  => `Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. Auto-assigned to the major-ministry equivalent of your civil-service track — <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong>.`,
     actions:      ['Approve Policy', 'Implement Reform'],
     actionIfNot:  (s) => {
       if (s.seniorCivilServantAtTick == null) {
         return { label: 'Agency Heads only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 20) {
-        return { label: `Seek Promotion · Need 20 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < CIVIL_SERVICE_THRESHOLDS.permanentSecretary) {
+        return { label: `Seek Promotion · Need ${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Seek Promotion', kind: 'primary', action: 'seek-permanent-secretary' };
     },
@@ -1179,11 +1180,11 @@ const GOVT_SERVICE_RUNGS = [
       const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
       return `You hold the <strong>${escHtml(p)}</strong> portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
     },
-    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>28 Experience</strong>; on acceptance you\'re randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
+    descIfNot:   ()  => `An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience</strong>; on acceptance you're randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.`,
     actions:     ['Carry a Bill', 'Answer Questions'],
     // Seek Appointment — Agency Head → Junior Minister. Gates layer
     // up: must be Agency Head (politician_senior_civil_servant_at_
-    // tick set), ≥ 28 Skill, no current portfolio, no active
+    // tick set), Experience meets CIVIL_SERVICE_THRESHOLDS.juniorMinister, no current portfolio, no active
     // cooldown from a previous rejected roll. Server re-checks each;
     // the disabled labels here keep the button honest so a picker
     // doesn't open just to fail.
@@ -1196,8 +1197,8 @@ const GOVT_SERVICE_RUNGS = [
         return { label: 'Agency Heads only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 28) {
-        return { label: `Apply · Need 28 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < CIVIL_SERVICE_THRESHOLDS.juniorMinister) {
+        return { label: `Apply · Need ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Seek Appointment', kind: 'primary', action: 'seek-junior-appointment' };
     },
@@ -2644,7 +2645,7 @@ function bindRungActions(ctx) {
   // Apply for Promotion — Civil Servant → Agency Head (Tier 2,
   // Government Service). Opens the agency picker; the picker owns
   // the RPC call. Disabled-state rung buttons (e.g. "Civil Service
-  // only", "Need 15 Experience") render without data-action, so this
+  // only", "Need N Experience") render without data-action, so this
   // selector only matches when the gate is open.
   document.querySelectorAll('[data-action="apply-for-promotion"]').forEach(btn => {
     btn.addEventListener('click', () => openAgencyPicker(ctx));
@@ -2993,7 +2994,7 @@ function openAgencyPicker(ctx) {
   foot.querySelectorAll('.ah-result').forEach(n => n.remove());
 
   if (meta) {
-    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>15 Experience</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
+    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>${CIVIL_SERVICE_THRESHOLDS.agencyHead} Experience</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
   }
 
   if (!ministry || !ministry.agencies?.length) {
@@ -3031,7 +3032,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
       const msg = data?.reason === 'insufficient_skill'
-        ? `Petition denied — you need 15 Experience. You have ${have}.`
+        ? `Petition denied — you need ${CIVIL_SERVICE_THRESHOLDS.agencyHead} Experience. You have ${have}.`
         : data?.reason === 'already_senior'   ? 'You are already an Agency Head.'
         : data?.reason === 'not_civil_servant' ? 'Only Civil Servants can apply for this promotion.'
         : data?.reason === 'invalid_agency'   ? "That agency isn't in your ministry."
@@ -3105,7 +3106,7 @@ async function submitJuniorAppointment(btn) {
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
-      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need 28 Experience. You have ${have}.`
+      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience. You have ${have}.`
         : data?.reason === 'not_agency_head'                  ? 'Only sitting Agency Heads may seek a Junior Minister portfolio.'
         : data?.reason === 'already_junior_minister'          ? `You already hold the ${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || '—')} portfolio.`
         : data?.reason === 'pending_application_exists'       ? 'You already have an application pending review.'
@@ -3211,7 +3212,7 @@ async function submitPermanentSecretary(btn) {
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
-      const msg = data?.reason === 'insufficient_skill'        ? `Promotion denied — you need 20 Experience. You have ${have}.`
+      const msg = data?.reason === 'insufficient_skill'        ? `Promotion denied — you need ${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience. You have ${have}.`
         : data?.reason === 'not_agency_head'                    ? 'Only sitting Agency Heads may seek Permanent Secretary.'
         : data?.reason === 'already_permanent_secretary'        ? `You already serve as Permanent Secretary of ${escHtml(MAJOR_MINISTRY_LABEL[data?.ministry] || data?.ministry || 'a major ministry')}.`
         : data?.reason === 'no_civil_service_ministry'          ? 'You\'re not currently in the civil service — no ministry to graduate from.'
