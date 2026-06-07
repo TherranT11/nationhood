@@ -8807,18 +8807,17 @@ const openBidModal = (contractId, label, yourCost) => {
     const renderAssets = () => {
       const host = document.getElementById('cp-assets');
       if (!host) return;
-      // Construction-corp restructure: Section III flips to "Logistics
-      // & Assets" with no holdings UI yet. Short-circuit before the
-      // ownedBuildings render so the placeholder shows even when this
-      // corp happens to own a Construction Yard or two.
-      if (isConstructionCorp) {
-        host.innerHTML = `<div class="empty-card" style="color:#5a5a5a;font-style:italic;">Logistics &amp; Assets — supply-chain tooling under development.</div>`;
-        return;
-      }
       const rows = [...ownedBuildings]
         .sort((a, b) => (a.building_type || '').localeCompare(b.building_type || ''));
       if (rows.length === 0) {
-        host.innerHTML = `<div class="empty-card">No properties owned yet. Acquire properties on the market.</div>`;
+        // Construction corps build their portfolio rather than buying on
+        // the market, so the empty-state CTA differs from real-estate /
+        // oil corps. Otherwise rendering is identical — in-progress and
+        // completed builds both surface here via ownedBuildings.
+        const emptyMsg = isConstructionCorp
+          ? 'No assets yet — break ground on a project to start your portfolio.'
+          : 'No properties owned yet. Acquire properties on the market.';
+        host.innerHTML = `<div class="empty-card">${emptyMsg}</div>`;
         return;
       }
       const plotById = new Map(oilPlotsCache.map(p => [p.id, p]));
