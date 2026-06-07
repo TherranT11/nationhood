@@ -1137,7 +1137,7 @@ const guideContent = {
 <tr><th>Stat</th><th>Penalty</th></tr>
 <tr><td>Party Approval</td><td><strong>&minus;1 to &minus;3</strong> (random)</td></tr>
 <tr><td>Visibility</td><td><strong>&minus;5</strong></td></tr>
-<tr><td>Skill</td><td><strong>&minus;5</strong> (on the 0&ndash;100 display scale)</td></tr>
+<tr><td>Experience</td><td><strong>&minus;5</strong> (on the 0&ndash;100 display scale)</td></tr>
 </table>
 <p>These penalties apply <strong>per bill</strong>. If three bills resolve in one tick and you didn&rsquo;t vote on any of them, you take the penalty three times.</p>
 <p class="guide-tip"><strong>Always vote.</strong> Even if you don&rsquo;t care about a bill, casting Abstain avoids the penalty entirely. The only scenario where not voting makes sense is if you want to intentionally torpedo quorum.</p>

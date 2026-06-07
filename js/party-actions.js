@@ -1650,7 +1650,7 @@ const _MINISTRY_ACTION_REGISTRY = {
         {
             id: 'resign_as_pm',
             name: 'Resign as Prime Minister',
-            desc: 'Step down. Coalition enters caretaker status with a window to nominate a successor; otherwise a snap election fires. -3 Momentum, -0.05 Skill, -3 Stability, 12-tick PM ban.',
+            desc: 'Step down. Coalition enters caretaker status with a window to nominate a successor; otherwise a snap election fires. -3 Momentum, -0.05 Experience, -3 Stability, 12-tick PM ban.',
             cost: '$0',
             costColor: 'var(--text-dim)',
             tags: ['GOVERNMENT', 'PM ONLY'],
@@ -2601,7 +2601,7 @@ function renderDeputyActionsPanel(role) {
                         <span class="pa-detail-name">${esc(_deputy.first_name)} ${esc(_deputy.last_name)}</span>
                         ${renderBlocTag(partyColor)}
                     </div>
-                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; Age ${_deputy.age} &middot; Skill: <span style="color:${sk.color};font-weight:700;">${_deputy.skill}</span></div>
+                    <div class="pa-detail-meta">${esc(role.fullTitle)} &middot; Age ${_deputy.age} &middot; Experience: <span style="color:${sk.color};font-weight:700;">${_deputy.skill}</span></div>
                 </div>
             </div>
         </div>
@@ -2695,7 +2695,7 @@ async function openHireDeputyModal(root) {
                     </div>
                     <div style="display:flex;gap:12px;margin-bottom:14px;">
                         <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
-                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">SKILL</div>
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">EXPERIENCE</div>
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <div style="flex:1;height:3px;background:var(--border-mid);"><div style="height:100%;width:${selected.skill}%;background:${selSkill.color};"></div></div>
                                 <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${selSkill.color};">${selected.skill}</span>
@@ -2887,7 +2887,7 @@ async function openRallyModal(root) {
                 <div style="padding:8px 16px;border-bottom:1px solid var(--border-main);display:flex;align-items:center;gap:8px;">
                     <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Organized by:</span>
                     <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#8b9a6b;">${esc(_deputy.first_name)} ${esc(_deputy.last_name)}</span>
-                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">&middot; Skill ${_deputy.skill}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">&middot; Experience ${_deputy.skill}</span>
                 </div>
                 <div class="pa-modal-body" style="gap:6px;">
                     <div class="pa-modal-step-label">Choose a Sector</div>
@@ -5515,7 +5515,7 @@ function renderAgitatorActionsPanel(role) {
                 </div>
             </div>
             <div style="text-align:right;">
-                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;">SKILL</div>
+                <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;">EXPERIENCE</div>
                 <div style="display:flex;align-items:center;gap:4px;margin-top:1px;">
                     <div style="width:40px;height:3px;background:var(--border-mid);"><div style="height:100%;width:${ag.skill}%;background:${skillInfo.color};"></div></div>
                     <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${skillInfo.color};">${ag.skill}</span>
@@ -6061,7 +6061,7 @@ async function openHireAgitatorModal(root) {
 
                     <div style="display:flex;gap:12px;margin-bottom:14px;">
                         <div style="flex:1;padding:8px 10px;background:var(--bg-card);border:1px solid var(--border-main);">
-                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">SKILL</div>
+                            <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:3px;">EXPERIENCE</div>
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <div style="flex:1;height:3px;background:var(--border-mid);"><div style="height:100%;width:${selected.skill}%;background:${selSkill.color};"></div></div>
                                 <span style="font-family:var(--font-mono);font-size:14px;font-weight:700;color:${selSkill.color};">${selected.skill}</span>
@@ -6081,13 +6081,13 @@ async function openHireAgitatorModal(root) {
                     </div>
 
                     <div style="margin-bottom:14px;">
-                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">SKILL ASSESSMENT</div>
+                        <div style="font-family:var(--font-mono);font-size:7px;color:var(--text-dim);letter-spacing:0.06em;margin-bottom:4px;">EXPERIENCE ASSESSMENT</div>
                         <div style="font-size:10px;color:var(--text-secondary);line-height:1.5;">${selSkill.desc}</div>
                     </div>
 
                     <div style="padding:8px 10px;background:rgba(212,74,74,0.04);border:1px solid rgba(212,74,74,0.12);">
                         <div style="font-family:var(--font-mono);font-size:7px;color:#d44a4a;letter-spacing:0.06em;margin-bottom:3px;">ROLE: OPPOSITION COORDINATOR</div>
-                        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">Files lawsuits against the government, organizes protests, and leads legal challenges. Skill affects success rates of legal and direct actions. Available only when your party is in opposition.</div>
+                        <div style="font-size:9px;color:var(--text-dim);line-height:1.5;">Files lawsuits against the government, organizes protests, and leads legal challenges. Experience affects success rates of legal and direct actions. Available only when your party is in opposition.</div>
                     </div>
                 </div>
                 <div style="padding:10px 20px;border-top:1px solid var(--border-main);background:var(--bg-card);display:flex;justify-content:flex-end;">
@@ -6235,7 +6235,7 @@ function openLawsuitModal(root) {
                     <span style="width:5px;height:5px;border-radius:50%;background:#d44a4a;display:inline-block;"></span>
                     <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);">Filed by:</span>
                     <span style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:#d44a4a;">${esc(ag.first_name)} ${esc(ag.last_name)}</span>
-                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Skill ${ag.skill}</span>
+                    <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-dim);">Experience ${ag.skill}</span>
                 </div>` : ''}
 
                 <div class="pa-modal-body" style="gap:16px;">
@@ -7169,7 +7169,7 @@ async function triggerResignAsPM() {
         'If the window expires, a snap election is called.\n\n' +
         'Cost to your party:\n' +
         '\u2022 \u22123 Momentum\n' +
-        '\u2022 \u22120.05 Skill\n' +
+        '\u2022 \u22120.05 Experience\n' +
         '\u2022 Nation: \u22123 Stability\n' +
         '\u2022 12-tick bar from the PM seat on your party\n\n' +
         'Proceed?'

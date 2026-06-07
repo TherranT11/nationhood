@@ -255,15 +255,18 @@ export const ENTREPRENEUR_ARCHETYPES = Object.freeze({
 
 /**
  * Display metadata for the three entrepreneur faction-stat columns.
- * Single source of truth — every UI that renders a "REP / INF / SKL"
- * (or "REPUTATION / INFLUENCE / SKILL") row reads this. Order is
- * Reputation → Influence → Skill to match the four-stat consolidation
- * (cash/Capital is rendered separately by each surface).
+ * Single source of truth — every UI that renders a "REP / INF / EXP"
+ * (or "REPUTATION / INFLUENCE / EXPERIENCE") row reads this. Order is
+ * Reputation → Influence → Experience to match the four-stat
+ * consolidation (cash/Capital is rendered separately by each surface).
+ * The underlying column `ent_skill` keeps its original slug; this
+ * display swap is label-only (mirrors the Agency Head / Senior Civil
+ * Servant pattern in 20270634).
  */
 export const ENT_STAT_DISPLAY = Object.freeze([
-    Object.freeze({ short: 'REP', long: 'REPUTATION', key: 'ent_reputation' }),
-    Object.freeze({ short: 'INF', long: 'INFLUENCE',  key: 'ent_influence'  }),
-    Object.freeze({ short: 'SKL', long: 'SKILL',      key: 'ent_skill'      }),
+    Object.freeze({ short: 'REP', long: 'REPUTATION',  key: 'ent_reputation' }),
+    Object.freeze({ short: 'INF', long: 'INFLUENCE',   key: 'ent_influence'  }),
+    Object.freeze({ short: 'EXP', long: 'EXPERIENCE',  key: 'ent_skill'      }),
 ]);
 
 /**
