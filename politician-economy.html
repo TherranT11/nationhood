@@ -37,22 +37,24 @@
   .page-sub{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5;max-width:780px;}
   .page-sub strong{color:#d4d4d4;font-weight:600;}
 
-  .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:24px;}
+  .summary{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin-bottom:24px;}
   .sm-card{background:var(--panel);border:0.5px solid var(--line);border-radius:6px;padding:13px 15px;border-left-width:3px;border-left-style:solid;}
-  .sm-card.extract{border-left-color:var(--extract);}
-  .sm-card.finance{border-left-color:var(--finance);}
-  .sm-card.transport{border-left-color:var(--transport);}
-  .sm-card.industry{border-left-color:var(--industry);}
-  .sm-card.service{border-left-color:var(--service);}
+  .sm-card.crude_oil{border-left-color:var(--extract);}
+  .sm-card.minerals{border-left-color:var(--industry);}
+  .sm-card.foodstuffs{border-left-color:var(--transport);}
+  .sm-card.consumer_goods{border-left-color:var(--service);}
+  .sm-card.services{border-left-color:var(--finance);}
+  .sm-card.diplomacy{border-left-color:var(--line);}
   .sm-lab{font-size:8px;letter-spacing:0.12em;font-weight:600;margin-bottom:6px;text-transform:uppercase;}
-  .sm-card.extract .sm-lab{color:var(--extract);}
-  .sm-card.finance .sm-lab{color:var(--finance);}
-  .sm-card.transport .sm-lab{color:var(--transport);}
-  .sm-card.industry .sm-lab{color:var(--industry);}
-  .sm-card.service .sm-lab{color:var(--service);}
-  .sm-val{font-size:18px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;line-height:1;}
-  .sm-val .of{font-size:10px;color:var(--mut);font-weight:500;}
-  .sm-foot{font-size:9px;color:var(--mut);margin-top:5px;}
+  .sm-card.crude_oil .sm-lab{color:var(--extract);}
+  .sm-card.minerals .sm-lab{color:var(--industry);}
+  .sm-card.foodstuffs .sm-lab{color:var(--transport);}
+  .sm-card.consumer_goods .sm-lab{color:var(--service);}
+  .sm-card.services .sm-lab{color:var(--finance);}
+  .sm-card.diplomacy .sm-lab{color:var(--mut);}
+  .sm-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:5px;}
+  .sm-row-lab{font-size:9px;letter-spacing:0.06em;color:var(--mut);text-transform:uppercase;}
+  .sm-row-val{font-size:13px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums;}
 
   .cat-section{margin-bottom:26px;}
   .cat-head{display:flex;align-items:center;gap:11px;padding:11px 16px;border-radius:6px;margin-bottom:12px;border:0.5px solid;}
@@ -271,6 +273,23 @@ const SECTORS = [
   },
 ];
 
+// ── Tradable commodities (top-of-page inventory strip) ────────────────
+// Production = sum(input industry strengths) / divisor, floored at 0.
+// Single-input commodities use divisor=2 (production trails raw industry
+// strength by 50%); multi-input commodities use divisor=inputs.length
+// (the result is an arithmetic mean across contributing industries).
+// `inputs: null` parks a commodity as a render-only stub — Diplomacy
+// has no industry source today and shows '--' for production until the
+// mechanic ships.
+const COMMODITIES = [
+  { key: 'crude_oil',      name: 'Crude Oil',      inputs: ['oil_gas'],                                  divisor: 2 },
+  { key: 'minerals',       name: 'Minerals',       inputs: ['mining'],                                   divisor: 2 },
+  { key: 'foodstuffs',     name: 'Foodstuffs',     inputs: ['fisheries', 'agriculture'],                 divisor: 2 },
+  { key: 'consumer_goods', name: 'Consumer Goods', inputs: ['heavy_mfg', 'retail'],                      divisor: 2 },
+  { key: 'services',       name: 'Services',       inputs: ['hospitality', 'aviation', 'media_telecom'], divisor: 3 },
+  { key: 'diplomacy',      name: 'Diplomacy',      inputs: null,                                         divisor: null },
+];
+
 // Stat-key → display label. Subset of modifieradmin.html's
 // NATION_STATS list (one source today; if a third surface needs the
 // same labels we promote to a shared module). Falls back to the raw
@@ -404,29 +423,12 @@ async function renderEconomy(nationId) {
     corpsByIndustry.get(industryKey).push(c);
   }
 
-  // Per-sector aggregates for the summary bar and the cat-head stats.
-  // Strength is the per-industry base (nation_industry_bases) as-is —
-  // no corp bonus, no upper cap; corp counts still aggregate as a
-  // separate signal under the sector header.
-  const sectorAgg = new Map();
-  for (const sector of SECTORS) {
-    let corpCount = 0;
-    let strengthSum = 0;
-    for (const ind of sector.industries) {
-      const indCorps = corpsByIndustry.get(ind.key) || [];
-      corpCount += indCorps.length;
-      strengthSum += baseOf(baseByKey.get(ind.key));
-    }
-    const avg = sector.industries.length ? (strengthSum / sector.industries.length) : 0;
-    sectorAgg.set(sector.key, {
-      corpCount,
-      industryCount: sector.industries.length,
-      avg,
-    });
-  }
-
-  summaryHost.innerHTML = SECTORS.map(s => renderSummaryCard(s, sectorAgg.get(s.key))).join('');
-  sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, sectorAgg.get(s.key), corpsByIndustry, baseByKey)).join('');
+  // Summary strip is now commodity-driven, not sector-driven. Sector
+  // corp counts (still surfaced in each sector's cat-head) are computed
+  // inline by renderSectorSection so there's no shared aggregate Map
+  // to maintain.
+  summaryHost.innerHTML = COMMODITIES.map(c => renderCommodityCard(c, baseByKey)).join('');
+  sectorsHost.innerHTML = SECTORS.map(s => renderSectorSection(s, corpsByIndustry, baseByKey)).join('');
 }
 
 // One source for the base coercion: any non-numeric input (null,
@@ -446,30 +448,36 @@ function strengthTierClass(strength) {
   return 'high';
 }
 
-function renderSummaryCard(sector, agg) {
-  // Strength avg comes from base values alone now, so render it
-  // whenever the aggregate exists — gating on corpCount was leftover
-  // logic from the base+corps formula and was hiding the real avg
-  // for sectors that have non-zero bases but no corps yet
-  // (Extractive on Melizea was the regression: bases 8/5/4/6 → 5.8
-  // avg, but the page showed 0.0 because corpCount was 0).
-  const avgStr = agg ? agg.avg.toFixed(1) : '0.0';
+// Production = sum of input industry strengths / divisor, floored at 0.
+// Returns null when the commodity has no formula yet (Diplomacy stub)
+// so the renderer can swap in '--' rather than '0.0'.
+function computeProduction(commodity, baseByKey) {
+  if (!commodity.inputs || !commodity.divisor) return null;
+  const sum = commodity.inputs.reduce((acc, key) => acc + baseOf(baseByKey.get(key)), 0);
+  return Math.max(0, sum / commodity.divisor);
+}
+
+function renderCommodityCard(commodity, baseByKey) {
+  const prod = computeProduction(commodity, baseByKey);
+  const prodStr = prod == null ? '--' : prod.toFixed(1);
   return (
-    `<div class="sm-card ${sector.key}">` +
-      `<div class="sm-lab">${escapeHtml(sector.label)}</div>` +
-      `<div class="sm-val">${avgStr}<span class="of"> avg</span></div>` +
-      `<div class="sm-foot">${agg.industryCount} industries · ${agg.corpCount} corps</div>` +
+    `<div class="sm-card ${commodity.key}">` +
+      `<div class="sm-lab">${escapeHtml(commodity.name)}</div>` +
+      `<div class="sm-row"><span class="sm-row-lab">On Hand</span><span class="sm-row-val">--</span></div>` +
+      `<div class="sm-row"><span class="sm-row-lab">Production</span><span class="sm-row-val">${prodStr}</span></div>` +
     `</div>`
   );
 }
 
-function renderSectorSection(sector, agg, corpsByIndustry, baseByKey) {
+function renderSectorSection(sector, corpsByIndustry, baseByKey) {
+  let corpCount = 0;
   const indHtml = sector.industries.map(ind => {
     const indCorps = corpsByIndustry.get(ind.key) || [];
+    corpCount += indCorps.length;
     // baseByKey.get may return undefined for an unauthored industry;
     // renderIndustryCard runs every base through baseOf() so we pass
     // the raw value through and let that single coercion path handle
-    // it — same pattern the aggregate loop above uses.
+    // it.
     return renderIndustryCard(sector, ind, indCorps, baseByKey.get(ind.key));
   }).join('');
   return (
@@ -477,7 +485,7 @@ function renderSectorSection(sector, agg, corpsByIndustry, baseByKey) {
       `<div class="cat-head ${sector.key}">` +
         `<span class="cat-icon">${sector.icon}</span>` +
         `<span class="cat-name">${escapeHtml(sector.label)}</span>` +
-        `<span class="cat-stats"><strong>${agg.industryCount} industries</strong> · <strong>${agg.corpCount} corporations</strong> · ${escapeHtml(sector.subtitle)}</span>` +
+        `<span class="cat-stats"><strong>${sector.industries.length} industries</strong> · <strong>${corpCount} corporations</strong> · ${escapeHtml(sector.subtitle)}</span>` +
       `</div>` +
       indHtml +
     `</div>`
