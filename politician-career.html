@@ -3258,12 +3258,16 @@ function emEscHandler(e) {
 }
 
 async function loadElectionOffer(ctx) {
-  const partyId = ctx?.party?.id || null;
+  const partyId   = ctx?.party?.id   || null;
+  const factionId = ctx?.faction?.id || null;
   if (!partyId) {
     showElectionError('You need to be a party member to stand for election.');
     return;
   }
-  const { data, error } = await _supabase.rpc('politician_get_election_offer', { p_party_id: partyId });
+  // p_faction_id pins the active politician — 20270665 closed the
+  // multi-politician oldest-first lookup in this RPC.
+  const { data, error } = await _supabase.rpc('politician_get_election_offer',
+    { p_party_id: partyId, p_faction_id: factionId });
   if (error) {
     console.error('politician_get_election_offer error', error);
     showElectionError('Could not load races. ' + (error.message || 'Try again later.'));
