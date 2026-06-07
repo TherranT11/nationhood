@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, fmtStat } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1128,16 +1128,36 @@ const GOVT_SERVICE_RUNGS = [
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
   },
+  // Permanent Secretary (Tier 3, Civil Service, 20270679). Top of
+  // the career civil-service track — runs a major ministry day to
+  // day, survives political changes. Promotion is deterministic
+  // (no dice, no PM approval): 20 Experience + currently Agency
+  // Head + politician_ministry maps to one of the 4 majors via
+  // _major_ministry_of_politician + that major's PS slot in this
+  // nation isn't currently held by another player.
   {
     tierNum: 3,
-    name: 'Deputy Minister',
+    name: 'Permanent Secretary',
     trackPill:    { label: 'CIVIL SERVICE', kind: 'field' },
-    held:         ()  => false,
-    descIfHeld:   ()  => 'You run a ministry between political changes — the institutional memory.',
-    descIfNot:    ()  => 'Top of the permanent civil service. You run a ministry between political changes — the institutional memory who tells whichever Minister gets appointed what is and is not possible.',
+    held:         (s) => !!s.permanentSecretaryMinistry,
+    descIfHeld:   (s) => {
+      const m = MAJOR_MINISTRY_LABEL[s.permanentSecretaryMinistry] || s.permanentSecretaryMinistry || 'a major ministry';
+      return `You run the Ministry of <strong>${escHtml(m)}</strong> day-to-day. Permanent across political changes — Ministers come and go, you stay.`;
+    },
+    descIfNot:    ()  => 'Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>20 Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. You\'re assigned by lot to <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong> based on your civil-service track.',
     actions:      ['Approve Policy', 'Implement Reform'],
-    // Held-state exit: surfaces once the held() check is wired so a
-    // Deputy Minister can resign and stand for election.
+    actionIfNot:  (s) => {
+      if (s.seniorCivilServantAtTick == null) {
+        return { label: 'Agency Heads only', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 20) {
+        return { label: `Seek Promotion · Need 20 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      }
+      return { label: 'Seek Promotion', kind: 'primary', action: 'seek-permanent-secretary' };
+    },
+    // Held-state exit: surfaces once a resign / political-track
+    // transition mechanic lands.
     actionIfHeld: { label: 'Resign · Enter Politics', kind: 'secondary' },
   },
 
@@ -2103,6 +2123,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     politicianSkill:         Number(ctx?.faction?.politician_skill) || 0,
     seniorCivilServantAtTick: ctx?.faction?.politician_senior_civil_servant_at_tick ?? null,
     agencyHeadOf:            ctx?.faction?.politician_agency_head_of || null,
+    // Permanent Secretary (Tier 3, 20270679). permanentSecretary
+    // Ministry set means the politician currently runs one of the
+    // 4 majors as a career civil servant — drives held() + descIf
+    // Held on the Tier 3 rung.
+    permanentSecretaryMinistry: ctx?.faction?.politician_permanent_secretary_ministry || null,
     // Junior Minister (Tier 4 / appointed canopy, 20270669).
     // juniorPortfolio set means the politician currently holds a
     // portfolio (drives held() + descIfHeld); the cooldown gate
@@ -2633,6 +2658,14 @@ function bindRungActions(ctx) {
     btn.addEventListener('click', () => submitJuniorAppointment(btn));
   });
 
+  // Seek Promotion — Agency Head → Permanent Secretary (Tier 3,
+  // Civil Service, 20270679). Deterministic promotion (no dice,
+  // no PM); the RPC fires immediately and a simple result alert
+  // surfaces the outcome — reload on success so the rung flips.
+  document.querySelectorAll('[data-action="seek-permanent-secretary"]').forEach(btn => {
+    btn.addEventListener('click', () => submitPermanentSecretary(btn));
+  });
+
   // Run for Election — City Council Member (Tier 2, Government &
   // State). Opens the matchup-style confirm modal; the modal owns
   // the politician_register_for_office RPC call. The rung's
@@ -3161,6 +3194,44 @@ function renderPortfolioRollResult(data) {
       <div class="ah-result-sub">${subMap[status] || ''}</div>
       ${cooldownLine}
     </div>`;
+}
+
+// ─── Seek Permanent Secretary ────────────────────────────────────
+// Agency Head → Permanent Secretary (Government Service Tier 3,
+// 20270679). Deterministic promotion (no dice, no PM); the RPC
+// re-checks the 20-Experience / Agency-Head / ministry-mapping /
+// slot-vacancy gates and either flips the politician's columns
+// or returns a structured reason. Result lands as an alert + page
+// reload on success so the rung re-renders from the new state.
+async function submitPermanentSecretary(btn) {
+  if (btn?.dataset.busy === '1') return;
+  if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
+  try {
+    const { data, error } = await _supabase.rpc('politician_seek_permanent_secretary');
+    if (error) throw error;
+    if (!data?.success) {
+      const have = data?.have != null ? fmtStat(data.have) : '?';
+      const msg = data?.reason === 'insufficient_skill'        ? `Promotion denied — you need 20 Experience. You have ${have}.`
+        : data?.reason === 'not_agency_head'                    ? 'Only sitting Agency Heads may seek Permanent Secretary.'
+        : data?.reason === 'already_permanent_secretary'        ? `You already serve as Permanent Secretary of ${escHtml(MAJOR_MINISTRY_LABEL[data?.ministry] || data?.ministry || 'a major ministry')}.`
+        : data?.reason === 'no_civil_service_ministry'          ? 'You\'re not currently in the civil service — no ministry to graduate from.'
+        : data?.reason === 'ministry_not_eligible'              ? 'Your civil-service ministry doesn\'t map to one of the 4 major cabinet seats.'
+        : data?.reason === 'slot_held_by_player'                ? `The Permanent Secretary of ${escHtml(MAJOR_MINISTRY_LABEL[data?.ministry] || data?.ministry || 'that ministry')} is currently a sitting player. Try again once they move on.`
+        : data?.reason === 'not_authenticated'                  ? 'Sign in to act.'
+        : data?.reason === 'no_politician'                      ? 'No politician on this account.'
+        : data?.reason === 'no_nation'                          ? 'Your politician is not yet seated in a nation.'
+        : ('Promotion failed: ' + (data?.reason || 'unknown'));
+      alert(msg);
+      if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+      return;
+    }
+    const ministryLbl = MAJOR_MINISTRY_LABEL[data.ministry] || data.ministry || 'a major ministry';
+    alert(`You are now Permanent Secretary of ${ministryLbl}.`);
+    location.reload();
+  } catch (e) {
+    alert('Promotion failed: ' + (e?.message || 'network or server error'));
+    if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+  }
 }
 
 // ─── Stand for Election modal ─────────────────────────────────────
