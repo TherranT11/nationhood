@@ -1791,12 +1791,12 @@ const STAT_CARDS = [
   },
   {
     key:   'skill',
-    label: 'SKILL',
+    label: 'EXPERIENCE',
     quote: '"Are you good at the job?"',
     earns:  `Practice and success. Winning contests. Performing the role well under pressure.`,
     spends: `Doesn't deplete. <b>Rolled in every contest</b> — races, decisions, dispositions.`,
-    career: `Each rung has a Skill floor. <b>Technical paths</b> (civil service, judiciary) lean on it hardest.`,
-    party:  `Indirect — higher-Skill members win more races, so more seats.`,
+    career: `Each rung has an Experience floor. <b>Technical paths</b> (civil service, judiciary) lean on it hardest.`,
+    party:  `Indirect — higher-Experience members win more races, so more seats.`,
   },
   {
     key:   'inf',
@@ -1869,9 +1869,9 @@ const PARTY_MEMBER_ACTIONS = [
 // consolidate_faction_stats.sql; keep these strings in sync when
 // re-tuning. "roll" = natural d-roll; "total" = roll + the stat noted.
 const LOCAL_GOV_ACTIONS = [
-  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Roll 1d10 + Skill. Roll 1 → −1 Skill; total <5 → miss; total ≥5 → party funds (roll × $1K × volunteer bonus); roll 10 → +1 Skill & doubled funds.',                       action: 'fundraising-call' },
-  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local. Roll 1d6 + Skill. Roll 1 → −1 Volunteer; total <5 → −0.5 Skill; total ≥5 → +1 Volunteer; roll 6 → +2 Volunteers, +0.5 Popularity.',           action: 'civic-meeting' },
-  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6 + Reputation. Roll 1 → −1 Reputation; total <5 → −0.5 Popularity; total ≥5 → +0.5 Skill; roll 6 → +1 Reputation.',                                                          action: 'office-hours' },
+  { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Roll 1d10 + Experience. Roll 1 → −1 Experience; total <5 → miss; total ≥5 → party funds (roll × $1K × volunteer bonus); roll 10 → +1 Experience & doubled funds.',                       action: 'fundraising-call' },
+  { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local. Roll 1d6 + Experience. Roll 1 → −1 Volunteer; total <5 → −0.5 Experience; total ≥5 → +1 Volunteer; roll 6 → +2 Volunteers, +0.5 Popularity.',           action: 'civic-meeting' },
+  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6 + Reputation. Roll 1 → −1 Reputation; total <5 → −0.5 Popularity; total ≥5 → +0.5 Experience; roll 6 → +1 Reputation.',                                                          action: 'office-hours' },
 ];
 // City Council Member (Tier 2 Local) — distinct action trio from
 // Community Organizer's. Busy-work / craft / risk, mapped to
@@ -1893,8 +1893,8 @@ const LEGISLATURE_ACTIONS = [
 // existing render logic at renderAffiliation treats them as disabled.
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
-  { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Skill each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.5 Skill. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
+  { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Experience each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
+  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.5 Experience. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
@@ -1918,7 +1918,7 @@ const AGENCY_HEAD_ACTIONS = [
 // case-load cap. Magistrates are server-gated out of TRY/APPEAL/READ.
 const ADVOCATE_ACTIONS = [
   { ic: '§', name: 'TRY A CASE',             cost: 'no cost', desc: 'Draw a case from the docket. Take it for Case Wins; pass on it and your bar Reputation takes the hit.', action: 'try-case' },
-  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'A quiet afternoon with the codes. +2 Skill, -1 Reputation. Only when no cases are active.', action: 'read-statute-books' },
+  { ic: '⚖', name: 'READ THE STATUTE BOOKS', cost: 'no cost', desc: 'A quiet afternoon with the codes. +2 Experience, -1 Reputation. Only when no cases are active.', action: 'read-statute-books' },
   { ic: '↺', name: 'APPEAL',                 cost: 'no cost', desc: 'File an appeal on a verdict from the last 12 ticks. Flip the lower court for +3 Reputation and +5 Influence; lose 5 Rep and 3 Influence if it stands.', action: 'appeal' },
 ];
 
@@ -2320,7 +2320,7 @@ function fmtLobbyMinisterResult(data) {
 }
 
 function fmtMemoResult(data) {
-  return `Filed a Memo: +0.5 Skill (now ${data.new_skill}).`;
+  return `Filed a Memo: +0.5 Experience (now ${data.new_skill}).`;
 }
 
 function fmtDoorKnockResult(data) {
@@ -2336,7 +2336,7 @@ function fmtSpeechResult(data) {
 }
 
 function fmtStatuteBooks(data) {
-  return `Read the Statute Books: Skill ${data.skill_delta > 0 ? '+' : ''}${data.skill_delta} (now ${data.new_skill}), Reputation ${data.reputation_delta > 0 ? '+' : ''}${data.reputation_delta} (now ${data.new_reputation}).`;
+  return `Read the Statute Books: Experience ${data.skill_delta > 0 ? '+' : ''}${data.skill_delta} (now ${data.new_skill}), Reputation ${data.reputation_delta > 0 ? '+' : ''}${data.reputation_delta} (now ${data.new_reputation}).`;
 }
 
 function fmtMpResult(data) {
@@ -2363,17 +2363,17 @@ function fmtLocalResult(data) {
   const slug  = data.action.replace(/_/g, '-');
   const label = ACTIONS[slug]?.label || data.action;
   if (data.action === 'fundraising_call') {
-    const stake = ` (rolled ${data.roll} + ${data.skill} Skill = ${data.total})`;
-    if (data.bracket === 'crit_fail') return `${label}: donor blacklisted you${stake}. Skill dropped to ${data.new_skill}.`;
+    const stake = ` (rolled ${data.roll} + ${data.skill} Experience = ${data.total})`;
+    if (data.bracket === 'crit_fail') return `${label}: donor blacklisted you${stake}. Experience dropped to ${data.new_skill}.`;
     if (data.bracket === 'fail')      return `${label}: slow day, no one bit${stake}. Nothing raised.`;
     const money = `$${Number(data.money_raised || 0).toLocaleString()}`;
-    if (data.bracket === 'crit')      return `${label}: legendary round${stake}. Raised ${money} (2× with the volunteer bonus). Skill rose to ${data.new_skill}.`;
+    if (data.bracket === 'crit')      return `${label}: legendary round${stake}. Raised ${money} (2× with the volunteer bonus). Experience rose to ${data.new_skill}.`;
     return `${label}: raised ${money}${stake}.`;
   }
   if (data.action === 'civic_meeting') {
-    const stake = ` (rolled ${data.roll} + ${data.skill} Skill = ${data.total})`;
+    const stake = ` (rolled ${data.roll} + ${data.skill} Experience = ${data.total})`;
     if (data.bracket === 'crit_fail') return `${label}: said something off-key${stake}. Lost a volunteer (now ${data.new_volunteers}).`;
-    if (data.bracket === 'fail')      return `${label}: rough room${stake}. Skill dropped to ${data.new_skill}.`;
+    if (data.bracket === 'fail')      return `${label}: rough room${stake}. Experience dropped to ${data.new_skill}.`;
     if (data.bracket === 'crit')      return `${label}: the whole room joined the cause${stake}. +2 Volunteers (now ${data.new_volunteers}), party popularity rose to ${data.new_popularity}%.`;
     return `${label}: won a convert${stake}. Volunteers now ${data.new_volunteers}.`;
   }
@@ -2382,7 +2382,7 @@ function fmtLocalResult(data) {
     if (data.bracket === 'crit_fail') return `${label}: someone leaked a bad story${stake}. Reputation dropped to ${data.new_reputation}.`;
     if (data.bracket === 'fail')      return `${label}: nobody came${stake}. Party popularity dropped to ${data.new_popularity}%.`;
     if (data.bracket === 'crit')      return `${label}: great constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
-    return `${label}: showing up matters${stake}. Skill rose to ${data.new_skill}.`;
+    return `${label}: showing up matters${stake}. Experience rose to ${data.new_skill}.`;
   }
   return `${label}: done.`;
 }
@@ -2831,7 +2831,7 @@ function renderStateAdvocateRequestCard(r) {
           <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Capital: <strong>${Number(r.applicant_influence) || 0}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Skill: <strong>${Number(r.applicant_skill) || 0}</strong></span>
+          <span class="oi-corp">Experience: <strong>${Number(r.applicant_skill) || 0}</strong></span>
           ${displacementLine}
         </div>
       </div>
@@ -2902,7 +2902,7 @@ function renderJuniorMinisterApplicationCard(r) {
           <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Age <strong>${age}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Skill <strong>${fmtStat(r.applicant_skill)}</strong></span>
+          <span class="oi-corp">Experience <strong>${fmtStat(r.applicant_skill)}</strong></span>
           <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Rep <strong>${fmtStat(r.applicant_reputation)}</strong></span>
           <span class="oi-sep">&middot;</span>
@@ -2986,31 +2986,31 @@ function renderCampaignCard(ctx) {
       eyebrow:   'ACTIVE CAMPAIGN · LOW-STAKES · COMMUNITY',
       titleLead: 'Community Organizer',
       blurb:     'A volunteer seat on your neighborhood association.',
-      statLabel: 'SKILL',
+      statLabel: 'EXPERIENCE',
     },
     parliament: {
       eyebrow:   'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL',
       titleLead: 'Member of Parliament',
       blurb:     `An Assembly seat in ${escHtml(nationName)}.`,
-      statLabel: 'SKILL',
+      statLabel: 'EXPERIENCE',
     },
     city_council: {
       eyebrow:   'ACTIVE CAMPAIGN · MEDIUM-STAKES · LOCAL',
       titleLead: 'City Council Member',
       blurb:     'A seat on the city council — local budgets, ordinances, retail politics.',
-      statLabel: 'SKILL',
+      statLabel: 'EXPERIENCE',
     },
     city_council_president: {
       eyebrow:   'ACTIVE CAMPAIGN · MEDIUM-STAKES · LOCAL',
       titleLead: 'City Council President',
       blurb:     'Leadership of the city council — agenda, votes, brokered deals.',
-      statLabel: 'SKILL',
+      statLabel: 'EXPERIENCE',
     },
     senior_mp: {
       eyebrow:   'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL',
       titleLead: 'Senior MP',
       blurb:     `A Senior MP slot in ${escHtml(nationName)}.`,
-      statLabel: 'SKILL',
+      statLabel: 'EXPERIENCE',
     },
   };
   const cfg = TIER_DISPLAY[tier] || TIER_DISPLAY.community;
@@ -4917,7 +4917,7 @@ function renderFilePaperworkModal() {
         <div class="fp-foot">
           <div class="fp-reward">
             <span>&#9733;</span>
-            <span>Correct routing: <strong>+0.3 Skill</strong> &middot; Correct flag (when required): <strong>+0.3 Reputation</strong></span>
+            <span>Correct routing: <strong>+0.3 Experience</strong> &middot; Correct flag (when required): <strong>+0.3 Reputation</strong></span>
           </div>
           <div class="fp-btn-row">
             <button class="fp-btn cancel" id="fp-cancel-btn">Defer</button>
@@ -5070,7 +5070,7 @@ function showFilePaperworkResult(resp) {
   const correctAgency   = findAgency(resp.correct_ministry, resp.correct_agency);
   const routingWord = resp.routing_correct ? 'Correct' : 'Misrouted';
   const flagWord    = resp.flag_correct    ? 'Correct' : 'Off the mark';
-  const skillTxt = resp.skill_delta > 0 ? `<strong>+${resp.skill_delta} Skill</strong>` : '';
+  const skillTxt = resp.skill_delta > 0 ? `<strong>+${resp.skill_delta} Experience</strong>` : '';
   const repTxt   = resp.reputation_delta > 0 ? `<strong>+${resp.reputation_delta} Reputation</strong>` : '';
   const rewards = [skillTxt, repTxt].filter(Boolean).join(' &middot; ') || '<em>No rewards earned</em>';
 

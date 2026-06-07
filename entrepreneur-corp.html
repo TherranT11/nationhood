@@ -562,7 +562,13 @@
   .mk-empty { color:#666; font-size:12px; text-align:center; padding:24px 0;
     font-style:italic; letter-spacing:0.03em; }
 
-  /* Begin Construction modal */
+  /* Shared modal chrome (.bm-* family). Originally introduced for
+     the Begin Construction modal — that surface was retired in
+     4dbbc16's restructure and the leaf pieces (.bm-tiers /
+     .bm-summary etc.) were dropped in the dead-chain sweep. The
+     classes that remain here back the ~15 other modals on the
+     page (list-for-sale, rebrand, debt-payment, engine-order,
+     etc.). Edits affect every modal — keep changes generic. */
   .bm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.8); display:none;
     align-items:center; justify-content:center; padding:30px; z-index:500; }
   .bm-overlay.open { display:flex; }
@@ -703,21 +709,6 @@
   .sv-overlay .sv-result__title { font-size:14px; font-weight:600; margin-bottom:8px; letter-spacing:0.02em; }
   .sv-overlay .sv-result__body  { font-size:12px; color:#cfcabf; line-height:1.6; }
   .sv-overlay .sv-result__body strong { color:#fff; }
-  .bm-tiers { display:grid; grid-template-columns:1fr; gap:6px; }
-  .bm-tier { display:grid; grid-template-columns:80px 1fr auto auto auto; gap:12px;
-    padding:11px 14px; background:#121212; border:0.5px solid rgba(255,255,255,0.10);
-    border-radius:4px; cursor:pointer; align-items:baseline; font-size:12px; }
-  .bm-tier:hover { border-color:rgba(138,170,106,0.3); }
-  .bm-tier.sel { background:#131613; border-color:#6a8a4a; }
-  .bm-tier .tn { color:#fff; font-weight:500; text-transform:uppercase; letter-spacing:0.08em; font-size:11px; }
-  .bm-tier .td { color:#888; font-size:11px; }
-  .bm-tier .num { font-variant-numeric:tabular-nums; color:#d4d4d4; }
-  .bm-tier .num.amb { color:#8aaa6a; }
-  .bm-summary { margin-top:14px; padding:12px 14px; background:#131613;
-    border:0.5px solid rgba(138,170,106,0.25); border-radius:4px; font-size:12px;
-    color:#aaa; line-height:1.6; }
-  .bm-summary b { color:#8aaa6a; font-weight:500; }
-  .bm-summary .bm-stat { font-size:10px; color:#777; letter-spacing:0.06em; text-transform:uppercase; }
   /* Buy Engines: card picker (replaces <select> so long names wrap and the
      full stat line — thrust / weight / eff / rel / Q — is always visible). */
   .be-engines { display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; }
@@ -779,10 +770,8 @@
     .bm-modal, .rl-modal { max-width:100%; }
     .bm-body, .rl-body { padding:16px; }
     .bm-foot, .rl-foot { padding:12px 16px; }
-    .bm-types { grid-template-columns:1fr; }   /* 5 type cards stack */
-    .bm-type:last-child { grid-column:auto; }  /* undo desktop full-row span */
-    .bm-tier { grid-template-columns:1fr; gap:4px; padding:10px 12px; }
-    .bm-tier .num { text-align:left; font-size:12px; }
+    .bm-types { grid-template-columns:1fr; }   /* engine-order modal: stack fulfilment cards */
+    .bm-type:last-child { grid-column:auto; }
     /* Active Projects + Corporate Finance rows stack their action buttons */
     .ap-actions, .cf-row { grid-template-columns:1fr; gap:8px; }
     .ap-row, .cf-row { padding:12px 14px; }
@@ -2662,7 +2651,7 @@ function initials(s, n) {
           <span>ADVOCATE</span>
           <span class="ch-right">REPUTATION</span>
           <span class="ch-right">INFLUENCE</span>
-          <span class="ch-right">SKILL</span>
+          <span class="ch-right">EXPERIENCE</span>
           <span></span>
         </div>
         ${_rc.advocates.length
@@ -4863,18 +4852,6 @@ function initials(s, n) {
     // RHQ profile limited to small/medium/large (server enforces).
     const RHQ_TIERS = ['small', 'medium', 'large'];
     const ALL_TIERS = ['small', 'medium', 'large', 'major', 'monumental'];
-    // Modal-specific descriptions. Labels come from buildingTypeLabel
-    // in utils.js — single source across the two pages that render
-    // building-type chips (entrepreneur-corp + entrepreneur-markets).
-    const BUILDING_TYPE_DESC = {
-      regional_hq:        'Admin presence in a nation. Required to do anything else there. Buyer Reputation bonus per profile.',
-      construction_yard:  '+2 concurrent Port / Banking-Office / Real-Estate-Office build slots in this nation. Sold to Construction corps.',
-      port:               'Shipping operational. Sold to Shipping corps.',
-      banking_office:     'Banking operational. Sold to Banking corps.',
-      real_estate_office: 'Required for Real Estate corps to list properties in this nation. Sold to Real Estate corps.',
-      engine_assembly_plant: 'Lets an Aviation Manufacturing corp design engines. Fixed $45M base. Sold to Aviation Manufacturing corps.',
-      light_assembly_plant:  'Lets an Aviation Manufacturing corp design aircraft. Fixed $75M base. Sold to Aviation Manufacturing corps.',
-    };
     // isConstructionCorp hoisted to the outer IIFE near isOwner so the
     // pillar-strip toggle can share the same flag; everything below
     // still reads via closure.
@@ -4933,16 +4910,6 @@ function initials(s, n) {
       else                                       { repDelta =  0; repLabel =  '0'; repClass = 'dim';    }
       return { commission, proceeds: p - commission, profit, repDelta, repLabel, repClass };
     };
-
-    // Render the building-type picker once. Tier rows + nation
-    // dropdown are filled by openBuildModal based on the type
-    // selection (the visible tier set + valid nation list both
-    // depend on it).
-    document.getElementById('bm-types').innerHTML = Object.entries(BUILDING_TYPE_DESC).map(([key, desc], i) => `
-      <div class="bm-type ${i === 0 ? 'sel' : ''}" data-btype="${key}">
-        <div class="tn">${escapeHtml(buildingTypeLabel(key))}</div>
-        <div class="td">${escapeHtml(desc)}</div>
-      </div>`).join('');
 
     const { data: shardRow } = await _supabase.from('shard')
       .select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
@@ -6833,200 +6800,20 @@ function initials(s, n) {
       }
     };
 
-    // ── Begin Construction modal wiring (v3) ──
-    // Building type drives both the visible tier set (RHQ is S/M/L
-    // only) and the valid nation list (RHQ can go anywhere; non-RHQ
-    // restricted to HQ + nations the corp already owns an RHQ in).
-    let buildSubmitting = false;
-    let selectedBuildType = 'regional_hq';
-    let corpRhqNationIds = new Set();    // owned RHQs (for non-RHQ filtering)
-    let nationMap = new Map();            // id → { id, name, cost_of_living, infrastructure, standard_of_living, politician_stability }
-
-    const currentNation = () => nationMap.get(document.getElementById('bm-nation').value);
-
-    const renderTiers = (btype) => {
-      // Assembly plants are single-profile — no tier choice; hide the
-      // Tier label + rows entirely so there's no dangling heading.
-      const tierLabel = document.getElementById('bm-tier-label');
-      if (isPlantType(btype)) {
-        document.getElementById('bm-tiers').innerHTML = '';
-        if (tierLabel) tierLabel.style.display = 'none';
-        return;
-      }
-      if (tierLabel) tierLabel.style.display = '';
-      const tierKeys = btype === 'regional_hq' ? RHQ_TIERS : ALL_TIERS;
-      const nation = currentNation();
-      // Preserve the player's tier choice across nation re-renders
-      // (and across type re-renders when the chosen tier is still
-      // valid in the new type's set — e.g., Medium stays Medium when
-      // switching CY → Port). Defaults to first only when the
-      // previous selection is unavailable.
-      const prevSel = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier;
-      const selKey  = (prevSel && tierKeys.includes(prevSel)) ? prevSel : tierKeys[0];
-      document.getElementById('bm-tiers').innerHTML = tierKeys.map(key => {
-        const t = TIER_TABLE[key];
-        const cost = scaledCost(t.cost, nation);
-        const dur  = scaledDuration(t.ticks, nation);
-        return `
-          <div class="bm-tier ${key === selKey ? 'sel' : ''}" data-tier="${key}">
-            <span class="tn">${escapeHtml(t.label)}</span><span class="td">${escapeHtml(t.desc)}</span>
-            <span class="num cost">${fmtUsd(cost)}</span><span class="num">${dur}t</span>
-            <span class="num amb">+${t.amb} Inf</span>
-          </div>`;
-      }).join('');
-      document.querySelectorAll('#bm-tiers .bm-tier').forEach(el => {
-        el.addEventListener('click', () => {
-          document.querySelectorAll('#bm-tiers .bm-tier').forEach(x => x.classList.remove('sel'));
-          el.classList.add('sel');
-          updateBuildSummary();
-        });
-      });
-    };
-
-    const renderNations = (btype) => {
-      const sel = document.getElementById('bm-nation');
-      // HQ fallback: c.hq_nation_id + c.hq.name come from the corp
-      // row itself and are always available regardless of whether
-      // the nations-table fetch (cached in nationMap) succeeded.
-      // The dropdown can always at least offer the HQ nation.
-      const hqOpt = c.hq_nation_id ? {
-        id:   c.hq_nation_id,
-        name: nationMap.get(c.hq_nation_id)?.name || c.hq?.name || 'HQ',
-      } : null;
-      let options;
-      if (btype === 'regional_hq') {
-        // RHQ has no nation-prereq. Show everything we know about;
-        // if the fetch silently failed (nationMap empty), still
-        // offer the HQ so a Construction corp can build their first
-        // RHQ in their own nation.
-        if (nationMap.size > 0) {
-          options = [...nationMap.values()].map(n => ({ id: n.id, name: n.name }));
-        } else if (hqOpt) {
-          options = [hqOpt];
-        } else {
-          options = [];
-        }
-      } else {
-        // Operational types: HQ (implicit RHQ at founding) + every
-        // nation where this corp owns a completed RHQ.
-        const valid = new Map();
-        if (hqOpt) valid.set(hqOpt.id, hqOpt.name);
-        for (const nid of corpRhqNationIds) {
-          if (nid && !valid.has(nid)) valid.set(nid, nationMap.get(nid)?.name || '—');
-        }
-        options = [...valid.entries()].map(([id, name]) => ({ id, name }));
-      }
-      if (options.length === 0) {
-        // Type-aware empty copy. The previous generic "build a
-        // Regional HQ first" message was misleading when the user
-        // was already trying to build an RHQ.
-        const msg = btype === 'regional_hq'
-          ? '(no nations loaded — refresh the page)'
-          : '(no eligible nations — build a Regional HQ first)';
-        sel.innerHTML = `<option value="">${msg}</option>`;
-      } else {
-        sel.innerHTML = options.map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
-      }
-    };
-
-    const updateBuildSummary = () => {
-      const nation = currentNation();
-      const btypeLabel = buildingTypeLabel(selectedBuildType);
-      // Plants: fixed per-type profile (no tier), same Infra/CoL scaling.
-      const plant = PLANT_PROFILE[selectedBuildType] || null;
-      const t = plant
-        ? { cost: plant.cost, ticks: plant.ticks, amb: plant.amb, rep: null }
-        : (TIER_TABLE[document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier] || TIER_TABLE.small);
-      const cost = scaledCost(t.cost, nation);
-      const dur  = scaledDuration(t.ticks, nation);
-      let extra = '';
-      if (selectedBuildType === 'regional_hq' && t.rep != null) {
-        extra = ` · buyer gains <b>+${t.rep} Reputation</b> on acquisition`;
-      }
-      let footer;
-      if (selectedBuildType === 'regional_hq') {
-        footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation${extra}.`;
-      } else if (selectedBuildType === 'construction_yard') {
-        footer = `Each completed CY contributes <b>+2</b> concurrent Port / Banking-Office / plant build slots in this nation.`;
-      } else if (plant) {
-        footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation. ${btypeLabel}s are sector-locked to <b>Aviation Manufacturing</b> corps — build, then sell on.`;
-      } else {
-        footer = `Completion grants <b>+0.2 GDP Growth</b> to the host nation. ${btypeLabel}s are sector-locked to ${selectedBuildType === 'port' ? 'Shipping' : 'Banking'} corps.`;
-      }
-      // Per-nation stat context — surfaces WHY the cost / duration
-      // is what it is (high cost-of-living + low infra = expensive).
-      const statLine = nation
-        ? `<span class="bm-stat">${escapeHtml(nation.name)}: cost-of-living ${Math.round(Number(nation.cost_of_living ?? 50))} · infrastructure ${Math.round(Number(nation.infrastructure ?? 50))}</span><br>`
-        : '';
-      document.getElementById('bm-summary').innerHTML =
-        `${statLine}<b>${escapeHtml(btypeLabel)}</b> · spend <b>${fmtUsd(cost)}</b> · build over <b>${dur} ticks</b> · <b>+${t.amb} Influence</b> for you.<br>${footer}`;
-    };
-
-    const openBuildModal = async () => {
-      const ov = document.getElementById('bm-overlay');
-      const errEl = document.getElementById('bm-err');
-      document.getElementById('bm-name').value = '';
-      errEl.textContent = '';
-      // Lazy-fetch nations (with cost_of_living + infrastructure
-      // for the cost-scaling formula) + corp's RHQ holdings on first
-      // open. Two tiny queries; result is reused across modal opens.
-      if (nationMap.size === 0) {
-        const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability')
-          .not('continent', 'is', null).order('name');
-        if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
-        for (const n of (nats || [])) nationMap.set(n.id, n);
-      }
-      const { data: rhqs, error: rhqErr } = await _supabase.from('corp_buildings')
-        .select('nation_id')
-        .eq('owner_corp_id', id)
-        .eq('building_type', 'regional_hq')
-        .eq('status', 'completed');
-      if (rhqErr) console.warn('[entrepreneur-corp] RHQ holdings fetch error:', rhqErr.message);
-      corpRhqNationIds = new Set((rhqs || []).map(r => r.nation_id).filter(Boolean));
-
-      // Default to Regional HQ on every open (the most common first
-      // action for an expanding corp). Reset type-picker visual.
-      selectedBuildType = 'regional_hq';
-      document.querySelectorAll('#bm-types .bm-type').forEach(el => {
-        el.classList.toggle('sel', el.dataset.btype === 'regional_hq');
-      });
-      renderNations('regional_hq');
-      renderTiers('regional_hq');
-      updateBuildSummary();
-      ov.classList.add('open');
-      setTimeout(() => document.getElementById('bm-name').focus(), 50);
-    };
-
-    const closeBuildModal = () => document.getElementById('bm-overlay').classList.remove('open');
-
-    // Type-picker click wiring — single-pass on init. Nations
-    // re-render first (filter shrinks/grows), then tiers (cost +
-    // duration depend on which nation is current), then summary.
-    document.querySelectorAll('#bm-types .bm-type').forEach(el => {
-      el.addEventListener('click', () => {
-        document.querySelectorAll('#bm-types .bm-type').forEach(x => x.classList.remove('sel'));
-        el.classList.add('sel');
-        selectedBuildType = el.dataset.btype;
-        renderNations(selectedBuildType);
-        renderTiers(selectedBuildType);
-        updateBuildSummary();
-      });
-    });
-
-    // Nation-change handler: tier costs + durations depend on the
-    // host nation's cost_of_living + infrastructure, so
-    // re-render the tier rows and the summary on every change.
-    document.getElementById('bm-nation').addEventListener('change', () => {
-      renderTiers(selectedBuildType);
-      updateBuildSummary();
-    });
+    // Shared nations cache. Populated lazily by openRequestModal on
+    // first open (id → { id, name, cost_of_living, infrastructure,
+    // standard_of_living, politician_stability }); cached across
+    // subsequent opens. Was originally introduced for the Begin
+    // Construction modal (4dbbc16 restructure removed that surface
+    // for construction corps); openRequestModal is the surviving
+    // consumer.
+    let nationMap = new Map();
 
     // ── Request Construction (commission a building; 20270225) ──
     // Any corp can commission a building it can own; construction corps with
     // a completed CY in the nation bid; lowest in-capacity bid auto-wins and
-    // delivers it. Reuses TIER_TABLE / PLANT_PROFILE / scaledCost (the same
-    // mirror of the server cost formula the build modal uses).
+    // delivers it. Uses TIER_TABLE / PLANT_PROFILE / scaledCost — the
+    // single-source mirror of the server cost formula.
     const SECTOR_OF_TYPE = {
       construction_yard: 'construction', port: 'shipping', banking_office: 'banking',
       real_estate_office: 'real_estate', engine_assembly_plant: 'aviation_manufacturing',
@@ -7423,65 +7210,6 @@ const openBidModal = (contractId, label, yourCost) => {
       };
       ov.classList.add('open');
     };
-
-    document.getElementById('bm-close').addEventListener('click', closeBuildModal);
-    document.getElementById('bm-cancel').addEventListener('click', closeBuildModal);
-    document.getElementById('bm-overlay').addEventListener('click', (e) => {
-      if (e.target.id === 'bm-overlay') closeBuildModal();
-    });
-
-    document.getElementById('bm-submit').addEventListener('click', async () => {
-      if (buildSubmitting) return;
-      const errEl = document.getElementById('bm-err');
-      const name = (document.getElementById('bm-name').value || '').trim();
-      const tier = document.querySelector('#bm-tiers .bm-tier.sel')?.dataset.tier || 'small';
-      const nationId = document.getElementById('bm-nation').value;
-      if (name.length < 2 || name.length > 80) {
-        errEl.textContent = 'Building name must be 2–80 characters.';
-        return;
-      }
-      if (!nationId) {
-        errEl.textContent = 'Pick a host nation.';
-        return;
-      }
-      buildSubmitting = true;
-      const btn = document.getElementById('bm-submit');
-      const prev = btn.textContent;
-      btn.disabled = true; btn.textContent = 'BREAKING GROUND…';
-      errEl.textContent = '';
-      try {
-        const { data, error: rpcErr } = await _supabase.rpc('begin_construction', {
-          p_corp_id:        id,
-          p_nation_id:      nationId,
-          p_name:           name,
-          p_tier:           tier,
-          p_building_type:  selectedBuildType,
-        });
-        if (rpcErr) throw rpcErr;
-        if (!data || !data.success) {
-          const REASON = {
-            insufficient_funds:    data?.need != null ? `Corp treasury too low — need ${fmtUsd(Number(data.need))}, has ${fmtUsd(Number(data.have) || 0)}.` : 'Corp treasury too low.',
-            not_construction_corp: 'Only Construction corps can break ground.',
-            not_owner:             'Only the corp owner can begin construction.',
-            invalid_name:          'Building name must be 2–80 characters.',
-            invalid_tier:          'Pick a tier.',
-            invalid_rhq_tier:      'Regional HQs only come in Small, Medium, or Large.',
-            invalid_building_type: 'Pick a building type.',
-            no_rhq_in_nation:      'You need a completed Regional HQ in this nation first.',
-            capacity_exceeded:     data?.cy_count != null ? `No spare capacity — ${data.in_progress} in-progress vs ${data.max} max (${data.cy_count} CY${data.cy_count === 1 ? '' : 's'} × 2). Build another Construction Yard.` : 'No spare construction capacity in this nation.',
-            nation_not_found:      'That nation no longer exists.',
-          };
-          errEl.textContent = REASON[data?.reason] || ('Could not start: ' + (data?.reason || 'unknown'));
-          buildSubmitting = false; btn.disabled = false; btn.textContent = prev;
-          return;
-        }
-        btn.textContent = 'STARTED ✓ — refreshing…';
-        setTimeout(() => location.reload(), 700);
-      } catch (e) {
-        errEl.textContent = 'Failed: ' + (e?.message || e);
-        buildSubmitting = false; btn.disabled = false; btn.textContent = prev;
-      }
-    });
 
     // ── List-for-Sale modal (v1) ──
     // Opened from a completed building's [List for Sale] button.
@@ -9223,39 +8951,6 @@ const openBidModal = (contractId, label, yourCost) => {
   }
 })();
 </script>
-
-<!-- Begin Construction modal (v0). Open from the Active Projects panel
-     on a Construction corp the viewer owns. RPC: begin_construction. -->
-<div class="bm-overlay" id="bm-overlay">
-  <div class="bm-modal">
-    <div class="bm-head">
-      <div class="ti">Begin <em>Construction</em></div>
-      <div class="bm-x" id="bm-close">×</div>
-    </div>
-    <div class="bm-body">
-      <div class="bm-label">Building Type</div>
-      <div class="bm-types" id="bm-types"><!-- Rendered from BUILDING_TYPES on init --></div>
-
-      <div class="bm-label">Building Name</div>
-      <input type="text" class="bm-input" id="bm-name" maxlength="80"
-             placeholder="e.g. Aurora Heights, Solvarist Cathedral, Port Tower">
-
-      <div class="bm-label">Host Nation</div>
-      <select class="bm-select" id="bm-nation"><option>Loading…</option></select>
-
-      <div class="bm-label" id="bm-tier-label">Tier</div>
-      <div class="bm-tiers" id="bm-tiers"><!-- Rendered from TIER_TABLE on type change --></div>
-
-      <!-- Filled by updateBuildSummary on modal open from TIER_TABLE. -->
-      <div class="bm-summary" id="bm-summary"></div>
-      <div class="bm-err" id="bm-err"></div>
-    </div>
-    <div class="bm-foot">
-      <button class="bm-btn sec" id="bm-cancel">Cancel</button>
-      <button class="bm-btn pri" id="bm-submit">Break Ground</button>
-    </div>
-  </div>
-</div>
 
 <!-- List for Sale modal (v1). Owner of a completed building sets the
      price, RPC: list_building_for_sale. -->

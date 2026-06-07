@@ -1142,7 +1142,7 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys, viewerFact
     const seatedAt = Number(seat.seated_at_tick);
     let bidReason = null;
     if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
-      bidReason = `Need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${fmtStat(skill)})`;
+      bidReason = `Need ${CHAIR_BID_THRESHOLDS.SKILL} Experience (have ${fmtStat(skill)})`;
     } else if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
       bidReason = `Need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence (have ${Math.floor(influence)})`;
     } else if (!Number.isFinite(seatedAt) || (currentTick - seatedAt) < CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED) {
@@ -1195,7 +1195,7 @@ async function submitChairBid(btn, committeeId) {
         not_member:            'You are not a member of this committee.',
         already_chair:         'You already chair this committee.',
         membership_too_short:  'You have not been seated long enough to bid.',
-        insufficient_skill:    `You need ${CHAIR_BID_THRESHOLDS.SKILL} Skill to bid for chair.`,
+        insufficient_skill:    `You need ${CHAIR_BID_THRESHOLDS.SKILL} Experience to bid for chair.`,
         insufficient_capital:  `You need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence to bid for chair.`,
         cooldown:              'Your bid cooldown has not expired.',
         no_chair_seat:         'The chair seat is vacant — no bid needed.',
