@@ -3896,7 +3896,7 @@ async function confirmCityCouncilRun(ctx) {
   btn.textContent = 'Registering…';
   try {
     const { data, error } = await _supabase.rpc('politician_register_for_office',
-      { p_target_office: 'city_council_member' });
+      { p_faction_id: ctx?.faction?.id || null, p_target_office: 'city_council_member' });
     if (error) throw error;
     if (!data?.success) {
       const REASON = {
