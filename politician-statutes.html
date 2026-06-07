@@ -172,6 +172,16 @@
 .pnl-art-counter.warn { color:#d4b87a; }
 .pnl-art-counter.over { color:var(--red); }
 
+.pnl-arch-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+.pnl-arch-chip { padding:7px 11px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
+  color:var(--mut); font-size:10px; font-weight:600; letter-spacing:0.02em; text-align:left;
+  cursor:pointer; font-family:inherit; }
+.pnl-arch-chip:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.pnl-arch-chip.selected { background:var(--leg-bg); border-color:var(--leg-dim); color:var(--leg-bright);
+  border-left:2px solid var(--leg); padding-left:10px; }
+.pnl-arch-chip:disabled { opacity:0.35; cursor:not-allowed; }
+@media (max-width:520px) { .pnl-arch-grid { grid-template-columns:1fr; } }
+
 .pnl-stakeholders { display:flex; flex-direction:column; gap:6px; }
 .pnl-stk-row { display:flex; align-items:center; gap:8px; }
 .pnl-stk-num { font-family:Georgia,serif; font-size:11px; color:var(--leg); width:18px; flex-shrink:0;
@@ -318,6 +328,18 @@
         <div class="pnl-stakeholders" id="pnl-stakeholders"></div>
       </div>
 
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity.</div>
+        <div class="pnl-arch-grid" id="pnl-support-arch"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting.</div>
+        <div class="pnl-arch-grid" id="pnl-oppose-arch"></div>
+      </div>
+
     </div>
 
     <div class="pnl-err" id="pnl-err"></div>
@@ -368,6 +390,18 @@
         <div class="pnl-stakeholders" id="aml-stakeholders"></div>
       </div>
 
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>.</div>
+        <div class="pnl-arch-grid" id="aml-support-arch"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting.</div>
+        <div class="pnl-arch-grid" id="aml-oppose-arch"></div>
+      </div>
+
     </div>
 
     <div class="pnl-err" id="aml-err"></div>
@@ -385,6 +419,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { COMMITTEES } from './js/committees.js';
+import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 import { isMpOffice } from './js/utils.js';
 
 // Article tag suggestions cycle by position; user can't pick yet (v1
@@ -421,10 +456,13 @@ const draft = {
   committeeKey: null,
   articles: [{ text: '' }],
   stakeholders: ['', '', '', '', ''],   // up to 5; blanks dropped on submit
+  supportArchetypes: [],                // up to 2 archetype names
+  opposeArchetypes:  [],                // up to 2 archetype names; disjoint from above
 };
 
 const STK_MAX = 5;
 const STK_LEN_MAX = 40;
+const ARCH_MAX = 2;
 
 // Lookup of committee_key → committee row id for the active nation,
 // populated on modal open.
@@ -579,6 +617,8 @@ async function openModal() {
   draft.committeeKey = null;
   draft.articles = [{ text: '' }];
   draft.stakeholders = ['', '', '', '', ''];
+  draft.supportArchetypes = [];
+  draft.opposeArchetypes  = [];
 
   document.getElementById('pnl-section').value = '';
   document.getElementById('pnl-err').classList.remove('show');
@@ -589,6 +629,8 @@ async function openModal() {
   renderCommittees();
   renderArticles();
   renderStakeholders('pnl-stakeholders', draft.stakeholders);
+  renderArchetypePair('pnl-support-arch', 'pnl-oppose-arch',
+                     draft.supportArchetypes, draft.opposeArchetypes, refreshSubmitState);
   refreshSubmitState();
 
   const ov = document.getElementById('pnl-overlay');
@@ -701,7 +743,8 @@ function refreshSubmitState() {
           && draft.articles.length >= 1 && draft.articles.length <= 10
           && allText
           && total > 0 && total <= 600
-          && validateStakeholders(draft.stakeholders).ok;
+          && validateStakeholders(draft.stakeholders).ok
+          && validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes).ok;
   document.getElementById('pnl-submit').disabled = !ok || submitInFlight;
 }
 
@@ -782,6 +825,88 @@ function validateStakeholders(state) {
   return { ok: true, roles: cleaned };
 }
 
+// Render two parallel chip grids (Support / Oppose) sharing the
+// PARTY_ARCHETYPES catalog. Selecting a chip in one side disables it
+// on the other (disjoint lists per server validator). ARCH_MAX-cap
+// per side is enforced by greying-out the unselected chips when the
+// cap is hit. `onChange` runs after every toggle so the caller can
+// refresh the submit-button gate.
+function renderArchetypePair(supportHostId, opposeHostId, supportState, opposeState, onChange) {
+  const buildChip = (name) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'pnl-arch-chip';
+    chip.textContent = name;
+    return chip;
+  };
+  const repaint = () => {
+    [[supportHostId, supportState, opposeState],
+     [opposeHostId,  opposeState,  supportState]].forEach(([hostId, state, otherState]) => {
+      const host = document.getElementById(hostId);
+      if (!host) return;
+      host.querySelectorAll('.pnl-arch-chip').forEach(chip => {
+        const name = chip.textContent;
+        const onThis = state.includes(name);
+        const onOther = otherState.includes(name);
+        chip.classList.toggle('selected', onThis);
+        // Disable if on the other side, or if this side is full and
+        // this chip isn't already selected (no room to add).
+        chip.disabled = onOther || (!onThis && state.length >= ARCH_MAX);
+      });
+    });
+  };
+  const bind = (hostId, state, otherState) => {
+    const host = document.getElementById(hostId);
+    if (!host) return;
+    host.replaceChildren();
+    for (const name of PARTY_ARCHETYPES) {
+      const chip = buildChip(name);
+      chip.addEventListener('click', () => {
+        const idx = state.indexOf(name);
+        if (idx >= 0) {
+          state.splice(idx, 1);
+        } else {
+          if (state.length >= ARCH_MAX) return;
+          if (otherState.includes(name)) return;
+          state.push(name);
+        }
+        repaint();
+        if (onChange) onChange();
+      });
+      host.appendChild(chip);
+    }
+  };
+  bind(supportHostId, supportState, opposeState);
+  bind(opposeHostId,  opposeState,  supportState);
+  repaint();
+}
+
+// Returns {ok, support, oppose} — server-ready arrays (null if empty)
+// or {ok:false} for any violation. Length cap, catalog membership,
+// and disjointness are all validated client-side as defence in depth;
+// _validate_archetype_pair on the server enforces the same rules.
+function validateArchetypes(support, oppose) {
+  const validate = arr => {
+    if (arr.length > ARCH_MAX) return false;
+    const seen = new Set();
+    for (const name of arr) {
+      if (!PARTY_ARCHETYPES.includes(name)) return false;
+      if (seen.has(name)) return false;
+      seen.add(name);
+    }
+    return true;
+  };
+  if (!validate(support) || !validate(oppose)) return { ok: false };
+  for (const name of support) {
+    if (oppose.includes(name)) return { ok: false };
+  }
+  return {
+    ok: true,
+    support: support.length ? support.slice() : null,
+    oppose:  oppose.length  ? oppose.slice()  : null,
+  };
+}
+
 const REASON_HUMAN = {
   not_authenticated:    'You are not signed in.',
   no_politician:        'No politician faction found.',
@@ -794,6 +919,7 @@ const REASON_HUMAN = {
   empty_article:        'Every article needs some text.',
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
   invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
+  invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
 };
 
 async function submit() {
@@ -820,6 +946,12 @@ async function submit() {
     err.classList.add('show');
     return;
   }
+  const archCheck = validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes);
+  if (!archCheck.ok) {
+    err.textContent = REASON_HUMAN.invalid_archetype_positions;
+    err.classList.add('show');
+    return;
+  }
   // Server treats NULL as "no author personas — fall back to
   // category-template auto-seed." Empty array would mean the same
   // semantically but null is the explicit default in the RPC.
@@ -830,12 +962,14 @@ async function submit() {
 
   try {
     const { data, error } = await _supabase.rpc('committee_propose_law', {
-      p_committee_id:  committeeId,
-      p_category:      draft.category,
-      p_section:       draft.section.trim(),
-      p_articles:      articlesPayload,
-      p_faction_id:    politicianCtx?.faction?.id || null,
-      p_persona_roles: personaRolesPayload,
+      p_committee_id:       committeeId,
+      p_category:           draft.category,
+      p_section:            draft.section.trim(),
+      p_articles:           articlesPayload,
+      p_faction_id:         politicianCtx?.faction?.id || null,
+      p_persona_roles:      personaRolesPayload,
+      p_support_archetypes: archCheck.support,
+      p_oppose_archetypes:  archCheck.oppose,
     });
     if (error) throw error;
     if (!data?.success) {
@@ -864,9 +998,11 @@ async function submit() {
 // the change; the server inherits committee + category + section
 // from the parent so there's no committee picker here.
 const amendDraft = {
-  amendsProposalId: null,
-  text:             '',
-  stakeholders:     ['', '', '', '', ''],
+  amendsProposalId:  null,
+  text:              '',
+  stakeholders:      ['', '', '', '', ''],
+  supportArchetypes: [],
+  opposeArchetypes:  [],
 };
 let amendInFlight = false;
 let amendStatutes = [];   // cached enacted-laws snapshot for the picker
@@ -891,6 +1027,7 @@ const AMEND_REASON_HUMAN = {
   amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
   parent_committee_missing: 'The original committee for that statute is gone — try a different statute.',
   invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
+  invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
 };
 
 async function openAmendModal() {
@@ -901,10 +1038,15 @@ async function openAmendModal() {
   amendDraft.amendsProposalId = null;
   amendDraft.text = '';
   amendDraft.stakeholders = ['', '', '', '', ''];
+  amendDraft.supportArchetypes = [];
+  amendDraft.opposeArchetypes  = [];
   document.getElementById('aml-text').value = '';
   document.getElementById('aml-err').classList.remove('show');
   document.getElementById('aml-err').textContent = '';
   renderStakeholders('aml-stakeholders', amendDraft.stakeholders);
+  renderArchetypePair('aml-support-arch', 'aml-oppose-arch',
+                     amendDraft.supportArchetypes, amendDraft.opposeArchetypes,
+                     refreshAmendSubmitState);
   refreshAmendCounter();
   refreshAmendSubmitState();
 
@@ -990,7 +1132,8 @@ function refreshAmendCounter() {
 function refreshAmendSubmitState() {
   const ok = amendDraft.amendsProposalId && amendDraft.text.trim().length > 0
     && amendDraft.text.length <= 600
-    && validateStakeholders(amendDraft.stakeholders).ok;
+    && validateStakeholders(amendDraft.stakeholders).ok
+    && validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes).ok;
   document.getElementById('aml-submit').disabled = !ok || amendInFlight;
 }
 
@@ -1007,6 +1150,12 @@ async function submitAmendment() {
     err.classList.add('show');
     return;
   }
+  const archCheck = validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes);
+  if (!archCheck.ok) {
+    err.textContent = AMEND_REASON_HUMAN.invalid_archetype_positions;
+    err.classList.add('show');
+    return;
+  }
   const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
 
   amendInFlight = true;
@@ -1018,6 +1167,8 @@ async function submitAmendment() {
       p_amendment_text:     amendDraft.text.trim(),
       p_faction_id:         politicianCtx?.faction?.id || null,
       p_persona_roles:      personaRolesPayload,
+      p_support_archetypes: archCheck.support,
+      p_oppose_archetypes:  archCheck.oppose,
     });
     if (error) throw error;
     if (!data?.success) {
