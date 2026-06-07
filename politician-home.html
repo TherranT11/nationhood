@@ -1478,7 +1478,7 @@ async function init() {
       _supabase.from('politician_career_events')
         .select('event_tick, event_type, target_name, metadata')
         .eq('faction_id', politician.id)
-        .order('event_tick', { ascending: true }),
+        .order('event_tick', { ascending: false }),
       // Pulls only the columns the Pressing Issues card renders. resolve_due
       // ran above, so a just-resolved race has already been deleted by the
       // time this fetch runs (Promise.all does not enforce order; here
@@ -1716,9 +1716,10 @@ async function saveNickname(raw) {
 // Career log — derived from the politician's lifecycle today. Only one event
 // exists (the founding); future entries (joined party X, became MP, scandal,
 // etc.) get appended as those mechanics land and can write into the same list.
-// Sorted oldest-first so the list reads as a career trajectory: career start
-// at the top, each subsequent event appended below in the order it happened.
-// New events land at the bottom and don't disturb the rows already rendered.
+// Sorted newest-first so the most recent move sits at the top of the card and
+// the career start anchors the bottom — a freshly-fired event lands above
+// every prior entry, which matches the "log" reading order most players
+// expect on a long-running politician.
 function renderCareer() {
   const first = politician.leader_first_name || '';
   const last  = politician.leader_last_name  || '';
@@ -1741,7 +1742,7 @@ function renderCareer() {
     if (!fn) continue;
     events.push({ tick: Number(row.event_tick), text: fn(display, row.target_name, row.metadata || {}) });
   }
-  events.sort((a, b) => a.tick - b.tick);
+  events.sort((a, b) => b.tick - a.tick);
 
   const host = document.getElementById('career-events');
   if (!host) return;
@@ -1883,9 +1884,9 @@ const LEGISLATURE_ACTIONS = [
 // existing render logic at renderAffiliation treats them as disabled.
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
-  { ic: '📄', name: 'FILE PAPERWORK', cost: 'no cost', desc: 'Route up to 3 incoming dispatches to the right ministry and agency. Flag if it needs Senior review.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',         cost: 'no cost', desc: 'Spend the month doing busy work. +0.5 Skill.', action: 'file-a-memo' },
-  { ic: '🔎', name: 'AUDIT THE MINISTRY',  cost: 'no cost', desc: 'Pull on a thread inside the ministry. What you find shapes your standing.', action: 'audit-ministry' },
+  { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Skill each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
+  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.5 Skill. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
+  { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
 // Agency Head (Tier 2) placeholder actions — slots from the

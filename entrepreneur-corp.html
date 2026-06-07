@@ -407,6 +407,25 @@
   .cf-row .num.amber { color:#c89e6e; }
   .cf-row .num.red   { color:#c98a8a; }
   .cf-row .num.muted { color:#666; }
+  /* Market Opportunities + Operations Feed rows (construction-corp
+     restructure). Same visual weight as .cf-row but with a leading
+     flag chip and a column gap for progress (Operations Feed only).
+     .cf-row .who/.sub/.num classes are reused inside .mo-info so the
+     text styling stays single-source. */
+  .mo-row { display:grid; grid-template-columns:1fr auto auto; gap:12px;
+    padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+    border-radius:4px; margin-bottom:6px; align-items:center; }
+  .mo-left { display:flex; align-items:center; gap:12px; min-width:0; }
+  .mo-info { min-width:0; }
+  .mo-info .who   { font-size:13px; color:#fff; font-weight:500; }
+  .mo-info .sub   { font-size:10px; color:#888; margin-top:3px; letter-spacing:0.06em; }
+  .mo-flag { width:24px; height:16px; object-fit:cover; flex-shrink:0;
+    border-radius:2px; border:0.5px solid rgba(255,255,255,0.1); }
+  .mo-progress { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+  .mo-actions { display:flex; gap:6px; align-items:center; }
+  /* Placeholder Reject / Cancel buttons — disabled and dimmed so the
+     intent reads as "future surface" rather than broken. */
+  .mo-reject:disabled, .mo-cancel:disabled { opacity:0.45; cursor:not-allowed; }
   /* Corporate History section — chronological event list aggregated
      from event_log + corp_tax_bills (see list_corp_history RPC). */
   .ch-list  { display:flex; flex-direction:column; gap:6px; }
@@ -1177,17 +1196,22 @@
           Share-price history begins once the corp goes public.
         </div>
 
-        <div class="section-heading">
+        <div class="section-heading" id="cp-projects-heading">
           <span class="roman">II.</span><span class="sans">Active</span><span class="serif">Projects</span>
         </div>
         <div id="cp-projects"></div>
 
-        <div class="section-heading">
+        <div class="section-heading" id="cp-operations-heading" style="display:none;">
+          <span class="roman">III.</span><span class="sans">Operations</span><span class="serif">Feed</span>
+        </div>
+        <div id="cp-operations" style="display:none;"></div>
+
+        <div class="section-heading" id="cp-assets-heading">
           <span class="roman">III.</span><span class="sans">Corporate</span><span class="serif">Assets</span>
         </div>
         <div id="cp-assets"></div>
 
-        <div class="section-heading">
+        <div class="section-heading" id="cp-finance-heading">
           <span class="roman">IV.</span><span class="sans">Corporate</span><span class="serif">Finance</span>
         </div>
         <div id="cp-finance"></div>
@@ -6134,6 +6158,13 @@ function initials(s, n) {
       // ── Request Construction panels (20270225). My commissioned requests
       // (any owner) + open requests this construction corp can bid on. ──
       let requestPanelHtml = '';
+      // Construction-corp restructure: the new top-level Market
+      // Opportunities (II) and Operations Feed (III) sections feed off
+      // these two strings. Built inside the isConstructionCorp block
+      // below and consumed at the cp-projects innerHTML assembly + the
+      // cp-operations population that follows it.
+      let constructionMarketOppsHtml    = '';
+      let constructionOperationsFeedHtml = '';
       if (canView) {
         const { data: myReqs, error: mrErr } = await _supabase.from('ent_construction_contracts')
           .select('id, name, building_type, build_cost, status, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), winner:entrepreneur_corps!winner_corp_id(name)')
@@ -6195,13 +6226,23 @@ function initials(s, n) {
           ${reqs.length ? reqs.map(mrRow).join('') : '<div class="sh-empty">No open requests.</div>'}`;
       }
       if (canView && isConstructionCorp) {
+        // Construction-corp restructure: the old Open Build Requests +
+        // Active Builds subsections inside Active Projects collapse
+        // into top-level Sections II (Market Opportunities) and III
+        // (Operations Feed). Both render into the hoisted
+        // constructionMarketOppsHtml / constructionOperationsFeedHtml
+        // strings so the conditional swap at the cp-projects innerHTML
+        // assembly below can route them into the right hosts. Row
+        // format per spec: [flag] [country] · [project] · by [issuer] ·
+        // [issuer industry] · [building type] | [action buttons].
+        //
         // Every construction corp sees every open building-delivery contract
         // — no CY-in-nation gate. Per-bidder cost is build_cost × distance
         // multiplier from this corp's HQ to the contract's nation; the
         // formula mirrors construction_distance_multiplier() in
         // 20270369 and the SQL settlement is the canonical source.
         const { data: openReqs, error: orErr } = await _supabase.from('ent_construction_contracts')
-          .select('id, name, building_type, build_cost, issuer_name, nation_id, nation:nations!nation_id(name), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
+          .select('id, name, building_type, build_cost, issuer_name, nation_id, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(industry), mybid:ent_construction_bids(bid_amount, bidder_corp_id)')
           .eq('status', 'open').not('building_type', 'is', null)
           .neq('issuer_corp_id', id).order('bidding_closes_tick', { ascending: true });
         if (orErr) console.warn('[entrepreneur-corp] open requests fetch error:', orErr.message);
@@ -6224,27 +6265,52 @@ function initials(s, n) {
           }
         }
 
+        // Single source for the per-row flag chip. Falls back to
+        // display:none when the file is missing (the canonical
+        // FLAG_URLS map lives in select-nation.html today; extracting
+        // it to a shared module is on the SoT follow-up list — until
+        // then this onerror-hide is the same shape that file's
+        // renderMilitaryNationCard uses).
+        const flagChip = (name) => name
+          ? `<img class="mo-flag" src="assets/flags/${escapeHtml(name)}.png" alt="" onerror="this.style.display='none'">`
+          : '';
+
         const orRow = (r) => {
           const mine = (r.mybid || []).find(b => b.bidder_corp_id === id);
           const label = buildingTypeLabel(r.building_type);
           const base = Number(r.build_cost) || 0;
           const yourCost = Math.ceil(base * costMultiplierFor(r.nation_id, myHq, proxByNation));
+          const nationName = r.nation?.name || '—';
+          const issuerName = r.issuer_name || 'unknown issuer';
+          const issuerType = r.issuer?.industry ? industryLabel(r.issuer.industry) : 'Corporation';
           const bidBtn = ownerOnly(`<button class="ap-btn-small list rc-bid-btn" data-cid="${r.id}" data-label="${escapeHtml(label)}" data-cost="${yourCost}">${mine ? `bid ${fmtUsd(Number(mine.bid_amount))}` : 'Bid'}</button>`);
-          return `<div class="cf-row"><div><div class="who">${escapeHtml(label)} · ${escapeHtml(r.name)}</div>
-            <div class="sub">${escapeHtml(r.nation?.name || '—')} · by ${escapeHtml(r.issuer_name || '—')} · your cost ${fmtUsd(yourCost)}</div></div>
-            ${bidBtn}</div>`;
+          // Reject is a placeholder pending the dismiss-opportunity
+          // backend column. Disabled + tooltip so the player sees the
+          // intended interaction without it firing.
+          const rejectBtn = ownerOnly(`<button class="ap-btn-small ghost mo-reject" disabled title="Coming soon — dismiss this opportunity">Reject</button>`);
+          return `<div class="mo-row">
+            <div class="mo-left">
+              ${flagChip(nationName)}
+              <div class="mo-info">
+                <div class="who">${escapeHtml(nationName)} &middot; ${escapeHtml(r.name)}</div>
+                <div class="sub">by ${escapeHtml(issuerName)} &middot; ${escapeHtml(issuerType)} &middot; ${escapeHtml(label)} &middot; your cost ${fmtUsd(yourCost)}</div>
+              </div>
+            </div>
+            <div class="mo-actions">${bidBtn}${rejectBtn}</div>
+          </div>`;
         };
-        const openHtml = open.length ? open.map(orRow).join('') : '<div class="sh-empty">No open construction requests.</div>';
-        requestPanelHtml += `<div class="section-heading"><span class="sans">Open</span><span class="serif">Build Requests</span></div>${openHtml}`;
+        constructionMarketOppsHtml = open.length
+          ? open.map(orRow).join('')
+          : '<div class="sh-empty">No open opportunities right now. Check back next tick.</div>';
 
-        // Active Builds — contracts WHERE this corp is the winner. The
-        // bidder-side mirror of the issuer's Construction Requests panel
-        // above. Without this, a builder whose bid was accepted had no
-        // visibility on their own work-in-progress (the issuer's page
-        // shows it; the builder's didn't). Progress advances each tick
-        // in process_ent_construction_contracts (20270369).
+        // Operations Feed — contracts WHERE this corp is the winner.
+        // Progress advances each tick in process_ent_construction_
+        // contracts (20270369). Money-spent column shows the winning
+        // bid as the committed amount; an incremental progress-payment
+        // mechanic doesn't exist yet so a literal "spent so far" can't
+        // be sourced today.
         const { data: myBuilds, error: mbErr } = await _supabase.from('ent_construction_contracts')
-          .select('name, building_type, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(name)')
+          .select('id, name, building_type, timeline_ticks, progress_ticks, winning_bid, nation:nations!nation_id(name), issuer:entrepreneur_corps!issuer_corp_id(name, industry)')
           .eq('winner_corp_id', id)
           .eq('status', 'active')
           .order('started_at_tick', { ascending: true });
@@ -6253,19 +6319,33 @@ function initials(s, n) {
         const buildRow = (b) => {
           const total = Number(b.timeline_ticks) || 0;
           const done  = Math.max(0, Math.min(total, Number(b.progress_ticks) || 0));
-          const left  = total - done;
-          return `<div class="cf-row">
-            <div>
-              <div class="who">${escapeHtml(buildingTypeLabel(b.building_type))} &middot; ${escapeHtml(b.name)}</div>
-              <div class="sub">${escapeHtml(b.nation?.name || '—')} &middot; for ${escapeHtml(b.issuer?.name || 'unknown client')} &middot; bid ${fmtUsd(Number(b.winning_bid) || 0)}</div>
+          const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+          const nationName = b.nation?.name || '—';
+          const issuerName = b.issuer?.name || 'unknown client';
+          const issuerType = b.issuer?.industry ? industryLabel(b.issuer.industry) : 'Corporation';
+          const label = buildingTypeLabel(b.building_type);
+          const committed = Number(b.winning_bid) || 0;
+          // Cancel is a placeholder pending the abort-build backend.
+          // Same disabled + tooltip shape as the Reject button above.
+          const cancelBtn = ownerOnly(`<button class="ap-btn-small ghost mo-cancel" disabled title="Coming soon — abort this build">Cancel</button>`);
+          return `<div class="mo-row">
+            <div class="mo-left">
+              ${flagChip(nationName)}
+              <div class="mo-info">
+                <div class="who">${escapeHtml(nationName)} &middot; ${escapeHtml(b.name)}</div>
+                <div class="sub">by ${escapeHtml(issuerName)} &middot; ${escapeHtml(issuerType)} &middot; ${escapeHtml(label)}</div>
+              </div>
             </div>
-            <span class="num green">building ${done}/${total}${left > 0 ? ` &middot; ${left} tick${left === 1 ? '' : 's'} left` : ''}</span>
+            <div class="mo-progress">
+              <span class="num green">${pct}%</span>
+              <span class="num green" style="font-size:11px;color:#888;">committed ${fmtUsd(committed)}</span>
+            </div>
+            <div class="mo-actions">${cancelBtn}</div>
           </div>`;
         };
-        const buildsHtml = builds.length
+        constructionOperationsFeedHtml = builds.length
           ? builds.map(buildRow).join('')
-          : '<div class="sh-empty">No active builds. Win a bid above to start construction.</div>';
-        requestPanelHtml += `<div class="section-heading"><span class="sans">Active</span><span class="serif">Builds</span></div>${buildsHtml}`;
+          : '<div class="sh-empty">No active builds. Win a bid in Market Opportunities above to start construction.</div>';
       }
 
       // Oil & Gas Operations panel — reserves + sell-to-spot buttons +
@@ -6483,7 +6563,27 @@ function initials(s, n) {
           </div>`;
       }
 
-      pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + surveysPanelHtml + permitsPanelHtml + ordersPanelHtml + requestPanelHtml;
+      if (isConstructionCorp) {
+        // Construction corps get the new 3-section layout: cp-projects
+        // becomes Market Opportunities (just the open-bid list, no
+        // launch button, no portfolio, no inner sub-headings), and
+        // cp-operations gets the Operations Feed. Section headings are
+        // rewritten in place; cp-assets blanks out as the new Section
+        // IV (Logistics & Assets) placeholder; cp-finance moves to V.
+        pj.innerHTML = constructionMarketOppsHtml;
+        const opsHost = document.getElementById('cp-operations');
+        if (opsHost) opsHost.innerHTML = constructionOperationsFeedHtml;
+        document.getElementById('cp-operations-heading').style.display = '';
+        document.getElementById('cp-operations').style.display = '';
+        document.getElementById('cp-projects-heading').innerHTML =
+          '<span class="roman">II.</span><span class="sans">Market</span><span class="serif">Opportunities</span>';
+        document.getElementById('cp-assets-heading').innerHTML =
+          '<span class="roman">IV.</span><span class="sans">Logistics</span><span class="serif">&amp; Assets</span>';
+        document.getElementById('cp-finance-heading').innerHTML =
+          '<span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">Finance</span>';
+      } else {
+        pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + surveysPanelHtml + permitsPanelHtml + ordersPanelHtml + requestPanelHtml;
+      }
 
       // Wire the Oil & Gas sell buttons.
       if (isOilGasCorp && isOwner) {
@@ -8983,10 +9083,18 @@ const openBidModal = (contractId, label, yourCost) => {
     const renderAssets = () => {
       const host = document.getElementById('cp-assets');
       if (!host) return;
+      // Construction-corp restructure: Section III flips to "Logistics
+      // & Assets" with no holdings UI yet. Short-circuit before the
+      // ownedBuildings render so the placeholder shows even when this
+      // corp happens to own a Construction Yard or two.
+      if (isConstructionCorp) {
+        host.innerHTML = `<div class="empty-card" style="color:#5a5a5a;font-style:italic;">Logistics &amp; Assets — supply-chain tooling under development.</div>`;
+        return;
+      }
       const rows = [...ownedBuildings]
         .sort((a, b) => (a.building_type || '').localeCompare(b.building_type || ''));
       if (rows.length === 0) {
-        host.innerHTML = `<div class="empty-card">No properties owned yet.${isConstructionCorp ? ' Break ground with Begin Construction above, or buy on the market.' : ' Acquire properties on the market.'}</div>`;
+        host.innerHTML = `<div class="empty-card">No properties owned yet. Acquire properties on the market.</div>`;
         return;
       }
       const plotById = new Map(oilPlotsCache.map(p => [p.id, p]));
