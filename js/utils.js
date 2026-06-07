@@ -10,6 +10,40 @@
 // Single source of truth for the build label shown in every faction navbar.
 export const APP_VERSION = 'ALPA — 2.9';
 
+// Junior Minister portfolios (20270669). Slug → display label + a
+// short hint surfaced on the portfolio picker and pressing-issues
+// candidate review. Slugs are CHECK-constrained server-side via
+// _junior_portfolio_keys(); this is the player-facing SoT — every
+// page that surfaces a portfolio label reads from here so a label
+// tweak is a one-file edit. Order drives the picker numbering.
+export const JUNIOR_PORTFOLIO_LABEL = {
+    sports:         'Sports',
+    culture:        'Culture',
+    communications: 'Communications',
+    tourism:        'Tourism',
+    housing:        'Housing',
+};
+export const JUNIOR_PORTFOLIO_HINT = {
+    sports:         'leagues · federations · venues',
+    culture:        'arts · heritage · institutions',
+    communications: 'broadcasting · postal · telecoms',
+    tourism:        'inbound · marketing · attractions',
+    housing:        'affordability · construction · standards',
+};
+
+// Format a 0-100 numeric stat for display — Skill 10.0 reads as "10",
+// Skill 10.3 stays "10.3". Returns "0" for null / undefined / NaN so
+// callers can drop their || 0 boilerplate. Single source for stat
+// rendering; politician-career.html (rung labels + picker meta) and
+// politician-home.html (candidate review card) used to each carry
+// their own copy of this logic.
+export function fmtStat(value, decimals = 1) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    if (decimals === 0) return String(Math.round(n));
+    return n.toFixed(decimals).replace(/\.0+$/, '');
+}
+
 // ===== AGE / CAREER MATH =====
 // Single source of truth for the politician age + career-years derivation.
 // Politicians spawn at START_AGE; each TICKS_PER_AGE_YEAR ticks elapsed

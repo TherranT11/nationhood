@@ -255,59 +255,96 @@
    politician_apply_for_promotion(p_agency_key). Lives here rather
    than on politician-home.html since the rung is the canonical UI
    surface for this action. */
-#ahPickModal { position:fixed; inset:0; background:rgba(0,0,0,0.78);
+.ah-pick-modal { position:fixed; inset:0; background:rgba(0,0,0,0.78);
   display:none; align-items:center; justify-content:center; padding:14px;
   z-index:200; }
-#ahPickModal.open { display:flex; }
-#ahPickModal .ah-modal { width:100%; max-width:560px;
+.ah-pick-modal.open { display:flex; }
+.ah-pick-modal .ah-modal { width:100%; max-width:560px;
   background:linear-gradient(180deg, #0d1014 0%, #080a0c 100%);
   border:1px solid #3a5060; border-radius:8px;
   box-shadow:0 0 0 1px rgba(122,154,171,0.05), 0 25px 60px rgba(0,0,0,0.8);
   overflow:hidden; max-height:90vh; display:flex; flex-direction:column; }
-#ahPickModal .ah-head { padding:14px 22px; border-bottom:1px solid #3a5060;
+.ah-pick-modal .ah-head { padding:14px 22px; border-bottom:1px solid #3a5060;
   background:linear-gradient(180deg, rgba(122,154,171,0.06) 0%, transparent 100%);
   display:flex; align-items:flex-start; gap:14px; flex-shrink:0; }
-#ahPickModal .ah-head-info { flex:1; min-width:0; }
-#ahPickModal .ah-eyebrow { font-size:8px; letter-spacing:0.18em; color:#7a9aab;
+.ah-pick-modal .ah-head-info { flex:1; min-width:0; }
+.ah-pick-modal .ah-eyebrow { font-size:8px; letter-spacing:0.18em; color:#7a9aab;
   font-weight:700; text-transform:uppercase; }
-#ahPickModal .ah-title { font-family:Georgia,serif; font-size:16px; color:#fff;
+.ah-pick-modal .ah-title { font-family:Georgia,serif; font-size:16px; color:#fff;
   font-weight:500; letter-spacing:-0.005em; margin-top:3px; line-height:1.2; }
-#ahPickModal .ah-title em { font-style:italic; color:#9ab8c8; }
-#ahPickModal .ah-meta { font-size:9.5px; color:#888; margin-top:4px; line-height:1.5; }
-#ahPickModal .ah-meta strong { color:#bbb; }
-#ahPickModal .ah-close { padding:8px 12px; font-size:9px; letter-spacing:0.1em;
+.ah-pick-modal .ah-title em { font-style:italic; color:#9ab8c8; }
+.ah-pick-modal .ah-meta { font-size:9.5px; color:#888; margin-top:4px; line-height:1.5; }
+.ah-pick-modal .ah-meta strong { color:#bbb; }
+.ah-pick-modal .ah-close { padding:8px 12px; font-size:9px; letter-spacing:0.1em;
   color:#888; background:transparent; border:1px solid rgba(255,255,255,0.06);
   border-radius:3px; cursor:pointer; font-family:inherit; font-weight:700;
   text-transform:uppercase; flex-shrink:0; }
-#ahPickModal .ah-close:hover { color:#fff; border-color:#3a3a3a; }
-#ahPickModal .ah-body { flex:1; overflow-y:auto; padding:16px 20px;
+.ah-pick-modal .ah-close:hover { color:#fff; border-color:#3a3a3a; }
+.ah-pick-modal .ah-body { flex:1; overflow-y:auto; padding:16px 20px;
   display:flex; flex-direction:column; gap:4px; }
-#ahPickModal .ah-opt { padding:9px 11px; background:#0a0807;
+.ah-pick-modal .ah-opt { padding:9px 11px; background:#0a0807;
   border:1px solid rgba(255,255,255,0.06); border-radius:3px; color:#888;
   font-size:10px; font-weight:500; cursor:pointer; font-family:inherit;
   text-align:left; display:flex; align-items:center; gap:8px;
   transition:all 0.12s; }
-#ahPickModal .ah-opt:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
-#ahPickModal .ah-opt:disabled { opacity:0.45; cursor:not-allowed; }
-#ahPickModal .ah-opt-num { font-family:Georgia,serif; font-size:9px; color:#9ab8c8;
+.ah-pick-modal .ah-opt:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.ah-pick-modal .ah-opt:disabled { opacity:0.45; cursor:not-allowed; }
+.ah-pick-modal .ah-opt-num { font-family:Georgia,serif; font-size:9px; color:#9ab8c8;
   font-style:italic; font-weight:600; flex-shrink:0; min-width:18px; }
-#ahPickModal .ah-opt-desc { margin-left:auto; font-size:8.5px; color:#666;
+.ah-pick-modal .ah-opt-desc { margin-left:auto; font-size:8.5px; color:#666;
   font-style:italic; }
-#ahPickModal .ah-empty { padding:14px; color:#666; font-size:10px; font-style:italic;
+.ah-pick-modal .ah-empty { padding:14px; color:#666; font-size:10px; font-style:italic;
   text-align:center; border:1px dashed rgba(255,255,255,0.06); border-radius:3px; }
-#ahPickModal .ah-foot { padding:12px 20px; background:#080606;
+.ah-pick-modal .ah-foot { padding:12px 20px; background:#080606;
   border-top:1px solid rgba(255,255,255,0.06); flex-shrink:0;
   display:flex; justify-content:flex-end; gap:8px; }
-#ahPickModal .ah-result { padding:12px 14px; border-radius:4px; margin-bottom:10px;
+.ah-pick-modal .ah-result { padding:12px 14px; border-radius:4px; margin-bottom:10px;
   font-size:10.5px; line-height:1.55; }
-#ahPickModal .ah-result.miss { background:rgba(200,122,122,0.06);
+.ah-pick-modal .ah-result.miss { background:rgba(200,122,122,0.06);
   border:1px solid #5a3030; color:#e09898; }
-#ahPickModal .ah-result strong { color:#fff; font-weight:600; }
-#ahPickModal .ah-btn { padding:10px 16px; border-radius:4px; font-size:10px;
+.ah-pick-modal .ah-result strong { color:#fff; font-weight:600; }
+.ah-pick-modal .ah-btn { padding:10px 16px; border-radius:4px; font-size:10px;
   letter-spacing:0.14em; font-weight:700; cursor:pointer; font-family:inherit;
   text-transform:uppercase; border:1px solid rgba(255,255,255,0.06);
   background:transparent; color:#888; }
-#ahPickModal .ah-btn:hover { color:#fff; border-color:#3a3a3a; }
+.ah-pick-modal .ah-btn:hover { color:#fff; border-color:#3a3a3a; }
+/* Junior Minister dice-roll result view (20270669). Same modal as
+   the agency picker, swapped body. ah-result-card variants colour
+   the headline by outcome; the ah-roll-line lays out the dice math
+   inline so the player sees d20 + skill + rep + party = total. */
+.ah-pick-modal .ah-result-card { padding:18px 16px; border-radius:5px;
+  background:#0a0d12; border:1px solid rgba(122,154,171,0.18);
+  text-align:center; }
+.ah-pick-modal .ah-result-card--appointed  { border-color:rgba(138,170,106,0.4); }
+.ah-pick-modal .ah-result-card--rejected   { border-color:rgba(200,158,110,0.3); }
+.ah-pick-modal .ah-result-card--humiliated { border-color:rgba(200,122,122,0.4); }
+.ah-pick-modal .ah-result-eyebrow { font-size:9px; letter-spacing:0.22em;
+  color:#888; font-weight:700; }
+.ah-pick-modal .ah-result-card--appointed  .ah-result-eyebrow { color:#8aaa6a; }
+.ah-pick-modal .ah-result-card--rejected   .ah-result-eyebrow { color:#c89e6e; }
+.ah-pick-modal .ah-result-card--humiliated .ah-result-eyebrow { color:#e09898; }
+.ah-pick-modal .ah-result-headline { font-family:Georgia,serif; font-size:18px;
+  color:#fff; font-weight:500; margin:6px 0 14px; line-height:1.25; }
+.ah-pick-modal .ah-result-sub { font-size:10.5px; color:#aaa; margin-top:12px;
+  line-height:1.6; }
+.ah-pick-modal .ah-result-sub strong { color:#fff; }
+.ah-pick-modal .ah-result-cooldown { margin-top:10px; font-size:9.5px;
+  color:#888; letter-spacing:0.05em; }
+.ah-pick-modal .ah-result-cooldown strong { color:#bbb; }
+.ah-pick-modal .ah-roll-line { display:flex; justify-content:center; align-items:center;
+  gap:6px; flex-wrap:wrap; margin:8px 0; }
+.ah-pick-modal .ah-roll-term { display:inline-flex; flex-direction:column;
+  align-items:center; padding:6px 10px; background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.06); border-radius:3px; min-width:36px; }
+.ah-pick-modal .ah-roll-num { font-family:Georgia,serif; font-size:16px;
+  color:#fff; font-weight:600; line-height:1; }
+.ah-pick-modal .ah-roll-lab { font-size:8px; letter-spacing:0.1em; color:#888;
+  margin-top:3px; text-transform:uppercase; }
+.ah-pick-modal .ah-roll-op { font-family:Georgia,serif; font-size:14px;
+  color:#666; font-weight:500; }
+.ah-pick-modal .ah-roll-total { background:rgba(122,154,171,0.08);
+  border-color:rgba(122,154,171,0.25); }
+.ah-pick-modal .ah-roll-total .ah-roll-num { color:#9ab8c8; }
 
 #electionModal { position:fixed; inset:0; background:rgba(0,0,0,0.72);
   display:none; align-items:flex-start; justify-content:center; padding:30px 22px;
@@ -722,7 +759,7 @@
      Promotion] button (Government Service Tier 2). Body populated by
      openAgencyPicker(); each option submits via politician_apply_for_
      promotion(p_agency_key). -->
-<div id="ahPickModal" aria-hidden="true">
+<div id="ahPickModal" class="ah-pick-modal" aria-hidden="true">
   <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="ah-pick-title">
     <div class="ah-head">
       <div class="ah-head-info">
@@ -739,11 +776,35 @@
   </div>
 </div>
 
+<!-- Junior Minister portfolio picker — opened by the Junior Minister
+     rung's [Seek Appointment] button (Government Service Tier 4,
+     20270669). Body populated by openPortfolioPicker(); each option
+     submits via politician_seek_junior_appointment(p_portfolio).
+     Same .ah-modal class shape as the agency picker above; the body
+     swaps to a dice-roll result view when the NPC-PM branch resolves
+     on the spot. -->
+<div id="jmPickModal" class="ah-pick-modal" aria-hidden="true">
+  <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="jm-pick-title">
+    <div class="ah-head">
+      <div class="ah-head-info">
+        <div class="ah-eyebrow">Political Appointment · Seek Appointment</div>
+        <div class="ah-title" id="jm-pick-title">Choose your <em>Portfolio</em></div>
+        <div class="ah-meta" id="jm-pick-meta"></div>
+      </div>
+      <button class="ah-close" type="button" id="jm-pick-close" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="ah-body" id="jm-pick-body"></div>
+    <div class="ah-foot">
+      <button class="ah-btn" type="button" id="jm-pick-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, JUNIOR_PORTFOLIO_HINT, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -937,7 +998,7 @@ const LEGISLATURE_RUNGS = [
       }
       const skill = Number(s.politicianSkill) || 0;
       if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
-        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${skill.toFixed(1).replace(/\.0$/, '')})`, kind: 'disabled' };
+        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       const influence = Number(s.politicianInfluence) || 0;
       if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
@@ -1062,8 +1123,7 @@ const GOVT_SERVICE_RUNGS = [
       }
       const skill = Number(s.politicianSkill) || 0;
       if (skill < 10) {
-        const shown = Number.isInteger(skill) ? String(skill) : skill.toFixed(1).replace(/\.0$/, '');
-        return { label: `Apply · Need 10 Skill (have ${shown})`, kind: 'disabled' };
+        return { label: `Apply · Need 10 Skill (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
@@ -1086,7 +1146,7 @@ const GOVT_SERVICE_RUNGS = [
     transition: true,
     icon: '⚔️',
     text: 'CAREER TRANSITION · POLITICAL APPOINTMENTS BEGIN HERE',
-    sub:  'Higher rungs are not climbed but appointed — you must be an elected MP in the governing coalition, and the Prime Minister must name you.',
+    sub:  'Higher rungs are not climbed but appointed. An Agency Head can seek a Junior Minister portfolio directly (20270669); above that, an elected MP in the governing coalition must be named by the Prime Minister.',
   },
 
   // ── POLITICAL APPOINTMENT CANOPY ──────────────────────────────────
@@ -1094,10 +1154,33 @@ const GOVT_SERVICE_RUNGS = [
     tierNum: 4,
     name: 'Junior Minister',
     trackPill:   { label: 'APPOINTED', kind: 'appointed' },
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You carry legislation through the chamber and answer for the Minister when absent.',
-    descIfNot:   ()  => 'An MP appointed to a junior executive role within a ministry. Typical portfolios: Sports, Agriculture, Transportation, Culture, Tourism, Youth & Family, Veterans Affairs, Communications & Postal Service, Housing, Labor. You learn the brief, carry legislation through the chamber, and answer for the Minister when they are absent.',
+    held:        (s) => !!s.juniorPortfolio,
+    descIfHeld:  (s) => {
+      const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
+      return `You hold the <strong>${escHtml(p)}</strong> portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
+    },
+    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>20 Skill</strong>; the Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
     actions:     ['Carry a Bill', 'Answer Questions'],
+    // Seek Appointment — Agency Head → Junior Minister. Gates layer
+    // up: must be Agency Head (politician_senior_civil_servant_at_
+    // tick set), ≥ 20 Skill, no current portfolio, no active
+    // cooldown from a previous rejected roll. Server re-checks each;
+    // the disabled labels here keep the button honest so a picker
+    // doesn't open just to fail.
+    actionIfNot: (s) => {
+      if (s.juniorAppointmentCooldownUntilTick && s.juniorAppointmentCooldownUntilTick > s.currentTick) {
+        const ticks = s.juniorAppointmentCooldownUntilTick - s.currentTick;
+        return { label: `Reapply in ${ticks} tick${ticks === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      if (s.seniorCivilServantAtTick == null) {
+        return { label: 'Agency Heads only', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 20) {
+        return { label: `Apply · Need 20 Skill (have ${fmtStat(skill)})`, kind: 'disabled' };
+      }
+      return { label: 'Seek Appointment', kind: 'primary', action: 'seek-junior-appointment' };
+    },
   },
   {
     tierNum: 5,
@@ -2020,6 +2103,12 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     politicianSkill:         Number(ctx?.faction?.politician_skill) || 0,
     seniorCivilServantAtTick: ctx?.faction?.politician_senior_civil_servant_at_tick ?? null,
     agencyHeadOf:            ctx?.faction?.politician_agency_head_of || null,
+    // Junior Minister (Tier 4 / appointed canopy, 20270669).
+    // juniorPortfolio set means the politician currently holds a
+    // portfolio (drives held() + descIfHeld); the cooldown gate
+    // blocks reapplication after a failed NPC-PM dice roll.
+    juniorPortfolio:         ctx?.faction?.politician_junior_portfolio || null,
+    juniorAppointmentCooldownUntilTick: Number(ctx?.faction?.politician_seek_appointment_cooldown_until_tick) || 0,
     // Sticky "ever held Community Organizer" flag (20270635) — gates
     // City Council Member [Run for Election] beyond the 12-tick CO
     // term. politician_resolve_due_elections stamps it on every
@@ -2536,6 +2625,15 @@ function bindRungActions(ctx) {
     btn.addEventListener('click', () => openAgencyPicker(ctx));
   });
 
+  // Seek Appointment — Agency Head → Junior Minister (Tier 4,
+  // Government Service, 20270669). Same disabled-state filter as
+  // above: rung labels like "Agency Heads only" or "Reapply in N
+  // ticks" render without data-action, so this selector only
+  // matches when every gate is open.
+  document.querySelectorAll('[data-action="seek-junior-appointment"]').forEach(btn => {
+    btn.addEventListener('click', () => openPortfolioPicker(ctx));
+  });
+
   // Run for Election — City Council Member (Tier 2, Government &
   // State). Opens the matchup-style confirm modal; the modal owns
   // the politician_register_for_office RPC call. The rung's
@@ -2853,10 +2951,7 @@ function openAgencyPicker(ctx) {
   const ministrySlug = ctx?.faction?.politician_ministry || null;
   const ministry     = ministrySlug ? PAPERWORK_MINISTRIES[ministrySlug] : null;
   const ministryLbl  = ministryName(ministrySlug) || ministrySlug || '—';
-  const skillRaw     = Number(ctx?.faction?.politician_skill) || 0;
-  const skillTxt     = Number.isInteger(skillRaw)
-    ? String(skillRaw)
-    : skillRaw.toFixed(1).replace(/\.0$/, '');
+  const skillTxt     = fmtStat(ctx?.faction?.politician_skill);
 
   const meta = document.getElementById('ah-pick-meta');
   const body = document.getElementById('ah-pick-body');
@@ -2901,9 +2996,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
       { p_faction_id: window.__careerCtx?.faction?.id || null, p_agency_key: agencyKey });
     if (error) throw error;
     if (!data?.success) {
-      const have = data?.have != null
-        ? Number(data.have).toFixed(1).replace(/\.0$/, '')
-        : '?';
+      const have = data?.have != null ? fmtStat(data.have) : '?';
       const msg = data?.reason === 'insufficient_skill'
         ? `Petition denied — you need 10 Skill. You have ${have}.`
         : data?.reason === 'already_senior'   ? 'You are already an Agency Head.'
@@ -2929,6 +3022,196 @@ async function submitAgencyPromotion(agencyKey, btn) {
   } catch (e) {
     alert('Petition failed: ' + (e?.message || 'network or server error'));
     if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+  }
+}
+
+// ─── Junior Minister portfolio picker (Seek Appointment) ──────────
+// Agency Head → Junior Minister (Government Service Tier 4, 20270669).
+// Opens from the rung's [Seek Appointment] button (bindRungActions).
+// Lists the 5 portfolios from JUNIOR_PORTFOLIO_LABEL. Click on a
+// portfolio calls politician_seek_junior_appointment(p_portfolio);
+// the RPC re-validates the 20-Skill / Agency-Head / portfolio-
+// vacancy / cooldown gates. The response branches: player-PM path
+// returns {status:'pending_review'} (reload so the rung shows the
+// pending state once that surface lands); NPC-PM path returns the
+// dice breakdown and we render the result view in-modal so the
+// player sees the math.
+const JM_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+
+function closePortfolioPicker() {
+  const overlay = document.getElementById('jmPickModal');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+}
+
+function openPortfolioPicker(ctx) {
+  const overlay = document.getElementById('jmPickModal');
+  if (!overlay) return;
+
+  const skillTxt = fmtStat(ctx?.faction?.politician_skill);
+
+  const meta = document.getElementById('jm-pick-meta');
+  const body = document.getElementById('jm-pick-body');
+  const foot = overlay.querySelector('.ah-foot');
+
+  // Clear any stale banner / result view from a prior open.
+  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
+
+  if (meta) {
+    meta.innerHTML = `Pick which portfolio you'd like to seek. Requires <strong>20 Skill</strong> and current Agency Head standing; you have <strong>${escHtml(skillTxt)}</strong> Skill. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot.`;
+  }
+
+  const slugs = Object.keys(JUNIOR_PORTFOLIO_LABEL);
+  body.innerHTML = slugs.map((slug, i) => `
+    <button type="button" class="ah-opt" data-portfolio="${escHtml(slug)}">
+      <span class="ah-opt-num">${JM_ROMAN[i] || (i + 1)}.</span>
+      <span>${escHtml(JUNIOR_PORTFOLIO_LABEL[slug])}</span>
+      <span class="ah-opt-desc">${escHtml(JUNIOR_PORTFOLIO_HINT[slug] || '')}</span>
+    </button>`).join('');
+  body.querySelectorAll('button[data-portfolio]').forEach(btn => {
+    btn.addEventListener('click', () => submitJuniorAppointment(btn.dataset.portfolio, btn));
+  });
+
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.getElementById('jm-pick-close')?.addEventListener('click', closePortfolioPicker, { once: true });
+  document.getElementById('jm-pick-cancel')?.addEventListener('click', closePortfolioPicker, { once: true });
+}
+
+async function submitJuniorAppointment(portfolio, btn) {
+  if (btn?.dataset.busy === '1') return;
+  if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
+  try {
+    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment',
+      { p_portfolio: portfolio });
+    if (error) throw error;
+    if (!data?.success) {
+      const have = data?.have != null ? fmtStat(data.have) : '?';
+      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need 20 Skill. You have ${have}.`
+        : data?.reason === 'not_agency_head'                  ? 'Only sitting Agency Heads may seek a Junior Minister portfolio.'
+        : data?.reason === 'already_junior_minister'          ? `You already hold the ${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || '—')} portfolio.`
+        : data?.reason === 'pending_application_exists'       ? 'You already have an application pending review.'
+        : data?.reason === 'portfolio_filled'                 ? `${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || 'That portfolio')} is currently held by another politician.`
+        : data?.reason === 'on_cooldown'                      ? `Reapplication closed for ${data?.ticks_remaining} more tick${data?.ticks_remaining === 1 ? '' : 's'}.`
+        : data?.reason === 'invalid_portfolio'                ? "That portfolio isn't on the offered list."
+        : data?.reason === 'missing_portfolio'                ? 'Pick a portfolio from the list.'
+        : data?.reason === 'no_head_of_government'            ? 'There is no sitting Prime Minister to review your application.'
+        : data?.reason === 'not_authenticated'                ? 'Sign in to act.'
+        : data?.reason === 'no_politician'                    ? 'No politician on this account.'
+        : data?.reason === 'no_nation'                        ? 'Your politician is not yet seated in a nation.'
+        : ('Application failed: ' + (data?.reason || 'unknown'));
+      const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
+      if (foot) {
+        foot.querySelectorAll('.ah-result').forEach(n => n.remove());
+        const err = document.createElement('div');
+        err.className = 'ah-result miss';
+        err.style.cssText = 'flex:1;margin-right:8px;';
+        err.textContent = msg;
+        foot.insertBefore(err, foot.firstChild);
+      }
+      if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+      return;
+    }
+
+    // Success. Branch on the path so the player sees the right
+    // closing beat: a queued message for the player-PM path, the
+    // full dice math for the NPC path.
+    if (data.path === 'player_hog') {
+      renderPortfolioPendingView(data);
+      return;
+    }
+    if (data.path === 'npc_roll' && data.breakdown) {
+      renderPortfolioRollResult(data);
+      return;
+    }
+    // Defensive fallback — unknown success shape. Reload so the
+    // rung re-reads state from the server rather than guessing.
+    location.reload();
+  } catch (e) {
+    alert('Application failed: ' + (e?.message || 'network or server error'));
+    if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+  }
+}
+
+function renderPortfolioPendingView(data) {
+  const body = document.getElementById('jm-pick-body');
+  const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
+  if (!body || !foot) return;
+  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'the portfolio';
+  body.innerHTML = `
+    <div class="ah-result-card">
+      <div class="ah-result-eyebrow">APPLICATION SUBMITTED</div>
+      <div class="ah-result-headline">Awaiting the Prime Minister</div>
+      <div class="ah-result-sub">Your application for <strong>${escHtml(label)}</strong> has been routed to the Prime Minister. They will review it from their Pressing Issues feed; you'll see the outcome on this rung once they act.</div>
+    </div>`;
+  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
+  // Replace Cancel with Close — the action is done, no undoing it.
+  const cancel = document.getElementById('jm-pick-cancel');
+  if (cancel) {
+    cancel.textContent = 'Close';
+    cancel.replaceWith(cancel.cloneNode(true));
+    document.getElementById('jm-pick-cancel').addEventListener('click', () => {
+      closePortfolioPicker();
+      location.reload();
+    }, { once: true });
+  }
+}
+
+function renderPortfolioRollResult(data) {
+  const body = document.getElementById('jm-pick-body');
+  const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
+  if (!body || !foot) return;
+  const b = data.breakdown || {};
+  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'the portfolio';
+  const status = data.status;
+  const eyebrowMap = {
+    appointed:  'APPOINTED',
+    rejected:   'REJECTED',
+    humiliated: 'HUMILIATED',
+  };
+  const headlineMap = {
+    appointed:  `You are the new Junior Minister of ${label}`,
+    rejected:   `The cabinet turned you down`,
+    humiliated: `Laughed out of the cabinet room`,
+  };
+  const subMap = {
+    appointed:  'The press writes nicely. <strong>+2 Reputation.</strong>',
+    rejected:   b.inf_delta === -1
+      ? 'A polite rebuff in public view. <strong>−1 Influence.</strong>'
+      : 'A quiet no. No public penalty.',
+    humiliated: 'A spectacle. <strong>−2 Reputation, −1 Influence.</strong>',
+  };
+  const cooldown = Number(b.cooldown_ticks || 0);
+  const cooldownLine = cooldown > 0
+    ? `<div class="ah-result-cooldown">Reapplication closed for <strong>${cooldown} tick${cooldown === 1 ? '' : 's'}</strong>.</div>`
+    : '';
+  // Roll breakdown row — every term, with the d20 highlighted.
+  const fmt = (n) => (n >= 0 ? '+' + n : String(n));
+  const terms = [
+    `<span class="ah-roll-term"><span class="ah-roll-num">${b.d20}</span><span class="ah-roll-lab">d20</span></span>`,
+    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.skill_mod)}</span><span class="ah-roll-lab">Skill</span></span>`,
+    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.reputation_mod)}</span><span class="ah-roll-lab">Rep</span></span>`,
+    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.alignment_mod)}</span><span class="ah-roll-lab">Party</span></span>`,
+    `<span class="ah-roll-op">=</span><span class="ah-roll-term ah-roll-total"><span class="ah-roll-num">${b.total}</span><span class="ah-roll-lab">total</span></span>`,
+  ].join('');
+  body.innerHTML = `
+    <div class="ah-result-card ah-result-card--${status}">
+      <div class="ah-result-eyebrow">${eyebrowMap[status] || status?.toUpperCase()}</div>
+      <div class="ah-result-headline">${escHtml(headlineMap[status] || 'Decision returned')}</div>
+      <div class="ah-roll-line">${terms}</div>
+      <div class="ah-result-sub">${subMap[status] || ''}</div>
+      ${cooldownLine}
+    </div>`;
+  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
+  const cancel = document.getElementById('jm-pick-cancel');
+  if (cancel) {
+    cancel.textContent = 'Close';
+    cancel.replaceWith(cancel.cloneNode(true));
+    document.getElementById('jm-pick-cancel').addEventListener('click', () => {
+      closePortfolioPicker();
+      location.reload();
+    }, { once: true });
   }
 }
 
@@ -3496,7 +3779,7 @@ function openCityCouncilModal(ctx) {
   if (!modal) return;
   const partyName = ctx?.party?.faction_name || 'your party';
   const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
-  const skillTxt  = Number.isInteger(skillVal) ? String(skillVal) : skillVal.toFixed(1).replace(/\.0$/, '');
+  const skillTxt  = fmtStat(skillVal);
 
   modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
   modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">City Council</span>';

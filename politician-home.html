@@ -1287,7 +1287,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, JUNIOR_PORTFOLIO_LABEL, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
@@ -1414,6 +1414,7 @@ let counselOffers = []; // pending corp_advocate_offers for this politician (202
 let pretrialCases = []; // active pre-trials in this politician's bar nation awaiting a counterparty (20270514).
 let activeTrials = [];  // in-progress trials this politician is on either side of (20270515). Surfaces as Pressing Issues + opens the trial modal.
 let stateAdvocateRequests = []; // pending state_advocate_appointment_requests where this politician is the reviewer (MoI). Surfaces as Pressing Issues cards (20270555).
+let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1469,7 +1470,7 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1505,6 +1506,11 @@ async function init() {
       // table-result for politicians without the seat, so calling
       // unconditionally is safe (20270555).
       _supabase.rpc('list_pending_state_advocate_requests_for_reviewer', { p_faction_id: politician.id }),
+      // Pending Junior Minister applications where this politician
+      // is the active Head of Government for the applicant's nation
+      // (20270669/20270670). Empty result for non-HoG callers — the
+      // RPC gates server-side — so unconditional invocation is safe.
+      _supabase.rpc('list_pending_junior_applications_for_hog'),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
@@ -1513,6 +1519,7 @@ async function init() {
     if (pretrialRes.error) console.error('politician-home: pretrial cases fetch failed', pretrialRes.error);
     if (trialsRes.error) console.error('politician-home: active trials fetch failed', trialsRes.error);
     if (saReqRes.error) console.error('politician-home: state advocate requests fetch failed', saReqRes.error);
+    if (jmAppsRes.error) console.error('politician-home: junior minister applications fetch failed', jmAppsRes.error);
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
@@ -1520,6 +1527,7 @@ async function init() {
     pretrialCases = (pretrialRes.data?.success ? pretrialRes.data.pretrials : []) || [];
     activeTrials  = (trialsRes.data?.success  ? trialsRes.data.trials    : []) || [];
     stateAdvocateRequests = saReqRes.data || [];
+    juniorMinisterApplications = jmAppsRes.data || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1529,6 +1537,7 @@ async function init() {
     pretrialCases = [];
     activeTrials  = [];
     stateAdvocateRequests = [];
+    juniorMinisterApplications = [];
   }
 
   renderHero(ctx.shard);
@@ -1889,14 +1898,16 @@ const CIVIL_SERVANT_ACTIONS = [
   { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
-// Agency Head (Tier 2) placeholder actions — slots from the
-// politician-career rung copy. No action keys → render disabled until
-// each surfaces its own RPC. (Senior Civil Servant was renamed to
-// Agency Head; the schema column politician_senior_civil_servant_at_
-// tick stays named for now — display-only swap.)
+// Agency Head (Tier 2) placeholder actions. No `action` key on any
+// slot → renderAffiliation paints them greyed and inert. RPCs will
+// land later; the slots show the upcoming surface so a freshly-
+// promoted Agency Head sees what's coming. (Senior Civil Servant was
+// renamed to Agency Head; the schema column politician_senior_civil_
+// servant_at_tick stays named for now — display-only swap.)
 const AGENCY_HEAD_ACTIONS = [
-  { ic: '📝', name: 'DRAFT A MEMO',   cost: 'no cost', desc: 'Frame the policy question for the people who actually decide.' },
-  { ic: '✉', name: 'BRIEF A MINISTER', cost: 'no cost', desc: 'Walk the Minister through your agency’s view of the brief.' },
+  { ic: '🗂', name: 'HANDLE BACKLOG',    cost: 'no cost', desc: 'Clear stale dispatches piling up in your agency’s inbox.' },
+  { ic: '📊', name: 'MINISTRY REPORT',   cost: 'no cost', desc: 'Compile your agency’s recent work into a brief for the Minister.' },
+  { ic: '✦', name: 'AGENCY INITIATIVE', cost: 'no cost', desc: 'Propose a new programme for your agency to undertake.' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
@@ -2470,6 +2481,11 @@ function renderPressingIssues(ctx) {
   // (as Minister of the Interior) come first after the campaign —
   // they're cabinet-level decisions and the applicant is waiting.
   stateAdvocateRequests.forEach(r => blocks.push(renderStateAdvocateRequestCard(r)));
+  // Junior Minister applications routed to this politician (as
+  // active Head of Government, 20270669/20270670). Same urgency
+  // tier as State Advocate — appointment review, applicant
+  // waiting — so they sit next to each other in the feed.
+  juniorMinisterApplications.forEach(r => blocks.push(renderJuniorMinisterApplicationCard(r)));
   counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
   // Active trials surface above pre-trial broadcasts — the lawyer's
   // own in-progress courtrooms outrank any "case looking for counsel"
@@ -2483,6 +2499,7 @@ function renderPressingIssues(ctx) {
   host.innerHTML = blocks.join('');
   if (activeRace) bindCampaignActions(ctx);
   bindStateAdvocateRequestActions();
+  bindJuniorMinisterApplicationActions();
   bindCounselOfferActions();
   bindPretrialActions();
   bindActiveTrialActions();
@@ -2847,6 +2864,94 @@ async function resolveStateAdvocateRequest(btn, accept) {
     if (error) throw error;
     if (!data?.success) {
       alert('Could not resolve request: ' + (data?.reason || 'unknown'));
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+      return;
+    }
+    window.location.reload();
+  } catch (err) {
+    alert('Failed: ' + (err?.message || 'network error'));
+    card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+  }
+}
+
+// Junior Minister Candidate Review card (20270669/20270670). Same
+// .offer-card chrome as the State Advocate request above — both are
+// appointment reviews the active HoG holds in their queue. Buttons
+// dispatch to politician_decide_junior_appointment(p_application_id,
+// p_action); the server re-validates that the caller is the active
+// HoG of the application's nation. Stat formatting goes through
+// fmtStat from utils.js (Skill / Rep / Capital with one decimal,
+// Influence integer-only).
+function renderJuniorMinisterApplicationCard(r) {
+  const first = (r.applicant_first_name || '').trim();
+  const last  = (r.applicant_last_name  || '').trim();
+  const name  = [first, last].filter(Boolean).join(' ') || 'A politician';
+  const party = (r.applicant_party_name || '').trim() || 'Independent';
+  const age   = Number(r.applicant_age) || 0;
+  const portfolioLabel = JUNIOR_PORTFOLIO_LABEL[r.portfolio] || r.portfolio || 'a portfolio';
+  return `
+    <div class="offer-card" data-jm-application-id="${escHtml(r.application_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#9873;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">CANDIDATE REVIEW &middot; JUNIOR MINISTER</div>
+        <div class="oi-headline"><strong>${escHtml(name)}</strong> seeks the <em>${escHtml(portfolioLabel)}</em> portfolio.</div>
+        <div class="oi-meta">
+          <span class="oi-corp">${escHtml(party)}</span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Age <strong>${age}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Skill <strong>${fmtStat(r.applicant_skill)}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Rep <strong>${fmtStat(r.applicant_reputation)}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Influence <strong>${fmtStat(r.applicant_influence, 0)}</strong></span>
+          <span class="oi-sep">&middot;</span>
+          <span class="oi-corp">Capital <strong>${fmtStat(r.applicant_capital)}</strong></span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn jm-app-accept-btn">&#10003; APPOINT</button>
+        <button type="button" class="offer-reject-btn jm-app-reject-btn">&#10005; REJECT</button>
+      </div>
+    </div>`;
+}
+
+function bindJuniorMinisterApplicationActions() {
+  document.querySelectorAll('.jm-app-accept-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveJuniorMinisterApplication(btn, 'appoint'));
+  });
+  document.querySelectorAll('.jm-app-reject-btn').forEach(btn => {
+    btn.addEventListener('click', () => resolveJuniorMinisterApplication(btn, 'reject'));
+  });
+}
+
+async function resolveJuniorMinisterApplication(btn, action) {
+  const card = btn.closest('[data-jm-application-id]');
+  if (!card) return;
+  const applicationId = card.dataset.jmApplicationId;
+  if (!applicationId) return;
+  card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc(
+      'politician_decide_junior_appointment',
+      { p_application_id: applicationId, p_action: action });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:        'Sign in to act.',
+        no_politician:            'No politician on this account.',
+        missing_application_id:   'No application id was sent.',
+        invalid_action:           'Invalid decision — try again.',
+        application_not_found:    'That application no longer exists.',
+        already_resolved:         'That application has already been resolved.',
+        not_head_of_government:   'Only the active Prime Minister can decide this.',
+        applicant_already_serving:'That politician already holds a portfolio.',
+        portfolio_filled:         'That portfolio has already been filled.',
+        applicant_missing:        'The applicant is no longer in office.',
+      };
+      alert(REASON[data?.reason] || ('Could not resolve: ' + (data?.reason || 'unknown')));
       card.querySelectorAll('button').forEach(b => { b.disabled = false; });
       return;
     }
