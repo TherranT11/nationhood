@@ -313,6 +313,19 @@ export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 export const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
 export function isMpOffice(office) { return MP_OFFICES.has(office); }
 
+// Committee Chair bid thresholds — single source for politician_bid_
+// for_chair (migration 20270584). The RPC is the authority; these
+// constants exist so the career rung pre-check and the nation-page
+// Bid-for-Chair button can disable themselves with matching reason
+// labels instead of letting every player learn the gates by hitting
+// the server. Change these here if you bump the SQL tunables.
+export const CHAIR_BID_THRESHOLDS = {
+    SKILL:                   8,
+    INFLUENCE:              15,
+    SEATED_TICKS_REQUIRED:   4,
+    COOLDOWN_TICKS:          8,
+};
+
 // Civil-service ministry slug → display name. Source of truth for the
 // politician_ministry column (factions; CHECK constraint enumerates the
 // four slugs in migration 20270471). Read by politician-career.html's

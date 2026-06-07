@@ -743,7 +743,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -927,23 +927,25 @@ const LEGISLATURE_RUNGS = [
     descIfNot:   ()  => 'You run a committee — set its agenda, decide what gets examined.',
     actions:     ['Advance Bill'],
     // Mirrors the politician_bid_for_chair RPC gates (20270584).
-    // Server is the authority; client gates here are pre-checks for
-    // a clean disabled label.
+    // Thresholds live in CHAIR_BID_THRESHOLDS (js/utils.js) so the
+    // nation-page Bid-for-Chair button and this rung agree by
+    // construction. Server is the authority; client gates here are
+    // pre-checks for a clean disabled label.
     actionIfNot: (s) => {
       if (s.committeeCount === 0) {
         return { label: 'Apply to a committee first', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 8) {
-        return { label: `Bid for Chair — need 8 Skill (have ${skill.toFixed(1).replace(/\.0$/, '')})`, kind: 'disabled' };
+      if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
+        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${skill.toFixed(1).replace(/\.0$/, '')})`, kind: 'disabled' };
       }
       const influence = Number(s.politicianInfluence) || 0;
-      if (influence < 15) {
-        return { label: `Bid for Chair — need 15 Influence (have ${Math.floor(influence)})`, kind: 'disabled' };
+      if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
+        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence (have ${Math.floor(influence)})`, kind: 'disabled' };
       }
       const seatedAt = Number(s.earliestCommitteeSeatedTick);
-      if (Number.isFinite(seatedAt) && (s.currentTick - seatedAt) < 4) {
-        const left = 4 - (s.currentTick - seatedAt);
+      if (Number.isFinite(seatedAt) && (s.currentTick - seatedAt) < CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED) {
+        const left = CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED - (s.currentTick - seatedAt);
         return { label: `Seated too recently — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
       }
       if (s.nextChairBidTick > s.currentTick) {

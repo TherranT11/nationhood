@@ -662,7 +662,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS } from './js/utils.js';
+import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 
@@ -1129,9 +1129,10 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys, viewerFact
     btn.title    = reason || 'Apply for committee membership';
     btn.onclick  = reason ? null : () => submitCommitteeApplication(card, btn, key);
 
-    // [Bid for Chair] — only on cards where the viewer is a member but
-    // not the chair. Wiped out and re-rendered on every paint so the
-    // gates stay live.
+    // [Bid for Chair] — only on cards where the viewer is a member
+    // but not the chair. Idempotent against repeat calls of
+    // renderCommittees: removes any prior bid button before injecting
+    // a fresh one.
     const seat = seatByKey.get(key);
     const foot = card.querySelector('.comm-foot');
     const old  = card.querySelector('[data-bid-chair]');
@@ -1139,19 +1140,18 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys, viewerFact
     if (!foot || !seat || seat.role === 'chair') return;
 
     const seatedAt = Number(seat.seated_at_tick);
-    let bidLabel = 'Bid for Chair';
     let bidReason = null;
-    if (skill < 8) {
+    if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
       const shown = skill.toFixed(1).replace(/\.0$/, '');
-      bidReason = `Need 8 Skill (have ${shown})`;
-    } else if (influence < 15) {
-      bidReason = `Need 15 Influence (have ${Math.floor(influence)})`;
-    } else if (!Number.isFinite(seatedAt) || (currentTick - seatedAt) < 4) {
+      bidReason = `Need ${CHAIR_BID_THRESHOLDS.SKILL} Skill (have ${shown})`;
+    } else if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
+      bidReason = `Need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence (have ${Math.floor(influence)})`;
+    } else if (!Number.isFinite(seatedAt) || (currentTick - seatedAt) < CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED) {
       // NULL seated_at_tick triggers server's COALESCE(seated_at_tick,
       // current_tick) → diff 0 → membership_too_short. Mirror that
       // here so the button reflects what the RPC will say.
       const elapsed = Number.isFinite(seatedAt) ? (currentTick - seatedAt) : 0;
-      const left = Math.max(0, 4 - elapsed);
+      const left = Math.max(0, CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED - elapsed);
       bidReason = `Seated too recently — ${left} more tick${left === 1 ? '' : 's'}`;
     } else if (nextBid > currentTick) {
       const left = nextBid - currentTick;
@@ -1162,9 +1162,9 @@ function renderCommittees(office, viewerMemberships, pendingVoteKeys, viewerFact
     bidBtn.className = 'comm-apply';
     bidBtn.dataset.bidChair = '1';
     bidBtn.dataset.committeeId = seat.committee_id || '';
-    bidBtn.textContent = bidLabel;
+    bidBtn.textContent = 'Bid for Chair';
     bidBtn.disabled = !!bidReason;
-    bidBtn.title    = bidReason || 'Spend 15 Influence to challenge for the chair';
+    bidBtn.title    = bidReason || `Spend ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence to challenge for the chair`;
     if (!bidReason) {
       bidBtn.onclick = () => submitChairBid(bidBtn, seat.committee_id);
     }
@@ -1196,8 +1196,8 @@ async function submitChairBid(btn, committeeId) {
         not_member:            'You are not a member of this committee.',
         already_chair:         'You already chair this committee.',
         membership_too_short:  'You have not been seated long enough to bid.',
-        insufficient_skill:    'You need 8 Skill to bid for chair.',
-        insufficient_capital:  'You need 15 Influence to bid for chair.',
+        insufficient_skill:    `You need ${CHAIR_BID_THRESHOLDS.SKILL} Skill to bid for chair.`,
+        insufficient_capital:  `You need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence to bid for chair.`,
         cooldown:              'Your bid cooldown has not expired.',
         no_chair_seat:         'The chair seat is vacant — no bid needed.',
       };
