@@ -1871,7 +1871,7 @@ const PARTY_MEMBER_ACTIONS = [
 const LOCAL_GOV_ACTIONS = [
   { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Roll 1d10 + Experience. Roll 1 → −1 Experience; total <5 → miss; total ≥5 → party funds (roll × $1K × volunteer bonus); roll 10 → +1 Experience & doubled funds.',                       action: 'fundraising-call' },
   { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local. Roll 1d6 + Experience. Roll 1 → −1 Volunteer; total <5 → −0.5 Experience; total ≥5 → +1 Volunteer; roll 6 → +2 Volunteers, +0.5 Popularity.',           action: 'civic-meeting' },
-  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6 + Reputation. Roll 1 → −1 Reputation; total <5 → −0.5 Popularity; total ≥5 → +0.5 Experience; roll 6 → +1 Reputation.',                                                          action: 'office-hours' },
+  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6. Roll 1 → +1 Reputation; rolls 2–4 → +0.5 Party Popularity; roll 5 → quiet day, no effect; roll 6 → +0.5 Party Popularity & +0.5 Reputation.',                                              action: 'office-hours' },
 ];
 // City Council Member (Tier 2 Local) — distinct action trio from
 // Community Organizer's. Busy-work / craft / risk, mapped to
@@ -2378,11 +2378,11 @@ function fmtLocalResult(data) {
     return `${label}: won a convert${stake}. Volunteers now ${data.new_volunteers}.`;
   }
   if (data.action === 'office_hours') {
-    const stake = ` (rolled ${data.roll} + ${data.reputation} Reputation = ${data.total})`;
-    if (data.bracket === 'crit_fail') return `${label}: someone leaked a bad story${stake}. Reputation dropped to ${data.new_reputation}.`;
-    if (data.bracket === 'fail')      return `${label}: nobody came${stake}. Party popularity dropped to ${data.new_popularity}%.`;
-    if (data.bracket === 'crit')      return `${label}: great constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
-    return `${label}: showing up matters${stake}. Experience rose to ${data.new_skill}.`;
+    const stake = ` (rolled ${data.roll})`;
+    if (data.bracket === 'rep_bump') return `${label}: a quiet but meaningful constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
+    if (data.bracket === 'pop_bump') return `${label}: steady turnout${stake}. Party popularity rose to ${data.new_popularity}%.`;
+    if (data.bracket === 'crit')     return `${label}: great day at the storefront${stake}. Reputation rose to ${data.new_reputation}, party popularity rose to ${data.new_popularity}%.`;
+    return `${label}: quiet day at the storefront${stake}. No one stopped by.`;
   }
   return `${label}: done.`;
 }
