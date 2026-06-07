@@ -172,6 +172,17 @@
 .pnl-art-counter.warn { color:#d4b87a; }
 .pnl-art-counter.over { color:var(--red); }
 
+.pnl-stakeholders { display:flex; flex-direction:column; gap:6px; }
+.pnl-stk-row { display:flex; align-items:center; gap:8px; }
+.pnl-stk-num { font-family:Georgia,serif; font-size:11px; color:var(--leg); width:18px; flex-shrink:0;
+  text-align:right; font-weight:600; letter-spacing:-0.005em; }
+.pnl-stk-input { flex:1; padding:8px 12px; background:#0a0807;
+  border:0.5px solid var(--line); border-radius:4px; color:#fff; font-size:11px;
+  font-family:inherit; letter-spacing:-0.005em; box-sizing:border-box; }
+.pnl-stk-input::placeholder { color:var(--faint); font-style:italic; }
+.pnl-stk-input:focus { outline:none; border-color:var(--leg-dim); }
+.pnl-stk-input.invalid { border-color:var(--red-dim); background:var(--red-bg); }
+
 .pnl-foot { padding:14px 28px; background:#0a0807; border-top:0.5px solid var(--leg-dim);
   display:flex; align-items:center; gap:14px; }
 .pnl-foot-note { flex:1; font-size:9.5px; color:var(--mut); line-height:1.55; }
@@ -301,6 +312,12 @@
         </div>
       </div>
 
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">STAKEHOLDERS</div>
+        <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing (e.g. "Tenants' Union Rep," "Small Business Owner"). Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
+        <div class="pnl-stakeholders" id="pnl-stakeholders"></div>
+      </div>
+
     </div>
 
     <div class="pnl-err" id="pnl-err"></div>
@@ -343,6 +360,12 @@
                   placeholder="e.g. Strike subsection (b); replace with: &quot;Eligibility extends to permanent residents of two years' standing.&quot;"
                   style="width:100%;min-height:120px;padding:10px 12px;background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.1);border-radius:4px;color:#cfcabf;font-family:Georgia,serif;font-size:13px;line-height:1.55;resize:vertical;box-sizing:border-box;"></textarea>
         <div class="pnl-art-counter" id="aml-counter" style="margin-top:6px;">0 / 600 characters</div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">STAKEHOLDERS</div>
+        <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing. Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
+        <div class="pnl-stakeholders" id="aml-stakeholders"></div>
       </div>
 
     </div>
@@ -397,7 +420,11 @@ const draft = {
   section: '',
   committeeKey: null,
   articles: [{ text: '' }],
+  stakeholders: ['', '', '', '', ''],   // up to 5; blanks dropped on submit
 };
+
+const STK_MAX = 5;
+const STK_LEN_MAX = 40;
 
 // Lookup of committee_key → committee row id for the active nation,
 // populated on modal open.
@@ -551,6 +578,7 @@ async function openModal() {
   draft.section  = '';
   draft.committeeKey = null;
   draft.articles = [{ text: '' }];
+  draft.stakeholders = ['', '', '', '', ''];
 
   document.getElementById('pnl-section').value = '';
   document.getElementById('pnl-err').classList.remove('show');
@@ -560,6 +588,7 @@ async function openModal() {
   renderSectionSuggestions();
   renderCommittees();
   renderArticles();
+  renderStakeholders('pnl-stakeholders', draft.stakeholders);
   refreshSubmitState();
 
   const ov = document.getElementById('pnl-overlay');
@@ -671,8 +700,85 @@ function refreshSubmitState() {
           && committeeIdByKey.has(draft.committeeKey)
           && draft.articles.length >= 1 && draft.articles.length <= 10
           && allText
-          && total > 0 && total <= 600;
+          && total > 0 && total <= 600
+          && validateStakeholders(draft.stakeholders).ok;
   document.getElementById('pnl-submit').disabled = !ok || submitInFlight;
+}
+
+// Renders a fixed 5-row stakeholder input list into `hostId`, bound
+// to `state` (a 5-element string array on the draft object). Edits
+// write back into the array slot and re-run validation so the submit
+// button stays in sync with stakeholder-rule violations.
+function renderStakeholders(hostId, state) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  host.replaceChildren();
+  for (let i = 0; i < STK_MAX; i++) {
+    const row = document.createElement('div');
+    row.className = 'pnl-stk-row';
+    row.innerHTML = `
+      <span class="pnl-stk-num">${i + 1}.</span>
+      <input type="text" class="pnl-stk-input" maxlength="${STK_LEN_MAX}"
+             placeholder="Stakeholder occupation (optional)" />`;
+    const inp = row.querySelector('input');
+    inp.value = state[i] || '';
+    inp.addEventListener('input', () => {
+      state[i] = inp.value;
+      // Per-row validity reflects "if you type something, it has to
+      // be valid" — non-empty + unique against the other filled rows.
+      paintStakeholderInvalidity(hostId, state);
+      if (hostId === 'pnl-stakeholders') refreshSubmitState();
+      else refreshAmendSubmitState();
+    });
+    host.appendChild(row);
+  }
+  paintStakeholderInvalidity(hostId, state);
+}
+
+function paintStakeholderInvalidity(hostId, state) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  const inputs = host.querySelectorAll('.pnl-stk-input');
+  // Case-insensitive duplicate detection across the filled rows.
+  const seen = new Map();
+  state.forEach((v, i) => {
+    const t = (v || '').trim().toLowerCase();
+    if (!t) return;
+    if (!seen.has(t)) seen.set(t, []);
+    seen.get(t).push(i);
+  });
+  const dupIdx = new Set();
+  for (const arr of seen.values()) {
+    if (arr.length > 1) arr.forEach(i => dupIdx.add(i));
+  }
+  inputs.forEach((inp, i) => {
+    const raw = state[i] || '';
+    const trimmed = raw.trim();
+    // A row is "invalid" when it has any content but breaks a rule:
+    // over-length (input maxlength catches this but defensively
+    // colour anyway) or duplicate of another filled row.
+    const tooLong = trimmed.length > STK_LEN_MAX;
+    const dup = dupIdx.has(i);
+    inp.classList.toggle('invalid', trimmed.length > 0 && (tooLong || dup));
+  });
+}
+
+// Returns {ok, roles} — `roles` is the cleaned array (trimmed,
+// blanks dropped) ready for the RPC payload, or null when invalid.
+function validateStakeholders(state) {
+  const cleaned = [];
+  const seen = new Set();
+  for (const raw of state) {
+    const t = (raw || '').trim();
+    if (!t) continue;
+    if (t.length > STK_LEN_MAX) return { ok: false, roles: null };
+    const k = t.toLowerCase();
+    if (seen.has(k)) return { ok: false, roles: null };
+    seen.add(k);
+    cleaned.push(t);
+  }
+  if (cleaned.length > STK_MAX) return { ok: false, roles: null };
+  return { ok: true, roles: cleaned };
 }
 
 const REASON_HUMAN = {
@@ -686,6 +792,7 @@ const REASON_HUMAN = {
   invalid_articles:     'Need between 1 and 10 articles.',
   empty_article:        'Every article needs some text.',
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
+  invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
 };
 
 async function submit() {
@@ -706,16 +813,28 @@ async function submit() {
     text:    (a.text || '').trim(),
   }));
 
+  const stkCheck = validateStakeholders(draft.stakeholders);
+  if (!stkCheck.ok) {
+    err.textContent = REASON_HUMAN.invalid_persona_roles;
+    err.classList.add('show');
+    return;
+  }
+  // Server treats NULL as "no author personas — fall back to
+  // category-template auto-seed." Empty array would mean the same
+  // semantically but null is the explicit default in the RPC.
+  const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
+
   submitInFlight = true;
   refreshSubmitState();
 
   try {
     const { data, error } = await _supabase.rpc('committee_propose_law', {
-      p_committee_id: committeeId,
-      p_category:     draft.category,
-      p_section:      draft.section.trim(),
-      p_articles:     articlesPayload,
-      p_faction_id:   ctx?.faction?.id || null,
+      p_committee_id:  committeeId,
+      p_category:      draft.category,
+      p_section:       draft.section.trim(),
+      p_articles:      articlesPayload,
+      p_faction_id:    politicianCtx?.faction?.id || null,
+      p_persona_roles: personaRolesPayload,
     });
     if (error) throw error;
     if (!data?.success) {
@@ -746,6 +865,7 @@ async function submit() {
 const amendDraft = {
   amendsProposalId: null,
   text:             '',
+  stakeholders:     ['', '', '', '', ''],
 };
 let amendInFlight = false;
 let amendStatutes = [];   // cached enacted-laws snapshot for the picker
@@ -769,6 +889,7 @@ const AMEND_REASON_HUMAN = {
   empty_amendment:          'Write what you want changed.',
   amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
   parent_committee_missing: 'The original committee for that statute is gone — try a different statute.',
+  invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
 };
 
 async function openAmendModal() {
@@ -778,9 +899,11 @@ async function openAmendModal() {
   }
   amendDraft.amendsProposalId = null;
   amendDraft.text = '';
+  amendDraft.stakeholders = ['', '', '', '', ''];
   document.getElementById('aml-text').value = '';
   document.getElementById('aml-err').classList.remove('show');
   document.getElementById('aml-err').textContent = '';
+  renderStakeholders('aml-stakeholders', amendDraft.stakeholders);
   refreshAmendCounter();
   refreshAmendSubmitState();
 
@@ -865,7 +988,8 @@ function refreshAmendCounter() {
 
 function refreshAmendSubmitState() {
   const ok = amendDraft.amendsProposalId && amendDraft.text.trim().length > 0
-    && amendDraft.text.length <= 600;
+    && amendDraft.text.length <= 600
+    && validateStakeholders(amendDraft.stakeholders).ok;
   document.getElementById('aml-submit').disabled = !ok || amendInFlight;
 }
 
@@ -876,6 +1000,14 @@ async function submitAmendment() {
 
   if (!amendDraft.amendsProposalId || !amendDraft.text.trim()) return;
 
+  const stkCheck = validateStakeholders(amendDraft.stakeholders);
+  if (!stkCheck.ok) {
+    err.textContent = AMEND_REASON_HUMAN.invalid_persona_roles;
+    err.classList.add('show');
+    return;
+  }
+  const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
+
   amendInFlight = true;
   refreshAmendSubmitState();
 
@@ -883,7 +1015,8 @@ async function submitAmendment() {
     const { data, error } = await _supabase.rpc('committee_propose_amendment', {
       p_amends_proposal_id: amendDraft.amendsProposalId,
       p_amendment_text:     amendDraft.text.trim(),
-      p_faction_id:         ctx?.faction?.id || null,
+      p_faction_id:         politicianCtx?.faction?.id || null,
+      p_persona_roles:      personaRolesPayload,
     });
     if (error) throw error;
     if (!data?.success) {
