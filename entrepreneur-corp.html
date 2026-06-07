@@ -69,6 +69,25 @@
     .exec-grid { grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); }
     .exec-header { flex-wrap:wrap; }
   }
+
+  /* 3 Corporate Pillars — industry-gated card strip directly below
+     Executive Actions. Same .exec-strip shell so the two containers
+     read as a pair; only the inner grid + cell styling diverges.
+     Construction corps show Structural Speed / Procurement Efficiency
+     / Engineering Quality; other industries get their own pillar set
+     once those mechanics ship. Values are hard-wired to 1 today. */
+  .pillars-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .pillar-card { background:#0a0c0a; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+    padding:16px 14px; text-align:center; }
+  .pillar-name { font-size:11px; letter-spacing:0.12em; font-weight:600; color:#d4d4d4;
+    text-transform:uppercase; margin-bottom:8px; }
+  .pillar-value { font-size:26px; font-weight:600; color:#9ac89a; font-variant-numeric:tabular-nums;
+    line-height:1; margin-bottom:8px; }
+  .pillar-desc { font-family:Georgia,serif; font-style:italic; font-size:11.5px; color:#7a7a7a;
+    line-height:1.45; }
+  @media (max-width:700px) {
+    .pillars-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+  }
   .role-block .role-pill { display:inline-block; background:#2a3a1f; color:#9eb87a; padding:4px 10px;
     border-radius:3px; font-size:10px; letter-spacing:0.13em; font-weight:500; margin-bottom:12px; }
   .role-block .stake { font-size:40px; font-weight:500; color:#8aaa6a; line-height:1; letter-spacing:-0.02em; }
@@ -1074,6 +1093,38 @@
       </div>
     </div>
 
+    <!-- 3 Corporate Pillars — industry-gated strip directly below
+         Executive Actions. Construction corps see Structural Speed /
+         Procurement Efficiency / Engineering Quality. Values are
+         hard-wired to 1 today; once corp_pillars columns land on
+         entrepreneur_corps the JS reads from c.* instead. JS at the
+         bottom flips display:block when c.industry === 'construction'
+         (not owner-gated — pillars are public corp capability info). -->
+    <div id="cp-pillars" class="exec-strip" style="display:none;">
+      <div class="exec-header">
+        <div class="exec-title-line">
+          <span class="exec-title">3 Corporate Pillars</span>
+        </div>
+      </div>
+      <div class="pillars-grid">
+        <div class="pillar-card">
+          <div class="pillar-name">Structural Speed</div>
+          <div class="pillar-value">1</div>
+          <div class="pillar-desc">How fast your corporation can complete a project.</div>
+        </div>
+        <div class="pillar-card">
+          <div class="pillar-name">Procurement Efficiency</div>
+          <div class="pillar-value">1</div>
+          <div class="pillar-desc">Supply chain mastery and efficiency.</div>
+        </div>
+        <div class="pillar-card">
+          <div class="pillar-name">Engineering Quality</div>
+          <div class="pillar-value">1</div>
+          <div class="pillar-desc">Quality construction that enhances the projects.</div>
+        </div>
+      </div>
+    </div>
+
     <div class="financials">
       <div class="fin-card">
         <div class="lab">CASH ON HAND</div>
@@ -1379,6 +1430,13 @@ function initials(s, n) {
     // as the canonical declaration: isOwner is exact-faction match
     // on owner_faction_id; isDirector reads the seat row.
     const isOwner = !!entId && c.owner_faction_id === entId;
+    // Industry-flag SoT — hoisted from the renderConstruction block
+    // below so the pillar-strip toggle + the existing construction
+    // gates (project list / break-ground card / property-empty text)
+    // share one source. The sibling flags (real_estate / shipping /
+    // oil_and_gas) only have one reader today; they stay where they
+    // were declared.
+    const isConstructionCorp = (c.industry === 'construction');
     // SoT for promoting the Administrative Hub wrapper into view. Each
     // slot inside (cp-withdraw, cp-forsale, cp-negotiations, cp-bankrupt)
     // calls this when it flips itself visible — the hub stays display:
@@ -2975,6 +3033,16 @@ function initials(s, n) {
     if (isOwner) {
       const cpExec = document.getElementById('cp-exec-actions');
       if (cpExec) cpExec.style.display = 'block';
+    }
+
+    // 3 Corporate Pillars — industry-gated, not owner-gated. Pillar
+    // values are static '1' in the markup today; when corp_pillars
+    // columns land on entrepreneur_corps this becomes a per-card
+    // textContent write from c.structural_speed / c.procurement_
+    // efficiency / c.engineering_quality.
+    if (isConstructionCorp) {
+      const cpPillars = document.getElementById('cp-pillars');
+      if (cpPillars) cpPillars.style.display = 'block';
     }
 
     const cpWd = document.getElementById('cp-withdraw');
@@ -4783,7 +4851,9 @@ function initials(s, n) {
       engine_assembly_plant: 'Lets an Aviation Manufacturing corp design engines. Fixed $45M base. Sold to Aviation Manufacturing corps.',
       light_assembly_plant:  'Lets an Aviation Manufacturing corp design aircraft. Fixed $75M base. Sold to Aviation Manufacturing corps.',
     };
-    const isConstructionCorp = (c.industry === 'construction');
+    // isConstructionCorp hoisted to the outer IIFE near isOwner so the
+    // pillar-strip toggle can share the same flag; everything below
+    // still reads via closure.
     const isRealEstateCorp   = (c.industry === 'real_estate');
     const isShippingCorp     = (c.industry === 'shipping');
     const isOilGasCorp       = (c.industry === 'oil_and_gas');
