@@ -776,26 +776,26 @@
   </div>
 </div>
 
-<!-- Junior Minister portfolio picker — opened by the Junior Minister
-     rung's [Seek Appointment] button (Government Service Tier 4,
-     20270669). Body populated by openPortfolioPicker(); each option
-     submits via politician_seek_junior_appointment(p_portfolio).
-     Same .ah-modal class shape as the agency picker above; the body
-     swaps to a dice-roll result view when the NPC-PM branch resolves
-     on the spot. -->
-<div id="jmPickModal" class="ah-pick-modal" aria-hidden="true">
-  <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="jm-pick-title">
+<!-- Junior Minister result modal — opened by submitJuniorAppointment
+     after politician_seek_junior_appointment() returns. The body is
+     populated by renderPortfolioPendingView (player-PM path) or
+     renderPortfolioRollResult (NPC-PM path). The picker step was
+     retired in 20270677: applicants no longer choose a portfolio;
+     the server randomly assigns one from the vacant set at the
+     moment of appointment. Same .ah-pick-modal class as the agency
+     picker so the chrome stays consistent. -->
+<div id="jmResultModal" class="ah-pick-modal" aria-hidden="true">
+  <div class="ah-modal" role="dialog" aria-modal="true" aria-labelledby="jm-result-title">
     <div class="ah-head">
       <div class="ah-head-info">
         <div class="ah-eyebrow">Political Appointment · Seek Appointment</div>
-        <div class="ah-title" id="jm-pick-title">Choose your <em>Portfolio</em></div>
-        <div class="ah-meta" id="jm-pick-meta"></div>
+        <div class="ah-title" id="jm-result-title">Junior <em>Minister</em></div>
       </div>
-      <button class="ah-close" type="button" id="jm-pick-close" aria-label="Close">&#10005;</button>
+      <button class="ah-close" type="button" id="jm-result-close" aria-label="Close">&#10005;</button>
     </div>
-    <div class="ah-body" id="jm-pick-body"></div>
+    <div class="ah-body" id="jm-result-body"></div>
     <div class="ah-foot">
-      <button class="ah-btn" type="button" id="jm-pick-cancel">Cancel</button>
+      <button class="ah-btn" type="button" id="jm-result-close-btn">Close</button>
     </div>
   </div>
 </div>
@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, JUNIOR_PORTFOLIO_HINT, fmtStat } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1112,7 +1112,7 @@ const GOVT_SERVICE_RUNGS = [
     },
     descIfNot:   ()  => 'A middle-rank official running an agency within a ministry. Real responsibility on policy detail; you advise upward but cannot decide alone.',
     actions:     ['Draft a Memo', 'Brief a Minister'],
-    // Apply for Promotion — civil servants only, 10 Skill gate. The
+    // Apply for Promotion — civil servants only, 15 Skill gate. The
     // server validates again; the disabled states here just keep the
     // button honest so a player doesn't open a picker they can't use.
     // Picker modal lives at #ah-pick-* below; clicked via the
@@ -1122,22 +1122,43 @@ const GOVT_SERVICE_RUNGS = [
         return { label: 'Civil Service only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 10) {
-        return { label: `Apply · Need 10 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < CIVIL_SERVICE_THRESHOLDS.agencyHead) {
+        return { label: `Apply · Need ${CIVIL_SERVICE_THRESHOLDS.agencyHead} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
   },
+  // Permanent Secretary (Tier 3, Civil Service, 20270679). Top of
+  // the career civil-service track — runs a major ministry day to
+  // day, survives political changes. Promotion is deterministic
+  // (no dice, no PM approval): hits the Experience threshold from
+  // CIVIL_SERVICE_THRESHOLDS.permanentSecretary, currently Agency
+  // Head, politician_ministry maps to one of the 4 majors via
+  // _major_ministry_of_politician, and that major's PS slot in
+  // this nation isn't currently held by another player.
   {
     tierNum: 3,
-    name: 'Deputy Minister',
+    name: 'Permanent Secretary',
     trackPill:    { label: 'CIVIL SERVICE', kind: 'field' },
-    held:         ()  => false,
-    descIfHeld:   ()  => 'You run a ministry between political changes — the institutional memory.',
-    descIfNot:    ()  => 'Top of the permanent civil service. You run a ministry between political changes — the institutional memory who tells whichever Minister gets appointed what is and is not possible.',
+    held:         (s) => !!s.permanentSecretaryMinistry,
+    descIfHeld:   (s) => {
+      const m = MAJOR_MINISTRY_LABEL[s.permanentSecretaryMinistry] || s.permanentSecretaryMinistry || 'a major ministry';
+      return `You run the Ministry of <strong>${escHtml(m)}</strong> day-to-day. Permanent across political changes — Ministers come and go, you stay.`;
+    },
+    descIfNot:    ()  => `Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. Auto-assigned to the major-ministry equivalent of your civil-service track — <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong>.`,
     actions:      ['Approve Policy', 'Implement Reform'],
-    // Held-state exit: surfaces once the held() check is wired so a
-    // Deputy Minister can resign and stand for election.
+    actionIfNot:  (s) => {
+      if (s.seniorCivilServantAtTick == null) {
+        return { label: 'Agency Heads only', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < CIVIL_SERVICE_THRESHOLDS.permanentSecretary) {
+        return { label: `Seek Promotion · Need ${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      }
+      return { label: 'Seek Promotion', kind: 'primary', action: 'seek-permanent-secretary' };
+    },
+    // Held-state exit: surfaces once a resign / political-track
+    // transition mechanic lands.
     actionIfHeld: { label: 'Resign · Enter Politics', kind: 'secondary' },
   },
 
@@ -1159,11 +1180,11 @@ const GOVT_SERVICE_RUNGS = [
       const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
       return `You hold the <strong>${escHtml(p)}</strong> portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
     },
-    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>20 Experience</strong>; the Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
+    descIfNot:   ()  => `An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience</strong>; on acceptance you're randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.`,
     actions:     ['Carry a Bill', 'Answer Questions'],
     // Seek Appointment — Agency Head → Junior Minister. Gates layer
     // up: must be Agency Head (politician_senior_civil_servant_at_
-    // tick set), ≥ 20 Skill, no current portfolio, no active
+    // tick set), Experience meets CIVIL_SERVICE_THRESHOLDS.juniorMinister, no current portfolio, no active
     // cooldown from a previous rejected roll. Server re-checks each;
     // the disabled labels here keep the button honest so a picker
     // doesn't open just to fail.
@@ -1176,8 +1197,8 @@ const GOVT_SERVICE_RUNGS = [
         return { label: 'Agency Heads only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 20) {
-        return { label: `Apply · Need 20 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < CIVIL_SERVICE_THRESHOLDS.juniorMinister) {
+        return { label: `Apply · Need ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Seek Appointment', kind: 'primary', action: 'seek-junior-appointment' };
     },
@@ -2103,6 +2124,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     politicianSkill:         Number(ctx?.faction?.politician_skill) || 0,
     seniorCivilServantAtTick: ctx?.faction?.politician_senior_civil_servant_at_tick ?? null,
     agencyHeadOf:            ctx?.faction?.politician_agency_head_of || null,
+    // Permanent Secretary (Tier 3, 20270679). permanentSecretary
+    // Ministry set means the politician currently runs one of the
+    // 4 majors as a career civil servant — drives held() + descIf
+    // Held on the Tier 3 rung.
+    permanentSecretaryMinistry: ctx?.faction?.politician_permanent_secretary_ministry || null,
     // Junior Minister (Tier 4 / appointed canopy, 20270669).
     // juniorPortfolio set means the politician currently holds a
     // portfolio (drives held() + descIfHeld); the cooldown gate
@@ -2619,19 +2645,26 @@ function bindRungActions(ctx) {
   // Apply for Promotion — Civil Servant → Agency Head (Tier 2,
   // Government Service). Opens the agency picker; the picker owns
   // the RPC call. Disabled-state rung buttons (e.g. "Civil Service
-  // only", "Need 10 Skill") render without data-action, so this
+  // only", "Need N Experience") render without data-action, so this
   // selector only matches when the gate is open.
   document.querySelectorAll('[data-action="apply-for-promotion"]').forEach(btn => {
     btn.addEventListener('click', () => openAgencyPicker(ctx));
   });
 
   // Seek Appointment — Agency Head → Junior Minister (Tier 4,
-  // Government Service, 20270669). Same disabled-state filter as
-  // above: rung labels like "Agency Heads only" or "Reapply in N
-  // ticks" render without data-action, so this selector only
-  // matches when every gate is open.
+  // Government Service, 20270669; portfolio randomly assigned at
+  // appoint per 20270677). One-click: the RPC fires immediately,
+  // result modal opens with the outcome.
   document.querySelectorAll('[data-action="seek-junior-appointment"]').forEach(btn => {
-    btn.addEventListener('click', () => openPortfolioPicker(ctx));
+    btn.addEventListener('click', () => submitJuniorAppointment(btn));
+  });
+
+  // Seek Promotion — Agency Head → Permanent Secretary (Tier 3,
+  // Civil Service, 20270679). Deterministic promotion (no dice,
+  // no PM); the RPC fires immediately and a simple result alert
+  // surfaces the outcome — reload on success so the rung flips.
+  document.querySelectorAll('[data-action="seek-permanent-secretary"]').forEach(btn => {
+    btn.addEventListener('click', () => submitPermanentSecretary(btn));
   });
 
   // Run for Election — City Council Member (Tier 2, Government &
@@ -2930,7 +2963,7 @@ function renderExamModalResult({ kind, title, body, reload }) {
 // MINISTRIES (the SoT taxonomy shared with the server-side helper
 // _paperwork_valid_ministry_agency). Click on an agency calls
 // politician_apply_for_promotion(p_agency_key); the server
-// re-validates the 10-Skill gate, the ministry × agency pair, and
+// re-validates the 15-Skill gate, the ministry × agency pair, and
 // the no-double-promotion guard.
 //
 // Roman numerals match the Sit-the-Exam / File Paperwork modal
@@ -2961,14 +2994,15 @@ function openAgencyPicker(ctx) {
   foot.querySelectorAll('.ah-result').forEach(n => n.remove());
 
   if (meta) {
-    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>10 Experience</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
+    meta.innerHTML = `Pick which agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong> you'd like to head. Requires <strong>${CIVIL_SERVICE_THRESHOLDS.agencyHead} Experience</strong>; you have <strong>${escHtml(skillTxt)}</strong>.`;
   }
 
   if (!ministry || !ministry.agencies?.length) {
-    // Defense civil servants land here today — the politician_
-    // ministry slug 'defense' has no paperwork-taxonomy entry
-    // (paperwork uses 'security'). Flagged in 20270634 as a
-    // follow-up to align the two slug sets.
+    // Fallback for any future ministry slug that isn't yet wired
+    // into PAPERWORK_MINISTRIES. The 20270634-era landmine for
+    // defense civil servants (paperwork-taxonomy used 'security'
+    // while politician_ministry uses 'defense') was resolved in
+    // 20270678 — defense applicants now find their ministry.
     body.innerHTML = `<div class="ah-empty">No Agency Head openings are configured for the Ministry of ${escHtml(ministryLbl)} yet.</div>`;
   } else {
     body.innerHTML = ministry.agencies.map((a, i) => `
@@ -2998,7 +3032,7 @@ async function submitAgencyPromotion(agencyKey, btn) {
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
       const msg = data?.reason === 'insufficient_skill'
-        ? `Petition denied — you need 10 Experience. You have ${have}.`
+        ? `Petition denied — you need ${CIVIL_SERVICE_THRESHOLDS.agencyHead} Experience. You have ${have}.`
         : data?.reason === 'already_senior'   ? 'You are already an Agency Head.'
         : data?.reason === 'not_civil_servant' ? 'Only Civil Servants can apply for this promotion.'
         : data?.reason === 'invalid_agency'   ? "That agency isn't in your ministry."
@@ -3025,109 +3059,81 @@ async function submitAgencyPromotion(agencyKey, btn) {
   }
 }
 
-// ─── Junior Minister portfolio picker (Seek Appointment) ──────────
-// Agency Head → Junior Minister (Government Service Tier 4, 20270669).
-// Opens from the rung's [Seek Appointment] button (bindRungActions).
-// Lists the 5 portfolios from JUNIOR_PORTFOLIO_LABEL. Click on a
-// portfolio calls politician_seek_junior_appointment(p_portfolio);
-// the RPC re-validates the 20-Skill / Agency-Head / portfolio-
-// vacancy / cooldown gates. The response branches: player-PM path
-// returns {status:'pending_review'} (reload so the rung shows the
-// pending state once that surface lands); NPC-PM path returns the
-// dice breakdown and we render the result view in-modal so the
-// player sees the math.
-const JM_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+// ─── Junior Minister Seek Appointment (result modal) ──────────────
+// Agency Head → Junior Minister (Government Service Tier 4, 20270669;
+// random-portfolio assignment per 20270677). One-click from the
+// rung's [Seek Appointment] button: politician_seek_junior_
+// appointment() re-validates the 20-Experience / Agency-Head /
+// any-vacant-portfolio / cooldown gates server-side, then the
+// response routes to one of two views in #jmResultModal:
+//   • player_hog path  → renderPortfolioPendingView (queued for PM)
+//   • npc_roll path    → renderPortfolioRollResult (dice math +
+//                        randomly-assigned portfolio on the
+//                        appointed bracket)
+// Random portfolio is picked under the head_of_government FOR
+// UPDATE lock so concurrent applicants can't race onto the same seat.
 
-function closePortfolioPicker() {
-  const overlay = document.getElementById('jmPickModal');
+function closeResultModal() {
+  const overlay = document.getElementById('jmResultModal');
   if (!overlay) return;
   overlay.classList.remove('open');
   overlay.setAttribute('aria-hidden', 'true');
 }
 
-function openPortfolioPicker(ctx) {
-  const overlay = document.getElementById('jmPickModal');
+function openResultModal() {
+  const overlay = document.getElementById('jmResultModal');
   if (!overlay) return;
-
-  const skillTxt = fmtStat(ctx?.faction?.politician_skill);
-
-  const meta = document.getElementById('jm-pick-meta');
-  const body = document.getElementById('jm-pick-body');
-  const foot = overlay.querySelector('.ah-foot');
-
-  // Clear any stale banner / result view from a prior open.
-  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-
-  if (meta) {
-    meta.innerHTML = `Pick which portfolio you'd like to seek. Requires <strong>20 Experience</strong> and current Agency Head standing; you have <strong>${escHtml(skillTxt)}</strong> Experience. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot.`;
-  }
-
-  const slugs = Object.keys(JUNIOR_PORTFOLIO_LABEL);
-  body.innerHTML = slugs.map((slug, i) => `
-    <button type="button" class="ah-opt" data-portfolio="${escHtml(slug)}">
-      <span class="ah-opt-num">${JM_ROMAN[i] || (i + 1)}.</span>
-      <span>${escHtml(JUNIOR_PORTFOLIO_LABEL[slug])}</span>
-      <span class="ah-opt-desc">${escHtml(JUNIOR_PORTFOLIO_HINT[slug] || '')}</span>
-    </button>`).join('');
-  body.querySelectorAll('button[data-portfolio]').forEach(btn => {
-    btn.addEventListener('click', () => submitJuniorAppointment(btn.dataset.portfolio, btn));
-  });
-
   overlay.classList.add('open');
   overlay.setAttribute('aria-hidden', 'false');
-  document.getElementById('jm-pick-close')?.addEventListener('click', closePortfolioPicker, { once: true });
-  document.getElementById('jm-pick-cancel')?.addEventListener('click', closePortfolioPicker, { once: true });
+  // Bind close listeners once per open; the renderers below
+  // overwrite the body so prior listeners on the body itself
+  // don't survive — only the chrome buttons need rebinding.
+  document.getElementById('jm-result-close')?.addEventListener('click', () => {
+    closeResultModal();
+    location.reload();
+  }, { once: true });
+  document.getElementById('jm-result-close-btn')?.addEventListener('click', () => {
+    closeResultModal();
+    location.reload();
+  }, { once: true });
 }
 
-async function submitJuniorAppointment(portfolio, btn) {
+async function submitJuniorAppointment(btn) {
   if (btn?.dataset.busy === '1') return;
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
   try {
-    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment',
-      { p_portfolio: portfolio });
+    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment');
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
-      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need 20 Experience. You have ${have}.`
+      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience. You have ${have}.`
         : data?.reason === 'not_agency_head'                  ? 'Only sitting Agency Heads may seek a Junior Minister portfolio.'
         : data?.reason === 'already_junior_minister'          ? `You already hold the ${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || '—')} portfolio.`
         : data?.reason === 'pending_application_exists'       ? 'You already have an application pending review.'
-        : data?.reason === 'portfolio_filled'                 ? `${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || 'That portfolio')} is currently held by another politician.`
+        : data?.reason === 'all_portfolios_full'              ? 'Every Junior Minister portfolio in your nation is currently held. Try again once a vacancy opens.'
         : data?.reason === 'on_cooldown'                      ? `Reapplication closed for ${data?.ticks_remaining} more tick${data?.ticks_remaining === 1 ? '' : 's'}.`
-        : data?.reason === 'invalid_portfolio'                ? "That portfolio isn't on the offered list."
-        : data?.reason === 'missing_portfolio'                ? 'Pick a portfolio from the list.'
         : data?.reason === 'no_head_of_government'            ? 'There is no sitting Prime Minister to review your application.'
         : data?.reason === 'not_authenticated'                ? 'Sign in to act.'
         : data?.reason === 'no_politician'                    ? 'No politician on this account.'
         : data?.reason === 'no_nation'                        ? 'Your politician is not yet seated in a nation.'
         : ('Application failed: ' + (data?.reason || 'unknown'));
-      const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
-      if (foot) {
-        foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-        const err = document.createElement('div');
-        err.className = 'ah-result miss';
-        err.style.cssText = 'flex:1;margin-right:8px;';
-        err.textContent = msg;
-        foot.insertBefore(err, foot.firstChild);
-      }
+      alert(msg);
       if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
       return;
     }
 
-    // Success. Branch on the path so the player sees the right
-    // closing beat: a queued message for the player-PM path, the
-    // full dice math for the NPC path.
+    // Success — open the modal and render the appropriate view.
+    openResultModal();
     if (data.path === 'player_hog') {
       renderPortfolioPendingView(data);
-      return;
-    }
-    if (data.path === 'npc_roll' && data.breakdown) {
+    } else if (data.path === 'npc_roll' && data.breakdown) {
       renderPortfolioRollResult(data);
-      return;
+    } else {
+      // Defensive fallback — unknown success shape. Close + reload
+      // so the rung re-reads state from the server rather than guess.
+      closeResultModal();
+      location.reload();
     }
-    // Defensive fallback — unknown success shape. Reload so the
-    // rung re-reads state from the server rather than guessing.
-    location.reload();
   } catch (e) {
     alert('Application failed: ' + (e?.message || 'network or server error'));
     if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
@@ -3135,35 +3141,21 @@ async function submitJuniorAppointment(portfolio, btn) {
 }
 
 function renderPortfolioPendingView(data) {
-  const body = document.getElementById('jm-pick-body');
-  const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
-  if (!body || !foot) return;
-  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'the portfolio';
+  const body = document.getElementById('jm-result-body');
+  if (!body) return;
   body.innerHTML = `
     <div class="ah-result-card">
       <div class="ah-result-eyebrow">APPLICATION SUBMITTED</div>
       <div class="ah-result-headline">Awaiting the Prime Minister</div>
-      <div class="ah-result-sub">Your application for <strong>${escHtml(label)}</strong> has been routed to the Prime Minister. They will review it from their Pressing Issues feed; you'll see the outcome on this rung once they act.</div>
+      <div class="ah-result-sub">Your application has been routed to the Prime Minister. They will review it from their Pressing Issues feed; the portfolio is randomly assigned from the vacant set at the moment they appoint, so you'll see which one on this rung once they act.</div>
     </div>`;
-  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-  // Replace Cancel with Close — the action is done, no undoing it.
-  const cancel = document.getElementById('jm-pick-cancel');
-  if (cancel) {
-    cancel.textContent = 'Close';
-    cancel.replaceWith(cancel.cloneNode(true));
-    document.getElementById('jm-pick-cancel').addEventListener('click', () => {
-      closePortfolioPicker();
-      location.reload();
-    }, { once: true });
-  }
 }
 
 function renderPortfolioRollResult(data) {
-  const body = document.getElementById('jm-pick-body');
-  const foot = document.getElementById('jmPickModal')?.querySelector('.ah-foot');
-  if (!body || !foot) return;
+  const body = document.getElementById('jm-result-body');
+  if (!body) return;
   const b = data.breakdown || {};
-  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'the portfolio';
+  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'a portfolio';
   const status = data.status;
   const eyebrowMap = {
     appointed:  'APPOINTED',
@@ -3176,7 +3168,7 @@ function renderPortfolioRollResult(data) {
     humiliated: `Laughed out of the cabinet room`,
   };
   const subMap = {
-    appointed:  'The press writes nicely. <strong>+2 Reputation.</strong>',
+    appointed:  `The portfolio was assigned by lot from the vacant set. The press writes nicely. <strong>+2 Reputation.</strong>`,
     rejected:   b.inf_delta === -1
       ? 'A polite rebuff in public view. <strong>−1 Influence.</strong>'
       : 'A quiet no. No public penalty.',
@@ -3203,15 +3195,43 @@ function renderPortfolioRollResult(data) {
       <div class="ah-result-sub">${subMap[status] || ''}</div>
       ${cooldownLine}
     </div>`;
-  foot.querySelectorAll('.ah-result').forEach(n => n.remove());
-  const cancel = document.getElementById('jm-pick-cancel');
-  if (cancel) {
-    cancel.textContent = 'Close';
-    cancel.replaceWith(cancel.cloneNode(true));
-    document.getElementById('jm-pick-cancel').addEventListener('click', () => {
-      closePortfolioPicker();
-      location.reload();
-    }, { once: true });
+}
+
+// ─── Seek Permanent Secretary ────────────────────────────────────
+// Agency Head → Permanent Secretary (Government Service Tier 3,
+// 20270679). Deterministic promotion (no dice, no PM); the RPC
+// re-checks the 20-Experience / Agency-Head / ministry-mapping /
+// slot-vacancy gates and either flips the politician's columns
+// or returns a structured reason. Result lands as an alert + page
+// reload on success so the rung re-renders from the new state.
+async function submitPermanentSecretary(btn) {
+  if (btn?.dataset.busy === '1') return;
+  if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
+  try {
+    const { data, error } = await _supabase.rpc('politician_seek_permanent_secretary');
+    if (error) throw error;
+    if (!data?.success) {
+      const have = data?.have != null ? fmtStat(data.have) : '?';
+      const msg = data?.reason === 'insufficient_skill'        ? `Promotion denied — you need ${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience. You have ${have}.`
+        : data?.reason === 'not_agency_head'                    ? 'Only sitting Agency Heads may seek Permanent Secretary.'
+        : data?.reason === 'already_permanent_secretary'        ? `You already serve as Permanent Secretary of ${escHtml(MAJOR_MINISTRY_LABEL[data?.ministry] || data?.ministry || 'a major ministry')}.`
+        : data?.reason === 'no_civil_service_ministry'          ? 'You\'re not currently in the civil service — no ministry to graduate from.'
+        : data?.reason === 'ministry_not_eligible'              ? 'Your civil-service ministry doesn\'t map to one of the 4 major cabinet seats.'
+        : data?.reason === 'slot_held_by_player'                ? `The Permanent Secretary of ${escHtml(MAJOR_MINISTRY_LABEL[data?.ministry] || data?.ministry || 'that ministry')} is currently a sitting player. Try again once they move on.`
+        : data?.reason === 'not_authenticated'                  ? 'Sign in to act.'
+        : data?.reason === 'no_politician'                      ? 'No politician on this account.'
+        : data?.reason === 'no_nation'                          ? 'Your politician is not yet seated in a nation.'
+        : ('Promotion failed: ' + (data?.reason || 'unknown'));
+      alert(msg);
+      if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+      return;
+    }
+    const ministryLbl = MAJOR_MINISTRY_LABEL[data.ministry] || data.ministry || 'a major ministry';
+    alert(`You are now Permanent Secretary of ${ministryLbl}.`);
+    location.reload();
+  } catch (e) {
+    alert('Promotion failed: ' + (e?.message || 'network or server error'));
+    if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
   }
 }
 
@@ -3876,7 +3896,7 @@ async function confirmCityCouncilRun(ctx) {
   btn.textContent = 'Registering…';
   try {
     const { data, error } = await _supabase.rpc('politician_register_for_office',
-      { p_target_office: 'city_council_member' });
+      { p_faction_id: ctx?.faction?.id || null, p_target_office: 'city_council_member' });
     if (error) throw error;
     if (!data?.success) {
       const REASON = {

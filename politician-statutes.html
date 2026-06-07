@@ -172,6 +172,27 @@
 .pnl-art-counter.warn { color:#d4b87a; }
 .pnl-art-counter.over { color:var(--red); }
 
+.pnl-arch-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+.pnl-arch-chip { padding:7px 11px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
+  color:var(--mut); font-size:10px; font-weight:600; letter-spacing:0.02em; text-align:left;
+  cursor:pointer; font-family:inherit; }
+.pnl-arch-chip:hover:not(:disabled) { color:#fff; border-color:#3a3a3a; }
+.pnl-arch-chip.selected { background:var(--leg-bg); border-color:var(--leg-dim); color:var(--leg-bright);
+  border-left:2px solid var(--leg); padding-left:10px; }
+.pnl-arch-chip:disabled { opacity:0.35; cursor:not-allowed; }
+@media (max-width:520px) { .pnl-arch-grid { grid-template-columns:1fr; } }
+
+.pnl-stakeholders { display:flex; flex-direction:column; gap:6px; }
+.pnl-stk-row { display:flex; align-items:center; gap:8px; }
+.pnl-stk-num { font-family:Georgia,serif; font-size:11px; color:var(--leg); width:18px; flex-shrink:0;
+  text-align:right; font-weight:600; letter-spacing:-0.005em; }
+.pnl-stk-input { flex:1; padding:8px 12px; background:#0a0807;
+  border:0.5px solid var(--line); border-radius:4px; color:#fff; font-size:11px;
+  font-family:inherit; letter-spacing:-0.005em; box-sizing:border-box; }
+.pnl-stk-input::placeholder { color:var(--faint); font-style:italic; }
+.pnl-stk-input:focus { outline:none; border-color:var(--leg-dim); }
+.pnl-stk-input.invalid { border-color:var(--red-dim); background:var(--red-bg); }
+
 .pnl-foot { padding:14px 28px; background:#0a0807; border-top:0.5px solid var(--leg-dim);
   display:flex; align-items:center; gap:14px; }
 .pnl-foot-note { flex:1; font-size:9.5px; color:var(--mut); line-height:1.55; }
@@ -301,6 +322,24 @@
         </div>
       </div>
 
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">STAKEHOLDERS</div>
+        <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing (e.g. "Tenants' Union Rep," "Small Business Owner"). Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
+        <div class="pnl-stakeholders" id="pnl-stakeholders"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity.</div>
+        <div class="pnl-arch-grid" id="pnl-support-arch"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting.</div>
+        <div class="pnl-arch-grid" id="pnl-oppose-arch"></div>
+      </div>
+
     </div>
 
     <div class="pnl-err" id="pnl-err"></div>
@@ -345,6 +384,24 @@
         <div class="pnl-art-counter" id="aml-counter" style="margin-top:6px;">0 / 600 characters</div>
       </div>
 
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">STAKEHOLDERS</div>
+        <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing. Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
+        <div class="pnl-stakeholders" id="aml-stakeholders"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>.</div>
+        <div class="pnl-arch-grid" id="aml-support-arch"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
+        <div class="pnl-fg-hint">Optional. Up to 2 archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting.</div>
+        <div class="pnl-arch-grid" id="aml-oppose-arch"></div>
+      </div>
+
     </div>
 
     <div class="pnl-err" id="aml-err"></div>
@@ -362,6 +419,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { COMMITTEES } from './js/committees.js';
+import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 import { isMpOffice } from './js/utils.js';
 
 // Article tag suggestions cycle by position; user can't pick yet (v1
@@ -397,7 +455,14 @@ const draft = {
   section: '',
   committeeKey: null,
   articles: [{ text: '' }],
+  stakeholders: ['', '', '', '', ''],   // up to 5; blanks dropped on submit
+  supportArchetypes: [],                // up to 2 archetype names
+  opposeArchetypes:  [],                // up to 2 archetype names; disjoint from above
 };
+
+const STK_MAX = 5;
+const STK_LEN_MAX = 40;
+const ARCH_MAX = 2;
 
 // Lookup of committee_key → committee row id for the active nation,
 // populated on modal open.
@@ -551,6 +616,9 @@ async function openModal() {
   draft.section  = '';
   draft.committeeKey = null;
   draft.articles = [{ text: '' }];
+  draft.stakeholders = ['', '', '', '', ''];
+  draft.supportArchetypes = [];
+  draft.opposeArchetypes  = [];
 
   document.getElementById('pnl-section').value = '';
   document.getElementById('pnl-err').classList.remove('show');
@@ -560,6 +628,9 @@ async function openModal() {
   renderSectionSuggestions();
   renderCommittees();
   renderArticles();
+  renderStakeholders('pnl-stakeholders', draft.stakeholders);
+  renderArchetypePair('pnl-support-arch', 'pnl-oppose-arch',
+                     draft.supportArchetypes, draft.opposeArchetypes, refreshSubmitState);
   refreshSubmitState();
 
   const ov = document.getElementById('pnl-overlay');
@@ -671,8 +742,169 @@ function refreshSubmitState() {
           && committeeIdByKey.has(draft.committeeKey)
           && draft.articles.length >= 1 && draft.articles.length <= 10
           && allText
-          && total > 0 && total <= 600;
+          && total > 0 && total <= 600
+          && validateStakeholders(draft.stakeholders).ok
+          && validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes).ok;
   document.getElementById('pnl-submit').disabled = !ok || submitInFlight;
+}
+
+// Renders a fixed 5-row stakeholder input list into `hostId`, bound
+// to `state` (a 5-element string array on the draft object). Edits
+// write back into the array slot and re-run validation so the submit
+// button stays in sync with stakeholder-rule violations.
+function renderStakeholders(hostId, state) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  host.replaceChildren();
+  for (let i = 0; i < STK_MAX; i++) {
+    const row = document.createElement('div');
+    row.className = 'pnl-stk-row';
+    row.innerHTML = `
+      <span class="pnl-stk-num">${i + 1}.</span>
+      <input type="text" class="pnl-stk-input" maxlength="${STK_LEN_MAX}"
+             placeholder="Stakeholder occupation (optional)" />`;
+    const inp = row.querySelector('input');
+    inp.value = state[i] || '';
+    inp.addEventListener('input', () => {
+      state[i] = inp.value;
+      // Per-row validity reflects "if you type something, it has to
+      // be valid" — non-empty + unique against the other filled rows.
+      paintStakeholderInvalidity(hostId, state);
+      if (hostId === 'pnl-stakeholders') refreshSubmitState();
+      else refreshAmendSubmitState();
+    });
+    host.appendChild(row);
+  }
+  paintStakeholderInvalidity(hostId, state);
+}
+
+function paintStakeholderInvalidity(hostId, state) {
+  const host = document.getElementById(hostId);
+  if (!host) return;
+  const inputs = host.querySelectorAll('.pnl-stk-input');
+  // Case-insensitive duplicate detection across the filled rows.
+  const seen = new Map();
+  state.forEach((v, i) => {
+    const t = (v || '').trim().toLowerCase();
+    if (!t) return;
+    if (!seen.has(t)) seen.set(t, []);
+    seen.get(t).push(i);
+  });
+  const dupIdx = new Set();
+  for (const arr of seen.values()) {
+    if (arr.length > 1) arr.forEach(i => dupIdx.add(i));
+  }
+  inputs.forEach((inp, i) => {
+    const raw = state[i] || '';
+    const trimmed = raw.trim();
+    // A row is "invalid" when it has any content but breaks a rule:
+    // over-length (input maxlength catches this but defensively
+    // colour anyway) or duplicate of another filled row.
+    const tooLong = trimmed.length > STK_LEN_MAX;
+    const dup = dupIdx.has(i);
+    inp.classList.toggle('invalid', trimmed.length > 0 && (tooLong || dup));
+  });
+}
+
+// Returns {ok, roles} — `roles` is the cleaned array (trimmed,
+// blanks dropped) ready for the RPC payload, or null when invalid.
+// State is always a STK_MAX-length array so we don't need a separate
+// cap check on `cleaned.length` — it can't exceed STK_MAX.
+function validateStakeholders(state) {
+  const cleaned = [];
+  const seen = new Set();
+  for (const raw of state) {
+    const t = (raw || '').trim();
+    if (!t) continue;
+    if (t.length > STK_LEN_MAX) return { ok: false, roles: null };
+    const k = t.toLowerCase();
+    if (seen.has(k)) return { ok: false, roles: null };
+    seen.add(k);
+    cleaned.push(t);
+  }
+  return { ok: true, roles: cleaned };
+}
+
+// Render two parallel chip grids (Support / Oppose) sharing the
+// PARTY_ARCHETYPES catalog. Selecting a chip in one side disables it
+// on the other (disjoint lists per server validator). ARCH_MAX-cap
+// per side is enforced by greying-out the unselected chips when the
+// cap is hit. `onChange` runs after every toggle so the caller can
+// refresh the submit-button gate.
+function renderArchetypePair(supportHostId, opposeHostId, supportState, opposeState, onChange) {
+  const buildChip = (name) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'pnl-arch-chip';
+    chip.textContent = name;
+    return chip;
+  };
+  const repaint = () => {
+    [[supportHostId, supportState, opposeState],
+     [opposeHostId,  opposeState,  supportState]].forEach(([hostId, state, otherState]) => {
+      const host = document.getElementById(hostId);
+      if (!host) return;
+      host.querySelectorAll('.pnl-arch-chip').forEach(chip => {
+        const name = chip.textContent;
+        const onThis = state.includes(name);
+        const onOther = otherState.includes(name);
+        chip.classList.toggle('selected', onThis);
+        // Disable if on the other side, or if this side is full and
+        // this chip isn't already selected (no room to add).
+        chip.disabled = onOther || (!onThis && state.length >= ARCH_MAX);
+      });
+    });
+  };
+  const bind = (hostId, state, otherState) => {
+    const host = document.getElementById(hostId);
+    if (!host) return;
+    host.replaceChildren();
+    for (const name of PARTY_ARCHETYPES) {
+      const chip = buildChip(name);
+      chip.addEventListener('click', () => {
+        const idx = state.indexOf(name);
+        if (idx >= 0) {
+          state.splice(idx, 1);
+        } else {
+          if (state.length >= ARCH_MAX) return;
+          if (otherState.includes(name)) return;
+          state.push(name);
+        }
+        repaint();
+        if (onChange) onChange();
+      });
+      host.appendChild(chip);
+    }
+  };
+  bind(supportHostId, supportState, opposeState);
+  bind(opposeHostId,  opposeState,  supportState);
+  repaint();
+}
+
+// Returns {ok, support, oppose} — server-ready arrays (null if empty)
+// or {ok:false} for any violation. Length cap, catalog membership,
+// and disjointness are all validated client-side as defence in depth;
+// _validate_archetype_pair on the server enforces the same rules.
+function validateArchetypes(support, oppose) {
+  const validate = arr => {
+    if (arr.length > ARCH_MAX) return false;
+    const seen = new Set();
+    for (const name of arr) {
+      if (!PARTY_ARCHETYPES.includes(name)) return false;
+      if (seen.has(name)) return false;
+      seen.add(name);
+    }
+    return true;
+  };
+  if (!validate(support) || !validate(oppose)) return { ok: false };
+  for (const name of support) {
+    if (oppose.includes(name)) return { ok: false };
+  }
+  return {
+    ok: true,
+    support: support.length ? support.slice() : null,
+    oppose:  oppose.length  ? oppose.slice()  : null,
+  };
 }
 
 const REASON_HUMAN = {
@@ -686,6 +918,8 @@ const REASON_HUMAN = {
   invalid_articles:     'Need between 1 and 10 articles.',
   empty_article:        'Every article needs some text.',
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
+  invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
+  invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
 };
 
 async function submit() {
@@ -706,16 +940,36 @@ async function submit() {
     text:    (a.text || '').trim(),
   }));
 
+  const stkCheck = validateStakeholders(draft.stakeholders);
+  if (!stkCheck.ok) {
+    err.textContent = REASON_HUMAN.invalid_persona_roles;
+    err.classList.add('show');
+    return;
+  }
+  const archCheck = validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes);
+  if (!archCheck.ok) {
+    err.textContent = REASON_HUMAN.invalid_archetype_positions;
+    err.classList.add('show');
+    return;
+  }
+  // Server treats NULL as "no author personas — fall back to
+  // category-template auto-seed." Empty array would mean the same
+  // semantically but null is the explicit default in the RPC.
+  const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
+
   submitInFlight = true;
   refreshSubmitState();
 
   try {
     const { data, error } = await _supabase.rpc('committee_propose_law', {
-      p_committee_id: committeeId,
-      p_category:     draft.category,
-      p_section:      draft.section.trim(),
-      p_articles:     articlesPayload,
-      p_faction_id:   ctx?.faction?.id || null,
+      p_committee_id:       committeeId,
+      p_category:           draft.category,
+      p_section:            draft.section.trim(),
+      p_articles:           articlesPayload,
+      p_faction_id:         politicianCtx?.faction?.id || null,
+      p_persona_roles:      personaRolesPayload,
+      p_support_archetypes: archCheck.support,
+      p_oppose_archetypes:  archCheck.oppose,
     });
     if (error) throw error;
     if (!data?.success) {
@@ -744,8 +998,11 @@ async function submit() {
 // the change; the server inherits committee + category + section
 // from the parent so there's no committee picker here.
 const amendDraft = {
-  amendsProposalId: null,
-  text:             '',
+  amendsProposalId:  null,
+  text:              '',
+  stakeholders:      ['', '', '', '', ''],
+  supportArchetypes: [],
+  opposeArchetypes:  [],
 };
 let amendInFlight = false;
 let amendStatutes = [];   // cached enacted-laws snapshot for the picker
@@ -769,6 +1026,8 @@ const AMEND_REASON_HUMAN = {
   empty_amendment:          'Write what you want changed.',
   amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
   parent_committee_missing: 'The original committee for that statute is gone — try a different statute.',
+  invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
+  invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
 };
 
 async function openAmendModal() {
@@ -778,9 +1037,16 @@ async function openAmendModal() {
   }
   amendDraft.amendsProposalId = null;
   amendDraft.text = '';
+  amendDraft.stakeholders = ['', '', '', '', ''];
+  amendDraft.supportArchetypes = [];
+  amendDraft.opposeArchetypes  = [];
   document.getElementById('aml-text').value = '';
   document.getElementById('aml-err').classList.remove('show');
   document.getElementById('aml-err').textContent = '';
+  renderStakeholders('aml-stakeholders', amendDraft.stakeholders);
+  renderArchetypePair('aml-support-arch', 'aml-oppose-arch',
+                     amendDraft.supportArchetypes, amendDraft.opposeArchetypes,
+                     refreshAmendSubmitState);
   refreshAmendCounter();
   refreshAmendSubmitState();
 
@@ -865,7 +1131,9 @@ function refreshAmendCounter() {
 
 function refreshAmendSubmitState() {
   const ok = amendDraft.amendsProposalId && amendDraft.text.trim().length > 0
-    && amendDraft.text.length <= 600;
+    && amendDraft.text.length <= 600
+    && validateStakeholders(amendDraft.stakeholders).ok
+    && validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes).ok;
   document.getElementById('aml-submit').disabled = !ok || amendInFlight;
 }
 
@@ -876,6 +1144,20 @@ async function submitAmendment() {
 
   if (!amendDraft.amendsProposalId || !amendDraft.text.trim()) return;
 
+  const stkCheck = validateStakeholders(amendDraft.stakeholders);
+  if (!stkCheck.ok) {
+    err.textContent = AMEND_REASON_HUMAN.invalid_persona_roles;
+    err.classList.add('show');
+    return;
+  }
+  const archCheck = validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes);
+  if (!archCheck.ok) {
+    err.textContent = AMEND_REASON_HUMAN.invalid_archetype_positions;
+    err.classList.add('show');
+    return;
+  }
+  const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
+
   amendInFlight = true;
   refreshAmendSubmitState();
 
@@ -883,7 +1165,10 @@ async function submitAmendment() {
     const { data, error } = await _supabase.rpc('committee_propose_amendment', {
       p_amends_proposal_id: amendDraft.amendsProposalId,
       p_amendment_text:     amendDraft.text.trim(),
-      p_faction_id:         ctx?.faction?.id || null,
+      p_faction_id:         politicianCtx?.faction?.id || null,
+      p_persona_roles:      personaRolesPayload,
+      p_support_archetypes: archCheck.support,
+      p_oppose_archetypes:  archCheck.oppose,
     });
     if (error) throw error;
     if (!data?.success) {

@@ -44,6 +44,53 @@ export function fmtStat(value, decimals = 1) {
     return n.toFixed(decimals).replace(/\.0+$/, '');
 }
 
+// Flag image URLs by nation name. Single source — every page that
+// renders a nation flag chip (faction switcher, market browser,
+// entrepreneur card, etc.) reads from here. Filenames follow the
+// assets/flags/ convention with mixed casing per the original
+// asset import (Sangreza.png vs sangreza.png — case matters).
+// Adding a new nation is a one-line entry below.
+//
+// Was previously duplicated in select-nation.html; that page's
+// local copy stays for now (its lookup also wraps with profile
+// flag_url overrides), but new flag-chip surfaces should call
+// flagUrlFor() from this module.
+export const FLAG_URLS = {
+    'Melizea':      'assets/flags/Melizea.png',
+    'Avelia':       'assets/flags/Avelia.png',
+    'Sangreza':     'assets/flags/sangreza.png',
+    'Montequilla':  'assets/flags/Montequilla.png',
+    'San Estrella': 'assets/flags/sanestrella.png',
+    'Palvera':      'assets/flags/Palvera.png',
+    'Calveth':      'assets/flags/Calveth.png',
+    'Flandis':      'assets/flags/Flandis.png',
+    'Vostia':       'assets/flags/Vostia.png',
+};
+
+// Major ministries — the 4 senior cabinet slots used by Permanent
+// Secretary (Tier 3 Civil Service, 20270679) and Deputy Minister
+// (Tier 5 Political Appointment, coming next). Single SoT for both
+// rungs; the slug set mirrors _major_ministry_keys() on the server.
+// foreign_affairs_and_trade is a combined slug (politician_sit_the_
+// exam's 'foreign_affairs' civil servants graduate into this slot
+// per _major_ministry_of_politician).
+export const MAJOR_MINISTRY_LABEL = {
+    interior:                  'Interior',
+    defense:                   'Defense',
+    economic_development:      'Economic Development',
+    foreign_affairs_and_trade: 'Foreign Affairs and Trade',
+};
+
+// Returns the canonical asset path for a nation name, falling back
+// to `assets/flags/${name}.png` when the name isn't in the map.
+// The caller should pair this with `onerror="this.style.display=
+// 'none'"` so unknown nations degrade silently instead of leaving
+// a broken-image icon.
+export function flagUrlFor(nationName) {
+    if (!nationName) return null;
+    return FLAG_URLS[nationName] || `assets/flags/${nationName}.png`;
+}
+
 // ===== AGE / CAREER MATH =====
 // Single source of truth for the politician age + career-years derivation.
 // Politicians spawn at START_AGE; each TICKS_PER_AGE_YEAR ticks elapsed
@@ -312,6 +359,7 @@ export function buildingTypeLabel(t) {
         case 'real_estate_office': return 'Real Estate Office';
         case 'light_assembly_plant':  return 'Light Assembly Plant';
         case 'engine_assembly_plant': return 'Engine Assembly Plant';
+        case 'aircraft_assembly_facility': return 'Aircraft Assembly Facility';
         case 'apartment_basic':    return 'Basic Apartments';
         case 'apartment_modest':   return 'Modest Apartments';
         case 'apartment_luxury':   return 'Luxury Apartments';
@@ -358,6 +406,19 @@ export const CHAIR_BID_THRESHOLDS = {
     INFLUENCE:              15,
     SEATED_TICKS_REQUIRED:   4,
     COOLDOWN_TICKS:          8,
+};
+
+// Civil-service / political-canopy Experience thresholds — single
+// source for the GOVT_SERVICE_RUNGS gates. Each migration's RPC is
+// the authoritative gate (skill < N on the server); these constants
+// drive the client-side pre-check + the rung labels + the rung
+// descriptions + the error messages, so a retune is a one-line
+// edit here plus the matching change in the rung's migration.
+// Add deputyMinister when 20270682 ships (32 Experience per spec).
+export const CIVIL_SERVICE_THRESHOLDS = {
+    agencyHead:          15,   // 20270674 — politician_apply_for_promotion
+    permanentSecretary:  20,   // 20270679 — politician_seek_permanent_secretary
+    juniorMinister:      28,   // 20270681 — politician_seek_junior_appointment
 };
 
 // Civil-service ministry slug → display name. Source of truth for the

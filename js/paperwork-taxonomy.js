@@ -56,8 +56,8 @@ export const PAPERWORK_MINISTRIES = {
             { key: 'municipal_affairs',       label: 'Municipal Affairs Office',            hint: 'cities · local govt' },
         ],
     },
-    security: {
-        label: 'Security',
+    defense: {
+        label: 'Defense',
         icon:  '\u{2694}\u{FE0F}',
         agencies: [
             { key: 'national_police',         label: 'Bureau of National Police',           hint: 'law enforcement' },

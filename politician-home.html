@@ -1287,7 +1287,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, JUNIOR_PORTFOLIO_LABEL, fmtStat } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
@@ -1871,7 +1871,7 @@ const PARTY_MEMBER_ACTIONS = [
 const LOCAL_GOV_ACTIONS = [
   { ic: '☎', name: 'FUNDRAISING CALL', cost: 'no cost',           desc: 'Work the donor list by phone. Roll 1d10 + Experience. Roll 1 → −1 Experience; total <5 → miss; total ≥5 → party funds (roll × $1K × volunteer bonus); roll 10 → +1 Experience & doubled funds.',                       action: 'fundraising-call' },
   { ic: '⛌', name: 'CIVIC MEETING',    cost: 'no cost',           desc: 'Attend a tenants’ association, parish council, or union local. Roll 1d6 + Experience. Roll 1 → −1 Volunteer; total <5 → −0.5 Experience; total ≥5 → +1 Volunteer; roll 6 → +2 Volunteers, +0.5 Popularity.',           action: 'civic-meeting' },
-  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6 + Reputation. Roll 1 → −1 Reputation; total <5 → −0.5 Popularity; total ≥5 → +0.5 Experience; roll 6 → +1 Reputation.',                                                          action: 'office-hours' },
+  { ic: '☂', name: 'OFFICE HOURS',     cost: '−$5K party funds',  desc: 'Set up at a storefront. Roll 1d6. Roll 1 → +1 Reputation; rolls 2–4 → +0.5 Party Popularity; roll 5 → quiet day, no effect; roll 6 → +0.5 Party Popularity & +0.5 Reputation.',                                              action: 'office-hours' },
 ];
 // City Council Member (Tier 2 Local) — distinct action trio from
 // Community Organizer's. Busy-work / craft / risk, mapped to
@@ -1894,7 +1894,7 @@ const LEGISLATURE_ACTIONS = [
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
   { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Experience each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
-  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.5 Experience. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
+  { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.3 Reputation. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
 
@@ -2320,7 +2320,7 @@ function fmtLobbyMinisterResult(data) {
 }
 
 function fmtMemoResult(data) {
-  return `Filed a Memo: +0.5 Experience (now ${data.new_skill}).`;
+  return `Filed a Memo: +0.3 Reputation (now ${data.new_reputation}).`;
 }
 
 function fmtDoorKnockResult(data) {
@@ -2378,11 +2378,11 @@ function fmtLocalResult(data) {
     return `${label}: won a convert${stake}. Volunteers now ${data.new_volunteers}.`;
   }
   if (data.action === 'office_hours') {
-    const stake = ` (rolled ${data.roll} + ${data.reputation} Reputation = ${data.total})`;
-    if (data.bracket === 'crit_fail') return `${label}: someone leaked a bad story${stake}. Reputation dropped to ${data.new_reputation}.`;
-    if (data.bracket === 'fail')      return `${label}: nobody came${stake}. Party popularity dropped to ${data.new_popularity}%.`;
-    if (data.bracket === 'crit')      return `${label}: great constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
-    return `${label}: showing up matters${stake}. Experience rose to ${data.new_skill}.`;
+    const stake = ` (rolled ${data.roll})`;
+    if (data.bracket === 'rep_bump') return `${label}: a quiet but meaningful constituent encounter${stake}. Reputation rose to ${data.new_reputation}.`;
+    if (data.bracket === 'pop_bump') return `${label}: steady turnout${stake}. Party popularity rose to ${data.new_popularity}%.`;
+    if (data.bracket === 'crit')     return `${label}: great day at the storefront${stake}. Reputation rose to ${data.new_reputation}, party popularity rose to ${data.new_popularity}%.`;
+    return `${label}: quiet day at the storefront${stake}. No one stopped by.`;
   }
   return `${label}: done.`;
 }
@@ -2888,7 +2888,9 @@ function renderJuniorMinisterApplicationCard(r) {
   const name  = [first, last].filter(Boolean).join(' ') || 'A politician';
   const party = (r.applicant_party_name || '').trim() || 'Independent';
   const age   = Number(r.applicant_age) || 0;
-  const portfolioLabel = JUNIOR_PORTFOLIO_LABEL[r.portfolio] || r.portfolio || 'a portfolio';
+  // Portfolio is no longer chosen at application time (20270677) —
+  // it's randomly assigned by the server at the moment Appoint is
+  // clicked, from whatever portfolios are vacant in the nation then.
   return `
     <div class="offer-card" data-jm-application-id="${escHtml(r.application_id)}">
       <div class="offer-icon-wrap">
@@ -2896,7 +2898,7 @@ function renderJuniorMinisterApplicationCard(r) {
       </div>
       <div class="offer-info">
         <div class="oi-eyebrow">CANDIDATE REVIEW &middot; JUNIOR MINISTER</div>
-        <div class="oi-headline"><strong>${escHtml(name)}</strong> seeks the <em>${escHtml(portfolioLabel)}</em> portfolio.</div>
+        <div class="oi-headline"><strong>${escHtml(name)}</strong> seeks a <em>Junior Minister</em> appointment.</div>
         <div class="oi-meta">
           <span class="oi-corp">${escHtml(party)}</span>
           <span class="oi-sep">&middot;</span>
@@ -2948,7 +2950,7 @@ async function resolveJuniorMinisterApplication(btn, action) {
         already_resolved:         'That application has already been resolved.',
         not_head_of_government:   'Only the active Prime Minister can decide this.',
         applicant_already_serving:'That politician already holds a portfolio.',
-        portfolio_filled:         'That portfolio has already been filled.',
+        all_portfolios_full:      'No Junior Minister portfolio is currently vacant — try again once one opens.',
         applicant_missing:        'The applicant is no longer in office.',
       };
       alert(REASON[data?.reason] || ('Could not resolve: ' + (data?.reason || 'unknown')));

@@ -6,8 +6,8 @@
 // pattern (a deliberate "entrepreneur copy", not a cross-type shared
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
-import { hfFmtBig, APP_VERSION } from './utils.js';
-import { getFactionTypeBadge, getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { hfFmtBig, APP_VERSION, flagUrlFor } from './utils.js';
+import { getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
@@ -50,7 +50,9 @@ function ensureStyles() {
     color:#d4d4d4; cursor:pointer; border-bottom:0.5px solid rgba(255,255,255,0.06); }
   .ent-dd-item:last-child { border-bottom:none; }
   .ent-dd-item:hover { background:#1a1a17; }
-  .ent-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; }
+  .ent-dd-badge { font-size:9px; letter-spacing:0.06em; min-width:40px; flex-shrink:0; }
+  .ent-dd-flag { width:24px; height:16px; object-fit:cover; min-width:24px;
+    border-radius:2px; border:0.5px solid rgba(255,255,255,0.1); display:block; }
   .ent-dd-name { flex:1; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ent-dd-item.create, .ent-dd-item.create .ent-dd-name { color:#888; }
   .ent-util { color:#666; font-size:11px; cursor:pointer; }
@@ -129,25 +131,35 @@ function buildSwitcher(facs) {
   const dd = document.getElementById('ent-dd');
   if (!pill || !dd) return;
   dd.replaceChildren();
-  const addRow = (cls, badgeText, badgeColor, name, onClick) => {
+  // addRow takes either a flag URL (rendered as the nation chip) or
+  // a fallback text glyph (used for create-slot "+" rows). Flag wins
+  // when both are passed.
+  const addRow = (cls, flagUrl, fallbackText, name, onClick) => {
     const row = document.createElement('div');
     row.className = 'ent-dd-item' + (cls ? ' ' + cls : '');
-    const b = document.createElement('span');
-    b.className = 'ent-dd-badge';
-    if (badgeColor) b.style.color = badgeColor;
-    b.textContent = badgeText;
+    let badge;
+    if (flagUrl) {
+      badge = document.createElement('img');
+      badge.className = 'ent-dd-badge ent-dd-flag';
+      badge.src = flagUrl;
+      badge.alt = '';
+      badge.onerror = function () { this.style.display = 'none'; };
+    } else {
+      badge = document.createElement('span');
+      badge.className = 'ent-dd-badge';
+      badge.textContent = fallbackText || '';
+    }
     const n = document.createElement('span');
     n.className = 'ent-dd-name';
     n.textContent = name;
-    row.append(b, n);
+    row.append(badge, n);
     row.addEventListener('click', onClick);
     dd.appendChild(row);
   };
   for (const fac of facs) {
-    const { label, color } = getFactionTypeBadge(fac.faction_type);
     const role = getPoliticianRoleLabel(fac);
     const name = (fac.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
-    addRow('', label, color, name, () => {
+    addRow('', flagUrlFor(fac.nation), '', name, () => {
       sessionStorage.setItem('active_faction_id', fac.id);
       window.location.href = getFactionDashboardUrl(fac) || 'faction-select.html';
     });
@@ -160,7 +172,7 @@ function buildSwitcher(facs) {
   ];
   for (const c of creates) {
     if (facs.some(f => f.faction_type === c.has)) continue;
-    addRow('create', '+', null, c.name, () => {
+    addRow('create', null, '+', c.name, () => {
       sessionStorage.setItem('pending_faction_type', c.type);
       window.location.href = c.url;
     });
@@ -168,7 +180,7 @@ function buildSwitcher(facs) {
   // Politician slot row — label rule, cap, and Patreon11 gate all
   // live in js/game/factions.js. Null when the user has hit the cap.
   const polSlot = nextPoliticianSlot(facs);
-  if (polSlot) addRow('create', '+', null, polSlot.label, () => activatePoliticianSlot(polSlot));
+  if (polSlot) addRow('create', null, '+', polSlot.label, () => activatePoliticianSlot(polSlot));
   pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#ent-pill') && !e.target.closest('#ent-dd')) dd.classList.remove('open');
@@ -342,7 +354,7 @@ export async function bootstrapEntrepreneur(activeTab) {
           .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, abbreviation, branch, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick')
+      .select('id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
 

@@ -107,6 +107,20 @@
   .rv-tally-row.rv-tally-table  { border-left:2px solid #6e2f2f; }
   .rv-tally-lab { font-size:9px; letter-spacing:0.12em; color:var(--faint); text-transform:uppercase; }
   .rv-tally-val { font-size:14px; color:#dadada; font-family:monospace; font-weight:600; }
+  .rv-arch { display:flex; flex-wrap:wrap; gap:5px 10px; margin-bottom:10px;
+    padding:8px 10px; background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px; }
+  .rv-arch-row { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+  .rv-arch-lab { font-size:8.5px; letter-spacing:0.13em; color:var(--faint); font-weight:700;
+    text-transform:uppercase; }
+  .rv-arch-lab.support { color:#7fb98a; }
+  .rv-arch-lab.oppose  { color:#c87a7a; }
+  .rv-arch-chip { font-size:9px; padding:2px 7px; border-radius:3px;
+    background:#0d0d0d; border:0.5px solid var(--line); color:#bbb; font-weight:600;
+    letter-spacing:0.01em; }
+  .rv-arch-chip.support { color:#7fb98a; border-color:#2f6e3a; }
+  .rv-arch-chip.oppose  { color:#c87a7a; border-color:#6e2f2f; }
+  .rv-arch-chip.mine    { background:#191512; }
+  .rv-arch-warn { font-size:9.5px; color:#d4b87a; margin-bottom:8px; font-style:italic; }
   .rv-cast { display:flex; gap:8px; align-items:center; }
   .rv-cast-spec { color:var(--faint); font-size:10px; font-style:italic; }
   .rv-vote-btn { flex:1; padding:11px 14px; background:#0a0a0a; border:0.5px solid var(--line);
@@ -387,7 +401,7 @@ async function init() {
   // Members with party join (party_color, faction_name, abbreviation).
   const { data: members, error: memErr } = await _supabase
     .from('committee_members')
-    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, seated_at_tick, party:factions!party_id(faction_name, abbreviation, party_color), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
+    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, seated_at_tick, party:factions!party_id(faction_name, abbreviation, party_color, archetype), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .order('slot_idx', { ascending: true });
   if (memErr) console.warn('committee: members fetch failed', memErr);
@@ -408,7 +422,7 @@ async function init() {
   // committee resolves it via mp_vote_on_report.
   const { data: reportBills, error: rbErr } = await _supabase
     .from('committee_proposals')
-    .select('id, category, section, articles, bill_name, proposed_at_tick, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .select('id, category, section, articles, bill_name, proposed_at_tick, support_archetypes, oppose_archetypes, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .eq('status', 'awaiting_report_vote')
     .limit(1);
@@ -796,24 +810,29 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
     ? truncate(bill.bill_name, 80)
     : (firstArticle?.text ? truncate(firstArticle.text, 80) : (bill.section || 'Proposal'));
 
-  // Party-bloc tally (Phase A.1.5, 20270663). Each player vote stands
-  // in for every seat their party holds; parties with no player on
-  // the committee abstain. First player vote per party drives the
-  // bloc — subsequent same-party votes don't move the count.
-  // Mirrors the SQL in mp_vote_on_report; both must agree.
+  // Author-declared archetype positions (20270686). Optional — empty
+  // arrays when the proposer left both lists blank.
+  const supportList = Array.isArray(bill.support_archetypes) ? bill.support_archetypes : [];
+  const opposeList  = Array.isArray(bill.oppose_archetypes)  ? bill.oppose_archetypes  : [];
+
+  // ONE-SOURCE NOTE: this party-bloc tally mirrors mp_vote_on_report
+  // (20270686). Both must agree — when you edit the SQL, edit here
+  // too. The shape: per distinct party on the committee, resolve to
+  // a side via (a) first player vote then (b) archetype match
+  // against support/oppose, else abstain. Tally + denominator both
+  // include any party that lands on a side.
   const partyOfFaction = new Map(
     members
       .filter(m => m.politician_faction_id)
       .map(m => [m.politician_faction_id, m.party_id])
   );
-  const seatsByParty = new Map();
+  const seatsByParty   = new Map();
+  const archByParty    = new Map();
   for (const m of members) {
     if (!m.party_id) continue;
     seatsByParty.set(m.party_id, (seatsByParty.get(m.party_id) || 0) + 1);
+    if (m.party?.archetype) archByParty.set(m.party_id, m.party.archetype);
   }
-  const playerPartiesOnCommittee = new Set(
-    members.filter(m => m.politician_faction_id && m.party_id).map(m => m.party_id)
-  );
   // First player vote per party (stable by voted_at_tick, then index).
   const sortedVotes = [...votes].sort((a, b) =>
     (a.voted_at_tick ?? 0) - (b.voted_at_tick ?? 0)
@@ -824,23 +843,42 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
     if (!partyId) continue;
     if (!firstVoteByParty.has(partyId)) firstVoteByParty.set(partyId, v.vote);
   }
+  const archPosition = arch => arch && supportList.includes(arch) ? 'report'
+                             : arch && opposeList.includes(arch)  ? 'table'
+                             : null;
   let reportCount = 0;
   let tableCount  = 0;
-  for (const [partyId, vote] of firstVoteByParty) {
-    const seats = seatsByParty.get(partyId) || 0;
-    if (vote === 'report') reportCount += seats;
-    else if (vote === 'table') tableCount += seats;
-  }
-  // Votable seats: sum of seats held by parties with at least one
-  // player on the committee. NPCs of parties with no player driver
-  // are NOT part of the denominator (they abstain).
   let memberCount = 0;
   for (const [partyId, seats] of seatsByParty) {
-    if (playerPartiesOnCommittee.has(partyId)) memberCount += seats;
+    const side = firstVoteByParty.get(partyId) || archPosition(archByParty.get(partyId));
+    if (!side) continue;
+    if (side === 'report') reportCount += seats;
+    else                   tableCount  += seats;
+    memberCount += seats;
   }
   const threshold = Math.floor(memberCount / 2) + 1;
-  const myVote      = votes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
-  const canVote     = onCommittee && !myVote;
+  const myVote    = votes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
+  const canVote   = onCommittee && !myVote;
+
+  const myMember = members.find(m => m.politician_faction_id === viewerPolId) || null;
+  const myArch   = myMember?.party?.archetype || null;
+  const myPosition = archPosition(myArch);
+  const archChips = (list, kind) => list.map(name =>
+    `<span class="rv-arch-chip ${kind}${name === myArch ? ' mine' : ''}">${escHtml(name)}</span>`
+  ).join('');
+  const archBlock = (supportList.length || opposeList.length) ? `
+    <div class="rv-arch">
+      ${supportList.length ? `<div class="rv-arch-row"><span class="rv-arch-lab support">Listed Support</span>${archChips(supportList, 'support')}</div>` : ''}
+      ${opposeList.length  ? `<div class="rv-arch-row"><span class="rv-arch-lab oppose">Listed Oppose</span>${archChips(opposeList, 'oppose')}</div>` : ''}
+    </div>` : '';
+  // Warning shown only when the viewer is voting AND their party
+  // archetype is listed on a side. If they vote against, they'll pay
+  // -1 Party Popularity (mp_vote_on_report enforces it).
+  const archWarn = (canVote && myPosition) ? `
+    <div class="rv-arch-warn">Your party (${escHtml(myArch)}) is listed as
+      ${myPosition === 'report' ? '<strong>Supporting</strong>' : '<strong>Opposing</strong>'}.
+      Voting ${myPosition === 'report' ? '<strong>Table</strong>' : '<strong>Report</strong>'}
+      costs <strong>−1 Party Popularity</strong>.</div>` : '';
 
   const buttons = onCommittee
     ? (myVote
@@ -860,6 +898,7 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
       <div class="rv-title">${escHtml(title)}</div>
       <div class="rv-sub">Sponsor <b>${escHtml(sponsor)}</b> &middot; ${memberCount} votable seat${memberCount === 1 ? '' : 's'} of ${members.length} &middot; needs ${threshold} to resolve</div>
     </div>
+    ${archBlock}
     <div class="rv-tally">
       <div class="rv-tally-row rv-tally-report">
         <span class="rv-tally-lab">Report to floor</span>
@@ -870,6 +909,7 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
         <span class="rv-tally-val">${tableCount} / ${threshold}</span>
       </div>
     </div>
+    ${archWarn}
     ${buttons}
   `;
 }
