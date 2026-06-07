@@ -2428,7 +2428,10 @@ function bindRungActions(ctx) {
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = `${spec.verb[0].toUpperCase()}${spec.verb.slice(1)}…`;
       try {
-        const { data, error } = await _supabase.rpc(spec.rpc, { p_party_id: partyId });
+        const { data, error } = await _supabase.rpc(spec.rpc, {
+          p_party_id:   partyId,
+          p_faction_id: ctx?.faction?.id || null,
+        });
         if (error) throw error;
         if (!data?.success) {
           const msg = data?.reason === 'insufficient_reputation'
@@ -2454,7 +2457,9 @@ function bindRungActions(ctx) {
       const prev = btn.textContent;
       btn.disabled = true; btn.textContent = 'Resigning…';
       try {
-        const { data, error } = await _supabase.rpc('politician_resign_chair');
+        const { data, error } = await _supabase.rpc('politician_resign_chair', {
+          p_faction_id: ctx?.faction?.id || null,
+        });
         if (error) throw error;
         if (!data?.success) {
           const REASON = {
@@ -3258,12 +3263,16 @@ function emEscHandler(e) {
 }
 
 async function loadElectionOffer(ctx) {
-  const partyId = ctx?.party?.id || null;
+  const partyId   = ctx?.party?.id   || null;
+  const factionId = ctx?.faction?.id || null;
   if (!partyId) {
     showElectionError('You need to be a party member to stand for election.');
     return;
   }
-  const { data, error } = await _supabase.rpc('politician_get_election_offer', { p_party_id: partyId });
+  // p_faction_id pins the active politician — 20270665 closed the
+  // multi-politician oldest-first lookup in this RPC.
+  const { data, error } = await _supabase.rpc('politician_get_election_offer',
+    { p_party_id: partyId, p_faction_id: factionId });
   if (error) {
     console.error('politician_get_election_offer error', error);
     showElectionError('Could not load races. ' + (error.message || 'Try again later.'));
@@ -3439,8 +3448,9 @@ async function confirmElection(ctx) {
   const originalLabel = btn.textContent;
   btn.textContent = 'Submitting…';
   const { data, error } = await _supabase.rpc('politician_stand_for_election', {
-    p_party_id: partyId,
-    p_tier:     emSelectedTier,
+    p_party_id:   partyId,
+    p_tier:       emSelectedTier,
+    p_faction_id: ctx?.faction?.id || null,
   });
   if (error) {
     alert('Could not stand for election: ' + (error.message || 'unknown error'));

@@ -59,14 +59,21 @@ export function isFactionInactive(f) {
  *                        active_faction_id pointing at a party
  *                        redirects to a Politician or Entrepreneur
  *                        the user owns.
+ *   • 'military'       — military faction switcher access sunset.
+ *                        Mirrors the party pattern: existing army
+ *                        factions still exist, war-room reads still
+ *                        work, but the switcher chip is gone from
+ *                        every dashboard so an entrepreneur can no
+ *                        longer hop into the army from their own
+ *                        topbar. Common.js's stale-session redirect
+ *                        inherits the same gate.
  *
- * Existing party rows are NOT deleted — the politics engine still
- * reads them and the party.html page still loads for anyone who
- * navigates directly. This is only the switcher / picker gate.
+ * Existing rows are NOT deleted — the politics / war-room engines
+ * still read them. This is only the switcher / picker gate.
  */
 export function isHiddenFromSwitcher(f) {
     const t = f?.faction_type;
-    return t === 'corporation' || t === 'party' || t === 'movement_party';
+    return t === 'corporation' || t === 'party' || t === 'movement_party' || t === 'military';
 }
 
 /**

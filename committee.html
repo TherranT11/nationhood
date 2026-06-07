@@ -650,7 +650,10 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       acc.dataset.busy = '1';
       acc.disabled = true;
       try {
-        const { data, error } = await _supabase.rpc('accept_hearing_testimony', { p_testimony_id: tid });
+        // p_faction_id pins the active politician — 20270665 closed
+        // the multi-politician oldest-first lookup in this RPC.
+        const { data, error } = await _supabase.rpc('accept_hearing_testimony',
+          { p_testimony_id: tid, p_faction_id: viewerFactionId });
         if (error) throw error;
         if (!data?.success) { alert('Could not accept: ' + (data?.reason || 'unknown')); return; }
         location.reload();
@@ -983,7 +986,7 @@ function wireWitnessModal(activeHearing, personas) {
     refreshWitnessSubmit();
   };
 
-  document.getElementById('wit-submit').onclick = () => submitWitnessTestimony(activeHearing);
+  document.getElementById('wit-submit').onclick = () => submitWitnessTestimony(activeHearing, viewerFactionId);
 
   // addEventListener bound once (guarded by _escapeBound) so we don't
   // stomp any other document-level keydown handler and we don't
@@ -1032,7 +1035,7 @@ function refreshWitnessSubmit() {
   btn.disabled = !ok;
 }
 
-async function submitWitnessTestimony(activeHearing) {
+async function submitWitnessTestimony(activeHearing, factionId) {
   if (_witnessSubmitInFlight) return;
   const sel = document.getElementById('wit-persona');
   const ta  = document.getElementById('wit-text');
@@ -1042,10 +1045,13 @@ async function submitWitnessTestimony(activeHearing) {
   _witnessSubmitInFlight = true;
   refreshWitnessSubmit();
   try {
+    // p_faction_id pins the active politician/entrepreneur/etc — 20270665
+    // closed the multi-faction oldest-first lookup in this RPC.
     const { data, error } = await _supabase.rpc('submit_hearing_testimony', {
       p_hearing_id: activeHearing.id,
       p_persona_id: sel.value,
       p_text:       ta.value.trim(),
+      p_faction_id: factionId,
     });
     if (error) throw error;
     if (!data?.success) {

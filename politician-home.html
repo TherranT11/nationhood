@@ -2880,7 +2880,7 @@ function renderCampaignCard(ctx) {
       eyebrow:   'ACTIVE CAMPAIGN · LOW-STAKES · COMMUNITY',
       titleLead: 'Community Organizer',
       blurb:     'A volunteer seat on your neighborhood association.',
-      statLabel: 'CREDIBILITY',
+      statLabel: 'SKILL',
     },
     parliament: {
       eyebrow:   'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL',
@@ -3070,7 +3070,8 @@ const CAMPAIGN_RPCS = {
 };
 
 function bindCampaignActions(ctx) {
-  const partyId = ctx.party?.id || null;
+  const partyId   = ctx.party?.id      || null;
+  const factionId = ctx.faction?.id    || null;
   if (!partyId) return;
   document.querySelectorAll('.ci-act[data-camp-action]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -3082,7 +3083,12 @@ function bindCampaignActions(ctx) {
       // Disable the siblings too so the player can't double-spend the
       // 1-per-turn gate while the first call is in flight.
       btn.parentElement?.querySelectorAll('.ci-act').forEach(b => { b.disabled = true; });
-      const { data, error } = await _supabase.rpc(spec.rpc, { p_party_id: partyId });
+      // p_faction_id pins the active politician — 20270661 closed the
+      // multi-politician lookup in politician_run_political_ads, and
+      // 20270665 did the same for campaign_rally + request_endorsement.
+      // All three campaign RPCs now require both args.
+      const { data, error } = await _supabase.rpc(spec.rpc,
+        { p_party_id: partyId, p_faction_id: factionId });
       if (error) {
         alert('Action failed: ' + (error.message || 'unknown error'));
         location.reload();
@@ -4690,7 +4696,9 @@ async function loadNextFilePaperworkDispatch() {
 
   let resp;
   try {
-    const { data, error } = await _supabase.rpc('fetch_civil_servant_dispatch');
+    const { data, error } = await _supabase.rpc('fetch_civil_servant_dispatch', {
+      p_faction_id: politician?.id || null,
+    });
     if (error) throw error;
     resp = data;
   } catch (err) {
@@ -4908,6 +4916,7 @@ async function submitFilePaperwork() {
       p_ministry:    fpState.ministry,
       p_agency:      fpState.agency,
       p_flag:        fpState.flagged,
+      p_faction_id:  politician?.id || null,
     });
     if (error) throw error;
     resp = data;
