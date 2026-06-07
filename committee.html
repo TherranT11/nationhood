@@ -699,6 +699,17 @@ async function submitApplication(link, committeeId, factionId) {
     link.dataset.busy = ''; link.textContent = originalText;
     return;
   }
+  // 20270690 fast path: a same-party NPC seat (member / ranking_
+  // minority) was flipped to the applicant directly — no vote. Reload
+  // in place so the committee panel re-renders with the applicant
+  // seated. Otherwise the legacy admission-vote path fired; punt to
+  // the voting surface so the applicant can watch the tally.
+  if (res.data?.instant_seated) {
+    const roleLabel = (res.data.role || 'MEMBER').replace(/_/g, ' ').toUpperCase();
+    alert(`Seated as ${roleLabel}.`);
+    location.reload();
+    return;
+  }
   alert(`Admission vote opened. Resolves at tick ${res.data.resolve_at_tick}.`);
   window.location.href = 'politician-nation.html#sec-voting';
 }
