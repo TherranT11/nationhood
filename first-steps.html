@@ -221,7 +221,6 @@ let selectedName = null;  // { first, last } once picked
 let generatedNames = [];  // [{ first, last }, ...] — generated once per gender change
 let currentStep = 1;
 let currentUser = null;
-let currentTick = 0;
 let createInFlight = false;
 
 async function init() {
@@ -232,12 +231,10 @@ async function init() {
   try {
     const [
       { data: nations, error: natErr },
-      { data: shard,   error: shardErr },
       { data: pols,    error: polErr },
       { data: parties, error: partyErr },
     ] = await Promise.all([
       _supabase.from('nations').select('id, name, continent, government_type, population, politician_gdp, flag_url, nation_profiles(flag_url)').order('name'),
-      _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
       _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
       // Movement parties feed the Political Parties section on each
       // nation card. Sort happens client-side (seats DESC) so a nation
@@ -248,11 +245,9 @@ async function init() {
         .is('abandoned_at', null),
     ]);
     if (natErr) throw natErr;
-    if (shardErr) throw shardErr;
     if (polErr) throw polErr;
     if (partyErr) throw partyErr;
     allNations = nations || [];
-    currentTick = shard?.current_tick || 0;
     politiciansByNation = {};
     for (const p of (pols || [])) {
       if (!p.nation_id) continue;
@@ -267,7 +262,7 @@ async function init() {
       arr.sort((a, b) => (Number(b.seats) || 0) - (Number(a.seats) || 0));
     }
   } catch (err) {
-    console.error('first-steps: failed to load nations/shard/politicians/parties', err);
+    console.error('first-steps: failed to load nations/politicians/parties', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }

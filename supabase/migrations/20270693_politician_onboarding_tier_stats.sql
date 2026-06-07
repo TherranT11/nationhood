@@ -151,11 +151,17 @@ BEGIN
     END IF;
 
     -- ── Linked vs. primary path ─────────────────────────────────
-    -- Mirrors first-steps.html: if auth.uid() already maps to a
-    -- non-abandoned faction row id, this is a secondary politician
-    -- and the new faction takes a fresh UUID with linked_user_id =
-    -- caller. Otherwise the faction id equals auth.uid() (legacy
-    -- primary slot).
+    -- Mirrors first-steps.html's prior client logic. If auth.uid()
+    -- already maps to a non-abandoned faction row id, this is a
+    -- secondary politician → fresh UUID + linked_user_id = caller.
+    -- Otherwise the new faction takes the legacy primary slot at
+    -- id = auth.uid(). The primary slot may already exist as an
+    -- abandoned row (user abandoned a previous faction and is now
+    -- onboarding again), so the non-linked path uses ON CONFLICT
+    -- (id) DO UPDATE to overwrite that row in place — same UPSERT
+    -- semantics the old client relied on. Without this, the rejoin
+    -- flow would 23505 on the primary key and surface the wrong
+    -- error.
     SELECT id INTO v_primary FROM factions
      WHERE id = v_uid AND abandoned_at IS NULL
      LIMIT 1;
@@ -163,47 +169,83 @@ BEGIN
     v_faction_id := CASE WHEN v_is_linked THEN gen_random_uuid() ELSE v_uid END;
 
     BEGIN
-        INSERT INTO factions (
-            id, faction_type, faction_name,
-            nation_id, nation,
-            seats, action_points, party_funds,
-            abandoned_at,
-            leader_first_name, leader_last_name, leader_age,
-            founded_tick,
-            politician_skill, politician_reputation,
-            politician_capital, politician_influence,
-            linked_user_id
-        ) VALUES (
-            v_faction_id, 'politician',
-            v_first || ' ' || v_last,
-            p_nation_id, v_nation.name,
-            0, 0, 0,
-            NULL,
-            v_first, v_last, v_age,
-            v_tick,
-            v_skill, v_rep,
-            v_cap, v_inf,
-            CASE WHEN v_is_linked THEN v_uid ELSE NULL END
-        );
+        IF v_is_linked THEN
+            INSERT INTO factions (
+                id, faction_type, faction_name,
+                nation_id, nation,
+                seats, action_points, party_funds,
+                abandoned_at,
+                leader_first_name, leader_last_name, leader_age,
+                founded_tick,
+                politician_skill, politician_reputation,
+                politician_capital, politician_influence,
+                linked_user_id
+            ) VALUES (
+                v_faction_id, 'politician',
+                v_first || ' ' || v_last,
+                p_nation_id, v_nation.name,
+                0, 0, 0,
+                NULL,
+                v_first, v_last, v_age,
+                v_tick,
+                v_skill, v_rep,
+                v_cap, v_inf,
+                v_uid
+            );
+        ELSE
+            INSERT INTO factions (
+                id, faction_type, faction_name,
+                nation_id, nation,
+                seats, action_points, party_funds,
+                abandoned_at,
+                leader_first_name, leader_last_name, leader_age,
+                founded_tick,
+                politician_skill, politician_reputation,
+                politician_capital, politician_influence,
+                linked_user_id
+            ) VALUES (
+                v_faction_id, 'politician',
+                v_first || ' ' || v_last,
+                p_nation_id, v_nation.name,
+                0, 0, 0,
+                NULL,
+                v_first, v_last, v_age,
+                v_tick,
+                v_skill, v_rep,
+                v_cap, v_inf,
+                NULL
+            )
+            ON CONFLICT (id) DO UPDATE SET
+                faction_type          = EXCLUDED.faction_type,
+                faction_name          = EXCLUDED.faction_name,
+                nation_id             = EXCLUDED.nation_id,
+                nation                = EXCLUDED.nation,
+                seats                 = EXCLUDED.seats,
+                action_points         = EXCLUDED.action_points,
+                party_funds           = EXCLUDED.party_funds,
+                abandoned_at          = NULL,
+                leader_first_name     = EXCLUDED.leader_first_name,
+                leader_last_name      = EXCLUDED.leader_last_name,
+                leader_age            = EXCLUDED.leader_age,
+                founded_tick          = EXCLUDED.founded_tick,
+                politician_skill      = EXCLUDED.politician_skill,
+                politician_reputation = EXCLUDED.politician_reputation,
+                politician_capital    = EXCLUDED.politician_capital,
+                politician_influence  = EXCLUDED.politician_influence,
+                linked_user_id        = NULL;
+        END IF;
     EXCEPTION WHEN unique_violation THEN
-        -- Concurrent join on the same nation by the same owner — re-
-        -- emit the friendly reason instead of bubbling a raw 23505.
+        -- Concurrent join on the same (owner, nation) by the same
+        -- user — re-emit the friendly reason instead of bubbling
+        -- a raw 23505. (The legacy-primary path is UPSERT so it
+        -- can't hit a PK conflict; only the cross-row uniqueness
+        -- constraint can fire here.)
         RETURN jsonb_build_object('success', false, 'reason', 'already_in_nation');
     END;
 
     RETURN jsonb_build_object(
-        'success',     true,
-        'faction_id',  v_faction_id,
-        'tier',        v_tier,
-        'nation_pos',  v_pos,
-        'nation_total', v_n,
-        'starting_stats', jsonb_build_object(
-            'age',        v_age,
-            'experience', v_skill,
-            'reputation', v_rep,
-            'capital',    v_cap,
-            'influence',  v_inf
-        )
+        'success',    true,
+        'faction_id', v_faction_id
     );
 END $$;
 
