@@ -1144,7 +1144,7 @@ const GOVT_SERVICE_RUNGS = [
       const m = MAJOR_MINISTRY_LABEL[s.permanentSecretaryMinistry] || s.permanentSecretaryMinistry || 'a major ministry';
       return `You run the Ministry of <strong>${escHtml(m)}</strong> day-to-day. Permanent across political changes — Ministers come and go, you stay.`;
     },
-    descIfNot:    ()  => 'Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>20 Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. You\'re assigned by lot to <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong> based on your civil-service track.',
+    descIfNot:    ()  => 'Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>20 Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. Auto-assigned to the major-ministry equivalent of your civil-service track — <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong>.',
     actions:      ['Approve Policy', 'Implement Reform'],
     actionIfNot:  (s) => {
       if (s.seniorCivilServantAtTick == null) {
