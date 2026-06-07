@@ -345,6 +345,7 @@ export function buildingTypeLabel(t) {
         case 'real_estate_office': return 'Real Estate Office';
         case 'light_assembly_plant':  return 'Light Assembly Plant';
         case 'engine_assembly_plant': return 'Engine Assembly Plant';
+        case 'aircraft_assembly_facility': return 'Aircraft Assembly Facility';
         case 'apartment_basic':    return 'Basic Apartments';
         case 'apartment_modest':   return 'Modest Apartments';
         case 'apartment_luxury':   return 'Luxury Apartments';
