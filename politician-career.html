@@ -1179,11 +1179,11 @@ const GOVT_SERVICE_RUNGS = [
       const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
       return `You hold the <strong>${escHtml(p)}</strong> portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
     },
-    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>20 Experience</strong>; on acceptance you\'re randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
+    descIfNot:   ()  => 'An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>28 Experience</strong>; on acceptance you\'re randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.',
     actions:     ['Carry a Bill', 'Answer Questions'],
     // Seek Appointment — Agency Head → Junior Minister. Gates layer
     // up: must be Agency Head (politician_senior_civil_servant_at_
-    // tick set), ≥ 20 Skill, no current portfolio, no active
+    // tick set), ≥ 28 Skill, no current portfolio, no active
     // cooldown from a previous rejected roll. Server re-checks each;
     // the disabled labels here keep the button honest so a picker
     // doesn't open just to fail.
@@ -1196,8 +1196,8 @@ const GOVT_SERVICE_RUNGS = [
         return { label: 'Agency Heads only', kind: 'disabled' };
       }
       const skill = Number(s.politicianSkill) || 0;
-      if (skill < 20) {
-        return { label: `Apply · Need 20 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      if (skill < 28) {
+        return { label: `Apply · Need 28 Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Seek Appointment', kind: 'primary', action: 'seek-junior-appointment' };
     },
@@ -3105,7 +3105,7 @@ async function submitJuniorAppointment(btn) {
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
-      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need 20 Experience. You have ${have}.`
+      const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need 28 Experience. You have ${have}.`
         : data?.reason === 'not_agency_head'                  ? 'Only sitting Agency Heads may seek a Junior Minister portfolio.'
         : data?.reason === 'already_junior_minister'          ? `You already hold the ${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || '—')} portfolio.`
         : data?.reason === 'pending_application_exists'       ? 'You already have an application pending review.'
