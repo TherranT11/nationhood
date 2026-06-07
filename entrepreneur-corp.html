@@ -40,6 +40,7 @@
 
   .role-block { text-align:right; padding-left:28px; border-left:0.5px solid rgba(255,255,255,0.08); min-width:240px; }
   .role-eyebrow { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; text-transform:uppercase; }
+  .role-sub { color:#444; font-size:9px; font-style:italic; margin-top:-3px; margin-bottom:8px; letter-spacing:0.06em; }
   .role-block .role-pill { display:inline-block; background:#2a3a1f; color:#9eb87a; padding:4px 10px;
     border-radius:3px; font-size:10px; letter-spacing:0.13em; font-weight:500; margin-bottom:12px; }
   .role-block .stake { font-size:40px; font-weight:500; color:#8aaa6a; line-height:1; letter-spacing:-0.02em; }
@@ -683,11 +684,12 @@
     .corp-header { flex-direction:column; gap:18px; padding-bottom:18px; margin-bottom:20px; }
     .role-block { text-align:left; padding-left:0; border-left:none; min-width:0;
       border-top:0.5px solid rgba(255,255,255,0.08); padding-top:16px; }
-    /* The remaining header-inline controls (Acquire — non-owner make-offer
-       and Director Actions) go full-width once the header stacks. Withdraw
-       / Put Up for Sale / Bankrupt / Negotiations moved into the
-       Administrative Hub below Legal Counsel and no longer need this. */
-    #cp-acquire, #cp-director-actions {
+    /* The remaining header-inline controls (Executive Actions for owners,
+       Acquire for non-owners, Director Actions for directors) go full-
+       width once the header stacks. Withdraw / Put Up for Sale / Bankrupt
+       / Negotiations moved into the Administrative Hub below Legal
+       Counsel and no longer need this rule. */
+    #cp-exec-actions, #cp-acquire, #cp-director-actions {
       min-width:0; width:100%; align-self:stretch;
     }
   }
@@ -984,6 +986,16 @@
       <!-- Acquire (2.6.8.3): non-owner sees [Acquire]; owner with an incoming
            offer sees [Review offer]. Populated by renderAcquire(). -->
       <div id="cp-acquire" style="display:none;align-self:center;min-width:160px;text-align:center;"></div>
+      <!-- Executive Actions — owner-only header slot for turn-based
+           executive moves. Body intentionally empty for now; content
+           lands when the executive-actions mechanic ships. The hub
+           card below still holds the non-turn-based admin flows
+           (treasury pump, list for sale, negotiations, danger zone). -->
+      <div id="cp-exec-actions" style="display:none;align-self:center;min-width:220px;text-align:center;">
+        <div class="role-eyebrow">EXECUTIVE ACTIONS</div>
+        <div class="role-sub">1 per turn</div>
+        <div class="exec-body" style="min-height:34px;border:0.5px dashed rgba(255,255,255,0.08);border-radius:4px;display:flex;align-items:center;justify-content:center;color:#3a3a3a;font-size:10px;letter-spacing:0.08em;">—</div>
+      </div>
       <!-- Director actions (2.6.8.6.2): board directors of a PRIVATE corp see
            [Offer Investment]; [Sell Equity] also if they hold shares. JS-gated. -->
       <div id="cp-director-actions" style="display:none;align-self:center;min-width:200px;text-align:center;">
@@ -2896,6 +2908,13 @@ function initials(s, n) {
     // could race against the same number with both directions).
     // Public corps distribute via the dividend card / float, not
     // this box — both RPCs reject listing='public'.
+    // Executive Actions header slot — visible for any owner (public or
+    // private). Empty body for now; just reserves the space + label.
+    if (isOwner) {
+      const cpExec = document.getElementById('cp-exec-actions');
+      if (cpExec) cpExec.style.display = 'block';
+    }
+
     const cpWd = document.getElementById('cp-withdraw');
     if (cpWd && !isPublic && isOwner) {
       cpWd.style.display = 'block';
