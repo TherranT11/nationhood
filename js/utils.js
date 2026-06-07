@@ -31,6 +31,19 @@ export const JUNIOR_PORTFOLIO_HINT = {
     housing:        'affordability · construction · standards',
 };
 
+// Format a 0-100 numeric stat for display — Skill 10.0 reads as "10",
+// Skill 10.3 stays "10.3". Returns "0" for null / undefined / NaN so
+// callers can drop their || 0 boilerplate. Single source for stat
+// rendering; politician-career.html (rung labels + picker meta) and
+// politician-home.html (candidate review card) used to each carry
+// their own copy of this logic.
+export function fmtStat(value, decimals = 1) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '0';
+    if (decimals === 0) return String(Math.round(n));
+    return n.toFixed(decimals).replace(/\.0+$/, '');
+}
+
 // ===== AGE / CAREER MATH =====
 // Single source of truth for the politician age + career-years derivation.
 // Politicians spawn at START_AGE; each TICKS_PER_AGE_YEAR ticks elapsed

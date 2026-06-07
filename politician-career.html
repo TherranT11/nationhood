@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, JUNIOR_PORTFOLIO_HINT } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, JUNIOR_PORTFOLIO_HINT, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -1178,8 +1178,7 @@ const GOVT_SERVICE_RUNGS = [
       }
       const skill = Number(s.politicianSkill) || 0;
       if (skill < 20) {
-        const shown = Number.isInteger(skill) ? String(skill) : skill.toFixed(1).replace(/\.0$/, '');
-        return { label: `Apply · Need 20 Skill (have ${shown})`, kind: 'disabled' };
+        return { label: `Apply · Need 20 Skill (have ${fmtStat(skill)})`, kind: 'disabled' };
       }
       return { label: 'Seek Appointment', kind: 'primary', action: 'seek-junior-appointment' };
     },
@@ -3056,10 +3055,7 @@ function openPortfolioPicker(ctx) {
   const overlay = document.getElementById('jmPickModal');
   if (!overlay) return;
 
-  const skillRaw = Number(ctx?.faction?.politician_skill) || 0;
-  const skillTxt = Number.isInteger(skillRaw)
-    ? String(skillRaw)
-    : skillRaw.toFixed(1).replace(/\.0$/, '');
+  const skillTxt = fmtStat(ctx?.faction?.politician_skill);
 
   const meta = document.getElementById('jm-pick-meta');
   const body = document.getElementById('jm-pick-body');
@@ -3097,9 +3093,7 @@ async function submitJuniorAppointment(portfolio, btn) {
       { p_portfolio: portfolio });
     if (error) throw error;
     if (!data?.success) {
-      const have = data?.have != null
-        ? Number(data.have).toFixed(1).replace(/\.0$/, '')
-        : '?';
+      const have = data?.have != null ? fmtStat(data.have) : '?';
       const msg = data?.reason === 'insufficient_skill'      ? `Application denied — you need 20 Skill. You have ${have}.`
         : data?.reason === 'not_agency_head'                  ? 'Only sitting Agency Heads may seek a Junior Minister portfolio.'
         : data?.reason === 'already_junior_minister'          ? `You already hold the ${escHtml(JUNIOR_PORTFOLIO_LABEL[data?.portfolio] || data?.portfolio || '—')} portfolio.`

@@ -1287,7 +1287,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, JUNIOR_PORTFOLIO_LABEL } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, JUNIOR_PORTFOLIO_LABEL, fmtStat } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
@@ -2879,16 +2879,9 @@ async function resolveStateAdvocateRequest(btn, accept) {
 // appointment reviews the active HoG holds in their queue. Buttons
 // dispatch to politician_decide_junior_appointment(p_application_id,
 // p_action); the server re-validates that the caller is the active
-// HoG of the application's nation.
-function fmtStatNumber(v, decimals = 0) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return '0';
-  if (decimals === 0) return String(Math.round(n));
-  const fixed = n.toFixed(decimals);
-  // Drop a trailing .0 so "10.0" reads as "10" while "10.3" stays.
-  return fixed.replace(/\.0+$/, '');
-}
-
+// HoG of the application's nation. Stat formatting goes through
+// fmtStat from utils.js (Skill / Rep / Capital with one decimal,
+// Influence integer-only).
 function renderJuniorMinisterApplicationCard(r) {
   const first = (r.applicant_first_name || '').trim();
   const last  = (r.applicant_last_name  || '').trim();
@@ -2909,13 +2902,13 @@ function renderJuniorMinisterApplicationCard(r) {
           <span class="oi-sep">&middot;</span>
           <span class="oi-corp">Age <strong>${age}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Skill <strong>${fmtStatNumber(r.applicant_skill, 1)}</strong></span>
+          <span class="oi-corp">Skill <strong>${fmtStat(r.applicant_skill)}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Rep <strong>${fmtStatNumber(r.applicant_reputation, 1)}</strong></span>
+          <span class="oi-corp">Rep <strong>${fmtStat(r.applicant_reputation)}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Influence <strong>${fmtStatNumber(r.applicant_influence)}</strong></span>
+          <span class="oi-corp">Influence <strong>${fmtStat(r.applicant_influence, 0)}</strong></span>
           <span class="oi-sep">&middot;</span>
-          <span class="oi-corp">Capital <strong>${fmtStatNumber(r.applicant_capital, 1)}</strong></span>
+          <span class="oi-corp">Capital <strong>${fmtStat(r.applicant_capital)}</strong></span>
         </div>
       </div>
       <div class="offer-right">
