@@ -106,6 +106,10 @@ BEGIN
     END IF;
 
     IF p_target_office = 'city_council_member' THEN
+        -- 20270730: CO prereq dropped. Any party-affiliated politician
+        -- can run for CCM; the 20-Experience bypass branch and the
+        -- 9-tick post-CO-win cooldown both went with it (nothing left
+        -- to bypass / wait for).
         IF p_city_id IS NULL THEN
             RETURN jsonb_build_object('success', false, 'reason', 'city_required');
         END IF;
@@ -168,9 +172,9 @@ BEGIN
         v_race_tier  := p_target_office;
         v_your_stat  := COALESCE(v_pol.politician_skill, 1);
         v_opp_stat   := CASE p_target_office
-            WHEN 'mayor'             THEN 46 + floor(random() * 10)::int
-            WHEN 'mayor_of_capital'  THEN 56 + floor(random() * 10)::int
-            WHEN 'regional_leader'   THEN 71 + floor(random() * 10)::int
+            WHEN 'mayor'             THEN 46 + floor(random() * 10)::int   -- 45 + 1d10 → 46..55
+            WHEN 'mayor_of_capital'  THEN 56 + floor(random() * 10)::int   -- 55 + 1d10 → 56..65
+            WHEN 'regional_leader'   THEN 71 + floor(random() * 10)::int   -- 70 + 1d10 → 71..80
         END;
         v_resolve    := v_tick + 1;
 
@@ -195,7 +199,7 @@ BEGIN
         ELSIF p_target_office = 'mayor_of_capital' THEN
             v_district   := 'Mayor of the Capital';
             v_opp_blurb  := 'Independent challenger for the capital''s mayoralty';
-        ELSE
+        ELSE  -- regional_leader
             v_district   := 'Regional Leader';
             v_opp_blurb  := 'Independent challenger for the regional leadership';
         END IF;
