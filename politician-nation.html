@@ -1751,8 +1751,7 @@ async function loadParliament(n, pm) {
     // Active administration drives coalition + PM tenure. coalition_parties
     // is a jsonb array of { party_id, party_name, seats } captured at
     // formation; we re-key against the live parties list so display names +
-    // seat counts stay current. Soft-fail to single-party majority detection
-    // when no administration row is present (data lag, autocracy, etc.).
+    // seat counts stay current.
     const coalitionIds = new Set(
       (admin?.coalition_parties || []).map(p => p?.party_id).filter(Boolean)
     );
@@ -1760,9 +1759,23 @@ async function loadParliament(n, pm) {
     const pmYear    = admin?.started_at_tick != null ? tickToYear(admin.started_at_tick) : null;
 
     let coalition = parties.filter(p => coalitionIds.has(p.id));
+    // 20270731: defensive fallback. When no admin row exists yet (a
+    // nation seeded after the last 20270666 / 20270731 backfill) we
+    // build the same accumulate-by-seats-DESC coalition the server
+    // would on the next election. Result: the panel always shows a
+    // governing block + opposition, never "all opposition." Mirrors
+    // the server algorithm exactly so the client preview and the
+    // eventual admin row agree.
     if (!coalition.length && totalSeats > 0) {
-      const solo = parties.find(p => (Number(p.seats) || 0) >= majority);
-      if (solo) coalition = [solo];
+      let acc = 0;
+      for (const p of parties) {
+        const s = Number(p.seats) || 0;
+        if (s <= 0) continue;
+        coalition.push(p);
+        coalitionIds.add(p.id);
+        acc += s;
+        if (acc >= majority) break;
+      }
     }
     const pmParty    = parties.find(p => p.id === pmPartyId) || coalition[0] || null;
     const opposition = parties.find(p => !coalitionIds.has(p.id) && p.id !== pmParty?.id) || null;
