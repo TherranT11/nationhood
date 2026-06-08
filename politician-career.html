@@ -845,7 +845,7 @@ import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-acti
 import { _supabase } from './js/supabase-client.js';
 import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
-import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
+import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
 
 // Career ladders. `branch: true` ladders render as a two-column pair
@@ -2976,7 +2976,15 @@ function bindRegisterForOfficeAction({ action, targetOffice, restingLabel, pendi
           p_target_office: targetOffice,
         });
         if (error) throw error;
-        if (!data?.success) throw new Error(`${errorPrefix}: ${data?.reason || 'unknown'}`);
+        if (!data?.success) {
+          // 20270713: surface the already_holds_office guard as a
+          // readable message; everything else stays as the raw reason
+          // since the rung's gates pre-filter the common failures.
+          const msg = data?.reason === 'already_holds_office'
+            ? 'You already hold a local-executive seat. Resign before running for a different one.'
+            : `${errorPrefix}: ${data?.reason || 'unknown'}`;
+          throw new Error(msg);
+        }
         window.location.reload();
       } catch (e) {
         alert(e?.message || `${errorPrefix}.`);
@@ -4036,8 +4044,8 @@ async function confirmElection(ctx) {
 // user explicitly asked for the same modal) but renders a single
 // focused card and routes confirm to politician_register_for_office
 // instead of the picker's stand_for_election RPC. Opponent + odds
-// are determined server-side at registration (1d3+1 Skill, see
-// 20270635); the card shows the matchup descriptively rather than
+// are determined server-side at registration (1d6+1 Skill per
+// 20270709); the card shows the matchup descriptively rather than
 // pre-rolling.
 function openCityCouncilModal(ctx) {
   const modal = document.getElementById('electionModal');
@@ -4093,7 +4101,7 @@ function renderCityCouncilCard(skillTxt) {
                 <div class="em-opp-badge" style="background:#101010;color:#9a9a9a;border:0.5px solid rgba(255,255,255,0.07);">?</div>
                 <div class="em-opp-info">
                   <div class="em-opp-name">Auto-generated candidate</div>
-                  <div class="em-opp-from">Independent · drawn at registration with Experience 1d3 + 1</div>
+                  <div class="em-opp-from">Independent · drawn at registration with Experience 1d6 + 1</div>
                 </div>
               </div>
             </div>
@@ -4113,8 +4121,8 @@ function renderCityCouncilCard(skillTxt) {
               <span class="em-match-vs">VS</span>
               <div class="em-match-side">
                 <div class="em-match-who">CANDIDATE</div>
-                <div class="em-match-val">2-4</div>
-                <div class="em-match-stat">Experience (1d3 + 1)</div>
+                <div class="em-match-val">2-7</div>
+                <div class="em-match-stat">Experience (1d6 + 1)</div>
               </div>
             </div>
           </div>
@@ -4222,7 +4230,7 @@ function renderMayorCityPicker(cities, nationPop, skillVal) {
     <div class="em-intro">
       <strong>Pick a city to run for Mayor.</strong> The chair pays
       <span class="cred">+1 Experience · +2% Party Popularity · +$200K Party Funds</span>
-      on a win. Your <span class="cred">Experience</span> (currently ${skillVal}) is matched against an auto-generated challenger rolling <strong>1d10 + 5</strong>.
+      on a win. Your <span class="cred">Experience</span> (currently ${skillVal}) is matched against an auto-generated challenger rolling <strong>45 + 1d10</strong> (Experience 46–55).
     </div>
     <div class="city-pick-grid">${cards}</div>
     <div class="em-confirm-band">
@@ -4234,19 +4242,12 @@ function renderMayorCityPicker(cities, nationPop, skillVal) {
 }
 
 function mayorCityCard(c, nationPop) {
-  const pct = c.population_pct != null ? Number(c.population_pct) : 11;
-  const pop = Math.round(nationPop * (pct / 100));
-  const mayorName = (c.mayor_first_name || c.mayor_last_name)
-    ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
-    : '—';
-  const party     = c.mayor_party || null;
-  const partyAbbr = party?.abbreviation || party?.faction_name || '';
-  const archetype = party?.archetype || c.mayor_archetype || '';
+  // cityDisplayData (20270713) — shared with the Geography card on
+  // politician-nation.html. Stat rows still inline since the picker
+  // card uses cpc-* classes; CITY_STATS + cityStatLabel are the
+  // single source for the band copy.
+  const { population, mayorName, partyAbbr, archetype, budgetStr } = cityDisplayData(c, nationPop);
   const partyChip = partyAbbr ? ` <span class="party">${escHtml(partyAbbr)}</span>` : '';
-  const budgetM = (Number(c.budget) || 0) / 1000000;
-  const budgetStr = budgetM >= 1
-    ? `$${budgetM.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
-    : `$${(Number(c.budget) || 0).toLocaleString()}`;
   const statRows = CITY_STATS.map(({ key, name }) => `
     <div class="cpc-stat-row">
       <span class="cpc-stat-key">${escHtml(name)}</span>
@@ -4256,7 +4257,7 @@ function mayorCityCard(c, nationPop) {
     <div class="city-pick-card" data-city-id="${escHtml(c.id)}">
       <div class="cpc-head">
         <div class="cpc-name">${escHtml(c.city_name || 'Unnamed City')}</div>
-        <div class="cpc-pop">POP ${pop.toLocaleString()}</div>
+        <div class="cpc-pop">POP ${population.toLocaleString()}</div>
       </div>
       <div class="cpc-blurb">${escHtml(c.description || '')}</div>
       <div class="cpc-meta">
@@ -4297,6 +4298,7 @@ async function confirmMayorRun(ctx) {
         no_nation:             'Your politician has no nation.',
         race_in_progress:      'You are already in a race.',
         experience_too_low:    `Your Experience (${data.experience}) is below the ${data.required} required.`,
+        already_holds_office:  'You already hold a local-executive seat. Resign before running for a different one.',
         city_required:         'Pick a city before confirming.',
         invalid_city:          'That city no longer exists or belongs to another nation.',
         capital_blocked:       'The capital has its own race — use Mayor of the Capital instead.',

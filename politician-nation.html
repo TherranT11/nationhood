@@ -728,7 +728,7 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
-import { cityStatLabel, CITY_STATS } from './js/game/city-labels.js';
+import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -1385,36 +1385,15 @@ function renderGeographyCities(nation, cities) {
     host.innerHTML = '<div class="sec-empty">No geographic detail recorded yet.</div>';
     return;
   }
-  // Per-city population computed from population_pct × nation.population.
-  // 20270711 added the column; cities with NULL fall back to the old
-  // 11% blanket so legacy rows render unchanged.
   const nationPop = Number(nation.population) || 0;
-  host.innerHTML = cities.map(c => {
-    const pct = c.population_pct != null ? Number(c.population_pct) : 11;
-    const cityPop = Math.round(nationPop * (pct / 100));
-    return cityCardHtml(c, cityPop);
-  }).join('');
+  host.innerHTML = cities.map(c => cityCardHtml(c, nationPop)).join('');
 }
 
-function cityCardHtml(c, cityPop) {
-  const mayorName = (c.mayor_first_name || c.mayor_last_name)
-    ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
-    : '—';
-  // Party + archetype: prefer the embedded faction (20270708);
-  // fall back to the legacy mayor_archetype text when the FK is
-  // null (party-less nation, pre-backfill rows). Party chip carries
-  // the abbreviation; archetype chip carries the ideology label.
-  const party     = c.mayor_party || null;
-  const partyAbbr = party?.abbreviation || party?.faction_name || '';
-  const archetype = party?.archetype || c.mayor_archetype || '';
-  const popStr = cityPop.toLocaleString();
-  const budgetM = (Number(c.budget) || 0) / 1000000;
-  const budgetStr = budgetM >= 1
-    ? `$${budgetM.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
-    : `$${(Number(c.budget) || 0).toLocaleString()}`;
-  // CITY_STATS is the single source for stat order + display name +
-  // band labels. Re-ordering or renaming a stat is a one-place edit
-  // in js/game/city-labels.js.
+function cityCardHtml(c, nationPop) {
+  // cityDisplayData (20270713) is the shared extractor — same call
+  // backs the Mayor race city picker in politician-career.html, so
+  // mayor name / party chip / budget rounding move in one place.
+  const { population, mayorName, partyAbbr, archetype, budgetStr } = cityDisplayData(c, nationPop);
   const statRows = CITY_STATS.map(({ key, name }) => `
     <div class="city-stat-row">
       <span class="city-stat-key">${escHtml(name)}</span>
@@ -1430,7 +1409,7 @@ function cityCardHtml(c, cityPop) {
         </div>
       </div>
       <div class="city-meta">
-        <div><span class="city-meta-key">Population</span><span class="city-meta-val">${escHtml(popStr)}</span></div>
+        <div><span class="city-meta-key">Population</span><span class="city-meta-val">${escHtml(population.toLocaleString())}</span></div>
         <div><span class="city-meta-key">Mayor</span><span class="city-meta-val">${escHtml(mayorName)}${partyAbbr ? ` <span class="city-mayor-party">${escHtml(partyAbbr)}</span>` : ''}${archetype ? ` <span class="city-archetype">${escHtml(archetype)}</span>` : ''}</span></div>
         <div><span class="city-meta-key">Budget</span><span class="city-meta-val">${escHtml(budgetStr)}</span></div>
       </div>
