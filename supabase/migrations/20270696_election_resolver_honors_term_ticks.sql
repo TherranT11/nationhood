@@ -22,11 +22,24 @@
 --   not retro-touched — only the schedule that fires AFTER the next
 --   resolve gets the new cadence.
 --
--- Mechanism: re-emit resolve_due_general_elections with the
--- latest body (20270666) and replace the two reschedule lines with
--- COALESCE(v_nation.parliamentary_term_ticks, 5 + 1 + floor(random()
--- * 36)::int). v_nation is already a RECORD from `SELECT *`, so the
--- column is in scope without a re-query.
+-- Mechanism: re-emit resolve_due_general_elections with the latest
+-- body (20270666) and consolidate the two duplicate reschedule
+-- computations into a single v_next_tick assignment at the top of
+-- each iteration. The expression is:
+--
+--   v_tick + CASE
+--       WHEN COALESCE(parliamentary_term_ticks, 0) > 0
+--           THEN parliamentary_term_ticks
+--       ELSE 5 + 1 + floor(random() * 36)::int
+--   END
+--
+-- The CASE form (vs. plain COALESCE) defensively folds NULL, 0, and
+-- negative values into the random branch. Without that guard, a
+-- stray parliamentary_term_ticks = 0 (no CHECK constraint on the
+-- column today) would reschedule every nation's next election at
+-- v_tick itself → infinite re-fire on every cron call until someone
+-- noticed. None of the current rows store 0/negative, but the guard
+-- costs nothing and removes a latent landmine.
 --
 -- Apply after 20270695.
 -- ════════════════════════════════════════════════════════════════════
@@ -73,10 +86,20 @@ BEGIN
          FOR UPDATE SKIP LOCKED
     LOOP
         v_seats := COALESCE(v_nation.total_seats, 0);
+
+        -- 20270696: next-election cadence. Stored term_ticks wins when
+        -- > 0; NULL / 0 / negative all fall back to the original 6..41
+        -- tick random. Computed once per iteration so both the early-
+        -- continue path (v_seats <= 0) and the end-of-loop reschedule
+        -- read the same value — no duplication, no divergent random
+        -- rolls between the two writes.
+        v_next_tick := v_tick + CASE
+            WHEN COALESCE(v_nation.parliamentary_term_ticks, 0) > 0
+                THEN v_nation.parliamentary_term_ticks
+            ELSE 5 + 1 + floor(random() * 36)::int
+        END;
+
         IF v_seats <= 0 THEN
-            -- 20270696: stored term_ticks wins; random fallback when NULL.
-            v_next_tick := v_tick + COALESCE(v_nation.parliamentary_term_ticks,
-                                             5 + 1 + floor(random() * 36)::int);
             UPDATE nations SET next_election_tick = v_next_tick WHERE id = v_nation.id;
             CONTINUE;
         END IF;
@@ -257,9 +280,7 @@ BEGIN
             END IF;
         END IF;
 
-        -- 20270696: stored term_ticks wins; random fallback when NULL.
-        v_next_tick := v_tick + COALESCE(v_nation.parliamentary_term_ticks,
-                                         5 + 1 + floor(random() * 36)::int);
+        -- v_next_tick was computed at the top of this iteration.
         UPDATE nations
            SET next_election_tick = v_next_tick
          WHERE id = v_nation.id;
