@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City — Nationhood</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. Page-local
+   styles mirror politician-nation.html's Geography card vocabulary —
+   amber accent on the city name, grid for the meta + stats — but
+   rendered larger since this is the full-detail surface. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:32px 24px 24px; max-width:1100px; margin:0 auto; }
+
+.city-back { display:inline-flex; align-items:center; gap:6px;
+  font-family:monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+  color:#888; text-decoration:none; margin-bottom:18px;
+  padding:7px 10px; border:0.5px solid rgba(255,255,255,0.08); border-radius:3px; }
+.city-back:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
+
+.city-detail { background:#0a0807; border:0.5px solid rgba(200,166,78,0.18);
+  border-radius:6px; padding:28px; }
+.city-detail-head { display:flex; gap:20px; align-items:flex-start; margin-bottom:22px; }
+.city-detail-coa { width:88px; height:88px; flex-shrink:0; background:#1a1612;
+  border:0.5px solid rgba(200,166,78,0.25); border-radius:5px;
+  color:#555; font-size:11px; letter-spacing:0.14em; font-weight:700;
+  display:flex; align-items:center; justify-content:center; cursor:help; }
+.city-detail-head-text { flex:1; min-width:0; }
+.city-detail-eyebrow { font-size:10px; color:#888; letter-spacing:0.14em;
+  text-transform:uppercase; margin-bottom:5px; font-family:monospace; font-weight:600; }
+.city-detail-name { font-size:28px; font-weight:600; color:#c8a64e;
+  letter-spacing:0.005em; line-height:1.15; }
+.city-detail-capital-tag { font-size:14px; color:#888; font-weight:400;
+  letter-spacing:0.04em; font-style:italic; margin-left:6px; }
+.city-detail-blurb { font-size:13px; color:#a8a8a8; line-height:1.65;
+  font-style:italic; margin-top:8px; max-width:780px; }
+
+.city-detail-meta { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px;
+  padding:18px 22px; margin-bottom:22px;
+  background:#080706; border:0.5px solid rgba(255,255,255,0.05); border-radius:5px; }
+.city-detail-meta > div { display:flex; flex-direction:column; gap:4px; }
+.city-detail-meta-key { font-size:9px; color:#666; letter-spacing:0.12em;
+  text-transform:uppercase; font-weight:600; }
+.city-detail-meta-val { font-size:15px; color:#d4d4d4; font-weight:600;
+  font-family:Georgia,serif; }
+.city-detail-mayor-party { display:inline-block; font-size:9px; color:#dcb88a;
+  background:rgba(200,166,78,0.08); border:0.5px solid rgba(200,166,78,0.25);
+  padding:2px 7px; border-radius:3px; letter-spacing:0.08em;
+  font-weight:700; font-family:monospace; margin-left:6px; }
+.city-detail-archetype { display:block; font-size:10px; color:#888;
+  font-weight:400; letter-spacing:0.04em; font-family:monospace;
+  text-transform:uppercase; margin-top:3px; }
+
+.city-detail-section { margin-bottom:22px; }
+.city-detail-section:last-child { margin-bottom:0; }
+.city-detail-section-head { font-size:11px; letter-spacing:0.14em;
+  text-transform:uppercase; color:#c8a64e; font-weight:700; font-family:monospace;
+  margin-bottom:12px; padding-bottom:8px;
+  border-bottom:0.5px solid rgba(200,166,78,0.18); }
+
+.city-detail-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 24px; }
+.city-detail-stat-row { display:flex; justify-content:space-between; align-items:baseline;
+  padding:8px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.city-detail-stat-key { font-size:10px; color:#888; letter-spacing:0.08em;
+  text-transform:uppercase; }
+.city-detail-stat-val { font-size:13px; color:#d4d4d4; font-weight:600;
+  font-family:Georgia,serif; }
+
+/* Council placeholder — the per-city CCP + CCMs roster will land here
+   once factions get a city_id link for local offices. Today's politician
+   _office values are nation-level (no city FK), so we can't filter on it.
+   Showing the slots as "Vacant" until the schema work lands. */
+.city-detail-council { display:grid; grid-template-columns:repeat(2, 1fr);
+  gap:10px; }
+.city-detail-council-row { display:flex; align-items:center; gap:12px;
+  padding:12px 14px; background:#080706;
+  border:0.5px solid rgba(255,255,255,0.05); border-radius:4px; }
+.city-detail-council-role { font-size:9px; color:#666; letter-spacing:0.12em;
+  text-transform:uppercase; font-weight:600; font-family:monospace; min-width:120px; }
+.city-detail-council-name { font-size:12px; color:#888; font-style:italic;
+  font-family:Georgia,serif; }
+.city-detail-council-note { margin-top:12px; font-size:10px; color:#666;
+  font-family:monospace; letter-spacing:0.06em; font-style:italic; text-align:center; }
+
+.city-detail-error { padding:48px 24px; text-align:center; color:#c87a7a;
+  font-family:monospace; font-size:12px; letter-spacing:0.08em; }
+
+@media (max-width: 720px) {
+  .city-detail-stats   { grid-template-columns:1fr; }
+  .city-detail-meta    { grid-template-columns:1fr; }
+  .city-detail-council { grid-template-columns:1fr; }
+  .city-detail-name    { font-size:22px; }
+}
+</style>
+</head>
+<body>
+
+<div class="content" id="content" style="display:none;">
+  <a class="city-back" href="politician-nation.html#sec-geography">&larr; Back to Geography</a>
+  <div id="city-detail"></div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { bootstrapPolitician } from './js/politician-topbar.js';
+import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+// Single source for the council slate the page renders. Slots are
+// fixed at 1 CCP + 3 CCMs per the user spec. Names stay "Vacant"
+// until factions grow a city_id link for local-office assignments —
+// politician_office='city_council_member' / 'city_council_president'
+// is nation-level today (no FK to cities), so there's nothing to
+// query against this specific city yet.
+const COUNCIL_SLATE = [
+  { role: 'City Council President' },
+  { role: 'City Council Member · Seat 1' },
+  { role: 'City Council Member · Seat 2' },
+  { role: 'City Council Member · Seat 3' },
+];
+
+async function init() {
+  const params = new URLSearchParams(location.search);
+  const cityId = params.get('id');
+  if (!cityId) {
+    showError('No city specified.');
+    return;
+  }
+
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('nation'); }
+  catch (err) {
+    console.error('city: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  // City fetch — same shape as politician-nation.html's Geography card
+  // (one source for the embedded mayor_party FK + all 8 stat columns).
+  // cities table has authenticated SELECT enabled (20270660).
+  let city = null, nation = null;
+  try {
+    const { data, error } = await _supabase.from('cities')
+      .select(`
+        id, nation_id, city_type, city_name, description, population_pct,
+        mayor_first_name, mayor_last_name, mayor_age, mayor_archetype,
+        mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
+        budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+      `)
+      .eq('id', cityId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) { showError('City not found.'); return; }
+    city = data;
+  } catch (err) {
+    console.error('city: city fetch failed', err);
+    showError('Could not load this city. Try again.');
+    return;
+  }
+
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('id, name, population')
+      .eq('id', city.nation_id)
+      .maybeSingle();
+    if (error) throw error;
+    nation = data;
+  } catch (err) {
+    // Soft-fail: population falls back to zero, the rest of the card
+    // still renders. The Geography card uses the same 11% / population
+    // _pct fallback so leaving nation null here mirrors its behavior.
+    console.warn('city: nation fetch failed', err);
+  }
+
+  renderCityDetail(city, nation);
+  document.title = `${city.city_name || 'City'} — Nationhood`;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function renderCityDetail(c, nation) {
+  const nationPop = Number(nation?.population) || 0;
+  const { population, mayorName, partyAbbr, archetype, budgetStr } = cityDisplayData(c, nationPop);
+  const isCapital = c.city_type === 'capital';
+  const eyebrow = nation?.name
+    ? `${nation.name} · ${isCapital ? 'CAPITAL' : 'MAJOR CITY'}`
+    : (isCapital ? 'CAPITAL' : 'MAJOR CITY');
+  const partyChip = partyAbbr
+    ? `<span class="city-detail-mayor-party">${escHtml(partyAbbr)}</span>` : '';
+  const archetypeLine = archetype
+    ? `<span class="city-detail-archetype">${escHtml(archetype)}</span>` : '';
+  const mayorAge = Number.isFinite(Number(c.mayor_age)) ? Number(c.mayor_age) : null;
+  const mayorMeta = mayorName === '—'
+    ? '<span class="city-detail-meta-val">—</span>'
+    : `<span class="city-detail-meta-val">${escHtml(mayorName)}${partyChip}</span>${archetypeLine}`;
+
+  const statRows = CITY_STATS.map(({ key, name }) => `
+    <div class="city-detail-stat-row">
+      <span class="city-detail-stat-key">${escHtml(name)}</span>
+      <span class="city-detail-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
+    </div>`).join('');
+
+  // Council slate placeholder — every seat reads "Vacant" until the
+  // per-city CCM/CCP link lands. Comment in COUNCIL_SLATE up top
+  // notes the missing schema dependency.
+  const councilRows = COUNCIL_SLATE.map(s => `
+    <div class="city-detail-council-row">
+      <span class="city-detail-council-role">${escHtml(s.role)}</span>
+      <span class="city-detail-council-name">Vacant</span>
+    </div>`).join('');
+
+  document.getElementById('city-detail').innerHTML = `
+    <div class="city-detail-head">
+      <div class="city-detail-coa" title="Coat of Arms · Coming Soon">COA</div>
+      <div class="city-detail-head-text">
+        <div class="city-detail-eyebrow">${escHtml(eyebrow)}</div>
+        <div class="city-detail-name">${escHtml(c.city_name || 'Unnamed City')}${isCapital ? '<span class="city-detail-capital-tag">(Capital)</span>' : ''}</div>
+        <div class="city-detail-blurb">${escHtml(c.description || '')}</div>
+      </div>
+    </div>
+
+    <div class="city-detail-meta">
+      <div>
+        <span class="city-detail-meta-key">Population</span>
+        <span class="city-detail-meta-val">${escHtml(population.toLocaleString())}</span>
+      </div>
+      <div>
+        <span class="city-detail-meta-key">Mayor${mayorAge != null ? ` · Age ${mayorAge}` : ''}</span>
+        ${mayorMeta}
+      </div>
+      <div>
+        <span class="city-detail-meta-key">Budget</span>
+        <span class="city-detail-meta-val">${escHtml(budgetStr)}</span>
+      </div>
+    </div>
+
+    <div class="city-detail-section">
+      <div class="city-detail-section-head">City Stats</div>
+      <div class="city-detail-stats">${statRows}</div>
+    </div>
+
+    <div class="city-detail-section">
+      <div class="city-detail-section-head">City Council</div>
+      <div class="city-detail-council">${councilRows}</div>
+      <div class="city-detail-council-note">Per-city council assignments coming soon — local offices are nation-wide for now.</div>
+    </div>`;
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+  document.getElementById('city-detail').innerHTML =
+    `<div class="city-detail-error">${escHtml(msg)}</div>`;
+}
+
+init();
+</script>
+</body>
+</html>
