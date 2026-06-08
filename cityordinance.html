@@ -203,10 +203,6 @@ function renderForm(ctx) {
       <span>${escHtml(a)}</span>
     </label>`).join('');
 
-  const statOpts = CITY_STATS.map(s =>
-    `<option value="${escAttr(s.key)}">${escHtml(s.name)}</option>`
-  ).join('');
-
   document.getElementById('card-host').innerHTML = `
     <div class="ord-card">
       <div class="ord-eyebrow">AUTHOR · GLOBAL CATALOG</div>
