@@ -1349,7 +1349,14 @@ const CAREER_EVENT_TEMPLATES = {
       case 'parliament':
         return `${name} has decided to stand for an election, running for the ${seat} seat against ${opp}.`;
       case 'city_council':
-        return `${name} has filed to run for a City Council seat against ${opp}.`;
+        // 20270721: target now carries the city name (e.g. "Puerto
+        // Rey") since the CCM race picks a specific city. Legacy
+        // rows that pre-date the picker have target = "City Council
+        // seat" — the fallback handles the awkward "in City Council
+        // seat" wording by stripping it.
+        return seat && seat !== 'City Council seat'
+          ? `${name} has filed to run for a City Council seat in ${seat} against ${opp}.`
+          : `${name} has filed to run for a City Council seat against ${opp}.`;
       case 'city_council_president':
         return `${name} has filed to run for the City Council Presidency against ${opp}.`;
       case 'senior_mp':
@@ -1379,7 +1386,9 @@ const CAREER_EVENT_TEMPLATES = {
       case 'city_council_president':
         return `${name} won the City Council Presidency${opp}.`;
       case 'city_council':
-        return `${name} won a City Council seat${opp}.`;
+        return target && target !== 'City Council seat'
+          ? `${name} won a City Council seat in ${target}${opp}.`
+          : `${name} won a City Council seat${opp}.`;
       case 'senior_mp':
         return `${name} won the Senior MP nomination${opp}.`;
       default:
@@ -1398,7 +1407,9 @@ const CAREER_EVENT_TEMPLATES = {
       case 'city_council_president':
         return `${name} lost the City Council Presidency${opp}.`;
       case 'city_council':
-        return `${name} lost a City Council race${opp}.`;
+        return target && target !== 'City Council seat'
+          ? `${name} lost the City Council race in ${target}${opp}.`
+          : `${name} lost a City Council race${opp}.`;
       case 'senior_mp':
         return `${name} lost the Senior MP nomination${opp}.`;
       default:
