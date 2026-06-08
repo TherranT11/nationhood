@@ -164,12 +164,13 @@ function buildSwitcher(facs) {
       window.location.href = getFactionDashboardUrl(fac) || 'faction-select.html';
     });
   }
-  const creates = [
-    // Political Party founding REMOVED in Sunset Phase 1 (20270612).
-    // Players going forward create only Politicians and Entrepreneurs;
-    // existing parties keep operating but no new ones are accepted.
-    { has: 'military',    name: 'Join a Military Faction', type: 'military', url: 'faction-select.html' },
-  ];
+  // No create rows from the entrepreneur dropdown today.
+  //   • Political Party founding REMOVED in Sunset Phase 1 (20270612).
+  //   • Military Faction join removed per user direction — the
+  //     entrepreneur surface shouldn't surface a military recruit CTA.
+  // Loop is left in place so adding a future create row stays one
+  // line, but it iterates over an empty array today.
+  const creates = [];
   for (const c of creates) {
     if (facs.some(f => f.faction_type === c.has)) continue;
     addRow('create', null, '+', c.name, () => {
