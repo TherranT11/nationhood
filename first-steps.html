@@ -63,12 +63,6 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .nation-card__body { padding: 10px 12px; }
 .nation-card__desc { font-size: 11px; color: var(--text-dim); line-height: 1.5;
   margin-bottom: 8px; font-style: italic; }
-/* Nations not yet open for politician origin render disabled — visibly
-   dim, ignore clicks. Allowlist lives in POLITICIAN_ALLOWED_NATIONS
-   (single source). Click-target on a disabled card no-ops in the
-   render handler too, so the visual + behavioural sides agree. */
-.nation-card.disabled { opacity: 0.35; cursor: not-allowed; }
-.nation-card.disabled:hover { background: inherit; border-color: var(--border-1); }
 .parties-section { margin-top: 8px; padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.05); }
 .parties-section__head { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
@@ -409,10 +403,6 @@ function renderNations() {
   }).join('');
   grid.querySelectorAll('.nation-card').forEach(card => {
     card.addEventListener('click', () => {
-      // No-op on disabled cards. CSS sets cursor:not-allowed so the
-      // user can tell from the hover state; the early return keeps
-      // selection state untouched if they click through.
-      if (card.classList.contains('disabled')) return;
       const n = allNations.find(x => x.id === card.dataset.id);
       // Different nation → different name pool, so any prior name pick is stale.
       if (selectedNation && n && selectedNation.id !== n.id) {
