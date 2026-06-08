@@ -470,7 +470,24 @@ export function careerLabel(politician, party) {
     const ministryText = ministrySlug
         ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}`
         : '';
-    return officeText || ministryText || party?.faction_name || 'Independent';
+    const judicialText = judicialTitle(politician, politician?.nation_id) || '';
+    return officeText || ministryText || judicialText || party?.faction_name || 'Independent';
+}
+
+/** Highest judicial tier label the politician holds in nationId, or
+ *  null if not bar-admitted in that nation. Priority mirrors the
+ *  ladder: Magistrate (bench, 20270531) → State Advocate (20270532
+ *  / 20270555 stamp) → Experienced Advocate (20270529) → Advocate
+ *  (bar admission). Used by careerLabel above and by politician-
+ *  career's hero affiliations card so the cascade lives in one place. */
+export function judicialTitle(politician, nationId) {
+    const admitted = !!politician?.bar_admitted_nation_id
+                  && politician.bar_admitted_nation_id === nationId;
+    if (!admitted) return null;
+    if (politician.politician_magistrate_at_tick       != null) return 'Magistrate';
+    if (politician.politician_state_prosecutor_at_tick != null) return 'State Advocate';
+    if (politician.politician_experienced_advocate_at_tick != null) return 'Experienced Advocate';
+    return 'Advocate';
 }
 
 // ===== GAME DATE =====

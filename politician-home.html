@@ -1378,6 +1378,19 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} has successfully passed the Bar Exam of ${target || 'their nation'} and has been admitted as a judicial advocate.`,
   failed_bar_exam: (name, target) =>
     `${name} has failed the Bar Exam of ${target || 'their nation'}; it is unknown if they will re-attempt it in the future.`,
+  // Higher judicial rungs — written by their respective step-up RPCs:
+  //   experienced_advocate → politician_step_up_experienced_advocate (20270699)
+  //   state_advocate       → politician_seek_state_prosecutor_appointment (deferred)
+  //   magistrate           → politician_take_the_bench (20270699)
+  // target_name is the nation name in every case. ONE-SOURCE NOTE:
+  // descriptions duplicated in the RPCs' event_log dispatches; edit
+  // both sites together if rewording.
+  experienced_advocate: (name, target) =>
+    `${name} has been widely recognised as one of the more experienced attorneys in ${target || 'their nation'}.`,
+  state_advocate: (name, target) =>
+    `${name} has been appointed State Advocate of ${target || 'their nation'}, charged with pursuing cases on behalf of the people.`,
+  magistrate: (name, target) =>
+    `${name} has donned the robe and joined the bench of ${target || 'their nation'} as a magistrate.`,
   // Court case — written by represent_drawn_case + represent_pretrial
   // (20270518). target_name is the case caption ("Plaintiff v.
   // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.
@@ -1995,6 +2008,45 @@ const AFFIL_VARIANTS = {
     // below but still respects the case-load cap.
     cooldownColumn: 'try_case_cooldown_until_tick',
   },
+  // Higher judicial tiers — Experienced Advocate (20270529, rep ≥ 30),
+  // State Advocate (20270532 / 20270555, rep ≥ 35 + cap ≥ 25, parallel
+  // sidestep), Magistrate (20270531, bench, cap ≥ 35). Each is gated by
+  // its own at_tick column, picked by pickJudicialVariant() below.
+  // Repeatable actions reuse ADVOCATE_ACTIONS for now — the higher
+  // tiers still try cases, read the statutes, and appeal; the bench-
+  // specific judge_rule_objection / judge_enter_verdict are pressing-
+  // issues triggered by trial state, not repeatable career actions.
+  // Refine the action sets per tier in a follow-up if desired.
+  experienced_advocate: {
+    variant: 'var-jud',
+    eyebrow: 'JUDICIAL CAREER · TIER 2',
+    badge:   '⚖',
+    name:    'Experienced Advocate',
+    descFn:  (ctx) => `A senior practitioner before the Bar of <strong>${escHtml(ctx.nation?.name || '—')}</strong> — recognised by your peers for a sustained record of cases tried.`,
+    actions: ADVOCATE_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'try_case_cooldown_until_tick',
+  },
+  state_advocate: {
+    variant: 'var-jud',
+    eyebrow: 'JUDICIAL CAREER · TIER 3',
+    badge:   '⚖',
+    name:    'State Advocate',
+    descFn:  (ctx) => `You carry the state's brief in the courts of <strong>${escHtml(ctx.nation?.name || '—')}</strong> — prosecuting on behalf of the people, won by appointment rather than election.`,
+    actions: ADVOCATE_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'try_case_cooldown_until_tick',
+  },
+  magistrate: {
+    variant: 'var-jud',
+    eyebrow: 'JUDICIAL CAREER · TIER 4',
+    badge:   '⚖',
+    name:    'Magistrate',
+    descFn:  (ctx) => `You preside over the lower courts of <strong>${escHtml(ctx.nation?.name || '—')}</strong> — district and municipal jurisdiction. You rule on objections and enter verdicts in cases assigned to your bench.`,
+    actions: ADVOCATE_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'try_case_cooldown_until_tick',
+  },
   // Triggered when politician_office is NULL but politician_ministry is
   // set — no elected seat, but a confirmed bureaucrat. descFn picks up
   // the ministry slug from ctx so the copy reads "Ministry of X".
@@ -2039,6 +2091,17 @@ const AFFIL_VARIANTS = {
   },
 };
 
+// Within the bar-admitted branch, walk the judicial ladder by priority
+// so the highest tier the politician holds drives the variant. Mirrors
+// the priority used by judicialTitle() in js/utils.js — keep the two
+// in sync.
+function pickJudicialVariant(faction) {
+  if (faction?.politician_magistrate_at_tick       != null) return AFFIL_VARIANTS.magistrate;
+  if (faction?.politician_state_prosecutor_at_tick != null) return AFFIL_VARIANTS.state_advocate;
+  if (faction?.politician_experienced_advocate_at_tick != null) return AFFIL_VARIANTS.experienced_advocate;
+  return AFFIL_VARIANTS.advocate;
+}
+
 function renderAffiliation(ctx) {
   const host = document.getElementById('affiliation-host');
   if (!host) return;
@@ -2046,19 +2109,20 @@ function renderAffiliation(ctx) {
   const ministry   = ctx.faction?.politician_ministry     || null;
   const barNation  = ctx.faction?.bar_admitted_nation_id  || null;
   // Variant fallback ladder: elected office → civil-servant (ministry
-  // set, no office) → advocate (bar-admitted, no ministry/office) →
-  // party-member default. Each tier is mutually exclusive in practice;
-  // the sit-the-exam gate blocks ministry assignment while an office
-  // is held, and bar_exam_start blocks while a career already exists.
-  // Civil-service tier 2 outranks tier 1 — politician_senior_civil_
-  // servant_at_tick is the gate (20270633). NULL = still Tier 1.
+  // set, no office) → judicial (bar-admitted, no ministry/office;
+  // pickJudicialVariant walks the bench rungs) → party-member default.
+  // Each outer tier is mutually exclusive in practice — sit-the-exam
+  // blocks ministry assignment while an office is held, and
+  // bar_exam_start blocks while a career already exists. Civil-service
+  // tier 2 outranks tier 1 via politician_senior_civil_servant_at_tick
+  // (20270633). NULL = still Tier 1.
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
     : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
-                              : (barNation ? AFFIL_VARIANTS.advocate
+                              : (barNation ? pickJudicialVariant(ctx.faction)
                                            : AFFIL_VARIANTS.party_member)));
   const partyName = ctx.party?.faction_name || '';
 
