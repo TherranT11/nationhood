@@ -1364,7 +1364,7 @@ async function loadGeographyCities(nation) {
   // the legacy display working for party-less nations.
   const { data, error } = await _supabase.from('cities')
     .select(`
-      id, city_type, city_name, description,
+      id, city_type, city_name, description, population_pct,
       mayor_first_name, mayor_last_name, mayor_age, mayor_archetype, mayor_party_id,
       mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
       budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
@@ -1385,12 +1385,15 @@ function renderGeographyCities(nation, cities) {
     host.innerHTML = '<div class="sec-empty">No geographic detail recorded yet.</div>';
     return;
   }
-  // Capital-share approximation per user direction. Hard-coded to
-  // 11% for now; a per-city population field can replace this once
-  // city-level census data lands.
+  // Per-city population computed from population_pct × nation.population.
+  // 20270711 added the column; cities with NULL fall back to the old
+  // 11% blanket so legacy rows render unchanged.
   const nationPop = Number(nation.population) || 0;
-  const cityPop = Math.round(nationPop * 0.11);
-  host.innerHTML = cities.map(c => cityCardHtml(c, cityPop)).join('');
+  host.innerHTML = cities.map(c => {
+    const pct = c.population_pct != null ? Number(c.population_pct) : 11;
+    const cityPop = Math.round(nationPop * (pct / 100));
+    return cityCardHtml(c, cityPop);
+  }).join('');
 }
 
 function cityCardHtml(c, cityPop) {
