@@ -4071,12 +4071,9 @@ async function selectCity(cityId) {
 
 function renderCityView(city, ordinances, votes) {
   if (!city) return;
-  const fmtBudget = (n) => {
-    const v = Number(n) || 0;
-    if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (v >= 1_000)     return '$' + (v / 1_000).toFixed(0) + 'K';
-    return '$' + v;
-  };
+  // 20270736: budget is a 1-10 stat. Display matches the rest of
+  // the city panel ("5 / 10") rather than the old dollar format.
+  const fmtBudget = (n) => `${Number(n) || 0} / 10`;
   const mayorName = [city.mayor_first_name, city.mayor_last_name]
     .filter(Boolean).join(' ') || 'Unknown';
   const mayorMeta = [

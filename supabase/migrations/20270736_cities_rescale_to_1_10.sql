@@ -21,12 +21,17 @@
 --   • services       int 0-100 → int 1-10
 --   • affordability  int 0-100 → int 1-10
 --
--- Backfill formula — int 0-100 stats: ROUND(stat / 10.0) clamped
--- to 1-10. budget: ROUND(budget / 1_000_000) clamped 1-10. This
--- preserves the descriptive band label every existing city
--- currently shows (the band math in city-labels.js produces the
--- same band index for n=70/0-100 as for n=7/1-10 after the divisor
--- swap in the companion js update).
+-- Backfill formula — int 0-100 stats: CEIL(stat / 10.0) clamped
+-- to 1-10. budget: CEIL(budget / 1_000_000) clamped 1-10. CEIL
+-- (not ROUND) is the band-preserving choice — ROUND would silently
+-- shift bucket-boundary values like 81 → 8 (band 3 "Booming")
+-- when the old 81 was band 4 "Hyper-Growth." CEIL keeps every
+-- value in its original descriptive bucket:
+--   old  1-20  (band 0) → CEIL/10 = 1-2  → (1-2)/2 floor = 0 ✓
+--   old 21-40  (band 1) → CEIL/10 = 3-4  → (2-3)/2 floor = 1 ✓
+--   old 41-60  (band 2) → CEIL/10 = 5-6  → (4-5)/2 floor = 2 ✓
+--   old 61-80  (band 3) → CEIL/10 = 7-8  → (6-7)/2 floor = 3 ✓
+--   old 81-100 (band 4) → CEIL/10 = 9-10 → (8-9)/2 floor = 4 ✓
 --
 -- Defaults: 5 across the board (band 2, the middle label
 -- "Adequate / Moderate / Pleasant but Modest / etc."). crime
@@ -58,16 +63,16 @@ ALTER TABLE public.cities
 -- ROUND(/10) with the 1..10 clamp preserves the descriptive band
 -- label every city is currently rendering (band index stable).
 UPDATE public.cities SET
-    infrastructure = GREATEST(1, LEAST(10, ROUND(infrastructure / 10.0)::int)),
-    appeal         = GREATEST(1, LEAST(10, ROUND(appeal         / 10.0)::int)),
-    growth         = GREATEST(1, LEAST(10, ROUND(growth         / 10.0)::int)),
-    crime          = GREATEST(1, LEAST(10, ROUND(crime          / 10.0)::int)),
-    approval       = GREATEST(1, LEAST(10, ROUND(approval       / 10.0)::int)),
-    pollution      = GREATEST(1, LEAST(10, ROUND(pollution      / 10.0)::int)),
-    jobs           = GREATEST(1, LEAST(10, ROUND(jobs           / 10.0)::int)),
-    services       = GREATEST(1, LEAST(10, ROUND(services       / 10.0)::int)),
-    affordability  = GREATEST(1, LEAST(10, ROUND(affordability  / 10.0)::int)),
-    budget         = GREATEST(1, LEAST(10, ROUND(budget / 1000000.0)::int));
+    infrastructure = GREATEST(1, LEAST(10, CEIL(infrastructure / 10.0)::int)),
+    appeal         = GREATEST(1, LEAST(10, CEIL(appeal         / 10.0)::int)),
+    growth         = GREATEST(1, LEAST(10, CEIL(growth         / 10.0)::int)),
+    crime          = GREATEST(1, LEAST(10, CEIL(crime          / 10.0)::int)),
+    approval       = GREATEST(1, LEAST(10, CEIL(approval       / 10.0)::int)),
+    pollution      = GREATEST(1, LEAST(10, CEIL(pollution      / 10.0)::int)),
+    jobs           = GREATEST(1, LEAST(10, CEIL(jobs           / 10.0)::int)),
+    services       = GREATEST(1, LEAST(10, CEIL(services       / 10.0)::int)),
+    affordability  = GREATEST(1, LEAST(10, CEIL(affordability  / 10.0)::int)),
+    budget         = GREATEST(1, LEAST(10, CEIL(budget / 1000000.0)::int));
 
 -- ── 3. Change budget type from bigint → int ─────────────────────────
 ALTER TABLE public.cities
