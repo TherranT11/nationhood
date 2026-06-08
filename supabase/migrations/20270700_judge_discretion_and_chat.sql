@@ -234,7 +234,6 @@ DECLARE
     v_margin       numeric;
     v_rep_award    numeric;
     v_winner_pol   uuid;
-    v_winner_nm    text;
     v_judge_nm     text;
 BEGIN
     IF v_uid IS NULL THEN
@@ -377,11 +376,9 @@ BEGIN
            judge_last_action_at_tick = v_tick
      WHERE id = p_trial_id;
 
-    -- On-record verdict message in the trial chat.
-    SELECT leader_first_name || ' ' || leader_last_name
-      INTO v_winner_nm
-      FROM public.factions
-     WHERE id = v_winner_pol;
+    -- On-record verdict message in the trial chat. Judge name pulled
+    -- below for the event_log dispatch; the chat line stays terse and
+    -- side-focused since v_reversed already names the prevailing party.
     SELECT leader_first_name || ' ' || leader_last_name
       INTO v_judge_nm
       FROM public.factions

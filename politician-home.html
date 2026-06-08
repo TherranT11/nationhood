@@ -4451,14 +4451,25 @@ async function renderJudgeVerdictRow(d) {
         <button type="button" class="trial-send-btn"      data-judge-verdict>CONFIRM ${mathW}</button>
         <button type="button" class="trial-objection-btn" data-judge-reverse title="-3 Reputation · appeal-eligible">REVERSE TO ${altW}</button>`;
     }
-    bindJudgeControls(d);
+    bindJudgeVerdictButtons(d);
   } catch (e) {
     console.warn('judge_verdict_preview failed; falling back to single-button verdict', e?.message || e);
     host.innerHTML = `
       <span class="judge-row-lab">VERDICT</span>
       <button type="button" class="trial-send-btn" data-judge-verdict>DELIVER VERDICT</button>`;
-    bindJudgeControls(d);
+    bindJudgeVerdictButtons(d);
   }
+}
+
+// Bind only the verdict / reverse buttons. Called from
+// renderJudgeVerdictRow after the async preview swaps the placeholder
+// for the real buttons — avoids double-binding the speech listeners
+// that bindJudgeControls already wired on the initial render.
+function bindJudgeVerdictButtons(d) {
+  const verdictBtn = document.querySelector('#trial-content [data-judge-verdict]');
+  if (verdictBtn) verdictBtn.addEventListener('click', () => submitJudgeVerdict(d.trial_id));
+  const reverseBtn = document.querySelector('#trial-content [data-judge-reverse]');
+  if (reverseBtn) reverseBtn.addEventListener('click', () => submitJudgeReverse(d.trial_id));
 }
 
 // Server-side _apply_verdict computes the canonical tally. The judge
