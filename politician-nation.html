@@ -32,8 +32,8 @@
   display:flex; align-items:center; justify-content:center; }
 .map-placeholder { color:#555; font-size:10px; letter-spacing:0.14em;
   text-transform:uppercase; font-style:italic; }
-.map-image { max-width:100%; max-height:320px; object-fit:contain;
-  display:block; border-radius:4px; }
+.map-image { width:100%; height:auto; display:block; }
+.map-card:has(.map-image) { padding:0; overflow:hidden; }
 .map-scope { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
 .map-scope button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; color:#888; background:#121212;
