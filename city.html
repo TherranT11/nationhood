@@ -19,8 +19,10 @@
 .city-back { display:inline-flex; align-items:center; gap:6px;
   font-family:monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
   color:#888; text-decoration:none; margin-bottom:18px;
-  padding:6px 10px; border:0.5px solid rgba(255,255,255,0.08); border-radius:3px; }
-.city-back:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
+  padding:6px 10px; border:0.5px solid rgba(90,175,165,0.18); border-radius:3px;
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.city-back:hover { color:#5aafa5; border-color:rgba(90,175,165,0.5);
+  background:rgba(90,175,165,0.06); }
 
 .city-detail { background:#0a0807; border:0.5px solid rgba(200,166,78,0.18);
   border-radius:6px; padding:22px; }
@@ -31,8 +33,8 @@
   color:#555; font-size:9px; letter-spacing:0.12em; font-weight:700;
   display:flex; align-items:center; justify-content:center; cursor:help; }
 .city-detail-head-text { flex:1; min-width:0; }
-.city-detail-eyebrow { font-size:9px; color:#888; letter-spacing:0.14em;
-  text-transform:uppercase; margin-bottom:4px; font-family:monospace; font-weight:600; }
+.city-detail-eyebrow { font-size:9px; color:#5aafa5; letter-spacing:0.16em;
+  text-transform:uppercase; margin-bottom:5px; font-family:monospace; font-weight:600; }
 .city-detail-name { font-size:22px; font-weight:600; color:#c8a64e;
   letter-spacing:0.005em; line-height:1.2; }
 .city-detail-capital-tag { font-size:13px; color:#888; font-weight:400;
@@ -59,11 +61,19 @@
   padding:2px 6px; border-radius:3px; letter-spacing:0.08em;
   font-weight:700; font-family:monospace; margin-left:5px; vertical-align:1px; }
 
-.city-detail-section { margin-top:18px; }
-.city-detail-section-head { font-size:10px; letter-spacing:0.14em;
-  text-transform:uppercase; color:#c8a64e; font-weight:700; font-family:monospace;
-  margin-bottom:10px; padding-bottom:6px;
-  border-bottom:0.5px solid rgba(200,166,78,0.15); }
+.city-detail-section { margin-top:22px; }
+/* Section heads use the politician-home split treatment — sans white
+   word + Georgia italic teal word. Teal accent (#5aafa5) is the shared
+   politician palette across home / nation / movements pages. The
+   amber accent stays on the city head + COA so the per-city page
+   still visually traces to the Geography card it linked from. */
+.city-detail-section-head { display:flex; align-items:baseline; gap:8px;
+  margin-bottom:12px; padding-bottom:7px;
+  border-bottom:0.5px solid rgba(90,175,165,0.18); }
+.city-detail-section-head .sans  { font-size:17px; font-weight:500; color:#fff;
+  letter-spacing:-0.005em; }
+.city-detail-section-head .serif { font-size:17px; font-style:italic; color:#5aafa5;
+  font-family:Georgia,'Times New Roman',serif; letter-spacing:-0.005em; }
 
 .city-detail-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:6px 20px; }
 .city-detail-stat-row { display:flex; justify-content:space-between; align-items:baseline;
@@ -288,22 +298,22 @@ function renderCityDetail(c, nation, currentTick) {
     </div>
 
     <div class="city-detail-section">
-      <div class="city-detail-section-head">City Stats</div>
+      <div class="city-detail-section-head"><span class="sans">City</span><span class="serif">Stats</span></div>
       <div class="city-detail-stats">${statRows}</div>
     </div>
 
     <div class="city-detail-section">
-      <div class="city-detail-section-head">City Council</div>
+      <div class="city-detail-section-head"><span class="sans">City</span><span class="serif">Council</span></div>
       ${councilHtml}
     </div>
 
     <div class="city-detail-section">
-      <div class="city-detail-section-head">Voting Agenda</div>
+      <div class="city-detail-section-head"><span class="sans">Voting</span><span class="serif">Agenda</span></div>
       <div class="city-detail-empty">No items on the agenda.</div>
     </div>
 
     <div class="city-detail-section">
-      <div class="city-detail-section-head">Active Ordinances</div>
+      <div class="city-detail-section-head"><span class="sans">Active</span><span class="serif">Ordinances</span></div>
       <div class="city-detail-empty">No active ordinances on the books.</div>
     </div>`;
 }
