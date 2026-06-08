@@ -220,6 +220,32 @@
   .pnl-art-actions { flex-wrap:wrap; }
   .pnl-art-counter { margin-left:0; width:100%; text-align:right; }
 }
+
+/* Propose Law (policy-switch) modal — 20270728.
+   Current-option line reads as a snapshot pill; the new-option grid
+   uses the same .pnl-comm tile shape so the modal feels cohesive
+   with the existing two. The disabled (= currently-active) tile
+   greys out so the player can see it but not pick it. */
+.ppl-current { padding:11px 14px; background:#0a0807; border:0.5px solid var(--line);
+  border-radius:4px; font-size:12.5px; color:#cfcabf; line-height:1.45; }
+.ppl-current .lab { font-size:9px; letter-spacing:0.14em; color:var(--leg);
+  text-transform:uppercase; font-weight:700; margin-right:8px; }
+.ppl-current .body { color:#888; font-size:11px; margin-top:5px; line-height:1.5;
+  font-style:italic; }
+.ppl-options { display:flex; flex-direction:column; gap:7px; }
+.ppl-opt { padding:12px 14px; background:#0a0807; border:0.5px solid var(--line);
+  border-radius:4px; cursor:pointer; text-align:left; color:#cfcabf;
+  font-family:inherit; transition:background 0.12s, border-color 0.12s; }
+.ppl-opt:hover:not(.disabled) { background:#101010; border-color:#3a3a3a; }
+.ppl-opt.selected { background:var(--leg-bg); border-color:var(--leg);
+  border-left:3px solid var(--leg); padding-left:13px; }
+.ppl-opt.selected .ppl-opt-name { color:var(--leg-bright); }
+.ppl-opt.disabled { opacity:0.4; cursor:not-allowed; }
+.ppl-opt-name { font-size:12.5px; font-weight:600; color:#fff; }
+.ppl-opt-desc { font-size:10.5px; color:#888; margin-top:4px; line-height:1.5;
+  font-style:italic; }
+.ppl-opt-tag  { display:inline-block; font-size:8.5px; letter-spacing:0.12em;
+  color:var(--leg-bright); font-weight:700; margin-left:6px; }
 </style>
 </head>
 <body>
@@ -246,9 +272,11 @@
     </div>
     <div class="mof-action">
       <button class="statute-action" id="propose-law-btn" type="button" disabled
-              title="Member of Parliament required">Propose New Law</button>
+              title="Member of Parliament required">Propose New Statute</button>
       <button class="statute-action" id="amend-law-btn" type="button" disabled
-              title="Member of Parliament required">Amend Law</button>
+              title="Member of Parliament required">Amend Statute</button>
+      <button class="statute-action" id="propose-policy-btn" type="button" disabled
+              title="Member of Parliament required">Propose Law</button>
     </div>
   </div>
 
@@ -415,6 +443,56 @@
   </div>
 </div>
 
+<!-- Propose Law (policy-switch) modal — 20270728. Same .pnl-* chrome
+     as the other two but with three picker steps: policy, new option,
+     committee. Current option renders inline once the policy is
+     chosen. Submit hits committee_propose_policy_change. -->
+<div class="pnl-overlay" id="ppl-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="pnl-modal" id="ppl-modal">
+    <div class="pnl-head">
+      <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
+      <div class="pnl-title">Propose a <em>Policy Change</em></div>
+      <div class="pnl-sub">Pick an active law, choose a new option to move it to, and refer the proposal to a standing committee. <strong>The current option is snapshotted</strong> at submission so the committee can see where things stood when you filed.</div>
+      <button class="pnl-close" id="ppl-close" type="button" title="Cancel">&#10005;</button>
+    </div>
+
+    <div class="pnl-body">
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">POLICY<span class="req">*</span></div>
+        <div class="pnl-fg-hint">Policies are grouped by sector. Pick one to load its current option and available alternatives.</div>
+        <select id="ppl-policy" class="pnl-section-input"></select>
+      </div>
+
+      <div class="pnl-fg" id="ppl-current-row" style="display:none;">
+        <div class="pnl-fg-lab">CURRENT OPTION</div>
+        <div class="ppl-current" id="ppl-current">—</div>
+      </div>
+
+      <div class="pnl-fg" id="ppl-options-row" style="display:none;">
+        <div class="pnl-fg-lab">NEW OPTION<span class="req">*</span></div>
+        <div class="pnl-fg-hint">Pick the option you want the law to move to. The currently-active one is greyed out.</div>
+        <div class="ppl-options" id="ppl-options"></div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">REFER TO COMMITTEE<span class="req">*</span></div>
+        <div class="pnl-comm-grid" id="ppl-comm-grid"></div>
+      </div>
+
+    </div>
+
+    <div class="pnl-err" id="ppl-err"></div>
+
+    <div class="pnl-foot">
+      <div class="pnl-foot-note">
+        Once submitted, your proposal enters the committee's <em>queue</em>. <strong>You retain authorship</strong>; the markup and report-out flow runs through the committee as usual.
+      </div>
+      <button type="button" class="pnl-submit" id="ppl-submit">&#9999; SUBMIT TO COMMITTEE</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
@@ -493,9 +571,17 @@ let submitInFlight = false;
     amendBtn.title = isMP ? '' : 'Member of Parliament required';
     if (isMP) amendBtn.addEventListener('click', openAmendModal);
   }
+  // 20270728: third button — opens the policy-switch modal.
+  const proposePolicyBtn = document.getElementById('propose-policy-btn');
+  if (proposePolicyBtn) {
+    proposePolicyBtn.disabled = !isMP;
+    proposePolicyBtn.title = isMP ? '' : 'Member of Parliament required';
+    if (isMP) proposePolicyBtn.addEventListener('click', openProposePolicyModal);
+  }
 
   wireModalChrome();
   wireAmendModalChrome();
+  wireProposePolicyModalChrome();
 
   // ?propose=1 / ?amend=1 deep-links from party.html's Member of
   // Parliament panel — open the matching modal straight away when
@@ -1200,6 +1286,294 @@ function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s == null ? '' : String(s);
   return d.innerHTML;
+}
+
+// ── Propose Law (policy-switch) modal — 20270728 ─────────────────
+// Picks a policy, snapshots the current option, picks a new option,
+// picks a committee, fires committee_propose_policy_change. Shares
+// the committeeIdByKey map populated by the existing Propose New
+// Statute modal — both pickers point at the same committees table
+// rows, so the lookup is keyed off the same committee.committee_key.
+const pplDraft = {
+  policyId:        null,
+  currentOptionId: null,
+  newOptionId:     null,
+  committeeKey:    null,
+};
+let pplPolicies = [];          // [{ id, policy_name, description, major_sector }]
+let pplOptionsByPolicy = new Map(); // policy_id → [{ id, option_name, option_description }]
+let pplActiveByPolicy  = new Map(); // policy_id → current option_id
+let pplLoaded = false;
+let pplSubmitInFlight = false;
+
+function wireProposePolicyModalChrome() {
+  const ov = document.getElementById('ppl-overlay');
+  if (!ov) return;
+  document.getElementById('ppl-close')?.addEventListener('click', closeProposePolicyModal);
+  ov.addEventListener('click', (e) => { if (e.target === ov) closeProposePolicyModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && ov.classList.contains('show')) closeProposePolicyModal();
+  });
+  document.getElementById('ppl-policy')?.addEventListener('change', pplOnPolicyPick);
+  document.getElementById('ppl-submit')?.addEventListener('click', pplSubmit);
+}
+
+async function openProposePolicyModal() {
+  const ov = document.getElementById('ppl-overlay');
+  if (!ov) return;
+  if (!politicianCtx?.nation?.id) {
+    alert('No nation associated with this politician.');
+    return;
+  }
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden', 'false');
+  pplResetDraft();
+  // committeeIdByKey is shared with the Propose New Statute modal —
+  // load it on demand if the player opened this one first.
+  if (committeeIdByKey.size === 0) {
+    const { data, error } = await _supabase.from('committees')
+      .select('id, committee_key')
+      .eq('nation_id', politicianCtx.nation.id);
+    if (error) {
+      document.getElementById('ppl-err').textContent =
+        'Could not load committees: ' + (error.message || 'unknown');
+      return;
+    }
+    for (const row of (data || [])) committeeIdByKey.set(row.committee_key, row.id);
+  }
+  pplRenderCommitteeGrid();
+  if (!pplLoaded) {
+    await pplLoadData();
+    pplLoaded = true;
+  }
+  pplPopulatePolicySelect();
+}
+
+function closeProposePolicyModal() {
+  const ov = document.getElementById('ppl-overlay');
+  if (!ov) return;
+  ov.classList.remove('show');
+  ov.setAttribute('aria-hidden', 'true');
+}
+
+function pplResetDraft() {
+  pplDraft.policyId = null;
+  pplDraft.currentOptionId = null;
+  pplDraft.newOptionId = null;
+  pplDraft.committeeKey = null;
+  document.getElementById('ppl-err').textContent = '';
+  document.getElementById('ppl-current-row').style.display = 'none';
+  document.getElementById('ppl-options-row').style.display = 'none';
+  pplRefreshSubmitState();
+}
+
+// Reuses the existing committee picker tile shape so the two modals
+// match. The pnl-comm-grid id is unique to this modal (#ppl-comm-grid)
+// but the styling is shared via the .pnl-comm class.
+function pplRenderCommitteeGrid() {
+  const grid = document.getElementById('ppl-comm-grid');
+  grid.replaceChildren();
+  for (const key of COMMITTEE_ORDER) {
+    const meta = COMMITTEES[key]; if (!meta) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pnl-comm';
+    btn.dataset.key = key;
+    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
+                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
+    btn.addEventListener('click', () => {
+      pplDraft.committeeKey = key;
+      grid.querySelectorAll('.pnl-comm').forEach(n =>
+        n.classList.toggle('selected', n.dataset.key === key));
+      pplRefreshSubmitState();
+    });
+    grid.appendChild(btn);
+  }
+}
+
+// Fetches policies + options + the nation's active law selections
+// in two queries. Cached on pplLoaded so repeat opens don't re-fetch.
+async function pplLoadData() {
+  const nationId = politicianCtx?.faction?.nation_id || politicianCtx?.nation?.id || null;
+  if (!nationId) {
+    document.getElementById('ppl-err').textContent = 'No nation context — cannot load policies.';
+    return;
+  }
+  try {
+    const [polRes, lawRes] = await Promise.all([
+      _supabase.from('policies')
+        .select('id, policy_name, description, major_sector, policy_options(id, option_name, option_description)')
+        .order('major_sector', { ascending: true })
+        .order('policy_name',  { ascending: true }),
+      _supabase.from('active_laws')
+        .select('policy_id, selected_option_id')
+        .eq('nation_id', nationId)
+        .eq('is_reversal', false),
+    ]);
+    if (polRes.error) throw polRes.error;
+    if (lawRes.error) throw lawRes.error;
+    pplPolicies = polRes.data || [];
+    pplOptionsByPolicy = new Map();
+    for (const p of pplPolicies) {
+      pplOptionsByPolicy.set(p.id, p.policy_options || []);
+    }
+    pplActiveByPolicy = new Map();
+    for (const r of (lawRes.data || [])) {
+      if (r.policy_id) pplActiveByPolicy.set(r.policy_id, r.selected_option_id);
+    }
+  } catch (err) {
+    console.error('[politician-statutes] policy load failed:', err);
+    document.getElementById('ppl-err').textContent =
+      `Failed to load policies: ${err?.message || err}`;
+  }
+}
+
+function pplPopulatePolicySelect() {
+  const sel = document.getElementById('ppl-policy');
+  sel.replaceChildren();
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = '— Select a policy —';
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  sel.appendChild(placeholder);
+
+  // Group policies by major_sector for legibility. Each sector is an
+  // optgroup; policies are alphabetical within.
+  const bySector = new Map();
+  for (const p of pplPolicies) {
+    const key = (p.major_sector || 'Other').toUpperCase();
+    if (!bySector.has(key)) bySector.set(key, []);
+    bySector.get(key).push(p);
+  }
+  const orderedKeys = Array.from(bySector.keys()).sort();
+  for (const key of orderedKeys) {
+    const group = document.createElement('optgroup');
+    group.label = key;
+    for (const p of bySector.get(key)) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.policy_name;
+      group.appendChild(opt);
+    }
+    sel.appendChild(group);
+  }
+}
+
+function pplOnPolicyPick(e) {
+  const policyId = e.target.value || null;
+  pplDraft.policyId = policyId;
+  pplDraft.newOptionId = null;
+  if (!policyId) {
+    document.getElementById('ppl-current-row').style.display = 'none';
+    document.getElementById('ppl-options-row').style.display = 'none';
+    pplRefreshSubmitState();
+    return;
+  }
+  const currentId = pplActiveByPolicy.get(policyId) || null;
+  pplDraft.currentOptionId = currentId;
+  const allOptions = pplOptionsByPolicy.get(policyId) || [];
+  const currentOpt = allOptions.find(o => o.id === currentId) || null;
+  // Render current-option box.
+  const curRow = document.getElementById('ppl-current-row');
+  const curEl  = document.getElementById('ppl-current');
+  curRow.style.display = '';
+  if (currentOpt) {
+    curEl.innerHTML =
+      `<span class="lab">${escapeHtml(currentOpt.option_name)}</span>` +
+      `<span class="body">${escapeHtml(currentOpt.option_description || 'No description on file.')}</span>`;
+  } else {
+    curEl.innerHTML =
+      `<span class="lab">NOT YET ENACTED</span>` +
+      `<span class="body">This nation has no active law for this policy. Your proposal would enact a new one.</span>`;
+  }
+  // Render options list (exclude current).
+  const optsRow = document.getElementById('ppl-options-row');
+  const optsEl  = document.getElementById('ppl-options');
+  optsEl.replaceChildren();
+  optsRow.style.display = '';
+  for (const opt of allOptions) {
+    const isCurrent = opt.id === currentId;
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'ppl-opt' + (isCurrent ? ' disabled' : '');
+    tile.dataset.id = opt.id;
+    tile.disabled = isCurrent;
+    const tag = isCurrent ? '<span class="ppl-opt-tag">CURRENT</span>' : '';
+    tile.innerHTML =
+      `<div class="ppl-opt-name">${escapeHtml(opt.option_name)}${tag}</div>` +
+      (opt.option_description ? `<div class="ppl-opt-desc">${escapeHtml(opt.option_description)}</div>` : '');
+    if (!isCurrent) {
+      tile.addEventListener('click', () => {
+        pplDraft.newOptionId = opt.id;
+        optsEl.querySelectorAll('.ppl-opt').forEach(n =>
+          n.classList.toggle('selected', n.dataset.id === opt.id));
+        pplRefreshSubmitState();
+      });
+    }
+    optsEl.appendChild(tile);
+  }
+  pplRefreshSubmitState();
+}
+
+function pplRefreshSubmitState() {
+  const btn = document.getElementById('ppl-submit');
+  if (!btn) return;
+  const ok = pplDraft.policyId
+          && pplDraft.newOptionId
+          && pplDraft.committeeKey
+          && !pplSubmitInFlight;
+  btn.disabled = !ok;
+}
+
+async function pplSubmit() {
+  if (pplSubmitInFlight) return;
+  const errEl = document.getElementById('ppl-err');
+  errEl.textContent = '';
+  const factionId = politicianCtx?.faction?.id || null;
+  if (!factionId) { errEl.textContent = 'No politician on this account.'; return; }
+  const committeeId = committeeIdByKey.get(pplDraft.committeeKey);
+  if (!committeeId) { errEl.textContent = 'Committee not loaded yet — try again.'; return; }
+  pplSubmitInFlight = true;
+  pplRefreshSubmitState();
+  try {
+    const { data, error } = await _supabase.rpc('committee_propose_policy_change', {
+      p_committee_id:       committeeId,
+      p_policy_id:          pplDraft.policyId,
+      p_proposed_option_id: pplDraft.newOptionId,
+      p_faction_id:         factionId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      errEl.textContent = pplReasonText(data?.reason || 'unknown');
+      return;
+    }
+    closeProposePolicyModal();
+    // Soft toast — no full reload needed; the page itself doesn't
+    // list policy proposals (committee.html does). location.search
+    // is preserved so a deep link doesn't get clobbered.
+    location.reload();
+  } catch (err) {
+    console.error('[politician-statutes] policy proposal submit failed:', err);
+    errEl.textContent = `Failed: ${err?.message || err}`;
+  } finally {
+    pplSubmitInFlight = false;
+    pplRefreshSubmitState();
+  }
+}
+
+function pplReasonText(reason) {
+  return ({
+    not_authenticated:       'Sign in to submit.',
+    no_politician:           'No politician on this account.',
+    not_mp:                  'Only Members of Parliament can submit proposals.',
+    invalid_arguments:       'Missing required input.',
+    committee_not_found:     'Selected committee no longer exists.',
+    wrong_nation:            'That committee belongs to another nation.',
+    option_not_found:        'Selected option no longer exists.',
+    option_policy_mismatch:  'The selected option doesn\'t belong to the chosen policy.',
+    no_change_proposed:      'The selected option is already the active one.',
+  })[reason] || `Could not submit: ${reason}`;
 }
 </script>
 

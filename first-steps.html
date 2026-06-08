@@ -320,20 +320,29 @@ function govBadge(govType) {
 }
 
 // Mirrors the server's tier algorithm (create_politician_with_tier
-// _stats, 20270725): absolute thresholds keyed off the target
-// nation's active-politician count. No cross-nation ranking — an
-// effectively-empty nation (< 5 politicians) always reads as Tier C
-// (jumpstart) regardless of how busy or sparse its neighbors are.
-//   C: count < 5    (jumpstart)
-//   B: 5 <= count < 15  (boosted)
-//   A: count >= 15  (basic)
-// Returns a Map<nation_id, 'A'|'B'|'C'>.
+// _stats, 20270729): relative third-split across the foundable nation
+// set. Top third → A (basic), middle → B (boosted), bottom third → C
+// (jumpstart). Guarantees at least one A and one C whenever N >= 3,
+// so the picker always shows the full ladder. Tiebreak here uses
+// nation id (deterministic between renders); the server uses random()
+// at INSERT time, which only matters when counts are tied across a
+// tier boundary. Returns a Map<nation_id, 'A'|'B'|'C'>.
 function computeTierMap() {
+  const N = allNations.length;
   const out = new Map();
-  for (const n of allNations) {
-    const count = politiciansByNation[n.id] || 0;
-    out.set(n.id, count >= 15 ? 'A' : count >= 5 ? 'B' : 'C');
-  }
+  if (N === 0) return out;
+  const ranked = allNations
+    .map(n => ({ id: n.id, count: politiciansByNation[n.id] || 0 }))
+    .sort((a, b) => (b.count - a.count) || String(a.id).localeCompare(String(b.id)));
+  if (N === 1) { out.set(ranked[0].id, 'A'); return out; }
+  if (N === 2) { out.set(ranked[0].id, 'A'); out.set(ranked[1].id, 'C'); return out; }
+  const aSize = Math.max(1, Math.floor(N / 3));
+  const cSize = Math.max(1, Math.floor(N / 3));
+  ranked.forEach((r, i) => {
+    if (i < aSize)              out.set(r.id, 'A');
+    else if (i >= N - cSize)    out.set(r.id, 'C');
+    else                        out.set(r.id, 'B');
+  });
   return out;
 }
 

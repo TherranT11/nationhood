@@ -239,6 +239,15 @@
   border-radius:6px; overflow:hidden; border-left:3px solid #c8a26e;
   display:flex; align-items:stretch; transition:background 0.15s; }
 .ti-card:hover { background:#101010; }
+/* Resolved-verdict variant (20270726). No hover lift (the card is
+   informational, not clickable); border-left fades to a muted bronze
+   so the eye reads "concluded" vs the live amber of in-flight cards.
+   The verdict-line replaces both ti-caption and ti-meta inside ti-info. */
+.ti-card.resolved { border-left-color:#7a5a3a; background:#0a0908; }
+.ti-card.resolved:hover { background:#0a0908; }
+.ti-verdict-line { font-family:Georgia,serif; font-size:13px; color:#bbb;
+  line-height:1.5; margin-top:6px; }
+.ti-verdict-line strong { color:#dcb88a; font-weight:600; }
 #pressing-issues > .ti-card + .ti-card,
 #pressing-issues > .offer-card + .ti-card,
 #pressing-issues > .ci-camp + .ti-card { margin-top:10px; }
@@ -1530,7 +1539,7 @@ let careerRows = [];   // persistent rows from politician_career_events; merged 
 let activeRace = null; // politician_active_election row when one exists; drives the Pressing Issues campaign card.
 let counselOffers = []; // pending corp_advocate_offers for this politician (20270512/13). Surfaces as Pressing Issues cards.
 let pretrialCases = []; // active pre-trials in this politician's bar nation awaiting a counterparty (20270514).
-let activeTrials = [];  // in-progress trials this politician is on either side of (20270515). Surfaces as Pressing Issues + opens the trial modal.
+let activeTrials = [];  // in-progress + recently-resolved (12-tick window) trials this politician is on either side of (20270515 / 20270726). Surfaces as Pressing Issues; the resolved subset renders the verdict line + skips the case-load count via the renderer's status branch and the advocateActiveCount filter.
 let stateAdvocateRequests = []; // pending state_advocate_appointment_requests where this politician is the reviewer (MoI). Surfaces as Pressing Issues cards (20270555).
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
@@ -2348,7 +2357,13 @@ function renderAffiliation(ctx) {
     ? ((ctx.faction?.politician_experienced_advocate_at_tick != null
         || ctx.faction?.politician_state_prosecutor_at_tick != null) ? 4 : 3)
     : null;
-  const advocateActiveCount = (activeTrials || []).filter(t => t.role !== 'judge').length;
+  // 20270726: activeTrials now also carries recently-resolved trials
+  // (kept around so Pressing Issues can render the verdict line for
+  // 12 ticks). Those rows must NOT count toward the case-load cap or
+  // the "active case" gate on Read the Statute Books — explicit
+  // status filter keeps the counts honest.
+  const advocateActiveCount = (activeTrials || [])
+    .filter(t => t.role !== 'judge' && t.status !== 'resolved').length;
   const atCaseCap = advocateCaseCap != null && advocateActiveCount >= advocateCaseCap;
 
   const actionsCount = variant.actions.length;
@@ -2801,9 +2816,11 @@ const TRIAL_ROUND_ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 function renderActiveTrialCard(t) {
   // list_active_trials_for_advocate returns trials in
   // 'in_progress', 'settlement_conference', or 'awaiting_hearing'
-  // (SC trials queued for the Supreme Court). Standalone pre_trial
-  // cases (waiting for opposing counsel) come through
+  // (SC trials queued for the Supreme Court), PLUS resolved trials
+  // whose verdict landed in the last 12 ticks (20270726). Standalone
+  // pre_trial cases (waiting for opposing counsel) come through
   // renderPretrialCard via pretrialCases.
+  const isResolved   = t.status === 'resolved';
   const isSettleConf = t.status === 'settlement_conference';
   const isAwaiting   = t.status === 'awaiting_hearing';
   const isJudge      = t.role === 'judge';
@@ -2813,6 +2830,41 @@ function renderActiveTrialCard(t) {
   const sideLabel    = isJudge
     ? 'PRESIDING FROM THE BENCH'
     : (side === 'plaintiff' ? 'FOR THE PLAINTIFF' : 'FOR THE DEFENDANT');
+
+  // Resolved variant (20270726). The trial is over but the card
+  // persists in Pressing Issues for 12 ticks so the player sees the
+  // verdict announced in the same container the in-flight card
+  // lived in. No CTA — informational only; the card auto-clears
+  // when the 12-tick window expires (server-side filter).
+  if (isResolved) {
+    const plaintiff = t.plaintiff_name || '—';
+    const defendant = t.defendant_name || '—';
+    let line;
+    if (t.verdict_winner === 'plaintiff') {
+      line = `In the matter of <strong>${escHtml(plaintiff)}</strong> v. <strong>${escHtml(defendant)}</strong>, the verdict finds in the favor of <strong>${escHtml(plaintiff)}</strong>.`;
+    } else if (t.verdict_winner === 'defendant') {
+      line = `In the matter of <strong>${escHtml(plaintiff)}</strong> v. <strong>${escHtml(defendant)}</strong>, the verdict finds in the favor of <strong>${escHtml(defendant)}</strong>.`;
+    } else if (t.verdict_winner === 'settled') {
+      line = `In the matter of <strong>${escHtml(plaintiff)}</strong> v. <strong>${escHtml(defendant)}</strong>, the parties have reached a settlement.`;
+    } else {
+      // tie / NULL fallback — rare but defensive.
+      line = `In the matter of <strong>${escHtml(plaintiff)}</strong> v. <strong>${escHtml(defendant)}</strong>, the matter was concluded without a clear verdict.`;
+    }
+    return `
+      <div class="ti-card resolved" data-trial-id="${escHtml(t.trial_id)}">
+        <div class="ti-icon-wrap"><div class="ti-icon">&#9878;</div></div>
+        <div class="ti-info">
+          <div class="ti-eyebrow">VERDICT RENDERED &middot; ${caseTag}</div>
+          <div class="ti-verdict-line">${line}</div>
+        </div>
+        <div class="ti-right">
+          <div class="ti-status">
+            <span class="ti-status-lab">STATUS</span>
+            <span class="ti-pill their-turn">CONCLUDED</span>
+          </div>
+        </div>
+      </div>`;
+  }
 
   // Awaiting-hearing variant (SC only). The trial is queued — both
   // counsels seated, but the Supreme Court is either busy with
