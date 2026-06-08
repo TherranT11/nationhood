@@ -120,6 +120,8 @@
 .city-head-text { flex:1; min-width:0; }
 .city-name  { font-size:18px; font-weight:600; color:#c8a64e;
   letter-spacing:0.01em; }
+.city-capital-tag { font-size:11px; color:#888; font-weight:400;
+  letter-spacing:0.04em; font-style:italic; }
 .city-blurb { font-size:11px; color:#888; line-height:1.55; margin-top:4px;
   font-style:italic; }
 .city-meta  { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
@@ -130,6 +132,10 @@
   text-transform:uppercase; }
 .city-meta-val { font-size:13px; color:#d4d4d4; font-weight:600;
   font-family:Georgia,serif; }
+.city-mayor-party { display:inline-block; font-size:9px; color:#dcb88a;
+  background:rgba(200,166,78,0.08); border:0.5px solid rgba(200,166,78,0.25);
+  padding:2px 7px; border-radius:3px; letter-spacing:0.08em;
+  font-weight:700; font-family:monospace; }
 .city-archetype { font-size:10px; color:#888; font-weight:400;
   letter-spacing:0.04em; }
 .city-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:7px 18px; }
@@ -676,10 +682,10 @@
     </div>
   </details>
   <details id="sec-geography" class="sec">
-    <summary>Geography</summary>
+    <summary>Major Cities</summary>
     <div class="sec-body">
       <div id="geography-cities">
-        <div class="sec-empty">No geographic detail recorded yet.</div>
+        <div class="sec-empty">No cities recorded yet.</div>
       </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
@@ -1352,8 +1358,17 @@ async function loadLegalCases(nationId) {
 // affordability) display as 5-band labels via cityStatLabel — the
 // raw 0..100 number is intentionally never surfaced.
 async function loadGeographyCities(nation) {
+  // mayor_party is embedded via the cities_mayor_party_id_fkey FK
+  // (20270708). PostgREST returns null when the FK is unset, which
+  // the renderer treats as "fall back to mayor_archetype" — keeps
+  // the legacy display working for party-less nations.
   const { data, error } = await _supabase.from('cities')
-    .select('id, city_type, city_name, description, mayor_first_name, mayor_last_name, mayor_age, mayor_archetype, budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability')
+    .select(`
+      id, city_type, city_name, description,
+      mayor_first_name, mayor_last_name, mayor_age, mayor_archetype, mayor_party_id,
+      mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
+      budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+    `)
     .eq('nation_id', nation.id)
     .order('city_type', { ascending: true });
   if (error) {
@@ -1382,7 +1397,13 @@ function cityCardHtml(c, cityPop) {
   const mayorName = (c.mayor_first_name || c.mayor_last_name)
     ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
     : '—';
-  const archetype = c.mayor_archetype || '—';
+  // Party + archetype: prefer the embedded faction (20270708);
+  // fall back to the legacy mayor_archetype text when the FK is
+  // null (party-less nation, pre-backfill rows). Party chip carries
+  // the abbreviation; archetype chip carries the ideology label.
+  const party     = c.mayor_party || null;
+  const partyAbbr = party?.abbreviation || party?.faction_name || '';
+  const archetype = party?.archetype || c.mayor_archetype || '';
   const popStr = cityPop.toLocaleString();
   const budgetM = (Number(c.budget) || 0) / 1000000;
   const budgetStr = budgetM >= 1
@@ -1401,13 +1422,13 @@ function cityCardHtml(c, cityPop) {
       <div class="city-head">
         <div class="city-coa" title="Coat of Arms · Coming Soon">COA</div>
         <div class="city-head-text">
-          <div class="city-name">${escHtml(c.city_name || 'Unnamed City')}</div>
+          <div class="city-name">${escHtml(c.city_name || 'Unnamed City')}${c.city_type === 'capital' ? ' <span class="city-capital-tag">(Capital)</span>' : ''}</div>
           <div class="city-blurb">${escHtml(c.description || '')}</div>
         </div>
       </div>
       <div class="city-meta">
         <div><span class="city-meta-key">Population</span><span class="city-meta-val">${escHtml(popStr)}</span></div>
-        <div><span class="city-meta-key">Mayor</span><span class="city-meta-val">${escHtml(mayorName)}${archetype !== '—' ? ` <span class="city-archetype">${escHtml(archetype)}</span>` : ''}</span></div>
+        <div><span class="city-meta-key">Mayor</span><span class="city-meta-val">${escHtml(mayorName)}${partyAbbr ? ` <span class="city-mayor-party">${escHtml(partyAbbr)}</span>` : ''}${archetype ? ` <span class="city-archetype">${escHtml(archetype)}</span>` : ''}</span></div>
         <div><span class="city-meta-key">Budget</span><span class="city-meta-val">${escHtml(budgetStr)}</span></div>
       </div>
       <div class="city-stats">${statRows}</div>
