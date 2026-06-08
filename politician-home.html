@@ -1133,9 +1133,19 @@
    horizontally. These overrides re-flow the whole surface into a
    ~95vw vertical stack with thumb-sized hit targets. */
 @media (max-width: 720px) {
-  /* Frame: nearly full-bleed, minimal gutter */
-  .trial-back  { padding:8px; }
-  .trial-modal { border-radius:6px; max-height:calc(100vh - 16px); }
+  /* Frame: nearly full-bleed, minimal gutter. The backdrop becomes
+     the scrolling container — desktop pins the modal at max-height
+     :96vh with internal chat scroll, but on mobile that traps the
+     header + hand outside the viewport with no way to reach them.
+     align-items:flex-start anchors the modal at the top of the
+     viewport so the title is the first thing you see; the whole
+     stack (head, overview, chat, input, hand) becomes one tall
+     column you can pan up and down with normal scroll gestures. */
+  .trial-back  { padding:8px; overflow-y:auto;
+                 align-items:flex-start; -webkit-overflow-scrolling:touch; }
+  .trial-modal { border-radius:6px; max-height:none; overflow:visible; }
+  #trial-content { max-height:none; }
+  .trial-chat  { overflow:visible; flex:0 0 auto; min-height:0; }
 
   /* Header — stack info above the turn pill so neither truncates */
   .trial-head { padding:13px 14px 11px; gap:9px; flex-wrap:wrap; }
