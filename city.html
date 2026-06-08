@@ -126,6 +126,18 @@
   border:0.5px solid rgba(255,255,255,0.04); border-radius:4px;
   font-size:11px; color:#666; font-family:monospace; letter-spacing:0.04em;
   font-style:italic; text-align:center; }
+/* Entry-point row below Active Ordinances → cityordinance.html (the
+   ?city= param round-trips the back link). Muted teal to match the
+   politician chrome — clicking surfaces a "you don't qualify" gate
+   for non-Mayor/CCM/CCP viewers, so it's safe to show universally. */
+.city-detail-action-row { margin-top:8px; text-align:right; }
+.city-detail-author-link { font-family:monospace; font-size:10px;
+  letter-spacing:0.1em; text-transform:uppercase; color:#5aafa5;
+  text-decoration:none; padding:4px 8px; border-radius:3px;
+  border:0.5px solid rgba(90,175,165,0.18);
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.city-detail-author-link:hover { color:#a0d8d8;
+  border-color:rgba(90,175,165,0.5); background:rgba(90,175,165,0.06); }
 
 @media (max-width: 720px) {
   .city-detail-stats   { grid-template-columns:1fr; }
@@ -315,6 +327,9 @@ function renderCityDetail(c, nation, currentTick) {
     <div class="city-detail-section">
       <div class="city-detail-section-head"><span class="sans">Active</span><span class="serif">Ordinances</span></div>
       <div class="city-detail-empty">No active ordinances on the books.</div>
+      <div class="city-detail-action-row">
+        <a class="city-detail-author-link" href="cityordinance.html?city=${escHtml(c.id)}">+ Author an Ordinance</a>
+      </div>
     </div>`;
 }
 
