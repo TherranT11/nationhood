@@ -551,12 +551,12 @@ export function termEndTickFor(state) {
     if (isMpOffice(office)) {
         return Number(state.nextGeneralElectionTick) || null;
     }
-    if (office === 'community_organizer' || office === 'city_council_member' || office === 'city_council_president') {
-        // Local-office term length by office. CO + CCM run a flat
-        // 12-tick term; CC President runs 36 ticks (3 years, per
-        // 20270654). The server-side expiry RPC
-        // (politician_resolve_expired_terms) uses the same per-office
-        // CASE — keep the two in sync if a term length ever changes.
+    if (office === 'community_organizer' || office === 'city_council_member' || office === 'city_council_president' || office === 'mayor') {
+        // Local-office term length by office. CO + CCM run 12 ticks;
+        // CC President runs 36 (20270654); mayor runs 48 (20270718).
+        // The server-side expiry RPC (politician_resolve_expired_terms)
+        // uses the same per-office CASE — keep the two in sync if a
+        // term length ever changes.
         //
         // Number.isFinite guard rejects NULL / undefined won-at-tick
         // (which would otherwise coerce to NaN → || 0 → "+ 12 = tick
@@ -565,7 +565,10 @@ export function termEndTickFor(state) {
         // server-side cleanup (20270629) lands.
         const wonAt = Number(state.officeWonAtTick);
         if (!Number.isFinite(wonAt)) return null;
-        return wonAt + (office === 'city_council_president' ? 36 : 12);
+        const termTicks = office === 'mayor' ? 48
+                        : office === 'city_council_president' ? 36
+                        : 12;
+        return wonAt + termTicks;
     }
     return null;
 }

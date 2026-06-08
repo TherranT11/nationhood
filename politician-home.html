@@ -468,6 +468,24 @@
 .ah-tenure-elected { font-size:8px; color:#888; margin-top:6px;
   padding-top:5px; border-top:0.5px dashed rgba(255,255,255,0.06); letter-spacing:0.04em; }
 .ah-tenure-elected strong { color:#bbb; font-weight:600; font-variant-numeric:tabular-nums; }
+/* 20270737 — Mayor card body. City description sits in italic above
+   the stat grid; grid is 2-column desktop, collapses to 1 on mobile
+   via the @media block below. Stat rows are LABEL · VALUE pairs
+   right-aligned so the labels lock to the left rail. */
+.mayor-desc { font-size:10.5px; font-style:italic; color:#bbb;
+  margin-top:8px; line-height:1.55; }
+.mayor-stats { display:grid; grid-template-columns:repeat(2, 1fr);
+  gap:5px 22px; margin-top:12px; padding-top:11px;
+  border-top:0.5px solid rgba(255,255,255,0.06); }
+.mayor-stats .ms-row { display:flex; justify-content:space-between;
+  align-items:baseline; padding:3px 0; font-size:10px; }
+.mayor-stats .ms-label { color:#888; letter-spacing:0.08em;
+  font-family:monospace; font-weight:600; text-transform:uppercase; }
+.mayor-stats .ms-val { color:var(--acc-bright); font-weight:600;
+  font-variant-numeric:tabular-nums; text-align:right; }
+@media (max-width: 640px) {
+  .mayor-stats { grid-template-columns:1fr; }
+}
 
 .act-row { padding:14px 20px; }
 .ar-lab { font-size:8.5px; letter-spacing:0.14em; color:#666; font-weight:600; margin-bottom:10px; }
@@ -1325,6 +1343,7 @@ import { _supabase } from './js/supabase-client.js';
 import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
+import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { COMMITTEES } from './js/committees.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
@@ -1616,7 +1635,21 @@ async function init() {
   } catch (_) { /* non-fatal */ }
 
   try {
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes] = await Promise.all([
+    // 20270737: mayor's city — fetched here so renderAffiliation can
+    // render the city description + stats grid + actions inline.
+    // Conditional so non-mayors don't pay the round trip; the lookup
+    // matches the resolver's stamp (mayor_first/last + party + nation,
+    // non-capital).
+    const cityFetch = politician.politician_office === 'mayor'
+      ? _supabase.from('cities')
+          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, mayor_term_end_tick')
+          .eq('nation_id', politician.nation_id)
+          .eq('mayor_first_name', politician.leader_first_name)
+          .eq('mayor_last_name',  politician.leader_last_name)
+          .neq('city_type', 'capital')
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null });
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, mayorCityRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1661,6 +1694,7 @@ async function init() {
       // aren't a committee member and haven't testified yet
       // (20270691). Empty result for nation-less politicians.
       _supabase.rpc('list_open_hearings_for_witness', { p_faction_id: politician.id }),
+      cityFetch,
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
@@ -1671,6 +1705,8 @@ async function init() {
     if (saReqRes.error) console.error('politician-home: state advocate requests fetch failed', saReqRes.error);
     if (jmAppsRes.error) console.error('politician-home: junior minister applications fetch failed', jmAppsRes.error);
     if (hearingsRes.error) console.error('politician-home: open hearings fetch failed', hearingsRes.error);
+    if (mayorCityRes.error) console.error('politician-home: mayor city fetch failed', mayorCityRes.error);
+    ctx.mayorCity = mayorCityRes.data || null;
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
@@ -2014,6 +2050,16 @@ const PARTY_MEMBER_ACTIONS = [
   { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct for the party. Roll 1d6 + Influence. Total ≤1 → −0.2 Party Popularity; total 2–5 → +0.2; total ≥6 → +0.3.', action: 'door-knock' },
   { ic: '❕', name: 'GIVE A SPEECH', cost: '$50k party funds', desc: 'Climb a stump on the party\'s dime. Costs $50,000 from party funds. +0.3 Reputation.', action: 'give-speech' },
 ];
+// Mayor (Tier 4 Local Executive) — 20270737. Propose is greyed
+// today (city ordinance system isn't built yet). Collect Taxes and
+// Campaign share next_member_action_tick with PARTY_MEMBER_ACTIONS
+// so holding the office adds choice depth, not pure additive
+// power.
+const MAYOR_ACTIONS = [
+  { ic: '📜', name: 'PROPOSE',       cost: 'unavailable', desc: 'Propose to introduce or amend a city ordinance. If it passes, +2 Experience. If it fails, -1 Reputation.' /* no action key → disabled */ },
+  { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds floor(Growth / 3) to the city budget (capped at 10).', action: 'collect-taxes' },
+  { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
+];
 // LOCAL_GOV bracket effects mirror the RPC bodies in 20270583_
 // consolidate_faction_stats.sql; keep these strings in sync when
 // re-tuning. "roll" = natural d-roll; "total" = roll + the stat noted.
@@ -2102,6 +2148,22 @@ const AFFIL_VARIANTS = {
     actions: CITY_COUNCIL_ACTIONS,
     actionsEnabled: true,
     cooldownColumn: 'next_local_action_tick',
+  },
+  // Mayor (20270737). descFn pulls the city description + stat
+  // strip inline. Falls back to a "city not loaded" message if
+  // ctx.mayorCity is null — happens for the moment between
+  // resolver and next page load if the cities row stamp lags.
+  // name dynamic via nameFn so the title reads "Mayor of {City}".
+  mayor: {
+    variant: 'var-local',
+    eyebrow: 'LOCAL GOVERNMENT · TIER 4',
+    badge:   '🏛',
+    name:    'Mayor',
+    nameFn:  (ctx) => ctx.mayorCity?.city_name ? `Mayor of ${ctx.mayorCity.city_name}` : 'Mayor',
+    descFn:  (ctx) => renderMayorBody(ctx.mayorCity),
+    actions: MAYOR_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'next_member_action_tick',
   },
   member_of_parliament: {
     variant: 'var-leg',
@@ -2250,6 +2312,31 @@ const AFFIL_VARIANTS = {
   },
 };
 
+// 20270737 — Mayor card body: italic city description + 10-stat
+// strip (budget + the 9 banded stats from CITY_STATS). Stats are
+// 1-10 ints; budget renders raw, the 9 others go through
+// cityStatLabel to render their descriptive band label. Defensive
+// against null city (stamp lag between resolver and next page
+// load) by rendering a plain "city not loaded" message.
+function renderMayorBody(city) {
+  if (!city) {
+    return '<em>City not loaded — refresh once the term stamp lands.</em>';
+  }
+  const desc = city.description
+    ? `<div class="mayor-desc">${escHtml(city.description)}</div>`
+    : '';
+  const budgetRow = `<div class="ms-row">
+    <span class="ms-label">BUDGET</span>
+    <span class="ms-val">${escHtml(String(city.budget ?? '—'))} / 10</span>
+  </div>`;
+  const statRows = CITY_STATS.map(s => `
+    <div class="ms-row">
+      <span class="ms-label">${escHtml(s.name.toUpperCase())}</span>
+      <span class="ms-val">${escHtml(cityStatLabel(s.key, city[s.key]))}</span>
+    </div>`).join('');
+  return `${desc}<div class="mayor-stats">${budgetRow}${statRows}</div>`;
+}
+
 // Within the bar-admitted branch, walk the judicial ladder by priority
 // so the highest tier the politician holds drives the variant. Mirrors
 // the priority used by judicialTitle() in js/utils.js — keep the two
@@ -2348,8 +2435,12 @@ function renderAffiliation(ctx) {
     : ctx.faction?.politician_deputy_speaker_at_tick != null
       ? { upper: 'DEPUTY SPEAKER', mixed: 'Deputy Speaker' }
       : null;
+  // 20270737: mayor variant uses nameFn(ctx) so the title can read
+  // "Mayor of {City}" rather than the static name. Other variants
+  // ignore the missing field via the || fallback.
+  const variantName = variant.nameFn ? variant.nameFn(ctx) : variant.name;
   const eyebrowText = chairLabel ? `${variant.eyebrow} · ${chairLabel.upper}` : variant.eyebrow;
-  const nameText    = chairLabel ? `${variant.name} · ${chairLabel.mixed}`   : variant.name;
+  const nameText    = chairLabel ? `${variantName} · ${chairLabel.mixed}`     : variantName;
 
   // Cooldown: per-tier column. MP variants read next_mp_action_tick;
   // local-tier variants read next_local_action_tick (20270461). Each
@@ -2528,6 +2619,10 @@ const ACTIONS = {
   'mobilize-volunteers':{ rpc: 'politician_mobilize_volunteers',    label: 'Mobilize Volunteers',needsParty: true,  format: fmtMobilizeResult },
   'build-the-base':     { rpc: 'politician_build_the_base',         label: 'Build the Base',     needsParty: true,  format: fmtBuildTheBaseResult },
   'lobby-minister':     { rpc: 'politician_lobby_minister',         label: 'Lobby a Minister',   needsParty: true,  format: fmtLobbyMinisterResult },
+  // Mayor tier (20270737) — both share next_member_action_tick
+  // with PARTY_MEMBER_ACTIONS so the per-tick lock is consistent.
+  'collect-taxes':      { rpc: 'mayor_collect_taxes',               label: 'Collect Taxes',      needsParty: false, format: fmtMayorTaxResult },
+  'campaign':           { rpc: 'mayor_campaign',                    label: 'Campaign',           needsParty: false, format: fmtMayorCampaignResult },
 };
 
 function fmtMobilizeResult(data) {
@@ -2553,6 +2648,22 @@ function fmtLobbyMinisterResult(data) {
     return `Minister of ${ministry} publicly rebuffed you: rolled 1. −1 Reputation (now ${data.new_reputation}), −1 Volunteer (now ${data.new_volunteers}). 3-tick cooldown.`;
   }
   return `Lobbied the Minister of ${ministry}: rolled ${data.roll}, no result. Influence consumed. 3-tick cooldown.`;
+}
+
+// 20270737 — Mayor action results.
+function fmtMayorTaxResult(data) {
+  const city = data.city_name || 'the city';
+  const popTxt = Number.isFinite(Number(data.new_popularity))
+    ? `, Party Popularity now ${Number(data.new_popularity).toFixed(1)}%`
+    : '';
+  if (data.budget_delta === 0) {
+    return `Collected taxes in ${city}: Growth ${data.growth} too low for revenue (floor(${data.growth}/3) = 0)${popTxt}.`;
+  }
+  return `Collected taxes in ${city}: Budget +${data.budget_delta} (now ${data.new_budget} / 10)${popTxt}.`;
+}
+function fmtMayorCampaignResult(data) {
+  const city = data.city_name || 'the city';
+  return `Campaigned in ${city}: +1 Influence (now ${data.new_influence}), +1 Reputation (now ${data.new_reputation}). City Growth now ${data.new_growth} / 10.`;
 }
 
 function fmtMemoResult(data) {
@@ -2642,6 +2753,9 @@ const ACTION_REASON = {
   insufficient_capital:     'You don’t have enough Capital.',
   insufficient_influence:   'You don’t have enough Influence.',
   lobby_cooldown:           'Lobbying a Minister is on its 8-tick cooldown.',
+  not_mayor:                'You need to hold the Mayor office for this action.',
+  city_not_found:           'Could not find the city you’re mayor of — the cities row may not be stamped yet.',
+  on_cooldown:              'You’ve already used your action this tick.',
 };
 
 async function handleResignOffice(btn, officeName) {
@@ -4071,12 +4185,9 @@ async function selectCity(cityId) {
 
 function renderCityView(city, ordinances, votes) {
   if (!city) return;
-  const fmtBudget = (n) => {
-    const v = Number(n) || 0;
-    if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (v >= 1_000)     return '$' + (v / 1_000).toFixed(0) + 'K';
-    return '$' + v;
-  };
+  // 20270736: budget is a 1-10 stat. Display matches the rest of
+  // the city panel ("5 / 10") rather than the old dollar format.
+  const fmtBudget = (n) => `${Number(n) || 0} / 10`;
   const mayorName = [city.mayor_first_name, city.mayor_last_name]
     .filter(Boolean).join(' ') || 'Unknown';
   const mayorMeta = [
