@@ -6,81 +6,89 @@
 <title>City — Nationhood</title>
 <style>
 /* Topbar / nav / body base live in js/politician-topbar.js. Page-local
-   styles mirror politician-nation.html's Geography card vocabulary —
-   amber accent on the city name, grid for the meta + stats — but
-   rendered larger since this is the full-detail surface. */
+   styles mirror politician-nation.html's Geography card vocabulary so
+   the per-city URL reads as the same surface, just larger. Sizing
+   choices: COA 56×56 (same as the card), meta as a single inline row
+   (no dark band — matches the Geography card and avoids the heavy
+   visual break the user flagged), stat values bumped to weight 700
+   on a slightly brighter color so the serif copy doesn't read as
+   ghosted at 13px. */
 * { box-sizing:border-box; margin:0; padding:0; }
-.content { padding:32px 24px 24px; max-width:1100px; margin:0 auto; }
+.content { padding:28px 24px 40px; max-width:960px; margin:0 auto; }
 
 .city-back { display:inline-flex; align-items:center; gap:6px;
   font-family:monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
   color:#888; text-decoration:none; margin-bottom:18px;
-  padding:7px 10px; border:0.5px solid rgba(255,255,255,0.08); border-radius:3px; }
+  padding:6px 10px; border:0.5px solid rgba(255,255,255,0.08); border-radius:3px; }
 .city-back:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
 
 .city-detail { background:#0a0807; border:0.5px solid rgba(200,166,78,0.18);
-  border-radius:6px; padding:28px; }
-.city-detail-head { display:flex; gap:20px; align-items:flex-start; margin-bottom:22px; }
-.city-detail-coa { width:88px; height:88px; flex-shrink:0; background:#1a1612;
-  border:0.5px solid rgba(200,166,78,0.25); border-radius:5px;
-  color:#555; font-size:11px; letter-spacing:0.14em; font-weight:700;
+  border-radius:6px; padding:22px; }
+
+.city-detail-head { display:flex; gap:16px; align-items:flex-start; margin-bottom:18px; }
+.city-detail-coa { width:56px; height:56px; flex-shrink:0; background:#1a1612;
+  border:0.5px solid rgba(200,166,78,0.25); border-radius:4px;
+  color:#555; font-size:9px; letter-spacing:0.12em; font-weight:700;
   display:flex; align-items:center; justify-content:center; cursor:help; }
 .city-detail-head-text { flex:1; min-width:0; }
-.city-detail-eyebrow { font-size:10px; color:#888; letter-spacing:0.14em;
-  text-transform:uppercase; margin-bottom:5px; font-family:monospace; font-weight:600; }
-.city-detail-name { font-size:28px; font-weight:600; color:#c8a64e;
-  letter-spacing:0.005em; line-height:1.15; }
-.city-detail-capital-tag { font-size:14px; color:#888; font-weight:400;
-  letter-spacing:0.04em; font-style:italic; margin-left:6px; }
-.city-detail-blurb { font-size:13px; color:#a8a8a8; line-height:1.65;
-  font-style:italic; margin-top:8px; max-width:780px; }
+.city-detail-eyebrow { font-size:9px; color:#888; letter-spacing:0.14em;
+  text-transform:uppercase; margin-bottom:4px; font-family:monospace; font-weight:600; }
+.city-detail-name { font-size:22px; font-weight:600; color:#c8a64e;
+  letter-spacing:0.005em; line-height:1.2; }
+.city-detail-capital-tag { font-size:13px; color:#888; font-weight:400;
+  letter-spacing:0.04em; font-style:italic; margin-left:5px; }
+.city-detail-blurb { font-size:12px; color:#a0a0a0; line-height:1.6;
+  font-style:italic; margin-top:6px; }
 
+/* Meta is a 3-column inline row inside the card body — same shape as
+   the Geography card so the surfaces read as the same vocabulary
+   (no dark band that looks pasted on). */
 .city-detail-meta { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px;
-  padding:18px 22px; margin-bottom:22px;
-  background:#080706; border:0.5px solid rgba(255,255,255,0.05); border-radius:5px; }
-.city-detail-meta > div { display:flex; flex-direction:column; gap:4px; }
+  padding-bottom:14px; margin-bottom:18px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.city-detail-meta > div { display:flex; flex-direction:column; gap:3px;
+  min-width:0; }
 .city-detail-meta-key { font-size:9px; color:#666; letter-spacing:0.12em;
-  text-transform:uppercase; font-weight:600; }
-.city-detail-meta-val { font-size:15px; color:#d4d4d4; font-weight:600;
-  font-family:Georgia,serif; }
+  text-transform:uppercase; font-weight:600; font-family:monospace; }
+.city-detail-meta-val { font-size:14px; color:#e0e0e0; font-weight:600;
+  font-family:Georgia,serif; line-height:1.3; }
+.city-detail-meta-sub { font-size:10px; color:#888; letter-spacing:0.04em;
+  font-family:monospace; font-style:italic; margin-top:3px; }
 .city-detail-mayor-party { display:inline-block; font-size:9px; color:#dcb88a;
   background:rgba(200,166,78,0.08); border:0.5px solid rgba(200,166,78,0.25);
-  padding:2px 7px; border-radius:3px; letter-spacing:0.08em;
-  font-weight:700; font-family:monospace; margin-left:6px; }
-.city-detail-archetype { display:block; font-size:10px; color:#888;
-  font-weight:400; letter-spacing:0.04em; font-family:monospace;
-  text-transform:uppercase; margin-top:3px; }
+  padding:2px 6px; border-radius:3px; letter-spacing:0.08em;
+  font-weight:700; font-family:monospace; margin-left:5px; vertical-align:1px; }
 
-.city-detail-section { margin-bottom:22px; }
-.city-detail-section:last-child { margin-bottom:0; }
-.city-detail-section-head { font-size:11px; letter-spacing:0.14em;
+.city-detail-section { margin-top:18px; }
+.city-detail-section-head { font-size:10px; letter-spacing:0.14em;
   text-transform:uppercase; color:#c8a64e; font-weight:700; font-family:monospace;
-  margin-bottom:12px; padding-bottom:8px;
-  border-bottom:0.5px solid rgba(200,166,78,0.18); }
+  margin-bottom:10px; padding-bottom:6px;
+  border-bottom:0.5px solid rgba(200,166,78,0.15); }
 
-.city-detail-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px 24px; }
+.city-detail-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:6px 20px; }
 .city-detail-stat-row { display:flex; justify-content:space-between; align-items:baseline;
-  padding:8px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
+  padding:6px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
 .city-detail-stat-key { font-size:10px; color:#888; letter-spacing:0.08em;
   text-transform:uppercase; }
-.city-detail-stat-val { font-size:13px; color:#d4d4d4; font-weight:600;
+.city-detail-stat-val { font-size:12px; color:#e6e6e6; font-weight:700;
   font-family:Georgia,serif; }
 
-/* Council placeholder — the per-city CCP + CCMs roster will land here
-   once factions get a city_id link for local offices. Today's politician
-   _office values are nation-level (no city FK), so we can't filter on it.
-   Showing the slots as "Vacant" until the schema work lands. */
+/* Council placeholder. Vacant slots render as a row each with a dim
+   role label + faded value — clearly inactive without looking like a
+   bug. The per-city council assignment will fill these in when the
+   schema work lands. */
 .city-detail-council { display:grid; grid-template-columns:repeat(2, 1fr);
-  gap:10px; }
-.city-detail-council-row { display:flex; align-items:center; gap:12px;
-  padding:12px 14px; background:#080706;
-  border:0.5px solid rgba(255,255,255,0.05); border-radius:4px; }
-.city-detail-council-role { font-size:9px; color:#666; letter-spacing:0.12em;
-  text-transform:uppercase; font-weight:600; font-family:monospace; min-width:120px; }
-.city-detail-council-name { font-size:12px; color:#888; font-style:italic;
-  font-family:Georgia,serif; }
-.city-detail-council-note { margin-top:12px; font-size:10px; color:#666;
-  font-family:monospace; letter-spacing:0.06em; font-style:italic; text-align:center; }
+  gap:8px; }
+.city-detail-council-row { display:flex; align-items:center; gap:10px;
+  padding:10px 12px; background:#0d0a08;
+  border:0.5px solid rgba(255,255,255,0.04); border-radius:4px; }
+.city-detail-council-role { font-size:9px; color:#888; letter-spacing:0.1em;
+  text-transform:uppercase; font-weight:600; font-family:monospace;
+  flex:1; min-width:0; }
+.city-detail-council-name { font-size:11px; color:#555; font-family:monospace;
+  letter-spacing:0.08em; text-transform:uppercase; font-weight:600; }
+.city-detail-council-note { margin-top:10px; font-size:10px; color:#666;
+  font-family:monospace; letter-spacing:0.04em; font-style:italic; text-align:center; }
 
 .city-detail-error { padding:48px 24px; text-align:center; color:#c87a7a;
   font-family:monospace; font-size:12px; letter-spacing:0.08em; }
@@ -89,7 +97,7 @@
   .city-detail-stats   { grid-template-columns:1fr; }
   .city-detail-meta    { grid-template-columns:1fr; }
   .city-detail-council { grid-template-columns:1fr; }
-  .city-detail-name    { font-size:22px; }
+  .city-detail-name    { font-size:19px; }
 }
 </style>
 </head>
@@ -105,16 +113,14 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { tickToDate } from './js/utils.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
-// Single source for the council slate the page renders. Slots are
-// fixed at 1 CCP + 3 CCMs per the user spec. Names stay "Vacant"
-// until factions grow a city_id link for local-office assignments —
-// politician_office='city_council_member' / 'city_council_president'
-// is nation-level today (no FK to cities), so there's nothing to
-// query against this specific city yet.
+// Single source for the council slate. 1 CCP + 3 CCMs per user spec.
+// Names stay "Vacant" until factions get a per-city link for local
+// offices; politician_office='city_council_*' is nation-level today.
 const COUNCIL_SLATE = [
   { role: 'City Council President' },
   { role: 'City Council Member · Seat 1' },
@@ -138,10 +144,12 @@ async function init() {
     return;
   }
   if (!ctx) return;
+  const currentTick = Number(ctx?.shard?.current_tick) || 0;
 
   // City fetch — same shape as politician-nation.html's Geography card
   // (one source for the embedded mayor_party FK + all 8 stat columns).
-  // cities table has authenticated SELECT enabled (20270660).
+  // 20270719: mayor_term_end_tick joins the SELECT so the meta row
+  // can render the term countdown / end-date under the Mayor.
   let city = null, nation = null;
   try {
     const { data, error } = await _supabase.from('cities')
@@ -149,7 +157,8 @@ async function init() {
         id, nation_id, city_type, city_name, description, population_pct,
         mayor_first_name, mayor_last_name, mayor_age, mayor_archetype,
         mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
-        budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+        budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability,
+        mayor_term_end_tick
       `)
       .eq('id', cityId)
       .maybeSingle();
@@ -170,19 +179,33 @@ async function init() {
     if (error) throw error;
     nation = data;
   } catch (err) {
-    // Soft-fail: population falls back to zero, the rest of the card
-    // still renders. The Geography card uses the same 11% / population
-    // _pct fallback so leaving nation null here mirrors its behavior.
+    // Soft-fail: population falls back to the 11% blanket on null.
     console.warn('city: nation fetch failed', err);
   }
 
-  renderCityDetail(city, nation);
+  renderCityDetail(city, nation, currentTick);
   document.title = `${city.city_name || 'City'} — Nationhood`;
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
 
-function renderCityDetail(c, nation) {
+// 20270719 helper: turn mayor_term_end_tick into a sub-row under the
+// Mayor name. NULL = NPC mayor → no term sub-row. A future tick →
+// "Term ends Month Year". Past tick → "Term ended Month Year — re
+// -election pending" (the resolve_expired_mayor_term RPC fires on
+// the next page load by the politician owner — viewers of this page
+// don't trigger it).
+function mayorTermLine(termEndTick, currentTick) {
+  if (termEndTick == null) return '';
+  const endDate = tickToDate(termEndTick);
+  if (termEndTick > currentTick) {
+    const ticks = termEndTick - currentTick;
+    return `<div class="city-detail-meta-sub">Term ends ${escHtml(endDate)} · ${ticks} month${ticks === 1 ? '' : 's'} remaining</div>`;
+  }
+  return `<div class="city-detail-meta-sub">Term ended ${escHtml(endDate)} · re-election pending</div>`;
+}
+
+function renderCityDetail(c, nation, currentTick) {
   const nationPop = Number(nation?.population) || 0;
   const { population, mayorName, partyAbbr, archetype, budgetStr } = cityDisplayData(c, nationPop);
   const isCapital = c.city_type === 'capital';
@@ -191,12 +214,11 @@ function renderCityDetail(c, nation) {
     : (isCapital ? 'CAPITAL' : 'MAJOR CITY');
   const partyChip = partyAbbr
     ? `<span class="city-detail-mayor-party">${escHtml(partyAbbr)}</span>` : '';
-  const archetypeLine = archetype
-    ? `<span class="city-detail-archetype">${escHtml(archetype)}</span>` : '';
   const mayorAge = Number.isFinite(Number(c.mayor_age)) ? Number(c.mayor_age) : null;
-  const mayorMeta = mayorName === '—'
-    ? '<span class="city-detail-meta-val">—</span>'
-    : `<span class="city-detail-meta-val">${escHtml(mayorName)}${partyChip}</span>${archetypeLine}`;
+  const mayorTermHtml = mayorTermLine(c.mayor_term_end_tick, currentTick);
+  // Archetype sits below the name as a small italic sub when set.
+  const archetypeSub = (archetype && mayorName !== '—')
+    ? `<div class="city-detail-meta-sub">${escHtml(archetype)}</div>` : '';
 
   const statRows = CITY_STATS.map(({ key, name }) => `
     <div class="city-detail-stat-row">
@@ -204,9 +226,6 @@ function renderCityDetail(c, nation) {
       <span class="city-detail-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
     </div>`).join('');
 
-  // Council slate placeholder — every seat reads "Vacant" until the
-  // per-city CCM/CCP link lands. Comment in COUNCIL_SLATE up top
-  // notes the missing schema dependency.
   const councilRows = COUNCIL_SLATE.map(s => `
     <div class="city-detail-council-row">
       <span class="city-detail-council-role">${escHtml(s.role)}</span>
@@ -229,8 +248,10 @@ function renderCityDetail(c, nation) {
         <span class="city-detail-meta-val">${escHtml(population.toLocaleString())}</span>
       </div>
       <div>
-        <span class="city-detail-meta-key">Mayor${mayorAge != null ? ` · Age ${mayorAge}` : ''}</span>
-        ${mayorMeta}
+        <span class="city-detail-meta-key">Mayor of ${escHtml(c.city_name || 'this city')}${mayorAge != null ? ` · Age ${mayorAge}` : ''}</span>
+        <span class="city-detail-meta-val">${escHtml(mayorName)}${partyChip}</span>
+        ${archetypeSub}
+        ${mayorTermHtml}
       </div>
       <div>
         <span class="city-detail-meta-key">Budget</span>

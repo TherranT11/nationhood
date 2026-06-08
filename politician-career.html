@@ -2029,6 +2029,13 @@ async function init() {
   }
   if (!ctx) return;
 
+  // 20270719: file an auto-re-election if the mayor's 48-tick term
+  // expired since the last page load. Runs before resolve_due
+  // _elections so the newly-filed race is in flight before the
+  // resolver pass (which won't touch it — resolve_tick = current+1).
+  try { await _supabase.rpc('politician_resolve_expired_mayor_term'); }
+  catch (_) { /* non-fatal */ }
+
   // Resolve any election whose tick has come. The RPC no-ops when there's
   // no due race, so we always call it on load — race results have to
   // surface even if the player came from a different page.
