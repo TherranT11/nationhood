@@ -108,6 +108,14 @@
 
 .city-detail-error { padding:48px 24px; text-align:center; color:#c87a7a;
   font-family:monospace; font-size:12px; letter-spacing:0.08em; }
+/* Empty-state line for sections that exist but carry no rows yet
+   (Voting Agenda, Active Ordinances). Mirrors the vocabulary of
+   .city-detail-council-note — italic monospace, muted — so the
+   "nothing here yet" reads as intentional rather than a render fail. */
+.city-detail-empty { padding:14px 14px; background:#0d0a08;
+  border:0.5px solid rgba(255,255,255,0.04); border-radius:4px;
+  font-size:11px; color:#666; font-family:monospace; letter-spacing:0.04em;
+  font-style:italic; text-align:center; }
 
 @media (max-width: 720px) {
   .city-detail-stats   { grid-template-columns:1fr; }
@@ -287,6 +295,16 @@ function renderCityDetail(c, nation, currentTick) {
     <div class="city-detail-section">
       <div class="city-detail-section-head">City Council</div>
       ${councilHtml}
+    </div>
+
+    <div class="city-detail-section">
+      <div class="city-detail-section-head">Voting Agenda</div>
+      <div class="city-detail-empty">No items on the agenda.</div>
+    </div>
+
+    <div class="city-detail-section">
+      <div class="city-detail-section-head">Active Ordinances</div>
+      <div class="city-detail-empty">No active ordinances on the books.</div>
     </div>`;
 }
 
