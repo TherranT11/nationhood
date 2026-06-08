@@ -476,17 +476,21 @@ export function careerLabel(politician, party) {
 
 /** Highest judicial tier label the politician holds in nationId, or
  *  null if not bar-admitted in that nation. Priority mirrors the
- *  ladder: Magistrate (bench, 20270531) → State Advocate (20270532
- *  / 20270555 stamp) → Experienced Advocate (20270529) → Advocate
- *  (bar admission). Used by careerLabel above and by politician-
- *  career's hero affiliations card so the cascade lives in one place. */
+ *  ladder: Supreme Court Justice (admin-stamped, 20270561) →
+ *  Appellate Justice (20270701) → Magistrate (bench, 20270531) →
+ *  State Advocate (20270532 / 20270555 stamp) → Experienced Advocate
+ *  (20270529) → Advocate (bar admission). Used by careerLabel above
+ *  and by politician-career's hero affiliations card so the cascade
+ *  lives in one place. */
 export function judicialTitle(politician, nationId) {
     const admitted = !!politician?.bar_admitted_nation_id
                   && politician.bar_admitted_nation_id === nationId;
     if (!admitted) return null;
-    if (politician.politician_magistrate_at_tick       != null) return 'Magistrate';
-    if (politician.politician_state_prosecutor_at_tick != null) return 'State Advocate';
-    if (politician.politician_experienced_advocate_at_tick != null) return 'Experienced Advocate';
+    if (politician.politician_supreme_court_justice_at_tick != null) return 'Supreme Court Justice';
+    if (politician.politician_appellate_justice_at_tick     != null) return 'Appellate Justice';
+    if (politician.politician_magistrate_at_tick            != null) return 'Magistrate';
+    if (politician.politician_state_prosecutor_at_tick      != null) return 'State Advocate';
+    if (politician.politician_experienced_advocate_at_tick  != null) return 'Experienced Advocate';
     return 'Advocate';
 }
 

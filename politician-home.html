@@ -1396,6 +1396,10 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} has been appointed State Advocate of ${target || 'their nation'}, charged with pursuing cases on behalf of the people.`,
   magistrate: (name, target) =>
     `${name} has donned the robe and joined the bench of ${target || 'their nation'} as a magistrate.`,
+  // Appellate Justice — written by politician_apply_to_appellate_bench
+  // (20270701). target_name is the nation name.
+  appellate_justice: (name, target) =>
+    `${name} has been elevated to the Appellate bench of ${target || 'their nation'}, where they will review the rulings of the lower courts.`,
   // Court case — written by represent_drawn_case + represent_pretrial
   // (20270518). target_name is the case caption ("Plaintiff v.
   // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.
@@ -2052,6 +2056,34 @@ const AFFIL_VARIANTS = {
     actionsEnabled: true,
     cooldownColumn: 'try_case_cooldown_until_tick',
   },
+  // Tier 5 — Appellate Justice (20270701). Self-applied at 24-tick
+  // Magistrate tenure + Experience ≥ 35. Still in the magistrate
+  // pool for regular trials; their distinctive responsibility is
+  // hearing appeals (mechanic deferred to a follow-up).
+  appellate_justice: {
+    variant: 'var-jud',
+    eyebrow: 'JUDICIAL CAREER · TIER 5',
+    badge:   '⚖',
+    name:    'Appellate Justice',
+    descFn:  (ctx) => `You sit on the Appellate bench of <strong>${escHtml(ctx.nation?.name || '—')}</strong> — reviewing the rulings of the lower courts. Your judgments bind the magistrates beneath you.`,
+    actions: ADVOCATE_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'try_case_cooldown_until_tick',
+  },
+  // Tier 6 — Supreme Court Justice (20270561). Admin-stamped only;
+  // no self-apply RPC. Variant defined here so judicialTitle's
+  // highest-rung cascade renders the correct card if a player is
+  // ever stamped.
+  supreme_court_justice: {
+    variant: 'var-jud',
+    eyebrow: 'JUDICIAL CAREER · TIER 6',
+    badge:   '⚖',
+    name:    'Supreme Court Justice',
+    descFn:  (ctx) => `You sit on the Supreme Court of <strong>${escHtml(ctx.nation?.name || '—')}</strong>. Your decisions stand unless the full court convenes to overturn them.`,
+    actions: ADVOCATE_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'try_case_cooldown_until_tick',
+  },
   // Triggered when politician_office is NULL but politician_ministry is
   // set — no elected seat, but a confirmed bureaucrat. descFn picks up
   // the ministry slug from ctx so the copy reads "Ministry of X".
@@ -2101,9 +2133,11 @@ const AFFIL_VARIANTS = {
 // the priority used by judicialTitle() in js/utils.js — keep the two
 // in sync.
 function pickJudicialVariant(faction) {
-  if (faction?.politician_magistrate_at_tick       != null) return AFFIL_VARIANTS.magistrate;
-  if (faction?.politician_state_prosecutor_at_tick != null) return AFFIL_VARIANTS.state_advocate;
-  if (faction?.politician_experienced_advocate_at_tick != null) return AFFIL_VARIANTS.experienced_advocate;
+  if (faction?.politician_supreme_court_justice_at_tick != null) return AFFIL_VARIANTS.supreme_court_justice;
+  if (faction?.politician_appellate_justice_at_tick     != null) return AFFIL_VARIANTS.appellate_justice;
+  if (faction?.politician_magistrate_at_tick            != null) return AFFIL_VARIANTS.magistrate;
+  if (faction?.politician_state_prosecutor_at_tick      != null) return AFFIL_VARIANTS.state_advocate;
+  if (faction?.politician_experienced_advocate_at_tick  != null) return AFFIL_VARIANTS.experienced_advocate;
   return AFFIL_VARIANTS.advocate;
 }
 
