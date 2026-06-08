@@ -3715,7 +3715,7 @@ async function initNationChat() {
 async function loadChatMessages() {
   const { data: msgs, error } = await _supabase
     .from('group_chat_messages')
-    .select('id, sender_id, message_text, sent_at_tick, created_at, is_system, factions:sender_id(faction_name, leader_first_name, leader_last_name, faction_type, abbreviation, party_color)')
+    .select('id, sender_id, message_text, sent_at_tick, created_at, is_system, factions:sender_id(faction_name, leader_first_name, leader_last_name, faction_type, abbreviation, party_color, politician_office, politician_ministry, party:factions!politician_party_id(abbreviation))')
     .eq('chat_id', nationChatId)
     .order('created_at', { ascending: false })
     .limit(CHAT_MSG_LIMIT);
@@ -3767,13 +3767,31 @@ function messageHtml(row) {
   </div>`;
 }
 
+// Chat name suffix — "[PARTY] (Role)" per the user's spec
+// (20270735). Politicians get their party's abbreviation from the
+// politician_party_id join (falls back to the legacy abbreviation
+// column on the faction row when the join is empty) plus their
+// current office or "Civil Servant" when they hold a ministry.
+// Non-politician faction types collapse to a single-piece label
+// since they have no separate party + role to render.
 function factionRoleLabel(f) {
   const t = (f.faction_type || '').toLowerCase();
+
+  if (t === 'politician') {
+    const partyAbbr = (f.party?.abbreviation || f.abbreviation || '').trim();
+    let role = officeTitle(f.politician_office);
+    if (!role && f.politician_ministry) role = 'Civil Servant';
+    const parts = [];
+    if (partyAbbr) parts.push(`[${partyAbbr}]`);
+    if (role)      parts.push(`(${role})`);
+    return parts.join(' ');
+  }
   const abbr = (f.abbreviation || '').trim();
-  if (t === 'politician')     return abbr ? `${abbr} · POLITICIAN` : 'POLITICIAN';
-  if (t === 'movement_party') return abbr ? `${abbr} · PARTY` : 'PARTY';
-  if (t === 'party')          return abbr ? `${abbr} · PARTY` : 'PARTY';
-  if (t === 'corporation')    return abbr ? `${abbr} · CORP` : 'CORP';
+  if (t === 'movement_party' || t === 'party')
+    return abbr ? `[${abbr}] (Party)` : '(Party)';
+  if (t === 'corporation')
+    return abbr ? `[${abbr}] (Corp)` : '(Corp)';
+  if (t === 'staff') return '(Staff)';
   return t.toUpperCase();
 }
 

@@ -387,6 +387,9 @@ export const OFFICE_TITLES = {
     community_organizer:    'Community Organizer',
     city_council_member:    'City Council Member',
     city_council_president: 'City Council President',
+    mayor:                  'Mayor',
+    mayor_of_capital:       'Mayor of the Capital',
+    regional_leader:        'Regional Leader',
     member_of_parliament:   'Member of Parliament',
     senior_mp:              'Senior MP',
 };
