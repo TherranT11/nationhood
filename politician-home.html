@@ -2057,7 +2057,7 @@ const PARTY_MEMBER_ACTIONS = [
 // power.
 const MAYOR_ACTIONS = [
   { ic: '📜', name: 'PROPOSE',       cost: 'unavailable', desc: 'Propose to introduce or amend a city ordinance. If it passes, +2 Experience. If it fails, -1 Reputation.' /* no action key → disabled */ },
-  { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds floor(Growth / 3) to the city budget (capped at 10).', action: 'collect-taxes' },
+  { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
 ];
 // LOCAL_GOV bracket effects mirror the RPC bodies in 20270583_
