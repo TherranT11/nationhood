@@ -398,18 +398,20 @@ async function loadIdentities() {
       .select('id, faction_type, faction_name, leader_first_name, leader_last_name')
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .is('abandoned_at', null)
-      .in('faction_type', ['entrepreneur', 'corporation', 'politician']);
+      .in('faction_type', ['entrepreneur', 'corporation', 'politician', 'staff']);
     if (error) throw error;
     const list = data || [];
     if (list.length === 0) {
       sel.innerHTML = `<option value="">— No eligible factions —</option>`;
       return;
     }
-    const sortKey = (f) => `${ {politician:1, corporation:2, entrepreneur:3}[f.faction_type] || 9 }-${(f.leader_first_name + f.leader_last_name + f.faction_name || '').toLowerCase()}`;
+    // 20270732: 'staff' identity (e.g., theo) sorts last so it doesn't
+    // become the default selection — therrant has to pick it deliberately.
+    const sortKey = (f) => `${ {politician:1, corporation:2, entrepreneur:3, staff:5}[f.faction_type] || 9 }-${(f.leader_first_name + f.leader_last_name + f.faction_name || '').toLowerCase()}`;
     list.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     sel.innerHTML = list.map(f => {
       const name = (`${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim()) || f.faction_name || '—';
-      const tag = ({entrepreneur:'Entrepreneur', corporation:'Corporation', politician:'Politician'})[f.faction_type] || f.faction_type;
+      const tag = ({entrepreneur:'Entrepreneur', corporation:'Corporation', politician:'Politician', staff:'Staff'})[f.faction_type] || f.faction_type;
       const safeName = String(name).replace(/[<>&"']/g, '');
       return `<option value="${f.id}">${tag} · ${safeName}</option>`;
     }).join('');

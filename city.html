@@ -118,10 +118,10 @@
 
 .city-detail-error { padding:48px 24px; text-align:center; color:#c87a7a;
   font-family:monospace; font-size:12px; letter-spacing:0.08em; }
-/* Empty-state line for sections that exist but carry no rows yet
-   (Voting Agenda, Active Ordinances). Mirrors the vocabulary of
-   .city-detail-council-note — italic monospace, muted — so the
-   "nothing here yet" reads as intentional rather than a render fail. */
+/* Empty-state line for any section that exists but carries no rows
+   yet — Voting Agenda, Active Ordinances, and the malformed-council
+   fallback inside renderCouncil. Italic monospace muted reads as
+   intentional rather than a render fail. */
 .city-detail-empty { padding:14px 14px; background:#0d0a08;
   border:0.5px solid rgba(255,255,255,0.04); border-radius:4px;
   font-size:11px; color:#666; font-family:monospace; letter-spacing:0.04em;
@@ -326,7 +326,7 @@ function renderCityDetail(c, nation, currentTick) {
 // fallback so a not-yet-seeded city doesn't render as nothing.
 function renderCouncil(council, currentTick) {
   if (!Array.isArray(council) || council.length === 0) {
-    return `<div class="city-detail-council-note">Council records are still being compiled.</div>`;
+    return `<div class="city-detail-empty">Council records are still being compiled.</div>`;
   }
   const president = council.find(s => s?.seat === 'president');
   const members   = council.filter(s => s?.seat && s.seat.startsWith('member_'));
