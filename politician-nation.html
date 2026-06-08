@@ -32,6 +32,8 @@
   display:flex; align-items:center; justify-content:center; }
 .map-placeholder { color:#555; font-size:10px; letter-spacing:0.14em;
   text-transform:uppercase; font-style:italic; }
+.map-image { max-width:100%; max-height:320px; object-fit:contain;
+  display:block; border-radius:4px; }
 .map-scope { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
 .map-scope button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; color:#888; background:#121212;
@@ -1493,6 +1495,15 @@ function renderCard(n, pm) {
   document.getElementById('nc-flag').alt = `${n.name} flag`;
   document.getElementById('nc-title-prefix').textContent = prefix;
   document.getElementById('nc-title-name').textContent = name;
+
+  // Sierramar has a map asset on disk; other nations stay on the
+  // "coming soon" placeholder until their maps land in assets/.
+  const mapEl = document.getElementById('nc-map');
+  if (n.name === 'Sierramar') {
+    mapEl.innerHTML = '<img src="assets/SierramarMap.png" alt="Sierramar map" class="map-image">';
+  } else {
+    mapEl.innerHTML = '<div class="map-placeholder">Map · coming soon</div>';
+  }
 
   const subtitleText = p.motto || (p.overview || '').split(/[.—]\s/)[0] || '';
   document.getElementById('nc-subtitle').textContent = subtitleText;
