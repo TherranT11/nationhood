@@ -172,10 +172,14 @@ async function init() {
     `<a href="politician-nation.html">${escapeHtml((nation.name || 'NATION').toUpperCase())}</a>` +
     ` <span class="sep">·</span> CABINET OFFICE`;
 
-  // Access check + PM-last-name (for the admin title) in one batch.
+  // Access check: PM by head_of_government.faction_id, or Major Minister
+  // by leader-name match within the nation. Both queries run in parallel;
+  // a hard failure on BOTH is treated as a load error rather than letting
+  // the page silently render the locked state (which would falsely accuse
+  // a genuinely-authorised user of lacking access).
   const [hogRes, minRes] = await Promise.all([
     _supabase.from('head_of_government')
-      .select('faction_id, first_name, last_name')
+      .select('faction_id')
       .eq('nation_id', nation.id)
       .eq('active', true)
       .maybeSingle(),
@@ -187,14 +191,17 @@ async function init() {
   ]);
   if (hogRes.error) console.warn('cabinet-office: head_of_government fetch failed', hogRes.error);
   if (minRes.error) console.warn('cabinet-office: ministries fetch failed', minRes.error);
+  if (hogRes.error && minRes.error) {
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
 
   const hog = hogRes.data || null;
-  const myMinistries = (minRes.data || []).filter(m =>
+  const isPM = !!(hog && hog.faction_id === faction.id);
+  const isMinister = (minRes.data || []).some(m =>
     m.minister_first_name === faction.leader_first_name &&
     m.minister_last_name  === faction.leader_last_name
   );
-  const isPM       = !!(hog && hog.faction_id === faction.id);
-  const isMinister = myMinistries.length > 0;
 
   if (!isPM && !isMinister) {
     document.getElementById('loading').style.display = 'none';
@@ -202,16 +209,8 @@ async function init() {
     return;
   }
 
-  // Admin tab title — "{PM LastName} Administration". Falls back to
-  // the nation name when no active HoG row exists so the section
-  // header always reads cleanly.
-  const adminLabel = hog?.last_name
-    ? `${hog.last_name} Administration`
-    : `${nation.name} Administration`;
-  document.getElementById('admin-title').textContent = adminLabel;
-
   await Promise.all([
-    renderCoalition(nation.id),
+    renderCoalition(nation.id, nation.name),
     renderModifiers(nation.id),
     renderCommodities(nation.id),
   ]);
@@ -220,16 +219,20 @@ async function init() {
   document.getElementById('page').style.display = 'block';
 }
 
-// Coalition list — mirrors politician-nation.html's pattern: read the
-// active administrations row, intersect its coalition_parties jsonb
-// against the live movement_party rows for the nation, render largest
-// seat-holder first with each party's current popularity_pct.
-async function renderCoalition(nationId) {
-  const host = document.getElementById('coalition');
+// Coalition list + admin title. Mirrors politician-nation.html's pattern:
+// active administrations row + live movement_party rows, intersected on
+// the coalition_parties jsonb array, sorted by seats DESC. The admin
+// title is read straight off administrations.admin_name (server-stamped
+// at formation as "{PM last_name} Administration", 20270666) rather than
+// reconstructed client-side — single source. Falls back to "{nation}
+// Administration" when no active admin row exists.
+async function renderCoalition(nationId, nationName) {
+  const host  = document.getElementById('coalition');
+  const title = document.getElementById('admin-title');
   try {
     const [admRes, partiesRes] = await Promise.all([
       _supabase.from('administrations')
-        .select('coalition_parties, started_at_tick')
+        .select('admin_name, coalition_parties')
         .eq('nation_id', nationId)
         .is('ended_at_tick', null)
         .order('started_at_tick', { ascending:false })
@@ -245,7 +248,10 @@ async function renderCoalition(nationId) {
 
     const adm     = admRes.data?.[0] || null;
     const parties = partiesRes.data || [];
-    const ids     = new Set((adm?.coalition_parties || []).map(p => p?.party_id).filter(Boolean));
+
+    title.textContent = adm?.admin_name || `${nationName} Administration`;
+
+    const ids = new Set((adm?.coalition_parties || []).map(p => p?.party_id).filter(Boolean));
     const coalition = parties
       .filter(p => ids.has(p.id))
       .sort((a,b) => (Number(b.seats)||0) - (Number(a.seats)||0));
@@ -266,6 +272,7 @@ async function renderCoalition(nationId) {
     }).join('');
   } catch (err) {
     console.error('cabinet-office: coalition fetch failed', err);
+    title.textContent = `${nationName} Administration`;
     host.innerHTML = '<div class="empty">Could not load coalition.</div>';
   }
 }
