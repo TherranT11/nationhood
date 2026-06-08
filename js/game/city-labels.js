@@ -51,3 +51,30 @@ export function cityStatLabel(key, stat) {
   const idx = Math.max(0, Math.min(4, Math.floor((n - 1) / 20)));
   return bands[idx];
 }
+
+/** Shared display extractor for a cities row. Returns the fields
+ *  both the Geography card (politician-nation.html) and the Mayor
+ *  race city picker (politician-career.html) need. Centralises
+ *  null-safe formatting so a change to the "no mayor" label or
+ *  budget rounding lands in one place.
+ *
+ *  Expected shape on `c`: { mayor_first_name, mayor_last_name,
+ *  mayor_archetype, mayor_party, population_pct, budget }. Pass the
+ *  nation population through so the per-city number can fall back
+ *  to the 11% blanket when population_pct is NULL (20270711). */
+export function cityDisplayData(c, nationPop) {
+  const pct = c?.population_pct != null ? Number(c.population_pct) : 11;
+  const population = Math.round((Number(nationPop) || 0) * (pct / 100));
+  const mayorName = (c?.mayor_first_name || c?.mayor_last_name)
+    ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
+    : '—';
+  const party     = c?.mayor_party || null;
+  const partyAbbr = party?.abbreviation || party?.faction_name || '';
+  const archetype = party?.archetype    || c?.mayor_archetype || '';
+  const budgetVal = Number(c?.budget) || 0;
+  const budgetM   = budgetVal / 1000000;
+  const budgetStr = budgetM >= 1
+    ? `$${budgetM.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
+    : `$${budgetVal.toLocaleString()}`;
+  return { population, mayorName, partyAbbr, archetype, budgetStr };
+}

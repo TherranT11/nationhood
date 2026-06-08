@@ -249,13 +249,13 @@
   </div>
 
   <div class="pm-actions">
-    <div class="pm-action" data-action="start-party" id="pm-start-party" style="opacity:0.5;cursor:not-allowed;">
+    <div class="pm-action is-live" data-action="start-party" id="pm-start-party">
       <div class="ic">+</div>
       <div class="body">
         <div class="nm">Start a Political Party</div>
-        <div class="ds">No longer accepting new parties — existing parties continue to operate. Sunset Phase 1.</div>
+        <div class="ds">Found a new movement — name, abbreviation, archetype, logo. Costs 100 Influence.</div>
       </div>
-      <div class="tag">Sunset</div>
+      <div class="tag">Open</div>
     </div>
     <div class="pm-action" data-action="start-ngo">
       <div class="ic">+</div>
@@ -319,8 +319,8 @@
 </div>
 
 <!-- Found-a-party modal — opens from the Start a Political Party action
-     card. Politician needs >= 100 Influence (gate, not deducted) and may
-     have at most one active founded movement. -->
+     card. Politician needs >= 100 Influence (20270714: DEDUCTED on
+     success) and may have at most one active founded movement. -->
 <div id="fp-overlay" class="jp-overlay">
   <div class="jp-modal" style="max-width:760px;">
     <div class="jp-head">
@@ -403,8 +403,13 @@ async function init() {
   _nationName   = ctx.nation?.name || '';
   _myPartyId    = ctx.faction?.politician_party_id || null;
   _totalSeats   = Number(ctx.nation?.total_seats) || 0;
+  // 20270714: revived in-game found-a-party flow. Influence drives
+  // the gate + the deduction on the server, so the modal's "have"
+  // column needs the live value from the topbar fetch.
+  _myInfluence  = Math.floor(Number(ctx.faction?.politician_influence) || 0);
 
   await loadMovementParties();
+  await loadFoundedMovement();
   bindTabs();
   bindJoinCard();
   bindJoinModal();
@@ -638,10 +643,31 @@ const FP_ARCHETYPES = [
 
 let _fpArchKey = 'ref';
 
+// 20270714: revived. _foundedMovementId blocks founding a second
+// movement while the first is still alive (the same rule the server
+// enforces — duplicated here only to surface a specific gate copy
+// in the modal). One query per page load; the active-movement set
+// for a politician is tiny.
+async function loadFoundedMovement() {
+  if (!_politicianId) { _foundedMovementId = null; return; }
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('id')
+      .eq('founder_faction_id', _politicianId)
+      .is('abandoned_at', null)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    _foundedMovementId = data?.id || null;
+  } catch (_) {
+    _foundedMovementId = null;
+  }
+}
+
 function bindFoundCard() {
-  // Sunset Phase 1 (20270612): party founding is closed. The card
-  // stays visible but doesn't open the modal — see openFoundModal
-  // for the sunset gate when the modal IS reached via a stale link.
+  const card = document.getElementById('pm-start-party');
+  if (!card) return;
+  card.addEventListener('click', openFoundModal);
 }
 
 function bindFoundModal() {
@@ -675,10 +701,10 @@ function openFoundModal() {
     gateEl.textContent = 'Leave your current party first — founding while affiliated would skip the -5 leave cost.';
     gateEl.classList.add('bad');
   } else if (_myInfluence < 100) {
-    gateEl.textContent = `Requires 100 Influence. You have ${_myInfluence}. (Founding does not deduct.)`;
+    gateEl.textContent = `Requires 100 Influence. You have ${_myInfluence}.`;
     gateEl.classList.add('bad');
   } else {
-    gateEl.textContent = 'Requires 100 Influence. Founding does not deduct.';
+    gateEl.textContent = 'Costs 100 Influence — deducted on success.';
     gateEl.classList.remove('bad');
   }
 
@@ -768,7 +794,7 @@ async function submitFound() {
     if (!data || !data.success) {
       const reason = data?.reason || 'unknown';
       const msg = ({
-        insufficient_capital:   `Need 100 Influence to found. You have ${data?.have || 0}.`,
+        insufficient_influence: `Need 100 Influence to found. You have ${data?.have || 0}.`,
         already_affiliated:     'Leave your current party first — founding while affiliated would skip the -5 leave cost.',
         already_founded:        'You already lead an active movement. Abandon it before founding another.',
         invalid_name:           'Party name must be 2–80 characters.',
