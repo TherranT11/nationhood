@@ -42,13 +42,14 @@ RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
-    v_uid          uuid := auth.uid();
-    v_pol          factions%ROWTYPE;
-    v_city         cities%ROWTYPE;
-    v_tick         int;
-    v_delta        int;
-    v_new_budget   int;
-    v_new_pop      numeric;
+    v_uid           uuid := auth.uid();
+    v_pol           factions%ROWTYPE;
+    v_city          cities%ROWTYPE;
+    v_tick          int;
+    v_growth_yield  int;
+    v_applied_delta int;
+    v_new_budget    int;
+    v_new_pop       numeric;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -90,13 +91,20 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'city_not_found');
     END IF;
 
-    -- floor(growth / 3), capped so budget never exceeds 10.
-    v_delta := GREATEST(0, FLOOR(COALESCE(v_city.growth, 0) / 3.0)::int);
-    v_new_budget := LEAST(10, COALESCE(v_city.budget, 1) + v_delta);
+    -- v_growth_yield is the gross floor(growth/3) the city would
+    -- have produced if budget had room. v_applied_delta is the
+    -- ACTUAL change to the budget column after clamping at 10 —
+    -- when the city's already at cap the gross yield is forfeit
+    -- and the client needs to know the difference to render an
+    -- honest outcome line (the popularity hit lands either way).
+    v_growth_yield  := GREATEST(0, FLOOR(COALESCE(v_city.growth, 0) / 3.0)::int);
+    v_new_budget    := LEAST(10, COALESCE(v_city.budget, 1) + v_growth_yield);
+    v_applied_delta := v_new_budget - COALESCE(v_city.budget, 1);
 
     UPDATE cities SET budget = v_new_budget WHERE id = v_city.id;
 
-    -- -1 Party Popularity, floor 0.
+    -- -1 Party Popularity, floor 0. Unconditional — the cost of
+    -- the political action lands even if revenue was forfeit.
     IF v_pol.politician_party_id IS NOT NULL THEN
         UPDATE factions
            SET popularity_pct = GREATEST(0, COALESCE(popularity_pct, 0) - 1)
@@ -115,7 +123,8 @@ BEGIN
         'city_id',         v_city.id,
         'city_name',       v_city.city_name,
         'growth',          v_city.growth,
-        'budget_delta',    v_delta,
+        'growth_yield',    v_growth_yield,
+        'budget_delta',    v_applied_delta,
         'new_budget',      v_new_budget,
         'new_popularity',  v_new_pop,
         'next_action_tick',v_tick + 1
