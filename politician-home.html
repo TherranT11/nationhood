@@ -2031,7 +2031,7 @@ const LEGISLATURE_ACTIONS = [
 // existing render logic at renderAffiliation treats them as disabled.
 // RPCs will land later; the slots show the upcoming surface.
 const CIVIL_SERVANT_ACTIONS = [
-  { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Experience each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. 12-tick cooldown per dispatch.', action: 'file-paperwork' },
+  { ic: '📄', name: 'FILE PAPERWORK',       cost: 'no cost', desc: 'Route up to 3 incoming dispatches per tick. Correct ministry + agency → +0.3 Experience each. Correctly flagging a Senior-review dispatch → +0.3 Reputation each. Each dispatch can be filed once.', action: 'file-paperwork' },
   { ic: '📝', name: 'FILE A MEMO',          cost: 'no cost', desc: 'Quiet month at the desk. +0.3 Reputation. Shares the 1-tick cooldown with File Paperwork.', action: 'file-a-memo' },
   { ic: '🔎', name: 'AUDIT THE MINISTRY',   cost: 'no cost', desc: 'Open the audit surface — cross-agency decision review. Reporting is locked until Senior Bureaucrats start logging flagged decisions; no stat effect today.', action: 'audit-ministry' },
 ];
@@ -3715,7 +3715,7 @@ async function initNationChat() {
 async function loadChatMessages() {
   const { data: msgs, error } = await _supabase
     .from('group_chat_messages')
-    .select('id, sender_id, message_text, sent_at_tick, created_at, is_system, factions:sender_id(faction_name, leader_first_name, leader_last_name, faction_type, abbreviation, party_color)')
+    .select('id, sender_id, message_text, sent_at_tick, created_at, is_system, factions:sender_id(faction_name, leader_first_name, leader_last_name, faction_type, abbreviation, party_color, politician_office, politician_ministry, party:factions!politician_party_id(abbreviation))')
     .eq('chat_id', nationChatId)
     .order('created_at', { ascending: false })
     .limit(CHAT_MSG_LIMIT);
@@ -3767,13 +3767,31 @@ function messageHtml(row) {
   </div>`;
 }
 
+// Chat name suffix — "[PARTY] (Role)" per the user's spec
+// (20270735). Politicians get their party's abbreviation from the
+// politician_party_id join (falls back to the legacy abbreviation
+// column on the faction row when the join is empty) plus their
+// current office or "Civil Servant" when they hold a ministry.
+// Non-politician faction types collapse to a single-piece label
+// since they have no separate party + role to render.
 function factionRoleLabel(f) {
   const t = (f.faction_type || '').toLowerCase();
+
+  if (t === 'politician') {
+    const partyAbbr = (f.party?.abbreviation || f.abbreviation || '').trim();
+    let role = officeTitle(f.politician_office);
+    if (!role && f.politician_ministry) role = 'Civil Servant';
+    const parts = [];
+    if (partyAbbr) parts.push(`[${partyAbbr}]`);
+    if (role)      parts.push(`(${role})`);
+    return parts.join(' ');
+  }
   const abbr = (f.abbreviation || '').trim();
-  if (t === 'politician')     return abbr ? `${abbr} · POLITICIAN` : 'POLITICIAN';
-  if (t === 'movement_party') return abbr ? `${abbr} · PARTY` : 'PARTY';
-  if (t === 'party')          return abbr ? `${abbr} · PARTY` : 'PARTY';
-  if (t === 'corporation')    return abbr ? `${abbr} · CORP` : 'CORP';
+  if (t === 'movement_party' || t === 'party')
+    return abbr ? `[${abbr}] (Party)` : '(Party)';
+  if (t === 'corporation')
+    return abbr ? `[${abbr}] (Corp)` : '(Corp)';
+  if (t === 'staff') return '(Staff)';
   return t.toUpperCase();
 }
 
@@ -5314,8 +5332,9 @@ async function endTrialTurn(trialId) {
 // (20270627) and routes it (ministry + agency + flag). Submission
 // grades against the answer key (20270630): correct routing pays
 // +0.3 Skill; correctly flagging a flag-required document pays
-// +0.3 Reputation. Once handled, the dispatch is hidden from this
-// civil servant for 12 ticks.
+// +0.3 Reputation. Once handled, the dispatch is permanently
+// removed from this civil servant's queue (20270733 — the prior
+// 12-tick re-handle cooldown is gone).
 // ════════════════════════════════════════════════════════════════
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x'];
 // One [File Paperwork] click yields up to 3 dispatches (20270638).
@@ -5375,10 +5394,12 @@ async function loadNextFilePaperworkDispatch() {
   if (!resp.dispatch) {
     // Queue exhausted. Wording depends on whether anything was routed
     // earlier in this batch. closeFilePaperworkModal handles the
-    // reload-if-anyRouted side.
+    // reload-if-anyRouted side. 20270733: the 12-tick re-handle
+    // cooldown is gone — exhausted now strictly means "nothing left
+    // you haven't already filed."
     const exhaustedCopy = fpState.anyRouted
-      ? `You've routed ${fpState.batchPosition - 1} of ${FP_BATCH_SIZE}. No more dispatches available — your queue is dry, or everything left is on its 12-tick cooldown.`
-      : `No dispatches in your queue right now. All caught up, or everything you've seen is still on its 12-tick cooldown.`;
+      ? `You've routed ${fpState.batchPosition - 1} of ${FP_BATCH_SIZE}. No more dispatches available — you've filed everything in the queue.`
+      : `No dispatches in your queue right now. All caught up — nothing left that you haven't already filed.`;
     content.innerHTML = `<div class="fp-empty">${escHtml(exhaustedCopy)}<br><br>
       <button class="fp-btn cancel" id="fp-empty-close-btn">Close</button></div>`;
     document.getElementById('fp-empty-close-btn')?.addEventListener('click', closeFilePaperworkModal);
@@ -5425,7 +5446,7 @@ function renderFilePaperworkModal() {
         <div class="fp-form-head">
           <div class="fp-form-eyebrow">Routing Instructions</div>
           <div class="fp-form-title">Where does this <em>belong</em>?</div>
-          <div class="fp-form-sub">Choose ministry, agency, and whether to flag. <strong>Once submitted</strong> the dispatch leaves your queue for 12 ticks.</div>
+          <div class="fp-form-sub">Choose ministry, agency, and whether to flag. <strong>Once submitted</strong> the dispatch leaves your queue for good.</div>
         </div>
         <div class="fp-form-body">
           <div>
@@ -5591,7 +5612,7 @@ async function submitFilePaperwork() {
       dispatch_not_found:       'Dispatch no longer exists.',
       dispatch_not_approved:    'Dispatch isn’t in the rotation pool.',
       cannot_grade_own_authoring: 'You can’t route a dispatch you authored.',
-      on_cooldown:              'You’ve handled this dispatch in the last 12 ticks.',
+      already_handled:          'You’ve already filed this dispatch.',
       batch_full:               'You’ve already routed the 3 dispatches for this action.',
       cooldown:                 'You’ve already used your Civil Service action this tick.',
     })[resp?.reason] || ('Submit failed: ' + (resp?.reason || 'unknown'));
