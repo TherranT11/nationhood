@@ -87,6 +87,15 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
   padding: 3px 0; font-family: var(--font-mono); font-size: 10px; }
 .stat-row__label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .stat-row__value { color: var(--text-secondary); font-weight: 600; }
+/* Starter tier chip — telegraphs which onboarding stat block this nation
+   yields (see 20270693 create_politician_with_tier_stats). Three variants
+   mirror tiers A/B/C. Chip lives inside a normal stat-row so its label
+   column aligns with GDP / Population / Active Politicians above it. */
+.tier-chip { font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  padding: 2px 6px; letter-spacing: 0.05em; text-transform: uppercase; }
+.tier-a { background: rgba(200,200,200,0.06); color: #b8b8b8; border: 1px solid rgba(200,200,200,0.15); }
+.tier-b { background: rgba(64,200,200,0.08); color: #5ccfcf; border: 1px solid rgba(64,200,200,0.18); }
+.tier-c { background: rgba(255,180,60,0.10); color: #ffb43c; border: 1px solid rgba(255,180,60,0.22); }
 .empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); padding: 40px 0; text-align: center; }
 
 .gender-row { display: flex; gap: 12px; max-width: 420px; margin: 0 auto; }
@@ -204,7 +213,7 @@ let partiesByNation = {};      // nation_id → [{name, archetype, seats, popula
 // Nations open for politician origin. Cards for every other nation
 // render disabled (visually dim + click ignored). Extend the set as
 // new nations open up — one place to edit.
-const POLITICIAN_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla']);
+const POLITICIAN_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla', 'Sierramar']);
 let currentContinent = 'Crucera';
 let selectedNation = null;
 let selectedGender = null;
@@ -212,7 +221,6 @@ let selectedName = null;  // { first, last } once picked
 let generatedNames = [];  // [{ first, last }, ...] — generated once per gender change
 let currentStep = 1;
 let currentUser = null;
-let currentTick = 0;
 let createInFlight = false;
 
 async function init() {
@@ -223,12 +231,10 @@ async function init() {
   try {
     const [
       { data: nations, error: natErr },
-      { data: shard,   error: shardErr },
       { data: pols,    error: polErr },
       { data: parties, error: partyErr },
     ] = await Promise.all([
       _supabase.from('nations').select('id, name, continent, government_type, population, politician_gdp, flag_url, nation_profiles(flag_url)').order('name'),
-      _supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single(),
       _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
       // Movement parties feed the Political Parties section on each
       // nation card. Sort happens client-side (seats DESC) so a nation
@@ -239,11 +245,9 @@ async function init() {
         .is('abandoned_at', null),
     ]);
     if (natErr) throw natErr;
-    if (shardErr) throw shardErr;
     if (polErr) throw polErr;
     if (partyErr) throw partyErr;
     allNations = nations || [];
-    currentTick = shard?.current_tick || 0;
     politiciansByNation = {};
     for (const p of (pols || [])) {
       if (!p.nation_id) continue;
@@ -258,7 +262,7 @@ async function init() {
       arr.sort((a, b) => (Number(b.seats) || 0) - (Number(a.seats) || 0));
     }
   } catch (err) {
-    console.error('first-steps: failed to load nations/shard/politicians/parties', err);
+    console.error('first-steps: failed to load nations/politicians/parties', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
     return;
   }
@@ -317,6 +321,38 @@ function govBadge(govType) {
   return { cls, label };
 }
 
+// Mirrors the server's tier algorithm (create_politician_with_tier_stats,
+// 20270693): sort ALL nations DESC by active-politician headcount, split
+// into thirds — top = A (basic), middle = B (boosted), bottom = C
+// (jumpstart). Tiebreaks here use nation id instead of random() so the
+// chip is deterministic between renders; the server's random tiebreak
+// only matters at INSERT time, and only when counts are tied across a
+// tier boundary. Returns a Map<nation_id, 'A'|'B'|'C'>.
+function computeTierMap() {
+  const N = allNations.length;
+  const out = new Map();
+  if (N === 0) return out;
+  const ranked = allNations
+    .map(n => ({ id: n.id, count: politiciansByNation[n.id] || 0 }))
+    .sort((a, b) => (b.count - a.count) || String(a.id).localeCompare(String(b.id)));
+  if (N === 1) { out.set(ranked[0].id, 'A'); return out; }
+  if (N === 2) { out.set(ranked[0].id, 'A'); out.set(ranked[1].id, 'C'); return out; }
+  const aSize = Math.max(1, Math.floor(N / 3));
+  const cSize = Math.max(1, Math.floor(N / 3));
+  ranked.forEach((r, i) => {
+    if (i < aSize)              out.set(r.id, 'A');
+    else if (i >= N - cSize)    out.set(r.id, 'C');
+    else                        out.set(r.id, 'B');
+  });
+  return out;
+}
+
+const TIER_CHIP = {
+  A: { cls: 'tier-a', label: 'A · Basic'     },
+  B: { cls: 'tier-b', label: 'B · Boosted'   },
+  C: { cls: 'tier-c', label: 'C · Jumpstart' },
+};
+
 function renderNations() {
   const grid = document.getElementById('nations-grid');
   const list = allNations.filter(n => (n.continent || '') === currentContinent);
@@ -324,6 +360,7 @@ function renderNations() {
     grid.innerHTML = '<div class="empty">No nations in this continent yet.</div>';
     return;
   }
+  const tierMap = computeTierMap();
   grid.innerHTML = list.map(n => {
     const sel = selectedNation && selectedNation.id === n.id ? ' selected' : '';
     const dis = POLITICIAN_ALLOWED_NATIONS.has(n.name) ? '' : ' disabled';
@@ -359,6 +396,12 @@ function renderNations() {
         <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.politician_gdp) || 0)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value">${fmtBig(n.population)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Active Politicians</span><span class="stat-row__value">${politiciansByNation[n.id] || 0}</span></div>
+        ${(() => {
+          const t = tierMap.get(n.id);
+          if (!t) return '';
+          const chip = TIER_CHIP[t];
+          return `<div class="stat-row"><span class="stat-row__label">Starter Tier</span><span class="tier-chip ${chip.cls}">${chip.label}</span></div>`;
+        })()}
         <div class="parties-section">
           <div class="parties-section__head">Political Parties</div>
           ${partiesBody}

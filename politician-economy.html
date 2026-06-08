@@ -169,6 +169,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, industryLabel } from './js/utils.js';
+import { COMMODITIES } from './js/game/commodities.js';
 
 // ── Sector / industry roster ─────────────────────────────────────────
 // The full taxonomy displayed on this page — 5 sectors × 4 industries
@@ -274,22 +275,12 @@ const SECTORS = [
 ];
 
 // ── Tradable commodities (top-of-page inventory strip) ────────────────
-// Production = sum(input industry strengths) / divisor, floored at 0.
-// Single-input commodities use divisor=2 (production trails raw industry
-// strength by 50%); multi-input commodities use divisor=inputs.length
-// 20270692: On Hand + Production are now raw values stored per nation
-// per commodity in nation_commodity_state. The previous sum/divisor
-// derivation from industry bases is gone. The 3 "service" commodities
+// 20270692: On Hand + Production are raw values stored per nation per
+// commodity in nation_commodity_state. The 3 "service" commodities
 // (consumer_goods/services/diplomacy) have NULL production by schema
-// CHECK and render On Hand only.
-const COMMODITIES = [
-  { key: 'crude_oil',      name: 'Crude Oil'      },
-  { key: 'minerals',       name: 'Minerals'       },
-  { key: 'foodstuffs',     name: 'Foodstuffs'     },
-  { key: 'consumer_goods', name: 'Consumer Goods' },
-  { key: 'services',       name: 'Services'       },
-  { key: 'diplomacy',      name: 'Diplomacy'      },
-];
+// CHECK and render On Hand only. The 6-commodity vocabulary itself
+// is imported from js/game/commodities.js so cabinet-office reads the
+// same list (single source).
 
 // Stat-key → display label. Subset of modifieradmin.html's
 // NATION_STATS list (one source today; if a third surface needs the

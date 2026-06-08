@@ -1,45 +1,44 @@
 -- ════════════════════════════════════════════════════════════════════
--- 20270693 — Tier-based politician onboarding stats
+-- 20270697 — Tier C jumpstart: reputation + political_capital → 35
 --
--- New mechanic. When a user creates a politician via first-steps,
--- the starting stats depend on which population tier the chosen
--- nation falls into (across all nations on the shard, sorted by
--- active politician headcount):
+-- New mechanic (extension of 20270693). Bumps the Tier C starting
+-- stat block from rep 20 / cap 20 → rep 35 / cap 35. Skill (30),
+-- influence (80), age (50) unchanged.
 --
---   Tier A — top third (MOST populated, densest scene):
---     basic starter — skill 1, reputation 1, capital 1, influence 1,
---     age 25. The thinking: a busy nation has lots of established
---     players already, so a fresh joiner climbs naturally without
---     a head start.
+-- Why: 20270693's Tier C value (rep 20, cap 20) sits just below the
+-- repeated 30/35 thresholds used across the role-application gates:
 --
---   Tier B — middle third:
---     skill 20, reputation 10, capital 15, influence 50, age 45.
---     Skip a couple of career layers to land mid-pack.
+--   • Experienced Advocate    — rep ≥ 30   (20270529:71)
+--   • State Advocate          — rep ≥ 35 + cap ≥ 25  (20270555:352, 356)
+--   • Deputy Speaker          — rep ≥ 35   (20270592:247)
+--   • Speaker of the Assembly — rep ≥ 35   (20270593:92)
+--   • Magistrate              — cap ≥ 35   (20270531:74)
 --
---   Tier C — bottom third (LEAST populated, empty nation):
---     skill 30, reputation 20, capital 20, influence 80, age 50.
---     Maximum jumpstart to incentivise populating thin nations.
+-- Net effect on a brand-new Tier C joiner (e.g. Sierramar at launch
+-- with zero existing players): the entire rep/cap-gated cluster
+-- becomes reachable in one stat-check rather than after 5-15 ticks
+-- of grinding. Skill-gated rungs (Junior Minister at skill ≥ 28) were
+-- already cleared by Tier C's skill 30. Per-nation role-history gates
+-- (Senior MP needs prior MP, etc.) are NOT affected — those still
+-- require a Sierramar paper trail.
 --
--- Algorithm:
---   • Sort every nations row DESC by active-politician count
---     (faction_type='politician' AND abandoned_at IS NULL). Tied
---     counts break by random() so identical headcounts at a tier
---     boundary don't deterministically pin one nation in the
---     lower tier each call.
---   • a_size = c_size = max(1, floor(N/3)). Middle absorbs any slack.
---   • Position 0..a_size-1            → Tier A
---     Position N-c_size..N-1          → Tier C
---     Else                            → Tier B
---   • N ≤ 1 collapses to Tier A. N = 2 splits A (busier) / C (emptier),
---     no B. Honours the user's "minimum 1 per tier" rule for N ≥ 3.
+-- Tier A / Tier B values unchanged. Design rationale stays: busy
+-- nations (Tier A) climb from scratch so newcomers don't shortcut
+-- established players; mid-population nations (Tier B) get a moderate
+-- head start; empty nations (Tier C) get the maximum jumpstart so
+-- they don't launch with a non-functional government for 30 ticks.
 --
--- The function is SECURITY DEFINER and replaces first-steps.html's
--- direct factions.insert(). Moving the stat assignment to the server
--- closes the devtools-tampering surface and keeps tier logic in one
--- place. Existing politicians are not retro-bumped — forward-only
--- per the user's confirmation.
+-- Forward-only — existing politicians are not retro-bumped (matches
+-- 20270693's stated convention). The change only affects politicians
+-- created via create_politician_with_tier_stats AFTER this migration
+-- applies.
 --
--- Apply after 20270692.
+-- Re-emits the full 20270693 function body because the change lives
+-- inside the IF/ELSIF tier block; CREATE OR REPLACE is the standard
+-- pattern in this codebase for surgical edits inside PL/pgSQL
+-- functions (see 20270696 for a parallel).
+--
+-- Apply after 20270696.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -90,10 +89,6 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    -- ── Already-owned politician in this nation guard ────────────
-    -- Matches the 23505 the client used to surface — one politician
-    -- per (owner, nation). Owner is auth.uid() either as the faction
-    -- row id (legacy primary) or as linked_user_id (linked secondary).
     SELECT id INTO v_existing
       FROM factions
      WHERE faction_type = 'politician'
@@ -104,8 +99,6 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'already_in_nation');
     END IF;
 
-    -- ── Tier computation ─────────────────────────────────────────
-    -- DESC sort with random tiebreak. Position 0 = most populated.
     WITH counts AS (
         SELECT n.id AS nation_id,
                COUNT(f.id) FILTER (
@@ -142,26 +135,18 @@ BEGIN
     END IF;
 
     -- ── Stat block per tier ──────────────────────────────────────
+    -- 20270697: Tier C rep + cap bumped 20 → 35 to clear the
+    -- repeated 30/35 thresholds on Experienced Advocate / State
+    -- Advocate / Deputy Speaker / Speaker / Magistrate gates. Tier A
+    -- and Tier B unchanged.
     IF v_tier = 'A' THEN
         v_age := 25; v_skill := 1;  v_rep := 1;  v_cap := 1;  v_inf := 1;
     ELSIF v_tier = 'B' THEN
         v_age := 45; v_skill := 20; v_rep := 10; v_cap := 15; v_inf := 50;
     ELSE -- 'C'
-        v_age := 50; v_skill := 30; v_rep := 20; v_cap := 20; v_inf := 80;
+        v_age := 50; v_skill := 30; v_rep := 35; v_cap := 35; v_inf := 80;
     END IF;
 
-    -- ── Linked vs. primary path ─────────────────────────────────
-    -- Mirrors first-steps.html's prior client logic. If auth.uid()
-    -- already maps to a non-abandoned faction row id, this is a
-    -- secondary politician → fresh UUID + linked_user_id = caller.
-    -- Otherwise the new faction takes the legacy primary slot at
-    -- id = auth.uid(). The primary slot may already exist as an
-    -- abandoned row (user abandoned a previous faction and is now
-    -- onboarding again), so the non-linked path uses ON CONFLICT
-    -- (id) DO UPDATE to overwrite that row in place — same UPSERT
-    -- semantics the old client relied on. Without this, the rejoin
-    -- flow would 23505 on the primary key and surface the wrong
-    -- error.
     SELECT id INTO v_primary FROM factions
      WHERE id = v_uid AND abandoned_at IS NULL
      LIMIT 1;
@@ -235,11 +220,6 @@ BEGIN
                 linked_user_id        = NULL;
         END IF;
     EXCEPTION WHEN unique_violation THEN
-        -- Concurrent join on the same (owner, nation) by the same
-        -- user — re-emit the friendly reason instead of bubbling
-        -- a raw 23505. (The legacy-primary path is UPSERT so it
-        -- can't hit a PK conflict; only the cross-row uniqueness
-        -- constraint can fire here.)
         RETURN jsonb_build_object('success', false, 'reason', 'already_in_nation');
     END;
 
@@ -252,7 +232,7 @@ END $$;
 GRANT EXECUTE ON FUNCTION public.create_politician_with_tier_stats(uuid, text, text) TO authenticated;
 
 COMMENT ON FUNCTION public.create_politician_with_tier_stats(uuid, text, text) IS
-    'Onboards a new politician with tier-based starting stats (20270693). Sorts nations DESC by active-politician headcount with random tiebreak: Tier A = top third (busy, basic stats), Tier B = middle, Tier C = bottom third (empty, biggest jumpstart). Replaces first-steps.html''s direct factions.insert() so stat assignment can''t be tampered with from the client.';
+    'Onboards a new politician with tier-based starting stats. As of 20270697, Tier C joiners arrive with rep 35 + cap 35 (up from 20/20) so they clear the Experienced Advocate / State Advocate / Deputy Speaker / Speaker / Magistrate gates on day one — Tier A and Tier B values unchanged.';
 
 NOTIFY pgrst, 'reload schema';
 

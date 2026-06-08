@@ -29652,6 +29652,19 @@ function allConditionsHold(rows, nation) {
 //     activation triggers hold
 //   - For each active row: delete it if end triggers hold
 //
+// Display-side severity vocabulary. The DB stores 'green' / 'yellow' /
+// 'red' on modifier_templates.severity (CHECK constraint); player
+// surfaces render the framing as positive / neutral / negative. Single
+// source for that mapping — imported by politician-modifiers.html and
+// cabinet-office.html so a rename here lands everywhere at once. An
+// unknown key falls through to the raw string so a schema addition
+// surfaces visibly rather than blank.
+const SEVERITY_LABELS = {
+    green:  'Positive',
+    yellow: 'Neutral',
+    red:    'Negative',
+};
+
 // Returns an array of {type, modifierName, severity, category, tick}
 // events for the tick summary. The caller (tick handler) collects
 // these into summary.modifiers; they don't get written to event_log

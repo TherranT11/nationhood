@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cabinet Office</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --bg:#080808; --panel:#0d0d0d; --panel2:#101010;
+    --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
+    --amber:#c8a64e; --amber-bg:#161208; --amber-dim:rgba(200,166,78,0.4);
+    --teal:#5aafa5;
+    --pos:#6ab07a; --pos-bg:#0e1611; --pos-dim:#3a5a42;
+    --neu:#d4b87a; --neu-bg:#161208; --neu-dim:#5a4d2e;
+    --neg:#c87a7a; --neg-bg:#160e0e; --neg-dim:#5a3030;
+  }
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,sans-serif;min-height:100vh;}
+  .content{padding:30px 22px;}
+  .wrap{max-width:1280px;margin:0 auto;}
+
+  .crumb{font-size:9px;letter-spacing:0.13em;color:var(--faint);margin-bottom:16px;text-transform:uppercase;}
+  .crumb a{color:var(--mut);text-decoration:none;}
+  .crumb a:hover{color:var(--amber);}
+  .crumb .sep{margin:0 7px;color:#3a3a3a;}
+
+  .page-header{margin-bottom:28px;}
+  .ph-eyebrow{font-size:10px;letter-spacing:0.18em;color:var(--amber);text-transform:uppercase;
+    font-family:monospace;margin-bottom:10px;}
+  .ph-title{font-size:28px;font-weight:500;letter-spacing:-0.01em;color:#fff;
+    font-family:Georgia,'Times New Roman',serif;font-style:italic;}
+  .ph-sub{font-size:12px;color:var(--mut);margin-top:8px;}
+
+  /* Locked state — Cabinet Office is gated to PM + 5 underlying ministry_keys
+     (defense, interior, foreign_affairs, trade, economic_development).
+     Foreign Affairs + Trade are merged player-facing as "Foreign Ministry &
+     Trade" per spec; either key satisfies the gate. */
+  .locked{margin-top:60px;text-align:center;color:var(--neu);font-size:14px;
+    font-family:Georgia,serif;font-style:italic;}
+
+  /* Administration block — title bar + coalition list */
+  .section{background:var(--panel);border:0.5px solid var(--line);border-radius:6px;
+    padding:22px;margin-bottom:18px;}
+  .section-head{font-size:10px;letter-spacing:0.16em;color:var(--mut);text-transform:uppercase;
+    font-family:monospace;margin-bottom:14px;}
+  .admin-title{font-size:20px;font-weight:500;color:#fff;font-family:Georgia,serif;
+    font-style:italic;margin-bottom:18px;}
+
+  .coalition{display:flex;flex-direction:column;gap:8px;}
+  .coalition-row{display:flex;justify-content:space-between;align-items:baseline;
+    padding:8px 12px;background:var(--panel2);border:0.5px solid var(--line);border-radius:4px;}
+  .coalition-name{font-size:14px;font-weight:600;}
+  .coalition-pop{font-size:11px;color:var(--mut);font-family:monospace;letter-spacing:0.04em;}
+
+  /* State of the Nation — compact modifier cards, 4 across (collapses on narrow). */
+  .ston-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
+  @media (max-width: 900px){ .ston-grid{grid-template-columns:repeat(2, 1fr);} }
+  @media (max-width: 520px){ .ston-grid{grid-template-columns:1fr;} }
+  .ston-card{padding:10px 12px;border:0.5px solid var(--line);border-radius:4px;
+    background:var(--panel2);border-left-width:3px;}
+  .ston-card.sev-green { border-left-color:var(--pos); background:linear-gradient(90deg, var(--pos-bg) 0%, var(--panel2) 50%); }
+  .ston-card.sev-yellow{ border-left-color:var(--neu); background:linear-gradient(90deg, var(--neu-bg) 0%, var(--panel2) 50%); }
+  .ston-card.sev-red   { border-left-color:var(--neg); background:linear-gradient(90deg, var(--neg-bg) 0%, var(--panel2) 50%); }
+  .ston-name{font-size:13px;font-weight:600;color:#fff;line-height:1.25;margin-bottom:6px;}
+  .ston-cat{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);
+    font-family:monospace;margin-bottom:8px;}
+  .ston-sev{display:inline-block;font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;
+    font-family:monospace;font-weight:700;padding:2px 6px;border-radius:2px;}
+  .ston-sev.sev-green { color:var(--pos); border:0.5px solid var(--pos-dim); }
+  .ston-sev.sev-yellow{ color:var(--neu); border:0.5px solid var(--neu-dim); }
+  .ston-sev.sev-red   { color:var(--neg); border:0.5px solid var(--neg-dim); }
+
+  /* Domestic Economy — commodity cards, 6 across (collapses). Same per-key
+     accent colours politician-economy.html uses so the strip reads the same
+     here. */
+  .comm-grid{display:grid;grid-template-columns:repeat(6, 1fr);gap:10px;}
+  @media (max-width: 1100px){ .comm-grid{grid-template-columns:repeat(3, 1fr);} }
+  @media (max-width: 560px){ .comm-grid{grid-template-columns:repeat(2, 1fr);} }
+  .comm-card{padding:12px;background:var(--panel2);border:0.5px solid var(--line);border-radius:4px;
+    border-left-width:3px;}
+  .comm-card.crude_oil     { border-left-color:#c87a4a; }
+  .comm-card.minerals      { border-left-color:#a08a6e; }
+  .comm-card.foodstuffs    { border-left-color:#7aab6a; }
+  .comm-card.consumer_goods{ border-left-color:#9aab7a; }
+  .comm-card.services      { border-left-color:#7a9aab; }
+  .comm-card.diplomacy     { border-left-color:#b9a2d4; }
+  .comm-name{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mut);
+    font-family:monospace;font-weight:700;margin-bottom:10px;}
+  .comm-row{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;padding:2px 0;}
+  .comm-lab{color:var(--faint);font-family:monospace;letter-spacing:0.06em;}
+  .comm-val{color:#fff;font-weight:600;font-family:monospace;}
+
+  .empty{font-size:11px;color:var(--faint);font-style:italic;font-family:monospace;padding:10px 0;}
+
+  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);color:var(--mut);font-family:monospace;font-size:10px;letter-spacing:0.18em;}
+</style>
+</head>
+<body>
+<div id="pol-topbar-container"></div>
+
+<div class="content">
+  <div class="wrap">
+    <div class="crumb" id="crumb"></div>
+    <div class="page-header">
+      <div class="ph-eyebrow">— CABINET OFFICE —</div>
+      <h1 class="ph-title">Head Office</h1>
+      <div class="ph-sub" id="ph-sub"></div>
+    </div>
+
+    <div id="locked" class="locked" style="display:none">
+      You do not have access to the Cabinet office.
+    </div>
+
+    <div id="page" style="display:none">
+      <section class="section">
+        <div class="admin-title" id="admin-title">— Administration</div>
+        <div class="coalition" id="coalition"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">State of the Nation</div>
+        <div class="ston-grid" id="ston-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">Domestic Economy</div>
+        <div class="comm-grid" id="comm-grid"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+import { COMMODITIES } from './js/game/commodities.js';
+import { SEVERITY_LABELS } from './js/game/modifiers.js';
+
+// ── Access gate ──────────────────────────────────────────────────────
+// PM (head_of_government.faction_id) OR Major Minister (ministries
+// row with a leader-name match on the player's faction in the active
+// nation). The five underlying ministry_keys collapse to four player-
+// facing portfolios: defense, interior, "Foreign Ministry & Trade"
+// (covers BOTH foreign_affairs + trade since the player thinks of
+// them as one), economic_development.
+const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign_affairs', 'trade', 'economic_development'];
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPolitician('nation'); }
+  catch (err) {
+    console.error('cabinet-office: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  const nation  = ctx.nation;
+  const faction = ctx.faction;
+  if (!nation || !faction) {
+    document.getElementById('loading').textContent = 'No nation associated with this politician.';
+    return;
+  }
+
+  document.title = `${nation.name} — Cabinet Office`;
+  document.getElementById('ph-sub').textContent = nation.name;
+  document.getElementById('crumb').innerHTML =
+    `<a href="politician-nation.html">${escapeHtml((nation.name || 'NATION').toUpperCase())}</a>` +
+    ` <span class="sep">·</span> CABINET OFFICE`;
+
+  // Access check: PM by head_of_government.faction_id, or Major Minister
+  // by leader-name match within the nation. Both queries run in parallel;
+  // a hard failure on BOTH is treated as a load error rather than letting
+  // the page silently render the locked state (which would falsely accuse
+  // a genuinely-authorised user of lacking access).
+  const [hogRes, minRes] = await Promise.all([
+    _supabase.from('head_of_government')
+      .select('faction_id')
+      .eq('nation_id', nation.id)
+      .eq('active', true)
+      .maybeSingle(),
+    _supabase.from('ministries')
+      .select('ministry_key, minister_first_name, minister_last_name')
+      .eq('nation_id', nation.id)
+      .eq('is_active', true)
+      .in('ministry_key', MAJOR_MINISTER_KEYS),
+  ]);
+  if (hogRes.error) console.warn('cabinet-office: head_of_government fetch failed', hogRes.error);
+  if (minRes.error) console.warn('cabinet-office: ministries fetch failed', minRes.error);
+  if (hogRes.error && minRes.error) {
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+
+  const hog = hogRes.data || null;
+  const isPM = !!(hog && hog.faction_id === faction.id);
+  const isMinister = (minRes.data || []).some(m =>
+    m.minister_first_name === faction.leader_first_name &&
+    m.minister_last_name  === faction.leader_last_name
+  );
+
+  if (!isPM && !isMinister) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('locked').style.display = 'block';
+    return;
+  }
+
+  await Promise.all([
+    renderCoalition(nation.id, nation.name),
+    renderModifiers(nation.id),
+    renderCommodities(nation.id),
+  ]);
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('page').style.display = 'block';
+}
+
+// Coalition list + admin title. Mirrors politician-nation.html's pattern:
+// active administrations row + live movement_party rows, intersected on
+// the coalition_parties jsonb array, sorted by seats DESC. The admin
+// title is read straight off administrations.admin_name (server-stamped
+// at formation as "{PM last_name} Administration", 20270666) rather than
+// reconstructed client-side — single source. Falls back to "{nation}
+// Administration" when no active admin row exists.
+async function renderCoalition(nationId, nationName) {
+  const host  = document.getElementById('coalition');
+  const title = document.getElementById('admin-title');
+  try {
+    const [admRes, partiesRes] = await Promise.all([
+      _supabase.from('administrations')
+        .select('admin_name, coalition_parties')
+        .eq('nation_id', nationId)
+        .is('ended_at_tick', null)
+        .order('started_at_tick', { ascending:false })
+        .limit(1),
+      _supabase.from('factions')
+        .select('id, faction_name, party_color, seats, popularity_pct')
+        .eq('nation_id', nationId)
+        .eq('faction_type', 'movement_party')
+        .is('abandoned_at', null),
+    ]);
+    if (admRes.error)     throw admRes.error;
+    if (partiesRes.error) throw partiesRes.error;
+
+    const adm     = admRes.data?.[0] || null;
+    const parties = partiesRes.data || [];
+
+    title.textContent = adm?.admin_name || `${nationName} Administration`;
+
+    const ids = new Set((adm?.coalition_parties || []).map(p => p?.party_id).filter(Boolean));
+    const coalition = parties
+      .filter(p => ids.has(p.id))
+      .sort((a,b) => (Number(b.seats)||0) - (Number(a.seats)||0));
+
+    if (!coalition.length) {
+      host.innerHTML = '<div class="empty">No active coalition.</div>';
+      return;
+    }
+    host.innerHTML = coalition.map(p => {
+      // safe-hex check before inlining the color — mirrors first-steps
+      // and politician-nation; anything non-#RRGGBB falls back to white.
+      const color = /^#[0-9a-f]{6}$/i.test(p.party_color || '') ? p.party_color : '#fff';
+      const pop   = (p.popularity_pct == null) ? '—' : (Math.round(Number(p.popularity_pct)) + '%');
+      return `<div class="coalition-row">
+        <span class="coalition-name" style="color:${color}">${escapeHtml(p.faction_name || 'Party')}</span>
+        <span class="coalition-pop">${pop} popularity</span>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('cabinet-office: coalition fetch failed', err);
+    title.textContent = `${nationName} Administration`;
+    host.innerHTML = '<div class="empty">Could not load coalition.</div>';
+  }
+}
+
+// State of the Nation — compact 4-across modifier cards. Same data the
+// politician-modifiers page reads; this view drops description / effects
+// so a glance over the cabinet covers every active condition.
+async function renderModifiers(nationId) {
+  const host = document.getElementById('ston-grid');
+  try {
+    const { data, error } = await _supabase.from('active_modifiers')
+      .select('modifier_templates ( name, category, severity )')
+      .eq('nation_id', nationId);
+    if (error) throw error;
+    const mods = (data || [])
+      .map(r => r.modifier_templates)
+      .filter(Boolean)
+      .sort((a,b) => (a.category||'').localeCompare(b.category||'') || (a.name||'').localeCompare(b.name||''));
+    if (!mods.length) {
+      host.innerHTML = '<div class="empty">No active modifiers.</div>';
+      return;
+    }
+    host.innerHTML = mods.map(m => {
+      const sev = m.severity || 'green';
+      const lab = SEVERITY_LABELS[sev] || sev;
+      return `<div class="ston-card sev-${escapeHtml(sev)}">
+        <div class="ston-name">${escapeHtml(m.name || 'Modifier')}</div>
+        <div class="ston-cat">${escapeHtml(m.category || '—')}</div>
+        <span class="ston-sev sev-${escapeHtml(sev)}">${escapeHtml(lab)}</span>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('cabinet-office: modifiers fetch failed', err);
+    host.innerHTML = '<div class="empty">Could not load modifiers.</div>';
+  }
+}
+
+// Domestic Economy — six commodity cards. Same query the economy page
+// runs (nation_commodity_state, 20270692). Missing rows fall through to
+// zeroed display so an unseeded shard still renders cleanly.
+async function renderCommodities(nationId) {
+  const host = document.getElementById('comm-grid');
+  const map  = new Map();
+  try {
+    const { data, error } = await _supabase.from('nation_commodity_state')
+      .select('commodity_key, on_hand, production_per_tick')
+      .eq('nation_id', nationId);
+    if (error) throw error;
+    for (const r of (data || [])) map.set(r.commodity_key, r);
+  } catch (err) {
+    console.warn('cabinet-office: nation_commodity_state fetch failed (defaulting to 0)', err);
+  }
+
+  host.innerHTML = COMMODITIES.map(c => {
+    const s       = map.get(c.key);
+    const onHand  = s ? String(Number(s.on_hand) || 0) : '0';
+    // production_per_tick is NULL by CHECK for consumer_goods / services /
+    // diplomacy — render the row only when a number is present.
+    const prod    = s ? s.production_per_tick : null;
+    const prodRow = (prod == null)
+      ? ''
+      : `<div class="comm-row"><span class="comm-lab">Production</span><span class="comm-val">${Number(prod).toFixed(1)}</span></div>`;
+    return `<div class="comm-card ${c.key}">
+      <div class="comm-name">${escapeHtml(c.name)}</div>
+      <div class="comm-row"><span class="comm-lab">On Hand</span><span class="comm-val">${onHand}</span></div>
+      ${prodRow}
+    </div>`;
+  }).join('');
+}
+
+init();
+</script>
+</body>
+</html>
