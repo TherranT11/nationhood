@@ -120,6 +120,8 @@
 .city-head-text { flex:1; min-width:0; }
 .city-name  { font-size:18px; font-weight:600; color:#c8a64e;
   letter-spacing:0.01em; }
+.city-capital-tag { font-size:11px; color:#888; font-weight:400;
+  letter-spacing:0.04em; font-style:italic; }
 .city-blurb { font-size:11px; color:#888; line-height:1.55; margin-top:4px;
   font-style:italic; }
 .city-meta  { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
@@ -680,10 +682,10 @@
     </div>
   </details>
   <details id="sec-geography" class="sec">
-    <summary>Geography</summary>
+    <summary>Major Cities</summary>
     <div class="sec-body">
       <div id="geography-cities">
-        <div class="sec-empty">No geographic detail recorded yet.</div>
+        <div class="sec-empty">No cities recorded yet.</div>
       </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
@@ -1420,7 +1422,7 @@ function cityCardHtml(c, cityPop) {
       <div class="city-head">
         <div class="city-coa" title="Coat of Arms · Coming Soon">COA</div>
         <div class="city-head-text">
-          <div class="city-name">${escHtml(c.city_name || 'Unnamed City')}</div>
+          <div class="city-name">${escHtml(c.city_name || 'Unnamed City')}${c.city_type === 'capital' ? ' <span class="city-capital-tag">(Capital)</span>' : ''}</div>
           <div class="city-blurb">${escHtml(c.description || '')}</div>
         </div>
       </div>
