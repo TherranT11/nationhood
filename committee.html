@@ -408,13 +408,32 @@ async function init() {
 
   // Queued proposals → render in Upcoming Agenda. Joined to the
   // author faction so we can render "Proposed by …" off real names.
-  const { data: proposals, error: propErr } = await _supabase
+  const { data: proposalsRaw, error: propErr } = await _supabase
     .from('committee_proposals')
-    .select('id, category, section, articles, proposed_at_tick, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .select('id, category, section, articles, proposed_at_tick, created_at, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .eq('status', 'queued')
     .order('created_at', { ascending: false });
   if (propErr) console.warn('committee: proposals fetch failed', propErr);
+
+  // 20270728: policy-change proposals share the queue. Pulled from a
+  // separate table with structured policy/option FKs; merged into
+  // the unified upcoming agenda list below. Embedded names come
+  // along so the renderer doesn't have to do its own lookup.
+  const { data: policyProposalsRaw, error: ppErr } = await _supabase
+    .from('committee_policy_proposals')
+    .select('id, proposed_at_tick, created_at, policy:policies!policy_id(policy_name, major_sector), current_option:policy_options!current_option_id(option_name), proposed_option:policy_options!proposed_option_id(option_name), author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .eq('committee_id', committeeId)
+    .eq('status', 'queued')
+    .order('created_at', { ascending: false });
+  if (ppErr) console.warn('committee: policy proposals fetch failed', ppErr);
+
+  const proposals = [
+    ...(proposalsRaw || []).map(p => ({ ...p, _kind: 'article' })),
+    ...(policyProposalsRaw || []).map(p => ({ ...p, _kind: 'policy_change' })),
+  ].sort((a, b) =>
+    String(b.created_at || '').localeCompare(String(a.created_at || ''))
+  );
 
   // Phase A.1 (20270662) — bill currently in the Report Vote phase.
   // committee_hold_hearing flips status to in_hearing; close flips
@@ -1123,19 +1142,37 @@ async function submitWitnessTestimony(activeHearing, factionId) {
 
 // Queued proposals rendered as compact rows. Category pill on the
 // left, "Section · first-article snippet" on top, "Proposed by …
-// at tick N" on bottom. First article's text is truncated to ~120
-// chars for the snippet so long bills don't blow up the layout.
+// at tick N" on bottom. Policy-change proposals (20270728) share
+// the same row shape — pill reads "POLICY," the body line shows
+// the policy name plus "{current} → {proposed}." First article's
+// text is truncated to ~120 chars for the snippet so long bills
+// don't blow up the layout.
 function renderProposals(proposals) {
   if (!proposals.length) return '<div class="up-empty">No upcoming items.</div>';
   return proposals.map(p => {
-    const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
-    const snippet = firstArticle?.text
-        ? escHtml(firstArticle.text.length > 120 ? firstArticle.text.slice(0, 117).trim() + '…' : firstArticle.text)
-        : '';
     const a = p.author || {};
     const authorName = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
     const nick = (a.nickname || '').trim();
     const who = nick ? `${authorName} (${nick})` : authorName;
+
+    if (p._kind === 'policy_change') {
+      const policyName  = p.policy?.policy_name || 'Policy';
+      const currentName = p.current_option?.option_name || 'Not yet enacted';
+      const proposedName = p.proposed_option?.option_name || 'New option';
+      return `<div class="up-row">
+        <span class="up-cat">POLICY</span>
+        <div class="up-row-body">
+          <div class="up-section">${escHtml(policyName)}<span class="sep">·</span><span class="snippet">${escHtml(currentName)} &rarr; ${escHtml(proposedName)}</span></div>
+          <div class="up-meta">Proposed by <b>${escHtml(who)}</b> &middot; tick ${escHtml(String(p.proposed_at_tick ?? '?'))}</div>
+        </div>
+      </div>`;
+    }
+
+    // Article-based (default) — same shape as before.
+    const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
+    const snippet = firstArticle?.text
+        ? escHtml(firstArticle.text.length > 120 ? firstArticle.text.slice(0, 117).trim() + '…' : firstArticle.text)
+        : '';
     const cat = (p.category || '').toUpperCase();
     return `<div class="up-row">
       <span class="up-cat">${escHtml(cat)}</span>
