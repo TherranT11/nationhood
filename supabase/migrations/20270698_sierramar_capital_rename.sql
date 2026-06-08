@@ -23,6 +23,16 @@
 --      sweep for any routes whose origin_port string was already
 --      filled from the old capital name.
 --
+-- Touch points 4 and 5 live in tables created by sql/migrations/
+-- 20260412 which is NOT part of the supabase/migrations push chain.
+-- Those tables exist in some linked projects but not others. The
+-- DO blocks below use to_regclass to skip silently when a target
+-- table is missing, so this migration applies cleanly regardless
+-- of legacy-folder state. (Original v1 of this file crashed at
+-- statement 5 in CI when shipping_routes wasn't in the linked
+-- project, rolling back the whole transaction and leaving the
+-- capital rename unapplied.)
+--
 -- Each UPDATE is filtered on the OLD value so re-applying after a
 -- successful run is a no-op. The JSONB swap goes through ::text
 -- because PostgreSQL has no built-in JSONB string-replace and the
@@ -55,19 +65,35 @@ UPDATE nation_profiles
    AND history_timeline::text LIKE '%Porto Serrano%';
 
 -- 4. nation_ports.port_name — Sierramar's seeded fishing port.
-UPDATE nation_ports
-   SET port_name = 'Puerto Rey'
- WHERE port_name = 'Porto Serrano'
-   AND nation_id IN (SELECT id FROM nations WHERE name = 'Sierramar');
+-- Guarded by to_regclass because nation_ports lives in the legacy
+-- sql/migrations/20260412 file that isn't part of the supabase db
+-- push chain — some linked projects don't have the table at all.
+-- to_regclass returns NULL when the relation doesn't exist; the
+-- DO block skips the UPDATE silently in that case.
+DO $$
+BEGIN
+    IF to_regclass('public.nation_ports') IS NOT NULL THEN
+        UPDATE public.nation_ports
+           SET port_name = 'Puerto Rey'
+         WHERE port_name = 'Porto Serrano'
+           AND nation_id IN (SELECT id FROM public.nations WHERE name = 'Sierramar');
+    END IF;
+END $$;
 
 -- 5. shipping_routes.origin_port — defensive sweep for any routes
 -- whose origin string was already derived from the old capital.
--- Filter on origin_nation_id (not nation_id — different column on
--- this table).
-UPDATE shipping_routes
-   SET origin_port = 'Puerto Rey'
- WHERE origin_port = 'Porto Serrano'
-   AND origin_nation_id IN (SELECT id FROM nations WHERE name = 'Sierramar');
+-- Same legacy-folder concern as nation_ports — guarded by
+-- to_regclass. Filter on origin_nation_id (not nation_id — different
+-- column on this table).
+DO $$
+BEGIN
+    IF to_regclass('public.shipping_routes') IS NOT NULL THEN
+        UPDATE public.shipping_routes
+           SET origin_port = 'Puerto Rey'
+         WHERE origin_port = 'Porto Serrano'
+           AND origin_nation_id IN (SELECT id FROM public.nations WHERE name = 'Sierramar');
+    END IF;
+END $$;
 
 NOTIFY pgrst, 'reload schema';
 
