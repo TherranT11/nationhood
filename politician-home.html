@@ -1408,6 +1408,16 @@ const CAREER_EVENT_TEMPLATES = {
     `${name} has resigned from the bench of ${target || 'their nation'}, returning to private life.`,
   resigned_from_civil_service: (name, target) =>
     `${name} has resigned from the civil service of ${target || 'their nation'}, returning to private life.`,
+  // Local Politics jumpstart self-stamps (20270706). Written by the
+  // three politician_take_office_* RPCs. target_name is the nation
+  // name. Mayor / MotC / Regional Leader stamps are one-shot; no
+  // resignation entry today.
+  took_office_mayor: (name, target) =>
+    `${name} has been sworn in as mayor of a city in ${target || 'their nation'}.`,
+  took_office_mayor_of_capital: (name, target) =>
+    `${name} has been sworn in as Mayor of the Capital of ${target || 'their nation'}.`,
+  took_office_regional_leader: (name, target) =>
+    `${name} has been sworn in as a Regional Leader of ${target || 'their nation'}, commanding a regional budget and a seat at the national table.`,
   // Court case — written by represent_drawn_case + represent_pretrial
   // (20270518). target_name is the case caption ("Plaintiff v.
   // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.

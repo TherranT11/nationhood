@@ -104,6 +104,46 @@
 .sec-body  { padding:18px; }
 .sec-empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:24px 0; }
 
+/* Geography → city cards (20270660 + 20270707). One card per city
+   in the nation. Coat-of-arms placeholder (left), name + description
+   (right), three-meta strip (population / mayor / budget), then the
+   8-stat grid. Stat values render as labels only — raw numbers are
+   intentionally hidden per design call. */
+.city-card { background:#0a0807; border:0.5px solid rgba(200,166,78,0.18);
+  border-radius:6px; padding:16px; margin-bottom:14px; }
+.city-card:last-child { margin-bottom:0; }
+.city-head { display:flex; gap:14px; align-items:flex-start; margin-bottom:14px; }
+.city-coa  { width:56px; height:56px; flex-shrink:0; background:#1a1612;
+  border:0.5px solid rgba(200,166,78,0.25); border-radius:4px;
+  color:#555; font-size:9px; letter-spacing:0.12em; font-weight:700;
+  display:flex; align-items:center; justify-content:center; cursor:help; }
+.city-head-text { flex:1; min-width:0; }
+.city-name  { font-size:18px; font-weight:600; color:#c8a64e;
+  letter-spacing:0.01em; }
+.city-blurb { font-size:11px; color:#888; line-height:1.55; margin-top:4px;
+  font-style:italic; }
+.city-meta  { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
+  padding-bottom:12px; margin-bottom:12px;
+  border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.city-meta > div { display:flex; flex-direction:column; gap:3px; }
+.city-meta-key { font-size:9px; color:#666; letter-spacing:0.12em;
+  text-transform:uppercase; }
+.city-meta-val { font-size:13px; color:#d4d4d4; font-weight:600;
+  font-family:Georgia,serif; }
+.city-archetype { font-size:10px; color:#888; font-weight:400;
+  letter-spacing:0.04em; }
+.city-stats { display:grid; grid-template-columns:repeat(2, 1fr); gap:7px 18px; }
+.city-stat-row { display:flex; justify-content:space-between; align-items:baseline;
+  padding:6px 0; border-bottom:0.5px solid rgba(255,255,255,0.04); }
+.city-stat-key { font-size:10px; color:#888; letter-spacing:0.08em;
+  text-transform:uppercase; }
+.city-stat-val { font-size:11px; color:#d4d4d4; font-weight:600;
+  font-family:Georgia,serif; }
+@media (max-width: 720px) {
+  .city-stats { grid-template-columns:1fr; }
+  .city-meta  { grid-template-columns:1fr; }
+}
+
 /* Back-to-Top button — bottom-right of every section body. Scrolls the
    page back up to the jump nav so the section list is in view again. */
 .sec-foot { display:flex; justify-content:flex-end; margin-top:14px;
@@ -638,7 +678,9 @@
   <details id="sec-geography" class="sec">
     <summary>Geography</summary>
     <div class="sec-body">
-      <div class="sec-empty">No geographic detail recorded yet.</div>
+      <div id="geography-cities">
+        <div class="sec-empty">No geographic detail recorded yet.</div>
+      </div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -680,6 +722,7 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
+import { cityStatLabel, CITY_STATS } from './js/game/city-labels.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -873,6 +916,12 @@ async function init() {
   loadLegalCases(nation.id).catch(err => {
     console.warn('politician-nation: loadLegalCases threw', err);
     renderLegalCases({ error: err?.message || 'load failed' });
+  });
+
+  // Geography → city cards (20270660 + 20270707). Non-blocking;
+  // failure leaves the empty-state in place.
+  loadGeographyCities(nation).catch(err => {
+    console.warn('politician-nation: loadGeographyCities threw', err);
   });
 
   document.getElementById('loading').style.display = 'none';
@@ -1293,6 +1342,76 @@ async function loadLegalCases(nationId) {
     return;
   }
   renderLegalCases({ cases: data.cases || [] });
+}
+
+// ─── Geography / Cities (20270660 + 20270707) ─────────────────────
+// Fetch the nation's cities and render a card per city in the
+// Geography section. Population is computed (11% of nation population)
+// rather than stored, so it reflects current nation.population. Stats
+// (infrastructure, pollution, crime, appeal, growth, jobs, services,
+// affordability) display as 5-band labels via cityStatLabel — the
+// raw 0..100 number is intentionally never surfaced.
+async function loadGeographyCities(nation) {
+  const { data, error } = await _supabase.from('cities')
+    .select('id, city_type, city_name, description, mayor_first_name, mayor_last_name, mayor_age, mayor_archetype, budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability')
+    .eq('nation_id', nation.id)
+    .order('city_type', { ascending: true });
+  if (error) {
+    console.warn('politician-nation: cities fetch failed', error);
+    return;
+  }
+  renderGeographyCities(nation, data || []);
+}
+
+function renderGeographyCities(nation, cities) {
+  const host = document.getElementById('geography-cities');
+  if (!host) return;
+  if (!cities.length) {
+    host.innerHTML = '<div class="sec-empty">No geographic detail recorded yet.</div>';
+    return;
+  }
+  // Capital-share approximation per user direction. Hard-coded to
+  // 11% for now; a per-city population field can replace this once
+  // city-level census data lands.
+  const nationPop = Number(nation.population) || 0;
+  const cityPop = Math.round(nationPop * 0.11);
+  host.innerHTML = cities.map(c => cityCardHtml(c, cityPop)).join('');
+}
+
+function cityCardHtml(c, cityPop) {
+  const mayorName = (c.mayor_first_name || c.mayor_last_name)
+    ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
+    : '—';
+  const archetype = c.mayor_archetype || '—';
+  const popStr = cityPop.toLocaleString();
+  const budgetM = (Number(c.budget) || 0) / 1000000;
+  const budgetStr = budgetM >= 1
+    ? `$${budgetM.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
+    : `$${(Number(c.budget) || 0).toLocaleString()}`;
+  // CITY_STATS is the single source for stat order + display name +
+  // band labels. Re-ordering or renaming a stat is a one-place edit
+  // in js/game/city-labels.js.
+  const statRows = CITY_STATS.map(({ key, name }) => `
+    <div class="city-stat-row">
+      <span class="city-stat-key">${escHtml(name)}</span>
+      <span class="city-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
+    </div>`).join('');
+  return `
+    <div class="city-card">
+      <div class="city-head">
+        <div class="city-coa" title="Coat of Arms · Coming Soon">COA</div>
+        <div class="city-head-text">
+          <div class="city-name">${escHtml(c.city_name || 'Unnamed City')}</div>
+          <div class="city-blurb">${escHtml(c.description || '')}</div>
+        </div>
+      </div>
+      <div class="city-meta">
+        <div><span class="city-meta-key">Population</span><span class="city-meta-val">${escHtml(popStr)}</span></div>
+        <div><span class="city-meta-key">Mayor</span><span class="city-meta-val">${escHtml(mayorName)}${archetype !== '—' ? ` <span class="city-archetype">${escHtml(archetype)}</span>` : ''}</span></div>
+        <div><span class="city-meta-key">Budget</span><span class="city-meta-val">${escHtml(budgetStr)}</span></div>
+      </div>
+      <div class="city-stats">${statRows}</div>
+    </div>`;
 }
 
 function renderLegalCases({ cases, error } = {}) {

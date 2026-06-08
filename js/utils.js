@@ -470,8 +470,22 @@ export function careerLabel(politician, party) {
     const ministryText = ministrySlug
         ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}`
         : '';
+    const localExecText = localExecutiveTitle(politician) || '';
     const judicialText = judicialTitle(politician, politician?.nation_id) || '';
-    return officeText || ministryText || judicialText || party?.faction_name || 'Independent';
+    return officeText || localExecText || ministryText || judicialText || party?.faction_name || 'Independent';
+}
+
+/** Highest local-executive tier label the politician holds, or null
+ *  if none. Priority: Regional Leader (Tier 6 / APEX) → Mayor of the
+ *  Capital (Tier 5) → Mayor (Tier 4). All three are 20270706 stamps —
+ *  one-shot, never auto-cleared. Used by careerLabel so the hero
+ *  standing pill doesn't fall through to "Independent" when a
+ *  politician holds one of these but no office / ministry / bar. */
+export function localExecutiveTitle(politician) {
+    if (politician?.politician_regional_leader_at_tick     != null) return 'Regional Leader';
+    if (politician?.politician_mayor_of_capital_at_tick    != null) return 'Mayor of the Capital';
+    if (politician?.politician_mayor_at_tick               != null) return 'Mayor';
+    return null;
 }
 
 /** Highest judicial tier label the politician holds in nationId, or
