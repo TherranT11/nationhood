@@ -1533,6 +1533,13 @@ async function init() {
   party      = ctx.party || null;
   currentTick  = Number(ctx.shard?.current_tick) || 0;
 
+  // 20270719: file an auto-re-election if the mayor's 48-tick term
+  // just hit. Runs before resolve_due_elections so a freshly-filed
+  // race shows up immediately in the active-race card; resolve_due
+  // _elections won't touch it (resolve_tick = current + 1).
+  try { await _supabase.rpc('politician_resolve_expired_mayor_term'); }
+  catch (_) { /* non-fatal */ }
+
   // Resolve any due election so the Influence card on this page is honest
   // even when the player visits home before career. The career page is
   // where the result banner is shown; here we just want the side effects
