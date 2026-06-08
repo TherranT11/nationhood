@@ -1,22 +1,31 @@
 -- ════════════════════════════════════════════════════════════════════
 -- 20270711 — Sierramar: Miramar del Sur, Clara del Vega, Alta Sierra
 --
--- Three more cities for Sierramar per user spec. Two real schema
+-- Three more cities for Sierramar per user spec. Three real schema
 -- changes needed before the seed can land:
 --
--- 1. cities.city_type CHECK constraint widens to allow
---    'major_city_3'. The original 20270660 schema capped each nation
---    at three cities (capital + major_city_1 + major_city_2);
---    Sierramar now has four. The UNIQUE (nation_id, city_type)
---    constraint still applies, so each city has a distinct type.
+-- 1. cities.city_type CHECK widens to allow 'major_city_3'. The
+--    original 20270660 schema capped each nation at three cities
+--    (capital + major_city_1 + major_city_2); Sierramar now has
+--    four. UNIQUE (nation_id, city_type) still applies — each city
+--    has a distinct type.
 --
--- 2. cities.population_pct NUMERIC column added. Until now the
---    Geography card hardcoded a blanket 11% of nation.population for
---    every city — appropriate for a capital but wrong for the secondary
---    cities that are typically smaller. Storing the percentage per
---    city lets each one carry its own share without leaking the
---    underlying nation population into the schema. UI falls back to
---    11% when the column is NULL so legacy rows render unchanged.
+-- 2. cities.mayor_archetype CHECK DROPPED. The 20270660 schema
+--    hard-coded a 10-archetype list, which has been over-restrictive
+--    twice now: admin-set party archetypes can drift from the canonical
+--    spelling, and flavor archetypes for non-canonical mayors
+--    ("Grassroots Left / MAB Alternative", here) can't fit at all.
+--    Dropping the CHECK without replacement; mayor_archetype is now
+--    freeform text. The display surfaces don't read it for band
+--    mapping (city stats use their own columns); the Geography card
+--    just prints whatever's there as fallback flavor.
+--
+-- 3. cities.population_pct NUMERIC column added. Until now the
+--    Geography card hardcoded 11% of nation.population for every
+--    city — appropriate for a capital, wrong for smaller secondary
+--    cities. Per-city percentage lets each one carry its own share
+--    without leaking nation population into the cities table. UI
+--    falls back to 11% when NULL so legacy rows render unchanged.
 --
 -- Seed values per user spec, 1..10 user-facing scale translated to
 -- the canonical 0..100 storage scale (user_value × 10):
@@ -59,6 +68,18 @@ ALTER TABLE public.cities
 ALTER TABLE public.cities
     ADD CONSTRAINT cities_city_type_check
     CHECK (city_type IN ('capital', 'major_city_1', 'major_city_2', 'major_city_3'));
+
+-- ── 1a. Drop mayor_archetype CHECK ────────────────────────────────
+-- The 20270660 schema hard-coded the 10-archetype list, which has
+-- been over-restrictive twice now: (a) admin-set party archetypes
+-- may not match the casing/spelling exactly (see 20270710's fuzzy
+-- backfill workaround), and (b) flavor archetypes for non-canonical
+-- mayors ("Grassroots Left / MAB Alternative") can't fit at all.
+-- mayor_archetype becomes freeform text; the band-display surface
+-- doesn't read it, the Geography card just prints whatever's there
+-- as a fallback when mayor_party_id is NULL.
+ALTER TABLE public.cities
+    DROP CONSTRAINT IF EXISTS cities_mayor_archetype_check;
 
 -- ── 2. Add population_pct column ──────────────────────────────────
 ALTER TABLE public.cities
