@@ -1400,6 +1400,14 @@ const CAREER_EVENT_TEMPLATES = {
   // (20270701). target_name is the nation name.
   appellate_justice: (name, target) =>
     `${name} has been elevated to the Appellate bench of ${target || 'their nation'}, where they will review the rulings of the lower courts.`,
+  // Career-resignation events (20270705). Written by
+  // politician_resign_from_bench / politician_resign_from_civil_service.
+  // target_name is the nation name. -2 Rep cost is recorded in the
+  // stats sweep but isn't surfaced in the timeline copy.
+  resigned_from_bench: (name, target) =>
+    `${name} has resigned from the bench of ${target || 'their nation'}, returning to private life.`,
+  resigned_from_civil_service: (name, target) =>
+    `${name} has resigned from the civil service of ${target || 'their nation'}, returning to private life.`,
   // Court case — written by represent_drawn_case + represent_pretrial
   // (20270518). target_name is the case caption ("Plaintiff v.
   // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.
@@ -4473,6 +4481,12 @@ async function renderJudgeVerdictRow(d) {
     const mathW = data.math_winner === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
     const altW  = data.math_winner === 'plaintiff' ? 'DEFENDANT' : 'PLAINTIFF';
     const margin = Number(data.margin_pct ?? 0);
+    // is_appeal comes from the preview RPC (20270704) — used for the
+    // REVERSE button title and the submit confirm dialog. get_trial_state
+    // doesn't surface appeal_of_trial_id, so the preview response is
+    // the source of truth for the UI's appeal-awareness.
+    const isAppeal = !!data.is_appeal;
+    const reverseHint = isAppeal ? '-5 Reputation · overturn' : '-3 Reputation · appeal-eligible';
     if (!data.is_close) {
       host.innerHTML = `
         <span class="judge-row-lab">VERDICT</span>
@@ -4483,15 +4497,16 @@ async function renderJudgeVerdictRow(d) {
         <span class="judge-row-lab">VERDICT</span>
         <span class="judge-row-hint">Close call · ${mathW} leads by ${margin.toFixed(1)}%.</span>
         <button type="button" class="trial-send-btn"      data-judge-verdict>CONFIRM ${mathW}</button>
-        <button type="button" class="trial-objection-btn" data-judge-reverse title="-3 Reputation · appeal-eligible">REVERSE TO ${altW}</button>`;
+        <button type="button" class="trial-objection-btn" data-judge-reverse title="${reverseHint}">REVERSE TO ${altW}</button>`;
     }
-    bindJudgeVerdictButtons(d);
+    bindJudgeVerdictButtons(d, isAppeal);
   } catch (e) {
     console.warn('judge_verdict_preview failed; falling back to single-button verdict', e?.message || e);
     host.innerHTML = `
       <span class="judge-row-lab">VERDICT</span>
       <button type="button" class="trial-send-btn" data-judge-verdict>DELIVER VERDICT</button>`;
-    bindJudgeVerdictButtons(d);
+    // Fallback path can't surface a REVERSE button, so isAppeal is moot.
+    bindJudgeVerdictButtons(d, false);
   }
 }
 
@@ -4499,11 +4514,13 @@ async function renderJudgeVerdictRow(d) {
 // renderJudgeVerdictRow after the async preview swaps the placeholder
 // for the real buttons — avoids double-binding the speech listeners
 // that bindJudgeControls already wired on the initial render.
-function bindJudgeVerdictButtons(d) {
+// isAppeal is sourced from the preview RPC's response (20270704),
+// since get_trial_state doesn't expose appeal_of_trial_id today.
+function bindJudgeVerdictButtons(d, isAppeal) {
   const verdictBtn = document.querySelector('#trial-content [data-judge-verdict]');
   if (verdictBtn) verdictBtn.addEventListener('click', () => submitJudgeVerdict(d.trial_id));
   const reverseBtn = document.querySelector('#trial-content [data-judge-reverse]');
-  if (reverseBtn) reverseBtn.addEventListener('click', () => submitJudgeReverse(d.trial_id));
+  if (reverseBtn) reverseBtn.addEventListener('click', () => submitJudgeReverse(d.trial_id, !!isAppeal));
 }
 
 // Server-side _apply_verdict computes the canonical tally. The judge
@@ -4542,8 +4559,10 @@ function bindJudgeControls(d) {
   });
   const verdictBtn = document.querySelector('#trial-content [data-judge-verdict]');
   if (verdictBtn) verdictBtn.addEventListener('click', () => submitJudgeVerdict(d.trial_id));
-  const reverseBtn = document.querySelector('#trial-content [data-judge-reverse]');
-  if (reverseBtn) reverseBtn.addEventListener('click', () => submitJudgeReverse(d.trial_id));
+  // REVERSE button only appears after renderJudgeVerdictRow's async
+  // preview swap — bindJudgeVerdictButtons binds it there with the
+  // correct isAppeal flag from the preview response. No defensive
+  // binding here.
   const speechBtn = document.querySelector('#trial-content [data-judge-speech]');
   if (speechBtn) speechBtn.addEventListener('click', () => submitJudgeSpeech(d.trial_id));
   // Enter on the speech input sends; Shift+Enter would have meant
@@ -4606,11 +4625,16 @@ async function submitJudgeVerdict(trialId) {
 
 // Reversal — civil/commercial only. Server re-validates the margin
 // gate (must be < 30%) so a stale client can't bypass it. -3 Rep cost
-// to the judge + appeal-eligible flag on the trial. Strong confirm
+// at the lower court, -5 Rep at the appellate level (overturning a
+// prior court is a heavier political act, 20270704). Strong confirm
 // because reversal can't be undone.
-async function submitJudgeReverse(trialId) {
+async function submitJudgeReverse(trialId, isAppeal) {
   if (_trialState.sending) return;
-  if (!confirm('Reverse the verdict against the weight of the evidence?\n\nThis costs you 3 Reputation and flags the trial as eligible for appeal. It cannot be undone.')) return;
+  const cost = isAppeal ? 5 : 3;
+  const tail = isAppeal
+    ? 'overturns the lower court. It cannot be undone.'
+    : 'flags the trial as eligible for appeal. It cannot be undone.';
+  if (!confirm(`Reverse the verdict against the weight of the evidence?\n\nThis costs you ${cost} Reputation and ${tail}`)) return;
   _trialState.sending = true;
   const btn = document.querySelector('#trial-content [data-judge-reverse]');
   if (btn) btn.disabled = true;

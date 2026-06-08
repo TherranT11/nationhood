@@ -1071,6 +1071,20 @@ const LEGISLATURE_RUNGS = [
 // actionIfNot on Tier 1 ("Sit the Exam") + actionIfHeld on Tier 3
 // ("Resign — Enter Politics") are the documented entry/exit hooks
 // that the mechanics will wire when they ship.
+// Highest civil-service tier the politician currently holds, 1-4,
+// or 0 if they're not in the service. Used by actionIfHeld(state) on
+// each rung so the [Resign · Leave the Civil Service] button only
+// surfaces on the politician's TOPMOST held rung. 20270705 backs the
+// resign action.
+function highestCivilServiceTier(s) {
+  if (s.juniorPortfolio)                     return 4;
+  if (s.permanentSecretaryMinistry)          return 3;
+  if (s.seniorCivilServantAtTick != null)    return 2;
+  if (s.politicianMinistry)                  return 1;
+  return 0;
+}
+const CS_RESIGN = { label: 'Resign · Leave the Civil Service', kind: 'secondary', action: 'resign-from-civil-service' };
+
 const GOVT_SERVICE_RUNGS = [
   // ── CIVIL SERVICE STEM ─────────────────────────────────────────────
   {
@@ -1095,6 +1109,7 @@ const GOVT_SERVICE_RUNGS = [
       }
       return { label: 'Sit the Exam', kind: 'primary', action: 'sit-the-exam' };
     },
+    actionIfHeld: (s) => highestCivilServiceTier(s) === 1 ? CS_RESIGN : null,
   },
   {
     tierNum: 2,
@@ -1127,6 +1142,7 @@ const GOVT_SERVICE_RUNGS = [
       }
       return { label: 'Apply for Promotion', kind: 'primary', action: 'apply-for-promotion' };
     },
+    actionIfHeld: (s) => highestCivilServiceTier(s) === 2 ? CS_RESIGN : null,
   },
   // Permanent Secretary (Tier 3, Civil Service, 20270679). Top of
   // the career civil-service track — runs a major ministry day to
@@ -1157,9 +1173,9 @@ const GOVT_SERVICE_RUNGS = [
       }
       return { label: 'Seek Promotion', kind: 'primary', action: 'seek-permanent-secretary' };
     },
-    // Held-state exit: surfaces once a resign / political-track
-    // transition mechanic lands.
-    actionIfHeld: { label: 'Resign · Enter Politics', kind: 'secondary' },
+    // Held-state exit. Backed by politician_resign_from_civil_service
+    // (20270705). Only surfaces on the topmost held CS rung.
+    actionIfHeld: (s) => highestCivilServiceTier(s) === 3 ? CS_RESIGN : null,
   },
 
   // ── CIVIL-SERVICE → APPOINTED TRANSITION ──────────────────────────
@@ -1202,6 +1218,7 @@ const GOVT_SERVICE_RUNGS = [
       }
       return { label: 'Seek Appointment', kind: 'primary', action: 'seek-junior-appointment' };
     },
+    actionIfHeld: (s) => highestCivilServiceTier(s) === 4 ? CS_RESIGN : null,
   },
   {
     tierNum: 5,
@@ -1334,6 +1351,21 @@ const GOVERNMENT_RUNGS = [
 // so its right-side tag reads "appointed" instead of carrying an entry
 // button. The ladder closes with a footer note (rendered via ladder.footer
 // in LADDERS) explaining the judiciary's reactive-but-absolute character.
+// Highest judicial tier the politician currently holds, 1-5, or 0 if
+// they're not on the bench. Used by the actionIfHeld(state) functions
+// on each judicial rung so the [Resign · Leave the Bar] button only
+// surfaces on the politician's TOPMOST held rung — not on every held
+// rung beneath it. 20270705 backs the resign action.
+function highestJudicialTier(s) {
+  if (s.appellateJusticeAtTick != null)            return 5;
+  if (s.magistrateAtTick != null)                  return 4;
+  if (s.stateProsecutorAtTick != null)             return 3;
+  if (s.experiencedAdvocateAtTick != null)         return 2;
+  if (s.barAdmittedNationId && s.barAdmittedNationId === s.nationId) return 1;
+  return 0;
+}
+const JUD_RESIGN = { label: 'Resign · Leave the Bar', kind: 'secondary', action: 'resign-from-bench' };
+
 const JUDICIARY_RUNGS = [
   {
     name: 'Advocate',
@@ -1354,6 +1386,7 @@ const JUDICIARY_RUNGS = [
       }
       return { label: 'Seek the Bar', kind: 'primary', action: 'seek-the-bar' };
     },
+    actionIfHeld: (s) => highestJudicialTier(s) === 1 ? JUD_RESIGN : null,
   },
   {
     name: 'Experienced Advocate',
@@ -1376,6 +1409,7 @@ const JUDICIARY_RUNGS = [
       }
       return { label: 'Step Up', kind: 'primary', action: 'step-up-experienced-advocate' };
     },
+    actionIfHeld: (s) => highestJudicialTier(s) === 2 ? JUD_RESIGN : null,
   },
   {
     name: 'State Advocate',
@@ -1410,6 +1444,7 @@ const JUDICIARY_RUNGS = [
       }
       return { label: 'Seek Appointment', kind: 'primary', action: 'seek-state-prosecutor' };
     },
+    actionIfHeld: (s) => highestJudicialTier(s) === 3 ? JUD_RESIGN : null,
   },
   {
     name: 'Magistrate',
@@ -1431,6 +1466,7 @@ const JUDICIARY_RUNGS = [
       }
       return { label: 'Take the Bench', kind: 'primary', action: 'take-the-bench' };
     },
+    actionIfHeld: (s) => highestJudicialTier(s) === 4 ? JUD_RESIGN : null,
   },
   {
     // Tier 5 — Appellate Justice (20270701). Self-applied at Magistrate
@@ -1459,6 +1495,7 @@ const JUDICIARY_RUNGS = [
       }
       return { label: 'Seek Elevation', kind: 'primary', action: 'seek-appellate-bench' };
     },
+    actionIfHeld: (s) => highestJudicialTier(s) === 5 ? JUD_RESIGN : null,
   },
   {
     name: 'Supreme Court Justice',
@@ -2457,11 +2494,20 @@ function renderRungs(rungs, state) {
     let actionHtml = '';
     if (isHeld && r.actionIfHeld) {
       // Rungs that stay actionable while held (e.g. Party Member → Leave).
-      const a = r.actionIfHeld;
-      const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--secondary';
-      const actionAttr = a.action ? ` data-action="${escHtml(a.action)}"` : '';
-      const hrefAttr   = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
-      actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}>${escHtml(a.label)}</button>`;
+      // actionIfHeld can be a static config OR a function (state) → config
+      // (mirrors the actionIfNot pattern). A function returning null falls
+      // through to the plain "held" pill — used by the resign mechanic to
+      // only surface [Resign] on the politician's HIGHEST held judicial or
+      // civil-service rung, not every held rung beneath it.
+      const a = typeof r.actionIfHeld === 'function' ? r.actionIfHeld(state) : r.actionIfHeld;
+      if (a) {
+        const cls = a.kind === 'primary' ? 'rung-btn rung-btn--primary' : 'rung-btn rung-btn--secondary';
+        const actionAttr = a.action ? ` data-action="${escHtml(a.action)}"` : '';
+        const hrefAttr   = a.kind === 'primary' && a.href ? ` data-href="${escHtml(a.href)}"` : '';
+        actionHtml = `<button class="${cls}"${hrefAttr}${actionAttr}>${escHtml(a.label)}</button>`;
+      } else {
+        actionHtml = '<span class="rung-held">held</span>';
+      }
     } else if (isHeld) {
       actionHtml = '<span class="rung-held">held</span>';
     } else if (r.actionIfNot) {
@@ -2778,6 +2824,27 @@ function bindRungActions(ctx) {
     pendingLabel:  'Seeking elevation…',
     errorPrefix:   'Could not seek elevation',
   });
+  // Career-resignation actions (20270705). Same handler shape as
+  // the climbs — disable-on-click, RPC call, reload on success so the
+  // ladder re-renders without the cleared stamps. -2 Rep cost is
+  // applied server-side. Confirm dialog mirrors politician_retire's
+  // shape — irreversible career change, worth a deliberate click.
+  bindCareerClimbAction({
+    action:        'resign-from-bench',
+    rpc:           'politician_resign_from_bench',
+    restingLabel:  'Resign · Leave the Bar',
+    pendingLabel:  'Resigning…',
+    errorPrefix:   'Could not resign',
+    confirm:       'Resign from the bench? You will lose 2 Reputation and forfeit every judicial rung — Advocate through Appellate Justice. You can re-take the bar later.',
+  });
+  bindCareerClimbAction({
+    action:        'resign-from-civil-service',
+    rpc:           'politician_resign_from_civil_service',
+    restingLabel:  'Resign · Leave the Civil Service',
+    pendingLabel:  'Resigning…',
+    errorPrefix:   'Could not resign',
+    confirm:       'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.',
+  });
   bindSeekStateAdvocateAction();
 }
 
@@ -2843,10 +2910,14 @@ function bindSeekStateAdvocateAction() {
   });
 }
 
-function bindCareerClimbAction({ action, rpc, restingLabel, pendingLabel, errorPrefix }) {
+function bindCareerClimbAction({ action, rpc, restingLabel, pendingLabel, errorPrefix, confirm: confirmText }) {
   document.querySelectorAll(`[data-action="${action}"]`).forEach(btn => {
     btn.addEventListener('click', async () => {
       if (btn.disabled) return;
+      // Optional confirm dialog — used by the resign actions
+      // (20270705) since career-rung clears are irreversible. Climbs
+      // are non-destructive so they default to no confirm.
+      if (confirmText && !window.confirm(confirmText)) return;
       btn.disabled = true;
       btn.textContent = pendingLabel;
       try {
