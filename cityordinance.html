@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Author Ordinance — Nationhood</title>
+<style>
+/* Topbar / nav / body base live in js/politician-topbar.js. Page-
+   local styles mirror politician-statutes.html's .pnl-* propose-bill
+   form vocabulary so the ordinance form reads as part of the same
+   chamber-floor surface family. */
+* { box-sizing:border-box; margin:0; padding:0; }
+.content { padding:28px 24px 40px; max-width:760px; margin:0 auto; }
+
+.ord-back { display:inline-flex; align-items:center; gap:6px;
+  font-family:monospace; font-size:10px; letter-spacing:0.1em; text-transform:uppercase;
+  color:#888; text-decoration:none; margin-bottom:18px;
+  padding:6px 10px; border:0.5px solid rgba(90,175,165,0.18); border-radius:3px;
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.ord-back:hover { color:#5aafa5; border-color:rgba(90,175,165,0.5);
+  background:rgba(90,175,165,0.06); }
+
+.ord-card { background:#0a0807; border:0.5px solid rgba(200,166,78,0.18);
+  border-radius:6px; padding:22px 24px; }
+
+.ord-head { display:flex; align-items:baseline; gap:10px; margin-bottom:16px;
+  padding-bottom:14px; border-bottom:0.5px solid rgba(90,175,165,0.18); }
+.ord-head .sans  { font-size:22px; font-weight:500; color:#fff;
+  letter-spacing:-0.005em; }
+.ord-head .serif { font-size:22px; font-style:italic; color:#5aafa5;
+  font-family:Georgia,'Times New Roman',serif; letter-spacing:-0.005em; }
+
+.ord-eyebrow { font-size:9px; color:#5aafa5; letter-spacing:0.16em;
+  text-transform:uppercase; margin-bottom:7px; font-family:monospace;
+  font-weight:600; }
+.ord-sub { font-size:11px; color:#888; line-height:1.55; margin-bottom:18px;
+  font-style:italic; }
+
+.fg { margin-top:18px; }
+.fg-lab { font-size:9px; letter-spacing:0.14em; color:#c8a26e; font-weight:700;
+  font-family:monospace; text-transform:uppercase; margin-bottom:7px; }
+.fg-lab .req { color:#c87a7a; margin-left:2px; }
+.fg-hint { font-size:10.5px; color:#888; margin-bottom:8px; line-height:1.55;
+  font-style:italic; }
+
+.fld { width:100%; padding:10px 14px; background:#0a0807;
+  border:0.5px solid rgba(90,175,165,0.18); border-radius:4px;
+  color:#cfcabf; font-family:inherit; font-size:12.5px; line-height:1.5; }
+.fld:focus { outline:none; border-color:#5aafa5; }
+textarea.fld { resize:vertical; min-height:84px; }
+input[type=number].fld { font-variant-numeric:tabular-nums; }
+
+.arch-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:5px 10px; }
+.arch-chip { display:flex; align-items:center; gap:8px; padding:8px 12px;
+  background:#0a0807; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:4px; cursor:pointer; color:#cfcabf; font-size:11.5px;
+  transition:background 0.12s, border-color 0.12s; }
+.arch-chip:hover { background:#101010; border-color:#3a3a3a; }
+.arch-chip.selected { background:var(--chip-bg, #161208);
+  border-color:var(--chip-bd, #c8a26e); color:var(--chip-fg, #dcb88a); }
+.arch-chip input { accent-color:#c8a26e; }
+.arch-support .arch-chip.selected { --chip-bg:#0e1a14; --chip-bd:#5aafa5; --chip-fg:#a0d8d8; }
+.arch-oppose  .arch-chip.selected { --chip-bg:#1a0e0e; --chip-bd:#c87a7a; --chip-fg:#e0a0a0; }
+.arch-disabled { opacity:0.4; cursor:not-allowed; }
+
+.stat-row { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+
+.foot { margin-top:24px; padding-top:18px;
+  border-top:0.5px solid rgba(90,175,165,0.18);
+  display:flex; gap:10px; justify-content:flex-end; align-items:center; }
+.foot-note { margin-right:auto; font-size:10.5px; color:#888; max-width:380px;
+  line-height:1.5; font-style:italic; }
+.btn { padding:9px 16px; border-radius:4px; font-size:10px; letter-spacing:0.14em;
+  font-weight:700; text-transform:uppercase; font-family:inherit;
+  cursor:pointer; transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.btn.cancel { background:transparent; color:#888;
+  border:0.5px solid rgba(255,255,255,0.12); }
+.btn.cancel:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.3); }
+.btn.submit { background:#161208; color:#dcb88a;
+  border:0.5px solid #c8a26e; }
+.btn.submit:hover:not(:disabled) { background:#251710; color:#fff; }
+.btn.submit:disabled { opacity:0.4; cursor:not-allowed; }
+
+.ord-err { color:#c87a7a; font-size:11px; margin-top:12px; padding:8px 12px;
+  border:0.5px solid rgba(200,122,122,0.3); border-radius:3px;
+  background:rgba(200,122,122,0.05); display:none; }
+.ord-err.show { display:block; }
+
+.gate-msg { padding:40px 24px; text-align:center; color:#888;
+  font-size:13px; line-height:1.6; font-style:italic; }
+.loading { padding:60px 24px; text-align:center; color:#666;
+  font-family:monospace; font-size:11px; letter-spacing:0.1em; }
+
+@media (max-width: 640px) {
+  .arch-grid { grid-template-columns:1fr; }
+  .stat-row  { grid-template-columns:1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+
+<div class="content" id="content" style="display:none;">
+  <a class="ord-back" id="back-link" href="politician-nation.html#sec-geography">&larr; Back</a>
+  <div id="card-host"></div>
+</div>
+
+<div id="loading" class="loading">LOADING&hellip;</div>
+
+<script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
+import { CITY_STATS } from './js/game/city-labels.js';
+
+const AUTHORING_OFFICES = new Set(['mayor', 'city_council_member', 'city_council_president']);
+
+const REASON = {
+  not_authenticated:   'Sign in to author an ordinance.',
+  invalid_arguments:   'Form data was incomplete.',
+  no_politician:       'No politician on this account.',
+  wrong_office:        'Only Mayors, City Council Members, and City Council Presidents can author ordinances.',
+  invalid_name:        'Name must be 1–80 characters.',
+  invalid_description: 'Description must be 1–400 characters.',
+  invalid_cost:        'Cost must be 0–100.',
+  invalid_stat_key:    'Pick a valid stat to affect.',
+  invalid_stat_delta:  'Magnitude must be between −10 and +10.',
+  invalid_archetype:   'One of the picked archetypes isn’t recognised.',
+  archetype_overlap:   'An archetype can’t be on both Support and Oppose at once.',
+};
+
+const draft = {
+  name: '', description: '', cost: 0,
+  support: new Set(), oppose: new Set(),
+  statKey: '', statDir: 'up', statMag: 0,
+};
+
+(async () => {
+  let ctx;
+  try { ctx = await bootstrapPolitician('nation'); }
+  catch (err) { console.warn('[cityordinance] bootstrap failed:', err?.message || err); return; }
+  if (!ctx) return;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  // Back link respects ?city=<id> for round-trip from the city page.
+  const params = new URLSearchParams(location.search);
+  const cityId = params.get('city');
+  if (cityId) {
+    document.getElementById('back-link').href = `city.html?id=${encodeURIComponent(cityId)}`;
+  }
+
+  const office = ctx.faction?.politician_office || null;
+  if (!AUTHORING_OFFICES.has(office)) {
+    renderGate();
+    return;
+  }
+  renderForm(ctx);
+})();
+
+// Read-only "you don't qualify" surface for non-authoring viewers.
+// Keeps the page accessible by URL but explains why it's inert.
+function renderGate() {
+  document.getElementById('card-host').innerHTML = `
+    <div class="ord-card">
+      <div class="ord-head">
+        <span class="sans">Author</span><span class="serif">Ordinance</span>
+      </div>
+      <div class="gate-msg">
+        Only Mayors, City Council Members, and City Council Presidents
+        can author ordinances. Pursue one of the three offices, then
+        come back here.
+      </div>
+    </div>`;
+}
+
+function renderForm(ctx) {
+  const archChips = (side) => PARTY_ARCHETYPES.map(a => `
+    <label class="arch-chip" data-arch="${escAttr(a)}" data-side="${side}">
+      <input type="checkbox" data-arch-cb data-arch="${escAttr(a)}" data-side="${side}" />
+      <span>${escHtml(a)}</span>
+    </label>`).join('');
+
+  const statOpts = CITY_STATS.map(s =>
+    `<option value="${escAttr(s.key)}">${escHtml(s.name)}</option>`
+  ).join('');
+
+  document.getElementById('card-host').innerHTML = `
+    <div class="ord-card">
+      <div class="ord-eyebrow">AUTHOR · GLOBAL CATALOG</div>
+      <div class="ord-head">
+        <span class="sans">Author an</span><span class="serif">Ordinance</span>
+      </div>
+      <div class="ord-sub">
+        Templates created here enter the global catalog. Any sitting
+        Mayor anywhere can propose them for their city. Once enacted,
+        the stat effect persists until rescinded by vote.
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">NAME<span class="req">*</span></div>
+        <input id="f-name" class="fld" type="text" maxlength="80"
+               placeholder="e.g. Smoking Ban, Public Library Funding, Pier Renovation Levy" />
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">DESCRIPTION<span class="req">*</span></div>
+        <textarea id="f-desc" class="fld" maxlength="400" rows="3"
+                  placeholder="One paragraph on what the ordinance does and why."></textarea>
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">COST (in dollars)<span class="req">*</span></div>
+        <div class="fg-hint">Deducted from city budget when the ordinance PASSES. Failed proposals are free. 0–100.</div>
+        <input id="f-cost" class="fld" type="number" min="0" max="100" step="1" value="0" />
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">ARCHETYPES IN SUPPORT</div>
+        <div class="fg-hint">NPC council seats whose party matches a Support archetype vote YES. PC seats see the alignment hint in the vote prompt.</div>
+        <div class="arch-grid arch-support">${archChips('support')}</div>
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">ARCHETYPES IN OPPOSITION</div>
+        <div class="fg-hint">Same idea inverted — NPCs with these archetypes vote NO. Can't overlap with Support.</div>
+        <div class="arch-grid arch-oppose">${archChips('oppose')}</div>
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">STAT AFFECTED ON PASS<span class="req">*</span></div>
+        <div class="fg-hint">Pick the city stat, direction, and magnitude. Magnitude 0 means "purely symbolic" — discouraged.</div>
+        <div class="stat-row">
+          <select id="f-stat-key" class="fld">
+            <option value="">— Select a stat —</option>
+            ${statOpts}
+          </select>
+          <select id="f-stat-dir" class="fld">
+            <option value="up">UP</option>
+            <option value="down">DOWN</option>
+          </select>
+          <input id="f-stat-mag" class="fld" type="number" min="0" max="10" step="1" value="0" />
+        </div>
+      </div>
+
+      <div class="ord-err" id="err-line"></div>
+
+      <div class="foot">
+        <div class="foot-note">
+          Authoring is one-shot — the ordinance hits the catalog and stays.
+          No edit pass today; if you need to revise, author a new one.
+        </div>
+        <button class="btn cancel" id="btn-cancel" type="button">Cancel</button>
+        <button class="btn submit" id="btn-submit" type="button" disabled>Submit</button>
+      </div>
+    </div>`;
+
+  wireForm(ctx);
+}
+
+function wireForm(ctx) {
+  const refreshSubmitState = () => {
+    document.getElementById('btn-submit').disabled = !draft.name
+      || !draft.description
+      || !draft.statKey
+      || Number(draft.cost) < 0
+      || Number(draft.cost) > 100;
+  };
+
+  document.getElementById('f-name').addEventListener('input', (e) => {
+    draft.name = e.target.value.trim();
+    refreshSubmitState();
+  });
+  document.getElementById('f-desc').addEventListener('input', (e) => {
+    draft.description = e.target.value.trim();
+    refreshSubmitState();
+  });
+  document.getElementById('f-cost').addEventListener('input', (e) => {
+    draft.cost = Number(e.target.value) || 0;
+    refreshSubmitState();
+  });
+  document.getElementById('f-stat-key').addEventListener('change', (e) => {
+    draft.statKey = e.target.value || '';
+    refreshSubmitState();
+  });
+  document.getElementById('f-stat-dir').addEventListener('change', (e) => {
+    draft.statDir = e.target.value === 'down' ? 'down' : 'up';
+  });
+  document.getElementById('f-stat-mag').addEventListener('input', (e) => {
+    let v = Math.round(Number(e.target.value) || 0);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    draft.statMag = v;
+  });
+
+  // Archetype chips: per-side multi-select. The other side's matching
+  // chip is greyed out as long as this one is selected — server
+  // rejects overlap; this is the early UX guard.
+  document.querySelectorAll('[data-arch-cb]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const arch = cb.dataset.arch;
+      const side = cb.dataset.side;
+      const set  = side === 'support' ? draft.support : draft.oppose;
+      const otherSet = side === 'support' ? draft.oppose : draft.support;
+      if (cb.checked) {
+        if (otherSet.has(arch)) {
+          cb.checked = false; // shouldn't be reachable, but guard
+          return;
+        }
+        set.add(arch);
+      } else {
+        set.delete(arch);
+      }
+      cb.closest('.arch-chip').classList.toggle('selected', cb.checked);
+      // Grey the mirror chip on the opposite side while selected.
+      const otherSide = side === 'support' ? 'oppose' : 'support';
+      const otherChip = document.querySelector(
+        `.arch-chip[data-side="${otherSide}"][data-arch="${cssEscape(arch)}"]`
+      );
+      if (otherChip) {
+        otherChip.classList.toggle('arch-disabled', cb.checked);
+        const otherCb = otherChip.querySelector('input');
+        if (otherCb) otherCb.disabled = cb.checked;
+      }
+    });
+  });
+
+  document.getElementById('btn-cancel').addEventListener('click', () => {
+    history.length > 1 ? history.back() : location.href = 'politician-nation.html';
+  });
+  document.getElementById('btn-submit').addEventListener('click', () => submit(ctx));
+}
+
+let submitInFlight = false;
+async function submit(ctx) {
+  if (submitInFlight) return;
+  const err = document.getElementById('err-line');
+  err.classList.remove('show');
+  err.textContent = '';
+
+  const factionId = ctx.faction?.id || null;
+  if (!factionId) {
+    showErr('No politician on this account.');
+    return;
+  }
+
+  const statDelta = draft.statDir === 'down' ? -draft.statMag : draft.statMag;
+  const supportArr = Array.from(draft.support);
+  const opposeArr  = Array.from(draft.oppose);
+
+  const submitBtn = document.getElementById('btn-submit');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting…';
+  submitInFlight = true;
+  // Reset button text + re-enable in both failure paths so the user
+  // can fix the validation error and retry without a page refresh.
+  // Success path navigates away, so it doesn't need the reset.
+  const restoreButton = () => {
+    submitBtn.textContent = 'Submit';
+    submitBtn.disabled = false;
+  };
+  try {
+    const { data, error } = await _supabase.rpc('create_ordinance', {
+      p_faction_id: factionId,
+      p_name: draft.name,
+      p_description: draft.description,
+      p_cost: draft.cost,
+      p_support_archetypes: supportArr,
+      p_oppose_archetypes:  opposeArr,
+      p_stat_key: draft.statKey,
+      p_stat_delta: statDelta,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      showErr(REASON[data?.reason] || ('Could not save: ' + (data?.reason || 'unknown')));
+      restoreButton();
+      return;
+    }
+    // Round-trip back to the city if we came from one; else the
+    // nation Geography page.
+    const params = new URLSearchParams(location.search);
+    const cityId = params.get('city');
+    location.href = cityId
+      ? `city.html?id=${encodeURIComponent(cityId)}`
+      : 'politician-nation.html#sec-geography';
+  } catch (e) {
+    showErr('Submission failed: ' + (e?.message || e));
+    restoreButton();
+  } finally {
+    submitInFlight = false;
+  }
+}
+
+function showErr(msg) {
+  const err = document.getElementById('err-line');
+  err.textContent = msg;
+  err.classList.add('show');
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+function escAttr(s) {
+  return String(s == null ? '' : s).replace(/"/g, '&quot;');
+}
+// Minimal CSS.escape polyfill — only handles the characters that
+// appear in archetype names (slash + spaces + alphabetics). We
+// don't pull a full polyfill since the archetype string set is
+// tiny and known.
+function cssEscape(s) {
+  return String(s).replace(/[^a-zA-Z0-9\-_]/g, (c) => '\\' + c);
+}
+</script>
+</body>
+</html>
