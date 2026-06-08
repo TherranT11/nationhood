@@ -70,10 +70,11 @@ export function cityDisplayData(c, nationPop) {
   const party     = c?.mayor_party || null;
   const partyAbbr = party?.abbreviation || party?.faction_name || '';
   const archetype = party?.archetype    || c?.mayor_archetype || '';
-  // 20270736: budget is a 1-10 stat, same as the others. Display as
-  // raw integer; the "BUDGET" eyebrow on the card already tells the
-  // reader what it is.
+  // 20270738: budget is a single dollar number (unbounded positive
+  // int), not a 1-10 stat. Display "$N". The 20270736 "5 / 10" format
+  // was a brief stop on the way here — kept as a single-line format
+  // helper so future callers don't have to know the prefix.
   const budgetVal = Number(c?.budget) || 0;
-  const budgetStr = `${budgetVal} / 10`;
+  const budgetStr = `$${budgetVal}`;
   return { population, mayorName, partyAbbr, archetype, budgetStr };
 }
