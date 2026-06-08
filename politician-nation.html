@@ -722,7 +722,7 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
-import { cityStatLabel } from './js/game/city-labels.js';
+import { cityStatLabel, CITY_STATS } from './js/game/city-labels.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -1378,19 +1378,6 @@ function renderGeographyCities(nation, cities) {
   host.innerHTML = cities.map(c => cityCardHtml(c, cityPop)).join('');
 }
 
-const CITY_STAT_KEYS = ['infrastructure', 'pollution', 'crime', 'appeal',
-                         'growth', 'jobs', 'services', 'affordability'];
-const CITY_STAT_NAMES = {
-  infrastructure: 'Infrastructure',
-  pollution:      'Pollution',
-  crime:          'Crime',
-  appeal:         'Appeal',
-  growth:         'Growth',
-  jobs:           'Jobs',
-  services:       'Services',
-  affordability:  'Affordability',
-};
-
 function cityCardHtml(c, cityPop) {
   const mayorName = (c.mayor_first_name || c.mayor_last_name)
     ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
@@ -1401,10 +1388,13 @@ function cityCardHtml(c, cityPop) {
   const budgetStr = budgetM >= 1
     ? `$${budgetM.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
     : `$${(Number(c.budget) || 0).toLocaleString()}`;
-  const statRows = CITY_STAT_KEYS.map(k => `
+  // CITY_STATS is the single source for stat order + display name +
+  // band labels. Re-ordering or renaming a stat is a one-place edit
+  // in js/game/city-labels.js.
+  const statRows = CITY_STATS.map(({ key, name }) => `
     <div class="city-stat-row">
-      <span class="city-stat-key">${escHtml(CITY_STAT_NAMES[k])}</span>
-      <span class="city-stat-val">${escHtml(cityStatLabel(k, c[k]))}</span>
+      <span class="city-stat-key">${escHtml(name)}</span>
+      <span class="city-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
     </div>`).join('');
   return `
     <div class="city-card">

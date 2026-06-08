@@ -1,9 +1,8 @@
-// City stat labels — single source for the 5-band descriptive labels
-// the politician-nation Geography card uses to render city stats. The
-// stored values on public.cities are 0..100 (matching the existing
-// schema's CHECK constraint family); the player-facing scale is 1..10
-// with 5 bands of 2. Display code never shows the raw number, only
-// the band label.
+// City stats — single source for the 8-stat catalog the
+// politician-nation Geography card uses. Stored values on
+// public.cities are 0..100 (matching the existing schema's CHECK
+// constraint family); the player-facing scale is 1..10 with 5 bands
+// of 2. Display code never shows the raw number, only the band label.
 //
 // Band index = clamp(floor((stat - 1) / 20), 0, 4).
 //
@@ -22,23 +21,30 @@
 // Default-seeded cities (stat = 50, third band) read as the middle
 // label across every stat — Adequate / Moderate / Organized Crime /
 // Pleasant but Modest / etc.
+//
+// Order of CITY_STATS is the display order in the Geography card —
+// changing it here changes the rendered layout everywhere.
 
-export const CITY_STAT_LABELS = {
-  infrastructure: ['Failing',         'Strained',              'Adequate',                       'Modern',                          'Advanced'],
-  pollution:      ['Pristine',        'Minor',                 'Moderate',                       'Severe',                          'Hazardous'],
-  crime:          ['Safe Streets',    'Smuggling Dominant',    'Organized Crime',                'Gangs Control Districts',         'Total Lawlessness'],
-  appeal:         ['Bleak Eyesore',   'Faded and Neglected',   'Pleasant but Modest',            'Charming and Picturesque',        'Breathtaking and World-Class'],
-  growth:         ['Deep Recession',  'Stagnant',              'Moderate',                       'Booming',                         'Hyper-Growth'],
-  jobs:           ['Critical Deficit','Limited Availability',  'Modest Openings',                'Robust Hiring',                   'Surging Labor Demand'],
-  services:       ['Non-Existent',    'Long Queues',           'Functional',                     'Efficient and Reliable Delivery', 'Comprehensive and Affordable'],
-  affordability:  ['Extreme Hardship','Pricing Out Locals',    'Cost of Living Balance',         'Accessible',                      'Dirt Cheap'],
-};
+export const CITY_STATS = [
+  { key: 'infrastructure', name: 'Infrastructure', bands: ['Failing',         'Strained',              'Adequate',                       'Modern',                          'Advanced'] },
+  { key: 'pollution',      name: 'Pollution',      bands: ['Pristine',        'Minor',                 'Moderate',                       'Severe',                          'Hazardous'] },
+  { key: 'crime',          name: 'Crime',          bands: ['Safe Streets',    'Smuggling Dominant',    'Organized Crime',                'Gangs Control Districts',         'Total Lawlessness'] },
+  { key: 'appeal',         name: 'Appeal',         bands: ['Bleak Eyesore',   'Faded and Neglected',   'Pleasant but Modest',            'Charming and Picturesque',        'Breathtaking and World-Class'] },
+  { key: 'growth',         name: 'Growth',         bands: ['Deep Recession',  'Stagnant',              'Moderate',                       'Booming',                         'Hyper-Growth'] },
+  { key: 'jobs',           name: 'Jobs',           bands: ['Critical Deficit','Limited Availability',  'Modest Openings',                'Robust Hiring',                   'Surging Labor Demand'] },
+  { key: 'services',       name: 'Services',       bands: ['Non-Existent',    'Long Queues',           'Functional',                     'Efficient and Reliable Delivery', 'Comprehensive and Affordable'] },
+  { key: 'affordability',  name: 'Affordability',  bands: ['Extreme Hardship','Pricing Out Locals',    'Cost of Living Balance',         'Accessible',                      'Dirt Cheap'] },
+];
+
+// Indexed by stat key for cityStatLabel's O(1) lookup. Derived from
+// CITY_STATS so adding a stat is a one-place edit above.
+const _BANDS_BY_KEY = Object.fromEntries(CITY_STATS.map(s => [s.key, s.bands]));
 
 /** Numeric (0..100) stat → display label for a given key, or '—'
  *  if the key isn't recognised. NULL / undefined / out-of-range
  *  values clamp into the nearest band. */
 export function cityStatLabel(key, stat) {
-  const bands = CITY_STAT_LABELS[key];
+  const bands = _BANDS_BY_KEY[key];
   if (!bands) return '—';
   const n = Number(stat);
   if (!Number.isFinite(n)) return bands[2]; // middle band as the null-safe default
