@@ -2819,45 +2819,15 @@ function bindRungActions(ctx) {
   // a Community Organizer, 9-tick post-CO wait, race-in-flight),
   // so anything reaching here has passed the obvious gates.
   document.querySelectorAll('[data-action="run-for-city-council"]').forEach(btn => {
-    btn.addEventListener('click', () => openCityCouncilModal(ctx));
+    btn.addEventListener('click', () => openCityCouncilModal(ctx, 'city_council_member'));
   });
 
   // Run for Election — City Council President (Tier 3, 20270654).
-  // No modal — direct RPC call like register-senior-mp. The rung's
-  // actionIfNot already filters wrong-office / too-early / race-in-
-  // flight / no-party; the server re-validates each gate.
+  // 20270740: now goes through the same per-city picker modal as
+  // CCM. Target office is threaded through so the modal copy +
+  // server route distinguish the two paths.
   document.querySelectorAll('[data-action="run-for-cc-president"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const prev = btn.textContent;
-      btn.disabled = true; btn.textContent = 'Registering…';
-      try {
-        const { data, error } = await _supabase.rpc('politician_register_for_office',
-          { p_faction_id: ctx?.faction?.id || null, p_target_office: 'city_council_president' });
-        if (error) throw error;
-        if (!data?.success) {
-          const REASON = {
-            not_authenticated:     'Sign in to register.',
-            no_politician:         'No politician on this account.',
-            not_in_party:          'Join a party first.',
-            no_nation:             'No nation set.',
-            no_shard:              'Shard not found.',
-            race_in_progress:      'You already have a race in flight.',
-            invalid_target_office: 'Invalid target office.',
-            wrong_current_office:  'You must currently hold City Council Member.',
-            too_early:             data?.opens_at_tick != null
-              ? `Term must be within 3 ticks of expiry. Opens at tick ${data.opens_at_tick}.`
-              : 'Too early — term not yet within 3 ticks of expiry.',
-          };
-          alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
-          btn.disabled = false; btn.textContent = prev;
-          return;
-        }
-        location.reload();
-      } catch (e) {
-        alert('Failed: ' + (e?.message || e));
-        btn.disabled = false; btn.textContent = prev;
-      }
-    });
+    btn.addEventListener('click', () => openCityCouncilModal(ctx, 'city_council_president'));
   });
 
   // Seek the Bar — Advocate (Judiciary Tier 1). Opens its own modal
@@ -4041,16 +4011,25 @@ async function confirmElection(ctx) {
 // player pick which council to run for. Server-side validation +
 // city_id storage on politician_active_election lives in the same
 // register_for_office RPC.
-async function openCityCouncilModal(ctx) {
+// 20270740: target_office threaded through so the same modal handles
+// both CCM and CCP picks. Default keeps the legacy CCM call site
+// (no second arg) working untouched.
+async function openCityCouncilModal(ctx, targetOffice) {
   const modal = document.getElementById('electionModal');
   if (!modal) return;
+  const office = targetOffice || 'city_council_member';
+  const isPresident = office === 'city_council_president';
   const partyName = ctx?.party?.faction_name || 'your party';
   const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
   const nationId  = ctx?.nation?.id || null;
   const nationPop = Number(ctx?.nation?.population) || 0;
 
-  modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
-  modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">City Council</span>';
+  modal.querySelector('.em-titles .eyebrow').textContent = isPresident
+    ? '— LOCAL POLITICS · CITY COUNCIL PRESIDENT —'
+    : '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
+  modal.querySelector('#em-title').innerHTML = isPresident
+    ? 'Run for <span class="serif">City Council President</span>'
+    : 'Run for <span class="serif">City Council</span>';
   document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · pick a city`;
   document.getElementById('em-body').innerHTML = '<div class="em-loading">LOADING CITIES…</div>';
 
@@ -4063,6 +4042,7 @@ async function openCityCouncilModal(ctx) {
   confirmBtn.disabled = true;
   confirmBtn.innerHTML = '&#9873; RUN FOR ELECTION';
   delete confirmBtn.dataset.cityId;
+  confirmBtn.dataset.targetOffice = office;
   confirmBtn.onclick = () => confirmCityCouncilRun(ctx);
 
   modal.classList.add('open');
@@ -4315,6 +4295,12 @@ async function confirmCityCouncilRun(ctx) {
   const btn = document.getElementById('em-confirm');
   if (!btn) return;
   const cityId = btn.dataset.cityId;
+  // 20270740: target office stamped on the confirm button by
+  // openCityCouncilModal so the same handler routes both CCM and
+  // CCP. Fallback to CCM for safety if the dataset attribute is
+  // missing (older code path).
+  const targetOffice = btn.dataset.targetOffice || 'city_council_member';
+  const isPresident = targetOffice === 'city_council_president';
   if (!cityId) { alert('Pick a city first.'); return; }
   btn.disabled = true;
   const originalLabel = btn.innerHTML;
@@ -4322,7 +4308,7 @@ async function confirmCityCouncilRun(ctx) {
   try {
     const { data, error } = await _supabase.rpc('politician_register_for_office', {
       p_faction_id:    ctx?.faction?.id || null,
-      p_target_office: 'city_council_member',
+      p_target_office: targetOffice,
       p_city_id:       cityId,
     });
     if (error) throw error;
@@ -4333,10 +4319,14 @@ async function confirmCityCouncilRun(ctx) {
         not_in_party:          'Join a political party first.',
         no_nation:             'Your politician has no nation.',
         race_in_progress:      'You are already in a race.',
-        wrong_current_office:  'You must be — or have been — a Community Organizer to run.',
+        wrong_current_office:  isPresident
+                                 ? 'You must currently hold City Council Member (or Experience ≥ 40).'
+                                 : 'You must be — or have been — a Community Organizer to run.',
         too_early:             data.opens_at_tick
                                  ? `Registration opens at tick ${data.opens_at_tick}.`
-                                 : 'Your Community Organizer term is still settling in.',
+                                 : (isPresident
+                                    ? 'Your Council Member term is still settling in (9-tick wait).'
+                                    : 'Your Community Organizer term is still settling in.'),
         city_required:         'Pick a city before confirming.',
         invalid_city:          'That city no longer exists or belongs to another nation.',
         invalid_target_office: 'Unknown target office.',
