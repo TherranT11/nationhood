@@ -1335,20 +1335,76 @@ const CAREER_EVENT_TEMPLATES = {
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
-  // stood_for_election: written by politician_stand_for_election (20270402).
-  // metadata.race_tier ('community' | 'parliament') picks the template
-  // shape; metadata.opponent carries the snapshot full name. Falls back
-  // gracefully if either is missing so the row still renders something
-  // sensible if the metadata shape changes later.
+  // stood_for_election: written by politician_stand_for_election (20270402),
+  // politician_register_for_office (20270709/20270712). metadata.race_tier
+  // routes the template; falls back to a generic "ran in {target}" line
+  // when the tier isn't recognised. Mayor + Mayor of Capital + Regional
+  // Leader landed with 20270709's races; target already reads "Mayor of
+  // {city_name}" / "Mayor of the Capital" / "Regional Leader", so the
+  // tier-specific templates only need to wrap a verb around it.
   stood_for_election: (name, target, meta = {}) => {
     const opp  = meta.opponent || 'an opponent';
     const seat = target || 'a contested district';
-    return meta.race_tier === 'parliament'
-      ? `${name} has decided to stand for an election, running for the ${seat} seat against ${opp}.`
-      : `${name} has decided to stand for an election, running to be a community organizer in ${seat} against ${opp}.`;
+    switch (meta.race_tier) {
+      case 'parliament':
+        return `${name} has decided to stand for an election, running for the ${seat} seat against ${opp}.`;
+      case 'city_council':
+        return `${name} has filed to run for a City Council seat against ${opp}.`;
+      case 'city_council_president':
+        return `${name} has filed to run for the City Council Presidency against ${opp}.`;
+      case 'senior_mp':
+        return `${name} has filed for the Senior MP nomination against ${opp}.`;
+      case 'mayor':
+        // 20270712: target stores the bare city name (e.g. "Miramar
+        // del Sur"); template wraps "Mayor of" around it.
+        return `${name} has filed to run for Mayor of ${seat} against ${opp}.`;
+      case 'mayor_of_capital':
+        return `${name} has filed to run for ${seat} against ${opp}.`;
+      case 'regional_leader':
+        return `${name} has filed to run for Regional Leader against ${opp}.`;
+      case 'community':
+      default:
+        return `${name} has decided to stand for an election, running to be a community organizer in ${seat} against ${opp}.`;
+    }
   },
-  won_election:  (name, target) => `${name} won the election in ${target || 'a contested district'}.`,
-  lost_election: (name, target) => `${name} lost the election in ${target || 'a contested district'}.`,
+  won_election: (name, target, meta = {}) => {
+    const opp = meta.opponent ? ` against ${meta.opponent}` : '';
+    switch (meta.race_tier) {
+      case 'mayor':
+        return `${name} won the race for Mayor of ${target || 'a city'}${opp}.`;
+      case 'mayor_of_capital':
+        return `${name} won the race for ${target || 'the Capital mayoralty'}${opp}.`;
+      case 'regional_leader':
+        return `${name} won the race for Regional Leader${opp}.`;
+      case 'city_council_president':
+        return `${name} won the City Council Presidency${opp}.`;
+      case 'city_council':
+        return `${name} won a City Council seat${opp}.`;
+      case 'senior_mp':
+        return `${name} won the Senior MP nomination${opp}.`;
+      default:
+        return `${name} won the election in ${target || 'a contested district'}${opp}.`;
+    }
+  },
+  lost_election: (name, target, meta = {}) => {
+    const opp = meta.opponent ? ` to ${meta.opponent}` : '';
+    switch (meta.race_tier) {
+      case 'mayor':
+        return `${name} lost the race for Mayor of ${target || 'a city'}${opp}.`;
+      case 'mayor_of_capital':
+        return `${name} lost the race for ${target || 'the Capital mayoralty'}${opp}.`;
+      case 'regional_leader':
+        return `${name} lost the race for Regional Leader${opp}.`;
+      case 'city_council_president':
+        return `${name} lost the City Council Presidency${opp}.`;
+      case 'city_council':
+        return `${name} lost a City Council race${opp}.`;
+      case 'senior_mp':
+        return `${name} lost the Senior MP nomination${opp}.`;
+      default:
+        return `${name} lost the election in ${target || 'a contested district'}${opp}.`;
+    }
+  },
   // Civil Servant — Sit the Exam outcomes from politician_sit_the_exam
   // (20270471). target_name carries the rolled ministry's display name
   // on both pass and fail.
@@ -3218,6 +3274,28 @@ function renderCampaignCard(ctx) {
       eyebrow:   'ACTIVE CAMPAIGN · HIGH-STAKES · NATIONAL',
       titleLead: 'Senior MP',
       blurb:     `A Senior MP slot in ${escHtml(nationName)}.`,
+      statLabel: 'EXPERIENCE',
+    },
+    // 20270712: local-executive tiers (mayor/mayor_of_capital/regional
+    // _leader) shipped in 20270709 but never got display rows here —
+    // they fell through to the community default and rendered as
+    // "Community Organizer · Mayor of {city}", which read nonsensical.
+    mayor: {
+      eyebrow:   'ACTIVE CAMPAIGN · LOCAL EXECUTIVE',
+      titleLead: 'Mayor',
+      blurb:     'The mayor\'s office — city hall, the budget, the chair.',
+      statLabel: 'EXPERIENCE',
+    },
+    mayor_of_capital: {
+      eyebrow:   'ACTIVE CAMPAIGN · LOCAL EXECUTIVE',
+      titleLead: 'Mayor of the Capital',
+      blurb:     `The capital\'s mayoralty in ${escHtml(nationName)}.`,
+      statLabel: 'EXPERIENCE',
+    },
+    regional_leader: {
+      eyebrow:   'ACTIVE CAMPAIGN · REGIONAL EXECUTIVE',
+      titleLead: 'Regional Leader',
+      blurb:     'A regional executive seat — provinces, districts, oblasts.',
       statLabel: 'EXPERIENCE',
     },
   };
