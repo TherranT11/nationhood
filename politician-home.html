@@ -1012,6 +1012,11 @@
 .judge-row-hint { font-size:10px; color:#888; font-style:italic; }
 .judge-row .trial-send-btn, .judge-row .trial-objection-btn {
   padding:10px 18px; font-size:9.5px; letter-spacing:0.13em; }
+.judge-speech-input { flex:1; min-width:0; padding:8px 11px; background:#0a0807;
+  border:0.5px solid rgba(200,162,110,0.25); border-radius:3px; color:#dcb88a;
+  font-family:Georgia,serif; font-size:11px; }
+.judge-speech-input::placeholder { color:#666; font-style:italic; }
+.judge-speech-input:focus { outline:none; border-color:#c8a26e; }
 @media (max-width: 720px) {
   .judge-scale { padding:11px 12px 6px; }
   .judge-scale-val { font-size:19px; }
@@ -4330,6 +4335,17 @@ function renderJudgeTrialModal(d) {
   else                pillHtml = '<span class="trial-turn-pill theirs">ON THE BENCH</span>';
 
   // Ruling row only renders when there's something to rule.
+  // Verdict row behaviour branches on case_type:
+  //   • criminal → single [JURY READS VERDICT] button. _apply_verdict
+  //     runs the jury branch internally; no discretion is possible
+  //     even on close cases (20270700 preserves that).
+  //   • civil / commercial → fetch judge_verdict_preview on render
+  //     to decide between a single CONFIRM button (clear margin) and
+  //     a CONFIRM / REVERSE pair (margin < 30%, judge has real
+  //     discretion). The fetch is async so we mount a placeholder
+  //     here and renderJudgeVerdictRow() swaps it in once preview
+  //     resolves.
+  const isCriminal = (d.case_type || '').toLowerCase() === 'criminal';
   let rulingHtml = '';
   if (pending) {
     rulingHtml = `
@@ -4338,11 +4354,17 @@ function renderJudgeTrialModal(d) {
         <button type="button" class="trial-objection-btn" data-judge-rule="sustain">SUSTAIN</button>
         <button type="button" class="trial-send-btn"      data-judge-rule="overrule">OVERRULE</button>
       </div>`;
-  } else if (awaiting) {
+  } else if (awaiting && isCriminal) {
     rulingHtml = `
       <div class="judge-row">
         <span class="judge-row-lab">VERDICT</span>
-        <button type="button" class="trial-send-btn"      data-judge-verdict>ENTER VERDICT</button>
+        <button type="button" class="trial-send-btn"      data-judge-verdict>JURY READS VERDICT</button>
+      </div>`;
+  } else if (awaiting) {
+    rulingHtml = `
+      <div class="judge-row" id="judge-verdict-row">
+        <span class="judge-row-lab">VERDICT</span>
+        <span class="judge-row-hint">Tallying the bench…</span>
       </div>`;
   } else {
     rulingHtml = `
@@ -4351,6 +4373,19 @@ function renderJudgeTrialModal(d) {
         <span class="judge-row-hint">${isSC ? 'Counsels are deliberating settlement.' : 'No ruling required. Awaiting counsel.'}</span>
       </div>`;
   }
+
+  // Bench-speech row: always visible on active trials. Lets the
+  // magistrate post a freeform note into the chat (kind='judge_speech',
+  // no strength impact). Limit mirrors the server (1..240).
+  const speechHtml = (isSC || d.status === 'in_progress')
+    ? `
+      <div class="judge-row">
+        <span class="judge-row-lab">BENCH SPEECH</span>
+        <input type="text" id="judge-speech-input" class="judge-speech-input"
+               maxlength="240" placeholder="Note for the record…">
+        <button type="button" class="trial-send-btn" data-judge-speech>POST</button>
+      </div>`
+    : '';
 
   document.getElementById('trial-content').innerHTML = `
     <div class="trial-head">
@@ -4376,10 +4411,54 @@ function renderJudgeTrialModal(d) {
       </div>
       <div class="judge-scale-verdict">${escHtml(tallies.leaning)}</div>
     </div>
-    ${rulingHtml}`;
+    ${rulingHtml}
+    ${speechHtml}`;
   const chat = document.getElementById('trial-chat');
   if (chat) chat.scrollTop = chat.scrollHeight;
   bindJudgeControls(d);
+  // For civil/commercial trials awaiting verdict, swap the placeholder
+  // verdict row with the real one once the server-side preview returns.
+  if (awaiting && !isCriminal) renderJudgeVerdictRow(d);
+}
+
+// Async swap of the verdict row after judge_verdict_preview returns
+// canonical totals + margin. Renders CONFIRM only on a clear margin,
+// CONFIRM / REVERSE pair (with rep-cost hint) on a close one. Errors
+// fall back to a generic single-button row so the trial never gets
+// stuck without a verdict path.
+async function renderJudgeVerdictRow(d) {
+  const host = document.getElementById('judge-verdict-row');
+  if (!host) return;
+  try {
+    const { data, error } = await _supabase.rpc('judge_verdict_preview', {
+      p_faction_id: politician?.id,
+      p_trial_id:   d.trial_id,
+    });
+    if (error || !data || data.success === false) throw error || new Error(data?.reason || 'preview_failed');
+
+    const mathW = data.math_winner === 'plaintiff' ? 'PLAINTIFF' : 'DEFENDANT';
+    const altW  = data.math_winner === 'plaintiff' ? 'DEFENDANT' : 'PLAINTIFF';
+    const margin = Number(data.margin_pct ?? 0);
+    if (!data.is_close) {
+      host.innerHTML = `
+        <span class="judge-row-lab">VERDICT</span>
+        <span class="judge-row-hint">${mathW} prevails (${margin.toFixed(1)}% margin).</span>
+        <button type="button" class="trial-send-btn" data-judge-verdict>DELIVER VERDICT</button>`;
+    } else {
+      host.innerHTML = `
+        <span class="judge-row-lab">VERDICT</span>
+        <span class="judge-row-hint">Close call · ${mathW} leads by ${margin.toFixed(1)}%.</span>
+        <button type="button" class="trial-send-btn"      data-judge-verdict>CONFIRM ${mathW}</button>
+        <button type="button" class="trial-objection-btn" data-judge-reverse title="-3 Reputation · appeal-eligible">REVERSE TO ${altW}</button>`;
+    }
+    bindJudgeControls(d);
+  } catch (e) {
+    console.warn('judge_verdict_preview failed; falling back to single-button verdict', e?.message || e);
+    host.innerHTML = `
+      <span class="judge-row-lab">VERDICT</span>
+      <button type="button" class="trial-send-btn" data-judge-verdict>DELIVER VERDICT</button>`;
+    bindJudgeControls(d);
+  }
 }
 
 // Server-side _apply_verdict computes the canonical tally. The judge
@@ -4418,6 +4497,17 @@ function bindJudgeControls(d) {
   });
   const verdictBtn = document.querySelector('#trial-content [data-judge-verdict]');
   if (verdictBtn) verdictBtn.addEventListener('click', () => submitJudgeVerdict(d.trial_id));
+  const reverseBtn = document.querySelector('#trial-content [data-judge-reverse]');
+  if (reverseBtn) reverseBtn.addEventListener('click', () => submitJudgeReverse(d.trial_id));
+  const speechBtn = document.querySelector('#trial-content [data-judge-speech]');
+  if (speechBtn) speechBtn.addEventListener('click', () => submitJudgeSpeech(d.trial_id));
+  // Enter on the speech input sends; Shift+Enter would have meant
+  // newline, but the input is single-line so the simple binding is
+  // enough — Enter submits.
+  const speechInput = document.getElementById('judge-speech-input');
+  if (speechInput) speechInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); submitJudgeSpeech(d.trial_id); }
+  });
 }
 
 async function submitJudgeRuling(trialId, ruling) {
@@ -4463,6 +4553,70 @@ async function submitJudgeVerdict(trialId) {
     await refreshTrial();
   } catch (err) {
     alert('Verdict failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Reversal — civil/commercial only. Server re-validates the margin
+// gate (must be < 30%) so a stale client can't bypass it. -3 Rep cost
+// to the judge + appeal-eligible flag on the trial. Strong confirm
+// because reversal can't be undone.
+async function submitJudgeReverse(trialId) {
+  if (_trialState.sending) return;
+  if (!confirm('Reverse the verdict against the weight of the evidence?\n\nThis costs you 3 Reputation and flags the trial as eligible for appeal. It cannot be undone.')) return;
+  _trialState.sending = true;
+  const btn = document.querySelector('#trial-content [data-judge-reverse]');
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('judge_reverse_verdict', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    await refreshTrial();
+  } catch (err) {
+    alert('Reversal failed: ' + (err?.message || 'network error'));
+  } finally {
+    _trialState.sending = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Bench speech — freeform record-only message into the trial chat.
+// Length is mirror-checked client-side so we don't round-trip
+// obviously-bad input, but the server is canonical (1..240 chars).
+async function submitJudgeSpeech(trialId) {
+  if (_trialState.sending) return;
+  const input = document.getElementById('judge-speech-input');
+  const text  = (input?.value || '').trim();
+  if (text.length < 1 || text.length > 240) {
+    alert('Bench speech must be between 1 and 240 characters.');
+    return;
+  }
+  _trialState.sending = true;
+  const btn = document.querySelector('#trial-content [data-judge-speech]');
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('post_judge_speech', {
+      p_faction_id: politician.id,
+      p_trial_id:   trialId,
+      p_text:       text,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      alert(trialReasonText(data?.reason));
+      return;
+    }
+    if (input) input.value = '';
+    await refreshTrial();
+  } catch (err) {
+    alert('Bench speech failed: ' + (err?.message || 'network error'));
   } finally {
     _trialState.sending = false;
     if (btn) btn.disabled = false;
