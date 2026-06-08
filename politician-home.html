@@ -2656,10 +2656,20 @@ function fmtMayorTaxResult(data) {
   const popTxt = Number.isFinite(Number(data.new_popularity))
     ? `, Party Popularity now ${Number(data.new_popularity).toFixed(1)}%`
     : '';
-  if (data.budget_delta === 0) {
+  // Three honest cases: revenue collected / growth too low to yield /
+  // budget already at cap (yield forfeit). The audit-fix version of
+  // the RPC sends both growth_yield (gross) and budget_delta (applied)
+  // so the client distinguishes "you got nothing because growth is
+  // low" from "you got nothing because the budget is maxed."
+  const yieldVal   = Number(data.growth_yield) || 0;
+  const appliedVal = Number(data.budget_delta) || 0;
+  if (appliedVal > 0) {
+    return `Collected taxes in ${city}: Budget +${appliedVal} (now ${data.new_budget} / 10)${popTxt}.`;
+  }
+  if (yieldVal === 0) {
     return `Collected taxes in ${city}: Growth ${data.growth} too low for revenue (floor(${data.growth}/3) = 0)${popTxt}.`;
   }
-  return `Collected taxes in ${city}: Budget +${data.budget_delta} (now ${data.new_budget} / 10)${popTxt}.`;
+  return `Collected taxes in ${city}: Budget already at 10 / 10 — yield of ${yieldVal} forfeit${popTxt}.`;
 }
 function fmtMayorCampaignResult(data) {
   const city = data.city_name || 'the city';
