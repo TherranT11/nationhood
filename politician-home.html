@@ -2327,7 +2327,7 @@ function renderMayorBody(city) {
     : '';
   const budgetRow = `<div class="ms-row">
     <span class="ms-label">BUDGET</span>
-    <span class="ms-val">${escHtml(String(city.budget ?? '—'))} / 10</span>
+    <span class="ms-val">${city.budget == null ? '—' : `$${escHtml(String(city.budget))}`}</span>
   </div>`;
   const statRows = CITY_STATS.map(s => `
     <div class="ms-row">
@@ -2650,26 +2650,19 @@ function fmtLobbyMinisterResult(data) {
   return `Lobbied the Minister of ${ministry}: rolled ${data.roll}, no result. Influence consumed. 3-tick cooldown.`;
 }
 
-// 20270737 — Mayor action results.
+// 20270737 — Mayor action results. 20270738 simplified back to two
+// cases (revenue / growth too low) when the 1-10 budget cap was
+// dropped — there's no "yield forfeited at cap" branch anymore.
 function fmtMayorTaxResult(data) {
   const city = data.city_name || 'the city';
   const popTxt = Number.isFinite(Number(data.new_popularity))
     ? `, Party Popularity now ${Number(data.new_popularity).toFixed(1)}%`
     : '';
-  // Three honest cases: revenue collected / growth too low to yield /
-  // budget already at cap (yield forfeit). The audit-fix version of
-  // the RPC sends both growth_yield (gross) and budget_delta (applied)
-  // so the client distinguishes "you got nothing because growth is
-  // low" from "you got nothing because the budget is maxed."
-  const yieldVal   = Number(data.growth_yield) || 0;
   const appliedVal = Number(data.budget_delta) || 0;
   if (appliedVal > 0) {
-    return `Collected taxes in ${city}: Budget +${appliedVal} (now ${data.new_budget} / 10)${popTxt}.`;
+    return `Collected taxes in ${city}: Budget +$${appliedVal} (now $${data.new_budget})${popTxt}.`;
   }
-  if (yieldVal === 0) {
-    return `Collected taxes in ${city}: Growth ${data.growth} too low for revenue (floor(${data.growth}/3) = 0)${popTxt}.`;
-  }
-  return `Collected taxes in ${city}: Budget already at 10 / 10 — yield of ${yieldVal} forfeit${popTxt}.`;
+  return `Collected taxes in ${city}: Growth ${data.growth} too low for revenue (floor(${data.growth}/3) = 0)${popTxt}.`;
 }
 function fmtMayorCampaignResult(data) {
   const city = data.city_name || 'the city';
@@ -4195,9 +4188,10 @@ async function selectCity(cityId) {
 
 function renderCityView(city, ordinances, votes) {
   if (!city) return;
-  // 20270736: budget is a 1-10 stat. Display matches the rest of
-  // the city panel ("5 / 10") rather than the old dollar format.
-  const fmtBudget = (n) => `${Number(n) || 0} / 10`;
+  // 20270738: budget is a single dollar number (unbounded). Display
+  // as "$N". (Was "5 / 10" briefly in 20270736 when budget was a
+  // stat; design reverted to a dollar amount.)
+  const fmtBudget = (n) => `$${Number(n) || 0}`;
   const mayorName = [city.mayor_first_name, city.mayor_last_name]
     .filter(Boolean).join(' ') || 'Unknown';
   const mayorMeta = [
