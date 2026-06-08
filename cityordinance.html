@@ -353,6 +353,13 @@ async function submit(ctx) {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Submitting…';
   submitInFlight = true;
+  // Reset button text + re-enable in both failure paths so the user
+  // can fix the validation error and retry without a page refresh.
+  // Success path navigates away, so it doesn't need the reset.
+  const restoreButton = () => {
+    submitBtn.textContent = 'Submit';
+    submitBtn.disabled = false;
+  };
   try {
     const { data, error } = await _supabase.rpc('create_ordinance', {
       p_faction_id: factionId,
@@ -367,7 +374,7 @@ async function submit(ctx) {
     if (error) throw error;
     if (!data?.success) {
       showErr(REASON[data?.reason] || ('Could not save: ' + (data?.reason || 'unknown')));
-      submitBtn.textContent = 'Submit';
+      restoreButton();
       return;
     }
     // Round-trip back to the city if we came from one; else the
@@ -379,7 +386,7 @@ async function submit(ctx) {
       : 'politician-nation.html#sec-geography';
   } catch (e) {
     showErr('Submission failed: ' + (e?.message || e));
-    submitBtn.textContent = 'Submit';
+    restoreButton();
   } finally {
     submitInFlight = false;
   }
