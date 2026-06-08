@@ -93,10 +93,13 @@ export function flagUrlFor(nationName) {
 
 // ===== AGE / CAREER MATH =====
 // Single source of truth for the politician age + career-years derivation.
-// Politicians spawn at START_AGE; each TICKS_PER_AGE_YEAR ticks elapsed
-// since founded_tick is one in-game year of age. Pre-cleanup these three
-// constants + functions lived in politician-topbar / politician-career /
-// politician-ministry-foreign separately — same math, three copies.
+// Base starting age comes from factions.leader_age (set by the tier-based
+// onboarding RPC — 25 for Tier A, 45 for Tier B, 50 for Tier C); each
+// TICKS_PER_AGE_YEAR ticks elapsed since founded_tick is one in-game year
+// on top of that. START_AGE is the NULL-safe fallback for legacy rows
+// missing a leader_age. Pre-cleanup these three constants + functions
+// lived in politician-topbar / politician-career / politician-ministry-
+// foreign separately — same math, three copies.
 
 export const START_AGE = 25;
 export const TICKS_PER_AGE_YEAR = 12;
@@ -108,9 +111,11 @@ export function careerYears(faction, currentTick) {
     return Math.floor(elapsed / TICKS_PER_AGE_YEAR);
 }
 
-/** In-game age of the politician. NULL-safe; defaults to START_AGE. */
+/** In-game age of the politician. NULL-safe; falls back to START_AGE
+ *  when leader_age isn't on the row. */
 export function currentAge(faction, currentTick) {
-    return START_AGE + careerYears(faction, currentTick);
+    const base = Number(faction?.leader_age) || START_AGE;
+    return base + careerYears(faction, currentTick);
 }
 
 // ===== STRING ESCAPING =====

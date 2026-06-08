@@ -1287,7 +1287,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
@@ -1625,11 +1625,7 @@ function renderHero(shard) {
   // dropped civil-servant identity entirely and showed party for
   // any card-carrier even when they held a state role.
   const career = careerLabel(politician, party);
-  // Politicians age 1 year per 12 ticks, starting at 25. Same formula as the
-  // topbar's currentAge (kept inline here because this page renders age into
-  // the body too; if we ever need a third reader, extract to a helper).
-  const elapsed = Math.max(0, (shard?.current_tick || 0) - Number(politician.founded_tick || 0));
-  const age = String(25 + Math.floor(elapsed / 12));
+  const age = String(currentAge(politician, shard?.current_tick || 0));
 
   document.getElementById('hero-portrait').textContent = ini;
   paintHeroName(politician, display);
