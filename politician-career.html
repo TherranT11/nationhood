@@ -1311,14 +1311,18 @@ const GOVERNMENT_RUNGS = [
     // with the 12-tick term within 3 ticks of expiry (current_tick >=
     // won_at + 9). The window closes when the CCM term auto-expires;
     // no "former CCM" path by design — announcements happen while
-    // still in office.
+    // still in office. 20270706: Experience >= 40 bypasses both gates
+    // for high-Experience joiners; the race itself is unchanged.
     actionIfNot: (s) => {
-      if (s.office !== 'city_council_member') {
-        return { label: 'Must currently be City Council Member', kind: 'disabled' };
-      }
-      const opens = (s.officeWonAtTick || 0) + 9;
-      if (s.currentTick < opens) {
-        return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 40) {
+        if (s.office !== 'city_council_member') {
+          return { label: 'Must currently be City Council Member', kind: 'disabled' };
+        }
+        const opens = (s.officeWonAtTick || 0) + 9;
+        if (s.currentTick < opens) {
+          return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
+        }
       }
       if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
       if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
@@ -1327,22 +1331,48 @@ const GOVERNMENT_RUNGS = [
   },
   {
     name: 'Mayor',
-    held:        ()  => false,
+    // Self-stamp at Experience >= 50 (20270706). Politician_office is
+    // intentionally untouched — the at_tick column is the source of
+    // truth for "held," matching the Magistrate / Appellate Justice
+    // pattern. Resignation is deferred; today Retire is the only way
+    // out once stamped.
+    held:        (s) => s.mayorAtTick != null,
     descIfHeld:  ()  => 'You are the mayor — running the city’s executive branch.',
     descIfNot:   ()  => 'Executive of a city. Budget, police, contracts, appointments — you run the place.',
+    actionIfNot: (s) => {
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 50) {
+        return { label: `Take Office · Need 50 Experience (${skill}/50)`, kind: 'disabled' };
+      }
+      return { label: 'Take Office', kind: 'primary', action: 'take-office-mayor' };
+    },
   },
   {
     name: 'Mayor of the Capital',
-    held:        ()  => false,
+    held:        (s) => s.mayorOfCapitalAtTick != null,
     descIfHeld:  ()  => 'You are the mayor of the capital — the biggest mayoralty in the country.',
     descIfNot:   ()  => 'The biggest mayoralty in the country. Often more visible on the national stage than ministers.',
+    actionIfNot: (s) => {
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 60) {
+        return { label: `Take Office · Need 60 Experience (${skill}/60)`, kind: 'disabled' };
+      }
+      return { label: 'Take Office', kind: 'primary', action: 'take-office-mayor-of-capital' };
+    },
   },
   {
     name: 'Regional Leader',
     tierName: 'APEX',
-    held:        ()  => false,
+    held:        (s) => s.regionalLeaderAtTick != null,
     descIfHeld:  ()  => 'You are the regional leader — commanding a regional budget and returning the Prime Minister’s calls.',
     descIfNot:   ()  => 'Executive of a province or region. Commands a regional budget, returns the Prime Minister’s calls.',
+    actionIfNot: (s) => {
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 75) {
+        return { label: `Take Office · Need 75 Experience (${skill}/75)`, kind: 'disabled' };
+      }
+      return { label: 'Take Office', kind: 'primary', action: 'take-office-regional-leader' };
+    },
   },
 ];
 
@@ -2239,6 +2269,13 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // Appellate Justice (20270701). Self-applied at 24-tick Magistrate
     // tenure + Experience (politician_skill) ≥ 35. Stamp never cleared.
     appellateJusticeAtTick:  ctx?.faction?.politician_appellate_justice_at_tick ?? null,
+    // Local Politics jumpstart stamps (20270706). Experience-gated
+    // self-applies on Mayor (≥50), Mayor of the Capital (≥60), and
+    // Regional Leader (≥75). All one-shot; politician_office not
+    // touched (the at_tick column is the source of truth).
+    mayorAtTick:                  ctx?.faction?.politician_mayor_at_tick ?? null,
+    mayorOfCapitalAtTick:         ctx?.faction?.politician_mayor_of_capital_at_tick ?? null,
+    regionalLeaderAtTick:         ctx?.faction?.politician_regional_leader_at_tick ?? null,
     // State Prosecutor (20270532) — parallel sidestep to the bench
     // path. 35 Rep + 25 Influence threshold (no spend), Experienced Advocate
     // prereq. Doesn't gate or unlock Magistrate.
@@ -2844,6 +2881,31 @@ function bindRungActions(ctx) {
     pendingLabel:  'Resigning…',
     errorPrefix:   'Could not resign',
     confirm:       'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.',
+  });
+  // Local Politics jumpstart self-stamps (20270706). Same shape as
+  // the judicial bench takes-office — disable-on-click, RPC call,
+  // reload on success so the rung flips to held + the topbar career
+  // pill updates. No confirm dialog; one-shot stamps are forward-only.
+  bindCareerClimbAction({
+    action:        'take-office-mayor',
+    rpc:           'politician_take_office_mayor',
+    restingLabel:  'Take Office',
+    pendingLabel:  'Taking office…',
+    errorPrefix:   'Could not take office as Mayor',
+  });
+  bindCareerClimbAction({
+    action:        'take-office-mayor-of-capital',
+    rpc:           'politician_take_office_mayor_of_capital',
+    restingLabel:  'Take Office',
+    pendingLabel:  'Taking office…',
+    errorPrefix:   'Could not take office as Mayor of the Capital',
+  });
+  bindCareerClimbAction({
+    action:        'take-office-regional-leader',
+    rpc:           'politician_take_office_regional_leader',
+    restingLabel:  'Take Office',
+    pendingLabel:  'Taking office…',
+    errorPrefix:   'Could not take office as Regional Leader',
   });
   bindSeekStateAdvocateAction();
 }
