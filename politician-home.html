@@ -1133,9 +1133,19 @@
    horizontally. These overrides re-flow the whole surface into a
    ~95vw vertical stack with thumb-sized hit targets. */
 @media (max-width: 720px) {
-  /* Frame: nearly full-bleed, minimal gutter */
-  .trial-back  { padding:8px; }
-  .trial-modal { border-radius:6px; max-height:calc(100vh - 16px); }
+  /* Frame: nearly full-bleed, minimal gutter. The backdrop becomes
+     the scrolling container — desktop pins the modal at max-height
+     :96vh with internal chat scroll, but on mobile that traps the
+     header + hand outside the viewport with no way to reach them.
+     align-items:flex-start anchors the modal at the top of the
+     viewport so the title is the first thing you see; the whole
+     stack (head, overview, chat, input, hand) becomes one tall
+     column you can pan up and down with normal scroll gestures. */
+  .trial-back  { padding:8px; overflow-y:auto;
+                 align-items:flex-start; -webkit-overflow-scrolling:touch; }
+  .trial-modal { border-radius:6px; max-height:none; overflow:visible; }
+  #trial-content { max-height:none; }
+  .trial-chat  { overflow:visible; flex:0 0 auto; min-height:0; }
 
   /* Header — stack info above the turn pill so neither truncates */
   .trial-head { padding:13px 14px 11px; gap:9px; flex-wrap:wrap; }
@@ -1349,7 +1359,14 @@ const CAREER_EVENT_TEMPLATES = {
       case 'parliament':
         return `${name} has decided to stand for an election, running for the ${seat} seat against ${opp}.`;
       case 'city_council':
-        return `${name} has filed to run for a City Council seat against ${opp}.`;
+        // 20270721: target now carries the city name (e.g. "Puerto
+        // Rey") since the CCM race picks a specific city. Legacy
+        // rows that pre-date the picker have target = "City Council
+        // seat" — the fallback handles the awkward "in City Council
+        // seat" wording by stripping it.
+        return seat && seat !== 'City Council seat'
+          ? `${name} has filed to run for a City Council seat in ${seat} against ${opp}.`
+          : `${name} has filed to run for a City Council seat against ${opp}.`;
       case 'city_council_president':
         return `${name} has filed to run for the City Council Presidency against ${opp}.`;
       case 'senior_mp':
@@ -1379,7 +1396,9 @@ const CAREER_EVENT_TEMPLATES = {
       case 'city_council_president':
         return `${name} won the City Council Presidency${opp}.`;
       case 'city_council':
-        return `${name} won a City Council seat${opp}.`;
+        return target && target !== 'City Council seat'
+          ? `${name} won a City Council seat in ${target}${opp}.`
+          : `${name} won a City Council seat${opp}.`;
       case 'senior_mp':
         return `${name} won the Senior MP nomination${opp}.`;
       default:
@@ -1398,7 +1417,9 @@ const CAREER_EVENT_TEMPLATES = {
       case 'city_council_president':
         return `${name} lost the City Council Presidency${opp}.`;
       case 'city_council':
-        return `${name} lost a City Council race${opp}.`;
+        return target && target !== 'City Council seat'
+          ? `${name} lost the City Council race in ${target}${opp}.`
+          : `${name} lost a City Council race${opp}.`;
       case 'senior_mp':
         return `${name} lost the Senior MP nomination${opp}.`;
       default:
@@ -3617,15 +3638,21 @@ async function initNationChat() {
   if (selfBadge) selfBadge.textContent = ini;
   if (selfName)  selfName.textContent  = last || first || politician.faction_name || 'You';
 
-  // 4. Member count — fuzzy "X online" proxy until presence tracking lands.
+  // 4. Politician count for this nation. Counts straight off factions
+  // (source of truth) rather than the group_chat_members denormalized
+  // join — same number either way (the 20270469 trigger auto-enrolls
+  // every active politician), but reading the source avoids depending
+  // on the chat enrollment side effect being intact.
   const { count: memberCount, error: countErr } = await _supabase
-    .from('group_chat_members')
-    .select('faction_id', { count: 'exact', head: true })
-    .eq('chat_id', nationChatId);
+    .from('factions')
+    .select('id', { count: 'exact', head: true })
+    .eq('nation_id', politician.nation_id)
+    .eq('faction_type', 'politician')
+    .is('abandoned_at', null);
   const onlineEl = document.getElementById('nc-online');
   if (onlineEl) {
     if (countErr) onlineEl.textContent = '—';
-    else          onlineEl.textContent = `${memberCount || 0} MEMBER${memberCount === 1 ? '' : 'S'}`;
+    else          onlineEl.textContent = `${memberCount || 0} POLITICIAN${memberCount === 1 ? '' : 'S'}`;
   }
 
   await loadChatMessages();

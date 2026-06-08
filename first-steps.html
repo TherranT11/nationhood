@@ -63,12 +63,6 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .nation-card__body { padding: 10px 12px; }
 .nation-card__desc { font-size: 11px; color: var(--text-dim); line-height: 1.5;
   margin-bottom: 8px; font-style: italic; }
-/* Nations not yet open for politician origin render disabled — visibly
-   dim, ignore clicks. Allowlist lives in POLITICIAN_ALLOWED_NATIONS
-   (single source). Click-target on a disabled card no-ops in the
-   render handler too, so the visual + behavioural sides agree. */
-.nation-card.disabled { opacity: 0.35; cursor: not-allowed; }
-.nation-card.disabled:hover { background: inherit; border-color: var(--border-1); }
 .parties-section { margin-top: 8px; padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.05); }
 .parties-section__head { font-family: var(--font-mono); font-size: 10px; font-weight: 700;
@@ -210,10 +204,10 @@ let allNations = [];
 let politiciansByNation = {};  // nation_id → count of active politicians
 let partiesByNation = {};      // nation_id → [{name, archetype, seats, popularity_pct}], sorted seats DESC
 
-// Nations open for politician origin. Cards for every other nation
-// render disabled (visually dim + click ignored). Extend the set as
-// new nations open up — one place to edit.
-const POLITICIAN_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla', 'Sierramar']);
+// Pre-20270725 a hard-coded POLITICIAN_ALLOWED_NATIONS Set lived
+// here. The column-driven nations.foundable_for_politician filter
+// in init() now drives the same behavior, schema-side, so this
+// list can never drift from the server gate.
 let currentContinent = 'Crucera';
 let selectedNation = null;
 let selectedGender = null;
@@ -234,7 +228,7 @@ async function init() {
       { data: pols,    error: polErr },
       { data: parties, error: partyErr },
     ] = await Promise.all([
-      _supabase.from('nations').select('id, name, continent, government_type, population, politician_gdp, flag_url, nation_profiles(flag_url)').order('name'),
+      _supabase.from('nations').select('id, name, continent, government_type, population, politician_gdp, flag_url, foundable_for_politician, nation_profiles(flag_url)').order('name'),
       _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
       // Movement parties feed the Political Parties section on each
       // nation card. Sort happens client-side (seats DESC) so a nation
@@ -247,7 +241,11 @@ async function init() {
     if (natErr) throw natErr;
     if (polErr) throw polErr;
     if (partyErr) throw partyErr;
-    allNations = nations || [];
+    // 20270725: only foundable nations land in allNations from here on
+    // out — the picker, the tier algorithm, and every downstream read
+    // all see the same filtered set. Adds a new nation = admin flips
+    // nations.foundable_for_politician = TRUE, no client edit.
+    allNations = (nations || []).filter(n => n.foundable_for_politician);
     politiciansByNation = {};
     for (const p of (pols || [])) {
       if (!p.nation_id) continue;
@@ -321,29 +319,21 @@ function govBadge(govType) {
   return { cls, label };
 }
 
-// Mirrors the server's tier algorithm (create_politician_with_tier_stats,
-// 20270693): sort ALL nations DESC by active-politician headcount, split
-// into thirds — top = A (basic), middle = B (boosted), bottom = C
-// (jumpstart). Tiebreaks here use nation id instead of random() so the
-// chip is deterministic between renders; the server's random tiebreak
-// only matters at INSERT time, and only when counts are tied across a
-// tier boundary. Returns a Map<nation_id, 'A'|'B'|'C'>.
+// Mirrors the server's tier algorithm (create_politician_with_tier
+// _stats, 20270725): absolute thresholds keyed off the target
+// nation's active-politician count. No cross-nation ranking — an
+// effectively-empty nation (< 5 politicians) always reads as Tier C
+// (jumpstart) regardless of how busy or sparse its neighbors are.
+//   C: count < 5    (jumpstart)
+//   B: 5 <= count < 15  (boosted)
+//   A: count >= 15  (basic)
+// Returns a Map<nation_id, 'A'|'B'|'C'>.
 function computeTierMap() {
-  const N = allNations.length;
   const out = new Map();
-  if (N === 0) return out;
-  const ranked = allNations
-    .map(n => ({ id: n.id, count: politiciansByNation[n.id] || 0 }))
-    .sort((a, b) => (b.count - a.count) || String(a.id).localeCompare(String(b.id)));
-  if (N === 1) { out.set(ranked[0].id, 'A'); return out; }
-  if (N === 2) { out.set(ranked[0].id, 'A'); out.set(ranked[1].id, 'C'); return out; }
-  const aSize = Math.max(1, Math.floor(N / 3));
-  const cSize = Math.max(1, Math.floor(N / 3));
-  ranked.forEach((r, i) => {
-    if (i < aSize)              out.set(r.id, 'A');
-    else if (i >= N - cSize)    out.set(r.id, 'C');
-    else                        out.set(r.id, 'B');
-  });
+  for (const n of allNations) {
+    const count = politiciansByNation[n.id] || 0;
+    out.set(n.id, count >= 15 ? 'A' : count >= 5 ? 'B' : 'C');
+  }
   return out;
 }
 
@@ -363,7 +353,9 @@ function renderNations() {
   const tierMap = computeTierMap();
   grid.innerHTML = list.map(n => {
     const sel = selectedNation && selectedNation.id === n.id ? ' selected' : '';
-    const dis = POLITICIAN_ALLOWED_NATIONS.has(n.name) ? '' : ' disabled';
+    // 20270725: list is pre-filtered to foundable_for_politician
+    // nations in init(), so every card is selectable — no .disabled
+    // state needed.
     const { cls, label } = govBadge(n.government_type);
     const desc = NATION_DESCRIPTIONS[n.name] || '';
     // Political Parties block — sorted seats DESC at load time. Empty
@@ -385,7 +377,7 @@ function renderNations() {
           </div>`;
         }).join('')
       : `<div class="parties-section__empty">None yet.</div>`;
-    return `<div class="nation-card${sel}${dis}" data-id="${n.id}">
+    return `<div class="nation-card${sel}" data-id="${n.id}">
       <div class="nation-card__header">
         <img class="nation-card__flag" src="${escAttr(flagFor(n))}" alt="" onerror="this.style.visibility='hidden'">
         <span class="nation-card__name">${escHtml(n.name)}</span>
@@ -411,10 +403,6 @@ function renderNations() {
   }).join('');
   grid.querySelectorAll('.nation-card').forEach(card => {
     card.addEventListener('click', () => {
-      // No-op on disabled cards. CSS sets cursor:not-allowed so the
-      // user can tell from the hover state; the early return keeps
-      // selection state untouched if they click through.
-      if (card.classList.contains('disabled')) return;
       const n = allNations.find(x => x.id === card.dataset.id);
       // Different nation → different name pool, so any prior name pick is stale.
       if (selectedNation && n && selectedNation.id !== n.id) {

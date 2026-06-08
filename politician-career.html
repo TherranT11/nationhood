@@ -4054,96 +4054,102 @@ async function confirmElection(ctx) {
 // are determined server-side at registration (1d6+1 Skill per
 // 20270709); the card shows the matchup descriptively rather than
 // pre-rolling.
-function openCityCouncilModal(ctx) {
+// 20270721: City Council Member race uses the same city picker
+// vocabulary as the Mayor flow (20270712). Loads EVERY city in the
+// nation — capital included, unlike the Mayor picker — and lets the
+// player pick which council to run for. Server-side validation +
+// city_id storage on politician_active_election lives in the same
+// register_for_office RPC.
+async function openCityCouncilModal(ctx) {
   const modal = document.getElementById('electionModal');
   if (!modal) return;
   const partyName = ctx?.party?.faction_name || 'your party';
   const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
-  const skillTxt  = fmtStat(skillVal);
+  const nationId  = ctx?.nation?.id || null;
+  const nationPop = Number(ctx?.nation?.population) || 0;
 
   modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · CITY COUNCIL MEMBER —';
   modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">City Council</span>';
-  document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · race resolves next tick`;
-  document.getElementById('em-body').innerHTML = renderCityCouncilCard(skillTxt);
+  document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · pick a city`;
+  document.getElementById('em-body').innerHTML = '<div class="em-loading">LOADING CITIES…</div>';
 
-  // Footer stat strip — match the existing picker's three blocks
-  // (labels are fixed in the markup; just refresh the values).
   const f = ctx.faction || {};
   document.getElementById('em-stat-infl').textContent = Math.floor(Number(f.politician_influence) || 0);
   document.getElementById('em-stat-cha' ).textContent = Number(f.politician_capital) || 0;
   document.getElementById('em-stat-cred').textContent = skillVal;
   document.getElementById('em-footer').style.display = '';
   const confirmBtn = document.getElementById('em-confirm');
-  confirmBtn.disabled = false;
+  confirmBtn.disabled = true;
   confirmBtn.innerHTML = '&#9873; RUN FOR ELECTION';
+  delete confirmBtn.dataset.cityId;
   confirmBtn.onclick = () => confirmCityCouncilRun(ctx);
 
   modal.classList.add('open');
   modal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
-  modal.querySelectorAll('[data-em-close]').forEach(btn => {
-    btn.onclick = closeElectionModal;
-  });
+  modal.querySelectorAll('[data-em-close]').forEach(btn => { btn.onclick = closeElectionModal; });
   modal.onclick = (e) => { if (e.target === modal) closeElectionModal(); };
   document.addEventListener('keydown', emEscHandler);
+
+  if (!nationId) {
+    document.getElementById('em-body').innerHTML = '<div class="em-error">No nation context — cannot load cities.</div>';
+    return;
+  }
+
+  // Capital is intentionally NOT filtered out — every city (capital +
+  // majors) has a council. Same select shape as the Mayor picker so
+  // mayorCityCard renders the contextual mayor / stats info verbatim.
+  const { data, error } = await _supabase.from('cities')
+    .select(`
+      id, city_type, city_name, description, population_pct,
+      mayor_first_name, mayor_last_name, mayor_archetype,
+      mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
+      budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+    `)
+    .eq('nation_id', nationId)
+    .order('city_type', { ascending: true });
+
+  if (error) {
+    document.getElementById('em-body').innerHTML =
+      `<div class="em-error">Could not load cities: ${escHtml(error.message || error)}</div>`;
+    return;
+  }
+  const cities = data || [];
+  if (!cities.length) {
+    document.getElementById('em-body').innerHTML =
+      '<div class="em-error">No cities in your nation yet.</div>';
+    return;
+  }
+  document.getElementById('em-body').innerHTML = renderCityCouncilPicker(cities, nationPop, skillVal);
+
+  const grid = document.getElementById('em-body').querySelector('.city-pick-grid');
+  grid.querySelectorAll('.city-pick-card').forEach(card => {
+    card.addEventListener('click', () => {
+      grid.querySelectorAll('.city-pick-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      confirmBtn.disabled = false;
+      confirmBtn.dataset.cityId = card.dataset.cityId;
+    });
+  });
 }
 
-function renderCityCouncilCard(skillTxt) {
-  // Single focused card — no .em-options grid wrapping, no click-to-
-  // select. The em-opt.community styling carries the same green
-  // accent the user already associates with local-tier races.
+function renderCityCouncilPicker(cities, nationPop, skillVal) {
+  // Reuses mayorCityCard — the per-city contextual info (mayor /
+  // party / stats / budget) is what the player needs to make the
+  // pick regardless of which seat they're chasing. Intro copy
+  // covers the CCM-specific dice + stakes + 12-tick term.
+  const cards = cities.map(c => mayorCityCard(c, nationPop)).join('');
   return `
-    <div class="em-options" style="grid-template-columns:1fr;">
-      <div class="em-opt community selected" data-tier="city_council">
-        <div class="em-opt-head">
-          <div class="em-opt-eyebrow">LOCAL STAKES · CITY COUNCIL</div>
-          <div class="em-opt-title">City Council Member · <span class="serif">Local Ward</span></div>
-          <div class="em-opt-blurb">An elected seat on the city council — you vote on local budgets and ordinances. Steps up from a Community Organizer term.</div>
-        </div>
-        <div class="em-opt-detail">
-          <div class="em-det-row">
-            <span class="em-det-lab">OPPONENT</span>
-            <div style="flex:1;">
-              <div class="em-opp-block">
-                <div class="em-opp-badge" style="background:#101010;color:#9a9a9a;border:0.5px solid rgba(255,255,255,0.07);">?</div>
-                <div class="em-opp-info">
-                  <div class="em-opp-name">Auto-generated candidate</div>
-                  <div class="em-opp-from">Independent · drawn at registration with Experience 1d6 + 1</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="em-det-row">
-            <span class="em-det-lab">TIMEFRAME</span>
-            <span class="em-det-val">1 tick</span>
-          </div>
-          <div class="em-matchup">
-            <div class="em-match-lab">EXPERIENCE MATCHUP</div>
-            <div class="em-match-row">
-              <div class="em-match-side em-match-you">
-                <div class="em-match-who">YOU</div>
-                <div class="em-match-val">${escHtml(skillTxt)}</div>
-                <div class="em-match-stat">Experience</div>
-              </div>
-              <span class="em-match-vs">VS</span>
-              <div class="em-match-side">
-                <div class="em-match-who">CANDIDATE</div>
-                <div class="em-match-val">2-7</div>
-                <div class="em-match-stat">Experience (1d6 + 1)</div>
-              </div>
-            </div>
-          </div>
-          <div class="em-stakes">
-            <div class="em-stake win">
-              <div class="em-stake-lab">IF YOU WIN</div>
-              <div class="em-stake-val">+1 Reputation · +1 Party Popularity · +1 Pop. Ceiling · +$100K Party Funds · 12-tick term</div>
-            </div>
-            <div class="em-stake zero">
-              <div class="em-stake-lab">IF YOU LOSE</div>
-              <div class="em-stake-val">No cost</div>
-            </div>
-          </div>
-        </div>
+    <div class="em-intro">
+      <strong>Pick a city to run for a Council seat.</strong> The seat pays
+      <span class="cred">+1 Experience · +1 Party Popularity · +1 Pop. Ceiling · +$100K Party Funds</span>
+      on a win, and runs a <strong>12-tick term</strong>. Your <span class="cred">Experience</span> (currently ${skillVal}) is matched against an auto-generated challenger rolling <strong>1d6 + 1</strong> (Experience 2–7).
+    </div>
+    <div class="city-pick-grid">${cards}</div>
+    <div class="em-confirm-band">
+      <div class="em-cb-icon">&#9873;</div>
+      <div class="em-cb-text">
+        Click a city above to select it, then press <strong>Run for Election</strong>. The race resolves next tick.
       </div>
     </div>`;
 }
@@ -4237,7 +4243,7 @@ function renderMayorCityPicker(cities, nationPop, skillVal) {
     <div class="em-intro">
       <strong>Pick a city to run for Mayor.</strong> The chair pays
       <span class="cred">+1 Experience · +2% Party Popularity · +$200K Party Funds</span>
-      on a win. Your <span class="cred">Experience</span> (currently ${skillVal}) is matched against an auto-generated challenger rolling <strong>45 + 1d10</strong> (Experience 46–55).
+      on a win, plus <span class="cred">+3% to your party's approval ceiling</span> (+5% if it's the capital) for as long as you hold the seat. Your <span class="cred">Experience</span> (currently ${skillVal}) is matched against an auto-generated challenger rolling <strong>45 + 1d10</strong> (Experience 46–55).
     </div>
     <div class="city-pick-grid">${cards}</div>
     <div class="em-confirm-band">
@@ -4327,12 +4333,17 @@ async function confirmMayorRun(ctx) {
 async function confirmCityCouncilRun(ctx) {
   const btn = document.getElementById('em-confirm');
   if (!btn) return;
+  const cityId = btn.dataset.cityId;
+  if (!cityId) { alert('Pick a city first.'); return; }
   btn.disabled = true;
   const originalLabel = btn.innerHTML;
   btn.textContent = 'Registering…';
   try {
-    const { data, error } = await _supabase.rpc('politician_register_for_office',
-      { p_faction_id: ctx?.faction?.id || null, p_target_office: 'city_council_member' });
+    const { data, error } = await _supabase.rpc('politician_register_for_office', {
+      p_faction_id:    ctx?.faction?.id || null,
+      p_target_office: 'city_council_member',
+      p_city_id:       cityId,
+    });
     if (error) throw error;
     if (!data?.success) {
       const REASON = {
@@ -4345,6 +4356,8 @@ async function confirmCityCouncilRun(ctx) {
         too_early:             data.opens_at_tick
                                  ? `Registration opens at tick ${data.opens_at_tick}.`
                                  : 'Your Community Organizer term is still settling in.',
+        city_required:         'Pick a city before confirming.',
+        invalid_city:          'That city no longer exists or belongs to another nation.',
         invalid_target_office: 'Unknown target office.',
         no_shard:              'Game state unavailable. Try again.',
       };

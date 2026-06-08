@@ -174,6 +174,31 @@
 .fp-arch-detail .nm { font-size:13px; font-weight:600; color:#fff; margin-bottom:7px; }
 .fp-arch-detail .ds { font-size:11px; color:#9a9a9a; line-height:1.55; font-style:italic; }
 
+/* Big Tent sub-picker (20270720). Visually nested under the Big Tent
+   detail panel — gold accent matches the archetype color so it reads
+   as a continuation, not a separate step. Sub-cards reuse the .fp-arch
+   shape but flag .fp-sub for multi-select state (gold border when on,
+   tier-2 dim color on the .an label). */
+.fp-subarch { background:#0a0a0a; border:0.5px solid rgba(212,184,120,0.25);
+  border-radius:6px; padding:14px 16px; margin-bottom:22px; }
+.fp-subarch-head { font-size:10px; letter-spacing:0.14em; color:#d4b878;
+  text-transform:uppercase; font-weight:600; font-family:monospace; margin-bottom:11px; }
+.fp-subarch-head strong { color:#f0d098; font-weight:700; }
+.fp-subarch-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; margin-bottom:10px; }
+.fp-sub { border:0.5px solid rgba(255,255,255,0.07); border-radius:6px;
+  padding:9px 7px; cursor:pointer; text-align:center; transition:all 0.15s;
+  background:#0d0d0d; }
+.fp-sub:hover:not(.locked) { background:#131313; }
+.fp-sub.sel { border-color:#d4b878; background:rgba(212,184,120,0.12); }
+.fp-sub.locked:not(.sel) { opacity:0.35; cursor:not-allowed; }
+.fp-sub .ai { font-size:13px; margin-bottom:4px; line-height:1; }
+.fp-sub .an { font-size:9px; font-weight:600; line-height:1.2; color:#aaa;
+  text-transform:uppercase; letter-spacing:0.04em; }
+.fp-sub.sel .an { color:#f0d098; }
+.fp-subarch-hint { font-size:9px; letter-spacing:0.1em; color:#888;
+  text-align:right; font-family:monospace; }
+.fp-subarch-hint.full { color:#d4b878; }
+
 .fp-summary { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px;
   padding:16px; margin-bottom:18px; }
 .fp-sum-lab { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:10px; }
@@ -346,13 +371,23 @@
       <div class="fp-lab"><span class="step">2</span> CHOOSE YOUR ARCHETYPE</div>
       <div class="fp-arch-grid" id="fp-arch-grid"></div>
       <div class="fp-arch-detail" id="fp-arch-detail" style="display:none;"></div>
+      <!-- Big Tent sub-picker (20270720) — hidden by default, revealed
+           when the user picks the Big Tent archetype. Lets them pick
+           exactly 3 of the other 10 archetypes; the names are joined
+           into the composite "Big Tent · A / B / C" archetype string
+           the server stores verbatim. -->
+      <div class="fp-subarch" id="fp-subarch" style="display:none;">
+        <div class="fp-subarch-head">PICK <strong>3 BANNERS</strong> YOUR PARTY EMBRACES</div>
+        <div class="fp-subarch-grid" id="fp-subarch-grid"></div>
+        <div class="fp-subarch-hint" id="fp-subarch-hint">0 / 3 selected</div>
+      </div>
     </div>
     <div class="fp-foot">
       <div>
         <div class="fp-cost">
           <div><div class="lab">YOUR INFLUENCE</div><div class="val have" id="fp-cost-have">0</div></div>
           <span class="arrow">/</span>
-          <div><div class="lab">REQUIRED</div><div class="val need">100</div></div>
+          <div><div class="lab">REQUIRED</div><div class="val need" id="fp-cost-required">100</div></div>
         </div>
         <div class="fp-gate" id="fp-gate">Requires 100 Influence. Founding does not deduct.</div>
         <div class="fp-err" id="fp-err"></div>
@@ -639,9 +674,23 @@ const FP_ARCHETYPES = [
     desc:'Against the elites, whoever they happen to be this week. Volatile and leader-driven.' },
   { key:'cen',  name:'Centrist',              color:'#aaaaaa', logo:'◎',
     desc:'Competent, pragmatic management of the middle. A frequent kingmaker in coalition talks.' },
+  // 20270720: Big Tent. Meta-archetype — the founder picks 3 of the
+  // 10 above and the party publicly embraces all three. Costs 90
+  // Influence to found (10 less than the single-banner default).
+  { key:'big',  name:'Big Tent',               color:'#d4b878', logo:'⛺',
+    desc:'A broad coalition. Three banners under one tent — your party publicly embraces them all and pays a smaller political toll to form.' },
 ];
 
+const BIG_TENT_KEY = 'big';
+const BIG_TENT_COST = 90;
+const STANDARD_COST = 100;
+
 let _fpArchKey = 'ref';
+// 20270720: sub-archetype set when Big Tent is the primary. Holds up
+// to 3 keys from FP_ARCHETYPES (excluding Big Tent itself). Cleared
+// whenever the primary changes away from Big Tent so a stale set
+// can't leak into a single-banner submit.
+const _fpSubKeys = new Set();
 
 // 20270714: revived. _foundedMovementId blocks founding a second
 // movement while the first is still alive (the same rule the server
@@ -680,33 +729,46 @@ function bindFoundModal() {
   document.getElementById('fp-submit').addEventListener('click', submitFound);
 }
 
-function openFoundModal() {
-  // Influence + already-founded gate. Both are blockers but for different
-  // reasons — surface specific messaging instead of a generic "disabled".
-  const ov = document.getElementById('fp-overlay');
-  const haveEl  = document.getElementById('fp-cost-have');
-  const gateEl  = document.getElementById('fp-gate');
-  const errEl   = document.getElementById('fp-err');
+function currentFoundCost() {
+  // 20270720: Big Tent founding pays 90 Influence; everything else pays
+  // 100. Single source for the gate copy + footer label + submit-disable
+  // math so the modal stays in sync as the user toggles primary archetype.
+  return _fpArchKey === BIG_TENT_KEY ? BIG_TENT_COST : STANDARD_COST;
+}
+
+function refreshGateCopy() {
+  const cost   = currentFoundCost();
+  const haveEl = document.getElementById('fp-cost-have');
+  const needEl = document.getElementById('fp-cost-required');
+  const gateEl = document.getElementById('fp-gate');
   haveEl.textContent = String(_myInfluence);
-  haveEl.classList.toggle('have', _myInfluence >= 100);
-  haveEl.classList.toggle('need', _myInfluence <  100);
-  errEl.textContent = '';
+  haveEl.classList.toggle('have', _myInfluence >= cost);
+  haveEl.classList.toggle('need', _myInfluence <  cost);
+  if (needEl) needEl.textContent = String(cost);
 
   if (_foundedMovementId) {
     gateEl.textContent = 'You already lead an active movement. Abandon it before founding another.';
     gateEl.classList.add('bad');
   } else if (_myPartyId) {
-    // Founding is restricted to independents so it can't double as a free
-    // exit from an existing party (the -5 leave cost would be skipped).
     gateEl.textContent = 'Leave your current party first — founding while affiliated would skip the -5 leave cost.';
     gateEl.classList.add('bad');
-  } else if (_myInfluence < 100) {
-    gateEl.textContent = `Requires 100 Influence. You have ${_myInfluence}.`;
+  } else if (_myInfluence < cost) {
+    gateEl.textContent = `Requires ${cost} Influence${cost === BIG_TENT_COST ? ' (Big Tent discount)' : ''}. You have ${_myInfluence}.`;
     gateEl.classList.add('bad');
   } else {
-    gateEl.textContent = 'Costs 100 Influence — deducted on success.';
+    gateEl.textContent = cost === BIG_TENT_COST
+      ? 'Costs 90 Influence (Big Tent discount) — deducted on success.'
+      : 'Costs 100 Influence — deducted on success.';
     gateEl.classList.remove('bad');
   }
+}
+
+function openFoundModal() {
+  // Influence + already-founded gate. Both are blockers but for different
+  // reasons — surface specific messaging instead of a generic "disabled".
+  const ov = document.getElementById('fp-overlay');
+  document.getElementById('fp-err').textContent = '';
+  refreshGateCopy();
 
   renderArchetypeGrid();
   selectArchetype(_fpArchKey);
@@ -737,8 +799,14 @@ function renderArchetypeGrid() {
 }
 
 function selectArchetype(key) {
+  // 20270720: only wipe sub-picks when the PRIMARY actually changes —
+  // re-clicking the same Big Tent card shouldn't blow away the user's
+  // in-progress 3-banner selection. The wipe still fires on any move
+  // off Big Tent so a stale set can't leak into a single-banner submit.
+  const changed = _fpArchKey !== key;
   _fpArchKey = key;
   const a = FP_ARCHETYPES.find(x => x.key === key) || FP_ARCHETYPES[0];
+  if (changed) _fpSubKeys.clear();
   renderArchetypeGrid();
   const det = document.getElementById('fp-arch-detail');
   det.style.display = '';
@@ -746,6 +814,52 @@ function selectArchetype(key) {
   det.style.background  = `${a.color}10`;
   det.innerHTML = `<div class="nm" style="color:${a.color};">${escHtml(a.name)}</div>
     <div class="ds">${escHtml(a.desc)}</div>`;
+
+  // Reveal / hide the sub-picker block.
+  const sub = document.getElementById('fp-subarch');
+  if (key === BIG_TENT_KEY) {
+    sub.style.display = '';
+    renderSubArchetypeGrid();
+  } else {
+    sub.style.display = 'none';
+  }
+
+  refreshGateCopy();
+  updateFoundPreview();
+}
+
+// 20270720: Render the 10-card multi-select for the Big Tent
+// sub-archetypes. Selected cards get the gold accent; once 3 are
+// picked the remaining 7 lock visually so the cap is unambiguous.
+function renderSubArchetypeGrid() {
+  const grid = document.getElementById('fp-subarch-grid');
+  const subs = FP_ARCHETYPES.filter(x => x.key !== BIG_TENT_KEY);
+  const full = _fpSubKeys.size >= 3;
+  grid.innerHTML = subs.map(a => {
+    const on = _fpSubKeys.has(a.key);
+    const cls = `fp-sub${on ? ' sel' : ''}${full && !on ? ' locked' : ''}`;
+    const iconStyle = `color:${a.color};`;
+    return `<div class="${cls}" data-sub="${a.key}">
+      <div class="ai" style="${iconStyle}">${a.logo}</div>
+      <div class="an">${escHtml(a.name)}</div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.fp-sub').forEach(el => {
+    el.addEventListener('click', () => toggleSubArchetype(el.dataset.sub));
+  });
+  const hint = document.getElementById('fp-subarch-hint');
+  hint.textContent = `${_fpSubKeys.size} / 3 selected`;
+  hint.classList.toggle('full', _fpSubKeys.size === 3);
+}
+
+function toggleSubArchetype(key) {
+  if (_fpSubKeys.has(key)) {
+    _fpSubKeys.delete(key);
+  } else {
+    if (_fpSubKeys.size >= 3) return; // cap; locked cards already block this
+    _fpSubKeys.add(key);
+  }
+  renderSubArchetypeGrid();
   updateFoundPreview();
 }
 
@@ -760,8 +874,11 @@ function updateFoundPreview() {
   logo.style.color        = a.color;
   logo.style.borderColor  = `${a.color}66`;
 
-  const canFound = !_foundedMovementId && !_myPartyId && _myInfluence >= 100
-                && name.length >= 2 && abbr.length >= 1;
+  const cost = currentFoundCost();
+  const subPickComplete = _fpArchKey !== BIG_TENT_KEY || _fpSubKeys.size === 3;
+  const canFound = !_foundedMovementId && !_myPartyId && _myInfluence >= cost
+                && name.length >= 2 && abbr.length >= 1
+                && subPickComplete;
   document.getElementById('fp-submit').disabled = !canFound;
 }
 
@@ -778,6 +895,25 @@ async function submitFound() {
     errEl.textContent = 'Pick a name and an abbreviation.';
     return;
   }
+  // 20270720: pack the Big Tent composite archetype string. The
+  // server detects "Big Tent" prefix to charge 90 Influence; the
+  // display surfaces just print the string verbatim. Cancel if the
+  // sub-pick is incomplete — the submit button is gated on this in
+  // updateFoundPreview, defensive double-check.
+  let archetypeLabel;
+  if (_fpArchKey === BIG_TENT_KEY) {
+    if (_fpSubKeys.size !== 3) {
+      errEl.textContent = 'Pick exactly 3 banners for the Big Tent.';
+      return;
+    }
+    const subNames = FP_ARCHETYPES
+      .filter(x => _fpSubKeys.has(x.key))
+      .map(x => x.name);
+    archetypeLabel = `Big Tent · ${subNames.join(' / ')}`;
+  } else {
+    archetypeLabel = a.name;
+  }
+
   const prev = btn.textContent;
   btn.disabled = true; btn.textContent = 'Founding…';
   try {
@@ -786,7 +922,7 @@ async function submitFound() {
       p_name:          name,
       p_abbreviation:  abbr,
       p_description:   desc,
-      p_archetype:     a.name,
+      p_archetype:     archetypeLabel,
       p_party_color:   a.color,
       p_party_logo:    a.logo,
     });
@@ -794,7 +930,7 @@ async function submitFound() {
     if (!data || !data.success) {
       const reason = data?.reason || 'unknown';
       const msg = ({
-        insufficient_influence: `Need 100 Influence to found. You have ${data?.have || 0}.`,
+        insufficient_influence: `Need ${data?.required || currentFoundCost()} Influence to found. You have ${data?.have || 0}.`,
         already_affiliated:     'Leave your current party first — founding while affiliated would skip the -5 leave cost.',
         already_founded:        'You already lead an active movement. Abandon it before founding another.',
         invalid_name:           'Party name must be 2–80 characters.',
