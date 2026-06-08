@@ -3617,15 +3617,21 @@ async function initNationChat() {
   if (selfBadge) selfBadge.textContent = ini;
   if (selfName)  selfName.textContent  = last || first || politician.faction_name || 'You';
 
-  // 4. Member count — fuzzy "X online" proxy until presence tracking lands.
+  // 4. Politician count for this nation. Counts straight off factions
+  // (source of truth) rather than the group_chat_members denormalized
+  // join — same number either way (the 20270469 trigger auto-enrolls
+  // every active politician), but reading the source avoids depending
+  // on the chat enrollment side effect being intact.
   const { count: memberCount, error: countErr } = await _supabase
-    .from('group_chat_members')
-    .select('faction_id', { count: 'exact', head: true })
-    .eq('chat_id', nationChatId);
+    .from('factions')
+    .select('id', { count: 'exact', head: true })
+    .eq('nation_id', politician.nation_id)
+    .eq('faction_type', 'politician')
+    .is('abandoned_at', null);
   const onlineEl = document.getElementById('nc-online');
   if (onlineEl) {
     if (countErr) onlineEl.textContent = '—';
-    else          onlineEl.textContent = `${memberCount || 0} MEMBER${memberCount === 1 ? '' : 'S'}`;
+    else          onlineEl.textContent = `${memberCount || 0} POLITICIAN${memberCount === 1 ? '' : 'S'}`;
   }
 
   await loadChatMessages();
