@@ -73,22 +73,38 @@
 .city-detail-stat-val { font-size:12px; color:#e6e6e6; font-weight:700;
   font-family:Georgia,serif; }
 
-/* Council placeholder. Vacant slots render as a row each with a dim
-   role label + faded value — clearly inactive without looking like a
-   bug. The per-city council assignment will fill these in when the
-   schema work lands. */
-.city-detail-council { display:grid; grid-template-columns:repeat(2, 1fr);
-  gap:8px; }
-.city-detail-council-row { display:flex; align-items:center; gap:10px;
-  padding:10px 12px; background:#0d0a08;
-  border:0.5px solid rgba(255,255,255,0.04); border-radius:4px; }
+/* Council seats — president + 3 members. President spans the full
+   row at the top so it reads as the chair; the three member seats
+   share a 3-column grid below it. Each row carries a role label,
+   the seated name, an optional party chip + archetype line, and
+   age. Player-held seats get a gold accent on the role label so
+   they're visually distinct from NPC seats. */
+.city-detail-council { display:flex; flex-direction:column; gap:8px; }
+.city-detail-council-row { display:flex; align-items:flex-start; gap:14px;
+  padding:11px 14px; background:#0d0a08;
+  border:0.5px solid rgba(255,255,255,0.05); border-radius:4px;
+  min-width:0; }
+.city-detail-council-row.is-player { border-color:rgba(200,166,78,0.35); }
 .city-detail-council-role { font-size:9px; color:#888; letter-spacing:0.1em;
   text-transform:uppercase; font-weight:600; font-family:monospace;
-  flex:1; min-width:0; }
-.city-detail-council-name { font-size:11px; color:#555; font-family:monospace;
-  letter-spacing:0.08em; text-transform:uppercase; font-weight:600; }
-.city-detail-council-note { margin-top:10px; font-size:10px; color:#666;
-  font-family:monospace; letter-spacing:0.04em; font-style:italic; text-align:center; }
+  flex-shrink:0; padding-top:2px; width:110px; }
+.city-detail-council-row.is-player .city-detail-council-role { color:#c8a64e; }
+.city-detail-council-body { flex:1; min-width:0; display:flex;
+  flex-direction:column; gap:3px; }
+.city-detail-council-name { font-size:13px; color:#d4d4d4; font-weight:600;
+  font-family:Georgia,serif; }
+.city-detail-council-meta { font-size:9px; color:#888; letter-spacing:0.04em;
+  font-family:monospace; }
+.city-detail-council-meta .party { display:inline-block; font-size:9px;
+  color:#dcb88a; background:rgba(200,166,78,0.08);
+  border:0.5px solid rgba(200,166,78,0.25); padding:1px 5px; border-radius:3px;
+  letter-spacing:0.08em; font-weight:700; margin-right:5px; }
+.city-detail-council-members { display:grid; grid-template-columns:repeat(3, 1fr);
+  gap:8px; }
+@media (max-width: 720px) {
+  .city-detail-council-members { grid-template-columns:1fr; }
+  .city-detail-council-role { width:90px; }
+}
 
 .city-detail-error { padding:48px 24px; text-align:center; color:#c87a7a;
   font-family:monospace; font-size:12px; letter-spacing:0.08em; }
@@ -118,15 +134,16 @@ import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-label
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
-// Single source for the council slate. 1 CCP + 3 CCMs per user spec.
-// Names stay "Vacant" until factions get a per-city link for local
-// offices; politician_office='city_council_*' is nation-level today.
-const COUNCIL_SLATE = [
-  { role: 'City Council President' },
-  { role: 'City Council Member · Seat 1' },
-  { role: 'City Council Member · Seat 2' },
-  { role: 'City Council Member · Seat 3' },
-];
+// 20270722: council seats now ship populated. The cities.council
+// jsonb column carries a 4-element array (president + 3 members)
+// with NPC seeds + denormalized party info. Player CCM/CCP wins
+// stamp into the array; reads here just render whatever's there.
+const COUNCIL_ROLE_LABEL = {
+  president: 'City Council President',
+  member_1:  'CC Member · Seat 1',
+  member_2:  'CC Member · Seat 2',
+  member_3:  'CC Member · Seat 3',
+};
 
 async function init() {
   const params = new URLSearchParams(location.search);
@@ -158,7 +175,7 @@ async function init() {
         mayor_first_name, mayor_last_name, mayor_age, mayor_archetype,
         mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
         budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability,
-        mayor_term_end_tick
+        mayor_term_end_tick, council
       `)
       .eq('id', cityId)
       .maybeSingle();
@@ -226,11 +243,7 @@ function renderCityDetail(c, nation, currentTick) {
       <span class="city-detail-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
     </div>`).join('');
 
-  const councilRows = COUNCIL_SLATE.map(s => `
-    <div class="city-detail-council-row">
-      <span class="city-detail-council-role">${escHtml(s.role)}</span>
-      <span class="city-detail-council-name">Vacant</span>
-    </div>`).join('');
+  const councilHtml = renderCouncil(c.council, currentTick);
 
   document.getElementById('city-detail').innerHTML = `
     <div class="city-detail-head">
@@ -266,8 +279,63 @@ function renderCityDetail(c, nation, currentTick) {
 
     <div class="city-detail-section">
       <div class="city-detail-section-head">City Council</div>
-      <div class="city-detail-council">${councilRows}</div>
-      <div class="city-detail-council-note">Per-city council assignments coming soon — local offices are nation-wide for now.</div>
+      ${councilHtml}
+    </div>`;
+}
+
+// 20270722: render the 4-seat council. Presidency stretches across
+// the row above the 3 member seats. Each seat either reads as the
+// seeded NPC or — when a player has won the seat — flips a gold
+// accent on the role label + a "Term ends Month Year" sub-line.
+// Empty / malformed council gets a graceful "Records unavailable"
+// fallback so a not-yet-seeded city doesn't render as nothing.
+function renderCouncil(council, currentTick) {
+  if (!Array.isArray(council) || council.length === 0) {
+    return `<div class="city-detail-council-note">Council records are still being compiled.</div>`;
+  }
+  const president = council.find(s => s?.seat === 'president');
+  const members   = council.filter(s => s?.seat && s.seat.startsWith('member_'));
+  const presHtml = president ? councilSeatRow(president, currentTick) : '';
+  const memberHtml = members.length
+    ? `<div class="city-detail-council-members">${members.map(s => councilSeatRow(s, currentTick)).join('')}</div>`
+    : '';
+  return `<div class="city-detail-council">${presHtml}${memberHtml}</div>`;
+}
+
+function councilSeatRow(seat, currentTick) {
+  const role     = COUNCIL_ROLE_LABEL[seat.seat] || seat.seat || 'Council';
+  const first    = seat.first_name || '';
+  const last     = seat.last_name  || '';
+  const name     = `${first} ${last}`.trim() || '—';
+  const age      = Number.isFinite(Number(seat.age)) ? Number(seat.age) : null;
+  const partyAbbr = seat.party_abbr || seat.party_name || '';
+  const partyChip = partyAbbr
+    ? `<span class="party">${escHtml(partyAbbr)}</span>` : '';
+  const archetype = seat.archetype || '';
+  const isPlayer  = !!seat.holder_faction_id;
+  const termEndTick = Number.isFinite(Number(seat.term_end_tick)) ? Number(seat.term_end_tick) : null;
+  let termLine = '';
+  if (termEndTick != null) {
+    const ticks = termEndTick - currentTick;
+    if (ticks > 0) {
+      termLine = ` · Term ends ${escHtml(tickToDate(termEndTick))} · ${ticks} month${ticks === 1 ? '' : 's'} left`;
+    } else {
+      termLine = ` · Term ended ${escHtml(tickToDate(termEndTick))}`;
+    }
+  }
+  const metaBits = [];
+  if (age != null) metaBits.push(`Age ${age}`);
+  if (archetype)   metaBits.push(escHtml(archetype));
+  const metaLine = (metaBits.length || termLine)
+    ? `<div class="city-detail-council-meta">${partyChip}${metaBits.join(' · ')}${termLine}</div>`
+    : '';
+  return `
+    <div class="city-detail-council-row${isPlayer ? ' is-player' : ''}">
+      <span class="city-detail-council-role">${escHtml(role)}</span>
+      <div class="city-detail-council-body">
+        <div class="city-detail-council-name">${escHtml(name)}</div>
+        ${metaLine}
+      </div>
     </div>`;
 }
 
