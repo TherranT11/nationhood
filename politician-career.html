@@ -1433,11 +1433,32 @@ const JUDICIARY_RUNGS = [
     },
   },
   {
+    // Tier 5 — Appellate Justice (20270701). Self-applied at Magistrate
+    // tenure ≥ 24 ticks + Experience ≥ 35. Still in the magistrate
+    // pool for regular trials; the appellate-only mechanic (filing
+    // + appellate bench surface) is a follow-up. Holders show as
+    // 'Appellate Justice' in judicialTitle (utils.js) and the
+    // affiliation card on home (AFFIL_VARIANTS.appellate_justice).
     name: 'Appellate Justice',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
-    descIfNot:   ()  => 'Sit on a higher court that reviews lower rulings. Your judgments bind the courts beneath you.',
-    actions:     ['Hear an Appeal', '§ Set Precedent', '↩ Overturn a Ruling'],
+    held:        (s)  => s.appellateJusticeAtTick != null,
+    descIfHeld:  ()  => 'Sit on the Appellate bench — reviewing the rulings of the lower courts. Your judgments bind the magistrates beneath you.',
+    descIfNot:   ()  => 'Sit on the Appellate bench — reviewing the rulings of the lower courts. Your judgments bind the magistrates beneath you.',
+    actionIfNot: (s) => {
+      if (!s.barAdmittedNationId || s.barAdmittedNationId !== s.nationId) {
+        return { label: 'Pass the Bar first', kind: 'disabled' };
+      }
+      if (s.magistrateAtTick == null) {
+        return { label: 'Take the Bench first', kind: 'disabled' };
+      }
+      const tenure = s.currentTick - s.magistrateAtTick;
+      if (tenure < 24) {
+        return { label: `Seek Elevation · Need 24 ticks on the bench (${tenure}/24)`, kind: 'disabled' };
+      }
+      if (s.politicianSkill < 35) {
+        return { label: `Seek Elevation · Need 35 Experience (${s.politicianSkill}/35)`, kind: 'disabled' };
+      }
+      return { label: 'Seek Elevation', kind: 'primary', action: 'seek-appellate-bench' };
+    },
   },
   {
     name: 'Supreme Court Justice',
@@ -2178,6 +2199,9 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // set once and never cleared.
     influence:               Number(ctx?.faction?.politician_influence) || 0,
     magistrateAtTick:        ctx?.faction?.politician_magistrate_at_tick ?? null,
+    // Appellate Justice (20270701). Self-applied at 24-tick Magistrate
+    // tenure + Experience (politician_skill) ≥ 35. Stamp never cleared.
+    appellateJusticeAtTick:  ctx?.faction?.politician_appellate_justice_at_tick ?? null,
     // State Prosecutor (20270532) — parallel sidestep to the bench
     // path. 35 Rep + 25 Influence threshold (no spend), Experienced Advocate
     // prereq. Doesn't gate or unlock Magistrate.
@@ -2746,6 +2770,13 @@ function bindRungActions(ctx) {
     restingLabel:  'Take the Bench',
     pendingLabel:  'Taking the bench…',
     errorPrefix:   'Could not take the bench',
+  });
+  bindCareerClimbAction({
+    action:        'seek-appellate-bench',
+    rpc:           'politician_apply_to_appellate_bench',
+    restingLabel:  'Seek Elevation',
+    pendingLabel:  'Seeking elevation…',
+    errorPrefix:   'Could not seek elevation',
   });
   bindSeekStateAdvocateAction();
 }
