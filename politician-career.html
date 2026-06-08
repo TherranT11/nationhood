@@ -476,6 +476,45 @@
   #electionModal .em-your-stats { justify-content:space-around; }
 }
 
+/* ─── Mayor city-picker (20270712) ──────────────────────────────
+   Variant rendered into #electionModal's body when Run for Mayor is
+   clicked. Each non-capital city is a clickable card showing its
+   sitting mayor, party chip, budget, and the eight band-labelled
+   stats from the Geography card. Selecting a card enables the
+   confirm button below; the city's id is read off [data-city-id]
+   when the player confirms. Uses the same em-* visual vocabulary
+   so it slots into the existing modal shell without restyling. */
+#electionModal .city-pick-grid { display:grid; grid-template-columns:1fr 1fr;
+  gap:11px; margin-bottom:14px; }
+#electionModal .city-pick-card { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+  border-top:2px solid #9aab7a; border-radius:7px; padding:14px 16px; cursor:pointer;
+  transition:background 80ms, border-color 80ms; }
+#electionModal .city-pick-card:hover { background:#0d0d0d; }
+#electionModal .city-pick-card.selected { background:#13160e; border-color:#4a5a3a; border-top-color:#9aab7a; }
+#electionModal .cpc-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  margin-bottom:6px; }
+#electionModal .cpc-name { font-size:15px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
+#electionModal .cpc-pop  { font-size:9px; letter-spacing:0.08em; color:#888; font-weight:600; }
+#electionModal .cpc-blurb { font-size:11px; color:#888; line-height:1.5; margin-bottom:10px;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+#electionModal .cpc-meta { display:flex; flex-direction:column; gap:4px; margin-bottom:10px;
+  padding:9px 10px; background:#080808; border:0.5px solid rgba(255,255,255,0.04); border-radius:5px; }
+#electionModal .cpc-meta-row { display:flex; justify-content:space-between; gap:10px; font-size:10.5px; }
+#electionModal .cpc-meta-key { color:#666; letter-spacing:0.06em; text-transform:uppercase; font-size:8.5px;
+  font-weight:600; padding-top:1px; }
+#electionModal .cpc-meta-val { color:#d4d4d4; text-align:right; }
+#electionModal .cpc-meta-val .party { color:#c8a878; font-size:9px; letter-spacing:0.06em;
+  padding:1px 5px; border:0.5px solid #4a3a26; border-radius:3px; margin-left:4px; }
+#electionModal .cpc-stats { display:grid; grid-template-columns:1fr 1fr; gap:3px 14px; }
+#electionModal .cpc-stat-row { display:flex; justify-content:space-between; gap:8px; font-size:10px; }
+#electionModal .cpc-stat-key { color:#666; }
+#electionModal .cpc-stat-val { color:#bbb; text-align:right; }
+
+@media (max-width:700px) {
+  #electionModal .city-pick-grid { grid-template-columns:1fr; }
+  #electionModal .cpc-stats { grid-template-columns:1fr; }
+}
+
 /* ───────────────── Bar Exam modal ─────────────────
    Dark game-standard palette with brass accents for judiciary
    identity. Three views: .bv-confirm (warning + Sit/Cancel),
@@ -806,6 +845,7 @@ import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-acti
 import { _supabase } from './js/supabase-client.js';
 import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
+import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
 
 
 // Career ladders. `branch: true` ladders render as a two-column pair
@@ -2888,19 +2928,17 @@ function bindRungActions(ctx) {
     errorPrefix:   'Could not resign',
     confirm:       'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.',
   });
-  // Local Politics races (20270709). Mayor / MotC / Regional Leader
-  // are now races (not self-stamps): they call register_for_office
-  // with target_office set, generating an opponent and an active
-  // election row. Race resolves at v_tick + 1 via the existing
-  // resolver. The 20270706 take_office_* RPCs stay alive but are
-  // no longer exposed in the UI — calling them won't break anything,
+  // Local Politics races (20270709). MotC / Regional Leader call
+  // register_for_office directly with target_office set, generating
+  // an opponent and an active election row. Race resolves at v_tick + 1.
+  // Mayor (non-capital) goes through a city-picker modal (20270712)
+  // because the race is per-city — the modal lists each non-capital
+  // city with stats + current mayor so the player can pick which one
+  // to run in. The 20270706 take_office_* RPCs stay alive but are no
+  // longer exposed in the UI — calling them won't break anything,
   // just sets the at_tick column without a politician_office stamp.
-  bindRegisterForOfficeAction({
-    action:       'run-for-mayor',
-    targetOffice: 'mayor',
-    restingLabel: 'Run for Election',
-    pendingLabel: 'Filing…',
-    errorPrefix:  'Could not run for Mayor',
+  document.querySelectorAll('[data-action="run-for-mayor"]').forEach(btn => {
+    btn.addEventListener('click', () => openMayorPickerModal(ctx));
   });
   bindRegisterForOfficeAction({
     action:       'run-for-mayor-of-capital',
@@ -4093,6 +4131,188 @@ function renderCityCouncilCard(skillTxt) {
         </div>
       </div>
     </div>`;
+}
+
+// ─── Mayor · Run for Election (20270712) ──────────────────────────
+// Per-city race. Loads every non-capital city in the politician's
+// nation, renders each as a clickable card (stats / current mayor /
+// budget / population), then on confirm fires politician_register
+// _for_office with p_target_office='mayor' and p_city_id=<chosen
+// city>. Reuses the #electionModal shell to stay visually consistent
+// with the CCM modal but uses its own .city-pick-grid body (CSS above).
+async function openMayorPickerModal(ctx) {
+  const modal = document.getElementById('electionModal');
+  if (!modal) return;
+  const partyName = ctx?.party?.faction_name || 'your party';
+  const skillVal  = Number(ctx?.faction?.politician_skill) || 0;
+  const nationId  = ctx?.nation?.id || null;
+  const nationPop = Number(ctx?.nation?.population) || 0;
+
+  modal.querySelector('.em-titles .eyebrow').textContent = '— LOCAL POLITICS · MAYOR —';
+  modal.querySelector('#em-title').innerHTML = 'Run for <span class="serif">Mayor</span>';
+  document.getElementById('em-subtitle').textContent = `As a member of ${partyName} · pick a city`;
+  document.getElementById('em-body').innerHTML = '<div class="em-loading">LOADING CITIES…</div>';
+
+  const f = ctx.faction || {};
+  document.getElementById('em-stat-infl').textContent = Math.floor(Number(f.politician_influence) || 0);
+  document.getElementById('em-stat-cha' ).textContent = Number(f.politician_capital) || 0;
+  document.getElementById('em-stat-cred').textContent = skillVal;
+  document.getElementById('em-footer').style.display = '';
+  const confirmBtn = document.getElementById('em-confirm');
+  confirmBtn.disabled = true;
+  confirmBtn.innerHTML = '&#9873; RUN FOR ELECTION';
+  delete confirmBtn.dataset.cityId;
+  confirmBtn.onclick = () => confirmMayorRun(ctx);
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  modal.querySelectorAll('[data-em-close]').forEach(btn => { btn.onclick = closeElectionModal; });
+  modal.onclick = (e) => { if (e.target === modal) closeElectionModal(); };
+  document.addEventListener('keydown', emEscHandler);
+
+  if (!nationId) {
+    document.getElementById('em-body').innerHTML = '<div class="em-error">No nation context — cannot load cities.</div>';
+    return;
+  }
+
+  // Same shape as the Geography card's fetch (20270708/20270711) so
+  // mayor party display + stat band labels stay in sync.
+  const { data, error } = await _supabase.from('cities')
+    .select(`
+      id, city_type, city_name, description, population_pct,
+      mayor_first_name, mayor_last_name, mayor_archetype,
+      mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
+      budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+    `)
+    .eq('nation_id', nationId)
+    .neq('city_type', 'capital')
+    .order('city_type', { ascending: true });
+
+  if (error) {
+    document.getElementById('em-body').innerHTML =
+      `<div class="em-error">Could not load cities: ${escHtml(error.message || error)}</div>`;
+    return;
+  }
+  const cities = data || [];
+  if (!cities.length) {
+    document.getElementById('em-body').innerHTML =
+      '<div class="em-error">No non-capital cities in your nation yet.</div>';
+    return;
+  }
+  document.getElementById('em-body').innerHTML = renderMayorCityPicker(cities, nationPop, skillVal);
+
+  // Click-to-select. Records the chosen city_id as a data attribute
+  // on em-confirm — the confirm handler reads it directly so the
+  // selection state lives in the DOM, not in a closure.
+  const grid = document.getElementById('em-body').querySelector('.city-pick-grid');
+  grid.querySelectorAll('.city-pick-card').forEach(card => {
+    card.addEventListener('click', () => {
+      grid.querySelectorAll('.city-pick-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      confirmBtn.disabled = false;
+      confirmBtn.dataset.cityId = card.dataset.cityId;
+    });
+  });
+}
+
+function renderMayorCityPicker(cities, nationPop, skillVal) {
+  const cards = cities.map(c => mayorCityCard(c, nationPop)).join('');
+  return `
+    <div class="em-intro">
+      <strong>Pick a city to run for Mayor.</strong> The chair pays
+      <span class="cred">+1 Experience · +2% Party Popularity · +$200K Party Funds</span>
+      on a win. Your <span class="cred">Experience</span> (currently ${skillVal}) is matched against an auto-generated challenger rolling <strong>1d10 + 5</strong>.
+    </div>
+    <div class="city-pick-grid">${cards}</div>
+    <div class="em-confirm-band">
+      <div class="em-cb-icon">&#9873;</div>
+      <div class="em-cb-text">
+        Click a city above to select it, then press <strong>Run for Election</strong>. The race resolves next tick.
+      </div>
+    </div>`;
+}
+
+function mayorCityCard(c, nationPop) {
+  const pct = c.population_pct != null ? Number(c.population_pct) : 11;
+  const pop = Math.round(nationPop * (pct / 100));
+  const mayorName = (c.mayor_first_name || c.mayor_last_name)
+    ? `${c.mayor_first_name || ''} ${c.mayor_last_name || ''}`.trim()
+    : '—';
+  const party     = c.mayor_party || null;
+  const partyAbbr = party?.abbreviation || party?.faction_name || '';
+  const archetype = party?.archetype || c.mayor_archetype || '';
+  const partyChip = partyAbbr ? ` <span class="party">${escHtml(partyAbbr)}</span>` : '';
+  const budgetM = (Number(c.budget) || 0) / 1000000;
+  const budgetStr = budgetM >= 1
+    ? `$${budgetM.toLocaleString(undefined, { maximumFractionDigits: 1 })}M`
+    : `$${(Number(c.budget) || 0).toLocaleString()}`;
+  const statRows = CITY_STATS.map(({ key, name }) => `
+    <div class="cpc-stat-row">
+      <span class="cpc-stat-key">${escHtml(name)}</span>
+      <span class="cpc-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
+    </div>`).join('');
+  return `
+    <div class="city-pick-card" data-city-id="${escHtml(c.id)}">
+      <div class="cpc-head">
+        <div class="cpc-name">${escHtml(c.city_name || 'Unnamed City')}</div>
+        <div class="cpc-pop">POP ${pop.toLocaleString()}</div>
+      </div>
+      <div class="cpc-blurb">${escHtml(c.description || '')}</div>
+      <div class="cpc-meta">
+        <div class="cpc-meta-row">
+          <span class="cpc-meta-key">Mayor</span>
+          <span class="cpc-meta-val">${escHtml(mayorName)}${partyChip}</span>
+        </div>
+        ${archetype ? `<div class="cpc-meta-row"><span class="cpc-meta-key">Platform</span><span class="cpc-meta-val">${escHtml(archetype)}</span></div>` : ''}
+        <div class="cpc-meta-row">
+          <span class="cpc-meta-key">Budget</span>
+          <span class="cpc-meta-val">${escHtml(budgetStr)}</span>
+        </div>
+      </div>
+      <div class="cpc-stats">${statRows}</div>
+    </div>`;
+}
+
+async function confirmMayorRun(ctx) {
+  const btn = document.getElementById('em-confirm');
+  if (!btn) return;
+  const cityId = btn.dataset.cityId;
+  if (!cityId) { alert('Pick a city first.'); return; }
+  btn.disabled = true;
+  const originalLabel = btn.innerHTML;
+  btn.textContent = 'Filing…';
+  try {
+    const { data, error } = await _supabase.rpc('politician_register_for_office', {
+      p_faction_id:    ctx?.faction?.id || null,
+      p_target_office: 'mayor',
+      p_city_id:       cityId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:     'Sign in to register.',
+        no_politician:         'No politician on this account.',
+        not_in_party:          'Join a political party first.',
+        no_nation:             'Your politician has no nation.',
+        race_in_progress:      'You are already in a race.',
+        experience_too_low:    `Your Experience (${data.experience}) is below the ${data.required} required.`,
+        city_required:         'Pick a city before confirming.',
+        invalid_city:          'That city no longer exists or belongs to another nation.',
+        capital_blocked:       'The capital has its own race — use Mayor of the Capital instead.',
+        invalid_target_office: 'Unknown target office.',
+        no_shard:              'Game state unavailable. Try again.',
+      };
+      alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.innerHTML = originalLabel;
+      return;
+    }
+    closeElectionModal();
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.innerHTML = originalLabel;
+  }
 }
 
 async function confirmCityCouncilRun(ctx) {
