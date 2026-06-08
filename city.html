@@ -119,6 +119,13 @@
 </head>
 <body>
 
+<!-- Topbar mount slot. bootstrapPolitician('nation') injects the
+     politician topbar + nav into this div + the body background style
+     into <head>. Without this slot the topbar silently no-ops AND the
+     body background never gets the dark color the rest of the
+     politician pages share. -->
+<div id="pol-topbar-container"></div>
+
 <div class="content" id="content" style="display:none;">
   <a class="city-back" href="politician-nation.html#sec-geography">&larr; Back to Geography</a>
   <div id="city-detail"></div>
@@ -313,9 +320,13 @@ function councilSeatRow(seat, currentTick) {
     ? `<span class="party">${escHtml(partyAbbr)}</span>` : '';
   const archetype = seat.archetype || '';
   const isPlayer  = !!seat.holder_faction_id;
-  const termEndTick = Number.isFinite(Number(seat.term_end_tick)) ? Number(seat.term_end_tick) : null;
+  // NPC seats persist with term_end_tick = null. Explicit null/undefined
+  // check before Number() — Number(null) coerces to 0 and would otherwise
+  // render every NPC as "Term ended January, 2000."
+  const rawTet = seat.term_end_tick;
+  const termEndTick = (rawTet == null || rawTet === '') ? null : Number(rawTet);
   let termLine = '';
-  if (termEndTick != null) {
+  if (termEndTick != null && Number.isFinite(termEndTick)) {
     const ticks = termEndTick - currentTick;
     if (ticks > 0) {
       termLine = ` · Term ends ${escHtml(tickToDate(termEndTick))} · ${ticks} month${ticks === 1 ? '' : 's'} left`;

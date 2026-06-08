@@ -1315,28 +1315,11 @@ const GOVERNMENT_RUNGS = [
     held:        (s) => s.office === 'city_council_member',
     descIfHeld:  ()  => 'You hold an elected seat on the city council, voting on budgets and ordinances.',
     descIfNot:   ()  => 'An elected seat on a city or town council. You vote on local budgets and ordinances.',
-    // Eligibility (20270635): must currently hold OR have ever held
-    // Community Organizer (politician_former_community_organizer
-    // flag). Returns the gate copy as the disabled label rather than
-    // null so a non-CO holder on a different ladder still sees why
-    // the rung is locked. The 9-tick post-CO-win cooldown applies
-    // only while the caller still holds CO — once the term elapses
-    // (CO → null + flag retained), there's nothing to wait for.
+    // Eligibility (20270730): CO prereq dropped. Any party-affiliated
+    // politician can run for CCM; race-in-flight + party-required
+    // guards are the only client-side gates left. Mirrors the
+    // entry-check trimming in politician_register_for_office.
     actionIfNot: (s) => {
-      const currentCO = s.office === 'community_organizer';
-      const formerCO  = !!s.formerCommunityOrganizer;
-      if (!currentCO && !formerCO) {
-        return { label: 'Must be or have been a Community Organizer', kind: 'disabled' };
-      }
-      if (currentCO) {
-        const opens = (s.officeWonAtTick || 0) + 9;
-        if (s.currentTick < opens) {
-          return { label: `Opens in ${opens - s.currentTick} ticks`, kind: 'disabled' };
-        }
-      }
-      // Race-in-flight + party-required guards mirror the entry
-      // checks in runForElectionAction so the button doesn't open
-      // a modal that can only fail.
       if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
       if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
       return { label: 'Run for Election', kind: 'primary', action: 'run-for-city-council' };
@@ -2278,11 +2261,6 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // blocks reapplication after a failed NPC-PM dice roll.
     juniorPortfolio:         ctx?.faction?.politician_junior_portfolio || null,
     juniorAppointmentCooldownUntilTick: Number(ctx?.faction?.politician_seek_appointment_cooldown_until_tick) || 0,
-    // Sticky "ever held Community Organizer" flag (20270635) — gates
-    // City Council Member [Run for Election] beyond the 12-tick CO
-    // term. politician_resolve_due_elections stamps it on every
-    // community win; backfilled from current CO + career events.
-    formerCommunityOrganizer: !!ctx?.faction?.politician_former_community_organizer,
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
