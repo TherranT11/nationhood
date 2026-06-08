@@ -1331,47 +1331,53 @@ const GOVERNMENT_RUNGS = [
   },
   {
     name: 'Mayor',
-    // Self-stamp at Experience >= 50 (20270706). Politician_office is
-    // intentionally untouched — the at_tick column is the source of
-    // truth for "held," matching the Magistrate / Appellate Justice
-    // pattern. Resignation is deferred; today Retire is the only way
-    // out once stamped.
-    held:        (s) => s.mayorAtTick != null,
+    // 20270709: this is now a RACE, not a self-stamp. 20270706's
+    // self-stamp RPCs stay alive (no destructive drop) but the UI
+    // calls register_for_office instead. Held check accepts EITHER
+    // path so anyone who stamped via the old self-stamp before this
+    // migration still reads as held.
+    held:        (s) => s.mayorAtTick != null || s.office === 'mayor',
     descIfHeld:  ()  => 'You are the mayor — running the city’s executive branch.',
     descIfNot:   ()  => 'Executive of a city. Budget, police, contracts, appointments — you run the place.',
     actionIfNot: (s) => {
       const skill = Number(s.politicianSkill) || 0;
       if (skill < 50) {
-        return { label: `Take Office · Need 50 Experience (${skill}/50)`, kind: 'disabled' };
+        return { label: `Run for Mayor · Need 50 Experience (${skill}/50)`, kind: 'disabled' };
       }
-      return { label: 'Take Office', kind: 'primary', action: 'take-office-mayor' };
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-mayor' };
     },
   },
   {
     name: 'Mayor of the Capital',
-    held:        (s) => s.mayorOfCapitalAtTick != null,
+    held:        (s) => s.mayorOfCapitalAtTick != null || s.office === 'mayor_of_capital',
     descIfHeld:  ()  => 'You are the mayor of the capital — the biggest mayoralty in the country.',
     descIfNot:   ()  => 'The biggest mayoralty in the country. Often more visible on the national stage than ministers.',
     actionIfNot: (s) => {
       const skill = Number(s.politicianSkill) || 0;
       if (skill < 60) {
-        return { label: `Take Office · Need 60 Experience (${skill}/60)`, kind: 'disabled' };
+        return { label: `Run for Mayor of the Capital · Need 60 Experience (${skill}/60)`, kind: 'disabled' };
       }
-      return { label: 'Take Office', kind: 'primary', action: 'take-office-mayor-of-capital' };
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-mayor-of-capital' };
     },
   },
   {
     name: 'Regional Leader',
     tierName: 'APEX',
-    held:        (s) => s.regionalLeaderAtTick != null,
+    held:        (s) => s.regionalLeaderAtTick != null || s.office === 'regional_leader',
     descIfHeld:  ()  => 'You are the regional leader — commanding a regional budget and returning the Prime Minister’s calls.',
     descIfNot:   ()  => 'Executive of a province or region. Commands a regional budget, returns the Prime Minister’s calls.',
     actionIfNot: (s) => {
       const skill = Number(s.politicianSkill) || 0;
       if (skill < 75) {
-        return { label: `Take Office · Need 75 Experience (${skill}/75)`, kind: 'disabled' };
+        return { label: `Run for Regional Leader · Need 75 Experience (${skill}/75)`, kind: 'disabled' };
       }
-      return { label: 'Take Office', kind: 'primary', action: 'take-office-regional-leader' };
+      if (s.activeRace) return { label: 'Race in flight',     kind: 'disabled' };
+      if (!s.partyId)   return { label: 'Join a party first', kind: 'disabled' };
+      return { label: 'Run for Election', kind: 'primary', action: 'run-for-regional-leader' };
     },
   },
 ];
@@ -2882,32 +2888,65 @@ function bindRungActions(ctx) {
     errorPrefix:   'Could not resign',
     confirm:       'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.',
   });
-  // Local Politics jumpstart self-stamps (20270706). Same shape as
-  // the judicial bench takes-office — disable-on-click, RPC call,
-  // reload on success so the rung flips to held + the topbar career
-  // pill updates. No confirm dialog; one-shot stamps are forward-only.
-  bindCareerClimbAction({
-    action:        'take-office-mayor',
-    rpc:           'politician_take_office_mayor',
-    restingLabel:  'Take Office',
-    pendingLabel:  'Taking office…',
-    errorPrefix:   'Could not take office as Mayor',
+  // Local Politics races (20270709). Mayor / MotC / Regional Leader
+  // are now races (not self-stamps): they call register_for_office
+  // with target_office set, generating an opponent and an active
+  // election row. Race resolves at v_tick + 1 via the existing
+  // resolver. The 20270706 take_office_* RPCs stay alive but are
+  // no longer exposed in the UI — calling them won't break anything,
+  // just sets the at_tick column without a politician_office stamp.
+  bindRegisterForOfficeAction({
+    action:       'run-for-mayor',
+    targetOffice: 'mayor',
+    restingLabel: 'Run for Election',
+    pendingLabel: 'Filing…',
+    errorPrefix:  'Could not run for Mayor',
   });
-  bindCareerClimbAction({
-    action:        'take-office-mayor-of-capital',
-    rpc:           'politician_take_office_mayor_of_capital',
-    restingLabel:  'Take Office',
-    pendingLabel:  'Taking office…',
-    errorPrefix:   'Could not take office as Mayor of the Capital',
+  bindRegisterForOfficeAction({
+    action:       'run-for-mayor-of-capital',
+    targetOffice: 'mayor_of_capital',
+    restingLabel: 'Run for Election',
+    pendingLabel: 'Filing…',
+    errorPrefix:  'Could not run for Mayor of the Capital',
   });
-  bindCareerClimbAction({
-    action:        'take-office-regional-leader',
-    rpc:           'politician_take_office_regional_leader',
-    restingLabel:  'Take Office',
-    pendingLabel:  'Taking office…',
-    errorPrefix:   'Could not take office as Regional Leader',
+  bindRegisterForOfficeAction({
+    action:       'run-for-regional-leader',
+    targetOffice: 'regional_leader',
+    restingLabel: 'Run for Election',
+    pendingLabel: 'Filing…',
+    errorPrefix:  'Could not run for Regional Leader',
   });
   bindSeekStateAdvocateAction();
+}
+
+// Bind a "Run for Election" button on a local-politics rung
+// (20270709). Same disable-on-click shape as bindCareerClimbAction
+// but the RPC takes a target_office argument, so it can't reuse the
+// climb helper. Reloads the page on success so the rung flips to a
+// "Race in flight" pill and the active-race card on home picks it up.
+function bindRegisterForOfficeAction({ action, targetOffice, restingLabel, pendingLabel, errorPrefix }) {
+  document.querySelectorAll(`[data-action="${action}"]`).forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = pendingLabel;
+      try {
+        const facId = window.__careerCtx?.faction?.id;
+        if (!facId) throw new Error('No active politician.');
+        const { data, error } = await _supabase.rpc('politician_register_for_office', {
+          p_faction_id:    facId,
+          p_target_office: targetOffice,
+        });
+        if (error) throw error;
+        if (!data?.success) throw new Error(`${errorPrefix}: ${data?.reason || 'unknown'}`);
+        window.location.reload();
+      } catch (e) {
+        alert(e?.message || `${errorPrefix}.`);
+        btn.disabled = false;
+        btn.textContent = restingLabel;
+      }
+    });
+  });
 }
 
 // Bespoke handler for the State Advocate seek button — the RPC
