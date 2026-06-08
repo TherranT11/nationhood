@@ -13,8 +13,14 @@
 // diplomacy — only the first three buckets carry a production rate.
 // Display code reads that NULL directly off nation_commodity_state and
 // hides the row; no flag is stored here.
+//
+// Display vs. schema: the schema key 'crude_oil' is kept as-is (it's
+// the CHECK-constrained identifier across every nation_commodity_state
+// row); the player-facing label is just 'Energy' — broader, covers
+// gas / refined / electric without renaming the column or migrating
+// every row.
 export const COMMODITIES = [
-  { key: 'crude_oil',      name: 'Crude Oil'      },
+  { key: 'crude_oil',      name: 'Energy'         },
   { key: 'minerals',       name: 'Minerals'       },
   { key: 'foodstuffs',     name: 'Foodstuffs'     },
   { key: 'consumer_goods', name: 'Consumer Goods' },
