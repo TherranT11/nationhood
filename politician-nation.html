@@ -118,6 +118,13 @@
   color:#555; font-size:9px; letter-spacing:0.12em; font-weight:700;
   display:flex; align-items:center; justify-content:center; cursor:help; }
 .city-head-text { flex:1; min-width:0; }
+.city-view-btn { flex-shrink:0; align-self:flex-start; font-family:monospace;
+  font-size:10px; letter-spacing:0.1em; text-transform:uppercase; font-weight:600;
+  color:#c8a64e; background:rgba(200,166,78,0.06);
+  border:0.5px solid rgba(200,166,78,0.35); border-radius:3px;
+  padding:7px 12px; text-decoration:none; transition:background 100ms, color 100ms; }
+.city-view-btn:hover { background:rgba(200,166,78,0.14); color:#e8c878;
+  border-color:#c8a64e; }
 .city-name  { font-size:18px; font-weight:600; color:#c8a64e;
   letter-spacing:0.01em; }
 .city-capital-tag { font-size:11px; color:#888; font-weight:400;
@@ -1407,6 +1414,7 @@ function cityCardHtml(c, nationPop) {
           <div class="city-name">${escHtml(c.city_name || 'Unnamed City')}${c.city_type === 'capital' ? ' <span class="city-capital-tag">(Capital)</span>' : ''}</div>
           <div class="city-blurb">${escHtml(c.description || '')}</div>
         </div>
+        <a class="city-view-btn" href="city.html?id=${encodeURIComponent(c.id)}">View City &rarr;</a>
       </div>
       <div class="city-meta">
         <div><span class="city-meta-key">Population</span><span class="city-meta-val">${escHtml(population.toLocaleString())}</span></div>
