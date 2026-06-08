@@ -1400,6 +1400,14 @@ const CAREER_EVENT_TEMPLATES = {
   // (20270701). target_name is the nation name.
   appellate_justice: (name, target) =>
     `${name} has been elevated to the Appellate bench of ${target || 'their nation'}, where they will review the rulings of the lower courts.`,
+  // Career-resignation events (20270705). Written by
+  // politician_resign_from_bench / politician_resign_from_civil_service.
+  // target_name is the nation name. -2 Rep cost is recorded in the
+  // stats sweep but isn't surfaced in the timeline copy.
+  resigned_from_bench: (name, target) =>
+    `${name} has resigned from the bench of ${target || 'their nation'}, returning to private life.`,
+  resigned_from_civil_service: (name, target) =>
+    `${name} has resigned from the civil service of ${target || 'their nation'}, returning to private life.`,
   // Court case — written by represent_drawn_case + represent_pretrial
   // (20270518). target_name is the case caption ("Plaintiff v.
   // Defendant"); metadata.side carries 'plaintiff' | 'defendant'.
