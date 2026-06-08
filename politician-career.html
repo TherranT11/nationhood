@@ -804,7 +804,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 
 
@@ -2234,18 +2234,22 @@ function render(politician, shard, nation, party) {
   // (or None for independents). Same source as politician-home's hero
   // affiliation so the two surfaces never disagree. Bar admission is
   // appended as a separate suffix once the politician passes the
-  // Bar Exam in their current nation.
-  const barAdmitted = !!politician?.bar_admitted_nation_id
-                   && politician.bar_admitted_nation_id === nation?.id;
-  const barSuffix = barAdmitted ? ` · Advocate of ${nation?.name || 'this nation'}` : '';
+  // Bar Exam in their current nation, and reflects the HIGHEST
+  // judicial tier they currently hold (Magistrate > State Advocate
+  // > Experienced Advocate > Advocate) via the judicialTitle SoT in
+  // js/utils.js.
+  const judTitle  = judicialTitle(politician, nation?.id);
+  const barSuffix = judTitle ? ` · ${judTitle} of ${nation?.name || 'this nation'}` : '';
   if (party) {
     document.getElementById('cc-affiliations').textContent = (office
       ? `${officeTitle(office)} · ${party.faction_name}`
       : party.faction_name) + barSuffix;
     document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
-  } else if (barAdmitted) {
-    document.getElementById('cc-affiliations').textContent = `Advocate of ${nation?.name || 'this nation'}`;
-    document.getElementById('cc-affiliations-sub').textContent = 'admitted to the bar';
+  } else if (judTitle) {
+    document.getElementById('cc-affiliations').textContent = `${judTitle} of ${nation?.name || 'this nation'}`;
+    document.getElementById('cc-affiliations-sub').textContent = judTitle === 'Advocate'
+      ? 'admitted to the bar'
+      : 'judiciary';
   } else {
     document.getElementById('cc-affiliations').textContent = 'None';
     document.getElementById('cc-affiliations-sub').textContent = 'no parties, no movements';
