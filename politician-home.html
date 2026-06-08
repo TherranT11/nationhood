@@ -292,6 +292,17 @@
   font-weight:700; border-radius:4px; background:#161208; border:0.5px solid #c8a26e;
   color:#dcb88a; cursor:pointer; font-family:inherit; }
 .ti-resume-btn:hover { background:#251710; color:#fff; }
+/* Close button on the resolved Verdict Rendered card (20270735).
+   Sits next to the CONCLUDED pill in .ti-right; muted grey to
+   stay subordinate to in-flight cards' primary CTAs. */
+.ti-dismiss-btn { padding:7px 13px; font-size:9px; letter-spacing:0.12em;
+  font-weight:700; text-transform:uppercase; border-radius:3px;
+  background:transparent; border:0.5px solid rgba(255,255,255,0.12);
+  color:#888; cursor:pointer; font-family:inherit;
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.ti-dismiss-btn:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.03); }
+.ti-dismiss-btn:disabled { opacity:0.4; cursor:wait; }
 @media (max-width: 720px) {
   .ti-card { flex-direction:column; }
   .ti-icon-wrap { border-right:none; border-bottom:0.5px solid rgba(255,255,255,0.07); padding:9px; }
@@ -2862,6 +2873,8 @@ function renderActiveTrialCard(t) {
             <span class="ti-status-lab">STATUS</span>
             <span class="ti-pill their-turn">CONCLUDED</span>
           </div>
+          <button type="button" class="ti-dismiss-btn"
+                  data-trial-id="${escHtml(t.trial_id)}">Close</button>
         </div>
       </div>`;
   }
@@ -3013,6 +3026,38 @@ function bindActiveTrialActions() {
   document.querySelectorAll('.trial-enter').forEach(btn => {
     btn.addEventListener('click', () => openTrialModal(btn.closest('.ti-card')?.dataset.trialId));
   });
+  document.querySelectorAll('.ti-dismiss-btn').forEach(btn => {
+    btn.addEventListener('click', () => dismissResolvedTrial(btn));
+  });
+}
+
+// Close button on the resolved Verdict Rendered card (20270735).
+// Records a per-player dismissal server-side via dismiss_resolved
+// _trial, then reloads. Reload (rather than local re-render) keeps
+// the home-page state machine simple — renderPressingIssues needs
+// the bootstrap ctx for its campaign-card binding path, which we
+// don't carry on this code path.
+async function dismissResolvedTrial(btn) {
+  if (btn.disabled) return;
+  const trialId  = btn.dataset.trialId;
+  const factionId = politician?.id || null;
+  if (!trialId || !factionId) return;
+  btn.disabled = true;
+  try {
+    const { data, error } = await _supabase.rpc('dismiss_resolved_trial', {
+      p_faction_id: factionId, p_trial_id: trialId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      console.warn('politician-home: dismiss_resolved_trial failed:', data?.reason);
+      btn.disabled = false;
+      return;
+    }
+    location.reload();
+  } catch (err) {
+    console.warn('politician-home: dismiss_resolved_trial threw:', err?.message || err);
+    btn.disabled = false;
+  }
 }
 
 function renderPretrialCard(p) {
