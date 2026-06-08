@@ -1473,15 +1473,17 @@ const JUDICIARY_RUNGS = [
     // as held.
     held:        (s)  => s.experiencedAdvocateAtTick != null,
     descIfHeld:  ()  => 'A senior practitioner — recognised by the bar for a sustained record of cases tried.',
-    descIfNot:   ()  => 'Step up from junior advocate to a recognised practitioner. The bar marks your record once your reputation in court justifies the title.',
+    descIfNot:   ()  => 'Step up from junior advocate to a recognised practitioner. The bar marks your record once your experience in court justifies the title.',
     actionIfNot: (s) => {
       // Must be admitted to THIS nation's bar first (matches Advocate's
       // held() gate — cross-nation admissions don't count).
       if (!s.barAdmittedNationId || s.barAdmittedNationId !== s.nationId) {
         return { label: 'Pass the Bar first', kind: 'disabled' };
       }
-      if (s.politicianReputation < 30) {
-        return { label: `Step Up · Need 30 Rep (${s.politicianReputation}/30)`, kind: 'disabled' };
+      // 20270727: gate moved from 30 Reputation to 15 Experience.
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < 15) {
+        return { label: `Step Up · Need 15 Experience (${skill}/15)`, kind: 'disabled' };
       }
       return { label: 'Step Up', kind: 'primary', action: 'step-up-experienced-advocate' };
     },
@@ -2304,9 +2306,10 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     barAdmittedNationId:     ctx?.faction?.bar_admitted_nation_id || null,
     barAdmittedAtTick:       Number(ctx?.faction?.bar_admitted_at_tick) || 0,
     barLastAttemptTick:      Number(ctx?.faction?.bar_last_attempt_tick) || 0,
-    // Reputation gates the Experienced Advocate step-up (20270529).
-    // Reads off the same factions.politician_reputation the trial
-    // verdict bumps; threshold-only, no spend.
+    // politician_reputation still feeds the upstream judicial gates
+    // (State Advocate / Magistrate / etc.). The Experienced Advocate
+    // step-up moved to politician_skill (Experience) in 20270727,
+    // read off s.politicianSkill which the topbar already populates.
     politicianReputation:    Number(ctx?.faction?.politician_reputation) || 0,
     // Tick-based "held" markers stay null when not set so the rung's
     // held() / actionIfNot can use `!= null` and not get fooled by a
