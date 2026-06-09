@@ -1361,7 +1361,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
@@ -3232,17 +3232,7 @@ async function castOrdinanceVote(proposalId, vote, ctx, card) {
     });
     if (error) throw error;
     if (!data?.success) {
-      const REASON = {
-        not_authenticated:   'Sign in to vote.',
-        no_politician:       'No politician on this account.',
-        invalid_vote:        'Pick yes or no.',
-        proposal_not_found:  'That proposal no longer exists.',
-        proposal_closed:     'That proposal has already resolved.',
-        city_not_found:      'City not found.',
-        not_a_seat_holder:   'You don’t hold a seat on this council.',
-        already_voted:       'You’ve already voted on this proposal.',
-      };
-      alert(REASON[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
+      alert(CITY_ORDINANCE_VOTE_REASONS[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
       btns.forEach(b => { b.disabled = false; });
       return;
     }

@@ -771,3 +771,22 @@ export function countEligibleParties(factions, nationId = null) {
         (nationId == null || f.nation_id === nationId)
     ).length;
 }
+
+/**
+ * UI copy for the soft-failure codes returned by the
+ * vote_on_city_ordinance RPC (20270742). Consumed by every surface
+ * that exposes a council vote — politician-home Pressing Issues
+ * card (castOrdinanceVote) and the city.html Voting Agenda row
+ * buttons (bindOrdinanceVoteButtons). One map so wording stays
+ * consistent and a new reason code only needs adding here.
+ */
+export const CITY_ORDINANCE_VOTE_REASONS = {
+    not_authenticated:  'Sign in to vote.',
+    no_politician:      'No politician on this account.',
+    invalid_vote:       'Pick yes or no.',
+    proposal_not_found: 'That proposal no longer exists.',
+    proposal_closed:    'That proposal has already resolved.',
+    city_not_found:     'City not found.',
+    not_a_seat_holder:  'You don’t hold a seat on this council.',
+    already_voted:      'You’ve already voted on this proposal.',
+};

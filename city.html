@@ -195,7 +195,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { tickToDate } from './js/utils.js';
+import { tickToDate, CITY_ORDINANCE_VOTE_REASONS } from './js/utils.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -458,9 +458,10 @@ function renderProposalRow(p, currentTick, votable) {
 
 // Per-row VOTE handlers (20270748). Mirrors politician-home's
 // castOrdinanceVote: disables both buttons on the row before the
-// await, surfaces the standard REASON map on a soft failure, and
-// reloads on success so the row drops out of the agenda.
-async function bindOrdinanceVoteButtons(ctx) {
+// await, surfaces CITY_ORDINANCE_VOTE_REASONS on soft failure
+// (the same shared map politician-home uses), and reloads on
+// success so the row drops out of the agenda.
+function bindOrdinanceVoteButtons(ctx) {
   document.querySelectorAll('.ord-vote-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const row = btn.closest('.ord-row');
@@ -474,17 +475,7 @@ async function bindOrdinanceVoteButtons(ctx) {
         });
         if (error) throw error;
         if (!data?.success) {
-          const REASON = {
-            not_authenticated:   'Sign in to vote.',
-            no_politician:       'No politician on this account.',
-            invalid_vote:        'Pick yes or no.',
-            proposal_not_found:  'That proposal no longer exists.',
-            proposal_closed:     'That proposal has already resolved.',
-            city_not_found:      'City not found.',
-            not_a_seat_holder:   'You don’t hold a seat on this council.',
-            already_voted:       'You’ve already voted on this proposal.',
-          };
-          alert(REASON[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
+          alert(CITY_ORDINANCE_VOTE_REASONS[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
           btns.forEach(b => { b.disabled = false; });
           return;
         }
