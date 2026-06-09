@@ -6842,6 +6842,7 @@ function initials(s, n) {
       insufficient_funds: 'Your treasury can’t cover the construction cost.',
       invalid_tier: 'Pick a valid tier.', invalid_rhq_tier: 'Regional HQs are Small/Medium/Large only.',
       nation_not_found: 'That nation no longer exists.', not_owner: 'Only the corp owner can request.',
+      not_buildable: 'Construction isn’t open in that nation.',
       invalid_name: 'Enter a name (2+ characters).', invalid_building_type: 'Pick a building type.',
       corp_not_found: 'Corp not found.',
     };
@@ -6872,9 +6873,14 @@ function initials(s, n) {
     const openRequestModal = async () => {
       const ov = document.getElementById('rc-overlay');
       if (!ov) return;
+      // Allowlist gate (20270746): only nations with
+      // foundable_for_construction = TRUE accept new build requests.
+      // Server enforces; the dropdown filter just hides the rest.
       if (nationMap.size === 0) {
         const { data: nats, error: nErr } = await _supabase.from('nations')
-          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability').not('continent', 'is', null).order('name');
+          .select('id, name, cost_of_living, infrastructure, standard_of_living, politician_stability')
+          .eq('foundable_for_construction', true)
+          .not('continent', 'is', null).order('name');
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
       }
