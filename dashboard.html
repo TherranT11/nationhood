@@ -3,119 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Home | Nationhood Alpha</title>
-
-<link rel="stylesheet" href="css/dashboard.css">
-<link rel="stylesheet" href="css/news.css">
-
-<!-- Fonts: news page needs Playfair Display, Source Serif 4, Inter, Outfit, Noto Sans -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,500&family=Inter:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700;800;900&family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
-
+<title>Nationhood</title>
+<meta http-equiv="refresh" content="0; url=faction-select.html">
 <style>
-/* ── Home subtab bar ── */
-.home-subtabs {
-    display: flex;
-    gap: 0;
-    padding: 0 22px;
-    background: var(--bg-body);
-    border-bottom: 1px solid var(--border-main);
-    /* Horizontal scroll fallback if more subtabs land later. */
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-.home-subtabs::-webkit-scrollbar { display: none; }
-.home-subtab {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 9px 18px;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-dim);
-    cursor: pointer;
-    transition: color 0.15s;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-.home-subtab:hover {
-    color: var(--text-secondary);
-}
-.home-subtab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-}
-
-/* ── Content panels ── */
-.home-panel { display: none; }
-.home-panel.active { display: block; flex: 1; overflow-y: auto; min-height: 0; }
-
-/* ── Mobile ──
-   Bigger tap targets (≥44px per WCAG 2.5.5). */
-@media (max-width: 768px) {
-    .home-subtabs { padding: 0 12px; }
-    .home-subtab { padding: 12px 16px; font-size: 11px; }
-}
-@media (max-width: 480px) {
-    .home-subtabs { padding: 0 8px; }
-    .home-subtab { padding: 12px 14px; font-size: 10px; letter-spacing: 0.08em; }
-}
+  body { margin:0; min-height:100vh; background:#050505; color:#888;
+         font-family:-apple-system,system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center; }
+  .msg { font-size:12px; letter-spacing:0.08em; }
+  a { color:#5aafa5; text-decoration:none; }
+  a:hover { color:#fff; }
 </style>
 </head>
-
 <body>
+  <!-- 20270767: dashboard.html used to be the newspaper landing
+       (news.js + css/news.css rendered into #newspaper-root). The
+       news system was culled; this file stays as a thin redirect
+       so the ~20 places that link here (login / signup / faction-
+       select / "back to game" breadcrumbs / party-faction
+       getFactionDashboardUrl fallback) keep resolving.
 
-<!-- Top bar rendered by common.js -->
-<div id="top-bar"></div>
-
-<!-- Subtab bar -->
-<div class="home-subtabs" id="home-subtabs">
-    <button class="home-subtab active" data-panel="news" id="subtab-news">News</button>
-</div>
-
-<!-- NEWS panel — newspaper content (rendered by news.js) -->
-<div class="home-panel active" id="panel-news">
-    <div id="newspaper-root"></div>
-</div>
-
-<script type="module">
-import { _supabase } from './js/supabase-client.js';
-import { initPage } from './js/common.js';
-import { initNewspaper } from './js/news.js';
-
-let _state = null;
-let _newsInitialized = false;
-
-// Subtab switching
-function switchPanel(panelKey) {
-    document.querySelectorAll('.home-subtab').forEach(t => t.classList.toggle('active', t.dataset.panel === panelKey));
-    document.querySelectorAll('.home-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + panelKey));
-    sessionStorage.setItem('home_subtab', panelKey);
-
-    // Lazy-init news if not already initialized.
-    if (panelKey === 'news' && !_newsInitialized && _state) {
-        _newsInitialized = true;
-        initNewspaper(_supabase, _state);
-    }
-}
-
-document.getElementById('home-subtabs').addEventListener('click', (e) => {
-    const btn = e.target.closest('.home-subtab');
-    if (!btn || btn.classList.contains('active')) return;
-    switchPanel(btn.dataset.panel);
-});
-
-initPage('dashboard', async (state) => {
-    _state = state;
-    // Init news immediately — only panel left.
-    _newsInitialized = true;
-    await initNewspaper(_supabase, state);
-});
-</script>
-
+       Routes to faction-select.html which itself bounces to the
+       correct per-faction dashboard if the user already has one. -->
+  <div class="msg">Redirecting to <a href="faction-select.html">faction select</a>&hellip;</div>
+  <script>window.location.replace('faction-select.html');</script>
 </body>
 </html>
