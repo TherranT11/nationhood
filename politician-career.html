@@ -4265,7 +4265,7 @@ function mayorCityCard(c, nationPop, currentTick) {
   const electionRow = isPlayer ? `
     <div class="cpc-meta-row cpc-player-row">
       <span class="cpc-meta-key">Next Election</span>
-      <span class="cpc-meta-val">${escHtml(tickToDate(termEndTick))} · ${windowOpen ? 'Filing open' : `Eligible on Tick ${openTick}`}</span>
+      <span class="cpc-meta-val">${escHtml(tickToDate(termEndTick))} · ${windowOpen ? 'Filing window open' : `Eligible to run on Tick ${openTick}`}</span>
     </div>` : '';
   const statRows = CITY_STATS.map(({ key, name }) => `
     <div class="cpc-stat-row">
