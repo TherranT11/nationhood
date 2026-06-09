@@ -157,6 +157,8 @@
   .upcoming { padding:16px 20px; border-top:0.5px solid var(--line); }
   .up-lab { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600;
     margin-bottom:11px; }
+  .up-hint { color:#dcb88a; font-weight:500; font-size:8.5px; letter-spacing:0.08em;
+    text-transform:none; font-style:italic; margin-left:2px; }
   .up-empty { font-size:11px; color:var(--faint); font-style:italic; text-align:center;
     padding:18px 0; }
 
@@ -175,6 +177,62 @@
     font-style:italic; font-size:11px; }
   .up-meta { color:#666; font-size:9.5px; margin-top:3px; letter-spacing:0.02em; }
   .up-meta b { color:#888; font-weight:600; }
+  /* Set-the-Agenda clickable row (20270749). Brass-on-deep palette
+     stays — just a hover lift + cursor pointer so the click target
+     reads as actionable. */
+  .up-row--clickable { cursor:pointer; transition:background 120ms, border-color 120ms; }
+  .up-row--clickable:hover { background:#13100b; border-color:#5a4630; border-left-color:#dcb88a; }
+
+  /* Agenda-vote panel (20270749) — replaces the hearing card in the
+     Monthly Agenda slot while a Set-the-Agenda item is up for the
+     5-member action vote. Reuses the brass/deep vocabulary so the
+     visual continuity with the eventual hearing card holds. */
+  .av-card { background:#0d0a07; border:0.5px solid #2a2218; border-left:3px solid #c8a26e;
+    border-radius:5px; padding:14px 18px; }
+  .av-head { display:flex; align-items:center; gap:10px; margin-bottom:6px;
+    font-size:8.5px; letter-spacing:0.14em; }
+  .av-cat { color:#dcb88a; font-weight:700; padding:2px 7px; background:#161208;
+    border:0.5px solid #5a4630; border-radius:2px; }
+  .av-section { color:#fff; font-size:13px; font-weight:600; letter-spacing:-0.005em;
+    text-transform:none; letter-spacing:normal; }
+  .av-snippet { font-family:Georgia,serif; font-style:italic; color:#a0a0a0;
+    font-size:11.5px; line-height:1.5; margin:6px 0 8px; }
+  .av-sub { font-size:10px; color:#888; margin-bottom:10px; }
+  .av-sub b { color:#cfcabf; font-weight:600; }
+  .av-tally { display:flex; flex-direction:column; gap:4px; padding:8px 10px;
+    background:#080706; border:0.5px solid rgba(255,255,255,0.04); border-radius:4px;
+    margin-bottom:10px; }
+  .av-tally-row { display:flex; justify-content:space-between; font-size:10.5px;
+    font-family:monospace; letter-spacing:0.04em; }
+  .av-tally-lab { color:#888; }
+  .av-tally-val { color:#dcb88a; font-weight:700; }
+  .av-members { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; }
+  .av-row { display:flex; align-items:center; gap:10px; padding:5px 8px;
+    background:#0a0807; border:0.5px solid rgba(255,255,255,0.04); border-radius:3px;
+    font-size:10.5px; }
+  .av-role { color:#666; font-family:monospace; letter-spacing:0.08em;
+    text-transform:uppercase; flex-shrink:0; width:120px; font-size:9px; font-weight:600; }
+  .av-name { color:#cfcabf; flex:1; min-width:0; font-size:11px; }
+  .av-pill { font-family:monospace; font-size:9px; letter-spacing:0.12em;
+    font-weight:700; padding:2px 8px; border-radius:2px; flex-shrink:0;
+    border:0.5px solid transparent; }
+  .av-pill--pending { color:#5a5a5a; background:#0d0a08; border-color:#222; }
+  .av-pill--hear  { color:#a3b07e; background:rgba(163,176,126,0.10); border-color:#3a4a30; }
+  .av-pill--vote  { color:#9ac99a; background:rgba(154,201,154,0.10); border-color:#3a5a3a; }
+  .av-pill--amend { color:#dcb88a; background:rgba(220,184,138,0.10); border-color:#5a4630; }
+  .av-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .av-btn { padding:7px 14px; font-size:9px; letter-spacing:0.13em; font-weight:700;
+    border-radius:3px; background:transparent; cursor:pointer; font-family:inherit;
+    border:0.5px solid #444; color:#bbb; }
+  .av-btn--hear  { border-color:#3a4a30; color:#a3b07e; }
+  .av-btn--vote  { border-color:#3a5a3a; color:#9ac99a; }
+  .av-btn--amend { border-color:#5a4630; color:#dcb88a; }
+  .av-btn:hover { background:#13100b; color:#fff; }
+  .av-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .av-mine { font-family:monospace; font-size:10px; letter-spacing:0.04em;
+    color:#888; font-style:italic; padding:6px 8px; background:#0a0807;
+    border:0.5px solid rgba(255,255,255,0.04); border-radius:3px; }
+  .av-mine b { color:#dcb88a; font-style:normal; }
 
   /* Monthly Agenda bill card — the proposal currently in hearing. */
   .ag-bill { background:#0d0a07; border:0.5px solid #2a2218; border-left:3px solid #c8a26e;
@@ -399,22 +457,58 @@ async function init() {
   }
 
   // Members with party join (party_color, faction_name, abbreviation).
+  // 20270749: last_set_agenda_tick joined so we can gate the per-member
+  // once-per-tick Set the Agenda click.
   const { data: members, error: memErr } = await _supabase
     .from('committee_members')
-    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, seated_at_tick, party:factions!party_id(faction_name, abbreviation, party_color, archetype), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
+    .select('id, slot_idx, role, party_id, npc_first_name, npc_last_name, politician_faction_id, seated_at_tick, last_set_agenda_tick, party:factions!party_id(faction_name, abbreviation, party_color, archetype), politician:factions!politician_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .order('slot_idx', { ascending: true });
   if (memErr) console.warn('committee: members fetch failed', memErr);
 
+  // Committee row — active_proposal_id + active_agenda_set_at_tick
+  // drive the Set-the-Agenda voting workflow (20270749). One round-trip
+  // here saves a per-render lookup.
+  const { data: commRow, error: commRowErr } = await _supabase
+    .from('committees')
+    .select('id, active_proposal_id, active_agenda_set_at_tick')
+    .eq('id', committeeId)
+    .maybeSingle();
+  if (commRowErr) console.warn('committee: committee row fetch failed', commRowErr);
+  const activeAgendaId = commRow?.active_proposal_id || null;
+
   // Queued proposals → render in Upcoming Agenda. Joined to the
   // author faction so we can render "Proposed by …" off real names.
+  // 20270749: support/oppose archetypes ride along so the Set-the-
+  // Agenda flow can preview the NPC voting prediction.
   const { data: proposalsRaw, error: propErr } = await _supabase
     .from('committee_proposals')
-    .select('id, category, section, articles, proposed_at_tick, created_at, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+    .select('id, category, section, articles, proposed_at_tick, created_at, support_archetypes, oppose_archetypes, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
     .eq('committee_id', committeeId)
     .eq('status', 'queued')
     .order('created_at', { ascending: false });
   if (propErr) console.warn('committee: proposals fetch failed', propErr);
+
+  // Active agenda proposal + vote tally (20270749). Only fetched when
+  // the committee row carries an active_proposal_id.
+  let activeAgendaProposal = null;
+  let agendaVotes = [];
+  if (activeAgendaId) {
+    const [propRes, voteRes] = await Promise.all([
+      _supabase.from('committee_proposals')
+        .select('id, category, section, articles, bill_name, support_archetypes, oppose_archetypes, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
+        .eq('id', activeAgendaId)
+        .maybeSingle(),
+      _supabase.from('committee_agenda_votes')
+        .select('member_id, voter_faction_id, vote, is_npc, voted_at_tick')
+        .eq('committee_id', committeeId)
+        .eq('proposal_id', activeAgendaId),
+    ]);
+    if (propRes.error) console.warn('committee: active agenda fetch failed', propRes.error);
+    if (voteRes.error) console.warn('committee: agenda votes fetch failed', voteRes.error);
+    activeAgendaProposal = propRes.data || null;
+    agendaVotes = voteRes.data || [];
+  }
 
   // 20270728: policy-change proposals share the queue. Pulled from a
   // separate table with structured policy/option FKs; merged into
@@ -491,7 +585,7 @@ async function init() {
   }
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes);
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes, activeAgendaProposal, agendaVotes);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -519,13 +613,25 @@ function ctxShardTick(ctx) {
   return Number(ctx?.shard?.current_tick) || 0;
 }
 
-function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes) {
+function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes, activeAgendaProposal, agendaVotes) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
   const isChair = members.some(m => m.role === 'chair' && m.politician_faction_id === viewerPolId);
   const viewerFactionId = ctx.faction?.id || null;
   const alreadyTestified = !!(activeHearing && testimonies.some(t => t.submitter_faction_id && t.submitter_faction_id === viewerFactionId));
+
+  // 20270749: viewer's eligibility to use Set the Agenda. One use per
+  // tick per member, blocked while an agenda is already active or a
+  // hearing is open. Upcoming Agenda rows become clickable when true.
+  const viewerMember = members.find(m => m.politician_faction_id === viewerPolId) || null;
+  const lastSetTick = Number(viewerMember?.last_set_agenda_tick) || 0;
+  const canSetAgenda = onCommittee
+    && !activeAgendaProposal
+    && !activeHearing
+    && (lastSetTick < currentTick);
+  const myAgendaVote = agendaVotes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
+  const canVoteAgenda = !!activeAgendaProposal && onCommittee && !myAgendaVote;
 
   document.getElementById('comm-host').innerHTML = `
     <div class="ch-row">
@@ -548,9 +654,9 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     <div class="agenda">
       <div class="ag-head">
         <span class="ag-lab">MONTHLY AGENDA</span>
-        <span class="ag-status">${activeHearing ? 'HEARING IN SESSION' : 'NO ACTIVE WORK'}</span>
+        <span class="ag-status">${activeHearing ? 'HEARING IN SESSION' : (activeAgendaProposal ? 'AGENDA VOTE IN PROGRESS' : 'NO ACTIVE WORK')}</span>
       </div>
-      ${renderMonthlyAgenda(activeHearing, currentTick, isChair)}
+      ${renderMonthlyAgenda(activeHearing, currentTick, isChair, activeAgendaProposal, agendaVotes, members, viewerPolId, canVoteAgenda, myAgendaVote)}
     </div>
 
     <div class="testimony">
@@ -576,7 +682,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
 
     <div class="actions">
       <div class="ac-lab">COMMITTEE ACTIONS${onCommittee ? '' : ' &middot; MEMBERS ONLY'}</div>
-      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0)}</div>
+      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0, !!activeAgendaProposal)}</div>
     </div>
 
     <div class="activities">
@@ -585,8 +691,8 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     </div>
 
     <div class="upcoming">
-      <div class="up-lab">UPCOMING AGENDA</div>
-      ${renderProposals(proposals || [])}
+      <div class="up-lab">UPCOMING AGENDA${canSetAgenda && (proposals || []).filter(p => p._kind !== 'policy_change').length ? '<span class="up-hint"> &middot; click an item to bring it to the Monthly Agenda</span>' : ''}</div>
+      ${renderProposals(proposals || [], canSetAgenda)}
     </div>`;
 
   // Delegated click handler.
@@ -602,6 +708,78 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       e.preventDefault();
       if (witCta.dataset.disabled === '1') return;
       openWitnessModal(activeHearing, personas);
+      return;
+    }
+    // 20270749 — click on an Upcoming Agenda row when the row is
+    // marked as a Set-the-Agenda target. One use per tick per member;
+    // server re-validates everything.
+    const setAg = e.target.closest('[data-set-agenda]');
+    if (setAg) {
+      e.preventDefault();
+      if (setAg.dataset.busy === '1') return;
+      const propId = setAg.dataset.setAgenda;
+      if (!propId) return;
+      setAg.dataset.busy = '1';
+      setAg.style.opacity = '0.6';
+      try {
+        const { data, error } = await _supabase.rpc('committee_set_agenda', {
+          p_faction_id: viewerPolId, p_committee_id: committeeId, p_proposal_id: propId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated:      'Sign in first.',
+            not_member:             'Only committee members can set the agenda.',
+            already_used_this_tick: 'You’ve already set the agenda this tick.',
+            agenda_already_active:  'An agenda item is already up for a vote.',
+            hearing_in_progress:    'A hearing is in session — wait for it to close.',
+            proposal_not_found:     'That proposal no longer exists.',
+            wrong_committee:        'That proposal belongs to another committee.',
+            not_queued:             'That proposal is no longer queued.',
+          };
+          alert(REASON[data?.reason] || ('Could not set the agenda: ' + (data?.reason || 'unknown')));
+          setAg.dataset.busy = '0'; setAg.style.opacity = '';
+          return;
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not set the agenda: ' + (err?.message || 'unknown error'));
+        setAg.dataset.busy = '0'; setAg.style.opacity = '';
+      }
+      return;
+    }
+    // 20270749 — agenda action vote (HEAR / VOTE / AMEND) cast by a
+    // committee member while a proposal is on the floor for an
+    // action-vote.
+    const agVote = e.target.closest('[data-agenda-vote]');
+    if (agVote) {
+      e.preventDefault();
+      if (agVote.dataset.busy === '1') return;
+      const vote = agVote.dataset.agendaVote;
+      agVote.dataset.busy = '1';
+      agVote.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('committee_cast_agenda_vote', {
+          p_faction_id: viewerPolId, p_committee_id: committeeId, p_vote: vote,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated: 'Sign in first.',
+            not_member:        'Only committee members can vote.',
+            no_active_agenda:  'No agenda item is currently up for a vote.',
+            already_voted:     'You’ve already cast your vote on this item.',
+            invalid_vote:      'Pick hear, vote, or amend.',
+          };
+          alert(REASON[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
+          agVote.dataset.busy = '0'; agVote.disabled = false;
+          return;
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not vote: ' + (err?.message || 'unknown error'));
+        agVote.dataset.busy = '0'; agVote.disabled = false;
+      }
       return;
     }
     const hold = e.target.closest('[data-act="hold"].enabled');
@@ -788,10 +966,12 @@ function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified) {
   return `<div class="input-disabled"><strong>Observer access.</strong> &middot; Members of Parliament may apply for committee membership.</div>`;
 }
 
-function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued) {
+function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, hasActiveAgenda) {
   // [Hold a Hearing] is CHAIR-ONLY per the 20270499 RPC gate. We
   // mirror the gate client-side: enabled iff chair AND no hearing
-  // currently open AND at least one queued proposal exists.
+  // currently open AND at least one queued proposal exists AND
+  // there's no active Set-the-Agenda vote in progress (20270749 —
+  // the chair would otherwise race the committee's vote).
   // Tooltip explains the disable.
   const holdDisabledReason = !onCommittee
     ? 'Members only'
@@ -799,9 +979,11 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued) {
       ? 'Committee chair only'
       : hasOpenHearing
         ? 'A hearing is already in session'
-        : !hasQueued
-          ? 'No queued proposals'
-          : '';
+        : hasActiveAgenda
+          ? 'An agenda vote is in progress'
+          : !hasQueued
+            ? 'No queued proposals'
+            : '';
   const holdEnabled = holdDisabledReason === '';
 
   const actions = [
@@ -947,7 +1129,19 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
 // Monthly Agenda — the bill currently in hearing. Empty state when
 // no open hearing exists. Chair gets a [Close Hearing] button on the
 // agenda card; everyone sees the ticks-remaining countdown.
-function renderMonthlyAgenda(activeHearing, currentTick, isChair) {
+//
+// 20270749: when committees.active_proposal_id is set but no hearing
+// is open, the committee is in the 5-member action-vote phase. The
+// agenda card paints the proposal + per-member ballot + tally + the
+// viewer's HEAR / VOTE / AMEND buttons in place of the hearing
+// countdown.
+function renderMonthlyAgenda(activeHearing, currentTick, isChair,
+                              activeAgendaProposal, agendaVotes, members,
+                              viewerPolId, canVoteAgenda, myAgendaVote) {
+  if (activeAgendaProposal && !activeHearing) {
+    return renderAgendaVotePanel(activeAgendaProposal, agendaVotes || [],
+                                 members || [], viewerPolId, canVoteAgenda, myAgendaVote);
+  }
   if (!activeHearing) return '<div class="ag-empty">No current work item.</div>';
   const p = activeHearing.proposal || {};
   const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
@@ -1147,8 +1341,14 @@ async function submitWitnessTestimony(activeHearing, factionId) {
 // the policy name plus "{current} → {proposed}." First article's
 // text is truncated to ~120 chars for the snippet so long bills
 // don't blow up the layout.
-function renderProposals(proposals) {
+function renderProposals(proposals, canSetAgenda) {
   if (!proposals.length) return '<div class="up-empty">No upcoming items.</div>';
+  // 20270749: when the viewer can Set the Agenda (member, no active
+  // agenda, no open hearing, hasn't used this tick), rows for
+  // article-kind proposals become clickable and carry data-set-agenda
+  // so the click handler can fire committee_set_agenda. Policy_change
+  // rows aren't valid Set-the-Agenda targets (they sit in a separate
+  // table; agenda voting is article-only for now).
   return proposals.map(p => {
     const a = p.author || {};
     const authorName = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
@@ -1174,7 +1374,10 @@ function renderProposals(proposals) {
         ? escHtml(firstArticle.text.length > 120 ? firstArticle.text.slice(0, 117).trim() + '…' : firstArticle.text)
         : '';
     const cat = (p.category || '').toUpperCase();
-    return `<div class="up-row">
+    const clickable = canSetAgenda;
+    const cls = clickable ? 'up-row up-row--clickable' : 'up-row';
+    const attrs = clickable ? ` data-set-agenda="${escHtml(p.id)}" title="Click to bring onto the Monthly Agenda"` : '';
+    return `<div class="${cls}"${attrs}>
       <span class="up-cat">${escHtml(cat)}</span>
       <div class="up-row-body">
         <div class="up-section">${escHtml(p.section || '')}${snippet ? `<span class="sep">·</span><span class="snippet">${snippet}</span>` : ''}</div>
@@ -1182,6 +1385,69 @@ function renderProposals(proposals) {
       </div>
     </div>`;
   }).join('');
+}
+
+// Set-the-Agenda vote panel (20270749). Shown in the Monthly Agenda
+// slot when committees.active_proposal_id is set and no hearing is
+// open. Three sub-bars (Hear / Vote / Amend) show the live tally;
+// each member's vote pill paints their cast or "—". When the viewer
+// can vote (committee member, hasn't voted yet), HEAR / VOTE / AMEND
+// buttons sit at the bottom and call committee_cast_agenda_vote.
+function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, myVote) {
+  const p = proposal || {};
+  const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
+  const snippet = firstArticle?.text
+    ? escHtml(firstArticle.text.length > 200 ? firstArticle.text.slice(0, 197).trim() + '…' : firstArticle.text)
+    : '';
+  const a = p.author || {};
+  const authorName = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+
+  const voteByMember = new Map((votes || []).map(v => [v.member_id, v.vote]));
+  const hear  = (votes || []).filter(v => v.vote === 'hear').length;
+  const vote  = (votes || []).filter(v => v.vote === 'vote').length;
+  const amend = (votes || []).filter(v => v.vote === 'amend').length;
+
+  const memberPills = (members || []).map(m => {
+    const v = voteByMember.get(m.id) || null;
+    const cls = v ? `av-pill av-pill--${v}` : 'av-pill av-pill--pending';
+    const name = m.politician_faction_id
+      ? (m.politician
+          ? `${m.politician.leader_first_name || ''} ${m.politician.leader_last_name || ''}`.trim()
+          : 'Player')
+      : `${m.npc_first_name || ''} ${m.npc_last_name || ''}`.trim() || 'Vacant';
+    const label = v ? v.toUpperCase() : '—';
+    return `<div class="av-row">
+      <span class="av-role">${escHtml((m.role || '').replace('_', ' ').toUpperCase())}</span>
+      <span class="av-name">${escHtml(name)}</span>
+      <span class="${cls}">${escHtml(label)}</span>
+    </div>`;
+  }).join('');
+
+  const buttons = canVote
+    ? `<div class="av-actions">
+         <button type="button" class="av-btn av-btn--hear" data-agenda-vote="hear">&#9776; HEAR</button>
+         <button type="button" class="av-btn av-btn--vote" data-agenda-vote="vote">&#10003; VOTE</button>
+         <button type="button" class="av-btn av-btn--amend" data-agenda-vote="amend">&#9998; AMEND</button>
+       </div>`
+    : (myVote
+        ? `<div class="av-mine">You voted <b>${escHtml(myVote.toUpperCase())}</b>. Waiting on the rest of the committee.</div>`
+        : '');
+
+  return `<div class="av-card">
+    <div class="av-head">
+      <span class="av-cat">${escHtml((p.category || '').toUpperCase())}</span>
+      <span class="av-section">${escHtml(p.section || p.bill_name || 'Proposal')}</span>
+    </div>
+    ${snippet ? `<div class="av-snippet">${snippet}</div>` : ''}
+    <div class="av-sub">Sponsor <b>${escHtml(authorName)}</b> &middot; needs 3 of 5 to carry out</div>
+    <div class="av-tally">
+      <div class="av-tally-row"><span class="av-tally-lab">Hold a Hearing</span><span class="av-tally-val">${hear} / 3</span></div>
+      <div class="av-tally-row"><span class="av-tally-lab">Vote on Floor</span><span class="av-tally-val">${vote} / 3</span></div>
+      <div class="av-tally-row"><span class="av-tally-lab">Amend</span><span class="av-tally-val">${amend} / 3</span></div>
+    </div>
+    <div class="av-members">${memberPills}</div>
+    ${buttons}
+  </div>`;
 }
 
 init();
