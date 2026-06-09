@@ -204,6 +204,11 @@
 .oi-headline em { font-style:italic; color:#dcb88a; }
 .oi-headline .v { font-family:Georgia,serif; font-style:italic; color:#c8a26e; margin:0 4px; }
 .oi-meta { display:flex; align-items:center; gap:10px; font-size:9.5px; color:#7a7a7a; flex-wrap:wrap; }
+.oi-desc { font-family:Georgia,serif; font-style:italic; color:#8a8680; font-size:11.5px;
+  line-height:1.4; margin:2px 0 6px; }
+.oi-eff { display:inline-block; padding:1px 6px; border-radius:3px; font-family:monospace;
+  font-size:9px; letter-spacing:0.04em; background:#10130a; color:#9ac99a;
+  border:0.5px solid #3a5a3a; margin-right:4px; }
 .oi-corp { padding:2px 8px; border-radius:3px; font-size:8.5px; letter-spacing:0.1em;
   font-weight:700; background:#10130a; color:#9ac99a; border:0.5px solid #3a5a3a; }
 .oi-sep { color:#3a3a3a; }
@@ -1589,6 +1594,7 @@ let activeTrials = [];  // in-progress + recently-resolved (12-tick window) tria
 let stateAdvocateRequests = []; // pending state_advocate_appointment_requests where this politician is the reviewer (MoI). Surfaces as Pressing Issues cards (20270555).
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
+let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1686,7 +1692,7 @@ async function init() {
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null });
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, mayorCityRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, mayorCityRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1731,6 +1737,11 @@ async function init() {
       // aren't a committee member and haven't testified yet
       // (20270691). Empty result for nation-less politicians.
       _supabase.rpc('list_open_hearings_for_witness', { p_faction_id: politician.id }),
+      // In-flight ordinance proposals where the caller holds an
+      // unvoted council seat (20270747). Empty result for any
+      // politician not on a council. Surfaces as Pressing Issues
+      // cards with VOTE YES / VOTE NO buttons.
+      _supabase.rpc('list_open_proposals_for_council_seat', { p_faction_id: politician.id }),
       cityFetch,
     ]);
     if (evRes.error) throw evRes.error;
@@ -1742,6 +1753,7 @@ async function init() {
     if (saReqRes.error) console.error('politician-home: state advocate requests fetch failed', saReqRes.error);
     if (jmAppsRes.error) console.error('politician-home: junior minister applications fetch failed', jmAppsRes.error);
     if (hearingsRes.error) console.error('politician-home: open hearings fetch failed', hearingsRes.error);
+    if (openPropsRes.error) console.error('politician-home: open ordinance proposals fetch failed', openPropsRes.error);
     if (mayorCityRes.error) console.error('politician-home: mayor city fetch failed', mayorCityRes.error);
     // Land the city under the right slot for the current office.
     // mayorCity / ccpCity / ccmCity are mutually exclusive in
@@ -1766,6 +1778,7 @@ async function init() {
     stateAdvocateRequests = saReqRes.data || [];
     juniorMinisterApplications = jmAppsRes.data || [];
     committeeHearings = (hearingsRes.data?.success ? hearingsRes.data.hearings : []) || [];
+    openOrdinanceProposals = (openPropsRes.data?.success ? openPropsRes.data.proposals : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1777,6 +1790,7 @@ async function init() {
     stateAdvocateRequests = [];
     juniorMinisterApplications = [];
     committeeHearings = [];
+    openOrdinanceProposals = [];
   }
 
   renderHero(ctx.shard);
@@ -2109,13 +2123,12 @@ const PARTY_MEMBER_ACTIONS = [
   { ic: '⚑', name: 'DOOR KNOCKING', cost: 'no cost', desc: 'Walk a precinct for the party. Roll 1d6 + Influence. Total ≤1 → −0.2 Party Popularity; total 2–5 → +0.2; total ≥6 → +0.3.', action: 'door-knock' },
   { ic: '❕', name: 'GIVE A SPEECH', cost: '$50k party funds', desc: 'Climb a stump on the party\'s dime. Costs $50,000 from party funds. +0.3 Reputation.', action: 'give-speech' },
 ];
-// Mayor (Tier 4 Local Executive) — 20270737. Propose is greyed
-// today (city ordinance system isn't built yet). Collect Taxes and
-// Campaign share next_member_action_tick with PARTY_MEMBER_ACTIONS
-// so holding the office adds choice depth, not pure additive
-// power.
+// Mayor (Tier 4 Local Executive) — 20270737. Propose was dropped
+// from the Mayor action set in 20270747; CCP + CCM are the only
+// proposers going forward. Collect Taxes and Campaign share
+// next_member_action_tick with PARTY_MEMBER_ACTIONS so holding the
+// office adds choice depth, not pure additive power.
 const MAYOR_ACTIONS = [
-  { ic: '📜', name: 'PROPOSE',       cost: 'no cost',            desc: 'Propose to introduce or rescind a city ordinance. Council votes next tick. On pass: +1 Experience, +0.5 popularity to parties with supporting archetypes, +0.3 extra to your party.', action: 'propose-ordinance' },
   { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
 ];
@@ -2125,7 +2138,7 @@ const MAYOR_ACTIONS = [
 // the Base are CCP-specific; the latter is distinct from CCM's
 // politician_build_the_base (different brackets).
 const CCP_ACTIONS = [
-  { ic: '📜', name: 'PROPOSE ORDINANCE', cost: '-1 Volunteer', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves next tick.', action: 'propose-ordinance' },
+  { ic: '📜', name: 'PROPOSE ORDINANCE', cost: '-1 Volunteer', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves in 3 ticks.', action: 'propose-ordinance' },
   { ic: '🏛', name: 'CITY HEARING',      cost: 'no cost',      desc: 'Convene a public hearing. +0.5 Reputation. +0.1 Party Popularity per Volunteer.', action: 'ccp-city-hearing' },
   { ic: '🛠', name: 'BUILD THE BASE',    cost: 'no cost',      desc: 'Spend the month organising in your district. Roll 1d6: 1-2 → +1 Volunteer; 3-4 → +1 Reputation; 5-6 → +1 Volunteer AND +1 Reputation.', action: 'ccp-build-the-base' },
 ];
@@ -2144,7 +2157,7 @@ const LOCAL_GOV_ACTIONS = [
 // Mayor/CCP use, scoped to the CCM's city. No Volunteer cost on
 // the CCM path (CCP keeps -1 Volunteer; Mayor keeps no cost).
 const CITY_COUNCIL_ACTIONS = [
-  { ic: '📜', name: 'PROPOSE ORDINANCE',  cost: 'no cost', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves next tick.', action: 'propose-ordinance' },
+  { ic: '📜', name: 'PROPOSE ORDINANCE',  cost: 'no cost', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves in 3 ticks.', action: 'propose-ordinance' },
   { ic: '⛌', name: 'HOLD CITY MEETING', cost: 'no cost', desc: 'Convene constituents. +0.5 Influence. +0.1 Party Popularity per Volunteer.', action: 'ccm-hold-meeting' },
   { ic: '☎', name: 'FUNDRAISER',         cost: 'no cost', desc: 'Work the donor list. Roll 1d6: +$1K × roll into Party Funds. Roll 5-6 → +1 Volunteer.', action: 'ccm-fundraiser' },
 ];
@@ -2566,7 +2579,7 @@ async function proposeOrdinance(ctx, ordinanceId, kind, btn) {
       const REASON = {
         not_authenticated:    'Sign in to propose.',
         no_politician:        'No politician on this account.',
-        wrong_office:         'Only the Mayor or City Council President can propose ordinances.',
+        wrong_office:         'Only the City Council President or a City Council Member can propose ordinances.',
         wrong_nation:         'That city belongs to another nation.',
         not_this_citys_mayor: 'You aren’t the Mayor of this city.',
         not_this_citys_ccp:   'You aren’t the City Council President of this city.',
@@ -3151,6 +3164,9 @@ function renderPressingIssues(ctx) {
   committeeHearings
     .filter(h => !dismissed.has(h.hearing_id))
     .forEach(h => blocks.push(renderCommitteeHearingCard(h)));
+  // Open city ordinance proposals where this council seat hasn't
+  // voted yet (20270747). One card per proposal/seat row.
+  openOrdinanceProposals.forEach(p => blocks.push(renderOrdinanceProposalCard(p, ctx)));
   if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
     return;
@@ -3163,6 +3179,93 @@ function renderPressingIssues(ctx) {
   bindPretrialActions();
   bindActiveTrialActions();
   bindCommitteeHearingActions();
+  bindOrdinanceProposalActions(ctx);
+}
+
+// ── Ordinance proposal Pressing Issues card (20270747) ──────────────
+// One card per row from list_open_proposals_for_council_seat. Shows
+// the proposed ordinance name, the city it applies to, its
+// description + effect chips, then two buttons that call
+// vote_on_city_ordinance and re-render Pressing Issues on success.
+function renderOrdinanceProposalCard(p, ctx) {
+  const o          = p.ordinance || {};
+  const cityName   = p.city_name || 'this city';
+  const kindWord   = p.kind === 'rescind' ? 'Rescission of' : '';
+  const headline   = kindWord
+    ? `${escHtml(kindWord)} <em>${escHtml(o.name || '—')}</em> proposed in the City of <strong>${escHtml(cityName)}</strong>.`
+    : `<em>${escHtml(o.name || '—')}</em> proposed in the City of <strong>${escHtml(cityName)}</strong>.`;
+  const proposer = [p.proposer_first, p.proposer_last].filter(Boolean).join(' ');
+  const subline  = proposer ? `Proposed by <b>${escHtml(proposer)}</b>` : '';
+  const effects  = Array.isArray(o.stat_effects) ? o.stat_effects : [];
+  const effChips = effects.length
+    ? effects.map(e => `<span class="oi-eff">${escHtml(e.key || '?')} ${e.delta > 0 ? '+' : ''}${e.delta}</span>`).join(' ')
+    : '';
+  const cost     = Number(o.cost) || 0;
+  const costChip = cost === 0
+    ? ''
+    : (cost > 0
+        ? `<span class="oi-eff">cost $${cost}</span>`
+        : `<span class="oi-eff">pays $${-cost}</span>`);
+  return `
+    <div class="offer-card op-card" data-proposal-id="${escAttr(p.proposal_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">&#128221;</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">CITY COUNCIL · VOTE</div>
+        <div class="oi-headline">${headline}</div>
+        ${o.description ? `<div class="oi-desc">${escHtml(o.description)}</div>` : ''}
+        <div class="oi-meta">
+          ${subline ? `<span>${subline}</span>` : ''}
+          ${effChips || costChip ? `<span>${effChips}${effChips && costChip ? ' ' : ''}${costChip}</span>` : ''}
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn op-vote-yes" data-vote="yes">&#10003; VOTE YES</button>
+        <button type="button" class="offer-reject-btn op-vote-no"  data-vote="no">&#10005; VOTE NO</button>
+      </div>
+    </div>`;
+}
+async function castOrdinanceVote(proposalId, vote, ctx, card) {
+  const btns = card.querySelectorAll('button');
+  btns.forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('vote_on_city_ordinance', {
+      p_faction_id:  ctx?.faction?.id || null,
+      p_proposal_id: proposalId,
+      p_vote:        vote,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:   'Sign in to vote.',
+        no_politician:       'No politician on this account.',
+        invalid_vote:        'Pick yes or no.',
+        proposal_not_found:  'That proposal no longer exists.',
+        proposal_closed:     'That proposal has already resolved.',
+        city_not_found:      'City not found.',
+        not_a_seat_holder:   'You don’t hold a seat on this council.',
+        already_voted:       'You’ve already voted on this proposal.',
+      };
+      alert(REASON[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
+      btns.forEach(b => { b.disabled = false; });
+      return;
+    }
+    openOrdinanceProposals = openOrdinanceProposals.filter(p => p.proposal_id !== proposalId);
+    renderPressingIssues(ctx);
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btns.forEach(b => { b.disabled = false; });
+  }
+}
+function bindOrdinanceProposalActions(ctx) {
+  document.querySelectorAll('.op-card').forEach(card => {
+    const pid = card.dataset.proposalId;
+    if (!pid) return;
+    card.querySelectorAll('.op-vote-yes, .op-vote-no').forEach(btn => {
+      btn.addEventListener('click', () => castOrdinanceVote(pid, btn.dataset.vote, ctx, card));
+    });
+  });
 }
 
 // localStorage-backed dismissal set for the committee hearing
@@ -6078,7 +6181,7 @@ init();
     <div class="tc-head">
       <div class="tc-eyebrow">PROPOSE ORDINANCE</div>
       <div class="tc-title" id="po-title">—</div>
-      <div class="tc-sub" id="po-sub">Pick a template to send to the city council. Vote resolves next tick. Active-in-this-city ordinances appear first — clicking those proposes a rescind.</div>
+      <div class="tc-sub" id="po-sub">Pick a template to send to the city council. Vote resolves in 3 ticks. Active-in-this-city ordinances appear first — clicking those proposes a rescind.</div>
     </div>
     <div class="tc-body">
       <div class="po-content" id="po-content">
