@@ -6843,6 +6843,8 @@ function initials(s, n) {
       invalid_tier: 'Pick a valid tier.', invalid_rhq_tier: 'Regional HQs are Small/Medium/Large only.',
       nation_not_found: 'That nation no longer exists.', not_owner: 'Only the corp owner can request.',
       not_buildable: 'Construction isn’t open in that nation.',
+      city_not_found: 'That city no longer exists.',
+      city_wrong_nation: 'That city isn’t in the selected nation.',
       invalid_name: 'Enter a name (2+ characters).', invalid_building_type: 'Pick a building type.',
       corp_not_found: 'Corp not found.',
     };
@@ -6870,6 +6872,25 @@ function initials(s, n) {
       return 1 + (prox / 100) * 0.75;
     }
 
+    // Cities for the active nation in the Request Construction modal.
+    // Keyed by nation_id → array of { id, city_name, jobs }. Populated
+    // lazily on Nation onChange so we don't fetch all cities up front.
+    // Cleared when the modal opens since stale jobs values could mislead
+    // the discount preview between sessions.
+    const citiesByNation = new Map();
+    const fetchCitiesFor = async (nationId) => {
+      if (!nationId) return [];
+      if (citiesByNation.has(nationId)) return citiesByNation.get(nationId);
+      const { data, error } = await _supabase.from('cities')
+        .select('id, city_name, jobs')
+        .eq('nation_id', nationId)
+        .order('city_name');
+      if (error) console.warn('[entrepreneur-corp] cities fetch error:', error.message);
+      const list = data || [];
+      citiesByNation.set(nationId, list);
+      return list;
+    };
+
     const openRequestModal = async () => {
       const ov = document.getElementById('rc-overlay');
       if (!ov) return;
@@ -6884,6 +6905,7 @@ function initials(s, n) {
         if (nErr) console.warn('[entrepreneur-corp] nations fetch error:', nErr.message);
         for (const n of (nats || [])) nationMap.set(n.id, n);
       }
+      citiesByNation.clear();
       let submitting = false;
       const typeOpts = requestableTypes.map(t => `<option value="${t}">${escapeHtml(buildingTypeLabel(t))}</option>`).join('');
       const natOpts = [...nationMap.values()].map(n => `<option value="${n.id}">${escapeHtml(n.name)}</option>`).join('');
@@ -6898,10 +6920,13 @@ function initials(s, n) {
             <select class="bm-select" id="rc-type">${typeOpts}</select>
             <div class="bm-label">Nation</div>
             <select class="bm-select" id="rc-nation">${natOpts || '<option value="">No nations</option>'}</select>
+            <div class="bm-label">City</div>
+            <select class="bm-select" id="rc-city"><option value="">Loading…</option></select>
             <div class="bm-label" id="rc-tier-label">Tier</div>
             <select class="bm-select" id="rc-tier"></select>
             <div class="bm-label">Bidding window (ticks)</div>
             <input type="number" class="bm-input" id="rc-bidding" min="1" max="48" value="6">
+            <div style="font-size:11px;color:#8a8680;margin-top:10px;">Tax Cuts Available: <b style="color:#bbb;">None</b></div>
             <div id="rc-preview" style="font-size:12px;color:#8aaa6a;margin:12px 0 0;line-height:1.5;"></div>
             <div class="bm-err" id="rc-err"></div>
           </div>
@@ -6914,10 +6939,30 @@ function initials(s, n) {
       document.getElementById('rc-close').onclick = close;
       document.getElementById('rc-cancel').onclick = close;
       ov.onclick = (e) => { if (e.target === ov) close(); };
-      const typeEl = document.getElementById('rc-type');
-      const tierEl = document.getElementById('rc-tier');
+      const typeEl  = document.getElementById('rc-type');
+      const tierEl  = document.getElementById('rc-tier');
+      const cityEl  = document.getElementById('rc-city');
       const tierLabel = document.getElementById('rc-tier-label');
       const curNation = () => nationMap.get(document.getElementById('rc-nation').value);
+      const curCity = () => {
+        const cities = citiesByNation.get(document.getElementById('rc-nation').value) || [];
+        return cities.find(c => c.id === cityEl.value) || null;
+      };
+      const renderCities = async () => {
+        const nationId = document.getElementById('rc-nation').value;
+        const cities = await fetchCitiesFor(nationId);
+        if (!cities.length) {
+          cityEl.innerHTML = '<option value="">No cities in this nation</option>';
+        } else {
+          cityEl.innerHTML = cities.map(c => {
+            const jobs = Number(c.jobs) || 0;
+            const pct  = jobs * 3;
+            const disc = pct > 0 ? ` · −${pct}%` : '';
+            return `<option value="${c.id}">${escapeHtml(c.city_name || '—')} (Jobs: ${jobs}${disc})</option>`;
+          }).join('');
+        }
+        upd();
+      };
       const renderTier = () => {
         const t = typeEl.value;
         // Apartments + plants + oil-and-gas types all pin their own
@@ -6944,6 +6989,16 @@ function initials(s, n) {
           ? patternBCost(reqBase(t, null), nation, APARTMENT_DEFS[t].sensitivity)
           : scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
+        // City-Jobs discount (20270749). cities.jobs is 1-10; each
+        // 1 Jobs takes 3% off the reference build cost. Discount
+        // applied to the displayed price so the bidders see the
+        // discounted reference. Mirror of the server math in
+        // request_building_construction.
+        const city = curCity();
+        const jobs = Number(city?.jobs) || 0;
+        const discPct  = jobs * 3;
+        const discFactor = 1 - jobs * 0.03;
+        const finalCost  = Math.round(baseCost * discFactor);
         // Apartment-only forecast line: projected occupancy + net rent
         // at the picked nation's current stats. Same single-source
         // helper the property card reads from, so the prediction in
@@ -6955,13 +7010,17 @@ function initials(s, n) {
             forecastLine = `<br>Projected occupancy <b>${Math.round(rent.occupancy * 100)}%</b> · net rent <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick at current nation stats.`;
           }
         }
+        const costLine = discPct > 0
+          ? `Reference cost: <s>${fmtUsd(baseCost)}</s> → <b>${fmtUsd(finalCost)}</b> <span style="color:#dcb88a;">(Jobs ${jobs} · −${discPct}%)</span>`
+          : `Reference cost: <b>${fmtUsd(finalCost)}</b>`;
         document.getElementById('rc-preview').innerHTML =
-          `Local-build cost: <b>${fmtUsd(baseCost)}</b> · build time ~<b>${dur} ticks</b>${forecastLine}<br>Every construction corp can bid at any positive price — even below their own distance-adjusted cost. Lowest accepted bid wins at close (you can accept manually before then).`;
+          `${costLine} · build time ~<b>${dur} ticks</b>${forecastLine}<br>Construction start triggers +1 Growth in the chosen city. Every construction corp can bid at any positive price. Lowest accepted bid wins at close (you can accept manually before then).`;
       };
       typeEl.onchange = () => { renderTier(); upd(); };
       tierEl.onchange = upd;
-      document.getElementById('rc-nation').onchange = upd;
-      renderTier(); upd();
+      cityEl.onchange = upd;
+      document.getElementById('rc-nation').onchange = renderCities;
+      renderTier(); renderCities();
       document.getElementById('rc-submit').onclick = async () => {
         if (submitting) return;
         const errEl = document.getElementById('rc-err');
@@ -6969,6 +7028,8 @@ function initials(s, n) {
         if (name.length < 2) { errEl.textContent = 'Enter a name (2+ characters).'; return; }
         const nationId = document.getElementById('rc-nation').value;
         if (!nationId) { errEl.textContent = 'Pick a nation.'; return; }
+        const cityId = cityEl.value;
+        if (!cityId) { errEl.textContent = 'Pick a city.'; return; }
         const t = typeEl.value;
         const tier = (isPlantType(t) || isApartmentType(t) || isOilGasType(t)) ? 'small' : tierEl.value;   // server pins plant + apartment + oil-and-gas tier
         const bidding = Math.max(1, Math.round(Number(document.getElementById('rc-bidding').value) || 6));
@@ -6977,7 +7038,7 @@ function initials(s, n) {
         try {
           const { data, error } = await _supabase.rpc('request_building_construction', {
             p_corp_id: id, p_name: name, p_building_type: t, p_nation_id: nationId,
-            p_tier: tier, p_bidding_ticks: bidding });
+            p_tier: tier, p_bidding_ticks: bidding, p_city_id: cityId });
           if (error) throw error;
           if (!data || !data.success) {
             errEl.textContent = RC_REASON[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));

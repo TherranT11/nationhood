@@ -85,10 +85,27 @@ ALTER TABLE public.nations DROP COLUMN IF EXISTS last_vonc_tick;
 -- the client (laws.html / bills.js) nor the resolver
 -- (enactConstitutionalReform) accepts it anymore.
 --
--- The original CHECK was unnamed. Postgres' default name follows
--- bills_proposed_constitutional_reform_check; the DO block falls
--- back to enumerating constraints by relation if the conventional
--- name isn't present (e.g., a prior environment renamed it).
+-- 2a. First, clear the value from any existing rows. Without this,
+-- the new CHECK would error on the historical rows that carried
+-- the dead value. Three classes of row are possible:
+--   • status IN ('committee','floor') — in-flight: NULLing the
+--     reform value pushes the bill to fail next resolver pass
+--     (enactConstitutionalReform fails on a NULL target system).
+--   • status='passed' — already enacted; NULLing the column drops
+--     the historical "what was proposed" tag but the actual
+--     transition already happened.
+--   • status='failed' / 'frozen' / other terminal — inert; NULL
+--     keeps the row out of the constraint's way.
+UPDATE public.bills
+   SET proposed_constitutional_reform = NULL
+ WHERE proposed_constitutional_reform = 'semi_presidential';
+
+-- 2b. Drop and recreate the CHECK. The original constraint from
+-- 20260407_constitutional_reform.sql was unnamed; Postgres' default
+-- name follows bills_proposed_constitutional_reform_check; the DO
+-- block falls back to enumerating constraints by relation if the
+-- conventional name isn't present (e.g., a prior environment
+-- renamed it).
 DO $$
 DECLARE
     v_constraint_name text;
