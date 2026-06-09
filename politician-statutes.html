@@ -583,14 +583,20 @@ let submitInFlight = false;
   wireAmendModalChrome();
   wireProposePolicyModalChrome();
 
-  // ?propose=1 / ?amend=1 deep-links from party.html's Member of
-  // Parliament panel — open the matching modal straight away when
-  // the viewer qualifies. Non-MPs hitting either link still land
-  // on the static page with the disabled-button gate.
-  const queryAction = new URLSearchParams(location.search).get('propose')
-    ? 'propose' : new URLSearchParams(location.search).get('amend') ? 'amend' : null;
-  if (isMP && queryAction === 'propose') openModal();
-  if (isMP && queryAction === 'amend')   openAmendModal();
+  // ?propose=1 / ?amend=1 / ?propose_policy=1 deep-links —
+  // ?propose and ?amend come from party.html's MP panel (and now,
+  // 20270750, from the home-page Propose New Statute tile);
+  // ?propose_policy comes from the Propose New Law tile.
+  // Non-MPs hitting any link still land on the static page with
+  // the disabled-button gate.
+  const qParams = new URLSearchParams(location.search);
+  const queryAction = qParams.get('propose')        ? 'propose'
+                    : qParams.get('amend')          ? 'amend'
+                    : qParams.get('propose_policy') ? 'propose_policy'
+                    : null;
+  if (isMP && queryAction === 'propose')        openModal();
+  if (isMP && queryAction === 'amend')          openAmendModal();
+  if (isMP && queryAction === 'propose_policy') openProposePolicyModal();
   // Defensive try/catch — the renderer already null-guards every
   // host element and bucket, but an unexpected DOM throw here
   // shouldn't take down the whole page.
@@ -1006,6 +1012,7 @@ const REASON_HUMAN = {
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
   invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
   invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
+  cooldown:             'You\'ve already used your MP action this tick.',
 };
 
 async function submit() {
@@ -1573,6 +1580,7 @@ function pplReasonText(reason) {
     option_not_found:        'Selected option no longer exists.',
     option_policy_mismatch:  'The selected option doesn\'t belong to the chosen policy.',
     no_change_proposed:      'The selected option is already the active one.',
+    cooldown:                'You\'ve already used your MP action this tick.',
   })[reason] || `Could not submit: ${reason}`;
 }
 </script>
