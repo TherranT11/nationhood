@@ -587,9 +587,9 @@ initPage('laws', async (state) => {
 
     // Caretaker is the ONLY suspension state. The single source of truth
     // is government_formations.status === 'caretaker', written explicitly
-    // by the four real triggers: callEarlyElectionsAction (Snap Election),
-    // resolveNoConfidence (VoNC), dissolveParliament (Presidential snap),
-    // and resignPM (transitional). Presidential republics legitimately
+    // by the three real triggers: callEarlyElectionsAction (Snap Election),
+    // resolveNoConfidence (VoNC), and resignPM (transitional).
+    // Presidential republics legitimately
     // have no government_formations row — that is NOT a suspension state.
     qCacheBust('coalition_');
     {
@@ -1101,7 +1101,6 @@ function foundationalArticleLabel(bill) {
             parliamentary:           'Parliamentary Democracy',
             constitutional_monarchy: 'Constitutional Monarchy',
             presidential:            'Presidential Republic',
-            semi_presidential:       'Semi-Presidential Republic'
         };
         return '🏛 Constitutional Reform — Proposed: ' + (SYSTEMS[bill.proposed_constitutional_reform] || bill.proposed_constitutional_reform);
     }
@@ -2737,7 +2736,6 @@ function renderFoundationalOptions() {
                 { id: 'parliamentary', label: 'Parliamentary Democracy', desc: 'Head of State appointed by parliament. Prime Minister holds executive power.' },
                 { id: 'constitutional_monarchy', label: 'Constitutional Monarchy', desc: 'Hereditary monarch as Head of State. Prime Minister holds executive power.' },
                 { id: 'presidential', label: 'Presidential Republic', desc: 'Directly elected President as sole executive. No Prime Minister.' },
-                { id: 'semi_presidential', label: 'Semi-Presidential Republic', desc: 'Directly elected President shares power with a Prime Minister appointed by parliament.' }
             ];
             const currentLabel = getConstitutionalSystemLabel(curSystem);
             return `
@@ -2884,7 +2882,6 @@ function onConstitutionalReformSelect(systemId) {
             parliamentary: 'Stability +3, Legitimacy +2, Civil Unrest +5. If transitioning from a presidential system, the president will be deactivated and a parliamentary election scheduled.',
             constitutional_monarchy: 'Stability +5, Legitimacy -5, Civil Unrest +5. A hereditary monarch will be established as Head of State. If transitioning from a presidential system, the president will be deactivated.',
             presidential: 'Legitimacy +3, Political Engagement +3, Polarization +2, Civil Unrest +5. A presidential election will be scheduled. If transitioning from a parliamentary system, the PM and coalition will be dissolved.',
-            semi_presidential: 'Legitimacy +2, Political Engagement +2, Polarization +3, Civil Unrest +5. Both president and PM coexist. A presidential election will be scheduled if needed, and PM formation will be triggered.'
         };
         infoDiv.innerHTML = effects[systemId] || '';
     }
@@ -3389,7 +3386,7 @@ async function addArticle() {
                 dynastyCrest = document.getElementById('foundational-dynasty-crest')?.value?.trim() || null;
                 if (!dynastyName) { alert('Please enter a dynasty name for the absolute monarchy.'); return; }
             }
-            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic' };
             draftArticles = [];
             draftArticles.push({
                 articleNumber: 2,
@@ -3655,7 +3652,7 @@ function renderDraftArticles() {
                 </div>`;
             }
             if (art.foundationalSubtype === 'constitutional_reform') {
-                const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+                const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic' };
                 const systemLabel = systemLabels[art.proposedConstitutionalReform] || art.proposedConstitutionalReform;
                 const dynastyInfo = art.proposedDynastyName ? ` · Dynasty: ${escapeHtml(art.proposedDynastyName)}` : '';
                 return `<div class="draft-article-card" style="border-left:3px solid var(--purple);">
@@ -4371,7 +4368,7 @@ async function submitToCommittee() {
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'parliamentary_term_length'
                     ? `This foundational law, proposed by the ${currentFaction.faction_name}, seeks to change the legislative term length in ${currentNation.name} to ${draftArticles.find(a => a.isFoundational).proposedParliamentaryTermLength / (GAME_CONFIG.TICKS_PER_YEAR || 12)} years. The new term length takes effect after the next scheduled election. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'constitutional_reform'
-                    ? (() => { const fArt = draftArticles.find(a => a.isFoundational); const safeDynasty = escapeHtml(fArt.proposedDynastyName || 'Royal'); const sysLabels = { parliamentary: 'a Parliamentary Democracy', constitutional_monarchy: `a Constitutional Monarchy (establishing the ${safeDynasty} dynasty)`, presidential: 'a Presidential Republic', semi_presidential: 'a Semi-Presidential Republic' }; return `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to reform the system of government in ${escapeHtml(currentNation.name)} to ${sysLabels[fArt.proposedConstitutionalReform] || escapeHtml(fArt.proposedConstitutionalReform)}. This is a major constitutional change that will restructure the executive branch. Requires a two-thirds supermajority to pass.`; })()
+                    ? (() => { const fArt = draftArticles.find(a => a.isFoundational); const safeDynasty = escapeHtml(fArt.proposedDynastyName || 'Royal'); const sysLabels = { parliamentary: 'a Parliamentary Democracy', constitutional_monarchy: `a Constitutional Monarchy (establishing the ${safeDynasty} dynasty)`, presidential: 'a Presidential Republic' }; return `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to reform the system of government in ${escapeHtml(currentNation.name)} to ${sysLabels[fArt.proposedConstitutionalReform] || escapeHtml(fArt.proposedConstitutionalReform)}. This is a major constitutional change that will restructure the executive branch. Requires a two-thirds supermajority to pass.`; })()
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'hos_election'
                     ? `This foundational law, proposed by the ${escapeHtml(currentFaction.faction_name)}, seeks to change the Head of State election method in ${escapeHtml(currentNation.name)} to ${draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'hereditary' ? 'hereditary succession (establishing the ' + escapeHtml(draftArticles.find(a => a.isFoundational).proposedDynastyName) + ' dynasty)' : draftArticles.find(a => a.isFoundational).proposedHosElectionMethod === 'direct_vote' ? 'direct popular vote' : 'parliamentary appointment'}. Requires a two-thirds supermajority to pass.`
                     : draftArticles.find(a => a.isFoundational).foundationalSubtype === 'judicial_appointment_politicization'

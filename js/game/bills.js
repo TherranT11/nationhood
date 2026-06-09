@@ -1467,8 +1467,8 @@ export async function resolveReferendums(supabase, nation, currentTick) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
- * Resolve a passed/failed minister_confirmation bill (presidential and
- * semi-presidential PM + cabinet confirmations). Reads the nominee from
+ * Resolve a passed/failed minister_confirmation bill (presidential
+ * cabinet confirmations). Reads the nominee from
  * bill.metadata.pending_minister (sole source of truth); installs the
  * confirmed minister into ministries; for PM bills also syncs
  * government_formations.ministry_assignments and installs head_of_government.
@@ -4331,7 +4331,7 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
 
 async function enactConstitutionalReform(supabase, bill, currentTick) {
     const targetSystem = bill.proposed_constitutional_reform;
-    const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
+    const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential'];
     if (!validSystems.includes(targetSystem)) {
         console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
         const { error: failErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
@@ -4368,10 +4368,10 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
     console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
 
     // Determine structural changes
-    const currentHasPresident = currentSystem === 'presidential' || currentSystem === 'semi_presidential';
-    const targetHasPresident = targetSystem === 'presidential' || targetSystem === 'semi_presidential';
-    const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy' || currentSystem === 'semi_presidential';
-    const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy' || targetSystem === 'semi_presidential';
+    const currentHasPresident = currentSystem === 'presidential';
+    const targetHasPresident = targetSystem === 'presidential';
+    const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy';
+    const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy';
     const currentIsMonarchy = currentSystem === 'constitutional_monarchy';
     const targetIsMonarchy = targetSystem === 'constitutional_monarchy';
 
@@ -4392,10 +4392,6 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             break;
         case 'presidential':
             nationUpdate.government_type = 'Presidential';
-            nationUpdate.hos_election_method = 'direct_vote';
-            break;
-        case 'semi_presidential':
-            nationUpdate.government_type = 'Semi-Presidential';
             nationUpdate.hos_election_method = 'direct_vote';
             break;
     }
@@ -4609,11 +4605,6 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             nationUpdate.political_engagement = Math.min(100, politicalEngagement + 3);
             nationUpdate.polarization = Math.min(100, polarization + 2);
             break;
-        case 'semi_presidential':
-            nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
-            nationUpdate.political_engagement = Math.min(100, politicalEngagement + 2);
-            nationUpdate.polarization = Math.min(100, polarization + 3);
-            break;
     }
 
     // Major reform always causes some civil unrest
@@ -4629,7 +4620,6 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
         parliamentary: 'Parliamentary Democracy',
         constitutional_monarchy: 'Constitutional Monarchy',
         presidential: 'Presidential Republic',
-        semi_presidential: 'Semi-Presidential Republic'
     };
     console.log(`[enactFoundationalBill] Nation ${bill.nation_id} constitutional system changed to "${systemLabels[targetSystem]}".`);
     return true;

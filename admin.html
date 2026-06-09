@@ -1352,7 +1352,7 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
                     else logMsg(`  ⚠ ${nation.name} parliamentary: ${elErr.message}`, '#d48a3c');
                 }
 
-                // Presidential election (presidential/semi-presidential nations)
+                // Presidential election (presidential nations)
                 if (presTerm && govType.includes('presidential')) {
                     const presTick = Math.floor(Math.random() * 6) + 2; // 1d6+1
                     const { error: elErr } = await _supabase.from('elections').insert({
@@ -2029,7 +2029,6 @@ import { calculateTotalWeightedPopularity, calculateSectorContributions, parsePo
     const NN_GOVTYPE_MAP = {
         parliamentary:          { gt: 'Parliamentary',     method: 'parliamentary' },
         presidential:           { gt: 'Presidential',      method: 'direct_vote' },
-        semipresidential:       { gt: 'Semi-Presidential', method: 'direct_vote' },
         constitutional_monarchy:{ gt: 'Parliamentary',     method: 'hereditary' },
         absolute_monarchy:      { gt: 'Absolute Monarchy', method: 'hereditary' },
     };

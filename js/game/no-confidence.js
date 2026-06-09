@@ -28,13 +28,12 @@ import { isAbsoluteMonarchy } from './government-types.js';
  * @param {object} opts.nation        - { id }
  * @param {string} opts.pmFactionId   - PM's faction id (target of the motion + cooldown key)
  * @param {string|null} opts.pmLastName - For the motion title; null falls back to a generic title
- * @param {boolean} opts.isSemiPres   - Whether the system is semi-presidential (changes preamble copy)
  * @param {number} opts.tick          - Current shard tick
  * @param {number} opts.mySeats       - Filer's seat count (used as the YES vote weight)
  * @returns {Promise<{ ok: true, billId: string } | { ok: false, error: string }>}
  */
 export async function fileNoConfidenceMotion(supabase, opts) {
-    const { faction, nation, pmFactionId, pmLastName, isSemiPres, tick, mySeats } = opts;
+    const { faction, nation, pmFactionId, pmLastName, tick, mySeats } = opts;
 
     if (!faction?.id || !nation?.id || !pmFactionId) {
         return { ok: false, error: 'Missing required arguments (faction, nation, or PM party id).' };
@@ -52,11 +51,9 @@ export async function fileNoConfidenceMotion(supabase, opts) {
     }
 
     const motionName = pmLastName
-        ? (isSemiPres ? `Motion of No Confidence in PM ${pmLastName}` : `Motion of No Confidence in the ${pmLastName} Government`)
+        ? `Motion of No Confidence in the ${pmLastName} Government`
         : `Motion of No Confidence in the Government`;
-    const preamble = isSemiPres
-        ? `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the Prime Minister. If passed by simple majority, the PM will be removed and the President must nominate a replacement.`
-        : `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`;
+    const preamble = `This motion, filed by the ${faction.faction_name}, calls for a vote of no confidence in the current government. If passed by simple majority, the coalition will be immediately dissolved.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nation.id,

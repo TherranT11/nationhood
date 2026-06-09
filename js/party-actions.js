@@ -13,7 +13,7 @@ import { getPromiseProgress } from './game/platform-promises.js';
 import { fetchActiveAgitator, fetchOrGeneratePool, hireAgitator, getGoverningStatus, getSkillLabel, calculateAgitatorCost } from './game/agitator.js';
 import { LAWSUIT_TARGETS, LAWSUIT_BASES, calculateTier, TIER_EFFECTS, fileLawsuit, fetchActiveLawsuits } from './game/lawsuits.js';
 import { getNationNames, resignPM, installHOG, investInVolaCulture, VOLA_INVESTMENT_LEVELS, claimLeadershipChallenge, postStadiumConstruction, VOLA_STADIUM_TIERS, bidToHostVwc, formMinorityGovernment } from './game/political-actions.js';
-import { isAbsoluteMonarchy, isSemiPresidential, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
+import { isAbsoluteMonarchy, hasParliamentaryPM, hasElectedPresident } from './game/government-types.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
 import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
@@ -568,7 +568,7 @@ export async function initPartyActions(supabase, state) {
         .select('*').eq('faction_id', faction.id).eq('status', 'active').maybeSingle();
     _deputy = deputyData || null;
 
-    // Active president for Presidential / Semi-Presidential nations.
+    // Active president for Presidential nations.
     // Drives the Impeach President gate in the Deputy actions panel
     // (and is the only context the impeachment module needs that
     // party-actions doesn't otherwise track).
@@ -2230,19 +2230,13 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             // Greyed when an active coalition is already in place
             // (status formed/active/caretaker — i.e. anything fetchActiveCoalition
             // returned non-null). Available whenever there's a vacancy.
-            // Parliamentary-only; presidential and semi-presidential
-            // systems install via election / presidential nomination.
+            // Parliamentary-only; presidential nations install via
+            // election / presidential nomination.
             const nation = _state.nation;
             const govType = (nation?.government_type || '').toLowerCase();
             const isAM        = govType.includes('absolute monarchy');
-            const isPres      = govType.includes('presidential') && !govType.includes('semi');
-            const isSemiPres  = isSemiPresidential(nation);
-            // Semi-presidential explicitly excluded — its PM comes from
-            // a presidential nomination, not coalition negotiation.
-            // Leaving it in isParliamentaryLike was the bug that let
-            // players click Form Coalition and bounce to the Election
-            // subtab's "No coalition formation required" dead-end.
-            const isParliamentaryLike = !isAM && !isPres && !isSemiPres
+            const isPres      = govType.includes('presidential');
+            const isParliamentaryLike = !isAM && !isPres
                 && (govType.includes('parliamentary') || nation?.hos_election_method === 'hereditary');
             const hasCoalitionRow = !!_activeCoalition;
             const hasSeatedPm = !!_hogActive;
@@ -2250,10 +2244,7 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             const inCoalition = coalitionPartyIds.includes(faction.id);
             const noSeats = !faction.seats || faction.seats <= 0;
 
-            if (isSemiPres) {
-                isDisabled = true;
-                action.lockReason = 'Coalition formation does not apply in semi-presidential systems — the President nominates the Prime Minister directly.';
-            } else if (!isParliamentaryLike) {
+            if (!isParliamentaryLike) {
                 isDisabled = true;
                 action.lockReason = 'Coalition formation only applies to parliamentary systems.';
             } else if (hasCoalitionRow && hasSeatedPm) {
@@ -2298,9 +2289,8 @@ function renderActionsPanel(leaderName, partyColor, faction) {
             const nation = _state.nation;
             const govType = (nation?.government_type || '').toLowerCase();
             const isAM   = govType.includes('absolute monarchy');
-            const isPres = govType.includes('presidential') && !govType.includes('semi');
-            const isSemi = govType.includes('semi-presidential') || govType.includes('semi_presidential');
-            const isParliamentary = !isAM && !isPres && !isSemi
+            const isPres = govType.includes('presidential');
+            const isParliamentary = !isAM && !isPres
                 && (govType.includes('parliamentary') || nation?.hos_election_method === 'hereditary');
             const coalitionPartyIds = Array.isArray(_activeCoalition?.party_ids) ? _activeCoalition.party_ids : [];
             const inCoalition = coalitionPartyIds.includes(faction.id);
@@ -2491,7 +2481,7 @@ const DEPUTY_ACTIONS = [
     {
         id: 'impeach_president',
         name: 'Impeach President',
-        desc: 'File articles of impeachment against the sitting President on charges of Abuse of Power, Gross Incompetence, or Constitutional Violation. Triggers a committee debate, then a floor vote requiring an absolute majority. If the motion passes, a 2/3 supermajority conviction vote follows. Presidential and Semi-Presidential systems only.',
+        desc: 'File articles of impeachment against the sitting President on charges of Abuse of Power, Gross Incompetence, or Constitutional Violation. Triggers a committee debate, then a floor vote requiring an absolute majority. If the motion passes, a 2/3 supermajority conviction vote follows. Presidential systems only.',
         cost: 'FREE',
         costColor: 'var(--text-dim)',
         moneyCost: 0,
@@ -2557,7 +2547,7 @@ function renderDeputyActionsPanel(role) {
             const cooldownTick = Number(_state.nation?.impeachment_cooldown_until_tick) || 0;
             if (!isPres) {
                 isDisabled = true;
-                lockReason = 'Presidential and Semi-Presidential systems only.';
+                lockReason = 'Presidential systems only.';
             } else if (!_activePresident) {
                 isDisabled = true;
                 lockReason = 'No sitting President to impeach.';
@@ -6949,7 +6939,7 @@ let _callEarlyElectionsSubmitting = false;
 async function triggerCallEarlyElections() {
     if (_callEarlyElectionsSubmitting) return;
     if (!_state?.faction?.id || !_state?.nation?.id) return;
-    if (!hasParliamentaryPM(_state.nation)) { alert('Early elections are only available in parliamentary and semi-presidential systems.'); return; }
+    if (!hasParliamentaryPM(_state.nation)) { alert('Early elections are only available in parliamentary systems.'); return; }
     if (isAbsoluteMonarchy(_state.nation)) { alert('Elections are not held under absolute monarchy.'); return; }
     const pmPartyId = _administration?.pm_party_id;
     if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
@@ -7156,7 +7146,7 @@ let _resignPMSubmitting = false;
 async function triggerResignAsPM() {
     if (_resignPMSubmitting) return;
     if (!_state?.faction?.id || !_state?.nation?.id) return;
-    if (!hasParliamentaryPM(_state.nation)) { alert('Resignation is only available in parliamentary and semi-presidential systems.'); return; }
+    if (!hasParliamentaryPM(_state.nation)) { alert('Resignation is only available in parliamentary systems.'); return; }
     if (isAbsoluteMonarchy(_state.nation)) { alert('Prime Ministers serve at the Monarch’s pleasure. The Monarch must replace the PM via the Appoint Prime Minister royal action.'); return; }
     const pmPartyId = _administration?.pm_party_id;
     if (!pmPartyId || pmPartyId !== _state.faction.id) { alert('Prime Minister\u2019s party only.'); return; }
@@ -7310,10 +7300,9 @@ async function triggerNoConfidence() {
 
     const faction     = _state.faction;
     const nation      = _state.nation;
-    const isSemiPres  = isSemiPresidential(nation);
 
     if (!hasParliamentaryPM(nation)) {
-        alert('A vote of no confidence is only possible in a parliamentary or semi-presidential system.');
+        alert('A vote of no confidence is only possible in a parliamentary system.');
         return;
     }
 
@@ -7352,12 +7341,10 @@ async function triggerNoConfidence() {
     }
 
     const motionName = pmLastName
-        ? (isSemiPres ? `Motion of No Confidence in PM ${pmLastName}` : `Motion of No Confidence in the ${pmLastName} Government`)
+        ? `Motion of No Confidence in the ${pmLastName} Government`
         : `Motion of No Confidence in the Government`;
 
-    const passConsequences = isSemiPres
-        ? `IF IT PASSES:\n\u2022 PM removed \u2014 President must nominate a new PM\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum`
-        : `IF IT PASSES:\n\u2022 Coalition dissolved, PM removed, all ministries vacated\n\u2022 Snap elections scheduled\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum`;
+    const passConsequences = `IF IT PASSES:\n\u2022 Coalition dissolved, PM removed, all ministries vacated\n\u2022 Snap elections scheduled\n\u2022 Your party: +15 Momentum\n\u2022 PM's party: -10 Momentum`;
 
     if (!confirm(
         `\u26a1 FILE VOTE OF NO CONFIDENCE?\n\n"${motionName}"\n\n` +
@@ -7375,7 +7362,6 @@ async function triggerNoConfidence() {
             nation,
             pmFactionId,
             pmLastName,
-            isSemiPres,
             tick,
             mySeats,
         });

@@ -143,7 +143,6 @@ export function generateAgitatorPool(nationId, nationName) {
  *   Parliamentary Democracy : in coalition OR PM party → GOVERNING
  *   Presidential Republic   : president's party OR holds an active
  *                             cabinet ministry → GOVERNING
- *   Semi-Presidential       : any of the above → GOVERNING
  *   Absolute Monarchy       : party owns the throne
  *                             (nations.monarch_faction_id === partyId)
  *                             → GOVERNING; everyone else → OPPOSITION.
@@ -256,7 +255,7 @@ export async function getGoverningStatus(supabase, nationId, factionId) {
         };
     }
 
-    // Presidential / Semi-Presidential also need a cabinet-held check.
+    // Presidential also needs a cabinet-held check.
     var ministryHolder = false;
     if (presidential) {
         var { count } = await supabase

@@ -843,7 +843,7 @@ function splitOfficialName(officialName, fallbackName, govType) {
     return { prefix: officialName.slice(0, idx + 1), name: officialName.slice(idx + 1) };
   }
   if (govType === 'Absolute Monarchy') return { prefix: 'Kingdom of ',  name: fallbackName || '' };
-  if (govType === 'Presidential' || govType === 'Semi-Presidential') return { prefix: 'Republic of ', name: fallbackName || '' };
+  if (govType === 'Presidential') return { prefix: 'Republic of ', name: fallbackName || '' };
   return { prefix: '', name: fallbackName || officialName || '' };
 }
 
@@ -1744,12 +1744,12 @@ function renderCard(n, pm) {
   document.getElementById('nc-hos').textContent = hosName ? `${hosTitle} ${hosName}` : '—';
   const hosSub = n.government_type === 'Absolute Monarchy'
     ? (n.dynasty_name ? `Of the ${n.dynasty_name}` : 'Reigning monarch')
-    : (n.government_type === 'Presidential' || n.government_type === 'Semi-Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
+    : (n.government_type === 'Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
   document.getElementById('nc-hos-sub').textContent = hosSub;
 
-  // Head of Gov't — gov-type-aware. Parliamentary / Semi-Presidential /
-  // Constitutional Monarchy (which stores government_type='Parliamentary') all
-  // have a separate PM, looked up via ministries.ministry_key='prime_minister'.
+  // Head of Gov't — gov-type-aware. Parliamentary / Constitutional
+  // Monarchy (which stores government_type='Parliamentary') all have
+  // a separate PM, looked up via ministries.ministry_key='prime_minister'.
   // Presidential systems fuse HoS + HoG. Absolute monarchy has no premier.
   const hogEl    = document.getElementById('nc-hog');
   const hogSubEl = document.getElementById('nc-hog-sub');

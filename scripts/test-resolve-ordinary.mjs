@@ -22,8 +22,8 @@ const BASE_CTX = {
 };
 
 function parliamentaryNation() {
-    // hasElectedPresident() returns true for 'presidential' or 'semi_presidential'
-    // types. Anything else is parliamentary — use 'parliamentary' explicitly.
+    // hasElectedPresident() returns true for 'presidential' types.
+    // Anything else is parliamentary — use 'parliamentary' explicitly.
     return { id: 'nation-1', name: 'Testland', government_type: 'parliamentary' };
 }
 function presidentialNation() {
@@ -78,13 +78,6 @@ await suite('presidential passed — routes to president_desk', async () => {
         assert.equal(typeof fields.president_desk_deadline, 'number');
         assert.ok(fields.president_desk_deadline > 42,
             'deadline should be in the future');
-    });
-
-    await test('semi-presidential (elected president) also routes to president_desk', async () => {
-        const supabase = createSupabaseMock();
-        const ctx = { ...BASE_CTX, nation: { id: 'nation-1', government_type: 'Semi-Presidential' } };
-        const entry = await resolveOrdinaryBill(supabase, ordinaryBill(), ctx);
-        assert.equal(entry.result, 'president_desk');
     });
 
     await test('does NOT call enactBill (no active_laws/bill_articles writes)', async () => {

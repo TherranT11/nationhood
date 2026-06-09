@@ -14,7 +14,7 @@
 
 import { GAME_CONFIG, deductAP } from './config.js';
 import { MINISTER_APPROVAL_CONFIG, buildMinistryBaselines, NATION_STAT_COLUMN_SET } from './stats.js';
-import { isGovernmentPresidential, hasElectedPresident, isSemiPresidential, EO_DOMAIN, getMinistryDomain, MINISTRY_OFFICE_NAMES } from './government-types.js';
+import { isGovernmentPresidential, hasElectedPresident, MINISTRY_OFFICE_NAMES } from './government-types.js';
 import { adjustGovernmentApprovalEvent, adjustCredibility } from './momentum.js';
 import { getNationNames } from './political-actions.js';
 import { enactBill } from './bills.js';
@@ -254,68 +254,23 @@ export function canIssueExecutiveOrder(nation, currentFaction, presidentFactionI
 }
 
 /**
- * Semi-presidential aware check: can this faction issue the given EO type?
- * In semi-presidential systems, EOs are split between president and PM domains.
- * In pure presidential systems, only the president's party can issue any EO.
+ * Can this faction issue the given EO type? In presidential systems
+ * only the President's party can issue any EO.
  *
  * @param {object} nation - Nation row (needs government_type)
  * @param {object} currentFaction - The faction attempting to issue the EO
  * @param {string} presidentFactionId - President's faction ID
- * @param {string|null} pmFactionId - PM's faction ID (only relevant for semi-presidential)
- * @param {string} orderType - EO type key (e.g. 'tax_adjustment', 'national_emergency')
- * @param {string|null} ministryKey - Ministry key (only needed for 'acting_minister' / split domain)
  * @returns {boolean}
  */
-export function canIssueExecutiveOrderForType(nation, currentFaction, presidentFactionId, pmFactionId, orderType, ministryKey = null) {
+export function canIssueExecutiveOrderForType(nation, currentFaction, presidentFactionId) {
     if (!nation || !currentFaction || !presidentFactionId) return false;
     if (!isGovernmentPresidential(nation)) return false;
-
-    if (isSemiPresidential(nation) && pmFactionId) {
-        const domain = EO_DOMAIN[orderType];
-        if (domain === 'president') return currentFaction.id === presidentFactionId;
-        if (domain === 'pm') return currentFaction.id === pmFactionId;
-        if (domain === 'split' && ministryKey) {
-            const mDomain = getMinistryDomain(ministryKey);
-            const authorizedFaction = mDomain === 'presidential' ? presidentFactionId : pmFactionId;
-            return currentFaction.id === authorizedFaction;
-        }
-        // If domain not found or no ministryKey for split, fall back to either party
-        return currentFaction.id === presidentFactionId || currentFaction.id === pmFactionId;
-    }
-
-    // Pure presidential: only president's party
     return currentFaction.id === presidentFactionId;
 }
 
-/**
- * Validate domain authority for semi-presidential systems.
- * Throws an Error if the caller does not have authority for the given EO type.
- * No-op for non-semi-presidential systems.
- *
- * @param {object} nation - Nation row (needs government_type)
- * @param {string} callerFactionId - Faction ID of the caller
- * @param {string} presidentFactionId - President's faction ID
- * @param {string|null} pmFactionId - PM's faction ID
- * @param {string} orderType - EO type key
- * @param {string|null} ministryKey - Ministry key (only for acting_minister / split domain)
- */
-function validateEOAuthority(nation, callerFactionId, presidentFactionId, pmFactionId, orderType, ministryKey = null) {
-    if (!isSemiPresidential(nation)) return; // no domain split in other systems
-    const domain = EO_DOMAIN[orderType];
-    if (domain === 'president' && callerFactionId !== presidentFactionId) {
-        throw new Error('Only the President can issue this executive order');
-    }
-    if (domain === 'pm' && callerFactionId !== pmFactionId) {
-        throw new Error('Only the Prime Minister can issue this executive order');
-    }
-    if (domain === 'split' && ministryKey) {
-        const mDomain = getMinistryDomain(ministryKey);
-        const authorizedFaction = mDomain === 'presidential' ? presidentFactionId : pmFactionId;
-        if (callerFactionId !== authorizedFaction) {
-            throw new Error(`Only the ${mDomain === 'presidential' ? 'President' : 'PM'} can issue acting minister orders for ${ministryKey}`);
-        }
-    }
-}
+// validateEOAuthority removed in 20270748 — was a no-op for non-semi-pres
+// systems, and semi-pres is gone. Pure presidential authority is enforced
+// by canIssueExecutiveOrderForType / per-call presidentFactionId checks.
 
 /**
  * Fetch the current administration's president and PM faction IDs.
@@ -343,16 +298,8 @@ async function getAdminFactionIds(supabase, nationId) {
     };
 }
 
-/**
- * Validate EO domain authority for the calling faction.
- * Fetches admin faction IDs from DB and calls validateEOAuthority.
- * Returns { presidentFactionId, pmFactionId } on success, or throws on failure.
- */
-async function validateEODomainFromDB(supabase, nation, nationId, callerFactionId, orderType, ministryKey = null) {
-    const { presidentFactionId, pmFactionId } = await getAdminFactionIds(supabase, nationId);
-    validateEOAuthority(nation, callerFactionId, presidentFactionId, pmFactionId, orderType, ministryKey);
-    return { presidentFactionId, pmFactionId };
-}
+// validateEODomainFromDB removed in 20270748 along with the
+// semi-presidential domain check it wrapped.
 
 function randomMinisterName(nationName = '') {
     const { firstNames, lastNames } = getNationNames(nationName);
@@ -421,16 +368,6 @@ async function getOverreachCount(supabase, nationId, currentTick) {
 
 export async function issueActingMinister(supabase, nationId, factionId, ministryKey, nationName = '') {
     const currentTick = await getCurrentTick(supabase);
-
-    // Semi-presidential domain check: verify caller has authority over this ministry's domain
-    const { data: amNation } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (amNation) {
-        try {
-            await validateEODomainFromDB(supabase, amNation, nationId, factionId, 'acting_minister', ministryKey);
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
-    }
 
     // Check max acting ministers
     const { count: actingCount } = await supabase
@@ -559,16 +496,6 @@ export async function issueTaxAdjustment(supabase, nationId, factionId, taxType,
         return { success: false, error: 'Direction must be increase or decrease.' };
     }
 
-    // Semi-presidential domain check
-    const { data: taxNation } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (taxNation) {
-        try {
-            await validateEODomainFromDB(supabase, taxNation, nationId, factionId, 'tax_adjustment');
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
-    }
-
     const currentTick = await getCurrentTick(supabase);
 
     // Check cooldown
@@ -648,16 +575,6 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
         return { success: false, error: 'Invalid stat for price controls.' };
     }
 
-    // Semi-presidential domain check
-    const { data: pcNation } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (pcNation) {
-        try {
-            await validateEODomainFromDB(supabase, pcNation, nationId, factionId, 'price_controls');
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
-    }
-
     const currentTick = await getCurrentTick(supabase);
 
     // Check cooldown
@@ -720,16 +637,6 @@ export async function issuePriceControls(supabase, nationId, factionId, stat) {
 // ─── Executive Order: National Emergency ───
 
 export async function issueNationalEmergency(supabase, nationId, factionId) {
-    // Semi-presidential domain check
-    const { data: neNation } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (neNation) {
-        try {
-            await validateEODomainFromDB(supabase, neNation, nationId, factionId, 'national_emergency');
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
-    }
-
     const currentTick = await getCurrentTick(supabase);
 
     // Check cooldown
@@ -843,16 +750,6 @@ export async function endNationalEmergency(supabase, nationId, factionId) {
 export async function issueCensure(supabase, nationId, factionId, targetFactionId) {
     if (factionId === targetFactionId) {
         return { success: false, error: 'Cannot censure your own party.' };
-    }
-
-    // Semi-presidential domain check
-    const { data: censureNation } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (censureNation) {
-        try {
-            await validateEODomainFromDB(supabase, censureNation, nationId, factionId, 'censure');
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
     }
 
     const currentTick = await getCurrentTick(supabase);
@@ -1099,16 +996,6 @@ export async function issueStimulusOrder(supabase, nationId, factionId, stimulus
     const orderDef = STIMULATE_ECONOMY_ORDERS[stimulusKey];
     if (!orderDef) {
         return { success: false, error: 'Invalid stimulus order key.' };
-    }
-
-    // Semi-presidential domain check
-    const { data: stimNation } = await supabase.from('nations').select('government_type').eq('id', nationId).single();
-    if (stimNation) {
-        try {
-            await validateEODomainFromDB(supabase, stimNation, nationId, factionId, 'stimulate_economy');
-        } catch (e) {
-            return { success: false, error: e.message };
-        }
     }
 
     const currentTick = await getCurrentTick(supabase);

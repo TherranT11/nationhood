@@ -13,7 +13,7 @@ export const NATION_DESCRIPTIONS = Object.freeze({
     'San Estrella': 'A presidential republic with a growing economy. Analogous to Mexico.',
     'Palvera':      'A presidential nation rich in natural resources. Analogous to Venezuela.',
     'Montequilla':  'A parliamentary republic with a service-driven economy. Analogous to Argentina.',
-    'Avelia':       'A semi-presidential republic blending Spanish and Italian culture. Analogous to Italy.',
+    'Avelia':       'A parliamentary republic blending Spanish and Italian culture. Analogous to Italy.',
     'Calveth':      'A parliamentary democracy with strong social systems. Analogous to Denmark.',
     'Flandis':      'A parliamentary democracy with a trade-focused economy. Analogous to the Netherlands.',
     'Vostia':       'A parliamentary nation with a complex political landscape. Analogous to Serbia.',

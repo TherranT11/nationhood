@@ -928,7 +928,7 @@ async function loadNations() {
 }
 
 function getGovTypeClass(govType) {
-  if (govType === 'Presidential' || govType === 'Semi-Presidential') return 'gov-presidential';
+  if (govType === 'Presidential') return 'gov-presidential';
   return 'gov-democracy';
 }
 
@@ -936,7 +936,6 @@ function getGovTypeLabel(govTypeOrNation) {
   const govType = typeof govTypeOrNation === 'string' ? govTypeOrNation : govTypeOrNation?.government_type;
   const hosMethod = typeof govTypeOrNation === 'object' ? govTypeOrNation?.hos_election_method : null;
   if (govType === 'Presidential') return 'PRESIDENTIAL';
-  if (govType === 'Semi-Presidential') return 'SEMI-PRESIDENTIAL';
   if (hosMethod === 'hereditary') return 'CONSTITUTIONAL MONARCHY';
   return 'PARLIAMENTARY';
 }
