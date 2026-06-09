@@ -20387,15 +20387,6 @@ async function installHOG(supabase, opts) {
         reason = 'pm_change',
     } = opts;
 
-    // Snapshot the outgoing PM before deactivation so we can record the
-    // transition in the open admin row's leader_changes log (semi-pres).
-    const { data: outgoingHog } = await supabase
-        .from('head_of_government')
-        .select('faction_id, first_name, last_name')
-        .eq('nation_id', nationId)
-        .eq('active', true)
-        .maybeSingle();
-
     // Primary path: SECURITY DEFINER RPC install_hog (20260803). The
     // RPC bypasses the head_of_government RLS that 20260302 stripped
     // for client writes, with an internal ownership check on the
@@ -20458,12 +20449,11 @@ async function installHOG(supabase, opts) {
 
 /**
  * Append a leader_changes event to the open administration row.
- * Used by both server-side installHOG (semi-pres PM rotation within a
- * presidential term) and the browser party-leadership UI (mid-term ruling-
- * party leader change). Non-blocking: SELECT/UPDATE failures log to console
- * but do not throw — the calling action has already mutated primary state
- * (head_of_government, factions) and shouldn't be rolled back over an
- * audit-trail write.
+ * Called by the browser party-leadership UI on a mid-term ruling-party
+ * leader change. Non-blocking: SELECT/UPDATE failures log to console
+ * but do not throw — the calling action has already mutated primary
+ * state (head_of_government, factions) and shouldn't be rolled back
+ * over an audit-trail write.
  */
 async function appendAdminLeaderChange(supabase, nationId, event) {
     try {

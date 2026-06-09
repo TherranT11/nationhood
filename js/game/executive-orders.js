@@ -272,34 +272,8 @@ export function canIssueExecutiveOrderForType(nation, currentFaction, presidentF
 // systems, and semi-pres is gone. Pure presidential authority is enforced
 // by canIssueExecutiveOrderForType / per-call presidentFactionId checks.
 
-/**
- * Fetch the current administration's president and PM faction IDs.
- * Reads primary tables directly (presidents.is_active, head_of_government.active)
- * — the administrations row is a historical snapshot whose
- * president_party_id / pm_party_id can drift from the live state.
- * Authority checks must use live state.
- */
-async function getAdminFactionIds(supabase, nationId) {
-    const [presRes, hogRes] = await Promise.all([
-        supabase.from('presidents')
-            .select('faction_id')
-            .eq('nation_id', nationId)
-            .eq('is_active', true)
-            .maybeSingle(),
-        supabase.from('head_of_government')
-            .select('faction_id')
-            .eq('nation_id', nationId)
-            .eq('active', true)
-            .maybeSingle(),
-    ]);
-    return {
-        presidentFactionId: presRes.data?.faction_id || null,
-        pmFactionId: hogRes.data?.faction_id || null
-    };
-}
-
-// validateEODomainFromDB removed in 20270748 along with the
-// semi-presidential domain check it wrapped.
+// getAdminFactionIds + validateEODomainFromDB removed in 20270748
+// along with the semi-presidential domain check they wrapped.
 
 function randomMinisterName(nationName = '') {
     const { firstNames, lastNames } = getNationNames(nationName);
