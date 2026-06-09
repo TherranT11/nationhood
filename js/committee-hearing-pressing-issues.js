@@ -147,6 +147,11 @@ export function mountCommitteeHearingPressingIssues({ supabase, faction, host, s
 
     let count = 0;
     let hearings = [];
+    // Guard against double-tap on a card's SUBMIT TESTIMONY button:
+    // openTestifyModal awaits a persona fetch before appending the
+    // overlay, so a fast second click would otherwise spawn a second
+    // modal stacked over the first.
+    let modalOpening = false;
 
     async function fetchHearings() {
         try {
@@ -217,24 +222,30 @@ export function mountCommitteeHearingPressingIssues({ supabase, faction, host, s
     }
 
     async function openTestifyModal(hearing) {
-        // Pull the persona slate for this hearing. Filter to unclaimed
-        // client-side; the server's atomic claim in submit_hearing_testimony
-        // is still authoritative if two players race the same slot.
-        const { data: personasRaw, error } = await supabase
-            .from('committee_hearing_personas')
-            .select('id, slug, name, title, affiliation, claimed_by_faction_id')
-            .eq('hearing_id', hearing.hearing_id)
-            .order('slug', { ascending: true });
-        if (error) {
-            alert('Could not load witness personas: ' + (error.message || 'try again'));
-            return;
+        if (modalOpening) return;
+        modalOpening = true;
+        try {
+            // Pull the persona slate for this hearing. Filter to unclaimed
+            // client-side; the server's atomic claim in submit_hearing_testimony
+            // is still authoritative if two players race the same slot.
+            const { data: personasRaw, error } = await supabase
+                .from('committee_hearing_personas')
+                .select('id, slug, name, title, affiliation, claimed_by_faction_id')
+                .eq('hearing_id', hearing.hearing_id)
+                .order('slug', { ascending: true });
+            if (error) {
+                alert('Could not load witness personas: ' + (error.message || 'try again'));
+                return;
+            }
+            const unclaimed = (personasRaw || []).filter(p => !p.claimed_by_faction_id);
+            if (!unclaimed.length) {
+                alert('Every witness slot for this hearing has been taken.');
+                return;
+            }
+            renderModal(hearing, unclaimed);
+        } finally {
+            modalOpening = false;
         }
-        const unclaimed = (personasRaw || []).filter(p => !p.claimed_by_faction_id);
-        if (!unclaimed.length) {
-            alert('Every witness slot for this hearing has been taken.');
-            return;
-        }
-        renderModal(hearing, unclaimed);
     }
 
     function renderModal(hearing, personas) {
