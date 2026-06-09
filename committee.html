@@ -304,6 +304,41 @@
   .witness-cta .wn-btn:hover:not(:disabled) { background:#251710; color:#fff; }
   .witness-cta .wn-btn:disabled { opacity:0.4; cursor:not-allowed; }
 
+  /* ───────────── Hearing deliberation chat (20270760) ─────────────
+     Replaces the static "Hearing in session" banner when a hearing is
+     open. Message list above, composer below for committee members;
+     non-members see the message list + their existing witness CTA. */
+  .hearing-chat { flex:1; display:flex; flex-direction:column; gap:9px; padding:11px 12px;
+    background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px; }
+  .hc-head { display:flex; align-items:center; justify-content:space-between; }
+  .hc-lab { font-size:8.5px; letter-spacing:0.14em; color:var(--mut); font-weight:600; }
+  .hc-count { font-size:9px; color:var(--faint); font-family:monospace; letter-spacing:0.04em; }
+  .hc-messages { max-height:220px; overflow-y:auto; display:flex; flex-direction:column; gap:7px;
+    padding:4px 2px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.04); border-radius:4px; }
+  .hc-empty { padding:18px 12px; font-size:10.5px; color:var(--faint); font-style:italic; text-align:center; }
+  .hc-msg { padding:8px 11px; background:#101010; border-left:2px solid var(--comm-dim);
+    border-radius:0 3px 3px 0; }
+  .hc-msg-meta { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .hc-msg-sender { font-size:10.5px; color:#cfcabf; font-weight:600; }
+  .hc-msg-tick { font-size:8.5px; color:var(--faint); font-family:monospace; letter-spacing:0.04em; }
+  .hc-msg-body { font-size:11px; color:#d4d4d4; line-height:1.5; word-wrap:break-word; white-space:pre-wrap; }
+  .hc-composer { display:flex; flex-direction:column; gap:6px; }
+  .hc-input { padding:9px 11px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
+    color:#fff; font-size:11px; font-family:inherit; line-height:1.5; resize:vertical; box-sizing:border-box;
+    width:100%; }
+  .hc-input:focus { outline:none; border-color:var(--comm-dim); }
+  .hc-input::placeholder { color:var(--faint); font-style:italic; }
+  .hc-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .hc-counter { font-size:8.5px; color:var(--faint); font-family:monospace; letter-spacing:0.04em; }
+  .hc-counter.warn { color:#d4b87a; }
+  .hc-send { padding:7px 16px; background:#161208; border:0.5px solid var(--comm);
+    border-radius:3px; color:var(--comm-bright); font-size:9px; letter-spacing:0.14em;
+    font-weight:700; cursor:pointer; font-family:inherit; }
+  .hc-send:hover:not(:disabled) { background:#251710; color:#fff; }
+  .hc-send:disabled { opacity:0.4; cursor:not-allowed; }
+  .hc-err { display:none; color:var(--red, #c87a7a); font-size:10px; }
+  .hc-err.show { display:block; }
+
   /* Hold-a-Hearing button (chair-only enable) — same act-btn shape
      used elsewhere but slot-aware. */
   .act-btn.act-hold { /* uses inherited .act-btn styles + .enabled */ }
@@ -567,12 +602,15 @@ async function init() {
   if (hearErr) console.warn('committee: hearings fetch failed', hearErr);
   const activeHearing = (hearings || [])[0] || null;
 
-  // Personas + testimonies for the active hearing (only fetch if
-  // there is one — saves a round trip when nothing's in session).
+  // Personas + testimonies + deliberation chat for the active hearing
+  // (only fetch if there is one — saves round trips when nothing's
+  // in session). Chat (20270760) joins the sender's display name in
+  // one shot so the renderer doesn't have to do its own lookup.
   let personas = [];
   let testimonies = [];
+  let chatMessages = [];
   if (activeHearing) {
-    const [perRes, tesRes] = await Promise.all([
+    const [perRes, tesRes, chatRes] = await Promise.all([
       _supabase.from('committee_hearing_personas')
         .select('id, slug, name, title, affiliation, claimed_by_faction_id')
         .eq('hearing_id', activeHearing.id)
@@ -581,15 +619,21 @@ async function init() {
         .select('id, persona_id, submitter_faction_id, text, accepted, created_at_tick, submitter:factions!submitter_faction_id(leader_first_name, leader_last_name, faction_name, faction_type)')
         .eq('hearing_id', activeHearing.id)
         .order('created_at', { ascending: true }),
+      _supabase.from('committee_hearing_chat_messages')
+        .select('id, sender_faction_id, body, created_at_tick, created_at, sender:factions!sender_faction_id(leader_first_name, leader_last_name, nickname)')
+        .eq('hearing_id', activeHearing.id)
+        .order('created_at', { ascending: true }),
     ]);
-    if (perRes.error) console.warn('committee: personas fetch failed', perRes.error);
-    if (tesRes.error) console.warn('committee: testimonies fetch failed', tesRes.error);
-    personas    = perRes.data || [];
-    testimonies = tesRes.data || [];
+    if (perRes.error)  console.warn('committee: personas fetch failed', perRes.error);
+    if (tesRes.error)  console.warn('committee: testimonies fetch failed', tesRes.error);
+    if (chatRes.error) console.warn('committee: chat fetch failed', chatRes.error);
+    personas     = perRes.data  || [];
+    testimonies  = tesRes.data  || [];
+    chatMessages = chatRes.data || [];
   }
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick);
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick, chatMessages);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -617,7 +661,7 @@ function ctxShardTick(ctx) {
   return Number(ctx?.shard?.current_tick) || 0;
 }
 
-function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick) {
+function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick, chatMessages) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -671,7 +715,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
         <div class="chat-feed">
           ${renderHearingRecord(testimonies, personas, onCommittee, !!activeHearing)}
         </div>
-        <div class="chat-input">${renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified)}</div>
+        <div class="chat-input">${renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified, chatMessages || [], activeHearing?.id || null)}</div>
       </div>
     </div>
 
@@ -887,7 +931,85 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
   });
 
   wireWitnessModal(activeHearing, personas, viewerFactionId);
+  // 20270760 — Deliberation chat composer (committee members only).
+  // The composer markup only renders when onCommittee && activeHearing,
+  // so a null lookup here simply means there's nothing to bind.
+  wireHearingChatComposer(viewerFactionId, activeHearing?.id || null);
 }
+
+let _chatSubmitInFlight = false;
+function wireHearingChatComposer(viewerFactionId, hearingId) {
+  const input = document.getElementById('hc-input');
+  const btn   = document.getElementById('hc-send-btn');
+  const errEl = document.getElementById('hc-err');
+  const counter = document.getElementById('hc-counter');
+  if (!input || !btn || !hearingId || !viewerFactionId) return;
+
+  const refresh = () => {
+    const len = input.value.trim().length;
+    counter.textContent = `${input.value.length} / 400`;
+    counter.classList.toggle('warn', input.value.length > 320 && input.value.length <= 400);
+    btn.disabled = !(len >= 1 && len <= 400) || _chatSubmitInFlight;
+  };
+  input.addEventListener('input', refresh);
+  // Cmd/Ctrl+Enter submits, plain Enter inserts a newline so the
+  // composer behaves like a chat input rather than a form field.
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      if (!btn.disabled) submit();
+    }
+  });
+  btn.addEventListener('click', submit);
+  refresh();
+
+  async function submit() {
+    if (_chatSubmitInFlight) return;
+    const body = input.value.trim();
+    if (body.length < 1 || body.length > 400) return;
+    _chatSubmitInFlight = true;
+    btn.disabled = true;
+    errEl.textContent = '';
+    errEl.classList.remove('show');
+    const prevLabel = btn.textContent;
+    btn.textContent = 'SENDING…';
+    try {
+      const { data, error } = await _supabase.rpc('committee_hearing_chat_post', {
+        p_faction_id: viewerFactionId,
+        p_hearing_id: hearingId,
+        p_body:       body,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        errEl.textContent = CHAT_REASON_HUMAN[data?.reason] || `Could not send (${data?.reason || 'unknown'}).`;
+        errEl.classList.add('show');
+        _chatSubmitInFlight = false;
+        btn.textContent = prevLabel;
+        refresh();
+        return;
+      }
+      // Successful post: reload the page so every viewer sees a
+      // consistent message list (no realtime sub in v1).
+      location.reload();
+    } catch (e) {
+      errEl.textContent = 'Could not send: ' + (e?.message || 'unknown error');
+      errEl.classList.add('show');
+      _chatSubmitInFlight = false;
+      btn.textContent = prevLabel;
+      refresh();
+    }
+  }
+}
+
+const CHAT_REASON_HUMAN = {
+  not_authenticated: 'You are not signed in.',
+  invalid_arguments: 'Message was malformed — refresh and try again.',
+  no_politician:    'No politician faction found.',
+  hearing_not_found: 'That hearing no longer exists.',
+  hearing_closed:   'The hearing has closed — messages are locked.',
+  not_member:       'Only committee members may post here.',
+  invalid_body:     'Messages must be 1–400 characters.',
+};
 
 async function submitApplication(link, committeeId, factionId) {
   if (link.dataset.busy === '1') return;
@@ -945,21 +1067,63 @@ function renderMembers(members, viewerPolId) {
   }).join('');
 }
 
-function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified) {
-  // During an open hearing: any faction can submit (one-per-faction).
-  // Members get their own banner once they've testified or if they've
-  // not yet — but their primary entry point is the accept controls.
-  if (activeHearing) {
-    if (onCommittee) {
-      return `<div class="input-disabled"><strong>Hearing in session.</strong> &middot; Accept submissions from the pool below to promote them to the public record.</div>`;
-    }
-    if (alreadyTestified) {
-      return `<div class="input-disabled"><strong>You have testified.</strong> &middot; One submission per faction per hearing — wait for the committee to rule on it.</div>`;
-    }
-    return `<div class="witness-cta">
+// 20270760 — Hearing deliberation chat. Always renders the message
+// list when called (every viewer sees the deliberations live). The
+// foot region varies by viewer:
+//   • Committee member  → composer (textarea + SEND)
+//   • Already-testified → existing post-testimony banner
+//   • Witness candidate → existing SIGN UP AS WITNESS CTA
+function renderHearingChat(messages, onCommittee, alreadyTestified, hearingId) {
+  const messagesHtml = (messages.length === 0)
+    ? '<div class="hc-empty">No deliberations yet. Committee members may post during the hearing.</div>'
+    : messages.map(renderChatMessage).join('');
+  let footHtml;
+  if (onCommittee) {
+    footHtml = `
+      <div class="hc-composer" data-hearing-id="${escHtml(hearingId || '')}">
+        <textarea class="hc-input" id="hc-input" placeholder="Respond to the witness…" maxlength="400" rows="2"></textarea>
+        <div class="hc-foot">
+          <span class="hc-counter" id="hc-counter">0 / 400</span>
+          <button class="hc-send" type="button" id="hc-send-btn" disabled>SEND &rsaquo;</button>
+        </div>
+        <div class="hc-err" id="hc-err"></div>
+      </div>`;
+  } else if (alreadyTestified) {
+    footHtml = `<div class="input-disabled"><strong>You have testified.</strong> &middot; One submission per faction per hearing — wait for the committee to rule on it.</div>`;
+  } else {
+    footHtml = `<div class="witness-cta">
       <div class="wn-msg"><b>Hearing in session.</b> Pick a witness persona and submit testimony before the window closes.</div>
       <button type="button" class="wn-btn" id="witness-signup-cta">&#9999; SIGN UP AS WITNESS</button>
     </div>`;
+  }
+  return `<div class="hearing-chat">
+    <div class="hc-head">
+      <span class="hc-lab">COMMITTEE DELIBERATIONS</span>
+      <span class="hc-count">${messages.length} message${messages.length === 1 ? '' : 's'}</span>
+    </div>
+    <div class="hc-messages">${messagesHtml}</div>
+    ${footHtml}
+  </div>`;
+}
+
+function renderChatMessage(m) {
+  const senderName = m.sender ? (displayName(m.sender) || 'Unknown') : 'Unknown';
+  return `<div class="hc-msg">
+    <div class="hc-msg-meta">
+      <span class="hc-msg-sender">${escHtml(senderName)}</span>
+      <span class="hc-msg-tick">tick ${escHtml(String(m.created_at_tick ?? '?'))}</span>
+    </div>
+    <div class="hc-msg-body">${escHtml(m.body || '')}</div>
+  </div>`;
+}
+
+function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified, chatMessages, hearingId) {
+  // During an open hearing: the entire chat-input slot becomes the
+  // deliberation chat (20270760). Everyone viewing sees the message
+  // list; committee members get a composer; others see a read-only
+  // notice + their existing witness-side CTA.
+  if (activeHearing) {
+    return renderHearingChat(chatMessages || [], onCommittee, alreadyTestified, hearingId);
   }
   if (onCommittee) {
     return `<div class="input-disabled"><strong>You are a member.</strong> &middot; The testimony interface will open here once a hearing is in session.</div>`;
