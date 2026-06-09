@@ -1693,9 +1693,10 @@ async function init() {
   try {
     // 20270737: mayor's city — fetched here so renderAffiliation can
     // render the city description + stats grid + actions inline.
-    // Conditional so non-mayors don't pay the round trip; the lookup
-    // matches the resolver's stamp (mayor_first/last + party + nation,
-    // non-capital).
+    // Conditional so non-office-holders don't pay the round trip;
+    // each lookup matches the resolver's stamp shape.
+    //   Mayor → mayor_first/last + party + nation, non-capital.
+    //   CCP   → council[0].holder_faction_id matches the politician.
     const cityFetch = politician.politician_office === 'mayor'
       ? _supabase.from('cities')
           .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, mayor_term_end_tick')
@@ -1704,7 +1705,13 @@ async function init() {
           .eq('mayor_last_name',  politician.leader_last_name)
           .neq('city_type', 'capital')
           .maybeSingle()
-      : Promise.resolve({ data: null, error: null });
+      : politician.politician_office === 'city_council_president'
+        ? _supabase.from('cities')
+            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council')
+            .eq('nation_id', politician.nation_id)
+            .filter('council->0->>holder_faction_id', 'eq', politician.id)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null });
     const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, mayorCityRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
@@ -1762,7 +1769,20 @@ async function init() {
     if (jmAppsRes.error) console.error('politician-home: junior minister applications fetch failed', jmAppsRes.error);
     if (hearingsRes.error) console.error('politician-home: open hearings fetch failed', hearingsRes.error);
     if (mayorCityRes.error) console.error('politician-home: mayor city fetch failed', mayorCityRes.error);
-    ctx.mayorCity = mayorCityRes.data || null;
+    // Land the city under the right slot for the current office.
+    // mayorCity and ccpCity are mutually exclusive in practice (a
+    // politician holds exactly one office at a time) — both are
+    // exposed so the variant descFn/headerCta can pick the right one.
+    if (politician.politician_office === 'mayor') {
+      ctx.mayorCity = mayorCityRes.data || null;
+      ctx.ccpCity   = null;
+    } else if (politician.politician_office === 'city_council_president') {
+      ctx.mayorCity = null;
+      ctx.ccpCity   = mayorCityRes.data || null;
+    } else {
+      ctx.mayorCity = null;
+      ctx.ccpCity   = null;
+    }
     allEvents  = evRes.data || [];
     careerRows = careerRes.data || [];
     activeRace = raceRes.data || null;
@@ -2127,6 +2147,16 @@ const MAYOR_ACTIONS = [
   { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
 ];
+// City Council President (Tier 3 Local Legislative) — 20270744. Same
+// Propose Ordinance flow as Mayor (shared modal + RPC), but with a
+// -1 Volunteer cost added on the CCP path. City Hearing + Build
+// the Base are CCP-specific; the latter is distinct from CCM's
+// politician_build_the_base (different brackets).
+const CCP_ACTIONS = [
+  { ic: '📜', name: 'PROPOSE ORDINANCE', cost: '-1 Volunteer', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves next tick.', action: 'propose-ordinance' },
+  { ic: '🏛', name: 'CITY HEARING',      cost: 'no cost',      desc: 'Convene a public hearing. +0.5 Reputation. +0.1 Party Popularity per Volunteer.', action: 'ccp-city-hearing' },
+  { ic: '🛠', name: 'BUILD THE BASE',    cost: 'no cost',      desc: 'Spend the month organising in your district. Roll 1d6: 1-2 → +1 Volunteer; 3-4 → +1 Reputation; 5-6 → +1 Volunteer AND +1 Reputation.', action: 'ccp-build-the-base' },
+];
 // LOCAL_GOV bracket effects mirror the RPC bodies in 20270583_
 // consolidate_faction_stats.sql; keep these strings in sync when
 // re-tuning. "roll" = natural d-roll; "total" = roll + the stat noted.
@@ -2235,6 +2265,24 @@ const AFFIL_VARIANTS = {
       ? `<a class="ah-cta" href="city.html?id=${escAttr(ctx.mayorCity.id)}">View City &rsaquo;</a>`
       : '',
     actions: MAYOR_ACTIONS,
+    actionsEnabled: true,
+    cooldownColumn: 'next_member_action_tick',
+  },
+  // City Council President (Tier 3 Local, 20270744). Same shape as
+  // Mayor: city description + 10-stat strip + 3 repeatable actions
+  // + [View City] CTA. renderMayorBody is generic — it just
+  // renders a city, regardless of which office the viewer holds.
+  city_council_president: {
+    variant: 'var-local',
+    eyebrow: 'LOCAL GOVERNMENT · TIER 3',
+    badge:   '☴',
+    name:    'City Council President',
+    nameFn:  (ctx) => ctx.ccpCity?.city_name ? `City Council President · ${ctx.ccpCity.city_name}` : 'City Council President',
+    descFn:  (ctx) => renderMayorBody(ctx.ccpCity),
+    headerCta: (ctx) => ctx.ccpCity?.id
+      ? `<a class="ah-cta" href="city.html?id=${escAttr(ctx.ccpCity.id)}">View City &rsaquo;</a>`
+      : '',
+    actions: CCP_ACTIONS,
     actionsEnabled: true,
     cooldownColumn: 'next_member_action_tick',
   },
@@ -2424,16 +2472,20 @@ async function openProposeOrdinanceModal(ctx) {
   if (!back) return;
   back.classList.add('open');
   document.body.style.overflow = 'hidden';
+  // 20270744: modal serves Mayor + CCP. Mayor city lives on
+  // ctx.mayorCity, CCP city on ctx.ccpCity. Both are mutually
+  // exclusive in practice (one office at a time).
+  const officeCity = ctx?.mayorCity || ctx?.ccpCity || null;
   // Politician-vocab title — sans "Ordinances for" + Georgia italic
   // teal city name. Matches the section-head treatment on city.html
   // and the politician home Pressing Issues card.
   const titleEl = document.getElementById('po-title');
-  const cityName = ctx?.mayorCity?.city_name || '';
+  const cityName = officeCity?.city_name || '';
   titleEl.innerHTML = cityName
     ? `Ordinances for <span class="po-title-serif">${escHtml(cityName)}</span>`
     : 'Ordinances';
 
-  const cityId = ctx?.mayorCity?.id || null;
+  const cityId = officeCity?.id || null;
   const content = document.getElementById('po-content');
   if (!cityId) {
     content.innerHTML = '<div class="cv-empty">City not loaded — refresh once the term stamp lands.</div>';
@@ -2519,9 +2571,10 @@ async function proposeOrdinance(ctx, ordinanceId, kind, btn) {
   const prevLabel = btn.textContent;
   btn.textContent = 'Filing…';
   try {
+    const officeCityId = ctx?.mayorCity?.id || ctx?.ccpCity?.id || null;
     const { data, error } = await _supabase.rpc('propose_city_ordinance', {
       p_faction_id:   ctx?.faction?.id || null,
-      p_city_id:      ctx?.mayorCity?.id || null,
+      p_city_id:      officeCityId,
       p_ordinance_id: ordinanceId,
       p_kind:         kind,
     });
@@ -2530,8 +2583,11 @@ async function proposeOrdinance(ctx, ordinanceId, kind, btn) {
       const REASON = {
         not_authenticated:    'Sign in to propose.',
         no_politician:        'No politician on this account.',
-        not_mayor:            'Only the Mayor can propose ordinances.',
+        wrong_office:         'Only the Mayor or City Council President can propose ordinances.',
+        wrong_nation:         'That city belongs to another nation.',
         not_this_citys_mayor: 'You aren’t the Mayor of this city.',
+        not_this_citys_ccp:   'You aren’t the City Council President of this city.',
+        no_volunteers:        'You need at least 1 Volunteer to propose as CCP.',
         city_not_found:       'City not found.',
         ordinance_not_found:  'Ordinance no longer in the catalog.',
         proposal_in_flight:   'An open proposal for this ordinance is already on the council’s agenda.',
@@ -2858,6 +2914,11 @@ const ACTIONS = {
   // with PARTY_MEMBER_ACTIONS so the per-tick lock is consistent.
   'collect-taxes':      { rpc: 'mayor_collect_taxes',               label: 'Collect Taxes',      needsParty: false, format: fmtMayorTaxResult },
   'campaign':           { rpc: 'mayor_campaign',                    label: 'Campaign',           needsParty: false, format: fmtMayorCampaignResult },
+  // City Council President tier (20270744). Shares next_member
+  // _action_tick with Mayor + Party Member tiers — same per-tick
+  // lock convention.
+  'ccp-city-hearing':   { rpc: 'ccp_city_hearing',                  label: 'City Hearing',       needsParty: true,  format: fmtCcpHearingResult },
+  'ccp-build-the-base': { rpc: 'ccp_build_the_base',                label: 'Build the Base',     needsParty: false, format: fmtCcpBuildBaseResult },
 };
 
 function fmtMobilizeResult(data) {
@@ -2902,6 +2963,29 @@ function fmtMayorTaxResult(data) {
 function fmtMayorCampaignResult(data) {
   const city = data.city_name || 'the city';
   return `Campaigned in ${city}: +1 Influence (now ${data.new_influence}), +1 Reputation (now ${data.new_reputation}). City Growth now ${data.new_growth} / 10.`;
+}
+// 20270744 — CCP action results.
+function fmtCcpHearingResult(data) {
+  const vols = Number(data.volunteers) || 0;
+  const popDelta = Number(data.popularity_delta) || 0;
+  const newRep = Number(data.new_reputation);
+  const newRepTxt = Number.isFinite(newRep) ? newRep.toFixed(1) : '?';
+  if (popDelta > 0) {
+    const newPop = Number(data.new_popularity);
+    const newPopTxt = Number.isFinite(newPop) ? `${newPop.toFixed(1)}%` : '—';
+    return `Held a City Hearing: ${vols} Volunteer${vols === 1 ? '' : 's'} drove +${popDelta.toFixed(1)} Party Popularity (now ${newPopTxt}), +0.5 Reputation (now ${newRepTxt}).`;
+  }
+  return `Held a City Hearing: no Volunteers on the roll, so no popularity bump. +0.5 Reputation (now ${newRepTxt}).`;
+}
+function fmtCcpBuildBaseResult(data) {
+  const roll = data.roll;
+  if (data.bracket === 'both') {
+    return `Built the Base: rolled ${roll}. +1 Volunteer (now ${data.new_volunteers}), +1 Reputation (now ${Number(data.new_reputation).toFixed(1)}).`;
+  }
+  if (data.bracket === 'volunteers') {
+    return `Built the Base: rolled ${roll}. +1 Volunteer (now ${data.new_volunteers}).`;
+  }
+  return `Built the Base: rolled ${roll}. +1 Reputation (now ${Number(data.new_reputation).toFixed(1)}).`;
 }
 
 function fmtMemoResult(data) {
@@ -2992,7 +3076,8 @@ const ACTION_REASON = {
   insufficient_influence:   'You don’t have enough Influence.',
   lobby_cooldown:           'Lobbying a Minister is on its 8-tick cooldown.',
   not_mayor:                'You need to hold the Mayor office for this action.',
-  city_not_found:           'Could not find the city you’re mayor of — the cities row may not be stamped yet.',
+  not_ccp:                  'You need to hold the City Council President office for this action.',
+  city_not_found:           'Could not find the city you hold this office in — the cities row may not be stamped yet.',
   on_cooldown:              'You’ve already used your action this tick.',
 };
 
