@@ -32,7 +32,7 @@
   display:flex; align-items:center; justify-content:center; }
 .map-placeholder { color:#555; font-size:10px; letter-spacing:0.14em;
   text-transform:uppercase; font-style:italic; }
-.map-image { width:100%; height:auto; display:block; }
+.map-image { width:100%; height:100%; object-fit:cover; display:block; }
 .map-card:has(.map-image) { padding:0; overflow:hidden; }
 .map-scope { display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
 .map-scope button { font-family:monospace; font-size:10px; letter-spacing:0.08em;
@@ -843,7 +843,7 @@ function splitOfficialName(officialName, fallbackName, govType) {
     return { prefix: officialName.slice(0, idx + 1), name: officialName.slice(idx + 1) };
   }
   if (govType === 'Absolute Monarchy') return { prefix: 'Kingdom of ',  name: fallbackName || '' };
-  if (govType === 'Presidential' || govType === 'Semi-Presidential') return { prefix: 'Republic of ', name: fallbackName || '' };
+  if (govType === 'Presidential') return { prefix: 'Republic of ', name: fallbackName || '' };
   return { prefix: '', name: fallbackName || officialName || '' };
 }
 
@@ -1710,11 +1710,19 @@ function renderCard(n, pm) {
   document.getElementById('nc-title-prefix').textContent = prefix;
   document.getElementById('nc-title-name').textContent = name;
 
-  // Sierramar has a map asset on disk; other nations stay on the
-  // "coming soon" placeholder until their maps land in assets/.
+  // Sierramar + Avelia have map assets on disk; other nations stay
+  // on the "coming soon" placeholder until their maps land in
+  // assets/. Add a `${Name}Map.png` to assets/ + extend NATION_MAPS
+  // to light the map up here.
+  const NATION_MAPS = {
+    Sierramar: 'assets/SierramarMap.png',
+    Avelia:    'assets/AveliaMap.png',
+  };
   const mapEl = document.getElementById('nc-map');
-  if (n.name === 'Sierramar') {
-    mapEl.innerHTML = '<img src="assets/SierramarMap.png" alt="Sierramar map" class="map-image">';
+  const mapSrc = NATION_MAPS[n.name];
+  if (mapSrc) {
+    mapEl.innerHTML = `<img src="${escAttr(mapSrc)}" alt="${escAttr(n.name + ' map')}" class="map-image"
+      onerror="this.parentElement.innerHTML='<div class=&quot;map-placeholder&quot;>Map &middot; coming soon</div>'">`;
   } else {
     mapEl.innerHTML = '<div class="map-placeholder">Map · coming soon</div>';
   }
@@ -1736,12 +1744,12 @@ function renderCard(n, pm) {
   document.getElementById('nc-hos').textContent = hosName ? `${hosTitle} ${hosName}` : '—';
   const hosSub = n.government_type === 'Absolute Monarchy'
     ? (n.dynasty_name ? `Of the ${n.dynasty_name}` : 'Reigning monarch')
-    : (n.government_type === 'Presidential' || n.government_type === 'Semi-Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
+    : (n.government_type === 'Presidential' ? 'Elected head of state' : 'Ceremonial head of state');
   document.getElementById('nc-hos-sub').textContent = hosSub;
 
-  // Head of Gov't — gov-type-aware. Parliamentary / Semi-Presidential /
-  // Constitutional Monarchy (which stores government_type='Parliamentary') all
-  // have a separate PM, looked up via ministries.ministry_key='prime_minister'.
+  // Head of Gov't — gov-type-aware. Parliamentary / Constitutional
+  // Monarchy (which stores government_type='Parliamentary') all have
+  // a separate PM, looked up via ministries.ministry_key='prime_minister'.
   // Presidential systems fuse HoS + HoG. Absolute monarchy has no premier.
   const hogEl    = document.getElementById('nc-hog');
   const hogSubEl = document.getElementById('nc-hog-sub');

@@ -1821,17 +1821,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] resolveStuckRatifications failed for ${nation.name} (non-fatal):`, ratErr);
         }
 
-        // ── Impeachment processing (Presidential + Semi-Presidential) ──
-        // Gate is hasElectedPresident, not isPresidentialRepublic — Semi-
-        // Presidential nations also have an elected president and the
-        // impeachment action's own eligibility rule (party-actions.js:2230)
-        // already includes them. Before this fix the entire block —
-        // committee→floor auto-transition, per-tick trial effects, the
-        // conviction-removes-president-and-schedules-snap-election handler,
-        // and the stale-proceedings cleanup — silently skipped every
-        // Semi-Presidential nation, so passed impeachment bills sat in the
-        // DB marked 'convicted' but never removed the president or fired
-        // an election.
+        // ── Impeachment processing (Presidential) ──
         if (hasElectedPresident(nation)) {
             try {
                 // 1. Auto-transition committee impeachment bills to floor

@@ -3,7 +3,7 @@
  * Extracted from game-common.js
  */
 
-import { isAbsoluteMonarchy, isPresidentialRepublic, isSemiPresidential, hasElectedPresident } from './government-types.js';
+import { isAbsoluteMonarchy, isPresidentialRepublic, hasElectedPresident } from './government-types.js';
 
 // ==================== SEAT LOADING ====================
 
@@ -192,31 +192,11 @@ export async function fetchActiveCoalition(supabase, nationId) {
         const partyIds = [...(newGov.party_ids || [])];
 
         // Ensure the PM's party is always in party_ids. Some formation
-        // rows (especially in semi-presidential, where the President
-        // nominates and the formation row only records the proposing
-        // party) miss this — without the guard the PM's party ends up
+        // rows miss this — without the guard the PM's party ends up
         // misclassified as "Opposition" in parliament views and
         // isInGovt checks fail for the party actually running cabinet.
         if (pmPartyId && !partyIds.includes(pmPartyId)) {
             partyIds.push(pmPartyId);
-        }
-
-        // Semi-presidential cohabitation: the President's party shares
-        // executive power with the PM's party even when they differ.
-        // Include the President's faction so consumers (parliament,
-        // isInGovt, diplomacy coalition lists) classify both as
-        // governing. Pure parliamentary nations skip this branch
-        // because no president exists.
-        if (isSemiPresidential(nationRow)) {
-            const { data: pres } = await supabase
-                .from('presidents')
-                .select('faction_id')
-                .eq('nation_id', nationId)
-                .eq('is_active', true)
-                .maybeSingle();
-            if (pres?.faction_id && !partyIds.includes(pres.faction_id)) {
-                partyIds.push(pres.faction_id);
-            }
         }
 
         const result = {

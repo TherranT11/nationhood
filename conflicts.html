@@ -282,7 +282,7 @@ async function loadFactionRoles() {
     _currentRoles = new Set();
     if (!currentFaction || !currentNation) return;
     try {
-        // Check HoG via president (for presidential/semi-presidential systems)
+        // Check HoG via president (for presidential systems)
         const { data: hog } = await _supabase.from('presidents')
             .select('faction_id').eq('nation_id', currentNation.id).eq('is_active', true).maybeSingle();
         if (hog && hog.faction_id === currentFaction.id) _currentRoles.add('head_of_government');

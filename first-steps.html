@@ -307,15 +307,12 @@ function updateConfirm(label, enabled, selHtml) {
 }
 
 // ─── STEP 1: NATION ────────────────────────────────────────────────
-// Presidential / Semi-Presidential share the blue badge; everything else
-// (Parliamentary, Constitutional Monarchy, Absolute Monarchy) uses the
-// green "democracy" badge. Mirrors getGovTypeClass in select-nation.html.
+// Presidential gets the blue badge; everything else (Parliamentary,
+// Constitutional Monarchy, Absolute Monarchy) uses the green
+// "democracy" badge. Mirrors getGovTypeClass in select-nation.html.
 function govBadge(govType) {
-  const isPres = govType === 'Presidential' || govType === 'Semi-Presidential';
-  const cls    = isPres ? 'gov-presidential' : 'gov-democracy';
-  const label  = govType === 'Semi-Presidential' ? 'SEMI-PRESIDENTIAL'
-              :  govType === 'Presidential'      ? 'PRESIDENTIAL'
-              :  'PARLIAMENTARY';
+  const cls    = govType === 'Presidential' ? 'gov-presidential' : 'gov-democracy';
+  const label  = govType === 'Presidential' ? 'PRESIDENTIAL' : 'PARLIAMENTARY';
   return { cls, label };
 }
 

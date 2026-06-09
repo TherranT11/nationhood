@@ -38,9 +38,8 @@ export async function isMilitaryLoyaltyActive(supabase, nationId) {
 // Resolve the current Head of Government for a nation. Returns
 // { first_name, last_name, age, party_id } or null if no HoG (vacant PM,
 // no elected president, monarchy without a designated HoG, etc.).
-// Pure presidential → active row in presidents (President is HoG+HoS).
-// Parliamentary / semi-presidential / monarchy-with-PM → PM row in ministries
-// (in semi-presidential, the PM runs domestic affairs and is HoG by convention).
+// Presidential → active row in presidents (President is HoG+HoS).
+// Parliamentary / monarchy-with-PM → PM row in ministries.
 async function resolveHeadOfGovernment(supabase, nation) {
     if (!nation?.id) return null;
 

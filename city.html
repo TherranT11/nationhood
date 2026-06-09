@@ -153,6 +153,20 @@
 .ord-meta-row { display:flex; flex-wrap:wrap; gap:6px 10px;
   font-size:9.5px; font-family:monospace; letter-spacing:0.05em; }
 .ord-eff { color:#a0d8d8; }
+/* Vote buttons (20270748) — shown only when the viewer holds a
+   council seat in this city + hasn't voted on this proposal yet.
+   Colour pairing mirrors politician-home's .offer-accept-btn /
+   .offer-reject-btn so the action surface reads the same. */
+.ord-vote-row { display:flex; gap:8px; justify-content:flex-end;
+  margin-top:10px; flex-wrap:wrap; }
+.ord-vote-btn { padding:6px 12px; font-size:9px; letter-spacing:0.13em;
+  font-weight:700; border-radius:3px; background:transparent;
+  cursor:pointer; font-family:inherit; }
+.ord-vote-btn--yes { border:0.5px solid #3a5a3a; color:#9ac99a; }
+.ord-vote-btn--yes:hover { background:#0e1611; border-color:#7ab07a; color:#fff; }
+.ord-vote-btn--no  { border:0.5px solid #5a3030; color:#d49a9a; }
+.ord-vote-btn--no:hover  { background:#160e0e; border-color:#c87a7a; color:#fff; }
+.ord-vote-btn:disabled { opacity:0.5; cursor:not-allowed; }
 
 @media (max-width: 720px) {
   .city-detail-stats   { grid-template-columns:1fr; }
@@ -181,7 +195,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { tickToDate } from './js/utils.js';
+import { tickToDate, CITY_ORDINANCE_VOTE_REASONS } from './js/utils.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -283,7 +297,32 @@ async function init() {
     console.warn('city: ordinance fetches failed', err);
   }
 
-  renderCityDetail(city, nation, currentTick, { proposals, active });
+  // 20270748: per-row VOTE YES / VOTE NO buttons on the Voting
+  // Agenda for council seats the viewer holds and hasn't voted on
+  // yet. Reuses list_open_proposals_for_council_seat — the same
+  // RPC that powers politician-home Pressing Issues, so the
+  // "can vote here" gate is one place, one query, one source.
+  let votableProposalIds = new Set();
+  const polId = ctx.faction?.id || null;
+  if (polId) {
+    try {
+      const { data, error } = await _supabase.rpc('list_open_proposals_for_council_seat',
+        { p_faction_id: polId });
+      if (error) throw error;
+      if (data?.success) {
+        votableProposalIds = new Set(
+          (data.proposals || [])
+            .filter(r => r.city_id === cityId)
+            .map(r => r.proposal_id)
+        );
+      }
+    } catch (err) {
+      console.warn('city: open-council-proposals fetch failed', err);
+    }
+  }
+
+  renderCityDetail(city, nation, currentTick, { proposals, active, votableProposalIds });
+  bindOrdinanceVoteButtons(ctx);
   document.title = `${city.city_name || 'City'} — Nationhood`;
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
@@ -308,6 +347,7 @@ function mayorTermLine(termEndTick, currentTick) {
 function renderCityDetail(c, nation, currentTick, lists) {
   const proposals = lists?.proposals || [];
   const active    = lists?.active    || [];
+  const votable   = lists?.votableProposalIds || new Set();
   const nationPop = Number(nation?.population) || 0;
   const { population, mayorName, partyAbbr, archetype, budgetStr } = cityDisplayData(c, nationPop);
   const isCapital = c.city_type === 'capital';
@@ -371,7 +411,7 @@ function renderCityDetail(c, nation, currentTick, lists) {
       <div class="city-detail-section-head"><span class="sans">Voting</span><span class="serif">Agenda</span></div>
       ${proposals.length === 0
         ? '<div class="city-detail-empty">No items on the agenda.</div>'
-        : proposals.map(p => renderProposalRow(p, currentTick)).join('')}
+        : proposals.map(p => renderProposalRow(p, currentTick, votable.has(p.id))).join('')}
     </div>
 
     <div class="city-detail-section">
@@ -386,7 +426,7 @@ function renderCityDetail(c, nation, currentTick, lists) {
 // reuse the .city-detail-empty boxy look for the row chrome so the
 // section stays visually consistent — header bar + a list of rows
 // underneath. Effects + cost render the same way as the propose modal.
-function renderProposalRow(p, currentTick) {
+function renderProposalRow(p, currentTick, votable) {
   const o = p.ordinance || {};
   const a = p.proposer || {};
   const proposer = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || '—';
@@ -398,6 +438,12 @@ function renderProposalRow(p, currentTick) {
   const effChips = effects.map(e =>
     `<span class="ord-eff">${escHtml(e.key || '?')} ${e.delta > 0 ? '+' : ''}${e.delta}</span>`
   ).join('');
+  const voteRow = votable
+    ? `<div class="ord-vote-row">
+         <button type="button" class="ord-vote-btn ord-vote-btn--yes" data-proposal-id="${escHtml(p.id)}" data-vote="yes">&#10003; VOTE YES</button>
+         <button type="button" class="ord-vote-btn ord-vote-btn--no"  data-proposal-id="${escHtml(p.id)}" data-vote="no">&#10005; VOTE NO</button>
+       </div>`
+    : '';
   return `<div class="ord-row">
     <div class="ord-row-head">
       ${kindPill}
@@ -406,7 +452,40 @@ function renderProposalRow(p, currentTick) {
     </div>
     ${o.description ? `<div class="ord-desc">${escHtml(o.description)}</div>` : ''}
     <div class="ord-meta-row">${effChips}</div>
+    ${voteRow}
   </div>`;
+}
+
+// Per-row VOTE handlers (20270748). Mirrors politician-home's
+// castOrdinanceVote: disables both buttons on the row before the
+// await, surfaces CITY_ORDINANCE_VOTE_REASONS on soft failure
+// (the same shared map politician-home uses), and reloads on
+// success so the row drops out of the agenda.
+function bindOrdinanceVoteButtons(ctx) {
+  document.querySelectorAll('.ord-vote-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('.ord-row');
+      const btns = row ? row.querySelectorAll('.ord-vote-btn') : [btn];
+      btns.forEach(b => { b.disabled = true; });
+      try {
+        const { data, error } = await _supabase.rpc('vote_on_city_ordinance', {
+          p_faction_id:  ctx?.faction?.id || null,
+          p_proposal_id: btn.dataset.proposalId,
+          p_vote:        btn.dataset.vote,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          alert(CITY_ORDINANCE_VOTE_REASONS[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
+          btns.forEach(b => { b.disabled = false; });
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btns.forEach(b => { b.disabled = false; });
+      }
+    });
+  });
 }
 function renderActiveOrdinanceRow(o) {
   const t = o.ordinance || {};

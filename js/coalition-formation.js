@@ -5,7 +5,7 @@
 import { buildMinistryBaselines } from './game/stats.js';
 import { getNationNames } from './game/political-actions.js';
 import { fetchActiveCoalition } from './game/government-structure.js';
-import { CABINET_MINISTRY_KEYS, hasElectedPresident, isSemiPresidential, isAbsoluteMonarchy } from './game/government-types.js';
+import { CABINET_MINISTRY_KEYS, hasElectedPresident, isAbsoluteMonarchy } from './game/government-types.js';
 import { PLATFORMS } from './game/platforms.js';
 import { FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { tickToDate } from './utils.js';
@@ -137,10 +137,10 @@ export async function initCoalitionFormation(supabase, state) {
     // vacancy and make a new snap-election parliament look auto-formed.
     const hasFormedGov = !!formedGov;
 
-    // Presidential / semi-presidential systems don't use coalition formation —
-    // the president governs (or nominates the PM). The Election tab renders a
-    // system-specific blurb via the early return below. Use the canonical
-    // helper rather than substring-matching government_type (which would
+    // Presidential systems don't use coalition formation — the
+    // president governs. The Election tab renders a system-specific
+    // blurb via the early return below. Use the canonical helper
+    // rather than substring-matching government_type (which would
     // miscategorize parliamentary nations that happen to have a directly-
     // elected ceremonial head of state, e.g. Vostia).
     if (hasElectedPresident(nation)) {
@@ -208,9 +208,9 @@ function buildElectionHeader() {
     if (isAbsoluteMonarchy(nation)) return '';
 
     // Pure parliamentary nations get one election block ("NEXT ELECTION").
-    // Presidential / semi-presidential nations get two stacked blocks —
-    // NEXT GENERAL ELECTION (parliamentary) and NEXT PRESIDENTIAL ELECTION
-    // — with subtitles indicating whether they're paired (same tick = a
+    // Presidential nations get two stacked blocks — NEXT GENERAL
+    // ELECTION (parliamentary) and NEXT PRESIDENTIAL ELECTION —
+    // with subtitles indicating whether they're paired (same tick = a
     // combined General Election cycle) or staggered (parliamentary
     // midterm without a presidential vote, or vice versa).
     const isPresidentialSystem = hasElectedPresident(nation);
@@ -530,8 +530,8 @@ export async function renderFormationTab(root) {
         return;
     }
 
-    // All other systems (parliamentary, presidential, semi-presidential) get
-    // the election header at the top of every render path.
+    // All other systems (parliamentary, presidential) get the
+    // election header at the top of every render path.
     const header = buildElectionHeader();
     // Electoral Makeup sits inside a 2-col grid: left slot reserved for
     // Campaign Events (not yet built), right slot shows the makeup bar.
@@ -585,16 +585,12 @@ export async function renderFormationTab(root) {
 
     // Presidential systems — no coalition formation
     if (hasElectedPresident(_state.nation)) {
-        const isSemiPresRender = isSemiPresidential(_state.nation);
         root.innerHTML = `${header}${makeupRow}
         <div class="cf-page">
             <div class="cf-no-formation">
                 <div class="cf-no-icon">&#127979;</div>
-                <div class="cf-no-title">${isSemiPresRender ? 'Semi-Presidential System' : 'Presidential System'}</div>
-                <div class="cf-no-desc">${isSemiPresRender
-                    ? 'The President nominates a Prime Minister for parliamentary confirmation. The PM then appoints cabinet ministers. No coalition formation is required.'
-                    : 'The President governs directly and nominates cabinet ministers. No coalition formation is required.'
-                }</div>
+                <div class="cf-no-title">Presidential System</div>
+                <div class="cf-no-desc">The President governs directly and nominates cabinet ministers. No coalition formation is required.</div>
             </div>
         </div>`;
         return;

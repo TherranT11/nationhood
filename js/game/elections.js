@@ -4,7 +4,7 @@
  */
 
 import { FORMATION_DEADLINE_TICKS, GAME_CONFIG, getPresidentialTermTicks, getPresidentialTermLimit, getParliamentaryTermTicks } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM, isSemiPresidential, isAbsoluteMonarchy } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, getCanonicalGovernmentType, hasElectedPresident, hasParliamentaryPM, isAbsoluteMonarchy } from './government-types.js';
 import { snapshotNationStats } from './stats.js';
 import { adjustCredibility, adjustGovernmentApprovalEvent, round2 } from './momentum.js';
 import { fetchActiveCoalition } from './government-structure.js';
@@ -325,18 +325,6 @@ export async function closeAdministration(supabase, nationId, nation, endReason,
  */
 export async function createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval) {
     try {
-        // Semi-presidential nations: an "administration" is bounded by the
-        // President's tenure, not the PM's. The presidential admin row was
-        // created by inauguratePresident on election; coalition formation
-        // and PM changes within a presidential term are sub-events
-        // recorded via installHOG's leader_changes write. The matching
-        // skip on the SQL side lives in finalize_government_formation
-        // (Phase 4 — 20260429_phase4_finalize_formation_semi_pres_skip.sql).
-        if (isSemiPresidential(nation)) {
-            console.log(`[createAdministration] semi-presidential — skipping (admin = president's tenure)`);
-            return null;
-        }
-
         // Safety net: close any orphaned open administrations before creating a new one
         const { data: orphaned } = await supabase
             .from('administrations')
@@ -866,8 +854,6 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
     if (!hasParliamentaryPM(nation)) return;
     if (isAbsoluteMonarchy(nation)) return;
 
-    const semiPres = isSemiPresidential(nation);
-
     // Get PM's last name for event text
     const { data: hog } = await supabase
         .from('head_of_government')
@@ -880,47 +866,6 @@ export async function resolveNoConfidence(supabase, bill, passed, votesFor, vote
     const pmFactionId = hog?.faction_id || null;
 
     if (passed) {
-        // Semi-Presidential: president survives, only PM is removed
-        if (semiPres) {
-            // Record vonc tick for dissolution penalty tracking
-            await supabase.from('nations').update({ last_vonc_tick: currentTick, pm_nomination_attempts: 0 }).eq('id', nationId);
-
-            // Deactivate PM
-            await supabase.from('head_of_government')
-                .update({ active: false })
-                .eq('nation_id', nationId).eq('active', true);
-
-            // Calling party gets approval boost
-            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 4, p_label: 'No confidence called (+4)', p_tick: currentTick });
-
-            // PM's party takes hit
-            if (pmFactionId) {
-                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -3, p_label: 'No confidence — PM party (-3)', p_tick: currentTick });
-                await adjustCredibility(supabase, pmFactionId, nationId, -0.05);
-            }
-            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
-
-            // If PM was from president's party, president's party takes additional approval hit
-            const { data: president } = await supabase.from('presidents')
-                .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
-            if (president && pmFactionId && president.faction_id === pmFactionId) {
-                await supabase.rpc('adjust_momentum', { p_faction_id: president.faction_id, p_delta: -3, p_label: 'Own PM no-confidenced (-3)', p_tick: currentTick });
-            }
-
-            // Log event — president survives, must re-nominate
-            const samePartyPenalty = president && pmFactionId && president.faction_id === pmFactionId;
-            await supabase.from('event_log').insert({
-                nation_id: nationId,
-                event_name: 'No Confidence — PM Removed',
-                trigger_key: 'vonc_passed',
-                fired_at_tick: currentTick,
-                category: 'government',
-                description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
-                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: samePartyPenalty ? -6 : -3, gov_approval: -5, same_party_penalty: samePartyPenalty }
-            });
-            return;
-        }
-
         // === Parliamentary: full government dissolution ===
         // Get coalition party IDs before dissolving
         const coalition = await fetchActiveCoalition(supabase, nationId);
@@ -1135,7 +1080,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     const { error: scheduleErr } = await supabase.rpc('schedule_snap_election', {
         p_nation_id: nationId,
         p_election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-        p_preserve_presidential: isSemiPresidential(nationCheck)
+        p_preserve_presidential: false
     });
     if (scheduleErr) {
         throw new Error('Failed to schedule snap election: ' + (scheduleErr.message || scheduleErr));
@@ -1201,134 +1146,7 @@ export async function callEarlyElectionsAction(supabase, nationId, pmFactionId, 
     return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
 }
 
-/**
- * Semi-Presidential exclusive: President dissolves parliament.
- * Triggers snap elections with heavy cooldown.
- */
-export async function dissolveParliament(supabase, nationId, presidentFactionId) {
-    const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, state_apparatus, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
-        .eq('id', nationId).single();
-
-    if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
-
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
-
-    // Cooldown: 24 ticks since last dissolution
-    if (nation.last_dissolution_tick && (currentTick - nation.last_dissolution_tick) < 24) {
-        const remaining = 24 - (currentTick - nation.last_dissolution_tick);
-        throw new Error(`Cannot dissolve parliament — ${remaining} tick(s) remaining on dissolution cooldown`);
-    }
-
-    // Cooldown: 12 ticks since parliament formed
-    if (nation.parliament_formed_tick && (currentTick - nation.parliament_formed_tick) < 12) {
-        const remaining = 12 - (currentTick - nation.parliament_formed_tick);
-        throw new Error(`Cannot dissolve parliament — new parliament must serve at least 12 ticks (${remaining} remaining)`);
-    }
-
-    // Verify president's party
-    const { data: president } = await supabase.from('presidents')
-        .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) {
-        throw new Error('Only the President\'s party can dissolve parliament');
-    }
-
-    // Get PM faction for sympathy effect
-    const { data: hog } = await supabase.from('head_of_government')
-        .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
-    const pmFactionId = hog?.faction_id;
-
-    // === EFFECTS ===
-
-    // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
-    const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
-
-    // 1. State Apparatus -3 (+ authority -5 if post-vonc).
-    const newStateApparatus = Math.max(0, Number(nation.state_apparatus ?? 50) - 3);
-    const nationUpdate = {
-        state_apparatus: newStateApparatus,
-        last_dissolution_tick: currentTick
-    };
-    if (voncPenalty) {
-        nationUpdate.public_approval = Math.max(0, Number(nation.public_approval ?? 50) - 5);
-    }
-    await supabase.from('nations').update(nationUpdate).eq('id', nationId);
-
-    // 2. PM's party +5 momentum (sympathy effect)
-    if (pmFactionId) {
-        try {
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: pmFactionId,
-                p_delta: 5,
-                p_label: 'Parliament dissolved — sympathy effect (+5)',
-                p_tick: currentTick
-            });
-        } catch (momErr) {
-            const { data: pmFaction } = await supabase.from('factions')
-                .select('momentum').eq('id', pmFactionId).single();
-            if (pmFaction) {
-                await supabase.from('factions').update({
-                    momentum: Math.min(100, (pmFaction.momentum || 0) + 5)
-                }).eq('id', pmFactionId);
-            }
-        }
-    }
-
-    // 3. Set government to caretaker
-    await supabase.from('government_formations')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .in('status', ['formed', 'active']);
-
-    // 4. Deactivate PM
-    await supabase.from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId).eq('active', true);
-
-    // 5. Orphan the cabinet — new PM re-confirms post-election.
-    await orphanCabinet(supabase, nationId);
-
-    // 6. Freeze all pending bills
-    await supabase.from('bills')
-        .update({ status: 'frozen' })
-        .eq('nation_id', nationId)
-        .in('status', ['committee', 'floor']);
-
-    // 7. Schedule snap election
-    const EARLY_ELECTION_TICKS = 2;
-    await supabase.from('elections').insert({
-        nation_id: nationId,
-        election_type: 'parliamentary',
-        election_tick: currentTick + EARLY_ELECTION_TICKS,
-        status: 'scheduled'
-    });
-
-    // 8. Fire event
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'parliament_dissolved',
-            p_nation_id: nationId,
-            p_tick: currentTick,
-            p_placeholders: { nation: nation.name || '' }
-        });
-    } catch (e) { /* non-blocking */ }
-
-    // 9. If dissolving after a vonc, fire additional legitimacy penalty event
-    if (voncPenalty) {
-        await supabase.from('event_log').insert({
-            nation_id: nationId,
-            event_name: 'Authoritarian Overreach — Post-VoNC Dissolution',
-            trigger_key: 'vonc_dissolution_penalty',
-            fired_at_tick: currentTick,
-            category: 'government',
-            description_chosen: `The President dissolved parliament shortly after a vote of no confidence passed. This is widely seen as an authoritarian overreach. Legitimacy -5.`,
-            effects_applied: { legitimacy_penalty: -5 }
-        });
-    }
-
-    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
-}
+// dissolveParliament removed in 20270748 — semi-presidential-only action.
 
 
 // ==================== GOVERNMENT VACANCY & FORMATION ESCALATION ====================
@@ -1830,8 +1648,7 @@ export async function runManualElectionByGovernmentType(supabase, nation, option
         await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else {
-        // Parliamentary dissolution — covers pure parliamentary systems AND
-        // semi-presidential midterms (parliament dissolved; president untouched).
+        // Parliamentary dissolution.
         const { data: frozenBills } = await supabase.from('bills')
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
@@ -2779,9 +2596,7 @@ export async function processElections(supabase, nation, currentTick) {
 
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
         } else {
-            // === PARLIAMENTARY DISSOLUTION: covers pure parliamentary systems AND
-            // semi-presidential midterms (parliament is dissolved; president stays —
-            // the president row is not touched anywhere in this branch).
+            // === PARLIAMENTARY DISSOLUTION ===
             // After any election, the old government (whether 'formed' or 'caretaker')
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.

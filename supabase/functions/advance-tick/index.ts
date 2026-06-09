@@ -254,6 +254,16 @@ async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPar
 
 // ────────── government-types ──────────
 
+/**
+ * government-types — Government type helpers (democracy, presidential, monarchy)
+ *
+ * Semi-presidential was culled in 20270748. No nation in use ran it
+ * and the cohabitation / domain-split machinery (MINISTRY_DOMAINS,
+ * EO_DOMAIN, isCohabitation, isPresidentialDomainMinistry,
+ * getMinistryDomain, isSemiPresidential) was dead weight. Anything
+ * that used to branch on isSemiPresidential is now either the
+ * presidential branch or the parliamentary branch.
+ */
 
 /**
  * Government type helpers.
@@ -262,7 +272,6 @@ async function switchPartyEndorsement(supabase, endorsingPartyId, newEndorsedPar
 const CANONICAL_GOVERNMENT_TYPES = Object.freeze({
     PARLIAMENTARY_DEMOCRACY: 'Democracy',
     PRESIDENTIAL_REPUBLIC: 'Presidential',
-    SEMI_PRESIDENTIAL: 'Semi-Presidential',
     ABSOLUTE_MONARCHY: 'Absolute Monarchy'
 });
 
@@ -275,9 +284,6 @@ const GOVERNMENT_TYPE_ALIASES = Object.freeze({
     presidential: CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
     'presidential republic': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
     'executive presidency': CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC,
-    'semi-presidential': CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
-    'semi presidential': CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
-    semipresidential: CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL,
     'absolute monarchy': CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY,
     'absolute_monarchy': CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY,
     monarchy: CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY,
@@ -291,16 +297,16 @@ function getCanonicalGovernmentType(input, fallbackType = CANONICAL_GOVERNMENT_T
 
 function isParliamentaryDemocracy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PARLIAMENTARY_DEMOCRACY; }
 function isPresidentialRepublic(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.PRESIDENTIAL_REPUBLIC; }
-function isSemiPresidential(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.SEMI_PRESIDENTIAL; }
-
 function isAbsoluteMonarchy(input) { return getCanonicalGovernmentType(input) === CANONICAL_GOVERNMENT_TYPES.ABSOLUTE_MONARCHY; }
 // KNOWN GAP: Monarchy nations have no elections. Seats are currently static.
 // Future Phase 4: Add "Grant Seats" royal action for monarch to appoint seats to noble houses.
 
-/** Capability helpers — use these instead of type checks where possible.
- *  Semi-presidential has BOTH an elected president AND a parliamentary PM. */
-function hasElectedPresident(input) { return isPresidentialRepublic(input) || isSemiPresidential(input); }
-function hasParliamentaryPM(input) { return isParliamentaryDemocracy(input) || isSemiPresidential(input) || isAbsoluteMonarchy(input); }
+/** Capability helpers — thin aliases over the type predicates. Kept
+ *  because callers read more cleanly as "does this nation have an
+ *  elected president?" / "does this nation have a parliamentary PM?"
+ *  than as direct type checks. */
+function hasElectedPresident(input) { return isPresidentialRepublic(input); }
+function hasParliamentaryPM(input) { return isParliamentaryDemocracy(input) || isAbsoluteMonarchy(input); }
 function hasMonarch(input) { return isAbsoluteMonarchy(input); }
 
 /** Get the head of state title for display */
@@ -312,40 +318,15 @@ function getHeadOfStateTitle(nation) {
 
 function isGovernmentPresidential(nation) { return hasElectedPresident(nation); }
 
-// ==================== SEMI-PRESIDENTIAL DOMAIN SPLIT ====================
-
-/** Ministry domain: 'presidential' ministries are under the President's policy area,
- *  'domestic' ministries are under the PM's policy area.
- *  In semi-presidential cohabitation, the PM appoints all ministers but
- *  presidential-domain slots MUST be filled from the President's party. */
-const MINISTRY_DOMAINS = Object.freeze({
-    foreign:        'presidential',
-    defense:        'presidential',
-    trade:          'presidential',
-    prime_minister: 'domestic',
-    interior:       'domestic',
-    finance:        'domestic',
-    education:      'domestic',
-    healthcare:     'domestic',
-    labor:          'domestic',
-    justice:        'domestic',
-    energy:         'domestic',
-    transportation: 'domestic',
-    sports:         'domestic',
-    security:       'domestic'
-});
-
-const PRESIDENTIAL_DOMAIN_MINISTRIES = Object.freeze(['foreign', 'defense', 'trade']);
-
-/** Canonical list of cabinet ministry keys (PM seat first, then domestic +
- *  presidential-domain seats). Single source of truth for "what counts as a
+/** Canonical list of cabinet ministry keys (PM seat first, then all
+ *  other portfolios). Single source of truth for "what counts as a
  *  cabinet slot" — both formation UI and tick code iterate this. */
 const CABINET_MINISTRY_KEYS = Object.freeze([
     'prime_minister',
     'interior', 'foreign', 'defense', 'finance',
     'education', 'healthcare', 'labor', 'justice',
     'trade', 'energy', 'transportation', 'sports',
-    // 'security' is referenced in MINISTRY_DOMAINS but not yet a default cabinet seat.
+    // 'security' has display names below but isn't a default seat yet.
 ]);
 
 /** Office display name (e.g. "Ministry of the Interior").
@@ -387,39 +368,8 @@ const MINISTER_TITLES = Object.freeze({
     security:       'Minister of Security',
 });
 
-/** Executive order domain: which branch controls each EO type in semi-presidential.
- *  'president' = only the president's party can issue.
- *  'pm' = only the PM's party can issue.
- *  'acting_minister' is special — domain depends on the target ministry. */
-const EO_DOMAIN = Object.freeze({
-    national_emergency: 'president',
-    acting_minister:    'split',      // depends on target ministry domain
-    tax_adjustment:     'pm',
-    price_controls:     'pm',
-    censure:            'pm',
-    stimulate_economy:  'pm'
-});
-
-/** Returns true if the president and PM are from different parties (cohabitation). */
-function isCohabitation(nation, presidentFactionId, pmFactionId) {
-    if (!isSemiPresidential(nation)) return false;
-    if (!presidentFactionId || !pmFactionId) return false;
-    return presidentFactionId !== pmFactionId;
-}
-
-/** Returns the domain of a ministry key ('presidential' or 'domestic'). */
-function getMinistryDomain(ministryKey) {
-    return MINISTRY_DOMAINS[ministryKey] || 'domestic';
-}
-
-/** Returns true if the given ministry must be filled from the president's party
- *  in a semi-presidential system. */
-function isPresidentialDomainMinistry(ministryKey) {
-    return PRESIDENTIAL_DOMAIN_MINISTRIES.includes(ministryKey);
-}
-
 // Canonical government types used by nations and ministry event templates.
-const canonicalNationGovTypes = ['Parliamentary Republic', 'Presidential', 'Semi-Presidential'];
+const canonicalNationGovTypes = ['Parliamentary Republic', 'Presidential'];
 
 // Temporary aliases to support migration from legacy gov-type strings.
 // TODO(next migration stub): remove aliases and require strict canonical-only values.
@@ -438,7 +388,6 @@ function canonicalizeNationGovType(govType) {
  * Absolute Monarchy (government_type explicitly set to Absolute Monarchy).
  */
 function getGovDisplayLabel(nation) {
-    if (isSemiPresidential(nation)) return 'Semi-Presidential Republic';
     if (isPresidentialRepublic(nation)) return 'Presidential Republic';
     if (isAbsoluteMonarchy(nation)) return 'Absolute Monarchy';
     if (nation?.hos_election_method === 'hereditary') return 'Constitutional Monarchy';
@@ -453,7 +402,6 @@ const CONSTITUTIONAL_SYSTEMS = Object.freeze({
     PARLIAMENTARY: 'parliamentary',
     CONSTITUTIONAL_MONARCHY: 'constitutional_monarchy',
     PRESIDENTIAL: 'presidential',
-    SEMI_PRESIDENTIAL: 'semi_presidential'
 });
 
 /**
@@ -461,10 +409,9 @@ const CONSTITUTIONAL_SYSTEMS = Object.freeze({
  * Used to determine which reform options are available (can't reform to current system).
  *
  * @param {object} nation - Nation row (needs government_type, hos_election_method)
- * @returns {'parliamentary'|'constitutional_monarchy'|'presidential'|'semi_presidential'}
+ * @returns {'parliamentary'|'constitutional_monarchy'|'presidential'}
  */
 function getCurrentConstitutionalSystem(nation) {
-    if (isSemiPresidential(nation)) return CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL;
     if (isPresidentialRepublic(nation)) return CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL;
     if (nation?.hos_election_method === 'hereditary') return CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY;
     return CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY;
@@ -480,7 +427,6 @@ function getConstitutionalSystemLabel(system) {
         case CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY: return 'Parliamentary Democracy';
         case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Constitutional Monarchy';
         case CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL: return 'Presidential Republic';
-        case CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL: return 'Semi-Presidential Republic';
         default: return 'Unknown';
     }
 }
@@ -495,7 +441,6 @@ function getConstitutionalSystemDescription(system) {
         case CONSTITUTIONAL_SYSTEMS.PARLIAMENTARY: return 'Head of State appointed by parliament. Prime Minister holds executive power.';
         case CONSTITUTIONAL_SYSTEMS.CONSTITUTIONAL_MONARCHY: return 'Hereditary monarch as Head of State. Prime Minister holds executive power.';
         case CONSTITUTIONAL_SYSTEMS.PRESIDENTIAL: return 'Directly elected President as sole executive. No Prime Minister.';
-        case CONSTITUTIONAL_SYSTEMS.SEMI_PRESIDENTIAL: return 'Directly elected President shares power with a Prime Minister appointed by parliament.';
         default: return '';
     }
 }
@@ -3082,31 +3027,11 @@ async function fetchActiveCoalition(supabase, nationId) {
         const partyIds = [...(newGov.party_ids || [])];
 
         // Ensure the PM's party is always in party_ids. Some formation
-        // rows (especially in semi-presidential, where the President
-        // nominates and the formation row only records the proposing
-        // party) miss this — without the guard the PM's party ends up
+        // rows miss this — without the guard the PM's party ends up
         // misclassified as "Opposition" in parliament views and
         // isInGovt checks fail for the party actually running cabinet.
         if (pmPartyId && !partyIds.includes(pmPartyId)) {
             partyIds.push(pmPartyId);
-        }
-
-        // Semi-presidential cohabitation: the President's party shares
-        // executive power with the PM's party even when they differ.
-        // Include the President's faction so consumers (parliament,
-        // isInGovt, diplomacy coalition lists) classify both as
-        // governing. Pure parliamentary nations skip this branch
-        // because no president exists.
-        if (isSemiPresidential(nationRow)) {
-            const { data: pres } = await supabase
-                .from('presidents')
-                .select('faction_id')
-                .eq('nation_id', nationId)
-                .eq('is_active', true)
-                .maybeSingle();
-            if (pres?.faction_id && !partyIds.includes(pres.faction_id)) {
-                partyIds.push(pres.faction_id);
-            }
         }
 
         const result = {
@@ -6218,8 +6143,8 @@ async function resolveReferendums(supabase, nation, currentTick) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 /**
- * Resolve a passed/failed minister_confirmation bill (presidential and
- * semi-presidential PM + cabinet confirmations). Reads the nominee from
+ * Resolve a passed/failed minister_confirmation bill (presidential
+ * cabinet confirmations). Reads the nominee from
  * bill.metadata.pending_minister (sole source of truth); installs the
  * confirmed minister into ministries; for PM bills also syncs
  * government_formations.ministry_assignments and installs head_of_government.
@@ -9082,7 +9007,7 @@ async function enactPresidentialTermLimits(supabase, bill, currentTick) {
 
 async function enactConstitutionalReform(supabase, bill, currentTick) {
     const targetSystem = bill.proposed_constitutional_reform;
-    const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential', 'semi_presidential'];
+    const validSystems = ['parliamentary', 'constitutional_monarchy', 'presidential'];
     if (!validSystems.includes(targetSystem)) {
         console.warn(`[enactFoundationalBill] Bill ${bill.id} has invalid proposed_constitutional_reform: ${targetSystem}. Marking as failed.`);
         const { error: failErr } = await supabase.from('bills').update({ status: 'failed', passed_tick: currentTick }).eq('id', bill.id);
@@ -9119,10 +9044,10 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
     console.log(`[enactFoundationalBill] Constitutional reform: ${currentSystem} → ${targetSystem} for nation ${bill.nation_id}`);
 
     // Determine structural changes
-    const currentHasPresident = currentSystem === 'presidential' || currentSystem === 'semi_presidential';
-    const targetHasPresident = targetSystem === 'presidential' || targetSystem === 'semi_presidential';
-    const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy' || currentSystem === 'semi_presidential';
-    const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy' || targetSystem === 'semi_presidential';
+    const currentHasPresident = currentSystem === 'presidential';
+    const targetHasPresident = targetSystem === 'presidential';
+    const currentHasPM = currentSystem === 'parliamentary' || currentSystem === 'constitutional_monarchy';
+    const targetHasPM = targetSystem === 'parliamentary' || targetSystem === 'constitutional_monarchy';
     const currentIsMonarchy = currentSystem === 'constitutional_monarchy';
     const targetIsMonarchy = targetSystem === 'constitutional_monarchy';
 
@@ -9143,10 +9068,6 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             break;
         case 'presidential':
             nationUpdate.government_type = 'Presidential';
-            nationUpdate.hos_election_method = 'direct_vote';
-            break;
-        case 'semi_presidential':
-            nationUpdate.government_type = 'Semi-Presidential';
             nationUpdate.hos_election_method = 'direct_vote';
             break;
     }
@@ -9360,11 +9281,6 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
             nationUpdate.political_engagement = Math.min(100, politicalEngagement + 3);
             nationUpdate.polarization = Math.min(100, polarization + 2);
             break;
-        case 'semi_presidential':
-            nationUpdate.legitimacy = Math.min(100, legitimacy + 2);
-            nationUpdate.political_engagement = Math.min(100, politicalEngagement + 2);
-            nationUpdate.polarization = Math.min(100, polarization + 3);
-            break;
     }
 
     // Major reform always causes some civil unrest
@@ -9380,7 +9296,6 @@ async function enactConstitutionalReform(supabase, bill, currentTick) {
         parliamentary: 'Parliamentary Democracy',
         constitutional_monarchy: 'Constitutional Monarchy',
         presidential: 'Presidential Republic',
-        semi_presidential: 'Semi-Presidential Republic'
     };
     console.log(`[enactFoundationalBill] Nation ${bill.nation_id} constitutional system changed to "${systemLabels[targetSystem]}".`);
     return true;
@@ -10329,18 +10244,6 @@ async function closeAdministration(supabase, nationId, nation, endReason, curren
  */
 async function createAdministration(supabase, nationId, nation, coalition, allParties, currentTick, currentDate, governmentApproval) {
     try {
-        // Semi-presidential nations: an "administration" is bounded by the
-        // President's tenure, not the PM's. The presidential admin row was
-        // created by inauguratePresident on election; coalition formation
-        // and PM changes within a presidential term are sub-events
-        // recorded via installHOG's leader_changes write. The matching
-        // skip on the SQL side lives in finalize_government_formation
-        // (Phase 4 — 20260429_phase4_finalize_formation_semi_pres_skip.sql).
-        if (isSemiPresidential(nation)) {
-            console.log(`[createAdministration] semi-presidential — skipping (admin = president's tenure)`);
-            return null;
-        }
-
         // Safety net: close any orphaned open administrations before creating a new one
         const { data: orphaned } = await supabase
             .from('administrations')
@@ -10870,8 +10773,6 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
     if (!hasParliamentaryPM(nation)) return;
     if (isAbsoluteMonarchy(nation)) return;
 
-    const semiPres = isSemiPresidential(nation);
-
     // Get PM's last name for event text
     const { data: hog } = await supabase
         .from('head_of_government')
@@ -10884,47 +10785,6 @@ async function resolveNoConfidence(supabase, bill, passed, votesFor, votesAgains
     const pmFactionId = hog?.faction_id || null;
 
     if (passed) {
-        // Semi-Presidential: president survives, only PM is removed
-        if (semiPres) {
-            // Record vonc tick for dissolution penalty tracking
-            await supabase.from('nations').update({ last_vonc_tick: currentTick, pm_nomination_attempts: 0 }).eq('id', nationId);
-
-            // Deactivate PM
-            await supabase.from('head_of_government')
-                .update({ active: false })
-                .eq('nation_id', nationId).eq('active', true);
-
-            // Calling party gets approval boost
-            await supabase.rpc('adjust_momentum', { p_faction_id: callingPartyId, p_delta: 4, p_label: 'No confidence called (+4)', p_tick: currentTick });
-
-            // PM's party takes hit
-            if (pmFactionId) {
-                await supabase.rpc('adjust_momentum', { p_faction_id: pmFactionId, p_delta: -3, p_label: 'No confidence — PM party (-3)', p_tick: currentTick });
-                await adjustCredibility(supabase, pmFactionId, nationId, -0.05);
-            }
-            await adjustGovernmentApprovalEvent(supabase, nationId, -5, 'no_confidence:success');
-
-            // If PM was from president's party, president's party takes additional approval hit
-            const { data: president } = await supabase.from('presidents')
-                .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
-            if (president && pmFactionId && president.faction_id === pmFactionId) {
-                await supabase.rpc('adjust_momentum', { p_faction_id: president.faction_id, p_delta: -3, p_label: 'Own PM no-confidenced (-3)', p_tick: currentTick });
-            }
-
-            // Log event — president survives, must re-nominate
-            const samePartyPenalty = president && pmFactionId && president.faction_id === pmFactionId;
-            await supabase.from('event_log').insert({
-                nation_id: nationId,
-                event_name: 'No Confidence — PM Removed',
-                trigger_key: 'vonc_passed',
-                fired_at_tick: currentTick,
-                category: 'government',
-                description_chosen: `Prime Minister ${pmLastName} has been removed by a vote of no confidence (${votesFor} to ${votesAgainst}). The President must nominate a new PM.`,
-                effects_applied: { pm_removed: true, president_survives: true, caller_approval: +2, pm_party_approval: samePartyPenalty ? -6 : -3, gov_approval: -5, same_party_penalty: samePartyPenalty }
-            });
-            return;
-        }
-
         // === Parliamentary: full government dissolution ===
         // Get coalition party IDs before dissolving
         const coalition = await fetchActiveCoalition(supabase, nationId);
@@ -11139,7 +10999,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     const { error: scheduleErr } = await supabase.rpc('schedule_snap_election', {
         p_nation_id: nationId,
         p_election_tick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS,
-        p_preserve_presidential: isSemiPresidential(nationCheck)
+        p_preserve_presidential: false
     });
     if (scheduleErr) {
         throw new Error('Failed to schedule snap election: ' + (scheduleErr.message || scheduleErr));
@@ -11205,134 +11065,7 @@ async function callEarlyElectionsAction(supabase, nationId, pmFactionId, coaliti
     return { success: true, electionTick: currentTick + GAME_CONFIG.EARLY_ELECTION_TICKS };
 }
 
-/**
- * Semi-Presidential exclusive: President dissolves parliament.
- * Triggers snap elections with heavy cooldown.
- */
-async function dissolveParliament(supabase, nationId, presidentFactionId) {
-    const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, state_apparatus, public_approval, last_dissolution_tick, parliament_formed_tick, last_vonc_tick')
-        .eq('id', nationId).single();
-
-    if (!isSemiPresidential(nation)) throw new Error('Dissolve Parliament is only available in Semi-Presidential systems');
-
-    const { data: shard } = await supabase.from('shard').select('current_tick').eq('name', 'Alpha Shard').single();
-    const currentTick = shard?.current_tick || 0;
-
-    // Cooldown: 24 ticks since last dissolution
-    if (nation.last_dissolution_tick && (currentTick - nation.last_dissolution_tick) < 24) {
-        const remaining = 24 - (currentTick - nation.last_dissolution_tick);
-        throw new Error(`Cannot dissolve parliament — ${remaining} tick(s) remaining on dissolution cooldown`);
-    }
-
-    // Cooldown: 12 ticks since parliament formed
-    if (nation.parliament_formed_tick && (currentTick - nation.parliament_formed_tick) < 12) {
-        const remaining = 12 - (currentTick - nation.parliament_formed_tick);
-        throw new Error(`Cannot dissolve parliament — new parliament must serve at least 12 ticks (${remaining} remaining)`);
-    }
-
-    // Verify president's party
-    const { data: president } = await supabase.from('presidents')
-        .select('faction_id').eq('nation_id', nationId).eq('is_active', true).maybeSingle();
-    if (!president || president.faction_id !== presidentFactionId) {
-        throw new Error('Only the President\'s party can dissolve parliament');
-    }
-
-    // Get PM faction for sympathy effect
-    const { data: hog } = await supabase.from('head_of_government')
-        .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
-    const pmFactionId = hog?.faction_id;
-
-    // === EFFECTS ===
-
-    // Check if dissolving after a recent no-confidence vote (authoritarian overreach)
-    const voncPenalty = nation.last_vonc_tick && (currentTick - nation.last_vonc_tick) <= 6;
-
-    // 1. State Apparatus -3 (+ authority -5 if post-vonc).
-    const newStateApparatus = Math.max(0, Number(nation.state_apparatus ?? 50) - 3);
-    const nationUpdate = {
-        state_apparatus: newStateApparatus,
-        last_dissolution_tick: currentTick
-    };
-    if (voncPenalty) {
-        nationUpdate.public_approval = Math.max(0, Number(nation.public_approval ?? 50) - 5);
-    }
-    await supabase.from('nations').update(nationUpdate).eq('id', nationId);
-
-    // 2. PM's party +5 momentum (sympathy effect)
-    if (pmFactionId) {
-        try {
-            await supabase.rpc('adjust_momentum', {
-                p_faction_id: pmFactionId,
-                p_delta: 5,
-                p_label: 'Parliament dissolved — sympathy effect (+5)',
-                p_tick: currentTick
-            });
-        } catch (momErr) {
-            const { data: pmFaction } = await supabase.from('factions')
-                .select('momentum').eq('id', pmFactionId).single();
-            if (pmFaction) {
-                await supabase.from('factions').update({
-                    momentum: Math.min(100, (pmFaction.momentum || 0) + 5)
-                }).eq('id', pmFactionId);
-            }
-        }
-    }
-
-    // 3. Set government to caretaker
-    await supabase.from('government_formations')
-        .update({ status: 'caretaker' })
-        .eq('nation_id', nationId)
-        .in('status', ['formed', 'active']);
-
-    // 4. Deactivate PM
-    await supabase.from('head_of_government')
-        .update({ active: false })
-        .eq('nation_id', nationId).eq('active', true);
-
-    // 5. Orphan the cabinet — new PM re-confirms post-election.
-    await orphanCabinet(supabase, nationId);
-
-    // 6. Freeze all pending bills
-    await supabase.from('bills')
-        .update({ status: 'frozen' })
-        .eq('nation_id', nationId)
-        .in('status', ['committee', 'floor']);
-
-    // 7. Schedule snap election
-    const EARLY_ELECTION_TICKS = 2;
-    await supabase.from('elections').insert({
-        nation_id: nationId,
-        election_type: 'parliamentary',
-        election_tick: currentTick + EARLY_ELECTION_TICKS,
-        status: 'scheduled'
-    });
-
-    // 8. Fire event
-    try {
-        await supabase.rpc('fire_system_event', {
-            p_trigger_key: 'parliament_dissolved',
-            p_nation_id: nationId,
-            p_tick: currentTick,
-            p_placeholders: { nation: nation.name || '' }
-        });
-    } catch (e) { /* non-blocking */ }
-
-    // 9. If dissolving after a vonc, fire additional legitimacy penalty event
-    if (voncPenalty) {
-        await supabase.from('event_log').insert({
-            nation_id: nationId,
-            event_name: 'Authoritarian Overreach — Post-VoNC Dissolution',
-            trigger_key: 'vonc_dissolution_penalty',
-            fired_at_tick: currentTick,
-            category: 'government',
-            description_chosen: `The President dissolved parliament shortly after a vote of no confidence passed. This is widely seen as an authoritarian overreach. Legitimacy -5.`,
-            effects_applied: { legitimacy_penalty: -5 }
-        });
-    }
-
-    return { success: true, electionTick: currentTick + EARLY_ELECTION_TICKS };
-}
+// dissolveParliament removed in 20270748 — semi-presidential-only action.
 
 
 // ==================== GOVERNMENT VACANCY & FORMATION ESCALATION ====================
@@ -11834,8 +11567,7 @@ async function runManualElectionByGovernmentType(supabase, nation, options = {})
         await syncMinistriesForFailedConfirmationBills(supabase, deskBills);
         await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, completedElection.id);
     } else {
-        // Parliamentary dissolution — covers pure parliamentary systems AND
-        // semi-presidential midterms (parliament dissolved; president untouched).
+        // Parliamentary dissolution.
         const { data: frozenBills } = await supabase.from('bills')
             .update({ status: 'failed' })
             .eq('nation_id', nation.id)
@@ -12783,9 +12515,7 @@ async function processElections(supabase, nation, currentTick) {
 
             await processPresidentialElectionResult(supabase, nation, completedElection, currentTick, election.id);
         } else {
-            // === PARLIAMENTARY DISSOLUTION: covers pure parliamentary systems AND
-            // semi-presidential midterms (parliament is dissolved; president stays —
-            // the president row is not touched anywhere in this branch).
+            // === PARLIAMENTARY DISSOLUTION ===
             // After any election, the old government (whether 'formed' or 'caretaker')
             // must be dissolved so that processGovernmentVacancy can apply -2 approval
             // penalties until a new coalition is formed.
@@ -13648,58 +13378,9 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
         .select('id, faction_id')
         .eq('nation_id', nationId).eq('is_active', true)
         .limit(1).maybeSingle();
-    // Semi-Presidential: PM nominates ministers (not president), EXCEPT for the PM seat itself
-    // which must be nominated by the President.
-    if (isSemiPresidential(nation)) {
-        if (ministryKey === 'prime_minister') {
-            // PM nomination — must be the President's party
-            if (!president || president.faction_id !== presidentFactionId) {
-                throw new Error('Only the President\'s party can nominate the Prime Minister');
-            }
-            // Cohabitation rule: if the President is appointing their OWN
-            // party as PM, the candidate cannot be the party leader (that's
-            // the President themselves) — must be the Deputy Leader. Look
-            // up the active deputy and require the nominee match.
-            if (nominee.partyId === president.faction_id) {
-                const { data: presFaction } = await supabase.from('factions')
-                    .select('leader_first_name, leader_last_name')
-                    .eq('id', president.faction_id).single();
-                const isLeader = presFaction
-                    && nominee.firstName === presFaction.leader_first_name
-                    && nominee.lastName === presFaction.leader_last_name;
-                if (isLeader) {
-                    throw new Error('The Party Leader is the President — appoint the Deputy Leader as Prime Minister instead.');
-                }
-                // Verify nominee matches an active deputy of the President's party.
-                const { data: deputies } = await supabase.from('faction_deputies')
-                    .select('first_name, last_name')
-                    .eq('faction_id', president.faction_id)
-                    .eq('status', 'active');
-                const matchesDeputy = (deputies || []).some(d =>
-                    d.first_name === nominee.firstName && d.last_name === nominee.lastName
-                );
-                if (!matchesDeputy) {
-                    throw new Error('When appointing your own party as PM, the nominee must be the Deputy Leader. Hire a Deputy first if your party doesn\'t have one.');
-                }
-            }
-        } else {
-            const { data: hog } = await supabase.from('head_of_government')
-                .select('faction_id').eq('nation_id', nationId).eq('active', true).maybeSingle();
-            if (!hog || hog.faction_id !== presidentFactionId) {
-                throw new Error('Only the PM\'s party can nominate ministers in Semi-Presidential systems');
-            }
-            // Presidential-domain ministries must be from president's party
-            if (isPresidentialDomainMinistry(ministryKey)) {
-                if (nominee.partyId !== president.faction_id) {
-                    throw new Error(`${ministryKey} minister must be from the President's party in Semi-Presidential systems`);
-                }
-            }
-        }
-    } else {
-        // Pure Presidential: caller must be president's party
-        if (!president || president.faction_id !== presidentFactionId) {
-            throw new Error('Only the President\'s party can nominate ministers');
-        }
+    // Presidential: caller must be president's party
+    if (!president || president.faction_id !== presidentFactionId) {
+        throw new Error('Only the President\'s party can nominate ministers');
     }
 
     // Validate: no existing pending confirmation for this slot.
@@ -13757,14 +13438,7 @@ async function nominateMinister(supabase, nationId, presidentFactionId, ministry
 
     const billName = `Confirmation of ${nominee.firstName} ${nominee.lastName} as ${ministerTitle}`;
     const majoritySeats = Math.ceil(nationTotalSeats * 0.5) + 1;
-    // Who nominates which seat under semi-presidential:
-    //   - PM seat → President (the one exception)
-    //   - All other cabinet seats → Prime Minister
-    // Under pure presidential, President nominates everyone.
-    const nominatorTitle = (!isSemiPresidential(nation) || ministryKey === 'prime_minister')
-        ? 'President'
-        : 'Prime Minister';
-    const preamble = `The ${nominatorTitle} nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
+    const preamble = `The President nominates ${nominee.firstName} ${nominee.lastName} (${nominee.partyName}) to serve as ${ministerTitle}. A simple majority (${majoritySeats} of ${nationTotalSeats} seats) is required for confirmation.`;
 
     const { data: bill, error: billErr } = await supabase.from('bills').insert({
         nation_id: nationId,
@@ -14269,30 +13943,7 @@ async function rejectOwnNomination(supabase, billId, nomineePartyId) {
     return { rejected: true, ministryKey: mKey };
 }
 
-/**
- * Semi-Presidential PM Nomination: President nominates a PM candidate for parliamentary confirmation.
- * Reuses the minister confirmation pattern with ministry_key = 'prime_minister'.
- * Max 3 attempts — after 3 rejections the tick processor auto-selects the largest party leader.
- *
- * @param {object} supabase
- * @param {string} nationId
- * @param {string} presidentFactionId - The president's faction
- * @param {object} nominee - { partyId, partyName, firstName, lastName, age }
- * @returns {{ bill, nominee, attemptsUsed }}
- */
-async function nominatePMCandidate(supabase, nationId, presidentFactionId, nominee) {
-    const { data: nation } = await supabase.from('nations')
-        .select('name, government_type, total_seats')
-        .eq('id', nationId).single();
-    if (!isSemiPresidential(nation)) throw new Error('PM nomination only applies to Semi-Presidential systems');
-
-    const { data: existingHOG } = await supabase.from('head_of_government')
-        .select('id').eq('nation_id', nationId).eq('active', true).maybeSingle();
-    if (existingHOG) throw new Error('A Prime Minister is already in office');
-
-    const result = await nominateMinister(supabase, nationId, presidentFactionId, 'prime_minister', nominee);
-    return result;
-}
+// nominatePMCandidate removed in 20270748 — semi-presidential-only export.
 
 // Tick lock and tick mutation are intentionally Edge Function only.
 
@@ -20736,15 +20387,6 @@ async function installHOG(supabase, opts) {
         reason = 'pm_change',
     } = opts;
 
-    // Snapshot the outgoing PM before deactivation so we can record the
-    // transition in the open admin row's leader_changes log (semi-pres).
-    const { data: outgoingHog } = await supabase
-        .from('head_of_government')
-        .select('faction_id, first_name, last_name')
-        .eq('nation_id', nationId)
-        .eq('active', true)
-        .maybeSingle();
-
     // Primary path: SECURITY DEFINER RPC install_hog (20260803). The
     // RPC bypasses the head_of_government RLS that 20260302 stripped
     // for client writes, with an internal ownership check on the
@@ -20802,43 +20444,16 @@ async function installHOG(supabase, opts) {
         if (hogErr) throw hogErr;
     }
 
-    // Tier 2 Phase 3: in semi-presidential nations the administration row
-    // is bound to the PRESIDENT'S tenure, not the PM's. PM changes within
-    // a presidential term are sub-events recorded as leader_changes
-    // entries on the open admin row, never as new admin rows.
-    try {
-        const { data: nation } = await supabase.from('nations')
-            .select('government_type').eq('id', nationId).single();
-        if (isSemiPresidential(nation)) {
-            const newPmName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
-            const oldPmName = outgoingHog
-                ? [outgoingHog.first_name, outgoingHog.last_name].filter(Boolean).join(' ').trim() || null
-                : null;
-            await appendAdminLeaderChange(supabase, nationId, {
-                tick: currentTick ?? null,
-                role: 'prime_minister',
-                reason,
-                old_name: oldPmName,
-                new_name: newPmName,
-                old_party_id: outgoingHog?.faction_id || null,
-                new_party_id: factionId,
-            });
-        }
-    } catch (err) {
-        console.warn('[installHOG] leader_changes write failed:', err?.message || err);
-    }
-
     return { };
 }
 
 /**
  * Append a leader_changes event to the open administration row.
- * Used by both server-side installHOG (semi-pres PM rotation within a
- * presidential term) and the browser party-leadership UI (mid-term ruling-
- * party leader change). Non-blocking: SELECT/UPDATE failures log to console
- * but do not throw — the calling action has already mutated primary state
- * (head_of_government, factions) and shouldn't be rolled back over an
- * audit-trail write.
+ * Called by the browser party-leadership UI on a mid-term ruling-party
+ * leader change. Non-blocking: SELECT/UPDATE failures log to console
+ * but do not throw — the calling action has already mutated primary
+ * state (head_of_government, factions) and shouldn't be rolled back
+ * over an audit-trail write.
  */
 async function appendAdminLeaderChange(supabase, nationId, event) {
     try {
@@ -20875,23 +20490,6 @@ async function appendAdminLeaderChange(supabase, nationId, event) {
  * when their party receives the PM role during coalition formation.
  */
 async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
-    // Semi-Presidential cohabitation rule: the President must manually
-    // nominate a PM via nominatePMCandidate. Auto-appointing the party
-    // leader breaks two scenarios:
-    //   1. If the winning party is the President's own party, the party
-    //      leader IS the President — appointing them as PM creates a
-    //      same-person dual-role conflict.
-    //   2. If the winning party is a different party, the President should
-    //      still get to choose who they appoint — that's the whole point
-    //      of semi-presidential constitutional design.
-    // Bail early in semi-pres systems and let the manual flow take over.
-    const { data: nationGovType } = await supabase.from('nations')
-        .select('government_type').eq('id', nationId).single();
-    if (isSemiPresidential(nationGovType)) {
-        console.log('[autoAppointPartyLeaderAsPM] semi-presidential — skipping auto-appoint (President must manually nominate)');
-        return null;
-    }
-
     // When called from coalition formation flow, skip the coalition check
     // (the formation was JUST set to 'formed' and cache may be stale)
     let _coalitionAtEntry = null;
@@ -21653,14 +21251,13 @@ const LEADERSHIP_CHALLENGE_BOOST_COOLDOWN  = 12;       // ticks — same-party P
 
 // Returns true if the nation runs the parliamentary mechanic
 // (parliamentary republic OR constitutional monarchy = parliamentary
-// + hereditary HoS). Absolute monarchy / presidential / semi-presidential
-// are out — leadership challenge would undermine the monarch / president.
+// + hereditary HoS). Absolute monarchy / presidential are out —
+// leadership challenge would undermine the monarch / president.
 function _isParliamentaryForChallenge(nation) {
     const govType = (nation?.government_type || '').toLowerCase();
     const isAM    = govType.includes('absolute monarchy');
-    const isPres  = govType.includes('presidential') && !govType.includes('semi');
-    const isSemi  = govType.includes('semi-presidential') || govType.includes('semi_presidential');
-    if (isAM || isPres || isSemi) return false;
+    const isPres  = govType.includes('presidential');
+    if (isAM || isPres) return false;
     return govType.includes('parliamentary')
         || nation?.hos_election_method === 'hereditary';
 }
@@ -28861,9 +28458,8 @@ async function isMilitaryLoyaltyActive(supabase, nationId) {
 // Resolve the current Head of Government for a nation. Returns
 // { first_name, last_name, age, party_id } or null if no HoG (vacant PM,
 // no elected president, monarchy without a designated HoG, etc.).
-// Pure presidential → active row in presidents (President is HoG+HoS).
-// Parliamentary / semi-presidential / monarchy-with-PM → PM row in ministries
-// (in semi-presidential, the PM runs domestic affairs and is HoG by convention).
+// Presidential → active row in presidents (President is HoG+HoS).
+// Parliamentary / monarchy-with-PM → PM row in ministries.
 async function resolveHeadOfGovernment(supabase, nation) {
     if (!nation?.id) return null;
 
@@ -31565,17 +31161,7 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] resolveStuckRatifications failed for ${nation.name} (non-fatal):`, ratErr);
         }
 
-        // ── Impeachment processing (Presidential + Semi-Presidential) ──
-        // Gate is hasElectedPresident, not isPresidentialRepublic — Semi-
-        // Presidential nations also have an elected president and the
-        // impeachment action's own eligibility rule (party-actions.js:2230)
-        // already includes them. Before this fix the entire block —
-        // committee→floor auto-transition, per-tick trial effects, the
-        // conviction-removes-president-and-schedules-snap-election handler,
-        // and the stale-proceedings cleanup — silently skipped every
-        // Semi-Presidential nation, so passed impeachment bills sat in the
-        // DB marked 'convicted' but never removed the president or fired
-        // an election.
+        // ── Impeachment processing (Presidential) ──
         if (hasElectedPresident(nation)) {
             try {
                 // 1. Auto-transition committee impeachment bills to floor

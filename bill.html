@@ -1111,14 +1111,13 @@ function renderArticles() {
                 '</div>';
         } else if (bill.proposed_constitutional_reform) {
             // Constitutional Reform subtype
-            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic', semi_presidential: 'Semi-Presidential Republic' };
+            const systemLabels = { parliamentary: 'Parliamentary Democracy', constitutional_monarchy: 'Constitutional Monarchy', presidential: 'Presidential Republic' };
             const systemLabel = systemLabels[bill.proposed_constitutional_reform] || bill.proposed_constitutional_reform;
             const effects = {
                 parliamentary: 'Stability +3, Legitimacy +2, Civil Unrest +5.<br>Presidential system will be deactivated if applicable. PM formation triggered.',
                 constitutional_monarchy: 'Stability +5, Legitimacy -5, Civil Unrest +5.<br>A hereditary monarch will be established as Head of State.' +
                     (bill.proposed_dynasty_name ? '<br>Dynasty: <strong>' + escapeHtml(bill.proposed_dynasty_name) + '</strong>' : ''),
                 presidential: 'Legitimacy +3, Political Engagement +3, Polarization +2, Civil Unrest +5.<br>A presidential election will be scheduled. PM and coalition dissolved if applicable.',
-                semi_presidential: 'Legitimacy +2, Political Engagement +2, Polarization +3, Civil Unrest +5.<br>President and PM coexist. Presidential election and PM formation triggered as needed.'
             };
             const effectsHTML = effects[bill.proposed_constitutional_reform] || '';
             const cooldownYears = GAME_CONFIG.CONSTITUTIONAL_REFORM_COOLDOWN_TICKS / GAME_CONFIG.TICKS_PER_YEAR;

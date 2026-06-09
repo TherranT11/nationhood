@@ -4,7 +4,7 @@
  */
 
 import { deductAP, GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './config.js';
-import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM, isSemiPresidential } from './government-types.js';
+import { CANONICAL_GOVERNMENT_TYPES, hasParliamentaryPM } from './government-types.js';
 import { RAW_SCALING_DIVISORS, STAT_PROCESSOR_SKIP } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG, MINISTRY_TO_STATS, NATION_STAT_COLUMNS, NATION_STAT_COLUMN_SET, STAT_DECAY_CONFIG, buildMinistryBaselines, normalizeNationStatKey, translateStatEffect, statDirectionSign } from './stats.js';
 import { adjustGovernmentApprovalEvent } from './momentum.js';
@@ -2784,15 +2784,6 @@ export async function installHOG(supabase, opts) {
         reason = 'pm_change',
     } = opts;
 
-    // Snapshot the outgoing PM before deactivation so we can record the
-    // transition in the open admin row's leader_changes log (semi-pres).
-    const { data: outgoingHog } = await supabase
-        .from('head_of_government')
-        .select('faction_id, first_name, last_name')
-        .eq('nation_id', nationId)
-        .eq('active', true)
-        .maybeSingle();
-
     // Primary path: SECURITY DEFINER RPC install_hog (20260803). The
     // RPC bypasses the head_of_government RLS that 20260302 stripped
     // for client writes, with an internal ownership check on the
@@ -2850,43 +2841,16 @@ export async function installHOG(supabase, opts) {
         if (hogErr) throw hogErr;
     }
 
-    // Tier 2 Phase 3: in semi-presidential nations the administration row
-    // is bound to the PRESIDENT'S tenure, not the PM's. PM changes within
-    // a presidential term are sub-events recorded as leader_changes
-    // entries on the open admin row, never as new admin rows.
-    try {
-        const { data: nation } = await supabase.from('nations')
-            .select('government_type').eq('id', nationId).single();
-        if (isSemiPresidential(nation)) {
-            const newPmName = [firstName, lastName].filter(Boolean).join(' ').trim() || null;
-            const oldPmName = outgoingHog
-                ? [outgoingHog.first_name, outgoingHog.last_name].filter(Boolean).join(' ').trim() || null
-                : null;
-            await appendAdminLeaderChange(supabase, nationId, {
-                tick: currentTick ?? null,
-                role: 'prime_minister',
-                reason,
-                old_name: oldPmName,
-                new_name: newPmName,
-                old_party_id: outgoingHog?.faction_id || null,
-                new_party_id: factionId,
-            });
-        }
-    } catch (err) {
-        console.warn('[installHOG] leader_changes write failed:', err?.message || err);
-    }
-
     return { };
 }
 
 /**
  * Append a leader_changes event to the open administration row.
- * Used by both server-side installHOG (semi-pres PM rotation within a
- * presidential term) and the browser party-leadership UI (mid-term ruling-
- * party leader change). Non-blocking: SELECT/UPDATE failures log to console
- * but do not throw — the calling action has already mutated primary state
- * (head_of_government, factions) and shouldn't be rolled back over an
- * audit-trail write.
+ * Called by the browser party-leadership UI on a mid-term ruling-party
+ * leader change. Non-blocking: SELECT/UPDATE failures log to console
+ * but do not throw — the calling action has already mutated primary
+ * state (head_of_government, factions) and shouldn't be rolled back
+ * over an audit-trail write.
  */
 export async function appendAdminLeaderChange(supabase, nationId, event) {
     try {
@@ -2923,23 +2887,6 @@ export async function appendAdminLeaderChange(supabase, nationId, event) {
  * when their party receives the PM role during coalition formation.
  */
 export async function autoAppointPartyLeaderAsPM(supabase, nationId, factionId, currentTick, opts) {
-    // Semi-Presidential cohabitation rule: the President must manually
-    // nominate a PM via nominatePMCandidate. Auto-appointing the party
-    // leader breaks two scenarios:
-    //   1. If the winning party is the President's own party, the party
-    //      leader IS the President — appointing them as PM creates a
-    //      same-person dual-role conflict.
-    //   2. If the winning party is a different party, the President should
-    //      still get to choose who they appoint — that's the whole point
-    //      of semi-presidential constitutional design.
-    // Bail early in semi-pres systems and let the manual flow take over.
-    const { data: nationGovType } = await supabase.from('nations')
-        .select('government_type').eq('id', nationId).single();
-    if (isSemiPresidential(nationGovType)) {
-        console.log('[autoAppointPartyLeaderAsPM] semi-presidential — skipping auto-appoint (President must manually nominate)');
-        return null;
-    }
-
     // When called from coalition formation flow, skip the coalition check
     // (the formation was JUST set to 'formed' and cache may be stale)
     let _coalitionAtEntry = null;
@@ -3701,14 +3648,13 @@ const LEADERSHIP_CHALLENGE_BOOST_COOLDOWN  = 12;       // ticks — same-party P
 
 // Returns true if the nation runs the parliamentary mechanic
 // (parliamentary republic OR constitutional monarchy = parliamentary
-// + hereditary HoS). Absolute monarchy / presidential / semi-presidential
-// are out — leadership challenge would undermine the monarch / president.
+// + hereditary HoS). Absolute monarchy / presidential are out —
+// leadership challenge would undermine the monarch / president.
 function _isParliamentaryForChallenge(nation) {
     const govType = (nation?.government_type || '').toLowerCase();
     const isAM    = govType.includes('absolute monarchy');
-    const isPres  = govType.includes('presidential') && !govType.includes('semi');
-    const isSemi  = govType.includes('semi-presidential') || govType.includes('semi_presidential');
-    if (isAM || isPres || isSemi) return false;
+    const isPres  = govType.includes('presidential');
+    if (isAM || isPres) return false;
     return govType.includes('parliamentary')
         || nation?.hos_election_method === 'hereditary';
 }
