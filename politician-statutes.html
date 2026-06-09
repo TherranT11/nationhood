@@ -114,6 +114,7 @@
 .pnl-fg-hint { font-size:9px; color:var(--faint); font-style:italic; line-height:1.5; margin-top:-2px; }
 
 .pnl-cat-row { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; }
+#aml-cat-row { grid-template-columns:repeat(5,1fr); }
 .pnl-cat { padding:9px 12px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
   color:var(--mut); font-size:10px; font-weight:600; letter-spacing:0.06em; text-align:center;
   cursor:pointer; font-family:inherit; }
@@ -224,6 +225,7 @@
   .pnl-foot-note { font-size:9px; }
   .pnl-submit { width:100%; }
   .pnl-cat-row    { grid-template-columns:repeat(2,1fr); }
+  #aml-cat-row    { grid-template-columns:repeat(2,1fr); }
   .pnl-comm-grid  { grid-template-columns:1fr; }
   .pnl-art-actions { flex-wrap:wrap; }
   .pnl-art-counter { margin-left:0; width:100%; text-align:right; }
@@ -399,25 +401,41 @@
     <div class="pnl-head">
       <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
       <div class="pnl-title">Amend an <em>Existing Law</em></div>
-      <div class="pnl-sub">Select an enacted statute and describe the change. The amendment is referred to the same committee that enacted the parent. <strong>600 characters.</strong></div>
+      <div class="pnl-sub">Pick a category, choose an enacted statute, write what it should say once amended, then refer it to a committee. <strong>600 characters.</strong></div>
       <button class="pnl-close" id="aml-close" type="button" title="Cancel">&#10005;</button>
     </div>
 
     <div class="pnl-body">
 
       <div class="pnl-fg">
+        <div class="pnl-fg-lab">CATEGORY<span class="req">*</span></div>
+        <div class="pnl-cat-row" id="aml-cat-row">
+          <button type="button" class="pnl-cat" data-cat="constitutional">CONSTITUTIONAL</button>
+          <button type="button" class="pnl-cat" data-cat="criminal">CRIMINAL</button>
+          <button type="button" class="pnl-cat" data-cat="civil">CIVIL</button>
+          <button type="button" class="pnl-cat" data-cat="commercial">COMMERCIAL</button>
+          <button type="button" class="pnl-cat" data-cat="electoral">ELECTORAL</button>
+        </div>
+      </div>
+
+      <div class="pnl-fg">
         <div class="pnl-fg-lab">STATUTE TO AMEND<span class="req">*</span></div>
-        <div class="pnl-fg-hint" id="aml-statute-hint">Loading enacted statutes&hellip;</div>
+        <div class="pnl-fg-hint" id="aml-statute-hint">Pick a category to see enacted statutes.</div>
         <div class="pnl-ss" id="aml-statute-list"></div>
       </div>
 
       <div class="pnl-fg">
-        <div class="pnl-fg-lab">PROPOSED CHANGE<span class="req">*</span></div>
-        <div class="pnl-fg-hint">Describe how the statute should be modified. The committee will draft the operative text.</div>
+        <div class="pnl-fg-lab">AMENDED STATUTE TEXT<span class="req">*</span></div>
+        <div class="pnl-fg-hint">Write what the statute should say once amended. <strong>600 characters.</strong></div>
         <textarea id="aml-text" maxlength="600"
-                  placeholder="e.g. Strike subsection (b); replace with: &quot;Eligibility extends to permanent residents of two years' standing.&quot;"
+                  placeholder="Write the new text of the statute&hellip;"
                   style="width:100%;min-height:120px;padding:10px 12px;background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.1);border-radius:4px;color:#cfcabf;font-family:Georgia,serif;font-size:13px;line-height:1.55;resize:vertical;box-sizing:border-box;"></textarea>
         <div class="pnl-art-counter" id="aml-counter" style="margin-top:6px;">0 / 600 characters</div>
+      </div>
+
+      <div class="pnl-fg">
+        <div class="pnl-fg-lab">REFER TO COMMITTEE<span class="req">*</span></div>
+        <div class="pnl-comm-grid" id="aml-comm-grid"></div>
       </div>
 
       <div class="pnl-fg">
@@ -1130,14 +1148,16 @@ async function submit() {
 // the change; the server inherits committee + category + section
 // from the parent so there's no committee picker here.
 const amendDraft = {
+  category:          null,    // 'constitutional' | 'criminal' | 'civil' | 'commercial' | 'electoral'
   amendsProposalId:  null,
   text:              '',
+  committeeKey:      null,
   stakeholders:      ['', '', '', '', ''],
   supportArchetypes: [],
   opposeArchetypes:  [],
 };
 let amendInFlight = false;
-let amendStatutes = [];   // cached enacted-laws snapshot for the picker
+let amendStatutesByCategory = new Map();  // category → [{id, section}]
 
 const AMEND_CATEGORY_LABELS = {
   constitutional: 'Constitutional',
@@ -1154,12 +1174,14 @@ const AMEND_REASON_HUMAN = {
   invalid_target:           'Pick a statute to amend.',
   target_not_found:         'That statute no longer exists.',
   target_not_enacted:       'That proposal is not enacted — pick an enacted statute.',
-  wrong_nation:             'That statute belongs to a different nation.',
-  empty_amendment:          'Write what you want changed.',
+  wrong_nation:             'That statute or committee belongs to a different nation.',
+  empty_amendment:          'Write the amended statute text.',
   amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
-  parent_committee_missing: 'The original committee for that statute is gone — try a different statute.',
+  invalid_committee:        'Pick a committee to refer the amendment to.',
+  committee_not_found:      'That committee could not be found — try a different one.',
   invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
   invalid_archetype_positions: 'Archetype list invalid — no archetype may appear on both sides.',
+  invalid_committee:        'Pick a committee to refer the amendment to.',
 };
 
 async function openAmendModal() {
@@ -1167,19 +1189,35 @@ async function openAmendModal() {
     alert('No nation associated with this politician.');
     return;
   }
+  // Reset draft + UI.
+  amendDraft.category = null;
   amendDraft.amendsProposalId = null;
   amendDraft.text = '';
+  amendDraft.committeeKey = null;
   amendDraft.stakeholders = ['', '', '', '', ''];
   amendDraft.supportArchetypes = [];
   amendDraft.opposeArchetypes  = [];
   document.getElementById('aml-text').value = '';
   document.getElementById('aml-err').classList.remove('show');
   document.getElementById('aml-err').textContent = '';
+  renderAmendCategory();
   renderStakeholders('aml-stakeholders', amendDraft.stakeholders);
   renderArchetypePair('aml-support-arch', 'aml-oppose-arch',
                      amendDraft.supportArchetypes, amendDraft.opposeArchetypes,
                      refreshAmendSubmitState);
   refreshAmendCounter();
+
+  // Make sure the committee-id map is populated. The Propose New
+  // Statute modal populates it lazily; the amend flow needs the same
+  // committee_key → committee_id resolution.
+  if (committeeIdByKey.size === 0) {
+    const { data: cdata, error: cerr } = await _supabase.from('committees')
+      .select('id, committee_key')
+      .eq('nation_id', politicianCtx.nation.id);
+    if (cerr) { alert('Could not load committees: ' + (cerr.message || 'unknown')); return; }
+    for (const row of (cdata || [])) committeeIdByKey.set(row.committee_key, row.id);
+  }
+  renderAmendCommittees();
   refreshAmendSubmitState();
 
   const hint = document.getElementById('aml-statute-hint');
@@ -1191,27 +1229,69 @@ async function openAmendModal() {
     .select('id, category, section')
     .eq('nation_id', politicianCtx.nation.id)
     .eq('status', 'enacted')
-    .order('category', { ascending: true })
-    .order('section',  { ascending: true });
+    .order('section', { ascending: true });
   if (error) {
     hint.textContent = 'Could not load statutes — ' + (error.message || 'try again').slice(0, 80) + '.';
     return;
   }
-  amendStatutes = data || [];
-  if (!amendStatutes.length) {
-    hint.textContent = 'No enacted statutes yet — nothing to amend.';
-  } else {
-    hint.textContent = `${amendStatutes.length} enacted statute${amendStatutes.length === 1 ? '' : 's'} — click one to select.`;
-    list.innerHTML = amendStatutes.map(s => `
-      <button type="button" class="pnl-ss-chip" data-id="${escapeHtml(s.id)}"
-              style="font-size:10px;padding:6px 11px;">
-        <span style="color:#7a9aab;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;font-size:8px;margin-right:6px;">${escapeHtml(AMEND_CATEGORY_LABELS[s.category] || s.category || '')}</span>${escapeHtml(s.section || '')}
-      </button>`).join('');
+  amendStatutesByCategory = new Map();
+  for (const row of (data || [])) {
+    if (!amendStatutesByCategory.has(row.category)) amendStatutesByCategory.set(row.category, []);
+    amendStatutesByCategory.get(row.category).push(row);
   }
+  renderAmendStatuteList();
 
   const ov = document.getElementById('aml-overlay');
   ov.classList.add('show');
   ov.setAttribute('aria-hidden', 'false');
+}
+
+function renderAmendCategory() {
+  document.querySelectorAll('#aml-cat-row .pnl-cat').forEach(b => {
+    b.classList.toggle('selected', b.dataset.cat === amendDraft.category);
+  });
+}
+
+function renderAmendCommittees() {
+  const grid = document.getElementById('aml-comm-grid');
+  if (!grid) return;
+  grid.replaceChildren();
+  for (const key of COMMITTEE_ORDER) {
+    const meta = COMMITTEES[key]; if (!meta) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pnl-comm';
+    btn.dataset.key = key;
+    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
+                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
+    btn.addEventListener('click', () => {
+      amendDraft.committeeKey = key;
+      grid.querySelectorAll('.pnl-comm').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
+      refreshAmendSubmitState();
+    });
+    grid.appendChild(btn);
+  }
+}
+
+function renderAmendStatuteList() {
+  const hint = document.getElementById('aml-statute-hint');
+  const list = document.getElementById('aml-statute-list');
+  if (!hint || !list) return;
+  if (!amendDraft.category) {
+    hint.textContent = 'Pick a category to see enacted statutes.';
+    list.innerHTML = '';
+    return;
+  }
+  const rows = amendStatutesByCategory.get(amendDraft.category) || [];
+  if (!rows.length) {
+    hint.textContent = `No enacted ${AMEND_CATEGORY_LABELS[amendDraft.category] || amendDraft.category} statutes yet — nothing to amend.`;
+    list.innerHTML = '';
+    return;
+  }
+  hint.textContent = `${rows.length} enacted ${AMEND_CATEGORY_LABELS[amendDraft.category] || amendDraft.category} statute${rows.length === 1 ? '' : 's'} — click one to select.`;
+  list.innerHTML = rows.map(s => `
+    <button type="button" class="pnl-ss-chip" data-id="${escapeHtml(s.id)}"
+            style="font-size:10px;padding:6px 11px;">${escapeHtml(s.section || '')}</button>`).join('');
 }
 
 function closeAmendModal() {
@@ -1230,6 +1310,17 @@ function wireAmendModalChrome() {
     if (e.key === 'Escape' && document.getElementById('aml-overlay').classList.contains('show')) {
       closeAmendModal();
     }
+  });
+  // Category picker — changing category resets the selected statute
+  // and re-renders the list filtered to the new category.
+  document.getElementById('aml-cat-row').addEventListener('click', (e) => {
+    const btn = e.target.closest('.pnl-cat');
+    if (!btn) return;
+    amendDraft.category = btn.dataset.cat;
+    amendDraft.amendsProposalId = null;
+    renderAmendCategory();
+    renderAmendStatuteList();
+    refreshAmendSubmitState();
   });
   document.getElementById('aml-statute-list').addEventListener('click', (e) => {
     const btn = e.target.closest('[data-id]');
@@ -1262,8 +1353,12 @@ function refreshAmendCounter() {
 }
 
 function refreshAmendSubmitState() {
-  const ok = amendDraft.amendsProposalId && amendDraft.text.trim().length > 0
+  const ok = amendDraft.category
+    && amendDraft.amendsProposalId
+    && amendDraft.text.trim().length > 0
     && amendDraft.text.length <= 600
+    && amendDraft.committeeKey
+    && committeeIdByKey.has(amendDraft.committeeKey)
     && validateStakeholders(amendDraft.stakeholders).ok
     && validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes).ok;
   document.getElementById('aml-submit').disabled = !ok || amendInFlight;
@@ -1275,6 +1370,13 @@ async function submitAmendment() {
   err.classList.remove('show'); err.textContent = '';
 
   if (!amendDraft.amendsProposalId || !amendDraft.text.trim()) return;
+
+  const committeeId = committeeIdByKey.get(amendDraft.committeeKey);
+  if (!committeeId) {
+    err.textContent = AMEND_REASON_HUMAN.invalid_committee;
+    err.classList.add('show');
+    return;
+  }
 
   const stkCheck = validateStakeholders(amendDraft.stakeholders);
   if (!stkCheck.ok) {
@@ -1298,6 +1400,7 @@ async function submitAmendment() {
       p_amends_proposal_id: amendDraft.amendsProposalId,
       p_amendment_text:     amendDraft.text.trim(),
       p_faction_id:         politicianCtx?.faction?.id || null,
+      p_committee_id:       committeeId,
       p_persona_roles:      personaRolesPayload,
       p_support_archetypes: archCheck.support,
       p_oppose_archetypes:  archCheck.oppose,
