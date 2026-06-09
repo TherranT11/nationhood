@@ -3017,12 +3017,14 @@ function renderAffiliation(ctx) {
 // actions take p_party_id explicitly. `format` produces the one-line
 // outcome alert for the action's result envelope.
 const ACTIONS = {
-  'floor-speech':       { rpc: 'politician_mp_floor_speech',       label: 'Floor Speech',       needsParty: false, format: fmtMpResult },
-  'hold-rally':         { rpc: 'politician_mp_hold_rally',         label: 'Hold a Rally',       needsParty: false, format: fmtMpResult },
-  'fundraising-dinner': { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising Dinner', needsParty: false, format: fmtMpResult },
-  // 20270753 MP action set redesign — 'fundraising' is the new tile
-  // key for the same underlying RPC (just softer -0.5 popularity hit).
-  // Old 'fundraising-dinner' key retained for any stale call paths.
+  // 20270753 MP action set redesign — 'fundraising' is the only
+  // remaining LEGISLATURE_ACTIONS dispatch target. The legacy
+  // 'floor-speech' / 'hold-rally' / 'fundraising-dinner' entries
+  // were removed in the post-redesign audit pass — no tile
+  // references them and a repo-wide grep turned up no other
+  // callers. The underlying politician_mp_floor_speech and
+  // politician_mp_hold_rally RPCs stay in the DB (referenced by
+  // career-events history + test scripts); see 20270753 header.
   'fundraising':        { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising',        needsParty: false, format: fmtMpResult },
   'fundraising-call':   { rpc: 'politician_fundraising_call',      label: 'Fundraising Call',   needsParty: true,  format: fmtLocalResult },
   'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
