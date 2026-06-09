@@ -531,130 +531,130 @@
    .bv-questions (one Q at a time with a 3-dot progress strip),
    .bv-result (per-question outcome + pass/fail summary). Only one
    view is .show at a time. */
-#barModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+:is(#barModal, #fsModal) { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
   align-items:flex-start; justify-content:center; padding:48px 22px 22px;
   z-index:220; overflow-y:auto; }
-#barModal.open { display:flex; }
-#barModal .bar-modal { width:100%; max-width:720px;
+:is(#barModal, #fsModal).open { display:flex; }
+:is(#barModal, #fsModal) .bar-modal { width:100%; max-width:720px;
   background:#0d0d0d;
   border:0.5px solid rgba(255,255,255,0.08); border-radius:9px; overflow:hidden;
   box-shadow:0 24px 80px rgba(0,0,0,0.6); }
 
-#barModal .bar-head { padding:18px 22px; border-bottom:0.5px solid rgba(255,255,255,0.07);
+:is(#barModal, #fsModal) .bar-head { padding:18px 22px; border-bottom:0.5px solid rgba(255,255,255,0.07);
   background:#0d0d0d; position:relative; }
-#barModal .bar-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e;
+:is(#barModal, #fsModal) .bar-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e;
   font-weight:600; text-align:center; margin-bottom:6px; }
-#barModal .bar-title { font-size:20px; color:#fff; font-weight:500; text-align:center;
+:is(#barModal, #fsModal) .bar-title { font-size:20px; color:#fff; font-weight:500; text-align:center;
   letter-spacing:-0.01em; }
-#barModal .bar-title em { font-family:Georgia,serif; font-style:italic; color:#dcb88a; font-weight:500; }
-#barModal .bar-sub { font-size:11px; color:#888; text-align:center; margin-top:6px; line-height:1.55; }
-#barModal .bar-sub strong { color:#bbb; }
-#barModal .bar-close { position:absolute; top:14px; right:18px; width:28px; height:28px;
+:is(#barModal, #fsModal) .bar-title em { font-family:Georgia,serif; font-style:italic; color:#dcb88a; font-weight:500; }
+:is(#barModal, #fsModal) .bar-sub { font-size:11px; color:#888; text-align:center; margin-top:6px; line-height:1.55; }
+:is(#barModal, #fsModal) .bar-sub strong { color:#bbb; }
+:is(#barModal, #fsModal) .bar-close { position:absolute; top:14px; right:18px; width:28px; height:28px;
   border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
   display:flex; align-items:center; justify-content:center;
   background:transparent; color:#888; font-size:18px; cursor:pointer; line-height:1; }
-#barModal .bar-close:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
+:is(#barModal, #fsModal) .bar-close:hover { color:#d4d4d4; border-color:rgba(255,255,255,0.2); }
 
 /* View visibility — only one of .bv-* shows at a time. */
-#barModal .bar-view { display:none; }
-#barModal .bar-view.show { display:block; }
+:is(#barModal, #fsModal) .bar-view { display:none; }
+:is(#barModal, #fsModal) .bar-view.show { display:block; }
 
 /* Confirm view */
-#barModal .bv-confirm .bv-body { padding:22px 24px; color:#cfcabf; font-size:12px; line-height:1.65;
+:is(#barModal, #fsModal) .bv-confirm .bv-body { padding:22px 24px; color:#cfcabf; font-size:12px; line-height:1.65;
   background:#0d0d0d; }
-#barModal .bv-confirm .bv-body strong { color:#fff; }
-#barModal .bv-confirm .bv-body em { color:#dcb88a; font-style:italic; }
+:is(#barModal, #fsModal) .bv-confirm .bv-body strong { color:#fff; }
+:is(#barModal, #fsModal) .bv-confirm .bv-body em { color:#dcb88a; font-style:italic; }
 
 /* Progress strip (questions view) */
-#barModal .bv-progress { padding:12px 24px; border-bottom:0.5px solid rgba(255,255,255,0.07);
+:is(#barModal, #fsModal) .bv-progress { padding:12px 24px; border-bottom:0.5px solid rgba(255,255,255,0.07);
   background:#0a0a0a; display:flex; align-items:center; gap:14px; }
-#barModal .pg-lab { font-size:8.5px; letter-spacing:0.14em; color:#666; font-weight:600; }
-#barModal .pg-dots { flex:1; display:flex; align-items:center; justify-content:center; gap:10px; }
-#barModal .pg-dot { display:flex; align-items:center; gap:7px; }
-#barModal .pg-circle { width:22px; height:22px; border-radius:50%; display:flex;
+:is(#barModal, #fsModal) .pg-lab { font-size:8.5px; letter-spacing:0.14em; color:#666; font-weight:600; }
+:is(#barModal, #fsModal) .pg-dots { flex:1; display:flex; align-items:center; justify-content:center; gap:10px; }
+:is(#barModal, #fsModal) .pg-dot { display:flex; align-items:center; gap:7px; }
+:is(#barModal, #fsModal) .pg-circle { width:22px; height:22px; border-radius:50%; display:flex;
   align-items:center; justify-content:center; font-size:10px; font-weight:600; }
-#barModal .pg-dot.done .pg-circle { background:rgba(106,176,122,0.08); border:0.5px solid rgba(106,176,122,0.4); color:#6ab07a; }
-#barModal .pg-dot.current .pg-circle { background:rgba(200,162,110,0.08); border:0.5px solid rgba(200,162,110,0.5);
+:is(#barModal, #fsModal) .pg-dot.done .pg-circle { background:rgba(106,176,122,0.08); border:0.5px solid rgba(106,176,122,0.4); color:#6ab07a; }
+:is(#barModal, #fsModal) .pg-dot.current .pg-circle { background:rgba(200,162,110,0.08); border:0.5px solid rgba(200,162,110,0.5);
   color:#dcb88a; }
-#barModal .pg-dot.pending .pg-circle { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); color:#666; }
-#barModal .pg-line { width:32px; height:1px; background:rgba(255,255,255,0.08); }
-#barModal .pg-line.done { background:rgba(106,176,122,0.35); }
-#barModal .pg-stats { font-size:9.5px; color:#888; }
-#barModal .pg-stats strong { color:#dcb88a; font-weight:600; }
+:is(#barModal, #fsModal) .pg-dot.pending .pg-circle { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); color:#666; }
+:is(#barModal, #fsModal) .pg-line { width:32px; height:1px; background:rgba(255,255,255,0.08); }
+:is(#barModal, #fsModal) .pg-line.done { background:rgba(106,176,122,0.35); }
+:is(#barModal, #fsModal) .pg-stats { font-size:9.5px; color:#888; }
+:is(#barModal, #fsModal) .pg-stats strong { color:#dcb88a; font-weight:600; }
 
 /* Question body */
-#barModal .bv-question { padding:20px 24px; background:#0d0d0d;
+:is(#barModal, #fsModal) .bv-question { padding:20px 24px; background:#0d0d0d;
   border-bottom:0.5px solid rgba(255,255,255,0.07); }
-#barModal .q-marker { font-size:9px; letter-spacing:0.16em; color:#c8a26e; font-weight:600;
+:is(#barModal, #fsModal) .q-marker { font-size:9px; letter-spacing:0.16em; color:#c8a26e; font-weight:600;
   text-align:center; margin-bottom:8px; }
-#barModal .q-domain { font-size:8.5px; letter-spacing:0.14em; color:#888; font-weight:600;
+:is(#barModal, #fsModal) .q-domain { font-size:8.5px; letter-spacing:0.14em; color:#888; font-weight:600;
   text-align:center; margin-bottom:14px; }
-#barModal .q-domain strong { color:#dcb88a; }
-#barModal .q-text { color:#d4d4d4; font-size:13px; line-height:1.7; }
+:is(#barModal, #fsModal) .q-domain strong { color:#dcb88a; }
+:is(#barModal, #fsModal) .q-text { color:#d4d4d4; font-size:13px; line-height:1.7; }
 
 /* Answer choices */
-#barModal .bv-answers { padding:14px 24px; background:#0a0a0a; display:flex; flex-direction:column; gap:7px; }
-#barModal .ans { padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+:is(#barModal, #fsModal) .bv-answers { padding:14px 24px; background:#0a0a0a; display:flex; flex-direction:column; gap:7px; }
+:is(#barModal, #fsModal) .ans { padding:11px 14px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
   border-radius:5px; cursor:pointer; display:flex; align-items:flex-start; gap:11px;
   transition:all 0.15s; text-align:left; font-family:inherit; color:inherit; }
-#barModal .ans:hover { background:#101010; border-color:rgba(200,162,110,0.25); }
-#barModal .ans.selected { background:rgba(200,162,110,0.05); border-color:rgba(200,162,110,0.5);
+:is(#barModal, #fsModal) .ans:hover { background:#101010; border-color:rgba(200,162,110,0.25); }
+:is(#barModal, #fsModal) .ans.selected { background:rgba(200,162,110,0.05); border-color:rgba(200,162,110,0.5);
   border-left:2px solid #c8a26e; padding-left:14px; }
-#barModal .ans-letter { width:22px; height:22px; border-radius:50%; background:#0a0a0a;
+:is(#barModal, #fsModal) .ans-letter { width:22px; height:22px; border-radius:50%; background:#0a0a0a;
   border:0.5px solid rgba(255,255,255,0.08); display:flex; align-items:center;
   justify-content:center; font-size:10px; color:#888; font-weight:600; flex-shrink:0; margin-top:1px; }
-#barModal .ans.selected .ans-letter { background:rgba(200,162,110,0.08); border-color:#c8a26e; color:#dcb88a; }
-#barModal .ans-text { flex:1; font-size:11.5px; color:#d4d4d4; line-height:1.55; }
+:is(#barModal, #fsModal) .ans.selected .ans-letter { background:rgba(200,162,110,0.08); border-color:#c8a26e; color:#dcb88a; }
+:is(#barModal, #fsModal) .ans-text { flex:1; font-size:11.5px; color:#d4d4d4; line-height:1.55; }
 
 /* Result view */
-#barModal .bv-result-summary { padding:18px 24px; background:#0d0d0d;
+:is(#barModal, #fsModal) .bv-result-summary { padding:18px 24px; background:#0d0d0d;
   border-bottom:0.5px solid rgba(255,255,255,0.07); text-align:center; }
-#barModal .bv-result-summary.pass .bv-result-headline { color:#6ab07a; }
-#barModal .bv-result-summary.fail .bv-result-headline { color:#c87a7a; }
-#barModal .bv-result-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e;
+:is(#barModal, #fsModal) .bv-result-summary.pass .bv-result-headline { color:#6ab07a; }
+:is(#barModal, #fsModal) .bv-result-summary.fail .bv-result-headline { color:#c87a7a; }
+:is(#barModal, #fsModal) .bv-result-eyebrow { font-size:9px; letter-spacing:0.18em; color:#c8a26e;
   font-weight:600; margin-bottom:6px; }
-#barModal .bv-result-headline { font-size:20px; font-weight:500; line-height:1.25; }
-#barModal .bv-result-body { font-size:11.5px; color:#cfcabf; line-height:1.65; margin-top:8px; }
-#barModal .bv-result-body em { font-style:italic; color:#dcb88a; }
-#barModal .bv-result-rows { padding:12px 24px; background:#0a0a0a; display:flex;
+:is(#barModal, #fsModal) .bv-result-headline { font-size:20px; font-weight:500; line-height:1.25; }
+:is(#barModal, #fsModal) .bv-result-body { font-size:11.5px; color:#cfcabf; line-height:1.65; margin-top:8px; }
+:is(#barModal, #fsModal) .bv-result-body em { font-style:italic; color:#dcb88a; }
+:is(#barModal, #fsModal) .bv-result-rows { padding:12px 24px; background:#0a0a0a; display:flex;
   flex-direction:column; gap:7px; }
-#barModal .bv-rr { padding:10px 13px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+:is(#barModal, #fsModal) .bv-rr { padding:10px 13px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
   border-left:2px solid rgba(200,122,122,0.4); border-radius:5px; }
-#barModal .bv-rr.correct { border-left-color:rgba(106,176,122,0.5); }
-#barModal .bv-rr-head { display:flex; align-items:center; gap:10px; font-size:9px;
+:is(#barModal, #fsModal) .bv-rr.correct { border-left-color:rgba(106,176,122,0.5); }
+:is(#barModal, #fsModal) .bv-rr-head { display:flex; align-items:center; gap:10px; font-size:9px;
   letter-spacing:0.13em; font-weight:600; margin-bottom:5px; }
-#barModal .bv-rr-head .num { color:#c8a26e; }
-#barModal .bv-rr-head .domain { color:#888; flex:1; }
-#barModal .bv-rr-head .badge { padding:2px 7px; border-radius:2px; font-size:7.5px; letter-spacing:0.13em; }
-#barModal .bv-rr.correct .badge { color:#6ab07a; border:0.5px solid rgba(106,176,122,0.4); background:rgba(106,176,122,0.06); }
-#barModal .bv-rr:not(.correct) .badge { color:#c87a7a; border:0.5px solid rgba(200,122,122,0.4); background:rgba(200,122,122,0.06); }
-#barModal .bv-rr-prompt { color:#d4d4d4; font-size:11px; line-height:1.5; margin-bottom:5px; }
-#barModal .bv-rr-detail { font-size:10px; color:#888; line-height:1.5; }
-#barModal .bv-rr-detail b { color:#bbb; }
+:is(#barModal, #fsModal) .bv-rr-head .num { color:#c8a26e; }
+:is(#barModal, #fsModal) .bv-rr-head .domain { color:#888; flex:1; }
+:is(#barModal, #fsModal) .bv-rr-head .badge { padding:2px 7px; border-radius:2px; font-size:7.5px; letter-spacing:0.13em; }
+:is(#barModal, #fsModal) .bv-rr.correct .badge { color:#6ab07a; border:0.5px solid rgba(106,176,122,0.4); background:rgba(106,176,122,0.06); }
+:is(#barModal, #fsModal) .bv-rr:not(.correct) .badge { color:#c87a7a; border:0.5px solid rgba(200,122,122,0.4); background:rgba(200,122,122,0.06); }
+:is(#barModal, #fsModal) .bv-rr-prompt { color:#d4d4d4; font-size:11px; line-height:1.5; margin-bottom:5px; }
+:is(#barModal, #fsModal) .bv-rr-detail { font-size:10px; color:#888; line-height:1.5; }
+:is(#barModal, #fsModal) .bv-rr-detail b { color:#bbb; }
 
 /* Footer */
-#barModal .bar-foot { padding:14px 22px; background:#0d0d0d; border-top:0.5px solid rgba(255,255,255,0.07);
+:is(#barModal, #fsModal) .bar-foot { padding:14px 22px; background:#0d0d0d; border-top:0.5px solid rgba(255,255,255,0.07);
   display:flex; align-items:center; gap:12px; }
-#barModal .foot-rule { flex:1; font-size:9.5px; color:#888; line-height:1.55; }
-#barModal .foot-rule strong { color:#bbb; }
-#barModal .bar-btn { padding:10px 18px; border-radius:4px; font-size:10px; letter-spacing:0.14em;
+:is(#barModal, #fsModal) .foot-rule { flex:1; font-size:9.5px; color:#888; line-height:1.55; }
+:is(#barModal, #fsModal) .foot-rule strong { color:#bbb; }
+:is(#barModal, #fsModal) .bar-btn { padding:10px 18px; border-radius:4px; font-size:10px; letter-spacing:0.14em;
   font-weight:600; cursor:pointer; font-family:inherit;
   background:transparent; border:0.5px solid #c8a26e; color:#dcb88a;
   text-transform:uppercase; }
-#barModal .bar-btn:hover:not(:disabled) { background:rgba(200,162,110,0.08); color:#fff; }
-#barModal .bar-btn:disabled { opacity:0.4; cursor:not-allowed; }
-#barModal .bar-btn.secondary { border-color:rgba(255,255,255,0.15); color:#888; }
-#barModal .bar-btn.secondary:hover:not(:disabled) { color:#fff; border-color:#888; background:transparent; }
-#barModal .bar-err { padding:0 24px 10px; color:#c87a7a; font-size:10px; display:none; }
-#barModal .bar-err.show { display:block; }
+:is(#barModal, #fsModal) .bar-btn:hover:not(:disabled) { background:rgba(200,162,110,0.08); color:#fff; }
+:is(#barModal, #fsModal) .bar-btn:disabled { opacity:0.4; cursor:not-allowed; }
+:is(#barModal, #fsModal) .bar-btn.secondary { border-color:rgba(255,255,255,0.15); color:#888; }
+:is(#barModal, #fsModal) .bar-btn.secondary:hover:not(:disabled) { color:#fff; border-color:#888; background:transparent; }
+:is(#barModal, #fsModal) .bar-err { padding:0 24px 10px; color:#c87a7a; font-size:10px; display:none; }
+:is(#barModal, #fsModal) .bar-err.show { display:block; }
 
 @media (max-width:600px) {
-  #barModal .bar-head { padding:18px 18px 14px; }
-  #barModal .bv-question { padding:18px 18px; }
-  #barModal .bv-answers, #barModal .bv-result-rows { padding:14px 18px; }
-  #barModal .bar-foot { padding:14px 18px; flex-direction:column; align-items:stretch; }
-  #barModal .bar-btn { width:100%; }
-  #barModal .pg-line { width:20px; }
+  :is(#barModal, #fsModal) .bar-head { padding:18px 18px 14px; }
+  :is(#barModal, #fsModal) .bv-question { padding:18px 18px; }
+  :is(#barModal, #fsModal) .bv-answers, :is(#barModal, #fsModal) .bv-result-rows { padding:14px 18px; }
+  :is(#barModal, #fsModal) .bar-foot { padding:14px 18px; flex-direction:column; align-items:stretch; }
+  :is(#barModal, #fsModal) .bar-btn { width:100%; }
+  :is(#barModal, #fsModal) .pg-line { width:20px; }
 }
 </style>
 </head>
@@ -799,6 +799,55 @@
       <div class="bar-foot">
         <div class="foot-rule" id="bv-result-rule"></div>
         <button class="bar-btn" type="button" id="bar-close-btn" data-bar-close>CLOSE</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Foreign Service exam modal — same three-view shell as the Bar
+     exam (confirm → questions → result). Server provides 5 random
+     multiple-choice questions via foreign_service_exam_start; client
+     collects answers, submits via foreign_service_exam_submit, which
+     assigns a foreign nation on pass. -->
+<div id="fsModal" aria-hidden="true">
+  <div class="bar-modal" role="dialog" aria-modal="true">
+    <div class="bar-head">
+      <div class="bar-eyebrow">EXAMINATION FOR ADMISSION TO THE FOREIGN SERVICE</div>
+      <div class="bar-title">The <em>Foreign Service</em> Examination</div>
+      <div class="bar-sub">Five questions on the affairs of foreign nations.</div>
+      <button class="bar-close" type="button" aria-label="Close" data-fs-close>&times;</button>
+    </div>
+
+    <!-- Confirm view -->
+    <div class="bar-view bv-confirm" id="fs-confirm">
+      <div class="bv-body" id="fs-confirm-body"></div>
+      <div class="bar-err" id="fs-err-confirm"></div>
+      <div class="bar-foot">
+        <div class="foot-rule" id="fs-confirm-rule"></div>
+        <button class="bar-btn secondary" type="button" data-fs-close>CANCEL</button>
+        <button class="bar-btn" type="button" id="fs-start-btn">SIT THE EXAM &rsaquo;</button>
+      </div>
+    </div>
+
+    <!-- Questions view -->
+    <div class="bar-view bv-questions" id="fs-questions">
+      <div class="bv-progress" id="fs-progress"></div>
+      <div class="bv-question" id="fs-question"></div>
+      <div class="bv-answers" id="fs-answers"></div>
+      <div class="bar-err" id="fs-err-q"></div>
+      <div class="bar-foot">
+        <div class="foot-rule"><strong>Reminder:</strong> All five answers must be correct. Failure costs <strong>−1 Reputation</strong>; you may retake the exam next month.</div>
+        <button class="bar-btn" type="button" id="fs-next-btn">NEXT &rsaquo;</button>
+      </div>
+    </div>
+
+    <!-- Result view -->
+    <div class="bar-view bv-result" id="fs-result">
+      <div class="bv-result-summary" id="fs-result-summary"></div>
+      <div class="bv-result-rows" id="fs-result-rows"></div>
+      <div class="bar-foot">
+        <div class="foot-rule" id="fs-result-rule"></div>
+        <button class="bar-btn" type="button" id="fs-close-btn" data-fs-close>CLOSE</button>
       </div>
     </div>
   </div>
@@ -1597,11 +1646,11 @@ const FOREIGN_SERVICE_RUNGS = [
   {
     name: 'Foreign Service Officer / Attaché',
     tierName: 'FIRST OFFICE',
-    held:        ()  => false,
+    held:        (s) => !!s?.foreignServiceNationId,
     descIfHeld:  ()  => 'You hold a junior posting at an embassy abroad — files, contacts, the trade.',
     descIfNot:   ()  => 'Junior posting to an embassy abroad. You file reports, cultivate contacts, and learn the trade.',
-    actions:     ['File a Report', 'Cultivate a Contact'],
-    actionIfNot: { label: 'Join the Service', kind: 'disabled' },
+    actions:     ['Day to Day in the Embassy', 'Build Local Contacts', 'Send Cable to Foreign Ministry'],
+    actionIfNot: { label: 'Join the Service', kind: 'primary', action: 'fs-exam' },
   },
   {
     name: 'Consul / Cultural Attaché',
@@ -2285,6 +2334,13 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     barAdmittedNationId:     ctx?.faction?.bar_admitted_nation_id || null,
     barAdmittedAtTick:       Number(ctx?.faction?.bar_admitted_at_tick) || 0,
     barLastAttemptTick:      Number(ctx?.faction?.bar_last_attempt_tick) || 0,
+    // Foreign Service Tier 1 (20270759). foreignServiceNationId set
+    // means the politician has passed the entry exam and is posted at
+    // a foreign embassy — drives held() on the Attaché rung and the
+    // companion Foreign Attaché affiliation card on politician-home.
+    foreignServiceNationId:   ctx?.faction?.politician_foreign_service_nation_id || null,
+    foreignServiceAtTick:     Number(ctx?.faction?.politician_foreign_service_at_tick) || 0,
+    foreignServiceLastAttemptTick: Number(ctx?.faction?.foreign_service_last_attempt_tick) || 0,
     // politician_reputation still feeds the upstream judicial gates
     // (State Advocate / Magistrate / etc.). The Experienced Advocate
     // step-up moved to politician_skill (Experience) in 20270727,
@@ -2858,6 +2914,16 @@ function bindRungActions(ctx) {
   });
   document.querySelectorAll('#barModal [data-bar-close]').forEach(btn => {
     btn.addEventListener('click', () => closeBarExamModal());
+  });
+
+  // Join the Service — Foreign Service Tier 1 (Attaché). 5-question
+  // exam about random foreign nations; foreign_service_exam_start /
+  // foreign_service_exam_submit RPCs land in 20270759.
+  document.querySelectorAll('[data-action="fs-exam"]').forEach(btn => {
+    btn.addEventListener('click', () => openForeignServiceModal());
+  });
+  document.querySelectorAll('#fsModal [data-fs-close]').forEach(btn => {
+    btn.addEventListener('click', () => closeForeignServiceModal());
   });
 
   // Bench-ladder climb actions (Experienced Advocate 20270529, Take
@@ -3747,6 +3813,291 @@ function barReasonHuman(reason, data) {
     case 'invalid_answer':     return 'One of your answers was not A/B/C/D.';
     case 'question_not_found': return 'A question was missing from the bank. Refresh and retry.';
     default:                   return `Could not proceed (${r || 'unknown'}).`;
+  }
+}
+
+// ─── Foreign Service Exam modal ───────────────────────────────────
+// Mirrors the Bar Exam shell (confirm → questions → result). Server
+// generates 5 questions about random foreign nations on start; client
+// collects answers, submits. Pass = posted to a random foreign nation
+// stamped on politician_foreign_service_nation_id.
+const _fsState = {
+  attemptId:  null,
+  questions:  [],     // [{idx, qtype, prompt, options:[{letter,text}]}]
+  answers:    [],     // index → 'A'|'B'|'C'|'D' (1-based: answers[0] unused)
+  currentIdx: 0,
+  inFlight:   false,
+};
+
+function openForeignServiceModal() {
+  const overlay = document.getElementById('fsModal');
+  if (!overlay) return;
+  _fsState.attemptId = null;
+  _fsState.questions = [];
+  _fsState.answers = [];
+  _fsState.currentIdx = 0;
+  _fsState.inFlight = false;
+  renderFsConfirm();
+  showFsView('fs-confirm');
+  overlay.classList.add('open');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeForeignServiceModal() {
+  if (_fsState.inFlight) return;
+  const overlay = document.getElementById('fsModal');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+}
+
+function showFsView(viewId) {
+  document.querySelectorAll('#fsModal .bar-view').forEach(v => v.classList.remove('show'));
+  const v = document.getElementById(viewId);
+  if (v) v.classList.add('show');
+}
+
+function renderFsConfirm() {
+  document.getElementById('fs-confirm-body').innerHTML = `
+    You are about to sit the <em>Foreign Service Examination</em>. Five questions, drawn at
+    random, on the population, leadership, capital, legislature, and government of nations
+    abroad. <strong>All five</strong> must be answered correctly.
+    <br><br>Failure costs <strong>−1 Reputation</strong>; you may retake the exam next month.
+    On passing, you will be assigned to a random foreign embassy.
+  `;
+  document.getElementById('fs-confirm-rule').innerHTML =
+    'The Foreign Ministry expects mastery of the entire registry.';
+  const err = document.getElementById('fs-err-confirm');
+  err.classList.remove('show'); err.textContent = '';
+  const startBtn = document.getElementById('fs-start-btn');
+  startBtn.disabled = false;
+  startBtn.textContent = 'SIT THE EXAM ›';
+  startBtn.onclick = startForeignServiceExam;
+}
+
+async function startForeignServiceExam() {
+  if (_fsState.inFlight) return;
+  const startBtn = document.getElementById('fs-start-btn');
+  const err = document.getElementById('fs-err-confirm');
+  _fsState.inFlight = true;
+  startBtn.disabled = true;
+  startBtn.textContent = 'LOADING…';
+  err.classList.remove('show'); err.textContent = '';
+  try {
+    const factionId = window.__careerCtx?.faction?.id || null;
+    if (!factionId) {
+      err.textContent = 'No active politician found.';
+      err.classList.add('show');
+      _fsState.inFlight = false;
+      startBtn.disabled = false;
+      startBtn.textContent = 'SIT THE EXAM ›';
+      return;
+    }
+    const { data, error } = await _supabase.rpc('foreign_service_exam_start', {
+      p_faction_id: factionId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      err.textContent = fsReasonHuman(data?.reason, data);
+      err.classList.add('show');
+      _fsState.inFlight = false;
+      startBtn.disabled = false;
+      startBtn.textContent = 'SIT THE EXAM ›';
+      return;
+    }
+    _fsState.attemptId = data.attempt_id;
+    _fsState.questions = Array.isArray(data.questions) ? data.questions : [];
+    _fsState.answers = new Array(_fsState.questions.length + 1); // 1-indexed
+    _fsState.currentIdx = 0;
+    _fsState.inFlight = false;
+    if (_fsState.questions.length !== 5) {
+      err.textContent = 'Unexpected question count from server.';
+      err.classList.add('show');
+      startBtn.disabled = false;
+      startBtn.textContent = 'SIT THE EXAM ›';
+      return;
+    }
+    renderFsQuestionView();
+    showFsView('fs-questions');
+  } catch (e) {
+    err.textContent = 'Could not start the exam: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    _fsState.inFlight = false;
+    startBtn.disabled = false;
+    startBtn.textContent = 'SIT THE EXAM ›';
+  }
+}
+
+function renderFsQuestionView() {
+  const i = _fsState.currentIdx;
+  const q = _fsState.questions[i];
+  if (!q) return;
+  const romans = ['I','II','III','IV','V'];
+  const roman = romans[i] || String(i + 1);
+  const total = _fsState.questions.length;
+
+  const dots = [];
+  for (let k = 0; k < total; k++) {
+    const status = k < i ? 'done' : k === i ? 'current' : 'pending';
+    const symbol = status === 'done' ? '✓' : romans[k];
+    dots.push(`<div class="pg-dot ${status}"><span class="pg-circle">${symbol}</span></div>`);
+    if (k < total - 1) dots.push(`<div class="pg-line${k < i ? ' done' : ''}"></div>`);
+  }
+  document.getElementById('fs-progress').innerHTML = `
+    <span class="pg-lab">EXAM PROGRESS</span>
+    <div class="pg-dots">${dots.join('')}</div>
+    <span class="pg-stats"><strong>${i + 1} of ${total}</strong></span>`;
+
+  document.getElementById('fs-question').innerHTML = `
+    <div class="q-marker">QUESTION ${roman} OF V</div>
+    <div class="q-domain">DOMAIN: <strong>${escHtml(fsQTypeLabel(q.qtype))}</strong></div>
+    <div class="q-text">${escHtml(q.prompt || '')}</div>`;
+
+  const selected = _fsState.answers[i + 1];
+  const answers  = Array.isArray(q.options) ? q.options : [];
+  document.getElementById('fs-answers').innerHTML = answers.map(a => `
+    <button class="ans${selected === a.letter ? ' selected' : ''}" type="button" data-letter="${escHtml(a.letter)}">
+      <span class="ans-letter">${escHtml(a.letter)}</span>
+      <span class="ans-text">${escHtml(a.text)}</span>
+    </button>`).join('');
+  document.querySelectorAll('#fs-answers .ans').forEach(btn => {
+    btn.onclick = () => {
+      _fsState.answers[i + 1] = btn.dataset.letter;
+      renderFsQuestionView();
+    };
+  });
+
+  const err = document.getElementById('fs-err-q');
+  err.classList.remove('show'); err.textContent = '';
+
+  const nextBtn = document.getElementById('fs-next-btn');
+  nextBtn.disabled = !selected;
+  nextBtn.textContent = (i === total - 1) ? 'SUBMIT ›' : 'NEXT ›';
+  nextBtn.onclick = () => {
+    if (!_fsState.answers[i + 1]) return;
+    if (_fsState.currentIdx < total - 1) {
+      _fsState.currentIdx++;
+      renderFsQuestionView();
+    } else {
+      submitForeignServiceExam();
+    }
+  };
+}
+
+function fsQTypeLabel(t) {
+  switch (t) {
+    case 'population':         return 'POPULATION';
+    case 'head_of_government': return 'HEAD OF GOVERNMENT';
+    case 'capital':            return 'CAPITAL';
+    case 'seats':              return 'LEGISLATURE';
+    case 'government_type':    return 'GOVERNMENT';
+    default:                   return String(t || '').toUpperCase();
+  }
+}
+
+async function submitForeignServiceExam() {
+  if (_fsState.inFlight) return;
+  const nextBtn = document.getElementById('fs-next-btn');
+  const err = document.getElementById('fs-err-q');
+  // Strip the unused 0 slot so the array runs 1..5 → server expects 5.
+  const answers = _fsState.answers.slice(1);
+  _fsState.inFlight = true;
+  nextBtn.disabled = true;
+  nextBtn.textContent = 'SUBMITTING…';
+  err.classList.remove('show'); err.textContent = '';
+  try {
+    const factionId = window.__careerCtx?.faction?.id || null;
+    if (!factionId) {
+      err.textContent = 'No active politician found.';
+      err.classList.add('show');
+      _fsState.inFlight = false;
+      nextBtn.disabled = false;
+      nextBtn.textContent = 'SUBMIT ›';
+      return;
+    }
+    const { data, error } = await _supabase.rpc('foreign_service_exam_submit', {
+      p_faction_id: factionId,
+      p_attempt_id: _fsState.attemptId,
+      p_answers:    answers,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      err.textContent = fsReasonHuman(data?.reason, data);
+      err.classList.add('show');
+      _fsState.inFlight = false;
+      nextBtn.disabled = false;
+      nextBtn.textContent = 'SUBMIT ›';
+      return;
+    }
+    renderFsResultView(data);
+    showFsView('fs-result');
+  } catch (e) {
+    err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
+    err.classList.add('show');
+    _fsState.inFlight = false;
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'SUBMIT ›';
+  }
+}
+
+function renderFsResultView(result) {
+  const summary = document.getElementById('fs-result-summary');
+  if (result.passed) {
+    const nationName = result.assigned_nation_name || 'a foreign nation';
+    const capital    = result.assigned_capital || 'the capital';
+    summary.className = 'bv-result-summary pass';
+    summary.innerHTML = `
+      <div class="bv-result-eyebrow">ADMITTED TO THE FOREIGN SERVICE</div>
+      <div class="bv-result-headline">Congratulations.</div>
+      <div class="bv-result-body">Welcome to the Foreign Service. You have been assigned to the nation of <em>${escHtml(nationName)}</em> and stationed at the embassy in <strong>${escHtml(capital)}</strong>.</div>`;
+  } else {
+    summary.className = 'bv-result-summary fail';
+    summary.innerHTML = `
+      <div class="bv-result-eyebrow">EXAMINATION FAILED</div>
+      <div class="bv-result-headline">${escHtml(String(result.correct_count || 0))} of 5 correct.</div>
+      <div class="bv-result-body">You have failed the Foreign Service Exam. <strong>−1 Reputation</strong> applied. You may try again next month.</div>`;
+  }
+
+  const rows = Array.isArray(result.results) ? result.results : [];
+  document.getElementById('fs-result-rows').innerHTML = rows.map((r, idx) => `
+    <div class="bv-rr${r.was_correct ? ' correct' : ''}">
+      <div class="bv-rr-head">
+        <span class="num">Q${idx + 1}</span>
+        <span class="domain">${escHtml(fsQTypeLabel(r.qtype))}</span>
+        <span class="badge">${r.was_correct ? 'CORRECT' : 'INCORRECT'}</span>
+      </div>
+      <div class="bv-rr-prompt">${escHtml(r.prompt || '')}</div>
+      <div class="bv-rr-detail">Your answer: <b>${escHtml(r.chosen || '?')}</b>${r.was_correct ? '' : ` &middot; Correct answer: <b>${escHtml(r.correct || '?')}</b> &mdash; ${escHtml(r.correct_text || '')}`}</div>
+    </div>`).join('');
+
+  document.getElementById('fs-result-rule').innerHTML = result.passed
+    ? 'The Foreign Service ladder is open to you. Your Attaché posting is now live.'
+    : `Next attempt available at tick <strong>${escHtml(String(result.ready_at_tick ?? '?'))}</strong>.`;
+
+  // Close reloads so the Attaché rung flips to held + the new
+  // affiliation card lands on politician-home.
+  document.getElementById('fs-close-btn').onclick = () => { location.reload(); };
+}
+
+function fsReasonHuman(reason, data) {
+  const r = String(reason || '');
+  switch (r) {
+    case 'not_authenticated':              return 'You are not signed in.';
+    case 'no_politician':                  return 'No politician faction found.';
+    case 'no_nation':                      return 'You are not associated with a nation.';
+    case 'already_in_service':             return 'You are already posted to the Foreign Service.';
+    case 'cooldown':                       return `On cooldown — next attempt at tick ${data?.ready_at_tick ?? '?'}.`;
+    case 'insufficient_foreign_nations':   return 'Not enough other nations on the shard for an exam yet.';
+    case 'invalid_arguments':              return 'The submission was malformed; refresh and try again.';
+    case 'attempt_not_found':              return 'The exam attempt could not be found. Refresh and retry.';
+    case 'attempt_already_submitted':      return 'This exam attempt was already submitted.';
+    case 'invalid_attempt_state':          return 'The exam attempt is in an invalid state. Refresh and retry.';
+    case 'invalid_submission':             return 'The submission was malformed; please try again.';
+    case 'invalid_answer':                 return 'One of your answers was not A/B/C/D.';
+    case 'no_assignable_nation':           return 'No assignable foreign nation right now. Try again later.';
+    default:                               return `Could not proceed (${r || 'unknown'}).`;
   }
 }
 
