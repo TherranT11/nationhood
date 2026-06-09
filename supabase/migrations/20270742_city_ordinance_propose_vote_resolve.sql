@@ -567,11 +567,15 @@ BEGIN
         ELSE
             -- Tie. President (seat 0) breaks. Missing CCP vote =
             -- fail (defensive default — no rescue without a present
-            -- tiebreaker).
+            -- tiebreaker). COALESCE collapses NULL = 'yes' → NULL
+            -- into explicit false; without it the downstream
+            -- `IF NOT v_passed` would treat NULL as "not true" but
+            -- ALSO not enter the rejected branch (IF NULL is false),
+            -- silently falling through to PASS.
             SELECT vote INTO v_pres_vote
               FROM city_ordinance_proposal_votes
              WHERE proposal_id = v_prop.id AND seat_idx = 0;
-            v_passed := (v_pres_vote = 'yes');
+            v_passed := COALESCE(v_pres_vote = 'yes', false);
         END IF;
 
         IF NOT v_passed THEN
