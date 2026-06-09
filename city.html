@@ -241,7 +241,7 @@ async function init() {
         mayor_first_name, mayor_last_name, mayor_age, mayor_archetype,
         mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
         budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability,
-        mayor_term_end_tick, council
+        mayor_term_end_tick, council, tax_package_discount_charges
       `)
       .eq('id', cityId)
       .maybeSingle();

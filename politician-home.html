@@ -1668,7 +1668,7 @@ async function init() {
     //           CCM by office can't hold the CCP seat).
     const cityFetch = politician.politician_office === 'mayor'
       ? _supabase.from('cities')
-          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, mayor_term_end_tick')
+          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, mayor_term_end_tick, tax_package_discount_charges')
           .eq('nation_id', politician.nation_id)
           .eq('mayor_first_name', politician.leader_first_name)
           .eq('mayor_last_name',  politician.leader_last_name)
@@ -1676,7 +1676,7 @@ async function init() {
           .maybeSingle()
       : politician.politician_office === 'city_council_president'
         ? _supabase.from('cities')
-            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council')
+            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council, tax_package_discount_charges')
             .eq('nation_id', politician.nation_id)
             .filter('council->0->>holder_faction_id', 'eq', politician.id)
             .maybeSingle()
@@ -1687,7 +1687,7 @@ async function init() {
           // .or() across the three member seat indices — same
           // shape as the CCP filter (which targets index 0).
           ? _supabase.from('cities')
-              .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council')
+              .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council, tax_package_discount_charges')
               .eq('nation_id', politician.nation_id)
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
@@ -1807,6 +1807,13 @@ async function init() {
   const poBack = document.getElementById('po-back');
   if (poBack) poBack.addEventListener('click', (e) => {
     if (e.target === poBack) closeProposeOrdinanceModal();
+  });
+  // Tax Package modal (20270750) — same static-DOM-once-at-init pattern.
+  const txCloseBtn = document.getElementById('tx-close');
+  if (txCloseBtn) txCloseBtn.addEventListener('click', closeTaxPackageModal);
+  const txBack = document.getElementById('tx-back');
+  if (txBack) txBack.addEventListener('click', (e) => {
+    if (e.target === txBack) closeTaxPackageModal();
   });
   // Fire-and-forget the ordinance vote-resolution sweep (20270742).
   // Idempotent server-side; safe to call from every page load.
@@ -2125,12 +2132,15 @@ const PARTY_MEMBER_ACTIONS = [
 ];
 // Mayor (Tier 4 Local Executive) — 20270737. Propose was dropped
 // from the Mayor action set in 20270747; CCP + CCM are the only
-// proposers going forward. Collect Taxes and Campaign share
-// next_member_action_tick with PARTY_MEMBER_ACTIONS so holding the
-// office adds choice depth, not pure additive power.
+// proposers going forward. 20270750 added TAX PACKAGE — pay an
+// upfront city stat hit, the next N construction requests in this
+// city get -10% off and rebate +1 Growth +1 Jobs each. All three
+// actions share next_member_action_tick with PARTY_MEMBER_ACTIONS
+// so holding the office adds choice depth, not pure additive power.
 const MAYOR_ACTIONS = [
   { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
+  { ic: '📋', name: 'TAX PACKAGE',   cost: 'See tiers',          desc: 'Pass a Minor / Moderate / Major tax cut. Pay upfront Growth + Jobs; the next 2-5 construction requests in this city get -10% off and rebate +1 Growth +1 Jobs each. Blocked while a package is active.', action: 'tax-package' },
 ];
 // City Council President (Tier 3 Local Legislative) — 20270744. Same
 // Propose Ordinance flow as CCM (shared modal + RPC), with a -1
@@ -2450,7 +2460,17 @@ function renderMayorBody(city) {
       <span class="ms-label">${escHtml(s.name.toUpperCase())}</span>
       <span class="ms-val">${escHtml(cityStatLabel(s.key, city[s.key]))}</span>
     </div>`).join('');
-  return `${desc}<div class="mayor-stats">${budgetRow}${statRows}</div>`;
+  // Tax Package charges (20270750) — surface remaining −10% charges so
+  // the Mayor / CCP / CCM knows whether the program is still active.
+  // Hidden at 0.
+  const charges = Number(city.tax_package_discount_charges) || 0;
+  const taxRow = charges > 0
+    ? `<div class="ms-row">
+        <span class="ms-label">TAX PACKAGE</span>
+        <span class="ms-val">${charges} charge${charges === 1 ? '' : 's'} left</span>
+      </div>`
+    : '';
+  return `${desc}<div class="mayor-stats">${budgetRow}${taxRow}${statRows}</div>`;
 }
 
 // ── Propose Ordinance modal (20270742) ──────────────────────────────
@@ -2608,6 +2628,94 @@ function closeProposeOrdinanceModal() {
   if (!back) return;
   back.classList.remove('open');
   document.body.style.overflow = '';
+}
+
+// ── Tax Package modal (20270750) ─────────────────────────────────────
+// Mayor tier picker. Reuses the propose modal's overlay chrome (tc-back
+// + tc-modal) so we don't repaint the same Georgia-italic header treatment.
+// Each tier button calls mayor_enact_tax_package with its key; success
+// reloads so the city stats + the action lock both repaint cleanly.
+const TAX_PACKAGE_TIERS = [
+  { key: 'minor',    label: 'Minor',    cost: '−1 Growth, −1 Jobs', effect: '2 buildings · −10% each' },
+  { key: 'moderate', label: 'Moderate', cost: '−2 Growth, −2 Jobs', effect: '3 buildings · −10% each' },
+  { key: 'major',    label: 'Major',    cost: '−3 Growth, −3 Jobs', effect: '5 buildings · −10% each' },
+];
+let _taxPackageInFlight = false;
+function openTaxPackageModal(ctx) {
+  const back = document.getElementById('tx-back');
+  if (!back) return;
+  back.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  const city = ctx?.mayorCity || null;
+  const titleEl = document.getElementById('tx-title');
+  titleEl.innerHTML = city?.city_name
+    ? `Tax Package for <span class="po-title-serif">${escHtml(city.city_name)}</span>`
+    : 'Tax Package';
+  const content = document.getElementById('tx-content');
+  if (!city?.id) {
+    content.innerHTML = '<div class="po-empty">City not loaded — refresh once the term stamp lands.</div>';
+    return;
+  }
+  content.innerHTML = TAX_PACKAGE_TIERS.map(t => `
+    <div class="po-row">
+      <div>
+        <div class="po-name">${escHtml(t.label)}</div>
+        <div class="po-desc">${escHtml(t.effect)}</div>
+      </div>
+      <div>
+        <button class="po-btn enact" data-tax-tier="${escAttr(t.key)}">${escHtml(t.cost)}</button>
+      </div>
+    </div>`).join('');
+  content.querySelectorAll('[data-tax-tier]').forEach(btn => {
+    btn.addEventListener('click', () => enactTaxPackage(ctx, btn.dataset.taxTier, btn));
+  });
+}
+function closeTaxPackageModal() {
+  const back = document.getElementById('tx-back');
+  if (!back) return;
+  back.classList.remove('open');
+  document.body.style.overflow = '';
+}
+async function enactTaxPackage(ctx, tier, btn) {
+  if (_taxPackageInFlight) return;
+  _taxPackageInFlight = true;
+  const prev = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Filing…';
+  try {
+    const { data, error } = await _supabase.rpc('mayor_enact_tax_package', {
+      p_faction_id: ctx?.faction?.id || null,
+      p_city_id:    ctx?.mayorCity?.id || null,
+      p_tier:       tier,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:    'Sign in to enact.',
+        no_politician:        'No politician on this account.',
+        not_mayor:            'Only the Mayor can enact a tax package.',
+        not_this_citys_mayor: 'You aren’t the Mayor of this city.',
+        city_not_found:       'City not found.',
+        invalid_tier:         'Pick Minor, Moderate, or Major.',
+        on_cooldown:          'You’ve already used your action this tick.',
+        package_active:       'A tax package is still active here. Wait until its charges are spent.',
+        insufficient_growth:  'City Growth is too low to enact this tier.',
+        insufficient_jobs:    'City Jobs is too low to enact this tier.',
+      };
+      alert(REASON[data?.reason] || ('Could not enact: ' + (data?.reason || 'unknown')));
+      btn.disabled = false;
+      btn.textContent = prev;
+      _taxPackageInFlight = false;
+      return;
+    }
+    closeTaxPackageModal();
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false;
+    btn.textContent = prev;
+    _taxPackageInFlight = false;
+  }
 }
 
 // Within the bar-admitted branch, walk the judicial ladder by priority
@@ -2862,6 +2970,11 @@ function renderAffiliation(ctx) {
         // modal scoped to the office-holder's city. handleMpAction
         // can't carry this — needs an ordinance pick first.
         openProposeOrdinanceModal(ctx);
+      } else if (btn.dataset.action === 'tax-package') {
+        // 20270750: Mayor Tax Package tile. Tier picker modal —
+        // the RPC needs a Minor / Moderate / Major choice before
+        // it can fire.
+        openTaxPackageModal(ctx);
       } else {
         handleMpAction(btn);
       }
@@ -6172,6 +6285,23 @@ init();
       <div class="po-content" id="po-content">
         <div class="po-loading">Loading…</div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tax Package modal (20270750) — Mayor tier picker. openTaxPackageModal(ctx)
+     paints three Minor/Moderate/Major rows; clicking one calls
+     mayor_enact_tax_package. -->
+<div class="tc-back" id="tx-back">
+  <div class="tc-modal">
+    <button type="button" class="tc-close" id="tx-close" title="Close">&#10005;</button>
+    <div class="tc-head">
+      <div class="tc-eyebrow">TAX PACKAGE</div>
+      <div class="tc-title" id="tx-title">—</div>
+      <div class="tc-sub">Pick a tier. The upfront city stat hit is paid immediately. Each future construction request in this city consumes one charge — −10% off the build cost and +1 Growth +1 Jobs rebated to the city.</div>
+    </div>
+    <div class="tc-body">
+      <div class="po-content" id="tx-content"></div>
     </div>
   </div>
 </div>
