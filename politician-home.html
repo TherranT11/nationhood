@@ -2133,9 +2133,9 @@ const MAYOR_ACTIONS = [
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
 ];
 // City Council President (Tier 3 Local Legislative) — 20270744. Same
-// Propose Ordinance flow as Mayor (shared modal + RPC), but with a
-// -1 Volunteer cost added on the CCP path. City Hearing + Build
-// the Base are CCP-specific; the latter is distinct from CCM's
+// Propose Ordinance flow as CCM (shared modal + RPC), with a -1
+// Volunteer cost added on the CCP path. City Hearing + Build the
+// Base are CCP-specific; the latter is distinct from CCM's
 // politician_build_the_base (different brackets).
 const CCP_ACTIONS = [
   { ic: '📜', name: 'PROPOSE ORDINANCE', cost: '-1 Volunteer', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves in 3 ticks.', action: 'propose-ordinance' },
@@ -2154,8 +2154,8 @@ const LOCAL_GOV_ACTIONS = [
 // actions, sharing next_member_action_tick with the Tier 3+ stack
 // (Mayor + CCP) so a multi-office test state (Mateo-style) doesn't
 // get free double-actions. Propose Ordinance opens the same modal
-// Mayor/CCP use, scoped to the CCM's city. No Volunteer cost on
-// the CCM path (CCP keeps -1 Volunteer; Mayor keeps no cost).
+// CCP uses, scoped to the CCM's city. No Volunteer cost on the CCM
+// path (CCP keeps -1 Volunteer).
 const CITY_COUNCIL_ACTIONS = [
   { ic: '📜', name: 'PROPOSE ORDINANCE',  cost: 'no cost', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves in 3 ticks.', action: 'propose-ordinance' },
   { ic: '⛌', name: 'HOLD CITY MEETING', cost: 'no cost', desc: 'Convene constituents. +0.5 Influence. +0.1 Party Popularity per Volunteer.', action: 'ccm-hold-meeting' },
@@ -2454,12 +2454,12 @@ function renderMayorBody(city) {
 }
 
 // ── Propose Ordinance modal (20270742) ──────────────────────────────
-// Mayor catalog picker. Calls list_ordinances_for_city to fetch the
+// CCP/CCM catalog picker. Calls list_ordinances_for_city to fetch the
 // catalog enriched with per-city (is_active_here, has_open_proposal)
 // flags, then renders one row per ordinance. Click → propose_city_
 // ordinance with kind='enact' or 'rescind' based on the row's state.
-// Locked behind ctx.mayorCity (set by the existing city fetch in
-// init Promise.all); if mayorCity is null we surface a clear empty
+// Mayor lost Propose in 20270747; ctx.ccpCity / ctx.ccmCity feed
+// the modal. If neither is populated yet we surface a clear empty
 // state instead of crashing.
 let _proposeInFlight = false;
 async function openProposeOrdinanceModal(ctx) {
@@ -2467,11 +2467,7 @@ async function openProposeOrdinanceModal(ctx) {
   if (!back) return;
   back.classList.add('open');
   document.body.style.overflow = 'hidden';
-  // 20270744 → 20270745: modal serves Mayor + CCP + CCM. Mayor city
-  // lives on ctx.mayorCity, CCP on ctx.ccpCity, CCM on ctx.ccmCity.
-  // All three are mutually exclusive in practice (one office at a
-  // time).
-  const officeCity = ctx?.mayorCity || ctx?.ccpCity || ctx?.ccmCity || null;
+  const officeCity = ctx?.ccpCity || ctx?.ccmCity || null;
   // Politician-vocab title — sans "Ordinances for" + Georgia italic
   // teal city name. Matches the section-head treatment on city.html
   // and the politician home Pressing Issues card.
@@ -2567,7 +2563,7 @@ async function proposeOrdinance(ctx, ordinanceId, kind, btn) {
   const prevLabel = btn.textContent;
   btn.textContent = 'Filing…';
   try {
-    const officeCityId = ctx?.mayorCity?.id || ctx?.ccpCity?.id || ctx?.ccmCity?.id || null;
+    const officeCityId = ctx?.ccpCity?.id || ctx?.ccmCity?.id || null;
     const { data, error } = await _supabase.rpc('propose_city_ordinance', {
       p_faction_id:   ctx?.faction?.id || null,
       p_city_id:      officeCityId,
@@ -2581,7 +2577,6 @@ async function proposeOrdinance(ctx, ordinanceId, kind, btn) {
         no_politician:        'No politician on this account.',
         wrong_office:         'Only the City Council President or a City Council Member can propose ordinances.',
         wrong_nation:         'That city belongs to another nation.',
-        not_this_citys_mayor: 'You aren’t the Mayor of this city.',
         not_this_citys_ccp:   'You aren’t the City Council President of this city.',
         not_this_citys_ccm:   'You aren’t a Council Member of this city.',
         no_volunteers:        'You need at least 1 Volunteer to propose as CCP.',
@@ -2863,8 +2858,8 @@ function renderAffiliation(ctx) {
         // reads better outside the role card's footprint.
         window.location.href = 'auditministry.html';
       } else if (btn.dataset.action === 'propose-ordinance') {
-        // 20270742: Mayor's Propose tile. Opens the catalog picker
-        // modal scoped to the mayor's own city. handleMpAction
+        // 20270747: CCP/CCM Propose tile. Opens the catalog picker
+        // modal scoped to the office-holder's city. handleMpAction
         // can't carry this — needs an ordinance pick first.
         openProposeOrdinanceModal(ctx);
       } else {
@@ -6172,7 +6167,7 @@ init();
   </div>
 </div>
 
-<!-- Propose Ordinance modal (20270742) — Mayor's catalog picker.
+<!-- Propose Ordinance modal (20270742) — CCP/CCM catalog picker.
      openProposeOrdinanceModal(ctx) populates the body with rows
      pulled from list_ordinances_for_city(p_city_id). -->
 <div class="tc-back" id="po-back">
