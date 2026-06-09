@@ -454,6 +454,7 @@
 .affil.var-local { --acc:#9aab7a; --acc-bg:#13160e; --acc-dim:#4a5a3a; --acc-bright:#b9c898; }
 .affil.var-leg   { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
 .affil.var-civ   { --acc:#ab9a7a; --acc-bg:#181410; --acc-dim:#605040; --acc-bright:#d0c0a5; }
+.affil.var-foreign { --acc:#7aabab; --acc-bg:#0e1717; --acc-dim:#3a5a5a; --acc-bright:#a5c8c8; }
 
 .ah-row { display:flex; align-items:flex-start; gap:14px; padding:16px 20px;
   border-bottom:0.5px solid rgba(255,255,255,0.07); background:var(--acc-bg); }
@@ -1347,6 +1348,7 @@
     <span class="serif">Affiliation</span>
   </div>
   <div id="affiliation-host"></div>
+  <div id="foreign-affiliation-host"></div>
 
   <div class="section-heading" style="margin-top:28px;">
     <span class="roman">III.</span>
@@ -1830,6 +1832,11 @@ async function init() {
     .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
+  // Foreign Service is additive: politicians who've passed the Tier 1
+  // exam (20270759) get a second affiliation card below their main one.
+  // Function self-noops when the column is null.
+  renderForeignAffiliation(ctx).catch(err =>
+    console.warn('[politician-home] foreign affiliation render failed:', err?.message || err));
   renderCareer();
   renderDispatches();
   bindDispatchTabs();
@@ -3009,6 +3016,70 @@ function renderAffiliation(ctx) {
   });
   const resignBtn = host.querySelector('[data-resign-office]');
   if (resignBtn) resignBtn.addEventListener('click', () => handleResignOffice(resignBtn, variant.name));
+}
+
+// 20270759 — Foreign Service Tier 1 (Attaché) affiliation card.
+// Renders into #foreign-affiliation-host as a SECOND card stacked
+// below the main affiliation, so a player can hold (e.g.) MP +
+// Foreign Attaché simultaneously. Self-noops when the politician
+// hasn't passed the entry exam (politician_foreign_service_nation_id
+// is NULL). Three placeholder action tiles, all .disabled — RPCs
+// land in a follow-up commit per spec.
+async function renderForeignAffiliation(ctx) {
+  const host = document.getElementById('foreign-affiliation-host');
+  if (!host) return;
+  const fsNationId = ctx?.faction?.politician_foreign_service_nation_id || null;
+  if (!fsNationId) { host.innerHTML = ''; return; }
+
+  // Fetch the assigned nation's display fields. Single-row lookup —
+  // cheap, runs once per page load. Soft-fail to '—' on error so the
+  // card still renders rather than blanking the section.
+  let nationName = '—';
+  let capital    = '—';
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('name, capital')
+      .eq('id', fsNationId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      nationName = data.name || '—';
+      capital    = data.capital || '—';
+    }
+  } catch (err) {
+    console.warn('[politician-home] foreign nation fetch failed:', err?.message || err);
+  }
+
+  const actions = [
+    { ic: '🏛', name: 'DAY TO DAY IN THE EMBASSY',     cost: 'no cost', desc: 'Routine consular and reporting work — files, memos, the trade.' },
+    { ic: '🤝', name: 'BUILD LOCAL CONTACTS',          cost: 'no cost', desc: 'Cultivate sources inside the host nation — ministers, journalists, opposition figures.' },
+    { ic: '📡', name: 'SEND CABLE TO FOREIGN MINISTRY', cost: 'no cost', desc: 'File a coded dispatch back to your Foreign Ministry — the channel that grades your posting.' },
+  ];
+  const actionsHtml = actions.map(a => `
+    <div class="act-btn disabled" aria-disabled="true" title="Action mechanics coming soon">
+      <div class="act-head">
+        <span class="act-ic">${a.ic}</span>
+        <span class="act-name">${escHtml(a.name)}</span>
+        <span class="act-cost">${escHtml(a.cost)}</span>
+      </div>
+      <div class="act-desc">${escHtml(a.desc)}</div>
+    </div>`).join('');
+
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🌍</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 1</div>
+          <div class="ah-name">Foreign Attaché in ${escHtml(nationName)}</div>
+          <div class="ah-desc">Stationed at the embassy in <strong>${escHtml(capital)}</strong>. You file reports, cultivate contacts, and learn the trade — the Foreign Ministry expects discretion.</div>
+        </div>
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
+        <div class="ar-buttons">${actionsHtml}</div>
+      </div>
+    </div>`;
 }
 
 // Unified action catalog — MP (20270433/20270460) + Local (20270461).
