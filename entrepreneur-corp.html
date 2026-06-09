@@ -6873,16 +6873,17 @@ function initials(s, n) {
     }
 
     // Cities for the active nation in the Request Construction modal.
-    // Keyed by nation_id → array of { id, city_name, jobs }. Populated
-    // lazily on Nation onChange so we don't fetch all cities up front.
-    // Cleared when the modal opens since stale jobs values could mislead
+    // Keyed by nation_id → array of { id, city_name, jobs,
+    // tax_package_discount_charges }. Populated lazily on Nation
+    // onChange so we don't fetch all cities up front. Cleared when the
+    // modal opens since stale jobs / tax-charge values could mislead
     // the discount preview between sessions.
     const citiesByNation = new Map();
     const fetchCitiesFor = async (nationId) => {
       if (!nationId) return [];
       if (citiesByNation.has(nationId)) return citiesByNation.get(nationId);
       const { data, error } = await _supabase.from('cities')
-        .select('id, city_name, jobs')
+        .select('id, city_name, jobs, tax_package_discount_charges')
         .eq('nation_id', nationId)
         .order('city_name');
       if (error) console.warn('[entrepreneur-corp] cities fetch error:', error.message);
@@ -6956,8 +6957,16 @@ function initials(s, n) {
         } else {
           cityEl.innerHTML = cities.map(c => {
             const jobs = Number(c.jobs) || 0;
-            const pct  = jobs * 3;
-            const disc = pct > 0 ? ` · −${pct}%` : '';
+            const jobsPct = jobs * 3;
+            const taxOn   = (Number(c.tax_package_discount_charges) || 0) > 0;
+            // Tax discount stacks multiplicatively with Jobs: jobs-disc
+            // factor × 0.90. Surface the combined percent in the option
+            // label so the corp sees the full discount at a glance.
+            const combinedFactor = (1 - jobs * 0.03) * (taxOn ? 0.90 : 1);
+            const combinedPct = Math.round((1 - combinedFactor) * 100);
+            const disc = combinedPct > 0
+              ? ` · −${combinedPct}%${taxOn ? ' (incl. tax pkg)' : ''}`
+              : '';
             return `<option value="${c.id}">${escapeHtml(c.city_name || '—')} (Jobs: ${jobs}${disc})</option>`;
           }).join('');
         }
@@ -6989,16 +6998,17 @@ function initials(s, n) {
           ? patternBCost(reqBase(t, null), nation, APARTMENT_DEFS[t].sensitivity)
           : scaledCost(reqBase(t, tier), nation);
         const dur   = scaledDuration(reqTicks(t, tier), nation);
-        // City-Jobs discount (20270749). cities.jobs is 1-10; each
-        // 1 Jobs takes 3% off the reference build cost. Discount
-        // applied to the displayed price so the bidders see the
-        // discounted reference. Mirror of the server math in
-        // request_building_construction.
+        // City-Jobs discount (20270749) stacks multiplicatively with
+        // the Mayor's Tax Package -10% (20270750) when charges remain.
+        // Mirror of the server math in request_building_construction —
+        // round at each step to match the bigint cast on the server.
         const city = curCity();
         const jobs = Number(city?.jobs) || 0;
-        const discPct  = jobs * 3;
-        const discFactor = 1 - jobs * 0.03;
-        const finalCost  = Math.round(baseCost * discFactor);
+        const jobsPct = jobs * 3;
+        const taxOn   = (Number(city?.tax_package_discount_charges) || 0) > 0;
+        const afterJobs = Math.round(baseCost * (1 - jobs * 0.03));
+        const finalCost = taxOn ? Math.round(afterJobs * 0.90) : afterJobs;
+        const totalPct  = Math.round((1 - finalCost / Math.max(1, baseCost)) * 100);
         // Apartment-only forecast line: projected occupancy + net rent
         // at the picked nation's current stats. Same single-source
         // helper the property card reads from, so the prediction in
@@ -7010,8 +7020,11 @@ function initials(s, n) {
             forecastLine = `<br>Projected occupancy <b>${Math.round(rent.occupancy * 100)}%</b> · net rent <b>${rent.net < 0 ? '−' : ''}${fmtUsd(Math.abs(rent.net))}</b>/tick at current nation stats.`;
           }
         }
-        const costLine = discPct > 0
-          ? `Reference cost: <s>${fmtUsd(baseCost)}</s> → <b>${fmtUsd(finalCost)}</b> <span style="color:#dcb88a;">(Jobs ${jobs} · −${discPct}%)</span>`
+        const discLabel = taxOn
+          ? `Jobs ${jobs} · −${jobsPct}% + tax pkg · −10%`
+          : `Jobs ${jobs} · −${jobsPct}%`;
+        const costLine = totalPct > 0
+          ? `Reference cost: <s>${fmtUsd(baseCost)}</s> → <b>${fmtUsd(finalCost)}</b> <span style="color:#dcb88a;">(${discLabel} · total −${totalPct}%)</span>`
           : `Reference cost: <b>${fmtUsd(finalCost)}</b>`;
         document.getElementById('rc-preview').innerHTML =
           `${costLine} · build time ~<b>${dur} ticks</b>${forecastLine}<br>Construction start triggers +1 Growth in the chosen city. Every construction corp can bid at any positive price. Lowest accepted bid wins at close (you can accept manually before then).`;
