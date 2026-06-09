@@ -698,23 +698,26 @@
 .cv-loading, .cv-empty { padding:30px; text-align:center; color:#888; font-size:12px; }
 /* 20270742 — Propose Ordinance modal body. Row layout: left = name +
    description + effect chips, right = state pill + propose/rescind
-   button. Active-in-this-city rows get a left accent so the player
-   sees at a glance which entries flip to rescind. */
+   button. Active-in-this-city rows get a teal left accent (the
+   politician palette) so the player sees at a glance which entries
+   flip to rescind. Enact button uses the same teal vocabulary; the
+   Rescind button stays red to signal a destructive action. */
 .po-content { padding:14px 18px 18px; }
 .po-row { display:grid; grid-template-columns:1fr auto; gap:14px;
   padding:14px 16px; background:#0a0807;
   border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
   margin-bottom:8px; align-items:center; }
-.po-row.active-here { border-left:3px solid #c8a26e;
-  background:#100e09; }
+.po-row.active-here { border-left:3px solid #5aafa5;
+  background:#0e1413; }
 .po-row.in-flight { opacity:0.55; }
 .po-name { font-size:13.5px; color:#fff; font-weight:600;
   letter-spacing:-0.005em; margin-bottom:3px; }
 .po-name .pill { font-size:8.5px; letter-spacing:0.12em;
-  background:#1a1612; color:#dcb88a; padding:2px 7px; border-radius:3px;
-  margin-left:8px; font-weight:700; }
+  background:#0e1a14; color:#a0d8d8; padding:2px 7px; border-radius:3px;
+  margin-left:8px; font-weight:700;
+  border:0.5px solid rgba(90,175,165,0.4); }
 .po-desc { font-size:10.5px; color:#888; line-height:1.5;
-  margin-bottom:6px; }
+  margin-bottom:6px; font-style:italic; }
 .po-meta { display:flex; flex-wrap:wrap; gap:5px 9px; align-items:center;
   font-size:9.5px; font-family:monospace; letter-spacing:0.06em;
   color:#888; }
@@ -727,13 +730,15 @@
   font-weight:700; text-transform:uppercase; border-radius:4px;
   font-family:inherit; cursor:pointer;
   transition:color 0.12s, border-color 0.12s, background 0.12s; }
-.po-btn.enact   { background:#161208; color:#dcb88a;
-  border:0.5px solid #c8a26e; }
-.po-btn.enact:hover:not(:disabled) { background:#251710; color:#fff; }
+.po-btn.enact   { background:#0e1a14; color:#a0d8d8;
+  border:0.5px solid #5aafa5; }
+.po-btn.enact:hover:not(:disabled) { background:#13241d; color:#fff; }
 .po-btn.rescind { background:#1a0e0e; color:#e0a0a0;
   border:0.5px solid rgba(200,122,122,0.5); }
 .po-btn.rescind:hover:not(:disabled) { background:#251212; color:#fff; }
 .po-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.po-title-serif { font-family:Georgia,'Times New Roman',serif;
+  font-style:italic; color:#5aafa5; letter-spacing:-0.005em; }
 .po-status { font-size:9px; color:#888; letter-spacing:0.1em;
   font-family:monospace; }
 
@@ -2402,8 +2407,14 @@ async function openProposeOrdinanceModal(ctx) {
   if (!back) return;
   back.classList.add('open');
   document.body.style.overflow = 'hidden';
-  document.getElementById('po-title').textContent =
-    ctx?.mayorCity?.city_name ? `Ordinances for ${ctx.mayorCity.city_name}` : 'Ordinances';
+  // Politician-vocab title — sans "Ordinances for" + Georgia italic
+  // teal city name. Matches the section-head treatment on city.html
+  // and the politician home Pressing Issues card.
+  const titleEl = document.getElementById('po-title');
+  const cityName = ctx?.mayorCity?.city_name || '';
+  titleEl.innerHTML = cityName
+    ? `Ordinances for <span class="po-title-serif">${escHtml(cityName)}</span>`
+    : 'Ordinances';
 
   const cityId = ctx?.mayorCity?.id || null;
   const content = document.getElementById('po-content');
@@ -2421,13 +2432,12 @@ async function openProposeOrdinanceModal(ctx) {
     }
     const ords = data.ordinances || [];
     if (!ords.length) {
-      content.innerHTML = '<div class="cv-empty">No ordinances in the catalog yet. <a href="cityordinance.html?city=' + escAttr(cityId) + '" style="color:#5aafa5;">Author one →</a></div>';
+      // Catalog empty. Authoring is a backend-only path (no link
+      // surfaced to players), so the empty state is just informational.
+      content.innerHTML = '<div class="cv-empty">No ordinances in the catalog yet.</div>';
       return;
     }
-    content.innerHTML = ords.map(o => renderProposeRow(o)).join('') +
-      `<div style="text-align:center; margin-top:14px; font-size:10.5px;">
-         <a href="cityordinance.html?city=${escAttr(cityId)}" style="color:#5aafa5; text-decoration:none;">+ Author a new ordinance</a>
-       </div>`;
+    content.innerHTML = ords.map(o => renderProposeRow(o)).join('');
     content.querySelectorAll('[data-propose-id]').forEach(btn => {
       btn.addEventListener('click', () => {
         proposeOrdinance(ctx, btn.dataset.proposeId, btn.dataset.proposeKind, btn);
