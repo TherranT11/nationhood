@@ -1595,7 +1595,7 @@ let stateAdvocateRequests = []; // pending state_advocate_appointment_requests w
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
-let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270751). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
+let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1743,7 +1743,7 @@ async function init() {
       // politician not on a council. Surfaces as Pressing Issues
       // cards with VOTE YES / VOTE NO buttons.
       _supabase.rpc('list_open_proposals_for_council_seat', { p_faction_id: politician.id }),
-      // Committee memberships + pending agenda counts (20270751).
+      // Committee memberships + pending agenda counts (20270754).
       // Empty for politicians not seated on any committee. Surfaces
       // as Pressing Issues cards with [VIEW COMMITTEE] buttons.
       _supabase.rpc('list_committees_for_member', { p_faction_id: politician.id }),
@@ -2179,7 +2179,7 @@ const CITY_COUNCIL_ACTIONS = [
   { ic: '⛌', name: 'HOLD CITY MEETING', cost: 'no cost', desc: 'Convene constituents. +0.5 Influence. +0.1 Party Popularity per Volunteer.', action: 'ccm-hold-meeting' },
   { ic: '☎', name: 'FUNDRAISER',         cost: 'no cost', desc: 'Work the donor list. Roll 1d6: +$1K × roll into Party Funds. Roll 5-6 → +1 Volunteer.', action: 'ccm-fundraiser' },
 ];
-// MP repeatable actions (20270750 redesign). All three burn
+// MP repeatable actions (20270753 redesign). All three burn
 // next_mp_action_tick (+1 tick cooldown) — pick one each tick.
 //   • Propose New Statute — navigates to politician-statutes.html
 //     with ?propose=1 so the existing statute modal auto-opens.
@@ -2992,13 +2992,13 @@ function renderAffiliation(ctx) {
         // it can fire.
         openTaxPackageModal(ctx);
       } else if (btn.dataset.action === 'propose-new-statute') {
-        // 20270750 MP redesign: navigates to the statute drafter
+        // 20270753 MP redesign: navigates to the statute drafter
         // and auto-opens the modal via ?propose=1 (handler is in
         // politician-statutes.html's init). The committee_propose_law
         // RPC burns the MP per-tick lock on submit.
         window.location.href = 'politician-statutes.html?propose=1';
       } else if (btn.dataset.action === 'propose-new-law') {
-        // 20270750 MP redesign: navigates to the policy-switch
+        // 20270753 MP redesign: navigates to the policy-switch
         // modal via ?propose_policy=1. committee_propose_policy_change
         // burns the MP per-tick lock on submit.
         window.location.href = 'politician-statutes.html?propose_policy=1';
@@ -3020,7 +3020,7 @@ const ACTIONS = {
   'floor-speech':       { rpc: 'politician_mp_floor_speech',       label: 'Floor Speech',       needsParty: false, format: fmtMpResult },
   'hold-rally':         { rpc: 'politician_mp_hold_rally',         label: 'Hold a Rally',       needsParty: false, format: fmtMpResult },
   'fundraising-dinner': { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising Dinner', needsParty: false, format: fmtMpResult },
-  // 20270750 MP action set redesign — 'fundraising' is the new tile
+  // 20270753 MP action set redesign — 'fundraising' is the new tile
   // key for the same underlying RPC (just softer -0.5 popularity hit).
   // Old 'fundraising-dinner' key retained for any stale call paths.
   'fundraising':        { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising',        needsParty: false, format: fmtMpResult },
@@ -3306,7 +3306,7 @@ function renderPressingIssues(ctx) {
   // Open city ordinance proposals where this council seat hasn't
   // voted yet (20270747). One card per proposal/seat row.
   openOrdinanceProposals.forEach(p => blocks.push(renderOrdinanceProposalCard(p, ctx)));
-  // Committee memberships (20270751) — one card per seat with the
+  // Committee memberships (20270754) — one card per seat with the
   // pending agenda depth + a [VIEW COMMITTEE] CTA. The empty-roster
   // case naturally renders nothing.
   memberCommittees.forEach(mc => blocks.push(renderMemberCommitteeCard(mc)));
@@ -3326,7 +3326,7 @@ function renderPressingIssues(ctx) {
   bindMemberCommitteeActions();
 }
 
-// ── Member Committee Pressing Issues card (20270751) ────────────────
+// ── Member Committee Pressing Issues card (20270754) ────────────────
 // One per row from list_committees_for_member. Shows the committee
 // name + role + a "Pending Items on Agenda" count (article + policy
 // proposals queued). Click → committee.html?key=<committee_key>.

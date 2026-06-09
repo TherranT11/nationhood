@@ -177,13 +177,13 @@
     font-style:italic; font-size:11px; }
   .up-meta { color:#666; font-size:9.5px; margin-top:3px; letter-spacing:0.02em; }
   .up-meta b { color:#888; font-weight:600; }
-  /* Set-the-Agenda clickable row (20270749). Brass-on-deep palette
+  /* Set-the-Agenda clickable row (20270752). Brass-on-deep palette
      stays — just a hover lift + cursor pointer so the click target
      reads as actionable. */
   .up-row--clickable { cursor:pointer; transition:background 120ms, border-color 120ms; }
   .up-row--clickable:hover { background:#13100b; border-color:#5a4630; border-left-color:#dcb88a; }
 
-  /* Agenda-vote panel (20270749) — replaces the hearing card in the
+  /* Agenda-vote panel (20270752) — replaces the hearing card in the
      Monthly Agenda slot while a Set-the-Agenda item is up for the
      5-member action vote. Reuses the brass/deep vocabulary so the
      visual continuity with the eventual hearing card holds. */
@@ -457,7 +457,7 @@ async function init() {
   }
 
   // Members with party join (party_color, faction_name, abbreviation).
-  // 20270749: last_set_agenda_tick joined so we can gate the per-member
+  // 20270752: last_set_agenda_tick joined so we can gate the per-member
   // once-per-tick Set the Agenda click.
   const { data: members, error: memErr } = await _supabase
     .from('committee_members')
@@ -467,7 +467,7 @@ async function init() {
   if (memErr) console.warn('committee: members fetch failed', memErr);
 
   // Committee row — active_proposal_id + active_agenda_set_at_tick
-  // drive the Set-the-Agenda voting workflow (20270749). One round-trip
+  // drive the Set-the-Agenda voting workflow (20270752). One round-trip
   // here saves a per-render lookup.
   const { data: commRow, error: commRowErr } = await _supabase
     .from('committees')
@@ -480,7 +480,7 @@ async function init() {
 
   // Queued proposals → render in Upcoming Agenda. Joined to the
   // author faction so we can render "Proposed by …" off real names.
-  // 20270749: support/oppose archetypes ride along so the Set-the-
+  // 20270752: support/oppose archetypes ride along so the Set-the-
   // Agenda flow can preview the NPC voting prediction.
   const { data: proposalsRaw, error: propErr } = await _supabase
     .from('committee_proposals')
@@ -490,7 +490,7 @@ async function init() {
     .order('created_at', { ascending: false });
   if (propErr) console.warn('committee: proposals fetch failed', propErr);
 
-  // Active agenda proposal + vote tally (20270749). Only fetched when
+  // Active agenda proposal + vote tally (20270752). Only fetched when
   // the committee row carries an active_proposal_id.
   let activeAgendaProposal = null;
   let agendaVotes = [];
@@ -622,7 +622,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
   const viewerFactionId = ctx.faction?.id || null;
   const alreadyTestified = !!(activeHearing && testimonies.some(t => t.submitter_faction_id && t.submitter_faction_id === viewerFactionId));
 
-  // 20270749: viewer's eligibility to use Set the Agenda. One use per
+  // 20270752: viewer's eligibility to use Set the Agenda. One use per
   // tick per member, blocked while an agenda is already active or a
   // hearing is open. Upcoming Agenda rows become clickable when true.
   const viewerMember = members.find(m => m.politician_faction_id === viewerPolId) || null;
@@ -711,7 +711,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       openWitnessModal(activeHearing, personas);
       return;
     }
-    // 20270749 — click on an Upcoming Agenda row when the row is
+    // 20270752 — click on an Upcoming Agenda row when the row is
     // marked as a Set-the-Agenda target. One use per tick per member;
     // server re-validates everything.
     const setAg = e.target.closest('[data-set-agenda]');
@@ -749,7 +749,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       }
       return;
     }
-    // 20270749 — agenda action vote (HEAR / VOTE / AMEND) cast by a
+    // 20270752 — agenda action vote (HEAR / VOTE / AMEND) cast by a
     // committee member while a proposal is on the floor for an
     // action-vote.
     const agVote = e.target.closest('[data-agenda-vote]');
@@ -971,7 +971,7 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, hasActiv
   // [Hold a Hearing] is CHAIR-ONLY per the 20270499 RPC gate. We
   // mirror the gate client-side: enabled iff chair AND no hearing
   // currently open AND at least one queued proposal exists AND
-  // there's no active Set-the-Agenda vote in progress (20270749 —
+  // there's no active Set-the-Agenda vote in progress (20270752 —
   // the chair would otherwise race the committee's vote).
   // Tooltip explains the disable.
   const holdDisabledReason = !onCommittee
@@ -1131,7 +1131,7 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
 // no open hearing exists. Chair gets a [Close Hearing] button on the
 // agenda card; everyone sees the ticks-remaining countdown.
 //
-// 20270749: when committees.active_proposal_id is set but no hearing
+// 20270752: when committees.active_proposal_id is set but no hearing
 // is open, the committee is in the 5-member action-vote phase. The
 // agenda card paints the proposal + per-member ballot + tally + the
 // viewer's HEAR / VOTE / AMEND buttons in place of the hearing
@@ -1345,7 +1345,7 @@ async function submitWitnessTestimony(activeHearing, factionId) {
 // don't blow up the layout.
 function renderProposals(proposals, canSetAgenda) {
   if (!proposals.length) return '<div class="up-empty">No upcoming items.</div>';
-  // 20270749: when the viewer can Set the Agenda (member, no active
+  // 20270752: when the viewer can Set the Agenda (member, no active
   // agenda, no open hearing, hasn't used this tick), rows for
   // article-kind proposals become clickable and carry data-set-agenda
   // so the click handler can fire committee_set_agenda. Policy_change
@@ -1389,7 +1389,7 @@ function renderProposals(proposals, canSetAgenda) {
   }).join('');
 }
 
-// Set-the-Agenda vote panel (20270749). Shown in the Monthly Agenda
+// Set-the-Agenda vote panel (20270752). Shown in the Monthly Agenda
 // slot when committees.active_proposal_id is set and no hearing is
 // open. Three sub-bars (Hear / Vote / Amend) show the live tally;
 // each member's vote pill paints their cast or "—". When the viewer

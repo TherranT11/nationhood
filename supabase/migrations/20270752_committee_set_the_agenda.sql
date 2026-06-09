@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 20270749 — Committee: Set the Agenda + 5-member action vote
+-- 20270752 — Committee: Set the Agenda + 5-member action vote
 --
 -- Today the committee's Monthly Agenda is driven by the NPC-chair
 -- tick processor (process_committee_npc_chair_agenda, 20270683) for
@@ -41,13 +41,13 @@ ALTER TABLE public.committees
     ADD COLUMN IF NOT EXISTS active_agenda_set_at_tick int;
 
 COMMENT ON COLUMN public.committees.active_proposal_id IS
-    'Proposal currently on the Monthly Agenda awaiting the 5-member action vote (20270749). Cleared when the vote resolves and the action is carried out.';
+    'Proposal currently on the Monthly Agenda awaiting the 5-member action vote (20270752). Cleared when the vote resolves and the action is carried out.';
 
 ALTER TABLE public.committee_members
     ADD COLUMN IF NOT EXISTS last_set_agenda_tick int;
 
 COMMENT ON COLUMN public.committee_members.last_set_agenda_tick IS
-    'Tick at which this member last used Set the Agenda (20270749). One use per tick per member, regardless of any other committee action they take.';
+    'Tick at which this member last used Set the Agenda (20270752). One use per tick per member, regardless of any other committee action they take.';
 
 -- Add 'in_amendment' to the proposal status enum so an Amend-vote
 -- win has somewhere to land. The proposal sits there until a future
@@ -85,7 +85,7 @@ CREATE INDEX IF NOT EXISTS committee_agenda_votes_committee_idx
     ON public.committee_agenda_votes (committee_id, proposal_id);
 
 COMMENT ON TABLE public.committee_agenda_votes IS
-    'Five-vote action ballot on a committee''s active agenda item (20270749). seat_idx maps via committee_members. NPC votes inserted at Set-the-Agenda time; player votes via committee_cast_agenda_vote.';
+    'Five-vote action ballot on a committee''s active agenda item (20270752). seat_idx maps via committee_members. NPC votes inserted at Set-the-Agenda time; player votes via committee_cast_agenda_vote.';
 
 ALTER TABLE public.committee_agenda_votes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS committee_agenda_votes_select ON public.committee_agenda_votes;
