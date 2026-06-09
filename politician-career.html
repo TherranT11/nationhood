@@ -1650,7 +1650,17 @@ const FOREIGN_SERVICE_RUNGS = [
     descIfHeld:  ()  => 'You hold a junior posting at an embassy abroad — files, contacts, the trade.',
     descIfNot:   ()  => 'Junior posting to an embassy abroad. You file reports, cultivate contacts, and learn the trade.',
     actions:     ['Day to Day in the Embassy', 'Build Local Contacts', 'Send Cable to Foreign Ministry'],
-    actionIfNot: { label: 'Join the Service', kind: 'primary', action: 'fs-exam' },
+    // Cooldown gate mirrors bar exam (rung line 1500): 1-tick =
+    // 1-month retry window after a failed attempt. Server returns
+    // 'cooldown' reason if the player bypasses the gate anyway.
+    actionIfNot: (s) => {
+      const ready = s.foreignServiceLastAttemptTick ? s.foreignServiceLastAttemptTick + 1 : 0;
+      if (ready > s.currentTick) {
+        const left = ready - s.currentTick;
+        return { label: `Available in ${left} tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      return { label: 'Join the Service', kind: 'primary', action: 'fs-exam' };
+    },
   },
   {
     name: 'Consul / Cultural Attaché',
@@ -2338,8 +2348,12 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // means the politician has passed the entry exam and is posted at
     // a foreign embassy — drives held() on the Attaché rung and the
     // companion Foreign Attaché affiliation card on politician-home.
+    // foreignServiceLastAttemptTick + 1 is the "next month" retry
+    // window the actionIfNot gate reads (mirrors bar-exam cooldown
+    // pattern at line 1500). politician_foreign_service_at_tick is
+    // stored server-side for future tenure displays but isn't read
+    // by any rung today — surface it here when that lands.
     foreignServiceNationId:   ctx?.faction?.politician_foreign_service_nation_id || null,
-    foreignServiceAtTick:     Number(ctx?.faction?.politician_foreign_service_at_tick) || 0,
     foreignServiceLastAttemptTick: Number(ctx?.faction?.foreign_service_last_attempt_tick) || 0,
     // politician_reputation still feeds the upstream judicial gates
     // (State Advocate / Magistrate / etc.). The Experienced Advocate
