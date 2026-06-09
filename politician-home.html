@@ -1675,10 +1675,15 @@ async function init() {
             .filter('council->0->>holder_faction_id', 'eq', politician.id)
             .maybeSingle()
         : politician.politician_office === 'city_council_member'
+          // 20270745 → followup: .contains() on a jsonb array with
+          // partial-object match isn't reliably matching Mateo's
+          // stamped seat under PostgREST. Swapping to an explicit
+          // .or() across the three member seat indices — same
+          // shape as the CCP filter (which targets index 0).
           ? _supabase.from('cities')
               .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council')
               .eq('nation_id', politician.nation_id)
-              .contains('council', [{ holder_faction_id: politician.id }])
+              .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null });
     const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, mayorCityRes] = await Promise.all([
