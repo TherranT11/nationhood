@@ -241,7 +241,7 @@ async function init() {
         mayor_first_name, mayor_last_name, mayor_age, mayor_archetype,
         mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
         budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability,
-        mayor_term_end_tick, council
+        mayor_term_end_tick, council, tax_package_discount_charges
       `)
       .eq('id', cityId)
       .maybeSingle();
@@ -368,6 +368,17 @@ function renderCityDetail(c, nation, currentTick, lists) {
       <span class="city-detail-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
     </div>`).join('');
 
+  // Tax Package badge (20270750) — only when charges remain. Slots
+  // into the meta row so anyone viewing the city sees the active
+  // construction-discount program at a glance.
+  const taxCharges = Number(c.tax_package_discount_charges) || 0;
+  const taxPackageMeta = taxCharges > 0
+    ? `<div>
+        <span class="city-detail-meta-key">Tax Package</span>
+        <span class="city-detail-meta-val">${taxCharges} charge${taxCharges === 1 ? '' : 's'} left · −10% / build</span>
+      </div>`
+    : '';
+
   const councilHtml = renderCouncil(c.council, currentTick);
 
   document.getElementById('city-detail').innerHTML = `
@@ -395,6 +406,7 @@ function renderCityDetail(c, nation, currentTick, lists) {
         <span class="city-detail-meta-key">Budget</span>
         <span class="city-detail-meta-val">${escHtml(budgetStr)}</span>
       </div>
+      ${taxPackageMeta}
     </div>
 
     <div class="city-detail-section">
