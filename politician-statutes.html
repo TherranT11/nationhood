@@ -717,7 +717,7 @@ function wireModalChrome() {
     const btn = e.target.closest('.pnl-cat');
     if (!btn) return;
     draft.category = btn.dataset.cat;
-    renderCategory();
+    paintCategorySelection('pnl-cat-row', draft.category);
     renderSectionSuggestions();
   });
 
@@ -766,9 +766,12 @@ async function openModal() {
   document.getElementById('pnl-err').classList.remove('show');
   document.getElementById('pnl-err').textContent = '';
 
-  renderCategory();
+  paintCategorySelection('pnl-cat-row', draft.category);
   renderSectionSuggestions();
-  renderCommittees();
+  bindCommitteePicker('pnl-comm-grid', (key) => {
+    draft.committeeKey = key;
+    refreshSubmitState();
+  });
   renderArticles();
   renderStakeholders('pnl-stakeholders', draft.stakeholders);
   renderArchetypePair('pnl-support-arch', 'pnl-oppose-arch',
@@ -787,10 +790,37 @@ function closeModal() {
   ov.setAttribute('aria-hidden', 'true');
 }
 
-function renderCategory() {
-  document.querySelectorAll('#pnl-cat-row .pnl-cat').forEach(b => {
-    b.classList.toggle('selected', b.dataset.cat === draft.category);
+// Paint the .selected accent on whichever .pnl-cat button matches
+// `activeCat` inside `rowId`. Shared between the Propose New Statute
+// and Amend Statute category pickers.
+function paintCategorySelection(rowId, activeCat) {
+  document.querySelectorAll(`#${rowId} .pnl-cat`).forEach(b => {
+    b.classList.toggle('selected', b.dataset.cat === activeCat);
   });
+}
+
+// Build a committee picker into `hostId` from the COMMITTEE_ORDER /
+// COMMITTES catalog. Calls `onPick(committee_key)` when the user
+// picks a tile, after applying the selection accent. Shared between
+// the Propose New Statute and Amend Statute modals.
+function bindCommitteePicker(hostId, onPick) {
+  const grid = document.getElementById(hostId);
+  if (!grid) return;
+  grid.replaceChildren();
+  for (const key of COMMITTEE_ORDER) {
+    const meta = COMMITTEES[key]; if (!meta) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pnl-comm';
+    btn.dataset.key = key;
+    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
+                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
+    btn.addEventListener('click', () => {
+      grid.querySelectorAll('.pnl-comm').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
+      onPick(key);
+    });
+    grid.appendChild(btn);
+  }
 }
 
 function renderSectionSuggestions() {
@@ -810,26 +840,6 @@ function renderSectionSuggestions() {
       refreshSubmitState();
     });
     host.appendChild(chip);
-  }
-}
-
-function renderCommittees() {
-  const grid = document.getElementById('pnl-comm-grid');
-  grid.replaceChildren();
-  for (const key of COMMITTEE_ORDER) {
-    const meta = COMMITTEES[key]; if (!meta) continue;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pnl-comm';
-    btn.dataset.key = key;
-    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
-                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
-    btn.addEventListener('click', () => {
-      draft.committeeKey = key;
-      grid.querySelectorAll('.pnl-comm').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
-      refreshSubmitState();
-    });
-    grid.appendChild(btn);
   }
 }
 
@@ -1181,7 +1191,6 @@ const AMEND_REASON_HUMAN = {
   committee_not_found:      'That committee could not be found — try a different one.',
   invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
   invalid_archetype_positions: 'Archetype list invalid — no archetype may appear on both sides.',
-  invalid_committee:        'Pick a committee to refer the amendment to.',
 };
 
 async function openAmendModal() {
@@ -1200,7 +1209,7 @@ async function openAmendModal() {
   document.getElementById('aml-text').value = '';
   document.getElementById('aml-err').classList.remove('show');
   document.getElementById('aml-err').textContent = '';
-  renderAmendCategory();
+  paintCategorySelection('aml-cat-row', amendDraft.category);
   renderStakeholders('aml-stakeholders', amendDraft.stakeholders);
   renderArchetypePair('aml-support-arch', 'aml-oppose-arch',
                      amendDraft.supportArchetypes, amendDraft.opposeArchetypes,
@@ -1217,7 +1226,10 @@ async function openAmendModal() {
     if (cerr) { alert('Could not load committees: ' + (cerr.message || 'unknown')); return; }
     for (const row of (cdata || [])) committeeIdByKey.set(row.committee_key, row.id);
   }
-  renderAmendCommittees();
+  bindCommitteePicker('aml-comm-grid', (key) => {
+    amendDraft.committeeKey = key;
+    refreshAmendSubmitState();
+  });
   refreshAmendSubmitState();
 
   const hint = document.getElementById('aml-statute-hint');
@@ -1244,33 +1256,6 @@ async function openAmendModal() {
   const ov = document.getElementById('aml-overlay');
   ov.classList.add('show');
   ov.setAttribute('aria-hidden', 'false');
-}
-
-function renderAmendCategory() {
-  document.querySelectorAll('#aml-cat-row .pnl-cat').forEach(b => {
-    b.classList.toggle('selected', b.dataset.cat === amendDraft.category);
-  });
-}
-
-function renderAmendCommittees() {
-  const grid = document.getElementById('aml-comm-grid');
-  if (!grid) return;
-  grid.replaceChildren();
-  for (const key of COMMITTEE_ORDER) {
-    const meta = COMMITTEES[key]; if (!meta) continue;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pnl-comm';
-    btn.dataset.key = key;
-    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
-                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
-    btn.addEventListener('click', () => {
-      amendDraft.committeeKey = key;
-      grid.querySelectorAll('.pnl-comm').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
-      refreshAmendSubmitState();
-    });
-    grid.appendChild(btn);
-  }
 }
 
 function renderAmendStatuteList() {
@@ -1318,7 +1303,7 @@ function wireAmendModalChrome() {
     if (!btn) return;
     amendDraft.category = btn.dataset.cat;
     amendDraft.amendsProposalId = null;
-    renderAmendCategory();
+    paintCategorySelection('aml-cat-row', amendDraft.category);
     renderAmendStatuteList();
     refreshAmendSubmitState();
   });
