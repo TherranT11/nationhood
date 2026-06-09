@@ -151,7 +151,15 @@
   display:flex; align-items:center; gap:11px; }
 .pnl-art-num { font-family:Georgia,serif; font-size:12.5px; color:var(--leg-bright); font-weight:600; letter-spacing:-0.005em; }
 .pnl-art-tag { font-size:7.5px; letter-spacing:0.14em; color:var(--leg); font-weight:700;
-  padding:2px 7px; border-radius:2px; background:var(--leg-bg); border:0.5px solid var(--leg-dim); }
+  padding:3px 20px 3px 7px; border-radius:2px; background:var(--leg-bg); border:0.5px solid var(--leg-dim);
+  font-family:inherit; cursor:pointer;
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='6' viewBox='0 0 8 6'><path fill='%23c8a26e' d='M0 0l4 6 4-6z'/></svg>");
+  background-repeat:no-repeat; background-position:right 6px center; }
+.pnl-art-tag:hover { color:var(--leg-bright); border-color:var(--leg); }
+.pnl-art-tag:focus { outline:none; border-color:var(--leg); }
+.pnl-art-tag option { background:#1e1916; color:var(--leg-bright); font-size:11px;
+  letter-spacing:0.06em; font-weight:600; }
 .pnl-art-delete { margin-left:auto; width:22px; height:22px; border-radius:3px; background:transparent;
   border:0.5px solid var(--line); color:var(--mut); font-size:11px; cursor:pointer; font-family:inherit;
   display:flex; align-items:center; justify-content:center; }
@@ -358,13 +366,13 @@
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Up to 2 party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity.</div>
+        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity.</div>
         <div class="pnl-arch-grid" id="pnl-support-arch"></div>
       </div>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Up to 2 party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting.</div>
+        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting.</div>
         <div class="pnl-arch-grid" id="pnl-oppose-arch"></div>
       </div>
 
@@ -420,13 +428,13 @@
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Up to 2 archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>.</div>
+        <div class="pnl-fg-hint">Optional. Archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>.</div>
         <div class="pnl-arch-grid" id="aml-support-arch"></div>
       </div>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Up to 2 archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting.</div>
+        <div class="pnl-fg-hint">Optional. Archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting.</div>
         <div class="pnl-arch-grid" id="aml-oppose-arch"></div>
       </div>
 
@@ -500,11 +508,32 @@ import { COMMITTEES } from './js/committees.js';
 import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 import { isMpOffice } from './js/utils.js';
 
-// Article tag suggestions cycle by position; user can't pick yet (v1
-// keeps the modal narrow). 4+ falls back to operative so big bills
-// don't get weird tags.
-const ART_TAGS = ['operative', 'remedy', 'administration', 'definition', 'exception'];
-function tagFor(i) { return ART_TAGS[i] || 'operative'; }
+// Article tag catalog — the user picks one per article from the
+// <select> in the article header. Position seeds a sensible default
+// (operative, remedy, administrative, definition, exception) but
+// any article can be reassigned.
+const ARTICLE_TAGS = [
+  { value: 'operative',      label: 'OPERATIVE'      },
+  { value: 'remedy',         label: 'REMEDY'         },
+  { value: 'administrative', label: 'ADMINISTRATIVE' },
+  { value: 'definition',     label: 'DEFINITION'     },
+  { value: 'exception',      label: 'EXCEPTION'      },
+];
+const ARTICLE_TAG_VALUES = ARTICLE_TAGS.map(t => t.value);
+function defaultTagFor(i) {
+  return ARTICLE_TAGS[i]?.value || 'operative';
+}
+// Legacy alias map for display only. Enacted-law rows from before
+// the picker landed have tag='administration' — render those as
+// "ADMINISTRATIVE" so the codex looks consistent.
+const ARTICLE_TAG_LABEL = {
+  operative: 'OPERATIVE',
+  remedy: 'REMEDY',
+  administration: 'ADMINISTRATIVE',
+  administrative: 'ADMINISTRATIVE',
+  definition: 'DEFINITION',
+  exception: 'EXCEPTION',
+};
 
 // Section suggestion bank by category. Pure UI convenience — the
 // server doesn't validate against this list, so adding to or trimming
@@ -532,15 +561,14 @@ const draft = {
   category: 'civil',
   section: '',
   committeeKey: null,
-  articles: [{ text: '' }],
+  articles: [{ tag: 'operative', text: '' }],
   stakeholders: ['', '', '', '', ''],   // up to 5; blanks dropped on submit
-  supportArchetypes: [],                // up to 2 archetype names
-  opposeArchetypes:  [],                // up to 2 archetype names; disjoint from above
+  supportArchetypes: [],                // archetype names; unique + in catalog
+  opposeArchetypes:  [],                // archetype names; disjoint from above
 };
 
 const STK_MAX = 5;
 const STK_LEN_MAX = 40;
-const ARCH_MAX = 2;
 
 // Lookup of committee_key → committee row id for the active nation,
 // populated on modal open.
@@ -639,12 +667,16 @@ async function renderEnactedLaws(nationId) {
 
 function renderLawCard(law) {
   const articles = Array.isArray(law.articles) ? law.articles : [];
-  const articlesHtml = articles.map((art, idx) => `
+  const articlesHtml = articles.map((art, idx) => {
+    const raw = String(art.tag || 'operative');
+    const label = ARTICLE_TAG_LABEL[raw] || raw.toUpperCase();
+    return `
     <div class="sl-art">
       <span class="num">&sect; ${idx + 1}</span>
-      <span class="tag">${escapeHtml(String(art.tag || 'operative').toUpperCase())}</span>
+      <span class="tag">${escapeHtml(label)}</span>
       <span>${escapeHtml(art.text || '')}</span>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   return `<div class="stat-law">
     <div class="sl-head">${escapeHtml(law.section || '')}</div>
     <div class="sl-articles">${articlesHtml}</div>
@@ -680,7 +712,7 @@ function wireModalChrome() {
   // Add article
   document.getElementById('pnl-art-add').addEventListener('click', () => {
     if (draft.articles.length >= 10) return;
-    draft.articles.push({ text: '' });
+    draft.articles.push({ tag: defaultTagFor(draft.articles.length), text: '' });
     renderArticles();
   });
 
@@ -707,7 +739,7 @@ async function openModal() {
   draft.category = 'civil';
   draft.section  = '';
   draft.committeeKey = null;
-  draft.articles = [{ text: '' }];
+  draft.articles = [{ tag: defaultTagFor(0), text: '' }];
   draft.stakeholders = ['', '', '', '', ''];
   draft.supportArchetypes = [];
   draft.opposeArchetypes  = [];
@@ -787,13 +819,19 @@ function renderArticles() {
   const host = document.getElementById('pnl-articles');
   host.replaceChildren();
   draft.articles.forEach((art, idx) => {
-    const tag = tagFor(idx);
+    // Normalize: if the draft slot is missing a tag (defensive — every
+    // article should have one) or carries an unknown value, seed from
+    // position. Submit will then send a server-accepted value.
+    if (!ARTICLE_TAG_VALUES.includes(art.tag)) art.tag = defaultTagFor(idx);
+    const tagOptions = ARTICLE_TAGS.map(t =>
+      `<option value="${t.value}"${t.value === art.tag ? ' selected' : ''}>${t.label}</option>`
+    ).join('');
     const row = document.createElement('div');
     row.className = 'pnl-article';
     row.innerHTML = `
       <div class="pnl-art-head">
         <span class="pnl-art-num">&sect; ${idx + 1}</span>
-        <span class="pnl-art-tag">${escapeHtml(tag.toUpperCase())}</span>
+        <select class="pnl-art-tag" title="Article type">${tagOptions}</select>
         <button type="button" class="pnl-art-delete" title="Delete this article" ${draft.articles.length <= 1 ? 'disabled' : ''}>&#10005;</button>
       </div>
       <textarea class="pnl-art-text" placeholder="An Act to&hellip;"></textarea>`;
@@ -804,6 +842,8 @@ function renderArticles() {
       refreshCounter();
       refreshSubmitState();
     });
+    const sel = row.querySelector('.pnl-art-tag');
+    sel.addEventListener('change', () => { art.tag = sel.value; });
     row.querySelector('.pnl-art-delete').addEventListener('click', () => {
       if (draft.articles.length <= 1) return;
       draft.articles.splice(idx, 1);
@@ -919,10 +959,10 @@ function validateStakeholders(state) {
 
 // Render two parallel chip grids (Support / Oppose) sharing the
 // PARTY_ARCHETYPES catalog. Selecting a chip in one side disables it
-// on the other (disjoint lists per server validator). ARCH_MAX-cap
-// per side is enforced by greying-out the unselected chips when the
-// cap is hit. `onChange` runs after every toggle so the caller can
-// refresh the submit-button gate.
+// on the other (disjoint lists per server validator). No per-side cap
+// beyond catalog size — 20270756 lifted the original 2-archetype
+// limit. `onChange` runs after every toggle so the caller can refresh
+// the submit-button gate.
 function renderArchetypePair(supportHostId, opposeHostId, supportState, opposeState, onChange) {
   const buildChip = (name) => {
     const chip = document.createElement('button');
@@ -941,9 +981,8 @@ function renderArchetypePair(supportHostId, opposeHostId, supportState, opposeSt
         const onThis = state.includes(name);
         const onOther = otherState.includes(name);
         chip.classList.toggle('selected', onThis);
-        // Disable if on the other side, or if this side is full and
-        // this chip isn't already selected (no room to add).
-        chip.disabled = onOther || (!onThis && state.length >= ARCH_MAX);
+        // Only disable if the archetype is taken on the other side.
+        chip.disabled = onOther;
       });
     });
   };
@@ -958,7 +997,6 @@ function renderArchetypePair(supportHostId, opposeHostId, supportState, opposeSt
         if (idx >= 0) {
           state.splice(idx, 1);
         } else {
-          if (state.length >= ARCH_MAX) return;
           if (otherState.includes(name)) return;
           state.push(name);
         }
@@ -974,12 +1012,13 @@ function renderArchetypePair(supportHostId, opposeHostId, supportState, opposeSt
 }
 
 // Returns {ok, support, oppose} — server-ready arrays (null if empty)
-// or {ok:false} for any violation. Length cap, catalog membership,
-// and disjointness are all validated client-side as defence in depth;
+// or {ok:false} for any violation. Catalog membership, uniqueness,
+// and disjointness validated client-side as defence in depth;
 // _validate_archetype_pair on the server enforces the same rules.
+// No length cap — natural ceiling is the catalog size, since
+// uniqueness + disjointness make the support/oppose total ≤ catalog.
 function validateArchetypes(support, oppose) {
   const validate = arr => {
-    if (arr.length > ARCH_MAX) return false;
     const seen = new Set();
     for (const name of arr) {
       if (!PARTY_ARCHETYPES.includes(name)) return false;
@@ -1011,7 +1050,7 @@ const REASON_HUMAN = {
   empty_article:        'Every article needs some text.',
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
   invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
-  invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
+  invalid_archetype_positions: 'Archetype list invalid — no archetype may appear on both sides.',
   cooldown:             'You\'ve already used your MP action this tick.',
 };
 
@@ -1029,7 +1068,7 @@ async function submit() {
 
   const articlesPayload = draft.articles.map((a, i) => ({
     ordinal: i + 1,
-    tag:     tagFor(i),
+    tag:     ARTICLE_TAG_VALUES.includes(a.tag) ? a.tag : defaultTagFor(i),
     text:    (a.text || '').trim(),
   }));
 
@@ -1120,7 +1159,7 @@ const AMEND_REASON_HUMAN = {
   amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
   parent_committee_missing: 'The original committee for that statute is gone — try a different statute.',
   invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
-  invalid_archetype_positions: 'Pick up to 2 supporting and 2 opposing archetypes — no archetype on both sides.',
+  invalid_archetype_positions: 'Archetype list invalid — no archetype may appear on both sides.',
 };
 
 async function openAmendModal() {
