@@ -56,6 +56,23 @@
   padding:8px 14px; text-decoration:none; cursor:pointer; transition:all 0.15s;
   flex-shrink:0; align-self:flex-start; }
 .nation-card__cta:hover { background:rgba(200,166,78,0.12); border-color:#c8a64e; }
+/* View-other-nation dropdown (20270748). Styled to mirror .nation
+   -card__cta so the pair reads as a button row. .ns-select hides the
+   default <select> chevron in favour of a thin caret painted via
+   background-image — same trick city-detail picker uses. */
+.nation-card__actions { display:flex; gap:8px; margin-left:auto;
+  align-self:flex-start; flex-shrink:0; }
+.ns-select { font-family:monospace; font-size:10px; letter-spacing:0.1em;
+  text-transform:uppercase; color:#c8a64e; background:#1a1612;
+  border:0.5px solid rgba(200,166,78,0.4); border-radius:3px;
+  padding:8px 28px 8px 14px; cursor:pointer; transition:all 0.15s;
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  background-image:linear-gradient(45deg, transparent 50%, #c8a64e 50%),
+                   linear-gradient(135deg, #c8a64e 50%, transparent 50%);
+  background-position:calc(100% - 14px) 50%, calc(100% - 10px) 50%;
+  background-size:4px 4px, 4px 4px; background-repeat:no-repeat; }
+.ns-select:hover { background-color:rgba(200,166,78,0.12); border-color:#c8a64e; }
+.ns-select option { background:#1a1612; color:#c8a64e; }
 
 .info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
   padding-top:14px; padding-bottom:14px; border-top:0.5px solid rgba(255,255,255,0.06);
@@ -479,7 +496,12 @@
         <div class="subtitle" id="nc-subtitle"></div>
         <div class="tags" id="nc-tags"></div>
       </div>
-      <a class="nation-card__cta" href="cabinet-office.html">Head Office</a>
+      <div class="nation-card__actions">
+        <select class="ns-select" id="nc-switcher" aria-label="View other nation">
+          <option value="">View Other Nation</option>
+        </select>
+        <a class="nation-card__cta" href="cabinet-office.html">Head Office</a>
+      </div>
     </div>
 
     <div class="info-grid">
@@ -842,17 +864,43 @@ async function init() {
   }
   if (!ctx) return;
 
-  // Nation comes from ctx — bootstrap already fetched the full surface
-  // (politician-topbar select is the superset for all politician pages),
-  // so this page just reads it. Only the page-specific PM ministry
-  // lookup needs its own fetch.
-  const nation = ctx.nation;
+  // Nation defaults to the viewer's own (from bootstrap), but
+  // ?nation_id=<id> in the URL swaps it for any other nation —
+  // powers the View Other Nation switcher (20270748). The whole
+  // page reads the local `nation` variable for its queries, so
+  // an override propagates through renderCard + loadVoting +
+  // loadLegalCases + loadGeographyCities + every committee /
+  // election panel without per-section plumbing.
+  let nation = ctx.nation;
+  const urlNationId = new URLSearchParams(window.location.search).get('nation_id');
+  if (urlNationId && urlNationId !== ctx.nation?.id) {
+    try {
+      const { data, error } = await _supabase.from('nations')
+        .select(`
+          id, name, flag_url, government_type, capital, total_seats,
+          election_frequency, next_election_tick, parliamentary_term_ticks,
+          head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+          population, dynasty_name,
+          politician_gdp, politician_budget, politician_debt,
+          politician_stability, politician_civil_freedoms, politician_gdp_growth,
+          nation_profiles(flag_url, official_name, motto, overview, founded_year)
+        `)
+        .eq('id', urlNationId).maybeSingle();
+      if (!error && data) nation = data;
+    } catch (err) {
+      console.warn('politician-nation: URL-override nation fetch failed', err);
+    }
+  }
+
+  // PM ministry lookup is for the DISPLAYED nation (which may
+  // be the viewer's nation or a switched-into one), so we key
+  // off nation.id rather than ctx.faction.nation_id.
   let pmMinistry = null;
-  if (ctx.faction?.nation_id) {
+  if (nation?.id) {
     try {
       const { data, error } = await _supabase.from('ministries')
         .select('minister_first_name, minister_last_name, party_id, factions(faction_name, leader_first_name, leader_last_name)')
-        .eq('nation_id', ctx.faction.nation_id)
+        .eq('nation_id', nation.id)
         .eq('ministry_key', 'prime_minister')
         .eq('is_active', true)
         .maybeSingle();
@@ -870,6 +918,7 @@ async function init() {
   renderCard(nation, pmMinistry);
   bindJumpNav();
   bindMapScope();
+  bindNationSwitcher(nation);
 
   // Resolve any due admission votes for this nation before reading the
   // committee + voting surfaces. Lazy resolver mirrors the election
@@ -1141,6 +1190,41 @@ function bindMapScope() {
     const btn = e.target.closest('button[data-scope]');
     if (!btn || btn.parentElement !== scope) return;
     scope.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+  });
+}
+
+// View Other Nation switcher (20270748). Fetches the playable-nation
+// allowlist (foundable_for_politician = TRUE, the same flag that
+// gates politician founding) and populates the dropdown with every
+// nation EXCEPT the one currently on screen. onChange navigates to
+// politician-nation.html?nation_id=<picked>, which the init() URL
+// override consumes on next load.
+async function bindNationSwitcher(currentNation) {
+  const sel = document.getElementById('nc-switcher');
+  if (!sel) return;
+  let list = [];
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('id, name')
+      .eq('foundable_for_politician', true)
+      .order('name');
+    if (error) throw error;
+    list = data || [];
+  } catch (err) {
+    console.warn('politician-nation: nation switcher fetch failed', err);
+    return;
+  }
+  const others = list.filter(n => n.id !== currentNation?.id);
+  if (!others.length) { sel.style.display = 'none'; return; }
+  for (const n of others) {
+    const opt = document.createElement('option');
+    opt.value = n.id;
+    opt.textContent = n.name;
+    sel.appendChild(opt);
+  }
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    window.location.href = `politician-nation.html?nation_id=${encodeURIComponent(sel.value)}`;
   });
 }
 
