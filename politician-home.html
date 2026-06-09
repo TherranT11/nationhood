@@ -2760,6 +2760,7 @@ function renderAffiliation(ctx) {
   const office     = ctx.faction?.politician_office       || null;
   const ministry   = ctx.faction?.politician_ministry     || null;
   const barNation  = ctx.faction?.bar_admitted_nation_id  || null;
+  const fsNation   = ctx.faction?.politician_foreign_service_nation_id || null;
   // Variant fallback ladder: elected office → civil-servant (ministry
   // set, no office) → judicial (bar-admitted, no ministry/office;
   // pickJudicialVariant walks the bench rungs) → party-member default.
@@ -2768,6 +2769,13 @@ function renderAffiliation(ctx) {
   // bar_exam_start blocks while a career already exists. Civil-service
   // tier 2 outranks tier 1 via politician_senior_civil_servant_at_tick
   // (20270633). NULL = still Tier 1.
+  //
+  // 20270765: Foreign Service Tier 1 is rendered as its own
+  // additional card by renderForeignAffiliation. If the player has
+  // a foreign posting AND no other "primary" affiliation, drop the
+  // Party Member fallback so the Foreign Attaché card is the only
+  // card shown — matches the user spec "when it adds any other
+  // affiliation it should remove the Party Member one".
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
   const variant = (office && AFFIL_VARIANTS[office])
@@ -2775,7 +2783,15 @@ function renderAffiliation(ctx) {
     : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
                               : (barNation ? pickJudicialVariant(ctx.faction)
-                                           : AFFIL_VARIANTS.party_member)));
+                                           : (fsNation ? null
+                                                       : AFFIL_VARIANTS.party_member))));
+  if (!variant) {
+    // Foreign Service is the only affiliation — the secondary host
+    // renderForeignAffiliation paints the only card. Clear the main
+    // host so we don't leave stale markup from a prior render.
+    host.innerHTML = '';
+    return;
+  }
   const partyName = ctx.party?.faction_name || '';
 
   // Description: variants with a static `desc` use it; variants with

@@ -140,6 +140,14 @@ export function getPoliticianRoleLabel(faction) {
     // null at the caller's `role ? ...` check.
     if (faction.politician_office) return officeTitle(faction.politician_office) || null;
     if (faction.politician_ministry) return 'Civil Servant';
+    // Foreign Service Tier 1 (20270759). Lowest-priority suffix —
+    // shown only when no office / ministry / bar career applies,
+    // matching renderAffiliation's fallback in politician-home.html.
+    // Source column was added to politician-topbar's select in
+    // c1454ae; other topbars (entrepreneur / military) don't pull
+    // it today and stay null-returning here, same as bar / office /
+    // ministry behave for those surfaces.
+    if (faction.politician_foreign_service_nation_id) return 'Attaché';
     return null;
 }
 
