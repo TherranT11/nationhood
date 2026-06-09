@@ -1595,6 +1595,7 @@ let stateAdvocateRequests = []; // pending state_advocate_appointment_requests w
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
+let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270751). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1692,7 +1693,7 @@ async function init() {
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null });
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, mayorCityRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, memberCommitteesRes, mayorCityRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1742,6 +1743,10 @@ async function init() {
       // politician not on a council. Surfaces as Pressing Issues
       // cards with VOTE YES / VOTE NO buttons.
       _supabase.rpc('list_open_proposals_for_council_seat', { p_faction_id: politician.id }),
+      // Committee memberships + pending agenda counts (20270751).
+      // Empty for politicians not seated on any committee. Surfaces
+      // as Pressing Issues cards with [VIEW COMMITTEE] buttons.
+      _supabase.rpc('list_committees_for_member', { p_faction_id: politician.id }),
       cityFetch,
     ]);
     if (evRes.error) throw evRes.error;
@@ -1754,6 +1759,7 @@ async function init() {
     if (jmAppsRes.error) console.error('politician-home: junior minister applications fetch failed', jmAppsRes.error);
     if (hearingsRes.error) console.error('politician-home: open hearings fetch failed', hearingsRes.error);
     if (openPropsRes.error) console.error('politician-home: open ordinance proposals fetch failed', openPropsRes.error);
+    if (memberCommitteesRes.error) console.error('politician-home: member committees fetch failed', memberCommitteesRes.error);
     if (mayorCityRes.error) console.error('politician-home: mayor city fetch failed', mayorCityRes.error);
     // Land the city under the right slot for the current office.
     // mayorCity / ccpCity / ccmCity are mutually exclusive in
@@ -1779,6 +1785,7 @@ async function init() {
     juniorMinisterApplications = jmAppsRes.data || [];
     committeeHearings = (hearingsRes.data?.success ? hearingsRes.data.hearings : []) || [];
     openOrdinanceProposals = (openPropsRes.data?.success ? openPropsRes.data.proposals : []) || [];
+    memberCommittees = (memberCommitteesRes.data?.success ? memberCommitteesRes.data.committees : []) || [];
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1791,6 +1798,7 @@ async function init() {
     juniorMinisterApplications = [];
     committeeHearings = [];
     openOrdinanceProposals = [];
+    memberCommittees = [];
   }
 
   renderHero(ctx.shard);
@@ -3298,6 +3306,10 @@ function renderPressingIssues(ctx) {
   // Open city ordinance proposals where this council seat hasn't
   // voted yet (20270747). One card per proposal/seat row.
   openOrdinanceProposals.forEach(p => blocks.push(renderOrdinanceProposalCard(p, ctx)));
+  // Committee memberships (20270751) — one card per seat with the
+  // pending agenda depth + a [VIEW COMMITTEE] CTA. The empty-roster
+  // case naturally renders nothing.
+  memberCommittees.forEach(mc => blocks.push(renderMemberCommitteeCard(mc)));
   if (!blocks.length) {
     host.innerHTML = '<div class="empty">No pressing issues right now.</div>';
     return;
@@ -3311,6 +3323,46 @@ function renderPressingIssues(ctx) {
   bindActiveTrialActions();
   bindCommitteeHearingActions();
   bindOrdinanceProposalActions(ctx);
+  bindMemberCommitteeActions();
+}
+
+// ── Member Committee Pressing Issues card (20270751) ────────────────
+// One per row from list_committees_for_member. Shows the committee
+// name + role + a "Pending Items on Agenda" count (article + policy
+// proposals queued). Click → committee.html?key=<committee_key>.
+function renderMemberCommitteeCard(mc) {
+  const meta        = COMMITTEES[mc.committee_key] || {};
+  const committeeNm = meta.name || mc.committee_key || 'Committee';
+  const icon        = meta.icon || '⚖';
+  const pending     = Number(mc.pending_count) || 0;
+  const roleLabel   = (mc.role || 'member').replace(/_/g, ' ').toUpperCase();
+  return `
+    <div class="offer-card" data-committee-key="${escAttr(mc.committee_key)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">${escHtml(icon)}</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">COMMITTEE SEAT &middot; ${escHtml(roleLabel)}</div>
+        <div class="oi-headline">You sit on the <strong>${escHtml(committeeNm)}</strong>.</div>
+        <div class="oi-meta">
+          <span>Pending Items on Agenda: <b>${pending}</b></span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn member-committee-view-btn">VIEW COMMITTEE &rsaquo;</button>
+      </div>
+    </div>`;
+}
+
+function bindMemberCommitteeActions() {
+  document.querySelectorAll('.member-committee-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('[data-committee-key]');
+      const key  = card?.dataset?.committeeKey;
+      if (!key) return;
+      window.location.href = `committee.html?key=${encodeURIComponent(key)}`;
+    });
+  });
 }
 
 // ── Ordinance proposal Pressing Issues card (20270747) ──────────────
