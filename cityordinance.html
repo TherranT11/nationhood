@@ -63,7 +63,22 @@ input[type=number].fld { font-variant-numeric:tabular-nums; }
 .arch-oppose  .arch-chip.selected { --chip-bg:#1a0e0e; --chip-bd:#c87a7a; --chip-fg:#e0a0a0; }
 .arch-disabled { opacity:0.4; cursor:not-allowed; }
 
-.stat-row { display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px; }
+.stat-row { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:10px;
+  margin-bottom:7px; align-items:stretch; }
+.stat-row .stat-rm { padding:0 11px; background:transparent;
+  border:0.5px solid rgba(200,122,122,0.3); border-radius:4px;
+  color:#c87a7a; font-family:inherit; font-size:11px; cursor:pointer;
+  letter-spacing:0.08em; transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.stat-row .stat-rm:hover { color:#e0a0a0;
+  border-color:rgba(200,122,122,0.6); background:rgba(200,122,122,0.06); }
+.btn-add-effect { margin-top:4px; padding:7px 13px; font-size:10px;
+  letter-spacing:0.12em; font-weight:700; text-transform:uppercase;
+  background:transparent; color:#5aafa5;
+  border:0.5px solid rgba(90,175,165,0.3); border-radius:4px;
+  cursor:pointer; font-family:inherit;
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.btn-add-effect:hover { color:#a0d8d8;
+  border-color:rgba(90,175,165,0.6); background:rgba(90,175,165,0.06); }
 
 .foot { margin-top:24px; padding-top:18px;
   border-top:0.5px solid rgba(90,175,165,0.18);
@@ -117,23 +132,29 @@ import { CITY_STATS } from './js/game/city-labels.js';
 const AUTHORING_OFFICES = new Set(['mayor', 'city_council_member', 'city_council_president']);
 
 const REASON = {
-  not_authenticated:   'Sign in to author an ordinance.',
-  invalid_arguments:   'Form data was incomplete.',
-  no_politician:       'No politician on this account.',
-  wrong_office:        'Only Mayors, City Council Members, and City Council Presidents can author ordinances.',
-  invalid_name:        'Name must be 1–80 characters.',
-  invalid_description: 'Description must be 1–400 characters.',
-  invalid_cost:        'Cost must be 0–100.',
-  invalid_stat_key:    'Pick a valid stat to affect.',
-  invalid_stat_delta:  'Magnitude must be between −10 and +10.',
-  invalid_archetype:   'One of the picked archetypes isn’t recognised.',
-  archetype_overlap:   'An archetype can’t be on both Support and Oppose at once.',
+  not_authenticated:    'Sign in to author an ordinance.',
+  invalid_arguments:    'Form data was incomplete.',
+  no_politician:        'No politician on this account.',
+  wrong_office:         'Only Mayors, City Council Members, and City Council Presidents can author ordinances.',
+  invalid_name:         'Name must be 1–80 characters.',
+  invalid_description:  'Description must be 1–400 characters.',
+  invalid_cost:         'Cost must be -100 to 100.',
+  invalid_stat_effects: 'Stat effects rows are malformed — refresh and try again.',
+  invalid_stat_key:     'Pick a valid stat to affect.',
+  invalid_stat_delta:   'Magnitude must be between −10 and +10.',
+  duplicate_stat_key:   'You can only affect each stat once per ordinance.',
+  invalid_archetype:    'One of the picked archetypes isn’t recognised.',
+  archetype_overlap:    'An archetype can’t be on both Support and Oppose at once.',
 };
 
+// 20270741: stat effects are an array now. Each entry tracks the
+// row's local UI state (key/dir/mag); submit() folds direction +
+// magnitude into a signed delta and sends the array to the RPC.
+let nextEffectId = 1;
 const draft = {
   name: '', description: '', cost: 0,
   support: new Set(), oppose: new Set(),
-  statKey: '', statDir: 'up', statMag: 0,
+  effects: [], // [{ id, key, dir, mag }]
 };
 
 (async () => {
@@ -182,10 +203,6 @@ function renderForm(ctx) {
       <span>${escHtml(a)}</span>
     </label>`).join('');
 
-  const statOpts = CITY_STATS.map(s =>
-    `<option value="${escAttr(s.key)}">${escHtml(s.name)}</option>`
-  ).join('');
-
   document.getElementById('card-host').innerHTML = `
     <div class="ord-card">
       <div class="ord-eyebrow">AUTHOR · GLOBAL CATALOG</div>
@@ -212,8 +229,8 @@ function renderForm(ctx) {
 
       <div class="fg">
         <div class="fg-lab">COST (in dollars)<span class="req">*</span></div>
-        <div class="fg-hint">Deducted from city budget when the ordinance PASSES. Failed proposals are free. 0–100.</div>
-        <input id="f-cost" class="fld" type="number" min="0" max="100" step="1" value="0" />
+        <div class="fg-hint">Deducted from city budget when the ordinance PASSES. Failed proposals are free. <strong>Negative values</strong> let the ordinance pay the city (grants, settlements). Range: -100 to 100.</div>
+        <input id="f-cost" class="fld" type="number" min="-100" max="100" step="1" value="0" />
       </div>
 
       <div class="fg">
@@ -229,19 +246,10 @@ function renderForm(ctx) {
       </div>
 
       <div class="fg">
-        <div class="fg-lab">STAT AFFECTED ON PASS<span class="req">*</span></div>
-        <div class="fg-hint">Pick the city stat, direction, and magnitude. Magnitude 0 means "purely symbolic" — discouraged.</div>
-        <div class="stat-row">
-          <select id="f-stat-key" class="fld">
-            <option value="">— Select a stat —</option>
-            ${statOpts}
-          </select>
-          <select id="f-stat-dir" class="fld">
-            <option value="up">UP</option>
-            <option value="down">DOWN</option>
-          </select>
-          <input id="f-stat-mag" class="fld" type="number" min="0" max="10" step="1" value="0" />
-        </div>
+        <div class="fg-lab">STAT EFFECTS ON PASS</div>
+        <div class="fg-hint">Each row picks one stat, direction, and magnitude (0-10). Add multiple rows for multi-stat ordinances; a stat can only appear once. Leaving this empty makes the ordinance "vibes only" — cost/popularity/Experience still land at resolution, just no stat moves.</div>
+        <div id="stat-effects-list"></div>
+        <button type="button" class="btn-add-effect" id="btn-add-effect">+ Add Effect</button>
       </div>
 
       <div class="ord-err" id="err-line"></div>
@@ -260,12 +268,14 @@ function renderForm(ctx) {
 }
 
 function wireForm(ctx) {
+  // 20270741: stat_effects is optional (empty = "vibes only"
+  // ordinance). Cost widened to -100..100. Submit gate just needs
+  // name, description, and a cost in range.
   const refreshSubmitState = () => {
+    const c = Number(draft.cost);
     document.getElementById('btn-submit').disabled = !draft.name
       || !draft.description
-      || !draft.statKey
-      || Number(draft.cost) < 0
-      || Number(draft.cost) > 100;
+      || !Number.isFinite(c) || c < -100 || c > 100;
   };
 
   document.getElementById('f-name').addEventListener('input', (e) => {
@@ -277,22 +287,15 @@ function wireForm(ctx) {
     refreshSubmitState();
   });
   document.getElementById('f-cost').addEventListener('input', (e) => {
-    draft.cost = Number(e.target.value) || 0;
+    draft.cost = Number(e.target.value);
+    if (!Number.isFinite(draft.cost)) draft.cost = 0;
     refreshSubmitState();
   });
-  document.getElementById('f-stat-key').addEventListener('change', (e) => {
-    draft.statKey = e.target.value || '';
-    refreshSubmitState();
-  });
-  document.getElementById('f-stat-dir').addEventListener('change', (e) => {
-    draft.statDir = e.target.value === 'down' ? 'down' : 'up';
-  });
-  document.getElementById('f-stat-mag').addEventListener('input', (e) => {
-    let v = Math.round(Number(e.target.value) || 0);
-    if (v < 0) v = 0;
-    if (v > 10) v = 10;
-    draft.statMag = v;
-  });
+
+  // Start with one empty effect row visible — most ordinances will
+  // want at least one. User can remove it for vibes-only authoring.
+  addEffectRow();
+  document.getElementById('btn-add-effect').addEventListener('click', addEffectRow);
 
   // Archetype chips: per-side multi-select. The other side's matching
   // chip is greyed out as long as this one is selected — server
@@ -332,6 +335,57 @@ function wireForm(ctx) {
   document.getElementById('btn-submit').addEventListener('click', () => submit(ctx));
 }
 
+// 20270741 — Dynamic stat-effects list. Each row's local state
+// lives on the draft.effects array, keyed by a synthetic id so
+// removal doesn't depend on index order. addEffectRow appends a
+// fresh entry + renders the matching DOM row; removeEffectRow
+// pulls the entry and its row out together.
+function addEffectRow() {
+  const id = nextEffectId++;
+  draft.effects.push({ id, key: '', dir: 'up', mag: 0 });
+  const host = document.getElementById('stat-effects-list');
+  host.insertAdjacentHTML('beforeend', renderEffectRow(id));
+  wireEffectRow(id);
+}
+function renderEffectRow(id) {
+  const statOpts = CITY_STATS.map(s =>
+    `<option value="${escAttr(s.key)}">${escHtml(s.name)}</option>`
+  ).join('');
+  return `
+    <div class="stat-row" data-effect-id="${id}">
+      <select class="fld" data-effect-key="${id}">
+        <option value="">— Select a stat —</option>
+        ${statOpts}
+      </select>
+      <select class="fld" data-effect-dir="${id}">
+        <option value="up">UP</option>
+        <option value="down">DOWN</option>
+      </select>
+      <input class="fld" type="number" min="0" max="10" step="1" value="0"
+             data-effect-mag="${id}" />
+      <button type="button" class="stat-rm" data-effect-rm="${id}" title="Remove this effect">×</button>
+    </div>`;
+}
+function wireEffectRow(id) {
+  const entry = () => draft.effects.find(e => e.id === id);
+  document.querySelector(`[data-effect-key="${id}"]`).addEventListener('change', (e) => {
+    const ent = entry(); if (ent) ent.key = e.target.value || '';
+  });
+  document.querySelector(`[data-effect-dir="${id}"]`).addEventListener('change', (e) => {
+    const ent = entry(); if (ent) ent.dir = e.target.value === 'down' ? 'down' : 'up';
+  });
+  document.querySelector(`[data-effect-mag="${id}"]`).addEventListener('input', (e) => {
+    let v = Math.round(Number(e.target.value) || 0);
+    if (v < 0) v = 0;
+    if (v > 10) v = 10;
+    const ent = entry(); if (ent) ent.mag = v;
+  });
+  document.querySelector(`[data-effect-rm="${id}"]`).addEventListener('click', () => {
+    draft.effects = draft.effects.filter(e => e.id !== id);
+    document.querySelector(`[data-effect-id="${id}"]`)?.remove();
+  });
+}
+
 let submitInFlight = false;
 async function submit(ctx) {
   if (submitInFlight) return;
@@ -345,7 +399,22 @@ async function submit(ctx) {
     return;
   }
 
-  const statDelta = draft.statDir === 'down' ? -draft.statMag : draft.statMag;
+  // Fold direction + magnitude into a signed delta per effect row.
+  // Drop rows that have no stat picked OR magnitude 0 — they'd be
+  // no-ops that the server would still accept but provide no value.
+  // Also catch duplicate keys client-side so the user gets an
+  // immediate, focused error instead of the server's reason code.
+  const effectsRaw = draft.effects
+    .filter(e => e.key && e.mag > 0)
+    .map(e => ({ key: e.key, delta: e.dir === 'down' ? -e.mag : e.mag }));
+  const seenKeys = new Set();
+  for (const eff of effectsRaw) {
+    if (seenKeys.has(eff.key)) {
+      showErr(REASON.duplicate_stat_key);
+      return;
+    }
+    seenKeys.add(eff.key);
+  }
   const supportArr = Array.from(draft.support);
   const opposeArr  = Array.from(draft.oppose);
 
@@ -368,8 +437,7 @@ async function submit(ctx) {
       p_cost: draft.cost,
       p_support_archetypes: supportArr,
       p_oppose_archetypes:  opposeArr,
-      p_stat_key: draft.statKey,
-      p_stat_delta: statDelta,
+      p_stat_effects: effectsRaw,
     });
     if (error) throw error;
     if (!data?.success) {

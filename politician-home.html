@@ -696,6 +696,46 @@
 
 .cv-content { padding:20px 28px 24px; }
 .cv-loading, .cv-empty { padding:30px; text-align:center; color:#888; font-size:12px; }
+/* 20270742 — Propose Ordinance modal body. Row layout: left = name +
+   description + effect chips, right = state pill + propose/rescind
+   button. Active-in-this-city rows get a left accent so the player
+   sees at a glance which entries flip to rescind. */
+.po-content { padding:14px 18px 18px; }
+.po-row { display:grid; grid-template-columns:1fr auto; gap:14px;
+  padding:14px 16px; background:#0a0807;
+  border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
+  margin-bottom:8px; align-items:center; }
+.po-row.active-here { border-left:3px solid #c8a26e;
+  background:#100e09; }
+.po-row.in-flight { opacity:0.55; }
+.po-name { font-size:13.5px; color:#fff; font-weight:600;
+  letter-spacing:-0.005em; margin-bottom:3px; }
+.po-name .pill { font-size:8.5px; letter-spacing:0.12em;
+  background:#1a1612; color:#dcb88a; padding:2px 7px; border-radius:3px;
+  margin-left:8px; font-weight:700; }
+.po-desc { font-size:10.5px; color:#888; line-height:1.5;
+  margin-bottom:6px; }
+.po-meta { display:flex; flex-wrap:wrap; gap:5px 9px; align-items:center;
+  font-size:9.5px; font-family:monospace; letter-spacing:0.06em;
+  color:#888; }
+.po-meta .eff { color:#a0d8d8; }
+.po-meta .cost-pos { color:#dcb88a; }
+.po-meta .cost-neg { color:#9ac896; }
+.po-meta .arch-s   { color:#a0d8d8; }
+.po-meta .arch-o   { color:#e0a0a0; }
+.po-btn { padding:9px 14px; font-size:9.5px; letter-spacing:0.12em;
+  font-weight:700; text-transform:uppercase; border-radius:4px;
+  font-family:inherit; cursor:pointer;
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.po-btn.enact   { background:#161208; color:#dcb88a;
+  border:0.5px solid #c8a26e; }
+.po-btn.enact:hover:not(:disabled) { background:#251710; color:#fff; }
+.po-btn.rescind { background:#1a0e0e; color:#e0a0a0;
+  border:0.5px solid rgba(200,122,122,0.5); }
+.po-btn.rescind:hover:not(:disabled) { background:#251212; color:#fff; }
+.po-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.po-status { font-size:9px; color:#888; letter-spacing:0.1em;
+  font-family:monospace; }
 
 .cv-desc { font-size:11px; color:#aaa; line-height:1.6; margin-bottom:18px;
   font-style:italic; padding:0 2px; }
@@ -1740,6 +1780,17 @@ async function init() {
   if (apCloseBtn) apCloseBtn.addEventListener('click', closeAppealModal);
   const cvCloseBtn = document.getElementById('cv-close');
   if (cvCloseBtn) cvCloseBtn.addEventListener('click', closeCityViewModal);
+  const poCloseBtn = document.getElementById('po-close');
+  if (poCloseBtn) poCloseBtn.addEventListener('click', closeProposeOrdinanceModal);
+  const poBack = document.getElementById('po-back');
+  if (poBack) poBack.addEventListener('click', (e) => {
+    if (e.target === poBack) closeProposeOrdinanceModal();
+  });
+  // Fire-and-forget the ordinance vote-resolution sweep (20270742).
+  // Idempotent server-side; safe to call from every page load.
+  _supabase.rpc('resolve_due_city_ordinance_proposals')
+    .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_city_ordinance_proposals:', error.message); })
+    .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
   renderCareer();
@@ -2056,7 +2107,7 @@ const PARTY_MEMBER_ACTIONS = [
 // so holding the office adds choice depth, not pure additive
 // power.
 const MAYOR_ACTIONS = [
-  { ic: '📜', name: 'PROPOSE',       cost: 'unavailable', desc: 'Propose to introduce or amend a city ordinance. If it passes, +2 Experience. If it fails, -1 Reputation.' /* no action key → disabled */ },
+  { ic: '📜', name: 'PROPOSE',       cost: 'no cost',            desc: 'Propose to introduce or rescind a city ordinance. Council votes next tick. On pass: +1 Experience, +0.5 popularity to parties with supporting archetypes, +0.3 extra to your party.', action: 'propose-ordinance' },
   { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
 ];
@@ -2337,6 +2388,153 @@ function renderMayorBody(city) {
   return `${desc}<div class="mayor-stats">${budgetRow}${statRows}</div>`;
 }
 
+// ── Propose Ordinance modal (20270742) ──────────────────────────────
+// Mayor catalog picker. Calls list_ordinances_for_city to fetch the
+// catalog enriched with per-city (is_active_here, has_open_proposal)
+// flags, then renders one row per ordinance. Click → propose_city_
+// ordinance with kind='enact' or 'rescind' based on the row's state.
+// Locked behind ctx.mayorCity (set by the existing city fetch in
+// init Promise.all); if mayorCity is null we surface a clear empty
+// state instead of crashing.
+let _proposeInFlight = false;
+async function openProposeOrdinanceModal(ctx) {
+  const back = document.getElementById('po-back');
+  if (!back) return;
+  back.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('po-title').textContent =
+    ctx?.mayorCity?.city_name ? `Ordinances for ${ctx.mayorCity.city_name}` : 'Ordinances';
+
+  const cityId = ctx?.mayorCity?.id || null;
+  const content = document.getElementById('po-content');
+  if (!cityId) {
+    content.innerHTML = '<div class="cv-empty">City not loaded — refresh once the term stamp lands.</div>';
+    return;
+  }
+  content.innerHTML = '<div class="cv-loading">Loading catalog…</div>';
+  try {
+    const { data, error } = await _supabase.rpc('list_ordinances_for_city', { p_city_id: cityId });
+    if (error) throw error;
+    if (!data?.success) {
+      content.innerHTML = `<div class="cv-empty">Could not load: ${escHtml(data?.reason || 'unknown')}</div>`;
+      return;
+    }
+    const ords = data.ordinances || [];
+    if (!ords.length) {
+      content.innerHTML = '<div class="cv-empty">No ordinances in the catalog yet. <a href="cityordinance.html?city=' + escAttr(cityId) + '" style="color:#5aafa5;">Author one →</a></div>';
+      return;
+    }
+    content.innerHTML = ords.map(o => renderProposeRow(o)).join('') +
+      `<div style="text-align:center; margin-top:14px; font-size:10.5px;">
+         <a href="cityordinance.html?city=${escAttr(cityId)}" style="color:#5aafa5; text-decoration:none;">+ Author a new ordinance</a>
+       </div>`;
+    content.querySelectorAll('[data-propose-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        proposeOrdinance(ctx, btn.dataset.proposeId, btn.dataset.proposeKind, btn);
+      });
+    });
+  } catch (e) {
+    content.innerHTML = `<div class="cv-empty">Could not load: ${escHtml(e?.message || e)}</div>`;
+  }
+}
+function renderProposeRow(o) {
+  const effects = Array.isArray(o.stat_effects) ? o.stat_effects : [];
+  const effectChips = effects.length === 0
+    ? '<span class="eff">No stat effects</span>'
+    : effects.map(e => `<span class="eff">${escHtml(e.key || '?')} ${e.delta > 0 ? '+' : ''}${e.delta}</span>`).join(' · ');
+  const cost = Number(o.cost) || 0;
+  const costChip = cost === 0
+    ? '<span>Free</span>'
+    : (cost > 0
+        ? `<span class="cost-pos">Cost $${cost}</span>`
+        : `<span class="cost-neg">Pays $${-cost}</span>`);
+  const supportArr = Array.isArray(o.support_archetypes) ? o.support_archetypes : [];
+  const opposeArr  = Array.isArray(o.oppose_archetypes)  ? o.oppose_archetypes  : [];
+  const supportChip = supportArr.length
+    ? `<span class="arch-s">+${supportArr.length} support</span>` : '';
+  const opposeChip  = opposeArr.length
+    ? `<span class="arch-o">−${opposeArr.length} oppose</span>` : '';
+
+  const inFlight  = !!o.has_open_proposal;
+  const active    = !!o.is_active_here;
+  const rowClasses = ['po-row'];
+  if (active)   rowClasses.push('active-here');
+  if (inFlight) rowClasses.push('in-flight');
+
+  let actionHtml;
+  if (inFlight) {
+    actionHtml = '<div class="po-status">VOTE IN FLIGHT</div>';
+  } else if (active) {
+    actionHtml = `<button class="po-btn rescind" data-propose-id="${escAttr(o.id)}" data-propose-kind="rescind">Propose Rescind</button>`;
+  } else {
+    actionHtml = `<button class="po-btn enact" data-propose-id="${escAttr(o.id)}" data-propose-kind="enact">Propose Enact</button>`;
+  }
+  const activePill = active ? '<span class="pill">ACTIVE HERE</span>' : '';
+  return `<div class="${rowClasses.join(' ')}">
+    <div>
+      <div class="po-name">${escHtml(o.name || '—')}${activePill}</div>
+      <div class="po-desc">${escHtml(o.description || '')}</div>
+      <div class="po-meta">
+        ${effectChips}
+        <span>·</span>
+        ${costChip}
+        ${supportChip ? '<span>·</span>' + supportChip : ''}
+        ${opposeChip  ? '<span>·</span>' + opposeChip  : ''}
+      </div>
+    </div>
+    <div>${actionHtml}</div>
+  </div>`;
+}
+async function proposeOrdinance(ctx, ordinanceId, kind, btn) {
+  if (_proposeInFlight) return;
+  _proposeInFlight = true;
+  btn.disabled = true;
+  const prevLabel = btn.textContent;
+  btn.textContent = 'Filing…';
+  try {
+    const { data, error } = await _supabase.rpc('propose_city_ordinance', {
+      p_faction_id:   ctx?.faction?.id || null,
+      p_city_id:      ctx?.mayorCity?.id || null,
+      p_ordinance_id: ordinanceId,
+      p_kind:         kind,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:    'Sign in to propose.',
+        no_politician:        'No politician on this account.',
+        not_mayor:            'Only the Mayor can propose ordinances.',
+        not_this_citys_mayor: 'You aren’t the Mayor of this city.',
+        city_not_found:       'City not found.',
+        ordinance_not_found:  'Ordinance no longer in the catalog.',
+        proposal_in_flight:   'An open proposal for this ordinance is already on the council’s agenda.',
+        already_active:       'That ordinance is already active in this city.',
+        not_active:           'That ordinance isn’t active here, so it can’t be rescinded.',
+        on_cooldown:          'You’ve already used your action this tick.',
+        invalid_kind:         'Pick enact or rescind.',
+      };
+      alert(REASON[data?.reason] || ('Could not propose: ' + (data?.reason || 'unknown')));
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+      return;
+    }
+    closeProposeOrdinanceModal();
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false;
+    btn.textContent = prevLabel;
+  } finally {
+    _proposeInFlight = false;
+  }
+}
+function closeProposeOrdinanceModal() {
+  const back = document.getElementById('po-back');
+  if (!back) return;
+  back.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 // Within the bar-admitted branch, walk the judicial ladder by priority
 // so the highest tier the politician holds drives the variant. Mirrors
 // the priority used by judicialTitle() in js/utils.js — keep the two
@@ -2579,6 +2777,11 @@ function renderAffiliation(ctx) {
         // is dense (per-agency accordions across the ministry) and
         // reads better outside the role card's footprint.
         window.location.href = 'auditministry.html';
+      } else if (btn.dataset.action === 'propose-ordinance') {
+        // 20270742: Mayor's Propose tile. Opens the catalog picker
+        // modal scoped to the mayor's own city. handleMpAction
+        // can't carry this — needs an ordinance pick first.
+        openProposeOrdinanceModal(ctx);
       } else if (btn.dataset.action === 'view-city') {
         // City Council Member [View City] — opens a tabbed modal over
         // the nation's three cities. No per-tick lock (read-only).
@@ -5916,6 +6119,25 @@ init();
     <div class="tc-body">
       <div class="cv-tabs" id="cv-tabs"></div>
       <div class="cv-content" id="cv-content">
+        <div class="cv-loading">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Propose Ordinance modal (20270742) — Mayor's catalog picker.
+     openProposeOrdinanceModal(ctx) populates the body with rows
+     pulled from list_ordinances_for_city(p_city_id). -->
+<div class="tc-back" id="po-back">
+  <div class="tc-modal">
+    <button type="button" class="tc-close" id="po-close" title="Close">&#10005;</button>
+    <div class="tc-head">
+      <div class="tc-eyebrow">PROPOSE ORDINANCE</div>
+      <div class="tc-title" id="po-title">—</div>
+      <div class="tc-sub" id="po-sub">Pick a template to send to the city council. Vote resolves next tick. Active-in-this-city ordinances appear first — clicking those proposes a rescind.</div>
+    </div>
+    <div class="tc-body">
+      <div class="po-content" id="po-content">
         <div class="cv-loading">Loading…</div>
       </div>
     </div>
