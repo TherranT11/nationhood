@@ -65,6 +65,9 @@
   .ag-lab { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600; flex:1; }
   .ag-status { font-size:8px; letter-spacing:0.13em; font-weight:700; padding:3px 8px;
     border-radius:3px; background:#0d0d0d; color:var(--mut); border:0.5px solid var(--line); }
+  /* Hearing-in-progress takes a red accent so it reads as a live,
+     time-pressure state — the rest stays neutral. */
+  .ag-status--hearing { background:#1a0a0a; color:#e07a7a; border-color:#5a2020; }
   .ag-empty { font-size:11px; color:var(--faint); font-style:italic; text-align:center;
     padding:18px 0; }
 
@@ -655,7 +658,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     <div class="agenda">
       <div class="ag-head">
         <span class="ag-lab">MONTHLY AGENDA</span>
-        <span class="ag-status">${activeHearing ? 'HEARING IN SESSION' : (activeAgendaProposal ? 'AGENDA VOTE IN PROGRESS' : 'NO ACTIVE WORK')}</span>
+        <span class="ag-status${activeHearing ? ' ag-status--hearing' : ''}">${activeHearing ? 'HEARING IN SESSION' : (activeAgendaProposal ? 'AGENDA VOTE IN PROGRESS' : 'NO ACTIVE WORK')}</span>
       </div>
       ${renderMonthlyAgenda(activeHearing, currentTick, isChair, activeAgendaProposal, agendaVotes, members, viewerPolId, canVoteAgenda, myAgendaVote, activeAgendaSetAtTick)}
     </div>
@@ -883,7 +886,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     }
   });
 
-  wireWitnessModal(activeHearing, personas);
+  wireWitnessModal(activeHearing, personas, viewerFactionId);
 }
 
 async function submitApplication(link, committeeId, factionId) {
@@ -1224,7 +1227,7 @@ const REASON_HUMAN_TESTIMONY = {
 let _witnessSubmitInFlight = false;
 let _escapeBound = false;   // document-level Escape handler binds once
 
-function wireWitnessModal(activeHearing, personas) {
+function wireWitnessModal(activeHearing, personas, viewerFactionId) {
   const closeBtn = document.getElementById('wit-close');
   const overlay  = document.getElementById('wit-overlay');
   if (!closeBtn || !overlay) return;
