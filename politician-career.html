@@ -680,9 +680,9 @@
         <div class="sub">since founding</div>
       </div>
       <div class="info-cell">
-        <div class="label">Suspicion</div>
-        <div class="value" id="cc-suspicion">Low</div>
-        <div class="sub"   id="cc-suspicion-sub">no one is watching</div>
+        <div class="label">Term Ends</div>
+        <div class="value" id="cc-term-end">—</div>
+        <div class="sub"   id="cc-term-end-sub">no current term</div>
       </div>
     </div>
   </div>
@@ -1974,15 +1974,6 @@ const AIR_FORCE_RUNGS = [
   },
 ];
 
-// Suspicion sub-text by level — read once the value lands on the page so the
-// copy isn't repeated through the renderer.
-const SUSPICION_SUB = {
-  Low:     'no one is watching',
-  Watched: 'your name is on a list',
-  High:    'investigators are close',
-  Severe:  'an arrest is plausible',
-};
-
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
 function initials(first, last, faction_name) {
@@ -2345,7 +2336,6 @@ function render(politician, shard, nation, party) {
   const age = ageNow(politician, shard?.current_tick);
   const years = careerYears(politician, shard?.current_tick);
   const nationName = nation?.name || 'Unknown';
-  const suspicion = politician.politician_suspicion || 'Low';
 
   document.getElementById('cc-portrait').textContent = ini;
   document.getElementById('cc-title-lead').textContent = lead;
@@ -2389,9 +2379,29 @@ function render(politician, shard, nation, party) {
 
   document.getElementById('cc-length').textContent = `${years} Year${years === 1 ? '' : 's'}`;
 
-  document.getElementById('cc-suspicion').textContent = suspicion;
-  document.getElementById('cc-suspicion-sub').textContent =
-    SUSPICION_SUB[suspicion] || 'level not recognised';
+  // Term Ends — single source of truth is termEndTickFor() in
+  // utils.js, the same helper politician-home's affiliation card
+  // calls for its TERM ENDS pill. Pulls per-office term length from
+  // the canonical map (CO/CCM 12, CCP 36, mayor 48, MPs from
+  // nation.next_election_tick). Null endTick → no scheduled end
+  // (party-member fallback, civil service, judiciary) and we keep
+  // the placeholder copy.
+  const currentTick = Number(shard?.current_tick) || 0;
+  const endTick = termEndTickFor({
+    office: politician.politician_office,
+    nextGeneralElectionTick: Number(nation?.next_election_tick) || 0,
+    officeWonAtTick: politician.politician_office_won_at_tick,
+  });
+  const termEndEl = document.getElementById('cc-term-end');
+  const termEndSubEl = document.getElementById('cc-term-end-sub');
+  if (endTick != null) {
+    const remaining = Math.max(0, endTick - currentTick);
+    termEndEl.textContent = tickToDate(endTick);
+    termEndSubEl.textContent = `${remaining} tick${remaining === 1 ? '' : 's'} remaining`;
+  } else {
+    termEndEl.textContent = '—';
+    termEndSubEl.textContent = 'no current term';
+  }
 }
 
 // Pick the ladder ID for the politician's current stacked-section
