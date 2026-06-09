@@ -182,14 +182,6 @@
      reads as actionable. */
   .up-row--clickable { cursor:pointer; transition:background 120ms, border-color 120ms; }
   .up-row--clickable:hover { background:#13100b; border-color:#5a4630; border-left-color:#dcb88a; }
-  /* Pulse triggered by the SET THE AGENDA action button (20270752)
-     so the user sees which rows are the click targets. */
-  .up-row--pulse { animation: upRowPulse 1.5s ease-out; }
-  @keyframes upRowPulse {
-    0%   { background:#0d0a07; border-left-color:#c8a26e; }
-    20%  { background:#1a160e; border-left-color:#dcb88a; }
-    100% { background:#0d0a07; border-left-color:#c8a26e; }
-  }
 
   /* Agenda-vote panel (20270752) — replaces the hearing card in the
      Monthly Agenda slot while a Set-the-Agenda item is up for the
@@ -691,7 +683,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
 
     <div class="actions">
       <div class="ac-lab">COMMITTEE ACTIONS${onCommittee ? '' : ' &middot; MEMBERS ONLY'}</div>
-      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0, !!activeAgendaProposal, canSetAgenda)}</div>
+      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0, !!activeAgendaProposal)}</div>
     </div>
 
     <div class="activities">
@@ -717,24 +709,6 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       e.preventDefault();
       if (witCta.dataset.disabled === '1') return;
       openWitnessModal(activeHearing, personas);
-      return;
-    }
-    // 20270752 — SET THE AGENDA action button. Scrolls to Upcoming
-    // Agenda and briefly pulses the clickable rows so the user
-    // can pick which proposal to bring up for the action vote.
-    // The actual RPC fires when they click one of those rows
-    // (next handler below) — keeps a single dispatch path.
-    const setAgendaBtn = e.target.closest('[data-act="set-agenda"].enabled');
-    if (setAgendaBtn) {
-      e.preventDefault();
-      const upcomingEl = document.querySelector('.upcoming');
-      if (upcomingEl) {
-        upcomingEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        upcomingEl.querySelectorAll('[data-set-agenda]').forEach(row => {
-          row.classList.add('up-row--pulse');
-          setTimeout(() => row.classList.remove('up-row--pulse'), 1500);
-        });
-      }
       return;
     }
     // 20270752 — click on an Upcoming Agenda row when the row is
@@ -993,7 +967,7 @@ function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified) {
   return `<div class="input-disabled"><strong>Observer access.</strong> &middot; Members of Parliament may apply for committee membership.</div>`;
 }
 
-function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, hasActiveAgenda, canSetAgenda) {
+function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, hasActiveAgenda) {
   // [Hold a Hearing] is CHAIR-ONLY per the 20270499 RPC gate. We
   // mirror the gate client-side: enabled iff chair AND no hearing
   // currently open AND at least one queued proposal exists AND
@@ -1013,30 +987,7 @@ function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, hasActiv
             : '';
   const holdEnabled = holdDisabledReason === '';
 
-  // 20270752: SET THE AGENDA is the rank-and-file path — any member,
-  // once per tick, regardless of other action use. The actual RPC
-  // fires when the viewer clicks a row in Upcoming Agenda; this
-  // button scrolls to that section and pulses the clickable rows
-  // so the action is discoverable from the Committee Actions surface.
-  const setDisabledReason = !onCommittee
-    ? 'Members only'
-    : hasOpenHearing
-      ? 'A hearing is already in session'
-      : hasActiveAgenda
-        ? 'An agenda vote is in progress'
-        : !canSetAgenda
-          ? 'You\'ve already set the agenda this tick'
-          : !hasQueued
-            ? 'No queued proposals'
-            : '';
-  const setEnabled = setDisabledReason === '';
-
   const actions = [
-    { act: 'set-agenda', ic: '★', name: 'SET THE AGENDA',
-      desc: 'Pick a queued proposal and bring it up for a 5-member action vote (Hear / Vote / Amend).',
-      enabled: setEnabled,
-      title: setDisabledReason || '',
-      stub: false },
     { act: 'hold',  ic: '☞', name: 'HOLD A HEARING',
       desc: 'Bring the top queued proposal onto the monthly agenda — opens a 3-tick testimony window for witnesses.',
       enabled: holdEnabled,
