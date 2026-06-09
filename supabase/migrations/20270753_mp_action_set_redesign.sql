@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 20270750 — MP action set redesign
+-- 20270753 — MP action set redesign
 --
 -- Per user spec, the Member of Parliament repeatable-action set
 -- changes from
@@ -84,7 +84,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_mp');
     END IF;
 
-    -- 20270750: MP per-tick lock. Statute drafting is now one of the
+    -- 20270753: MP per-tick lock. Statute drafting is now one of the
     -- three "pick one each tick" tiles.
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
@@ -212,7 +212,7 @@ BEGIN
         v_tick
     );
 
-    -- 20270750: burn the MP per-tick lock.
+    -- 20270753: burn the MP per-tick lock.
     UPDATE factions SET next_mp_action_tick = v_tick + 1 WHERE id = v_pol.id;
 
     RETURN jsonb_build_object(
@@ -273,7 +273,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_mp');
     END IF;
 
-    -- 20270750: MP per-tick lock.
+    -- 20270753: MP per-tick lock.
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
     IF v_pol.next_mp_action_tick IS NOT NULL
@@ -321,7 +321,7 @@ BEGIN
     )
     RETURNING id INTO v_id;
 
-    -- 20270750: burn the MP per-tick lock.
+    -- 20270753: burn the MP per-tick lock.
     UPDATE factions SET next_mp_action_tick = v_tick + 1 WHERE id = v_pol.id;
 
     RETURN jsonb_build_object(
