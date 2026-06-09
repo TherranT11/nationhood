@@ -479,7 +479,6 @@
   transition:color 0.12s, border-color 0.12s, background 0.12s; }
 .ah-cta:hover { color:#a0d8d8; border-color:#5aafa5;
   background:rgba(90,175,165,0.1); }
-.ah-tenure--cta-only { padding-top:0; }
 /* 20270737 — Mayor card body. City description sits in italic above
    the stat grid; grid is 2-column desktop, collapses to 1 on mobile
    via the @media block below. Stat rows are LABEL · VALUE pairs
@@ -2635,11 +2634,9 @@ function renderAffiliation(ctx) {
   const electedHtml = (endTick != null && wonAtRaw != null)
     ? `<span class="ah-tenure-elected">Elected <strong>${escHtml(tickToDate(wonAt))}</strong></span>`
     : '';
-  // headerCta — optional per-variant CTA rendered below the elected
+  // headerCta — optional per-variant CTA appended below the elected
   // line (mayor uses it for [View City]). Other variants leave the
-  // field undefined and the slot stays empty. Falls through to the
-  // tenure-less case below if endTick is null but a CTA still wants
-  // to render, so we treat it as a standalone block in that branch.
+  // field undefined and the slot stays empty.
   const ctaHtml = (variant.headerCta && variant.headerCta(ctx)) || '';
   const tenureHtml = endTick != null
     ? `<div class="ah-tenure">
@@ -2648,9 +2645,7 @@ function renderAffiliation(ctx) {
          ${electedHtml}
          ${ctaHtml}
        </div>`
-    : (ctaHtml
-        ? `<div class="ah-tenure ah-tenure--cta-only">${ctaHtml}</div>`
-        : '');
+    : '';
 
   // Optional rank label (placeholder — district / party abbrev would
   // come from a future "office_placement" surface).
