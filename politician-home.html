@@ -693,94 +693,6 @@
 
 .tc-body { overflow-y:auto; flex:1; }
 
-/* ── View City modal (20270660) — reuses .tc-back + .tc-modal for the
-   backdrop/box; .cv-* classes style the inner tabbed layout. ── */
-.cv-tabs { display:flex; border-bottom:0.5px solid rgba(255,255,255,0.07); }
-.cv-tab { flex:1; padding:14px 12px 12px; background:transparent; border:none;
-  color:#888; font-family:inherit; font-size:13px; font-weight:500;
-  cursor:pointer; border-bottom:2px solid transparent; transition:all 0.15s; }
-.cv-tab:hover:not(.active) { color:#bbb; background:rgba(138,88,104,0.04); }
-.cv-tab.active { color:#dcb88a; border-bottom-color:#dcb88a; }
-.cv-tab-label { display:block; font-size:9px; letter-spacing:0.16em; color:#666;
-  margin-bottom:3px; text-transform:uppercase; }
-.cv-tab.active .cv-tab-label { color:#c8a26e; }
-
-.cv-content { padding:20px 28px 24px; }
-.cv-loading, .cv-empty { padding:30px; text-align:center; color:#888; font-size:12px; }
-/* 20270742 — Propose Ordinance modal body. Row layout: left = name +
-   description + effect chips, right = state pill + propose/rescind
-   button. Active-in-this-city rows get a teal left accent (the
-   politician palette) so the player sees at a glance which entries
-   flip to rescind. Enact button uses the same teal vocabulary; the
-   Rescind button stays red to signal a destructive action. */
-.po-content { padding:14px 18px 18px; }
-.po-row { display:grid; grid-template-columns:1fr auto; gap:14px;
-  padding:14px 16px; background:#0a0807;
-  border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
-  margin-bottom:8px; align-items:center; }
-.po-row.active-here { border-left:3px solid #5aafa5;
-  background:#0e1413; }
-.po-row.in-flight { opacity:0.55; }
-.po-name { font-size:13.5px; color:#fff; font-weight:600;
-  letter-spacing:-0.005em; margin-bottom:3px; }
-.po-name .pill { font-size:8.5px; letter-spacing:0.12em;
-  background:#0e1a14; color:#a0d8d8; padding:2px 7px; border-radius:3px;
-  margin-left:8px; font-weight:700;
-  border:0.5px solid rgba(90,175,165,0.4); }
-.po-desc { font-size:10.5px; color:#888; line-height:1.5;
-  margin-bottom:6px; font-style:italic; }
-.po-meta { display:flex; flex-wrap:wrap; gap:5px 9px; align-items:center;
-  font-size:9.5px; font-family:monospace; letter-spacing:0.06em;
-  color:#888; }
-.po-meta .eff { color:#a0d8d8; }
-.po-meta .cost-pos { color:#dcb88a; }
-.po-meta .cost-neg { color:#9ac896; }
-.po-meta .arch-s   { color:#a0d8d8; }
-.po-meta .arch-o   { color:#e0a0a0; }
-.po-btn { padding:9px 14px; font-size:9.5px; letter-spacing:0.12em;
-  font-weight:700; text-transform:uppercase; border-radius:4px;
-  font-family:inherit; cursor:pointer;
-  transition:color 0.12s, border-color 0.12s, background 0.12s; }
-.po-btn.enact   { background:#0e1a14; color:#a0d8d8;
-  border:0.5px solid #5aafa5; }
-.po-btn.enact:hover:not(:disabled) { background:#13241d; color:#fff; }
-.po-btn.rescind { background:#1a0e0e; color:#e0a0a0;
-  border:0.5px solid rgba(200,122,122,0.5); }
-.po-btn.rescind:hover:not(:disabled) { background:#251212; color:#fff; }
-.po-btn:disabled { opacity:0.4; cursor:not-allowed; }
-.po-title-serif { font-family:Georgia,'Times New Roman',serif;
-  font-style:italic; color:#5aafa5; letter-spacing:-0.005em; }
-.po-status { font-size:9px; color:#888; letter-spacing:0.1em;
-  font-family:monospace; }
-
-.cv-desc { font-size:11px; color:#aaa; line-height:1.6; margin-bottom:18px;
-  font-style:italic; padding:0 2px; }
-
-.cv-mayor { display:flex; align-items:center; gap:14px; padding:14px 16px;
-  background:rgba(138,88,104,0.04); border:0.5px solid rgba(138,88,104,0.2);
-  border-radius:6px; margin-bottom:18px; }
-.cv-mayor-ic { font-size:22px; color:#dcb88a; }
-.cv-mayor-meta { flex:1; min-width:0; }
-.cv-mayor-name { font-family:Georgia,serif; font-size:14px; color:#dcb88a; }
-.cv-mayor-sub { font-size:10px; color:#888; letter-spacing:0.08em;
-  text-transform:uppercase; margin-top:3px; }
-
-.cv-stats { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;
-  margin-bottom:6px; }
-.cv-stat { padding:12px 14px; background:rgba(255,255,255,0.02);
-  border:0.5px solid rgba(255,255,255,0.06); border-radius:5px; }
-.cv-stat-label { font-size:9px; letter-spacing:0.14em; color:#888;
-  text-transform:uppercase; margin-bottom:5px; }
-.cv-stat-val { font-family:Georgia,serif; font-size:18px; color:#dcb88a;
-  font-weight:500; }
-
-.cv-section { margin-top:20px; padding-top:14px;
-  border-top:0.5px solid rgba(255,255,255,0.06); }
-.cv-section-title { font-size:10px; letter-spacing:0.16em; color:#c8a26e;
-  text-transform:uppercase; margin-bottom:10px; font-weight:700; }
-.cv-section-empty { font-size:11px; color:#666; padding:12px 0;
-  text-align:center; font-style:italic; }
-
 .tc-summary { padding:16px 28px; border-bottom:0.5px solid rgba(255,255,255,0.07); background:#1a1612; }
 .tc-sum-class { font-size:9px; letter-spacing:0.18em; color:#c8a26e; font-weight:700;
   text-align:center; margin-bottom:7px; }
@@ -1117,6 +1029,54 @@
   .judge-row { padding:11px 12px 13px; flex-wrap:wrap; gap:8px; }
   .judge-row .trial-send-btn, .judge-row .trial-objection-btn { flex:1; padding:11px 8px; }
 }
+
+/* 20270742 — Propose Ordinance modal body (restored after the
+   View City modal sweep in 20270745). Row layout: left = name +
+   description + effect chips, right = state pill + propose/rescind
+   button. Active-in-this-city rows get a teal left accent (the
+   politician palette) so the player sees at a glance which entries
+   flip to rescind. Enact button uses the same teal vocabulary; the
+   Rescind button stays red to signal a destructive action. */
+.po-loading, .po-empty { padding:30px; text-align:center; color:#888; font-size:12px; }
+.po-content { padding:14px 18px 18px; }
+.po-row { display:grid; grid-template-columns:1fr auto; gap:14px;
+  padding:14px 16px; background:#0a0807;
+  border:0.5px solid rgba(255,255,255,0.07); border-radius:5px;
+  margin-bottom:8px; align-items:center; }
+.po-row.active-here { border-left:3px solid #5aafa5;
+  background:#0e1413; }
+.po-row.in-flight { opacity:0.55; }
+.po-name { font-size:13.5px; color:#fff; font-weight:600;
+  letter-spacing:-0.005em; margin-bottom:3px; }
+.po-name .pill { font-size:8.5px; letter-spacing:0.12em;
+  background:#0e1a14; color:#a0d8d8; padding:2px 7px; border-radius:3px;
+  margin-left:8px; font-weight:700;
+  border:0.5px solid rgba(90,175,165,0.4); }
+.po-desc { font-size:10.5px; color:#888; line-height:1.5;
+  margin-bottom:6px; font-style:italic; }
+.po-meta { display:flex; flex-wrap:wrap; gap:5px 9px; align-items:center;
+  font-size:9.5px; font-family:monospace; letter-spacing:0.06em;
+  color:#888; }
+.po-meta .eff { color:#a0d8d8; }
+.po-meta .cost-pos { color:#dcb88a; }
+.po-meta .cost-neg { color:#9ac896; }
+.po-meta .arch-s   { color:#a0d8d8; }
+.po-meta .arch-o   { color:#e0a0a0; }
+.po-btn { padding:9px 14px; font-size:9.5px; letter-spacing:0.12em;
+  font-weight:700; text-transform:uppercase; border-radius:4px;
+  font-family:inherit; cursor:pointer;
+  transition:color 0.12s, border-color 0.12s, background 0.12s; }
+.po-btn.enact   { background:#0e1a14; color:#a0d8d8;
+  border:0.5px solid #5aafa5; }
+.po-btn.enact:hover:not(:disabled) { background:#13241d; color:#fff; }
+.po-btn.rescind { background:#1a0e0e; color:#e0a0a0;
+  border:0.5px solid rgba(200,122,122,0.5); }
+.po-btn.rescind:hover:not(:disabled) { background:#251212; color:#fff; }
+.po-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.po-title-serif { font-family:Georgia,'Times New Roman',serif;
+  font-style:italic; color:#5aafa5; letter-spacing:-0.005em; }
+.po-status { font-size:9px; color:#888; letter-spacing:0.1em;
+  font-family:monospace; }
 
 /* ── Settlement conference panel (20270533) ─────────────────
    Renders below the chat when status='settlement_conference'.
@@ -1823,8 +1783,6 @@ async function init() {
   // Appeal modal X close — same static-DOM-once-at-init pattern.
   const apCloseBtn = document.getElementById('ap-close');
   if (apCloseBtn) apCloseBtn.addEventListener('click', closeAppealModal);
-  const cvCloseBtn = document.getElementById('cv-close');
-  if (cvCloseBtn) cvCloseBtn.addEventListener('click', closeCityViewModal);
   const poCloseBtn = document.getElementById('po-close');
   if (poCloseBtn) poCloseBtn.addEventListener('click', closeProposeOrdinanceModal);
   const poBack = document.getElementById('po-back');
@@ -2508,22 +2466,22 @@ async function openProposeOrdinanceModal(ctx) {
   const cityId = officeCity?.id || null;
   const content = document.getElementById('po-content');
   if (!cityId) {
-    content.innerHTML = '<div class="cv-empty">City not loaded — refresh once the term stamp lands.</div>';
+    content.innerHTML = '<div class="po-empty">City not loaded — refresh once the term stamp lands.</div>';
     return;
   }
-  content.innerHTML = '<div class="cv-loading">Loading catalog…</div>';
+  content.innerHTML = '<div class="po-loading">Loading catalog…</div>';
   try {
     const { data, error } = await _supabase.rpc('list_ordinances_for_city', { p_city_id: cityId });
     if (error) throw error;
     if (!data?.success) {
-      content.innerHTML = `<div class="cv-empty">Could not load: ${escHtml(data?.reason || 'unknown')}</div>`;
+      content.innerHTML = `<div class="po-empty">Could not load: ${escHtml(data?.reason || 'unknown')}</div>`;
       return;
     }
     const ords = data.ordinances || [];
     if (!ords.length) {
       // Catalog empty. Authoring is a backend-only path (no link
       // surfaced to players), so the empty state is just informational.
-      content.innerHTML = '<div class="cv-empty">No ordinances in the catalog yet.</div>';
+      content.innerHTML = '<div class="po-empty">No ordinances in the catalog yet.</div>';
       return;
     }
     content.innerHTML = ords.map(o => renderProposeRow(o)).join('');
@@ -2533,7 +2491,7 @@ async function openProposeOrdinanceModal(ctx) {
       });
     });
   } catch (e) {
-    content.innerHTML = `<div class="cv-empty">Could not load: ${escHtml(e?.message || e)}</div>`;
+    content.innerHTML = `<div class="po-empty">Could not load: ${escHtml(e?.message || e)}</div>`;
   }
 }
 function renderProposeRow(o) {
@@ -2891,10 +2849,6 @@ function renderAffiliation(ctx) {
         // modal scoped to the mayor's own city. handleMpAction
         // can't carry this — needs an ordinance pick first.
         openProposeOrdinanceModal(ctx);
-      } else if (btn.dataset.action === 'view-city') {
-        // City Council Member [View City] — opens a tabbed modal over
-        // the nation's three cities. No per-tick lock (read-only).
-        openCityViewModal(ctx?.nation?.id, ctx?.nation?.name);
       } else {
         handleMpAction(btn);
       }
@@ -2928,9 +2882,6 @@ const ACTIONS = {
   // City Council Member tier (20270641) — needs p_party_id (party
   // popularity write on Mobilize Volunteers; format consistency
   // across the trio).
-  'mobilize-volunteers':{ rpc: 'politician_mobilize_volunteers',    label: 'Mobilize Volunteers',needsParty: true,  format: fmtMobilizeResult },
-  'build-the-base':     { rpc: 'politician_build_the_base',         label: 'Build the Base',     needsParty: true,  format: fmtBuildTheBaseResult },
-  'lobby-minister':     { rpc: 'politician_lobby_minister',         label: 'Lobby a Minister',   needsParty: true,  format: fmtLobbyMinisterResult },
   // Mayor tier (20270737) — both share next_member_action_tick
   // with PARTY_MEMBER_ACTIONS so the per-tick lock is consistent.
   'collect-taxes':      { rpc: 'mayor_collect_taxes',               label: 'Collect Taxes',      needsParty: false, format: fmtMayorTaxResult },
@@ -2945,31 +2896,6 @@ const ACTIONS = {
   'ccm-hold-meeting':   { rpc: 'ccm_hold_city_meeting',              label: 'Hold City Meeting',  needsParty: true,  format: fmtCcmMeetingResult },
   'ccm-fundraiser':     { rpc: 'ccm_fundraiser',                    label: 'Fundraiser',         needsParty: true,  format: fmtCcmFundraiserResult },
 };
-
-function fmtMobilizeResult(data) {
-  const popDelta = Number(data.popularity_delta) || 0;
-  const newPop = Number(data.new_popularity);
-  const popTxt = Number.isFinite(newPop) ? ` (party popularity now ${newPop.toFixed(1)}%)` : '';
-  return `Mobilized ${data.volunteers} Volunteer${data.volunteers === 1 ? '' : 's'}: Party Popularity +${popDelta.toFixed(1)}${popTxt}. Capital now ${data.new_capital}.`;
-}
-
-function fmtBuildTheBaseResult(data) {
-  if (data.capital_delta === 0) {
-    return `Built the Base: rolled a 1 — no gain this month.`;
-  }
-  return `Built the Base: rolled ${data.roll}, +${data.capital_delta} Capital (now ${data.new_capital}).`;
-}
-
-function fmtLobbyMinisterResult(data) {
-  const ministry = data.ministry_name || 'a minister';
-  if (data.bracket === 'delivered') {
-    return `Lobbied the Minister of ${ministry}: rolled ${data.roll}. +1 Capital (now ${data.new_capital}), +1 Reputation (now ${data.new_reputation}). 3-tick cooldown.`;
-  }
-  if (data.bracket === 'rebuffed') {
-    return `Minister of ${ministry} publicly rebuffed you: rolled 1. −1 Reputation (now ${data.new_reputation}), −1 Volunteer (now ${data.new_volunteers}). 3-tick cooldown.`;
-  }
-  return `Lobbied the Minister of ${ministry}: rolled ${data.roll}, no result. Influence consumed. 3-tick cooldown.`;
-}
 
 // 20270737 — Mayor action results. 20270738 simplified back to two
 // cases (revenue / growth too low) when the 1-10 budget cap was
@@ -4467,137 +4393,6 @@ function closeAppealModal() {
   document.body.style.overflow = '';
 }
 
-// ─── View City modal (20270660) ─────────────────────────────────────
-// Opened by the CC Member [View City] action. Fetches the nation's
-// cities (list_cities_for_nation), renders a tab strip, auto-selects
-// the first (Capital), then drills in via get_city_view. No per-tick
-// lock — read-only.
-async function openCityViewModal(nationId, nationName) {
-  if (!nationId) {
-    alert('No nation context available.');
-    return;
-  }
-  document.getElementById('cv-back').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  document.getElementById('cv-title').textContent =
-    (nationName || 'Nation') + ' · Cities';
-  document.getElementById('cv-sub').textContent =
-    'Council Members read; Council President proposes ordinances (soon).';
-  document.getElementById('cv-content').innerHTML =
-    '<div class="cv-loading">Loading cities…</div>';
-  document.getElementById('cv-tabs').innerHTML = '';
-
-  try {
-    const { data, error } = await _supabase.rpc('list_cities_for_nation',
-      { p_nation_id: nationId });
-    if (error) throw error;
-    if (!data?.success || !data.cities?.length) {
-      document.getElementById('cv-content').innerHTML =
-        '<div class="cv-empty">No cities seeded for this nation yet.</div>';
-      return;
-    }
-    renderCityTabs(data.cities);
-    selectCity(data.cities[0].id);
-  } catch (err) {
-    document.getElementById('cv-content').innerHTML =
-      '<div class="cv-empty">Could not load cities: ' +
-      escHtml(err?.message || String(err)) + '</div>';
-  }
-}
-
-function closeCityViewModal() {
-  document.getElementById('cv-back').classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-function renderCityTabs(cities) {
-  const TYPE_LABEL = {
-    capital:      'CAPITAL',
-    major_city_1: 'MAJOR CITY',
-    major_city_2: 'MAJOR CITY',
-  };
-  const tabs = document.getElementById('cv-tabs');
-  tabs.innerHTML = cities.map(c => `
-    <button class="cv-tab" data-city-id="${escHtml(c.id)}" type="button">
-      <span class="cv-tab-label">${escHtml(TYPE_LABEL[c.city_type] || c.city_type || '')}</span>
-      ${escHtml(c.city_name || '—')}
-    </button>
-  `).join('');
-  tabs.querySelectorAll('.cv-tab').forEach(btn => {
-    btn.addEventListener('click', () => selectCity(btn.dataset.cityId));
-  });
-}
-
-async function selectCity(cityId) {
-  if (!cityId) return;
-  document.querySelectorAll('#cv-tabs .cv-tab').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.cityId === cityId);
-  });
-  document.getElementById('cv-content').innerHTML =
-    '<div class="cv-loading">Loading city…</div>';
-  try {
-    const { data, error } = await _supabase.rpc('get_city_view',
-      { p_city_id: cityId });
-    if (error) throw error;
-    if (!data?.success) {
-      document.getElementById('cv-content').innerHTML =
-        '<div class="cv-empty">Could not load city: ' +
-        escHtml(data?.reason || 'unknown') + '</div>';
-      return;
-    }
-    renderCityView(data.city, data.ordinances || [], data.council_votes || []);
-  } catch (err) {
-    document.getElementById('cv-content').innerHTML =
-      '<div class="cv-empty">Could not load city: ' +
-      escHtml(err?.message || String(err)) + '</div>';
-  }
-}
-
-function renderCityView(city, ordinances, votes) {
-  if (!city) return;
-  // 20270738: budget is a single dollar number (unbounded). Display
-  // as "$N". (Was "5 / 10" briefly in 20270736 when budget was a
-  // stat; design reverted to a dollar amount.)
-  const fmtBudget = (n) => `$${Number(n) || 0}`;
-  const mayorName = [city.mayor_first_name, city.mayor_last_name]
-    .filter(Boolean).join(' ') || 'Unknown';
-  const mayorMeta = [
-    city.mayor_archetype,
-    city.mayor_age ? 'age ' + city.mayor_age : '',
-  ].filter(Boolean).join(' · ');
-  const ordinanceBlock = ordinances.length === 0
-    ? '<div class="cv-section-empty">No active ordinances. CC President proposals land in V2.</div>'
-    : ordinances.map(o => `<div class="cv-section-empty">${escHtml(o.title || '—')}</div>`).join('');
-  const voteBlock = votes.length === 0
-    ? '<div class="cv-section-empty">No active votes. Council voting lands with ordinance proposals.</div>'
-    : votes.map(v => `<div class="cv-section-empty">${escHtml(v.title || '—')}</div>`).join('');
-  document.getElementById('cv-content').innerHTML = `
-    ${city.description ? `<div class="cv-desc">${escHtml(city.description)}</div>` : ''}
-    <div class="cv-mayor">
-      <div class="cv-mayor-ic">&#9883;</div>
-      <div class="cv-mayor-meta">
-        <div class="cv-mayor-name">Mayor ${escHtml(mayorName)}</div>
-        <div class="cv-mayor-sub">${escHtml(mayorMeta || 'archetype unset')}</div>
-      </div>
-    </div>
-    <div class="cv-stats">
-      <div class="cv-stat"><div class="cv-stat-label">Budget</div><div class="cv-stat-val">${escHtml(fmtBudget(city.budget))}</div></div>
-      <div class="cv-stat"><div class="cv-stat-label">Infrastructure</div><div class="cv-stat-val">${escHtml(String(city.infrastructure ?? '—'))}</div></div>
-      <div class="cv-stat"><div class="cv-stat-label">Appeal</div><div class="cv-stat-val">${escHtml(String(city.appeal ?? '—'))}</div></div>
-      <div class="cv-stat"><div class="cv-stat-label">Growth</div><div class="cv-stat-val">${escHtml(String(city.growth ?? '—'))}</div></div>
-      <div class="cv-stat"><div class="cv-stat-label">Crime</div><div class="cv-stat-val">${escHtml(String(city.crime ?? '—'))}</div></div>
-      <div class="cv-stat"><div class="cv-stat-label">Approval</div><div class="cv-stat-val">${escHtml(String(city.approval ?? '—'))}</div></div>
-    </div>
-    <div class="cv-section">
-      <div class="cv-section-title">Current Ordinances</div>
-      ${ordinanceBlock}
-    </div>
-    <div class="cv-section">
-      <div class="cv-section-title">City Council Votes</div>
-      ${voteBlock}
-    </div>
-  `;
-}
 
 function appealReasonText(reason) {
   return ({
@@ -6269,26 +6064,6 @@ init();
   </div>
 </div>
 
-<!-- View City modal (20270660) — CC Member tabbed view of the nation's
-     three cities. Reuses .tc-back for the backdrop; .cv-* classes
-     style the inner layout. Populated by openCityViewModal(). -->
-<div class="tc-back" id="cv-back">
-  <div class="tc-modal cv-modal">
-    <button type="button" class="tc-close" id="cv-close" title="Close">&#10005;</button>
-    <div class="tc-head">
-      <div class="tc-eyebrow">CITY VIEW</div>
-      <div class="tc-title" id="cv-title">—</div>
-      <div class="tc-sub" id="cv-sub">—</div>
-    </div>
-    <div class="tc-body">
-      <div class="cv-tabs" id="cv-tabs"></div>
-      <div class="cv-content" id="cv-content">
-        <div class="cv-loading">Loading…</div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Propose Ordinance modal (20270742) — Mayor's catalog picker.
      openProposeOrdinanceModal(ctx) populates the body with rows
      pulled from list_ordinances_for_city(p_city_id). -->
@@ -6302,7 +6077,7 @@ init();
     </div>
     <div class="tc-body">
       <div class="po-content" id="po-content">
-        <div class="cv-loading">Loading…</div>
+        <div class="po-loading">Loading…</div>
       </div>
     </div>
   </div>
