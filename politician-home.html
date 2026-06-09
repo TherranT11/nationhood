@@ -2171,10 +2171,18 @@ const CITY_COUNCIL_ACTIONS = [
   { ic: '⛌', name: 'HOLD CITY MEETING', cost: 'no cost', desc: 'Convene constituents. +0.5 Influence. +0.1 Party Popularity per Volunteer.', action: 'ccm-hold-meeting' },
   { ic: '☎', name: 'FUNDRAISER',         cost: 'no cost', desc: 'Work the donor list. Roll 1d6: +$1K × roll into Party Funds. Roll 5-6 → +1 Volunteer.', action: 'ccm-fundraiser' },
 ];
+// MP repeatable actions (20270750 redesign). All three burn
+// next_mp_action_tick (+1 tick cooldown) — pick one each tick.
+//   • Propose New Statute — navigates to politician-statutes.html
+//     with ?propose=1 so the existing statute modal auto-opens.
+//   • Propose New Law     — same page with ?propose_policy=1 so
+//     the policy-switch modal auto-opens.
+//   • Fundraising         — 1d20 → $roll × $1K to party funds,
+//     -0.5 popularity (softer than 20270486's -1).
 const LEGISLATURE_ACTIONS = [
-  { ic: '☞',         name: 'FLOOR SPEECH',       cost: 'no cost',           desc: 'Rise on the Assembly floor and speak to a chosen issue. Visible, recorded, risked.', action: 'floor-speech' },
-  { ic: '⚛',         name: 'HOLD A RALLY',       cost: '−$10K party funds', desc: 'Hold a rally with local party members to build support.',                             action: 'hold-rally' },
-  { ic: '\u{1F377}', name: 'FUNDRAISING DINNER', cost: '−1 party popularity', desc: 'Work the room at a donor-class fundraiser. Roll 1d20 for thousands in donations; the donor-circuit visibility costs the party 1 popularity.', action: 'fundraising-dinner' },
+  { ic: '📜',        name: 'PROPOSE NEW STATUTE', cost: 'no cost', desc: 'Open the statute drafter. Send a new statute to its committee for hearing, vote, or amendment.', action: 'propose-new-statute' },
+  { ic: '⚖',         name: 'PROPOSE NEW LAW',     cost: 'no cost', desc: 'Open the policy-switch modal. Propose flipping an existing policy to a new option via the relevant committee.', action: 'propose-new-law' },
+  { ic: '\u{1F377}', name: 'FUNDRAISING',         cost: '−0.5 party popularity', desc: 'Work the donor circuit. Roll 1d20 for thousands in donations; donor-circuit visibility costs the party 0.5 popularity.', action: 'fundraising' },
 ];
 // Civil Servant action placeholders — no `action` key means the
 // existing render logic at renderAffiliation treats them as disabled.
@@ -2975,6 +2983,17 @@ function renderAffiliation(ctx) {
         // the RPC needs a Minor / Moderate / Major choice before
         // it can fire.
         openTaxPackageModal(ctx);
+      } else if (btn.dataset.action === 'propose-new-statute') {
+        // 20270750 MP redesign: navigates to the statute drafter
+        // and auto-opens the modal via ?propose=1 (handler is in
+        // politician-statutes.html's init). The committee_propose_law
+        // RPC burns the MP per-tick lock on submit.
+        window.location.href = 'politician-statutes.html?propose=1';
+      } else if (btn.dataset.action === 'propose-new-law') {
+        // 20270750 MP redesign: navigates to the policy-switch
+        // modal via ?propose_policy=1. committee_propose_policy_change
+        // burns the MP per-tick lock on submit.
+        window.location.href = 'politician-statutes.html?propose_policy=1';
       } else {
         handleMpAction(btn);
       }
@@ -2993,6 +3012,10 @@ const ACTIONS = {
   'floor-speech':       { rpc: 'politician_mp_floor_speech',       label: 'Floor Speech',       needsParty: false, format: fmtMpResult },
   'hold-rally':         { rpc: 'politician_mp_hold_rally',         label: 'Hold a Rally',       needsParty: false, format: fmtMpResult },
   'fundraising-dinner': { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising Dinner', needsParty: false, format: fmtMpResult },
+  // 20270750 MP action set redesign — 'fundraising' is the new tile
+  // key for the same underlying RPC (just softer -0.5 popularity hit).
+  // Old 'fundraising-dinner' key retained for any stale call paths.
+  'fundraising':        { rpc: 'politician_mp_fundraising_dinner', label: 'Fundraising',        needsParty: false, format: fmtMpResult },
   'fundraising-call':   { rpc: 'politician_fundraising_call',      label: 'Fundraising Call',   needsParty: true,  format: fmtLocalResult },
   'civic-meeting':      { rpc: 'politician_civic_meeting',         label: 'Civic Meeting',      needsParty: true,  format: fmtLocalResult },
   'office-hours':       { rpc: 'politician_office_hours',          label: 'Office Hours',       needsParty: true,  format: fmtLocalResult },

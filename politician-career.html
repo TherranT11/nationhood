@@ -491,6 +491,16 @@
   transition:background 80ms, border-color 80ms; }
 #electionModal .city-pick-card:hover { background:#0d0d0d; }
 #electionModal .city-pick-card.selected { background:#13160e; border-color:#4a5a3a; border-top-color:#9aab7a; }
+/* Player-held mayor (20270751) — top stripe shifts amber, the card
+   refuses pointer events for selection, and the row that surfaces
+   the next-election + filing-window info gets a tinted background
+   so the lock reason is immediately legible. */
+#electionModal .city-pick-card.locked { border-top-color:#c8a64e; cursor:not-allowed; opacity:0.85; }
+#electionModal .city-pick-card.locked:hover { background:#0a0a0a; }
+#electionModal .player-chip { display:inline-block; font-family:monospace; font-size:8.5px;
+  letter-spacing:0.12em; font-weight:700; padding:1px 6px; margin-left:4px; border-radius:2px;
+  background:rgba(200,166,78,0.12); color:#c8a64e; border:0.5px solid rgba(200,166,78,0.4); }
+#electionModal .cpc-player-row .cpc-meta-val { color:#c8a64e; }
 #electionModal .cpc-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
   margin-bottom:6px; }
 #electionModal .cpc-name { font-size:15px; font-weight:600; color:#fff; letter-spacing:-0.005em; }
@@ -4170,10 +4180,13 @@ async function openMayorPickerModal(ctx) {
 
   // Same shape as the Geography card's fetch (20270708/20270711) so
   // mayor party display + stat band labels stay in sync.
+  // 20270751: mayor_term_end_tick joins so the card can detect a
+  // player-held seat (NULL = NPC, set = player) and gate filing to
+  // the 6-tick pre-term-end window.
   const { data, error } = await _supabase.from('cities')
     .select(`
       id, city_type, city_name, description, population_pct,
-      mayor_first_name, mayor_last_name, mayor_archetype,
+      mayor_first_name, mayor_last_name, mayor_archetype, mayor_term_end_tick,
       mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
       budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
     `)
@@ -4192,14 +4205,19 @@ async function openMayorPickerModal(ctx) {
       '<div class="em-error">No non-capital cities in your nation yet.</div>';
     return;
   }
-  document.getElementById('em-body').innerHTML = renderMayorCityPicker(cities, nationPop, skillVal);
+  const currentTick = Number(ctx?.shard?.current_tick) || 0;
+  document.getElementById('em-body').innerHTML = renderMayorCityPicker(cities, nationPop, skillVal, currentTick);
 
   // Click-to-select. Records the chosen city_id as a data attribute
   // on em-confirm — the confirm handler reads it directly so the
-  // selection state lives in the DOM, not in a closure.
+  // selection state lives in the DOM, not in a closure. Player-held
+  // cities (.city-pick-card.locked) are skipped — the filing window
+  // hasn't opened yet, so selecting them would just bounce off the
+  // server gate.
   const grid = document.getElementById('em-body').querySelector('.city-pick-grid');
   grid.querySelectorAll('.city-pick-card').forEach(card => {
     card.addEventListener('click', () => {
+      if (card.classList.contains('locked')) return;
       grid.querySelectorAll('.city-pick-card').forEach(c => c.classList.remove('selected'));
       card.classList.add('selected');
       confirmBtn.disabled = false;
@@ -4208,8 +4226,8 @@ async function openMayorPickerModal(ctx) {
   });
 }
 
-function renderMayorCityPicker(cities, nationPop, skillVal) {
-  const cards = cities.map(c => mayorCityCard(c, nationPop)).join('');
+function renderMayorCityPicker(cities, nationPop, skillVal, currentTick) {
+  const cards = cities.map(c => mayorCityCard(c, nationPop, currentTick)).join('');
   return `
     <div class="em-intro">
       <strong>Pick a city to run for Mayor.</strong> The chair pays
@@ -4225,20 +4243,37 @@ function renderMayorCityPicker(cities, nationPop, skillVal) {
     </div>`;
 }
 
-function mayorCityCard(c, nationPop) {
+function mayorCityCard(c, nationPop, currentTick) {
   // cityDisplayData (20270713) — shared with the Geography card on
   // politician-nation.html. Stat rows still inline since the picker
   // card uses cpc-* classes; CITY_STATS + cityStatLabel are the
   // single source for the band copy.
   const { population, mayorName, partyAbbr, archetype, budgetStr } = cityDisplayData(c, nationPop);
   const partyChip = partyAbbr ? ` <span class="party">${escHtml(partyAbbr)}</span>` : '';
+  // 20270751: player-held seat → [PLAYER] chip + filing-window line +
+  // card locked when current_tick is still inside the term window.
+  // mayor_term_end_tick is NULL for NPCs (20270719 convention), so
+  // the chip + lock only render when the column comes back set —
+  // CCM/CCP pickers that don't fetch the column naturally see none
+  // of this.
+  const termEndTick = Number(c.mayor_term_end_tick) || 0;
+  const isPlayer    = c.mayor_term_end_tick != null && termEndTick > 0;
+  const openTick    = isPlayer ? termEndTick - 6 : 0;
+  const windowOpen  = isPlayer && (Number(currentTick) || 0) >= openTick;
+  const locked      = isPlayer && !windowOpen;
+  const playerChip  = isPlayer ? ' <span class="player-chip">PLAYER</span>' : '';
+  const electionRow = isPlayer ? `
+    <div class="cpc-meta-row cpc-player-row">
+      <span class="cpc-meta-key">Next Election</span>
+      <span class="cpc-meta-val">${escHtml(tickToDate(termEndTick))} · ${windowOpen ? 'Filing window open' : `Eligible to run on Tick ${openTick}`}</span>
+    </div>` : '';
   const statRows = CITY_STATS.map(({ key, name }) => `
     <div class="cpc-stat-row">
       <span class="cpc-stat-key">${escHtml(name)}</span>
       <span class="cpc-stat-val">${escHtml(cityStatLabel(key, c[key]))}</span>
     </div>`).join('');
   return `
-    <div class="city-pick-card" data-city-id="${escHtml(c.id)}">
+    <div class="city-pick-card${locked ? ' locked' : ''}" data-city-id="${escHtml(c.id)}">
       <div class="cpc-head">
         <div class="cpc-name">${escHtml(c.city_name || 'Unnamed City')}</div>
         <div class="cpc-pop">POP ${population.toLocaleString()}</div>
@@ -4247,8 +4282,9 @@ function mayorCityCard(c, nationPop) {
       <div class="cpc-meta">
         <div class="cpc-meta-row">
           <span class="cpc-meta-key">Mayor</span>
-          <span class="cpc-meta-val">${escHtml(mayorName)}${partyChip}</span>
+          <span class="cpc-meta-val">${escHtml(mayorName)}${partyChip}${playerChip}</span>
         </div>
+        ${electionRow}
         ${archetype ? `<div class="cpc-meta-row"><span class="cpc-meta-key">Platform</span><span class="cpc-meta-val">${escHtml(archetype)}</span></div>` : ''}
         <div class="cpc-meta-row">
           <span class="cpc-meta-key">Budget</span>
@@ -4276,18 +4312,19 @@ async function confirmMayorRun(ctx) {
     if (error) throw error;
     if (!data?.success) {
       const REASON = {
-        not_authenticated:     'Sign in to register.',
-        no_politician:         'No politician on this account.',
-        not_in_party:          'Join a political party first.',
-        no_nation:             'Your politician has no nation.',
-        race_in_progress:      'You are already in a race.',
-        experience_too_low:    `Your Experience (${data.experience}) is below the ${data.required} required.`,
-        already_holds_office:  'You already hold a local-executive seat. Resign before running for a different one.',
-        city_required:         'Pick a city before confirming.',
-        invalid_city:          'That city no longer exists or belongs to another nation.',
-        capital_blocked:       'The capital has its own race — use Mayor of the Capital instead.',
-        invalid_target_office: 'Unknown target office.',
-        no_shard:              'Game state unavailable. Try again.',
+        not_authenticated:      'Sign in to register.',
+        no_politician:          'No politician on this account.',
+        not_in_party:           'Join a political party first.',
+        no_nation:              'Your politician has no nation.',
+        race_in_progress:       'You are already in a race.',
+        experience_too_low:     `Your Experience (${data.experience}) is below the ${data.required} required.`,
+        already_holds_office:   'You already hold a local-executive seat. Resign before running for a different one.',
+        city_required:          'Pick a city before confirming.',
+        invalid_city:           'That city no longer exists or belongs to another nation.',
+        capital_blocked:        'The capital has its own race — use Mayor of the Capital instead.',
+        mayor_player_too_early: `Filing window opens on tick ${data.opens_at_tick}.`,
+        invalid_target_office:  'Unknown target office.',
+        no_shard:               'Game state unavailable. Try again.',
       };
       alert(REASON[data?.reason] || ('Could not register: ' + (data?.reason || 'unknown')));
       btn.disabled = false; btn.innerHTML = originalLabel;
