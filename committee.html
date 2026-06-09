@@ -476,6 +476,7 @@ async function init() {
     .maybeSingle();
   if (commRowErr) console.warn('committee: committee row fetch failed', commRowErr);
   const activeAgendaId = commRow?.active_proposal_id || null;
+  const activeAgendaSetAtTick = Number(commRow?.active_agenda_set_at_tick) || null;
 
   // Queued proposals → render in Upcoming Agenda. Joined to the
   // author faction so we can render "Proposed by …" off real names.
@@ -585,7 +586,7 @@ async function init() {
   }
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes, activeAgendaProposal, agendaVotes);
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -613,7 +614,7 @@ function ctxShardTick(ctx) {
   return Number(ctx?.shard?.current_tick) || 0;
 }
 
-function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes, activeAgendaProposal, agendaVotes) {
+function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -656,7 +657,7 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
         <span class="ag-lab">MONTHLY AGENDA</span>
         <span class="ag-status">${activeHearing ? 'HEARING IN SESSION' : (activeAgendaProposal ? 'AGENDA VOTE IN PROGRESS' : 'NO ACTIVE WORK')}</span>
       </div>
-      ${renderMonthlyAgenda(activeHearing, currentTick, isChair, activeAgendaProposal, agendaVotes, members, viewerPolId, canVoteAgenda, myAgendaVote)}
+      ${renderMonthlyAgenda(activeHearing, currentTick, isChair, activeAgendaProposal, agendaVotes, members, viewerPolId, canVoteAgenda, myAgendaVote, activeAgendaSetAtTick)}
     </div>
 
     <div class="testimony">
@@ -1137,10 +1138,11 @@ function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
 // countdown.
 function renderMonthlyAgenda(activeHearing, currentTick, isChair,
                               activeAgendaProposal, agendaVotes, members,
-                              viewerPolId, canVoteAgenda, myAgendaVote) {
+                              viewerPolId, canVoteAgenda, myAgendaVote, activeAgendaSetAtTick) {
   if (activeAgendaProposal && !activeHearing) {
     return renderAgendaVotePanel(activeAgendaProposal, agendaVotes || [],
-                                 members || [], viewerPolId, canVoteAgenda, myAgendaVote);
+                                 members || [], viewerPolId, canVoteAgenda, myAgendaVote,
+                                 activeAgendaSetAtTick, currentTick);
   }
   if (!activeHearing) return '<div class="ag-empty">No current work item.</div>';
   const p = activeHearing.proposal || {};
@@ -1393,7 +1395,7 @@ function renderProposals(proposals, canSetAgenda) {
 // each member's vote pill paints their cast or "—". When the viewer
 // can vote (committee member, hasn't voted yet), HEAR / VOTE / AMEND
 // buttons sit at the bottom and call committee_cast_agenda_vote.
-function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, myVote) {
+function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, myVote, setAtTick, currentTick) {
   const p = proposal || {};
   const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
   const snippet = firstArticle?.text
@@ -1439,7 +1441,7 @@ function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, m
       <span class="av-section">${escHtml(p.section || p.bill_name || 'Proposal')}</span>
     </div>
     ${snippet ? `<div class="av-snippet">${snippet}</div>` : ''}
-    <div class="av-sub">Sponsor <b>${escHtml(authorName)}</b> &middot; needs 3 of 5 to carry out</div>
+    <div class="av-sub">Sponsor <b>${escHtml(authorName)}</b> &middot; needs 3 of 5 to carry out${setAtTick ? ` &middot; agenda set tick ${setAtTick}${currentTick && currentTick >= setAtTick ? ` (${currentTick - setAtTick} tick${currentTick - setAtTick === 1 ? '' : 's'} ago)` : ''}` : ''}</div>
     <div class="av-tally">
       <div class="av-tally-row"><span class="av-tally-lab">Hold a Hearing</span><span class="av-tally-val">${hear} / 3</span></div>
       <div class="av-tally-row"><span class="av-tally-lab">Vote on Floor</span><span class="av-tally-val">${vote} / 3</span></div>
