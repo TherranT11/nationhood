@@ -109,6 +109,7 @@ const TEXT_MAX = 400;
 
 const REASON_HUMAN = {
     not_authenticated:     'Sign in to submit testimony.',
+    invalid_arguments:     'Submission was malformed — refresh and try again.',
     no_faction:            'No active faction found.',
     hearing_not_found:     'That hearing no longer exists.',
     hearing_closed:        'The hearing has closed.',
@@ -316,6 +317,7 @@ export function mountCommitteeHearingPressingIssues({ supabase, faction, host, s
                     p_hearing_id: hearing.hearing_id,
                     p_persona_id: sel.value,
                     p_text:       textEl.value.trim(),
+                    p_faction_id: factionId,   // required since 20270665
                 });
                 if (error) throw error;
                 if (!data?.success) {
