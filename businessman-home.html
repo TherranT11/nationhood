@@ -9,7 +9,21 @@
   :root { --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif; }
   /* Page chrome (topbar/nav/.ent-content) is injected by
      js/entrepreneur-topbar.js — shared with the entrepreneur pages. */
-  .biz-empty { max-width: 560px; margin: 60px auto; text-align: center; }
+  .biz-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px;
+    max-width:1280px; margin:0 auto; }
+  .biz-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px;
+    padding:14px 16px; }
+  .biz-card .lab { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.16em;
+    color:#666; font-weight:700; margin-bottom:7px; }
+  .biz-card .val { font-size:14px; color:#fff; line-height:1.4; }
+  .biz-card .sub { font-family:var(--font-mono); font-size:10px; color:#888; margin-top:4px; }
+  .biz-card .val.money { font-family:var(--font-mono); color:#8aaa6a; }
+  .biz-card .val.ok    { color:#8aaa6a; }
+  .biz-card .val.bad   { color:#d9534f; }
+  .biz-status-line { font-size:11.5px; color:#8aaa6a; line-height:1.6; }
+  .biz-status-line.bad { color:#d9534f; }
+
+  .biz-empty { max-width: 560px; margin: 48px auto 0; text-align: center; }
   .biz-empty .eyebrow { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em;
     color: #8aaa6a; font-weight: 700; margin-bottom: 10px; }
   .biz-empty h1 { font-family: Georgia, serif; font-size: 24px; color: #fff; margin: 0 0 10px; font-weight: 500; }
@@ -24,6 +38,7 @@
 <div id="ent-topbar"></div>
 <div id="loading">LOADING...</div>
 <div class="ent-content" id="page-content" style="display:none;">
+  <div class="biz-row" id="biz-row"></div>
   <div class="biz-empty">
     <div class="eyebrow">BUSINESSMAN · ALPHA</div>
     <h1>The first day of the <em>rest of your life</em></h1>
@@ -34,12 +49,80 @@
 </div>
 
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
+import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
 
 (async () => {
   try {
     const ctx = await bootstrapBusinessman('home');
     if (!ctx) return; // redirected (no auth / no businessman faction)
+    const f = ctx.faction;
+
+    // {City}: the businessman lives in the home nation's capital until
+    // a relocation mechanic exists. Soft-fails to '—'.
+    let city = '—';
+    try {
+      const { data, error } = await _supabase.from('nations')
+        .select('capital').eq('id', f.nation_id).maybeSingle();
+      if (error) throw error;
+      city = data?.capital || '—';
+    } catch (e) {
+      console.warn('[businessman-home] capital fetch failed:', e?.message || e);
+    }
+
+    const cash      = Number(f.party_funds) || 0;
+    const resName   = f.biz_residence_name || '—';
+    const resWorth  = Number(f.biz_residence_worth) || 0;
+    // Debt: no businessman debt instruments exist yet — when loans
+    // land, sum them here. Net worth = cash on hand + residence,
+    // minus that (currently zero) debt.
+    const debt      = 0;
+    const netWorth  = cash + resWorth - debt;
+    const place     = `${city}, ${f.nation || '—'}`;
+
+    // Status is DERIVED, not hardcoded: Free/Under Arrest comes from
+    // factions.status (the same flag the arrest lock uses). Warrants
+    // and investigations have no businessman-targeting systems yet,
+    // so they read their all-clear defaults — wire real queries here
+    // when those mechanics land.
+    const arrested  = String(f.status || '').toLowerCase() === 'arrested';
+    const statusHtml = arrested
+      ? `<div class="biz-status-line bad">Under Arrest</div>
+         <div class="biz-status-line">No Warrants</div>
+         <div class="biz-status-line">No Active Investigations</div>`
+      : `<div class="biz-status-line">Free</div>
+         <div class="biz-status-line">No Warrants</div>
+         <div class="biz-status-line">No Active Investigations</div>`;
+
+    document.getElementById('biz-row').innerHTML = `
+      <div class="biz-card">
+        <div class="lab">CURRENT LOCATION</div>
+        <div class="val">${esc(place)}</div>
+      </div>
+      <div class="biz-card">
+        <div class="lab">RESIDENCE</div>
+        <div class="val">${esc(place)}</div>
+        <div class="sub">${esc(resName)} &middot; Worth: ${esc(hfFmtBig(resWorth))}</div>
+      </div>
+      <div class="biz-card">
+        <div class="lab">DEBT</div>
+        <div class="val money">${esc(hfFmtBig(debt))}</div>
+      </div>
+      <div class="biz-card">
+        <div class="lab">NET WORTH</div>
+        <div class="val money">${esc(hfFmtBig(netWorth))}</div>
+        <div class="sub">cash + residence</div>
+      </div>
+      <div class="biz-card">
+        <div class="lab">ASSETS</div>
+        <div class="val ${arrested ? 'bad' : 'ok'}">${arrested ? 'Frozen' : 'Unfrozen'}</div>
+      </div>
+      <div class="biz-card">
+        <div class="lab">STATUS</div>
+        ${statusHtml}
+      </div>`;
+
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
   } catch (err) {

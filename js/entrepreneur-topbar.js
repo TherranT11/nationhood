@@ -6,7 +6,7 @@
 // pattern (a deliberate "entrepreneur copy", not a cross-type shared
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
-import { hfFmtBig, APP_VERSION, flagUrlFor } from './utils.js';
+import { hfFmtBig, currentAge, flagUrlFor } from './utils.js';
 import { getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const ENT_TABS = [
@@ -41,7 +41,7 @@ function ensureStyles() {
     border-radius:3px; display:flex; align-items:center; justify-content:center; color:#8aaa6a;
     font-size:11px; font-weight:600; letter-spacing:0.05em; }
   .ent-topbar .player { color:#fff; font-weight:500; font-size:13px; }
-  .ent-topbar__version { font-family:var(--font-mono,monospace); font-size:10px; color:#f0efe6; letter-spacing:0.5px; opacity:0.8; }
+  .ent-topbar .meta .flag { width:18px; height:12px; object-fit:cover; border:0.5px solid rgba(255,255,255,0.1); vertical-align:-1px; margin-right:5px; }
   .ent-topbar .meta { display:flex; gap:22px; color:#888; }
   .ent-topbar .meta .label { color:#555; font-size:9px; letter-spacing:0.13em; }
   .ent-topbar .meta .value { color:#d4d4d4; font-size:12px; margin-top:2px; }
@@ -277,7 +277,7 @@ function applyArrestLock(faction) {
   return true;
 }
 
-export function renderEntrepreneurTopbar(container, { faction, shard, allUserFactions, activeTab, tabs = ENT_TABS }) {
+export function renderEntrepreneurTopbar(container, { faction, shard, allUserFactions, activeTab, tabs = ENT_TABS, showIdentity = false }) {
   if (!container) return;
   ensureStyles();
   const f = faction || {};
@@ -287,11 +287,17 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
   const ini = (((first[0] || '') + (last[0] || '')).toUpperCase()) || '—';
   const pillLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Entrepreneur');
   const cash = hfFmtBig(Number(f.party_funds) || 0);
+  // Businessman bar leads its meta with who/where: AGE (ages with the
+  // ticks, same currentAge math as the politician bar) and the home
+  // nation with its flag chip.
+  const identityMeta = showIdentity ? `
+        <div><div class="label">AGE</div><div class="value">${esc(String(currentAge(f, s.current_tick || 0)))}</div></div>
+        <div><div class="label">NATION</div><div class="value"><img class="flag" src="${esc(flagUrlFor(f.nation))}" alt="" onerror="this.style.display='none'">${esc(f.nation || '—')}</div></div>` : '';
 
   container.innerHTML = `
     <div class="ent-topbar">
-      <div class="brand"><div class="crest">${esc(ini)}</div><span class="player">${esc(f.faction_name || pillLabel)}</span><span class="ent-topbar__version">${esc(APP_VERSION)}</span></div>
-      <div class="meta">
+      <div class="brand"><div class="crest">${esc(ini)}</div><span class="player">${esc(f.faction_name || pillLabel)}</span></div>
+      <div class="meta">${identityMeta}
         <div><div class="label">GAME DATE</div><div class="value">${esc(s.current_date || '—')}</div></div>
         <div><div class="label">TICK</div><div class="value">${s.current_tick != null ? esc(s.current_tick) : '—'}</div></div>
         <div><div class="label">NEXT TICK</div><div class="value" id="ent-next-tick">—</div></div>
@@ -351,7 +357,7 @@ const SWITCHER_FACTION_COLS =
   'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick';
 
 const ENT_FACTION_COLS =
-  'id, faction_name, leader_first_name, leader_last_name, leader_age, nation, ent_origin_nation, ' +
+  'id, faction_name, leader_first_name, leader_last_name, leader_age, founded_tick, nation, nation_id, biz_residence_name, biz_residence_worth, ent_origin_nation, ' +
   'entrepreneur_archetype, ent_influence, ent_skill, ent_reputation, party_funds, status';
 
 export async function bootstrapEntrepreneur(activeTab) {
@@ -425,7 +431,7 @@ export async function bootstrapBusinessman(activeTab) {
   const shard = shardRes.data || {};
   const allUserFactions = allFacRes.data || [];
   renderEntrepreneurTopbar(document.getElementById('ent-topbar'),
-    { faction, shard, allUserFactions, activeTab, tabs: BIZ_TABS });
+    { faction, shard, allUserFactions, activeTab, tabs: BIZ_TABS, showIdentity: true });
   applyArrestLock(faction);
   return { user, faction, shard, allUserFactions };
 }
