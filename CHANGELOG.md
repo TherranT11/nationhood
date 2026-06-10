@@ -57,14 +57,32 @@ All notable changes to Nationhood are recorded here. Format inspired by
   *"{Corporation} retained {Person} for a consultancy."* Public
   companies disclose the amount; private companies don't — until
   someone investigates.
+- **Corporate Taxes.** A new Corporate Taxes panel on the corp page
+  shows the year's **Taxable Profit** (net cash change), the HQ
+  nation's **rate**, and **Taxes Owed**. The owner files once per year
+  at one of four disclosure tiers — **Full Disclosure (100%) /
+  Aggressive Positions (75%) / Hidden Income (50%) / Inflated Losses
+  (25%)** — paying that share from the treasury to the nation. Filing
+  below 100% hides the rest: if the nation has an **FIS agent**, the
+  hidden income goes on the audit record for a later investigation to
+  uncover; if not, a roll at filing (eased by nation corruption) may
+  catch it and claw it back with a fine. One filing per year.
 
 ### Added — Committees & Legislation
 
 - **Set the Agenda.** Any committee member, once per tick, can click
   a queued bill in Upcoming Agenda to put it before the committee.
-  All five seats vote **HEAR / VOTE / AMEND** (NPCs vote by party
-  archetype and never vote Amend); the first action to 3 votes
-  carries, with the chair breaking 2-2-1 splits.
+- **Committee motions (Hearing / Vote / Amend / Table).** Replaces the
+  old HEAR/VOTE/AMEND agenda vote *and* the Report/Table report vote
+  with one mechanic: a member moves a motion on the active bill, which
+  opens a **3-tick YES/NO ballot** of the five seats. A majority of the
+  votes actually cast carries it (abstaining is just not voting, which
+  lowers the bar); the **chair breaks ties**. The mover auto-votes yes
+  and NPC seats vote by party archetype. **Hearing** opens a hearing
+  (once per bill), **Amend** flags it for amendment, **Table** sends it
+  back to the agenda, and **Vote** sends it to the chamber floor — where
+  a party-bloc seat tally decides **enacted vs failed** (enacted bills
+  reach the statute book). Bills no longer vanish at the report stage.
 - **Hearing deliberation chat.** While a hearing is in session,
   committee members get a live composer on the Hearing Record to
   respond to witness testimony; everyone else can read the
