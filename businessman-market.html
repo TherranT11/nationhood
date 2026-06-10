@@ -12,6 +12,8 @@
     letter-spacing:0.12em; font-weight:700; background:#0a0a0a; color:#888;
     border:1px solid rgba(255,255,255,0.1); border-radius:4px; text-align:center; }
   .mk-tab.locked { opacity:0.35; cursor:not-allowed; }
+  .mk-tab[data-panel] { cursor:pointer; }
+  .mk-tab[data-panel]:hover { border-color:rgba(138,170,106,0.4); }
   .mk-tab.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
 
   .mk-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
@@ -49,12 +51,16 @@
   <div class="mk-tabs">
     <div class="mk-tab locked" title="Coming soon">CORPORATIONS</div>
     <div class="mk-tab locked" title="Coming soon">ASSETS</div>
-    <div class="mk-tab locked" title="Coming soon">PRODUCTS</div>
-    <div class="mk-tab sel">RAW MATERIALS</div>
+    <div class="mk-tab" data-panel="mk-products">PRODUCTS</div>
+    <div class="mk-tab sel" data-panel="mk-raw">RAW MATERIALS</div>
   </div>
-  <div class="mk-panel">
+  <div class="mk-panel" id="mk-raw">
     <div class="mk-head"><span class="rule"></span><span class="t">RAW MATERIALS</span><span class="rule"></span></div>
     <div id="mk-rows"><div class="mk-empty">Loading the exchange…</div></div>
+  </div>
+  <div class="mk-panel" id="mk-products" style="display:none;">
+    <div class="mk-head"><span class="rule"></span><span class="t">PRODUCTS</span><span class="rule"></span></div>
+    <div id="mk-product-rows"><div class="mk-empty">Loading the exchange…</div></div>
   </div>
 </div>
 
@@ -68,31 +74,46 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
     const ctx = await bootstrapBusinessman('market');
     if (!ctx) return; // redirected (no auth / no businessman faction)
 
-    // Construction Materials — both numbers come from the one server
-    // source (construction_materials_market, 20270811): amount =
-    // (nation Energy + Minerals) × 3, cost = $20k × scarcity (global
-    // average supply ÷ local supply, clamped 0.5×–3×). The purchase
-    // RPC will read the same function, so this listed price is the
-    // charged price.
-    const host = document.getElementById('mk-rows');
-    try {
-      const { data: mkt, error } = await _supabase.rpc('construction_materials_market',
-        { p_nation_id: ctx.faction.nation_id });
-      if (error) throw error;
-      if (!mkt?.success) throw new Error(mkt?.reason || 'unknown');
-      host.innerHTML = `
-        <div class="mk-grid">
-          <div class="h">NAME</div><div class="h">AMOUNT AVAILABLE</div><div class="h">COST PER UNIT</div>
-          <div class="c nm">Construction Materials</div>
-          <div class="c">${esc(Number(mkt.amount_available).toLocaleString())} units</div>
-          <div class="c money">${esc(hfFmtBig(Number(mkt.cost_per_unit) || 0))}
-            <span class="sub">base ${esc(hfFmtBig(Number(mkt.base_cost) || 0))} × ${esc(String(mkt.scarcity_mult))} scarcity</span>
-          </div>
-        </div>`;
-    } catch (e) {
-      console.warn('[businessman-market] market fetch failed:', e?.message || e);
-      host.innerHTML = '<div class="mk-empty">Could not load the exchange — try again shortly.</div>';
-    }
+    // Each listing's numbers come from its one server source
+    // (construction_materials_market 20270811/12,
+    // construction_equipment_market 20270815) — the future purchase
+    // RPCs read the same functions, so listed prices are charged
+    // prices. One renderer shapes every market row.
+    const marketRow = (name, mkt) => `
+      <div class="mk-grid">
+        <div class="h">NAME</div><div class="h">AMOUNT AVAILABLE</div><div class="h">COST PER UNIT</div>
+        <div class="c nm">${esc(name)}</div>
+        <div class="c">${esc(Number(mkt.amount_available).toLocaleString())} units</div>
+        <div class="c money">${esc(hfFmtBig(Number(mkt.cost_per_unit) || 0))}
+          <span class="sub">base ${esc(hfFmtBig(Number(mkt.base_cost) || 0))} × ${esc(String(mkt.scarcity_mult))} scarcity</span>
+        </div>
+      </div>`;
+    const loadListing = async (rpc, name, hostId) => {
+      const host = document.getElementById(hostId);
+      try {
+        const { data: mkt, error } = await _supabase.rpc(rpc,
+          { p_nation_id: ctx.faction.nation_id });
+        if (error) throw error;
+        if (!mkt?.success) throw new Error(mkt?.reason || 'unknown');
+        host.innerHTML = marketRow(name, mkt);
+      } catch (e) {
+        console.warn(`[businessman-market] ${rpc} fetch failed:`, e?.message || e);
+        host.innerHTML = '<div class="mk-empty">Could not load the exchange — try again shortly.</div>';
+      }
+    };
+    loadListing('construction_materials_market', 'Construction Materials', 'mk-rows');
+    loadListing('construction_equipment_market', 'Construction Equipment', 'mk-product-rows');
+
+    // Tab switching — only the panels with data-panel are live;
+    // Corporations / Assets stay locked.
+    document.querySelectorAll('.mk-tab[data-panel]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.mk-tab[data-panel]').forEach(t =>
+          t.classList.toggle('sel', t === tab));
+        document.querySelectorAll('.mk-panel').forEach(p =>
+          p.style.display = p.id === tab.dataset.panel ? 'block' : 'none');
+      });
+    });
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';

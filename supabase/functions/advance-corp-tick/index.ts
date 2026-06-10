@@ -154,7 +154,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-10-b (corp-payroll+construction)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-10-c (corp-payroll+construction+equipment)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -277,6 +277,25 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (conErr) {
         console.error('[advance-corp-tick] FAILED construction processing:', conErr);
         summary.errors.push({ scope: 'construction', error: String(conErr) });
+    }
+
+    // Construction Equipment accrual (20270815): +7 to any nation
+    // whose Energy AND Consumer Goods both rose since last tick's
+    // watermarks. Ratchet — never subtracts. Idempotent within a
+    // tick (second run sees current == watermark).
+    try {
+        const { data: eqRes, error: eqErr } = await supabase.rpc(
+            'accrue_construction_equipment', { p_tick: currentTick });
+        if (eqErr) {
+            console.warn('[ConstructionEquipment] accrual RPC failed:', eqErr.message);
+            summary.errors.push({ scope: 'construction_equipment', error: eqErr.message });
+        } else if (eqRes && Number(eqRes.nations_accrued) > 0) {
+            summary.constructionEquipment = eqRes;
+            console.log(`[ConstructionEquipment] tick ${currentTick}: ${eqRes.nations_accrued} nations +7`);
+        }
+    } catch (eqErr) {
+        console.error('[advance-corp-tick] FAILED equipment accrual:', eqErr);
+        summary.errors.push({ scope: 'construction_equipment', error: String(eqErr) });
     }
 
     try {
