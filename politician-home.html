@@ -3117,26 +3117,23 @@ async function renderForeignAffiliation(ctx) {
   const embCooldown  = nextEmbTick > currentTick && !hasPendingDraw;
   const embCdLeft    = Math.max(0, nextEmbTick - currentTick);
 
-  const dayToDayTile = embCooldown
-    ? `<div class="act-btn cooldown" aria-disabled="true" title="Cooldown — ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'} remaining">
-        <div class="act-head">
-          <span class="act-ic">🏛</span>
-          <span class="act-name">DAY TO DAY IN THE EMBASSY</span>
-          <span class="act-cost">no cost</span>
-        </div>
-        <div class="act-desc">Routine consular and reporting work — files, memos, the trade.</div>
-        <div class="act-cooldown">Ready in ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'}</div>
-      </div>`
-    : `<div class="act-btn" data-action="embassy-day-to-day">
-        <div class="act-head">
-          <span class="act-ic">🏛</span>
-          <span class="act-name">DAY TO DAY IN THE EMBASSY</span>
-          <span class="act-cost">no cost</span>
-        </div>
-        <div class="act-desc">${hasPendingDraw
-          ? 'An incident is waiting on your desk — resolve it.'
-          : 'Routine consular and reporting work — files, memos, the trade. Something always comes up.'}</div>
-      </div>`;
+  // Same conditional-attrs shape as the FIS tiles: cooldown variants
+  // carry no data-action so the click wiring skips them naturally.
+  const dayToDayAttrs = embCooldown
+    ? ` aria-disabled="true" title="Cooldown — ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'} remaining"`
+    : ' data-action="embassy-day-to-day"';
+  const dayToDayTile = `
+    <div class="act-btn${embCooldown ? ' cooldown' : ''}"${dayToDayAttrs}>
+      <div class="act-head">
+        <span class="act-ic">🏛</span>
+        <span class="act-name">DAY TO DAY IN THE EMBASSY</span>
+        <span class="act-cost">no cost</span>
+      </div>
+      <div class="act-desc">${hasPendingDraw
+        ? 'An incident is waiting on your desk — resolve it.'
+        : 'Routine consular and reporting work — files, memos, the trade. Something always comes up.'}</div>
+      ${embCooldown ? `<div class="act-cooldown">Ready in ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'}</div>` : ''}
+    </div>`;
 
   const placeholderActions = [
     { ic: '🤝', name: 'BUILD LOCAL CONTACTS',          cost: 'no cost', desc: 'Cultivate sources inside the host nation — ministers, journalists, opposition figures.' },
