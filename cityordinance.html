@@ -128,6 +128,18 @@ input[type=number].fld { font-variant-numeric:tabular-nums; }
 .cat-arch .s { color:#5aafa5; }
 .cat-arch .o { color:#c87a7a; }
 .cat-by { margin-top:8px; font-size:10px; color:#666; font-style:italic; }
+.cat-fx.cr { color:#c8a26e; border:0.5px solid rgba(200,162,110,0.4);
+  background:rgba(200,162,110,0.06); }
+.cat-add { margin-left:auto; padding:7px 12px; background:transparent;
+  border:0.5px solid rgba(90,175,165,0.35); border-radius:4px; color:#5aafa5;
+  font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+  cursor:pointer; white-space:nowrap; }
+.cat-add:hover { background:rgba(90,175,165,0.08); color:#a0d8d8; }
+.cat-edit { margin-left:10px; padding:5px 9px; background:transparent;
+  border:0.5px solid rgba(200,162,110,0.35); border-radius:3px; color:#c8a26e;
+  font-family:monospace; font-size:8px; letter-spacing:0.1em; font-weight:700;
+  cursor:pointer; white-space:nowrap; flex-shrink:0; }
+.cat-edit:hover { background:rgba(200,162,110,0.08); color:#dcb88a; }
 .loading { padding:60px 24px; text-align:center; color:#666;
   font-family:monospace; font-size:11px; letter-spacing:0.1em; }
 
@@ -172,17 +184,33 @@ const REASON = {
   duplicate_stat_key:   'You can only affect each stat once per ordinance.',
   invalid_archetype:    'One of the picked archetypes isn’t recognised.',
   archetype_overlap:    'An archetype can’t be on both Support and Oppose at once.',
+  invalid_building_type: 'Pick a building type for the construction request.',
+  ordinance_not_found:  'That ordinance no longer exists — refresh the page.',
+  not_author:           'You can only edit your own ordinances.',
 };
 
 // 20270741: stat effects are an array now. Each entry tracks the
 // row's local UI state (key/dir/mag); submit() folds direction +
 // magnitude into a signed delta and sends the array to the RPC.
+// 20270805: the form is on-demand (Add / per-row Edit) — draft is
+// reset by openForm, and editId distinguishes the two RPCs.
 let nextEffectId = 1;
 const draft = {
+  editId: null,
   name: '', description: '', cost: 0,
   support: new Set(), oppose: new Set(),
   effects: [], // [{ id, key, dir, mag }]
+  constructionRequest: false, constructionType: '',
 };
+let pageCtx = null;
+let canManage = false;   // authoring office OR admin
+let catalogRows = [];    // last catalog fetch, for edit prefill
+
+const BUILDING_TYPE_OPTIONS = [
+  ['single_story_home', 'Single Story Home'],
+  ['double_story', 'Double Story'],
+  ['multitenant_living', 'Multitenant Living'],
+];
 
 (async () => {
   let ctx;
@@ -199,15 +227,20 @@ const draft = {
     document.getElementById('back-link').href = `city.html?id=${encodeURIComponent(cityId)}`;
   }
 
-  // The catalog shows for everyone; only the authoring form is
-  // office-gated.
-  renderCatalog();
+  // The catalog shows for everyone. Add/Edit show for the three
+  // authoring offices — and for admins, who curate the whole
+  // catalog (update_ordinance lets admins edit any row, offices
+  // only their own).
+  pageCtx = ctx;
   const office = ctx.faction?.politician_office || null;
-  if (!AUTHORING_OFFICES.has(office)) {
-    renderGate();
-    return;
+  canManage = AUTHORING_OFFICES.has(office);
+  if (!canManage) {
+    try {
+      const { data } = await _supabase.rpc('verify_admin_access');
+      canManage = !!data?.authorized;
+    } catch (_) { /* not an admin session */ }
   }
-  renderForm(ctx);
+  renderCatalog();
 })();
 
 // ── Available Ordinances — the global catalog ─────────────────────
@@ -219,13 +252,15 @@ async function renderCatalog() {
   const host = document.getElementById('catalog-host');
   try {
     const { data: ords, error } = await _supabase.from('ordinances')
-      .select(`name, description, cost, support_archetypes, oppose_archetypes,
-               stat_effects, created_at_tick,
+      .select(`id, name, description, cost, support_archetypes, oppose_archetypes,
+               stat_effects, created_at_tick, construction_request, construction_building_type,
                author:factions!author_faction_id(leader_first_name, leader_last_name, nickname, faction_name)`)
       .order('created_at', { ascending: false });
     if (error) throw error;
+    catalogRows = ords || [];
 
     const STAT_NAME = Object.fromEntries(CITY_STATS.map(s => [s.key, s.name]));
+    const TYPE_NAME = Object.fromEntries(BUILDING_TYPE_OPTIONS);
     const fxHtml = (o) => {
       const fx = Array.isArray(o.stat_effects) ? o.stat_effects : [];
       if (!fx.length) return '<span class="cat-fx none">No stat effects</span>';
@@ -240,20 +275,24 @@ async function renderCatalog() {
         <div class="ord-eyebrow">GLOBAL CATALOG</div>
         <div class="ord-head">
           <span class="sans">Available</span><span class="serif">Ordinances</span>
+          ${canManage ? '<button type="button" class="cat-add" id="cat-add-btn">+ ADD NEW ORDINANCE</button>' : ''}
         </div>
-        ${!ords?.length
+        ${!catalogRows.length
           ? '<div class="gate-msg">The catalog is empty — the first ordinance is waiting to be written.</div>'
           : `<div class="cat-list">
-              ${ords.map(o => `
+              ${catalogRows.map(o => `
                 <div class="cat-row">
                   <div class="cat-top">
                     <span class="cat-name">${escHtml(o.name)}</span>
                     <span class="cat-cost">${Number(o.cost) < 0
                       ? 'PAYS $' + Math.abs(Number(o.cost))
                       : 'COST $' + (Number(o.cost) || 0)}</span>
+                    ${canManage ? `<button type="button" class="cat-edit" data-ord="${escAttr(o.id)}">EDIT ORDINANCE</button>` : ''}
                   </div>
                   <div class="cat-desc">${escHtml(o.description)}</div>
-                  <div class="cat-fx-row">${fxHtml(o)}</div>
+                  <div class="cat-fx-row">${fxHtml(o)}
+                    ${o.construction_request ? `<span class="cat-fx cr">🏗 Construction Request — ${escHtml(TYPE_NAME[o.construction_building_type] || o.construction_building_type || '—')}</span>` : ''}
+                  </div>
                   ${(o.support_archetypes?.length || o.oppose_archetypes?.length) ? `
                     <div class="cat-arch">
                       ${o.support_archetypes?.length ? `<span class="s">FOR: ${escHtml(o.support_archetypes.join(', '))}</span>` : ''}
@@ -263,29 +302,34 @@ async function renderCatalog() {
                 </div>`).join('')}
             </div>`}
       </div>`;
+
+    document.getElementById('cat-add-btn')?.addEventListener('click', () => openForm(null));
+    host.querySelectorAll('.cat-edit').forEach(btn => {
+      btn.addEventListener('click', () =>
+        openForm(catalogRows.find(o => o.id === btn.dataset.ord) || null));
+    });
   } catch (e) {
     console.warn('[cityordinance] catalog load failed:', e?.message || e);
     host.innerHTML = '';
   }
 }
 
-// Read-only "you don't qualify" surface for non-authoring viewers.
-// Keeps the page accessible by URL but explains why it's inert.
-function renderGate() {
-  document.getElementById('card-host').innerHTML = `
-    <div class="ord-card">
-      <div class="ord-head">
-        <span class="sans">Author</span><span class="serif">Ordinance</span>
-      </div>
-      <div class="gate-msg">
-        Only Mayors, City Council Members, and City Council Presidents
-        can author ordinances. Pursue one of the three offices, then
-        come back here.
-      </div>
-    </div>`;
+// The on-demand form — ord null = Add New, ord set = Edit (prefilled).
+function openForm(ord) {
+  draft.editId = ord?.id || null;
+  draft.name = ord?.name || '';
+  draft.description = ord?.description || '';
+  draft.cost = Number(ord?.cost) || 0;
+  draft.support = new Set(ord?.support_archetypes || []);
+  draft.oppose  = new Set(ord?.oppose_archetypes  || []);
+  draft.effects = [];
+  draft.constructionRequest = !!ord?.construction_request;
+  draft.constructionType = ord?.construction_building_type || '';
+  renderForm(ord);
+  document.getElementById('card-host').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function renderForm(ctx) {
+function renderForm(ord) {
   const archChips = (side) => PARTY_ARCHETYPES.map(a => `
     <label class="arch-chip" data-arch="${escAttr(a)}" data-side="${side}">
       <input type="checkbox" data-arch-cb data-arch="${escAttr(a)}" data-side="${side}" />
@@ -294,32 +338,50 @@ function renderForm(ctx) {
 
   document.getElementById('card-host').innerHTML = `
     <div class="ord-card">
-      <div class="ord-eyebrow">AUTHOR · GLOBAL CATALOG</div>
+      <div class="ord-eyebrow">${ord ? 'EDIT' : 'AUTHOR'} · GLOBAL CATALOG</div>
       <div class="ord-head">
-        <span class="sans">Author an</span><span class="serif">Ordinance</span>
+        <span class="sans">${ord ? 'Edit' : 'Author an'}</span><span class="serif">Ordinance</span>
       </div>
       <div class="ord-sub">
-        Templates created here enter the global catalog. Any sitting
+        Templates ${ord ? 'live in' : 'created here enter'} the global catalog. Any sitting
         Mayor anywhere can propose them for their city. Once enacted,
         the stat effect persists until rescinded by vote.
       </div>
 
       <div class="fg">
         <div class="fg-lab">NAME<span class="req">*</span></div>
-        <input id="f-name" class="fld" type="text" maxlength="80"
+        <input id="f-name" class="fld" type="text" maxlength="80" value="${escAttr(draft.name)}"
                placeholder="e.g. Smoking Ban, Public Library Funding, Pier Renovation Levy" />
       </div>
 
       <div class="fg">
         <div class="fg-lab">DESCRIPTION<span class="req">*</span></div>
         <textarea id="f-desc" class="fld" maxlength="400" rows="3"
-                  placeholder="One paragraph on what the ordinance does and why."></textarea>
+                  placeholder="One paragraph on what the ordinance does and why.">${escHtml(draft.description)}</textarea>
       </div>
 
       <div class="fg">
         <div class="fg-lab">COST (in dollars)<span class="req">*</span></div>
         <div class="fg-hint">Deducted from city budget when the ordinance PASSES. Failed proposals are free. <strong>Negative values</strong> let the ordinance pay the city (grants, settlements). Range: -100 to 100.</div>
-        <input id="f-cost" class="fld" type="number" min="-100" max="100" step="1" value="0" />
+        <input id="f-cost" class="fld" type="number" min="-100" max="100" step="1" value="${escAttr(String(draft.cost))}" />
+      </div>
+
+      <div class="fg">
+        <div class="fg-lab">CONSTRUCTION REQUEST</div>
+        <div class="fg-hint">When a city passes this ordinance, it posts a construction
+          project to the public bid board — construction corporations bid on it with
+          their blueprints.</div>
+        <label class="arch-chip${draft.constructionRequest ? ' selected' : ''}" id="cr-chip">
+          <input type="checkbox" id="f-cr"${draft.constructionRequest ? ' checked' : ''} />
+          <span>This ordinance commissions a construction project</span>
+        </label>
+        <div id="cr-type-wrap" style="margin-top:8px; display:${draft.constructionRequest ? 'block' : 'none'};">
+          <select id="f-cr-type" class="fld">
+            <option value="">— Type of building —</option>
+            ${BUILDING_TYPE_OPTIONS.map(([v, l]) =>
+              `<option value="${escAttr(v)}"${draft.constructionType === v ? ' selected' : ''}>${escHtml(l)}</option>`).join('')}
+          </select>
+        </div>
       </div>
 
       <div class="fg">
@@ -345,26 +407,29 @@ function renderForm(ctx) {
 
       <div class="foot">
         <div class="foot-note">
-          Authoring is one-shot — the ordinance hits the catalog and stays.
-          No edit pass today; if you need to revise, author a new one.
+          ${ord
+            ? 'Edits apply to the catalog template in place. Copies already enacted in cities are unchanged.'
+            : 'The ordinance hits the catalog and any sitting Mayor can propose it. You can edit it later from the list above.'}
         </div>
         <button class="btn cancel" id="btn-cancel" type="button">Cancel</button>
-        <button class="btn submit" id="btn-submit" type="button" disabled>Submit</button>
+        <button class="btn submit" id="btn-submit" type="button" disabled>${ord ? 'Save Changes' : 'Submit'}</button>
       </div>
     </div>`;
 
-  wireForm(ctx);
+  wireForm(ord);
 }
 
-function wireForm(ctx) {
+function wireForm(ord) {
   // 20270741: stat_effects is optional (empty = "vibes only"
-  // ordinance). Cost widened to -100..100. Submit gate just needs
-  // name, description, and a cost in range.
+  // ordinance). Cost widened to -100..100. Submit gate needs name,
+  // description, a cost in range — and a building type when the
+  // construction-request box is ticked.
   const refreshSubmitState = () => {
     const c = Number(draft.cost);
     document.getElementById('btn-submit').disabled = !draft.name
       || !draft.description
-      || !Number.isFinite(c) || c < -100 || c > 100;
+      || !Number.isFinite(c) || c < -100 || c > 100
+      || (draft.constructionRequest && !draft.constructionType);
   };
 
   document.getElementById('f-name').addEventListener('input', (e) => {
@@ -381,10 +446,51 @@ function wireForm(ctx) {
     refreshSubmitState();
   });
 
-  // Start with one empty effect row visible — most ordinances will
-  // want at least one. User can remove it for vibes-only authoring.
-  addEffectRow();
-  document.getElementById('btn-add-effect').addEventListener('click', addEffectRow);
+  // Construction Request: checkbox reveals the building-type select;
+  // both feed the submit gate.
+  const crCb = document.getElementById('f-cr');
+  crCb.addEventListener('change', () => {
+    draft.constructionRequest = crCb.checked;
+    document.getElementById('cr-chip').classList.toggle('selected', crCb.checked);
+    document.getElementById('cr-type-wrap').style.display = crCb.checked ? 'block' : 'none';
+    refreshSubmitState();
+  });
+  document.getElementById('f-cr-type').addEventListener('change', (e) => {
+    draft.constructionType = e.target.value || '';
+    refreshSubmitState();
+  });
+
+  // Effects: prefill from the ordinance being edited; otherwise one
+  // empty row to start (removable for vibes-only authoring).
+  const initialFx = Array.isArray(ord?.stat_effects) ? ord.stat_effects : [];
+  if (initialFx.length) {
+    initialFx.forEach(f => addEffectRow({
+      key: f.key || '',
+      dir: (Number(f.delta) || 0) < 0 ? 'down' : 'up',
+      mag: Math.abs(Number(f.delta) || 0),
+    }));
+  } else {
+    addEffectRow();
+  }
+  document.getElementById('btn-add-effect').addEventListener('click', () => addEffectRow());
+
+  // Prefill archetype chips when editing — dispatching change reuses
+  // the same selection/mirror logic as a hand click. (The handler's
+  // Set.add is idempotent, so the pre-seeded draft sets are fine.)
+  setTimeout(() => {
+    for (const side of ['support', 'oppose']) {
+      for (const arch of (side === 'support' ? draft.support : draft.oppose)) {
+        const cb = document.querySelector(
+          `[data-arch-cb][data-side="${side}"][data-arch="${cssEscape(arch)}"]`);
+        if (cb && !cb.checked) {
+          cb.checked = true;
+          cb.dispatchEvent(new Event('change'));
+        }
+      }
+    }
+  }, 0);
+
+  refreshSubmitState();
 
   // Archetype chips: per-side multi-select. The other side's matching
   // chip is greyed out as long as this one is selected — server
@@ -418,23 +524,32 @@ function wireForm(ctx) {
     });
   });
 
+  // Cancel hides the form — the catalog above stays where it was.
   document.getElementById('btn-cancel').addEventListener('click', () => {
-    history.length > 1 ? history.back() : location.href = 'politician-nation.html';
+    document.getElementById('card-host').innerHTML = '';
   });
-  document.getElementById('btn-submit').addEventListener('click', () => submit(ctx));
+  document.getElementById('btn-submit').addEventListener('click', submit);
 }
 
 // 20270741 — Dynamic stat-effects list. Each row's local state
 // lives on the draft.effects array, keyed by a synthetic id so
 // removal doesn't depend on index order. addEffectRow appends a
-// fresh entry + renders the matching DOM row; removeEffectRow
+// fresh entry + renders the matching DOM row (prefilled when an
+// initial {key, dir, mag} is passed — the edit path); removeEffectRow
 // pulls the entry and its row out together.
-function addEffectRow() {
+function addEffectRow(initial) {
   const id = nextEffectId++;
-  draft.effects.push({ id, key: '', dir: 'up', mag: 0 });
+  const entry = { id, key: initial?.key || '', dir: initial?.dir || 'up',
+    mag: Math.min(10, Math.max(0, Number(initial?.mag) || 0)) };
+  draft.effects.push(entry);
   const host = document.getElementById('stat-effects-list');
   host.insertAdjacentHTML('beforeend', renderEffectRow(id));
   wireEffectRow(id);
+  if (initial) {
+    document.querySelector(`[data-effect-key="${id}"]`).value = entry.key;
+    document.querySelector(`[data-effect-dir="${id}"]`).value = entry.dir;
+    document.querySelector(`[data-effect-mag="${id}"]`).value = entry.mag;
+  }
 }
 function renderEffectRow(id) {
   const statOpts = CITY_STATS.map(s =>
@@ -476,17 +591,15 @@ function wireEffectRow(id) {
 }
 
 let submitInFlight = false;
-async function submit(ctx) {
+async function submit() {
   if (submitInFlight) return;
   const err = document.getElementById('err-line');
   err.classList.remove('show');
   err.textContent = '';
 
-  const factionId = ctx.faction?.id || null;
-  if (!factionId) {
-    showErr('No politician on this account.');
-    return;
-  }
+  // Admins may have no politician faction — the server decides
+  // whether one is required (create needs an office unless admin).
+  const factionId = pageCtx?.faction?.id || null;
 
   // Fold direction + magnitude into a signed delta per effect row.
   // Drop rows that have no stat picked OR magnitude 0 — they'd be
@@ -504,43 +617,43 @@ async function submit(ctx) {
     }
     seenKeys.add(eff.key);
   }
-  const supportArr = Array.from(draft.support);
-  const opposeArr  = Array.from(draft.oppose);
 
   const submitBtn = document.getElementById('btn-submit');
+  const prevLabel = submitBtn.textContent;
   submitBtn.disabled = true;
   submitBtn.textContent = 'Submitting…';
   submitInFlight = true;
   // Reset button text + re-enable in both failure paths so the user
   // can fix the validation error and retry without a page refresh.
-  // Success path navigates away, so it doesn't need the reset.
   const restoreButton = () => {
-    submitBtn.textContent = 'Submit';
+    submitBtn.textContent = prevLabel;
     submitBtn.disabled = false;
   };
   try {
-    const { data, error } = await _supabase.rpc('create_ordinance', {
+    const payload = {
       p_faction_id: factionId,
       p_name: draft.name,
       p_description: draft.description,
       p_cost: draft.cost,
-      p_support_archetypes: supportArr,
-      p_oppose_archetypes:  opposeArr,
+      p_support_archetypes: Array.from(draft.support),
+      p_oppose_archetypes:  Array.from(draft.oppose),
       p_stat_effects: effectsRaw,
-    });
+      p_construction_request: draft.constructionRequest,
+      p_construction_building_type: draft.constructionRequest ? draft.constructionType : null,
+    };
+    const { data, error } = draft.editId
+      ? await _supabase.rpc('update_ordinance', { p_ordinance_id: draft.editId, ...payload })
+      : await _supabase.rpc('create_ordinance', payload);
     if (error) throw error;
     if (!data?.success) {
       showErr(REASON[data?.reason] || ('Could not save: ' + (data?.reason || 'unknown')));
       restoreButton();
       return;
     }
-    // Round-trip back to the city if we came from one; else the
-    // nation Geography page.
-    const params = new URLSearchParams(location.search);
-    const cityId = params.get('city');
-    location.href = cityId
-      ? `city.html?id=${encodeURIComponent(cityId)}`
-      : 'politician-nation.html#sec-geography';
+    // Stay on the page: hide the form, refresh the catalog the new
+    // or edited row lives in.
+    document.getElementById('card-host').innerHTML = '';
+    renderCatalog();
   } catch (e) {
     showErr('Submission failed: ' + (e?.message || e));
     restoreButton();
