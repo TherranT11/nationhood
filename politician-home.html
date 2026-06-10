@@ -3063,7 +3063,7 @@ function renderAffiliation(ctx) {
 // below the main affiliation, so a player can hold (e.g.) MP +
 // Foreign Attaché simultaneously. Self-noops when the politician
 // hasn't passed the entry exam (politician_foreign_service_nation_id
-// is NULL). Day to Day in the Embassy is live (20270776): it draws
+// is NULL). Day to Day in the Embassy is live (20270778): it draws
 // an admin-authored event from the embassy_events pool and opens the
 // A/B/C decision modal. The other two tiles remain placeholders.
 async function renderForeignAffiliation(ctx) {
@@ -3091,7 +3091,7 @@ async function renderForeignAffiliation(ctx) {
     console.warn('[politician-home] foreign nation fetch failed:', err?.message || err);
   }
 
-  // 20270776: an unresolved draw keeps the Day-to-Day tile live even
+  // 20270778: an unresolved draw keeps the Day-to-Day tile live even
   // during the cooldown (the cooldown burned when it was drawn) so
   // the player can always resolve the event waiting on their desk.
   // Soft-fails to false — worst case the tile greys out and the RPC
@@ -3493,7 +3493,7 @@ async function submitFisInvestigation() {
   }
 }
 
-// ─── Day to Day in the Embassy modal (20270776) ────────────────────
+// ─── Day to Day in the Embassy modal (20270778) ────────────────────
 // Three views: draw (calls embassy_day_to_day — returns the pending
 // event if one is already on the desk, otherwise draws fresh and
 // burns the per-tick cooldown) → A/B/C decision picker → result with
@@ -7203,7 +7203,7 @@ init();
   </div>
 </div>
 
-<!-- Day to Day in the Embassy modal (20270776). Same chrome as the
+<!-- Day to Day in the Embassy modal (20270778). Same chrome as the
      FIS modal above but on the foreign-service teal accent. Views are
      rendered into emb-modal-body/foot by loadEmbassyEvent() →
      renderEmbassyDecisionView() → renderEmbassyResultView(). -->

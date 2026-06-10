@@ -1,7 +1,7 @@
 -- ════════════════════════════════════════════════════════════════════
--- 20270777 — embassy_event_decide: report clamped deltas
+-- 20270779 — embassy_event_decide: report clamped deltas
 --
--- Follow-up to 20270776, which already shipped to the remote — the
+-- Follow-up to 20270778, which already shipped to the remote — the
 -- audit-pass fix lands here as its own version instead of editing the
 -- applied file (editing an applied migration desyncs the supabase
 -- migration history and broke db push with a duplicate-version error).
@@ -11,7 +11,7 @@
 -- with "Up by 5" showed a +5 that didn't happen in the player's
 -- result modal. Each effect now records new-minus-previous after
 -- clamping and zero-change lines are dropped. Body otherwise
--- byte-faithful to 20270776.
+-- byte-faithful to 20270778.
 --
 -- KNOWN ISSUE (pre-existing, factions-wide): the "Factions update
 -- own" / "Users can update linked factions" policies let owners
