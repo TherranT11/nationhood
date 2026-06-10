@@ -14,9 +14,40 @@
   .bc-title { font-family:Georgia,serif; font-size:28px; color:#fff; margin:0 0 4px; font-weight:500; }
   .bc-sub { font-family:var(--font-mono); font-size:10px; letter-spacing:0.14em; color:#666;
     font-weight:700; margin-bottom:22px; }
-  .bc-soon { padding:34px 16px; text-align:center; color:#555; font-size:11.5px;
-    font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
-    border-radius:5px; }
+  /* ── Executive Actions panel ── */
+  .ea-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
+    border-radius:6px; padding:16px 18px 18px; position:relative; }
+  .ea-head { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+  .ea-head .rule { flex:1; height:1px; background:rgba(138,170,106,0.25); }
+  .ea-head .t { font-family:var(--font-mono); font-size:11px; letter-spacing:0.3em;
+    color:#aac88a; font-weight:700; white-space:nowrap; }
+  .ea-remaining { position:absolute; top:14px; right:16px; font-family:Georgia,serif;
+    font-style:italic; font-size:11px; color:#8aaa6a; border:0.5px solid #4a6a4a;
+    border-radius:3px; padding:3px 9px; background:rgba(138,170,106,0.06); }
+  .ea-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px; }
+  @media (max-width:980px) { .ea-grid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .ea-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
+    padding:22px 10px; text-align:center; opacity:0.65; }
+  .ea-card .ic { font-size:13px; color:#555; margin-bottom:8px; }
+  .ea-card .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em;
+    color:#888; font-weight:700; margin-bottom:5px; }
+  .ea-card .soon { font-family:Georgia,serif; font-style:italic; font-size:10.5px; color:#4a4940; }
+
+  /* ── Departments (per-industry tier containers) ── */
+  .dp-section { margin-top:22px; }
+  .dp-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px; }
+  @media (max-width:1100px) { .dp-grid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .dp-card { background:#0d0d0d; border:0.5px solid rgba(138,170,106,0.2); border-radius:5px;
+    padding:14px 14px 15px; display:flex; flex-direction:column; min-width:0; }
+  .dp-card.empty { opacity:0.5; align-items:center; justify-content:center; text-align:center;
+    border-style:dashed; }
+  .dp-dept { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.16em; color:#666;
+    font-weight:700; margin-bottom:7px; }
+  .dp-tier { font-size:13px; color:#fff; font-weight:600; line-height:1.35; margin-bottom:7px; }
+  .dp-desc { font-size:11px; color:#888; line-height:1.55; flex:1; }
+  .dp-effect { font-family:var(--font-mono); font-size:9.5px; color:#8aaa6a; line-height:1.5;
+    margin-top:10px; padding-top:9px; border-top:0.5px solid rgba(255,255,255,0.06); }
+  .dp-card.empty .soon { font-family:Georgia,serif; font-style:italic; font-size:11px; color:#4a4940; }
 
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
@@ -34,6 +65,15 @@
   .bc-row .v .dim { color:#888; font-size:11px; }
   .bc-row .v.money { font-family:var(--font-mono); color:#8aaa6a; }
   .bc-row .v a { color:#8aaa6a; text-decoration:none; }
+  .bc-foot { padding:12px 16px; border-top:0.5px solid rgba(138,170,106,0.2); }
+  .bc-btn { width:100%; padding:10px; background:rgba(138,170,106,0.08);
+    border:0.5px solid #4a6a4a; border-radius:4px; color:#8aaa6a;
+    font-family:var(--font-mono); font-size:10px; letter-spacing:0.13em; font-weight:700;
+    cursor:pointer; }
+  .bc-btn:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .bc-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .bc-foot .err { color:#d9534f; font-size:10px; font-family:var(--font-mono);
+    margin-top:6px; min-height:12px; }
 
   @media (max-width:860px) {
     .bc-wrap { flex-direction:column-reverse; }
@@ -52,11 +92,17 @@
     <div class="bc-main">
       <h1 class="bc-title" id="bc-name">—</h1>
       <div class="bc-sub" id="bc-tagline">—</div>
-      <div class="bc-soon">Operations open soon — hire staff, take contracts, and grow the books.</div>
+      <div id="bc-ops"></div>
+      <div class="dp-section" id="bc-departments"></div>
     </div>
     <div class="bc-box">
       <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
       <div class="bc-rows" id="bc-rows"></div>
+      <div class="bc-foot" id="bc-foot" style="display:none;">
+        <button type="button" class="bc-btn" id="bc-rebrand">REBRAND</button>
+        <input type="file" id="bc-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;">
+        <div class="err" id="bc-rebrand-err"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -78,7 +124,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, logo_url, employee_count,
+      .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id,
                nation:nations!hq_nation_id(name),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
       .eq('id', corpId).maybeSingle();
@@ -139,6 +185,110 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
         <div class="v"><a>${esc(site)}</a></div></div>`;
+
+    // Departments — five per-industry tier containers. Every corp
+    // starts at its industry's entry tier; these baselines are
+    // display copy until upgrade mechanics land (tier state moves to
+    // columns then). Construction has four chartered so far — the
+    // fifth slot (and the automotive set) render as placeholders
+    // until designed.
+    const DEPARTMENTS = {
+      construction: [
+        { dept: 'PROJECT MANAGEMENT', tier: 'The Truck & Clipboard',
+          desc: 'You handle all local permitting, contract estimates, and safety compliance yourself out of the cab of your truck. Administrative bottlenecks limit you to chasing one tiny contract at a time.',
+          effect: 'Number of Active Projects: 1' },
+        { dept: 'HEAVY EQUIPMENT', tier: 'Level 0: Commercial Rental Yard',
+          desc: 'Your physical yard is completely empty. You own zero iron. Every time you secure a contract, you must lease skid-steers or excavators at a high per-turn premium.',
+          effect: 'Construction Project costs require equipment rentals.' },
+        { dept: 'SUPPLY & MATERIAL', tier: 'Retail Hardware Store',
+          desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
+          effect: 'Construction Project costs require standard upfront prices.' },
+        { dept: 'SYSTEM DESIGN', tier: 'CAD System & Laptop',
+          desc: 'You implement your own designs, limited by your own project expertise.',
+          effect: 'You gain Experience at +3 per completed project.' },
+        { dept: 'REGULATORY COMPLIANCE', tier: 'City Permits',
+          desc: 'Your licensing stops at the city clerk\u2019s counter. You\u2019re cleared for small-scale municipal work \u2014 anything bigger needs certifications you don\u2019t hold yet.',
+          effect: 'Can only build \u2018Residential\u2019 and \u2018Tier I Commercial\u2019.' },
+      ],
+      automotive: [null, null, null, null, null],
+    };
+    const depts = DEPARTMENTS[corp.industry];
+    if (depts) {
+      document.getElementById('bc-departments').innerHTML =
+        '<div class="dp-grid">' + depts.map(d => d
+          ? `<div class="dp-card">
+              <div class="dp-dept">${esc(d.dept)}</div>
+              <div class="dp-tier">${esc(d.tier)}</div>
+              <div class="dp-desc">${esc(d.desc)}</div>
+              <div class="dp-effect">${esc(d.effect)}</div>
+            </div>`
+          : `<div class="dp-card empty" title="Coming soon">
+              <div class="dp-dept">—</div>
+              <div class="soon">(To be chartered)</div>
+            </div>`).join('') + '</div>';
+    }
+
+    // Rebrand — owner-only: pick an image (2MB cap, same corp-logos
+    // bucket the founding modal uses), upload, stamp logo_url via the
+    // owner-writes RLS policy, and swap the logo in place.
+    if (corp.owner_faction_id === ctx.faction.id) {
+      const foot = document.getElementById('bc-foot');
+      const fileEl = document.getElementById('bc-logo-file');
+      const btn = document.getElementById('bc-rebrand');
+      const errEl = document.getElementById('bc-rebrand-err');
+      foot.style.display = 'block';
+      btn.addEventListener('click', () => { errEl.textContent = ''; fileEl.click(); });
+      fileEl.addEventListener('change', async () => {
+        const file = fileEl.files?.[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+          errEl.textContent = 'Logo is over 2MB — choose a smaller image.';
+          fileEl.value = '';
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'UPLOADING…';
+        try {
+          const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+          const path = `${ctx.faction.id}/${Date.now()}.${ext}`;
+          const { error: upErr } = await _supabase.storage.from('corp-logos')
+            .upload(path, file, { contentType: file.type || 'image/png' });
+          if (upErr) throw new Error('Upload failed: ' + upErr.message);
+          const logoUrl = _supabase.storage.from('corp-logos').getPublicUrl(path)?.data?.publicUrl;
+          if (!logoUrl) throw new Error('Could not resolve logo URL.');
+          const { data: updated, error: updErr } = await _supabase.from('entrepreneur_corps')
+            .update({ logo_url: logoUrl }).eq('id', corp.id).select('id');
+          if (updErr) throw updErr;
+          if (!updated?.length) throw new Error('Not authorized to rebrand this corporation.');
+          logoEl.innerHTML = `<img src="${esc(logoUrl)}" alt="${esc(corp.name)} logo">`;
+        } catch (e) {
+          errEl.textContent = e?.message || 'Rebrand failed.';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'REBRAND';
+          fileEl.value = '';
+        }
+      });
+    }
+
+    // Executive Actions — owner-only surface. Five slots, all coming
+    // soon; the "1 remaining" allowance is the per-tick default and
+    // becomes derived state when the first action lands.
+    if (corp.owner_faction_id === ctx.faction.id) {
+      document.getElementById('bc-ops').innerHTML = `
+        <div class="ea-panel">
+          <span class="ea-remaining">1 remaining</span>
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span></div>
+          <div class="ea-grid">
+            ${Array.from({ length: 5 }, () => `
+              <div class="ea-card" title="Coming soon">
+                <div class="ic">—</div>
+                <div class="nm">ACTION</div>
+                <div class="soon">(Coming Soon)</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
