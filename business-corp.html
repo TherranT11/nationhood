@@ -162,10 +162,26 @@
   .bc-foot .err { color:#d9534f; font-size:10px; font-family:var(--font-mono);
     margin-top:6px; min-height:12px; }
 
-  /* ── Post Job Opening / Draft Blueprint / Pay Taxes modals (shared chrome) ── */
-  #jm-overlay, #db-overlay, #px-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78);
-    display:none; align-items:center; justify-content:center; padding:20px; z-index:1000; }
-  #jm-overlay.open, #db-overlay.open, #px-overlay.open { display:flex; }
+  /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
+  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay { position:fixed; inset:0;
+    background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center;
+    padding:20px; z-index:1000; }
+  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open { display:flex; }
+  .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
+    gap:6px 12px; align-items:center; }
+  .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
+    color:#555; font-weight:700; }
+  .pb-grid .c { font-size:11.5px; color:#ccc; min-width:0; overflow-wrap:break-word; }
+  .pb-grid .nob { font-family:Georgia,serif; font-style:italic; font-size:10px;
+    color:#8a6a4a; }
+  .pb-acts { display:flex; gap:6px; align-items:center; justify-content:flex-end; }
+  .pb-act { padding:6px 10px; border-radius:4px; font-family:var(--font-mono); font-size:8.5px;
+    letter-spacing:0.1em; font-weight:700; cursor:pointer; flex-shrink:0; background:transparent; }
+  .pb-act:disabled { opacity:0.4; cursor:not-allowed; }
+  .pb-act.bid { background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a; color:#8aaa6a; }
+  .pb-act.bid:hover:not(:disabled) { background:rgba(138,170,106,0.18); }
+  .pb-act.mk { border:0.5px solid #4a5a6a; color:#7a9ac8; }
+  .pb-act.mk:hover { background:#0a0f14; }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -292,6 +308,22 @@
   </div>
 </div>
 
+<div id="pb-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Submit <em>Public Bid</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">Requested construction projects from cities and corporations.
+        Bidding requires a blueprint of the requested building type — and spends this
+        tick&rsquo;s executive action.</div>
+      <div class="jm-lab">REQUESTED CONSTRUCTION PROJECTS</div>
+      <div id="pb-list"><div class="rl-empty">Loading…</div></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="pb-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
 <div id="jm-overlay">
   <div class="jm-modal">
     <div class="jm-head"><div class="jm-title">Post a <em>Job Opening</em></div></div>
@@ -386,7 +418,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
     const currentTick = Number(ctx.shard?.current_tick) || 0;
 
     // One close idiom for the page's modals (Post Job Opening,
-    // Draft Blueprint, Pay Taxes): CANCEL button + backdrop click.
+    // Draft Blueprint, Pay Taxes, Submit Public Bid): CANCEL button
+    // + backdrop click.
     function wireModalClose(overlayId, cancelId) {
       const overlay = document.getElementById(overlayId);
       document.getElementById(cancelId).addEventListener('click', () =>
@@ -395,6 +428,19 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         if (e.target === overlay) overlay.classList.remove('open');
       });
     }
+
+    // One source for blueprint vocabulary — the modal pills, the
+    // employee roster's CURRENT PROJECT, and the bid board all read
+    // these (matching the CHECK constraints in 20270800).
+    const BUILDING_TYPE_LABELS = {
+      single_story_home: 'Single Story Home',
+      double_story: 'Double Story',
+      multitenant_living: 'Multitenant Living',
+    };
+    const QUALITY_TIER_LABELS = {
+      low_cost: 'Low Cost', standard: 'Standard', high_end: 'High End',
+      luxury: 'Luxury', ultra_rich: 'Ultra Rich',
+    };
 
     // Revenue (current year) from the one source — corp_revenue_by_year
     // reads the stamp accumulator (20270780). Soft-fails to $0.
@@ -696,16 +742,12 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
           if (bpErr) throw bpErr;
           const nationByCity = Object.fromEntries(
             (cityRows || []).map(c => [c.city_name, c.nation?.name]));
-          const TYPE_LABELS = { single_story_home: 'Single Story Home',
-            double_story: 'Double Story', multitenant_living: 'Multitenant Living' };
-          const TIER_LABELS = { low_cost: 'Low Cost', standard: 'Standard',
-            high_end: 'High End', luxury: 'Luxury', ultra_rich: 'Ultra Rich' };
           const projByPm = {};
           for (const bp of (bps || [])) {
             // Named blueprints (20270803) show their name; pre-name
             // rows fall back to the type/tier label.
             projByPm[bp.pm_applicant_id] ||= bp.name
-              || `${TYPE_LABELS[bp.building_type] || bp.building_type} (${TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
+              || `${BUILDING_TYPE_LABELS[bp.building_type] || bp.building_type} (${QUALITY_TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
           }
           rowsHtml = `
             <div class="pe-grid">
@@ -1048,7 +1090,12 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
               <div class="nm">DRAFT BLUEPRINT</div>
               <div class="soon">Design a structural template</div>
             </div>
-            ${Array.from({ length: 4 }, () => `
+            <div class="ea-card live" id="ea-submit-bid">
+              <div class="ic">📋</div>
+              <div class="nm">SUBMIT PUBLIC BID</div>
+              <div class="soon">Bid on requested projects</div>
+            </div>
+            ${Array.from({ length: 3 }, () => `
               <div class="ea-card" title="Coming soon">
                 <div class="ic">—</div>
                 <div class="nm">ACTION</div>
@@ -1069,18 +1116,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         ['industrial', 'INDUSTRIAL', false],
         ['military', 'MILITARY', false],
       ];
-      const DB_TYPES = [
-        ['single_story_home', 'SINGLE STORY HOME'],
-        ['double_story', 'DOUBLE STORY'],
-        ['multitenant_living', 'MULTITENANT LIVING'],
-      ];
-      const DB_TIERS = [
-        ['low_cost', 'LOW COST'],
-        ['standard', 'STANDARD'],
-        ['high_end', 'HIGH END'],
-        ['luxury', 'LUXURY'],
-        ['ultra_rich', 'ULTRA RICH'],
-      ];
+      const DB_TYPES = Object.entries(BUILDING_TYPE_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
+      const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
       let dbType = null, dbTier = null;
 
       function dbRefreshConfirm() {
@@ -1103,7 +1140,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         });
       }
 
-      async function openBlueprintModal() {
+      async function openBlueprintModal(presetType) {
         dbType = null; dbTier = null;
         document.getElementById('db-name').value = '';
         // What each rating point buys on this template: speed −1 tick
@@ -1120,6 +1157,11 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         document.querySelector('#db-cats .jm-pill').classList.add('sel');
         dbPills('db-types', DB_TYPES, v => { dbType = v; });
         dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
+        // Arriving from the bid board's [CREATE BLUEPRINT]: the
+        // request's building type comes preselected.
+        if (presetType) {
+          document.querySelector(`#db-types .jm-pill[data-val="${presetType}"]`)?.click();
+        }
         document.getElementById('db-location').textContent = corp.hq_city || '—';
         document.getElementById('db-overlay').classList.add('open');
 
@@ -1150,10 +1192,105 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         dbRefreshConfirm();
       }
 
-      document.getElementById('ea-draft-blueprint').addEventListener('click', openBlueprintModal);
+      document.getElementById('ea-draft-blueprint').addEventListener('click', () => openBlueprintModal());
       document.getElementById('db-pm').addEventListener('change', dbRefreshConfirm);
       document.getElementById('db-name').addEventListener('input', dbRefreshConfirm);
       wireModalClose('db-overlay', 'db-cancel');
+
+      // ── Submit Public Bid modal ─────────────────────────────────
+      // The board of open construction requests. A row with a
+      // matching blueprint gets [SUBMIT BID] (latest blueprint of
+      // that type); without one, [CREATE BLUEPRINT] jumps to the
+      // draft modal with the type preselected.
+      async function openBidModal() {
+        const host = document.getElementById('pb-list');
+        host.innerHTML = '<div class="rl-empty">Loading…</div>';
+        document.getElementById('pb-overlay').classList.add('open');
+        try {
+          const [{ data: reqs, error: rErr }, { data: bps, error: bErr }, { data: myBids, error: mErr }] = await Promise.all([
+            _supabase.from('construction_project_requests')
+              .select('id, entity, city, building_type, nation:nations!nation_id(name)')
+              .eq('status', 'open')
+              .order('created_at_tick', { ascending: false }),
+            _supabase.from('corp_blueprints')
+              .select('id, name, building_type')
+              .eq('corp_id', corp.id)
+              .order('created_at', { ascending: false }),
+            _supabase.from('construction_project_bids')
+              .select('request_id, status')
+              .eq('corp_id', corp.id),
+          ]);
+          if (rErr || bErr || mErr) throw (rErr || bErr || mErr);
+          if (!reqs?.length) {
+            host.innerHTML = '<div class="rl-empty">No public projects are requesting bids right now.</div>';
+            return;
+          }
+          const bpByType = {};
+          for (const bp of (bps || [])) bpByType[bp.building_type] ||= bp;
+          const pendingBid = new Set((myBids || [])
+            .filter(b => b.status === 'pending').map(b => b.request_id));
+
+          host.innerHTML = `
+            <div class="pb-grid">
+              <div class="h">ENTITY</div><div class="h">CITY</div><div class="h">NATION</div><div class="h">TYPE OF BUILDING</div><div class="h"></div>
+              ${reqs.map(r => {
+                const bp = bpByType[r.building_type];
+                const acts = pendingBid.has(r.id)
+                  ? '<button type="button" class="pb-act bid" disabled>BID SUBMITTED</button>'
+                  : bp
+                    ? `<button type="button" class="pb-act bid" data-req="${esc(r.id)}" data-bp="${esc(bp.id)}" title="Bid with ${esc(bp.name || 'your latest blueprint')}">SUBMIT BID</button>`
+                    : `<span class="nob">No available blueprint</span>
+                       <button type="button" class="pb-act mk" data-type="${esc(r.building_type)}">CREATE BLUEPRINT</button>`;
+                return `
+                  <div class="c">${esc(r.entity)}</div>
+                  <div class="c">${esc(r.city)}</div>
+                  <div class="c">${esc(r.nation?.name || '—')}</div>
+                  <div class="c">${esc(BUILDING_TYPE_LABELS[r.building_type] || r.building_type)}</div>
+                  <div class="pb-acts">${acts}</div>`;
+              }).join('')}
+            </div>`;
+
+          host.querySelectorAll('.pb-act.bid[data-req]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              btn.disabled = true;
+              try {
+                const { data, error: sErr } = await _supabase.rpc('submit_public_bid',
+                  { p_request_id: btn.dataset.req, p_blueprint_id: btn.dataset.bp });
+                if (sErr) throw sErr;
+                if (!data?.success) {
+                  const REASON = {
+                    no_actions_remaining: 'No executive actions remaining this tick.',
+                    blueprint_type_mismatch: 'That blueprint doesn’t match the requested building type.',
+                    already_bid: 'You already have a bid on this project.',
+                    request_not_open: 'This project is no longer taking bids.',
+                    not_owner: 'Only the owner can submit bids.',
+                    arrested: 'You are under arrest — your assets are frozen.',
+                  };
+                  throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+                }
+                corp.exec_action_tick = currentTick;
+                document.getElementById('ea-remaining').textContent = '0 remaining';
+                openBidModal();
+              } catch (e) {
+                alert('Could not bid: ' + (e?.message || e));
+                btn.disabled = false;
+              }
+            });
+          });
+          host.querySelectorAll('.pb-act.mk').forEach(btn => {
+            btn.addEventListener('click', () => {
+              document.getElementById('pb-overlay').classList.remove('open');
+              openBlueprintModal(btn.dataset.type);
+            });
+          });
+        } catch (e) {
+          console.warn('[business-corp] bid board load failed:', e?.message || e);
+          host.innerHTML = '<div class="rl-empty">Could not load the board — try again shortly.</div>';
+        }
+      }
+
+      document.getElementById('ea-submit-bid').addEventListener('click', openBidModal);
+      wireModalClose('pb-overlay', 'pb-cancel');
 
       document.getElementById('db-confirm').addEventListener('click', async () => {
         const btn = document.getElementById('db-confirm');
