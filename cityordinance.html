@@ -103,6 +103,31 @@ input[type=number].fld { font-variant-numeric:tabular-nums; }
 
 .gate-msg { padding:40px 24px; text-align:center; color:#888;
   font-size:13px; line-height:1.6; font-style:italic; }
+
+/* Catalog — the global list of authored ordinances */
+.cat-list { display:flex; flex-direction:column; gap:9px; }
+.cat-row { background:#0a0807; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:4px; padding:13px 15px; }
+.cat-top { display:flex; align-items:baseline; gap:12px; }
+.cat-name { font-size:13.5px; color:#fff; font-weight:600; min-width:0;
+  overflow-wrap:break-word; }
+.cat-cost { margin-left:auto; font-family:monospace; font-size:9.5px;
+  letter-spacing:0.1em; color:#c8a26e; white-space:nowrap; font-weight:700; }
+.cat-desc { font-size:11.5px; color:#999; line-height:1.55; margin-top:5px; }
+.cat-fx-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.cat-fx { font-family:monospace; font-size:9px; letter-spacing:0.06em;
+  padding:3px 8px; border-radius:3px; font-weight:700; }
+.cat-fx.up   { color:#a0d8d8; border:0.5px solid rgba(90,175,165,0.4);
+  background:rgba(90,175,165,0.06); }
+.cat-fx.down { color:#e0a0a0; border:0.5px solid rgba(200,122,122,0.4);
+  background:rgba(200,122,122,0.06); }
+.cat-fx.none { color:#666; border:0.5px solid rgba(255,255,255,0.1);
+  font-style:italic; font-family:Georgia,serif; letter-spacing:0; }
+.cat-arch { margin-top:7px; font-family:monospace; font-size:9px;
+  display:flex; flex-direction:column; gap:2px; }
+.cat-arch .s { color:#5aafa5; }
+.cat-arch .o { color:#c87a7a; }
+.cat-by { margin-top:8px; font-size:10px; color:#666; font-style:italic; }
 .loading { padding:60px 24px; text-align:center; color:#666;
   font-family:monospace; font-size:11px; letter-spacing:0.1em; }
 
@@ -118,6 +143,7 @@ input[type=number].fld { font-variant-numeric:tabular-nums; }
 
 <div class="content" id="content" style="display:none;">
   <a class="ord-back" id="back-link" href="politician-nation.html#sec-geography">&larr; Back</a>
+  <div id="catalog-host"></div>
   <div id="card-host"></div>
 </div>
 
@@ -128,6 +154,7 @@ import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 import { CITY_STATS } from './js/game/city-labels.js';
+import { displayName, tickToDate } from './js/utils.js';
 
 const AUTHORING_OFFICES = new Set(['mayor', 'city_council_member', 'city_council_president']);
 
@@ -172,6 +199,9 @@ const draft = {
     document.getElementById('back-link').href = `city.html?id=${encodeURIComponent(cityId)}`;
   }
 
+  // The catalog shows for everyone; only the authoring form is
+  // office-gated.
+  renderCatalog();
   const office = ctx.faction?.politician_office || null;
   if (!AUTHORING_OFFICES.has(office)) {
     renderGate();
@@ -179,6 +209,65 @@ const draft = {
   }
   renderForm(ctx);
 })();
+
+// ── Available Ordinances — the global catalog ─────────────────────
+// Every authored template, newest first: what it does, what it
+// costs, which stats move on pass, who lines up for and against,
+// and who wrote it. Reads the same ordinances table the propose
+// flow draws from.
+async function renderCatalog() {
+  const host = document.getElementById('catalog-host');
+  try {
+    const { data: ords, error } = await _supabase.from('ordinances')
+      .select(`name, description, cost, support_archetypes, oppose_archetypes,
+               stat_effects, created_at_tick,
+               author:factions!author_faction_id(leader_first_name, leader_last_name, nickname, faction_name)`)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    const STAT_NAME = Object.fromEntries(CITY_STATS.map(s => [s.key, s.name]));
+    const fxHtml = (o) => {
+      const fx = Array.isArray(o.stat_effects) ? o.stat_effects : [];
+      if (!fx.length) return '<span class="cat-fx none">No stat effects</span>';
+      return fx.map(f => {
+        const d = Number(f.delta) || 0;
+        return `<span class="cat-fx ${d >= 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${d} ${escHtml(STAT_NAME[f.key] || f.key)}</span>`;
+      }).join('');
+    };
+
+    host.innerHTML = `
+      <div class="ord-card" style="margin-bottom:18px;">
+        <div class="ord-eyebrow">GLOBAL CATALOG</div>
+        <div class="ord-head">
+          <span class="sans">Available</span><span class="serif">Ordinances</span>
+        </div>
+        ${!ords?.length
+          ? '<div class="gate-msg">The catalog is empty — the first ordinance is waiting to be written.</div>'
+          : `<div class="cat-list">
+              ${ords.map(o => `
+                <div class="cat-row">
+                  <div class="cat-top">
+                    <span class="cat-name">${escHtml(o.name)}</span>
+                    <span class="cat-cost">${Number(o.cost) < 0
+                      ? 'PAYS $' + Math.abs(Number(o.cost))
+                      : 'COST $' + (Number(o.cost) || 0)}</span>
+                  </div>
+                  <div class="cat-desc">${escHtml(o.description)}</div>
+                  <div class="cat-fx-row">${fxHtml(o)}</div>
+                  ${(o.support_archetypes?.length || o.oppose_archetypes?.length) ? `
+                    <div class="cat-arch">
+                      ${o.support_archetypes?.length ? `<span class="s">FOR: ${escHtml(o.support_archetypes.join(', '))}</span>` : ''}
+                      ${o.oppose_archetypes?.length ? `<span class="o">AGAINST: ${escHtml(o.oppose_archetypes.join(', '))}</span>` : ''}
+                    </div>` : ''}
+                  <div class="cat-by">Authored by ${escHtml(o.author ? displayName(o.author) : '—')} &middot; ${escHtml(tickToDate(o.created_at_tick))}</div>
+                </div>`).join('')}
+            </div>`}
+      </div>`;
+  } catch (e) {
+    console.warn('[cityordinance] catalog load failed:', e?.message || e);
+    host.innerHTML = '';
+  }
+}
 
 // Read-only "you don't qualify" surface for non-authoring viewers.
 // Keeps the page accessible by URL but explains why it's inert.
