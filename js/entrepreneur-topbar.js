@@ -22,7 +22,7 @@ const ENT_TABS = [
 const BIZ_TABS = [
   { id: 'home',         label: 'HOME',         href: 'businessman-home.html' },
   { id: 'career',       label: 'CAREER',       href: 'businessman-career.html' },
-  { id: 'corporations', label: 'CORPORATIONS', href: null },
+  { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-markets.html' },
   { id: 'market',       label: 'MARKET',       href: null },
   { id: 'forum',        label: 'FORUM',        href: null },
 ];
@@ -357,7 +357,7 @@ const SWITCHER_FACTION_COLS =
   'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick';
 
 const ENT_FACTION_COLS =
-  'id, faction_name, leader_first_name, leader_last_name, leader_age, founded_tick, nation, nation_id, biz_residence_name, biz_residence_worth, biz_career_history, biz_home_city, ent_origin_nation, ' +
+  'id, faction_type, faction_name, leader_first_name, leader_last_name, leader_age, founded_tick, nation, nation_id, biz_residence_name, biz_residence_worth, biz_career_history, biz_home_city, ent_origin_nation, ' +
   'entrepreneur_archetype, ent_influence, ent_skill, ent_reputation, party_funds, status';
 
 export async function bootstrapEntrepreneur(activeTab) {
@@ -434,4 +434,56 @@ export async function bootstrapBusinessman(activeTab) {
     { faction, shard, allUserFactions, activeTab, tabs: BIZ_TABS, showIdentity: true });
   applyArrestLock(faction);
   return { user, faction, shard, allUserFactions };
+}
+
+// Shared-page variant: the Corporations Directory (entrepreneur-
+// markets.html) serves BOTH entrepreneurs (MARKETS tab) and
+// businessmen (CORPORATIONS tab). Resolves whichever the user is —
+// the active switcher pick wins when they hold both, entrepreneur
+// is the tie-break default so existing behavior is unchanged — and
+// renders the matching chrome. Returns { ..., viewerType }.
+// Admin-inspector override mirrors bootstrapEntrepreneur.
+export async function bootstrapMarketViewer(entTab, bizTab) {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return null; }
+
+  const overrideId = await getAdminFactionOverride();
+
+  const [facRes, shardRes, allFacRes] = await Promise.all([
+    overrideId
+      ? _supabase.from('factions').select(ENT_FACTION_COLS).eq('id', overrideId).maybeSingle()
+      : _supabase.from('factions').select(ENT_FACTION_COLS)
+          .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+          .in('faction_type', ['entrepreneur', 'businessman'])
+          .is('abandoned_at', null),
+    _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
+    _supabase.from('factions')
+      .select(SWITCHER_FACTION_COLS)
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+  ]);
+
+  if (facRes.error) throw facRes.error;
+  const candidates = overrideId
+    ? (facRes.data ? [facRes.data] : [])
+    : (facRes.data || []);
+  const activeId = sessionStorage.getItem('active_faction_id');
+  const faction = candidates.find(f => f.id === activeId)
+    || candidates.find(f => f.faction_type === 'entrepreneur')
+    || candidates[0]
+    || null;
+  if (!faction) { window.location.href = 'faction-select.html'; return null; }
+  if (shardRes.error) console.warn('[entrepreneur-topbar] shard load failed:', shardRes.error.message);
+  if (allFacRes.error) console.warn('[entrepreneur-topbar] factions load failed:', allFacRes.error.message);
+
+  const shard = shardRes.data || {};
+  const allUserFactions = overrideId ? [faction] : (allFacRes.data || []);
+  const isBiz = faction.faction_type === 'businessman';
+  renderEntrepreneurTopbar(document.getElementById('ent-topbar'), {
+    faction, shard, allUserFactions,
+    activeTab: isBiz ? bizTab : entTab,
+    tabs: isBiz ? BIZ_TABS : ENT_TABS,
+    showIdentity: isBiz,
+  });
+  applyArrestLock(faction);
+  return { user, faction, shard, allUserFactions, viewerType: faction.faction_type };
 }
