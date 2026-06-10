@@ -1222,17 +1222,17 @@
         </div>
         <div id="cp-finance"></div>
 
-        <div class="section-heading">
+        <div class="section-heading" id="cp-taxes-heading">
           <span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">Taxes</span>
         </div>
         <div id="cp-taxes"></div>
 
-        <div class="section-heading">
+        <div class="section-heading" id="cp-contracts-heading">
           <span class="roman">VI.</span><span class="sans">Corporate</span><span class="serif">Contracts</span>
         </div>
         <div id="cp-contracts"></div>
 
-        <div class="section-heading">
+        <div class="section-heading" id="cp-history-heading">
           <span class="roman">VII.</span><span class="sans">Corporate</span><span class="serif">History</span>
         </div>
         <div id="cp-history"></div>
@@ -6881,6 +6881,14 @@ function initials(s, n) {
           '<span class="roman">IV.</span><span class="sans">Logistics</span><span class="serif">&amp; Assets</span>';
         document.getElementById('cp-finance-heading').innerHTML =
           '<span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">Finance</span>';
+        // The extra Operations section pushes the static tail sections
+        // (Taxes/Contracts/History) up one Roman numeral for construction.
+        document.getElementById('cp-taxes-heading').innerHTML =
+          '<span class="roman">VI.</span><span class="sans">Corporate</span><span class="serif">Taxes</span>';
+        document.getElementById('cp-contracts-heading').innerHTML =
+          '<span class="roman">VII.</span><span class="sans">Corporate</span><span class="serif">Contracts</span>';
+        document.getElementById('cp-history-heading').innerHTML =
+          '<span class="roman">VIII.</span><span class="sans">Corporate</span><span class="serif">History</span>';
       } else {
         pj.innerHTML = launchBtn + portfolioHtml + listHtml + shippingPanelHtml + brokeragePanelHtml + loanRequestsHtml + personalLoanReqsHtml + airlinePanelHtml + aviationPanelHtml + oilGasPanelHtml + surveysPanelHtml + permitsPanelHtml + ordersPanelHtml + requestPanelHtml;
       }
