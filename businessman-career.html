@@ -53,6 +53,53 @@
     font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; flex-shrink:0; }
   .iv-open:hover { background:rgba(122,154,200,0.16); }
 
+  /* Role-view modal — the employer's profile behind a posting */
+  #vw-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200;
+    align-items:center; justify-content:center; }
+  #vw-overlay.open { display:flex; }
+  .vw-modal { width:640px; max-width:94vw; max-height:86vh; display:flex; flex-direction:column;
+    background:#101010; border:0.5px solid rgba(255,255,255,0.14); border-radius:6px;
+    padding:18px 20px; }
+  .vw-head { display:flex; align-items:baseline; gap:10px; }
+  .vw-title { font-family:var(--font-mono); font-size:11px; letter-spacing:0.14em; color:#aac88a;
+    font-weight:700; min-width:0; overflow-wrap:break-word; }
+  .vw-x { margin-left:auto; background:none; border:none; color:#666; font-size:16px;
+    cursor:pointer; line-height:1; }
+  .vw-x:hover { color:#fff; }
+  .vw-body { flex:1; overflow-y:auto; margin:14px 0 4px; }
+  .vw-id { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+  .vw-logo { width:64px; height:64px; flex-shrink:0; background:#fff; border-radius:4px;
+    display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .vw-logo img { max-width:100%; max-height:100%; object-fit:contain; }
+  .vw-logo .ini { font-family:var(--font-mono); font-size:20px; color:#333; font-weight:700; }
+  .vw-corp { font-size:16px; color:#fff; font-weight:700; min-width:0; overflow-wrap:break-word; }
+  .vw-role { font-family:var(--font-mono); font-size:10px; color:#8aaa6a; margin-top:3px; }
+  .vw-rows { margin-bottom:14px; }
+  .vw-row { display:flex; gap:14px; padding:7px 0; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+  .vw-row .k { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.14em; color:#888;
+    font-weight:700; width:150px; flex-shrink:0; padding-top:2px; }
+  .vw-row .v { font-size:12px; color:#ddd; min-width:0; overflow-wrap:break-word; }
+  .vw-row .v .dim { color:#666; font-size:10.5px; }
+  .vw-sec { font-family:var(--font-mono); font-size:9px; letter-spacing:0.2em; color:#aac88a;
+    font-weight:700; margin:14px 0 8px; }
+  .vw-pillars { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .vw-pl { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
+    padding:10px 12px; }
+  .vw-pl .nm { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.1em; color:#aac88a;
+    font-weight:700; }
+  .vw-pl .kd { font-family:Georgia,serif; font-style:italic; font-size:10px; color:#777; }
+  .vw-pl .vl { font-size:20px; color:#fff; font-weight:700; margin:4px 0; }
+  .vw-pl .ds { font-size:10px; color:#999; line-height:1.5; }
+  .vw-dp { display:flex; gap:12px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
+    border-radius:4px; padding:9px 12px; margin-bottom:6px; align-items:baseline; }
+  .vw-dp .id { width:170px; flex-shrink:0; }
+  .vw-dp .dept { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em; color:#8a7a4a;
+    font-weight:700; }
+  .vw-dp .tier { font-size:11.5px; color:#fff; font-weight:600; margin-top:2px; }
+  .vw-dp .eff { font-family:var(--font-mono); font-size:9px; color:#aac88a; min-width:0;
+    overflow-wrap:break-word; }
+  .vw-foot { display:flex; justify-content:flex-end; gap:10px; padding-top:12px; }
+
   .hist-list { display:flex; flex-direction:column; gap:8px; }
   .hist-row { display:flex; align-items:baseline; gap:14px; padding:13px 16px; background:#0d0d0d;
     border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; }
@@ -171,12 +218,27 @@
   </div>
 </div>
 
+<div id="vw-overlay">
+  <div class="vw-modal">
+    <div class="vw-head">
+      <div class="vw-title" id="vw-title">—</div>
+      <button type="button" class="vw-x" id="vw-x" title="Close">&times;</button>
+    </div>
+    <div class="vw-body" id="vw-body"><div class="biz-soon">Loading…</div></div>
+    <div class="vw-foot">
+      <button type="button" class="biz-btn" id="vw-close" style="background:transparent;border-color:#3a3a3a;color:#888;">CLOSE</button>
+      <button type="button" class="biz-btn" id="vw-apply">APPLY</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo, displayName } from './js/utils.js';
+import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo, displayName, industryTitleLabel } from './js/utils.js';
 import { cityDisplayData } from './js/game/city-labels.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
+import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
 // ── Start Company modal state ──
 let scCityId = null;
@@ -359,6 +421,126 @@ async function submitStartCompany() {
       if (rolesErr) throw rolesErr;
       if (appsErr) throw appsErr;
       const appliedTo = new Set((myApps || []).map(a => a.opening_id));
+
+      // [VIEW] — the employer's profile behind a posting: registry
+      // facts, Core Metrics, departments (copy shared with the corp
+      // page via corp-blueprints.js), with CLOSE / APPLY beneath.
+      const vwOverlay = document.getElementById('vw-overlay');
+      const vwClose = () => vwOverlay.classList.remove('open');
+      document.getElementById('vw-x').addEventListener('click', vwClose);
+      document.getElementById('vw-close').addEventListener('click', vwClose);
+      vwOverlay.addEventListener('click', (e) => { if (e.target === vwOverlay) vwClose(); });
+
+      async function openRoleView(o) {
+        if (!o) return;
+        const body = document.getElementById('vw-body');
+        const applyBtn = document.getElementById('vw-apply');
+        document.getElementById('vw-title').textContent =
+          `${o.title} — ${o.corp?.name || '—'}`;
+        body.innerHTML = '<div class="biz-soon">Loading…</div>';
+
+        const refreshApply = () => {
+          applyBtn.disabled = appliedTo.has(o.id);
+          applyBtn.textContent = appliedTo.has(o.id) ? 'APPLIED' : 'APPLY';
+        };
+        refreshApply();
+        applyBtn.onclick = async () => {
+          applyBtn.disabled = true;
+          try {
+            const { data: res, error: aErr } = await _supabase.rpc('apply_to_job_opening',
+              { p_opening_id: o.id, p_faction_id: ctx.faction.id });
+            if (aErr) throw aErr;
+            if (!res?.success) {
+              const REASON = {
+                already_applied: 'You already applied to this role.',
+                local_only: 'This posting only accepts local candidates.',
+                own_corp: 'You cannot apply to your own corporation.',
+                not_open: 'This posting is no longer open.',
+                arrested: 'You are under arrest — applications are frozen.',
+              };
+              throw new Error(REASON[res?.reason] || res?.reason || 'unknown');
+            }
+            appliedTo.add(o.id);
+          } catch (e) {
+            alert('Could not apply: ' + (e?.message || e));
+          } finally {
+            refreshApply();
+          }
+        };
+        vwOverlay.classList.add('open');
+
+        try {
+          const [{ data: corp, error: cErr }, rev] = await Promise.all([
+            _supabase.from('entrepreneur_corps')
+              .select(`id, name, industry, listing, hq_city, logo_url, employee_count,
+                       pillar_speed, pillar_efficiency, pillar_quality,
+                       nation:nations!hq_nation_id(name),
+                       owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
+              .eq('id', o.corp?.id).maybeSingle(),
+            _supabase.rpc('corp_revenue_by_year',
+              { p_corp_id: o.corp?.id, p_current_tick: currentTick }),
+          ]);
+          if (cErr) throw cErr;
+          if (!corp) throw new Error('corporation not found');
+          const revenueYtd = rev.data?.success ? (Number(rev.data.this_year_delta) || 0) : 0;
+          const typeLabel = corp.listing === 'public' ? 'Public' : 'Private';
+          const site = (corp.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '') + '.nh';
+          const logoHtml = corp.logo_url
+            ? `<img src="${esc(corp.logo_url)}" alt="${esc(corp.name)} logo">`
+            : `<span class="ini">${esc((corp.name || '?').slice(0, 2).toUpperCase())}</span>`;
+          const pillars = PILLARS[corp.industry];
+          const depts = (DEPARTMENTS[corp.industry] || []).filter(Boolean);
+
+          body.innerHTML = `
+            <div class="vw-id">
+              <div class="vw-logo">${logoHtml}</div>
+              <div>
+                <div class="vw-corp">${esc(corp.name)}</div>
+                <div class="vw-role">${esc(o.title)} &middot; ${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year &middot; ${o.reach === 'global' ? 'Global candidates' : 'Local candidates'}</div>
+              </div>
+            </div>
+            <div class="vw-rows">
+              <div class="vw-row"><div class="k">HEADQUARTERS</div>
+                <div class="v">${esc(`${corp.hq_city || '—'}, ${corp.nation?.name || '—'}`)}</div></div>
+              <div class="vw-row"><div class="k">NUMBER OF EMPLOYEES</div>
+                <div class="v">${esc(String(corp.employee_count ?? 1))}</div></div>
+              <div class="vw-row"><div class="k">TYPE</div>
+                <div class="v">${esc(typeLabel)}</div></div>
+              <div class="vw-row"><div class="k">SECTOR</div>
+                <div class="v">${esc(industryTitleLabel(corp.industry))}</div></div>
+              <div class="vw-row"><div class="k">KEY PEOPLE</div>
+                <div class="v">${esc(displayName(corp.owner))} <span class="dim">· Owner</span></div></div>
+              <div class="vw-row"><div class="k">REVENUE</div>
+                <div class="v">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
+              <div class="vw-row"><div class="k">WEBSITE</div>
+                <div class="v">${esc(site)}</div></div>
+            </div>
+            ${pillars ? `
+              <div class="vw-sec">CORE METRICS</div>
+              <div class="vw-pillars">
+                ${pillars.map(p => `
+                  <div class="vw-pl">
+                    <div class="nm">${esc(p.name)}</div>
+                    <div class="kd">${esc(p.kind)}</div>
+                    <div class="vl">${esc(String(corp[p.col] ?? 1))}</div>
+                    <div class="ds">${esc(p.desc)}</div>
+                  </div>`).join('')}
+              </div>` : ''}
+            ${depts.length ? `
+              <div class="vw-sec">DEPARTMENTS</div>
+              ${depts.map(d => `
+                <div class="vw-dp">
+                  <div class="id">
+                    <div class="dept">${esc(d.dept)}</div>
+                    <div class="tier">${esc(d.tier)}</div>
+                  </div>
+                  <div class="eff">${esc(d.effect)}</div>
+                </div>`).join('')}` : ''}`;
+        } catch (e) {
+          console.warn('businessman-career: role view failed', e?.message || e);
+          body.innerHTML = '<div class="biz-soon">Could not load this corporation — try again shortly.</div>';
+        }
+      }
       const visible = (roles || []).filter(o =>
         o.reach === 'global' || o.corp?.hq_nation_id === ctx.faction.nation_id);
       const host = document.getElementById('roles-list');
@@ -368,7 +550,6 @@ async function submitStartCompany() {
         host.innerHTML = visible.map(o => {
           const ago = postedMonthsAgo(o.posted_at_tick, currentTick);
           const mine = o.corp?.owner_faction_id === ctx.faction.id;
-          const applied = appliedTo.has(o.id);
           return `
           <div class="role-row">
             <div>
@@ -376,34 +557,12 @@ async function submitStartCompany() {
               <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${esc(o.corp?.hq_city || '—')} &middot; ${o.reach === 'global' ? 'Global' : 'Local'}</div>
             </div>
             <span class="ago">${esc(ago)}</span>
-            ${mine ? '' : applied
-              ? '<button type="button" class="role-apply" disabled>APPLIED</button>'
-              : `<button type="button" class="role-apply" data-opening="${esc(o.id)}">APPLY</button>`}
+            ${mine ? '' : `<button type="button" class="role-apply" data-view="${esc(o.id)}">VIEW</button>`}
           </div>`;
         }).join('');
-        host.querySelectorAll('.role-apply[data-opening]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            btn.disabled = true;
-            try {
-              const { data: res, error: aErr } = await _supabase.rpc('apply_to_job_opening',
-                { p_opening_id: btn.dataset.opening, p_faction_id: ctx.faction.id });
-              if (aErr) throw aErr;
-              if (!res?.success) {
-                const REASON = {
-                  already_applied: 'You already applied to this role.',
-                  local_only: 'This posting only accepts local candidates.',
-                  own_corp: 'You cannot apply to your own corporation.',
-                  not_open: 'This posting is no longer open.',
-                  arrested: 'You are under arrest — applications are frozen.',
-                };
-                throw new Error(REASON[res?.reason] || res?.reason || 'unknown');
-              }
-              btn.textContent = 'APPLIED';
-            } catch (e) {
-              alert('Could not apply: ' + (e?.message || e));
-              btn.disabled = false;
-            }
-          });
+        host.querySelectorAll('.role-apply[data-view]').forEach(btn => {
+          btn.addEventListener('click', () =>
+            openRoleView(visible.find(x => x.id === btn.dataset.view)));
         });
       }
     } catch (e) {

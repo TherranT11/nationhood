@@ -267,6 +267,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
+import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
 (async () => {
   try {
@@ -347,18 +348,8 @@ import { openInterviewChat } from './js/job-interview-chat.js';
 
     // Core Metrics — the three pillars. VALUES come from the corp's
     // pillar columns (20270794, all start at 1; upgrades increment
-    // there); the per-industry LABELS and copy live here. Only
-    // construction's trio is chartered so far.
-    const PILLARS = {
-      construction: [
-        { col: 'pillar_speed', name: 'STRUCTURAL SPEED', kind: 'Throughput',
-          desc: 'Decreases the baseline number of ticks required to deliver a finished building. Faster completion liquidates contracts quickly, avoiding penalties and freeing up your project queue.' },
-        { col: 'pillar_efficiency', name: 'PROCUREMENT EFFICIENCY', kind: 'Cost Reduction',
-          desc: 'Reflects your vertical supply-chain dominance. Higher efficiency permanently slashes the baseline corporate cash you must spend out-of-pocket on the raw steel, concrete, and aggregates a project requires.' },
-        { col: 'pillar_quality', name: 'ENGINEERING QUALITY', kind: 'Value-Add',
-          desc: 'Applies a permanent, positive performance modifier to the completed building. A high-tier builder delivers an Assembly Plant granting +0.3 GDP growth instead of the baseline +0.2 — and charges premium margins for it.' },
-      ],
-    };
+    // there); the per-industry LABELS and copy are shared with the
+    // career page's role-view modal via corp-blueprints.js.
     const pillars = PILLARS[corp.industry];
     if (pillars) {
       document.getElementById('bc-pillars').innerHTML = `
@@ -376,32 +367,10 @@ import { openInterviewChat } from './js/job-interview-chat.js';
         </div>`;
     }
 
-    // Departments — five per-industry tier containers. Every corp
-    // starts at its industry's entry tier; these baselines are
-    // display copy until upgrade mechanics land (tier state moves to
-    // columns then). Construction has four chartered so far — the
-    // fifth slot (and the automotive set) render as placeholders
-    // until designed.
-    const DEPARTMENTS = {
-      construction: [
-        { dept: 'PROJECT MANAGEMENT', tier: 'The Truck & Clipboard',
-          desc: 'You handle all local permitting, contract estimates, and safety compliance yourself out of the cab of your truck. Administrative bottlenecks limit you to chasing one tiny contract at a time.',
-          effect: 'Number of Active Projects: 1' },
-        { dept: 'HEAVY EQUIPMENT', tier: 'Level 0: Commercial Rental Yard',
-          desc: 'Your physical yard is completely empty. You own zero iron. Every time you secure a contract, you must lease skid-steers or excavators at a high per-turn premium.',
-          effect: 'Construction Project costs require equipment rentals.' },
-        { dept: 'SUPPLY & MATERIAL', tier: 'Retail Hardware Store',
-          desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
-          effect: 'Construction Project costs require standard upfront prices.' },
-        { dept: 'SYSTEM DESIGN', tier: 'CAD System & Laptop',
-          desc: 'You implement your own designs, limited by your own project expertise.',
-          effect: 'You gain Experience at +3 per completed project.' },
-        { dept: 'REGULATORY COMPLIANCE', tier: 'City Permits',
-          desc: 'Your licensing stops at the city clerk\u2019s counter. You\u2019re cleared for small-scale municipal work \u2014 anything bigger needs certifications you don\u2019t hold yet.',
-          effect: 'Can only build \u2018Residential\u2019 and \u2018Tier I Commercial\u2019.' },
-      ],
-      automotive: [null, null, null, null, null],
-    };
+    // Departments — five per-industry tier containers (copy shared
+    // via corp-blueprints.js). Every corp starts at its industry's
+    // entry tier; these baselines are display copy until upgrade
+    // mechanics land (tier state moves to columns then).
     const depts = DEPARTMENTS[corp.industry];
     if (depts) {
       document.getElementById('bc-departments').innerHTML =
