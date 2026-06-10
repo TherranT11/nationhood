@@ -20,6 +20,14 @@ All notable changes to Nationhood are recorded here. Format inspired by
   Salaryman** ($150k · age 25). Wealth and age are applied
   server-side; the chosen archetype is stored for future career
   mechanics to branch on.
+- **Businessman identity row.** The Home page opens with Current
+  Location and Residence ({Capital}, {Nation}), a residence rolled
+  once at creation — estates worth $4M–$19M for Wealthy
+  Entrepreneurs, $600–900k neighborhoods for Executives, a $250–400k
+  Modest Townhome for Salarymen — plus Debt, Net Worth (cash +
+  residence), Assets (Unfrozen, or Frozen under arrest), and a
+  derived Status line (Free · No Warrants · No Active
+  Investigations). Existing businessmen are backfilled.
 - **Businessman character creation + Home.** Picking a nation opens
   the gender + generated-name modal (20 names drawn from the nation's
   name pools); confirming creates the character server-side
