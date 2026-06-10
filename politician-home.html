@@ -3108,12 +3108,39 @@ async function renderForeignAffiliation(ctx) {
           <div class="ah-name">Foreign Attaché in ${escHtml(nationName)}</div>
           <div class="ah-desc">Stationed at the embassy in <strong>${escHtml(capital)}</strong>. You file reports, cultivate contacts, and learn the trade — the Foreign Ministry expects discretion.</div>
         </div>
+        <button class="resign-btn" data-fs-resign
+                style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+                       font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
+                       cursor:pointer; font-family:inherit; flex-shrink:0;">RESIGN</button>
       </div>
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
         <div class="ar-buttons">${actionsHtml}</div>
       </div>
     </div>`;
+
+  // Resign the posting (20270771). No stat claw-back — re-entry
+  // means re-passing the FS exam, which is its own barrier.
+  host.querySelector('[data-fs-resign]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn.dataset.busy === '1') return;
+    if (!confirm(`Resign your posting in ${nationName}? Re-joining the Foreign Service requires passing the exam again.`)) return;
+    btn.dataset.busy = '1';
+    try {
+      const { data, error } = await _supabase.rpc('politician_foreign_service_resign',
+        { p_faction_id: ctx.faction?.id || null });
+      if (error) throw error;
+      if (!data?.success) {
+        alert('Could not resign: ' + (data?.reason || 'unknown'));
+        btn.dataset.busy = '0';
+        return;
+      }
+      location.reload();
+    } catch (err) {
+      alert('Failed: ' + (err?.message || err));
+      btn.dataset.busy = '0';
+    }
+  });
 }
 
 // 20270769 — Federal Investigations Tier 1 (Agent) affiliation card.
@@ -3166,12 +3193,40 @@ async function renderFisAffiliation(ctx) {
           <div class="ah-name">Agent (Probationary)</div>
           <div class="ah-desc">You sit at someone else’s case team. Files, interviews, paperwork — every move evaluated. Clear probation and you’re a real agent.</div>
         </div>
+        <button class="resign-btn" data-fis-resign
+                style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+                       font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
+                       cursor:pointer; font-family:inherit; flex-shrink:0;">RESIGN</button>
       </div>
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
         <div class="ar-buttons">${actionsHtml}</div>
       </div>
     </div>`;
+
+  // Resign from the FIS (20270771). Server dismisses any active
+  // investigations and claws back the academy grant (−1 Experience,
+  // −1 Influence) so resign→rejoin can't farm the +1/+1.
+  host.querySelector('[data-fis-resign]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn.dataset.busy === '1') return;
+    if (!confirm('Resign from the Federal Investigations Service? Any active investigations are dismissed, and the academy bonus is withdrawn (−1 Experience, −1 Influence).')) return;
+    btn.dataset.busy = '1';
+    try {
+      const { data, error } = await _supabase.rpc('politician_fis_resign',
+        { p_faction_id: ctx.faction?.id || null });
+      if (error) throw error;
+      if (!data?.success) {
+        alert('Could not resign: ' + (data?.reason || 'unknown'));
+        btn.dataset.busy = '0';
+        return;
+      }
+      location.reload();
+    } catch (err) {
+      alert('Failed: ' + (err?.message || err));
+      btn.dataset.busy = '0';
+    }
+  });
 
   // Wire enabled buttons. Cooldown variants carry no data-action so
   // the selector skips them naturally.

@@ -987,10 +987,11 @@ const PARTY_OFFICE_RUNGS = [
     // Re-election window (20270766): when an incumbent MP is inside
     // the final 5 ticks of their term, surface [Run for Re-Election]
     // so they have a path forward when the Senior MP "full term
-    // served" gate is still ahead of them. The button shares the
-    // stand-for-election dispatcher — modal flow is identical, the
-    // server-side gate (lifted only for tier='parliament' incumbents
-    // within 5 ticks of the general election) handles the rest.
+    // served" gate is still ahead of them. 20270770: re-election no
+    // longer goes through the two-race modal — its own dispatcher
+    // confirms the deferred filing ("Next general election in X
+    // ticks…") and files directly as a parliament-tier candidacy
+    // whose resolve_tick = the general election tick (server-side).
     // Returns null when out of window so the rung renders the plain
     // "held" pill the rest of the time.
     actionIfHeld: (s) => {
@@ -999,7 +1000,7 @@ const PARTY_OFFICE_RUNGS = [
       if (s.nextGeneralElectionTick - s.currentTick > 5) return null;
       if (s.activeRace) return null;       // already filed → fall through to "held"
       if (!s.partyId)   return null;       // independent → no race
-      return { label: 'Run for Re-Election', kind: 'primary', action: 'stand-for-election' };
+      return { label: 'Run for Re-Election', kind: 'primary', action: 'run-for-reelection' };
     },
   },
   {
@@ -2811,6 +2812,61 @@ function bindRungActions(ctx) {
       location.reload();
     });
   });
+  // Run for Re-Election — incumbent MP filing (20270766/20270770).
+  // Skips the two-race modal: confirms the deferred candidacy, seeds
+  // an offer (politician_get_election_offer is incumbent-friendly,
+  // no already_in_office gate), then files tier='parliament'. The
+  // server sets resolve_tick = the general election tick, so the
+  // race rides until the actual election rather than 2 ticks.
+  document.querySelectorAll('[data-action="run-for-reelection"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      const ctx2 = window.__careerCtx || {};
+      const factionId   = ctx2.faction?.id || null;
+      const partyId     = ctx2.party?.id   || null;
+      const electionTick = Number(ctx2.nation?.next_election_tick) || 0;
+      const nowTick      = Number(ctx2.shard?.current_tick) || 0;
+      if (!factionId || !partyId) { alert('No active politician / party found.'); return; }
+      const left = Math.max(0, electionTick - nowTick);
+      if (!confirm(`Next general election in ${left} tick${left === 1 ? '' : 's'} — this will assign your candidacy to that election. The $50K parliamentary entry fee applies. Continue?`)) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'FILING…';
+      try {
+        // Seed the offer first — stand_for_election requires an offer
+        // row and bounces with no_offer otherwise.
+        const { data: offer, error: offerErr } = await _supabase.rpc('politician_get_election_offer',
+          { p_party_id: partyId, p_faction_id: factionId });
+        if (offerErr) throw offerErr;
+        if (!offer?.success) {
+          alert('Could not prepare the race: ' + (offer?.reason || 'unknown'));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        const { data, error } = await _supabase.rpc('politician_stand_for_election', {
+          p_party_id: partyId, p_tier: 'parliament', p_faction_id: factionId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            already_in_office:        'Re-election window has closed.',
+            race_in_progress:         'You are already standing in a race.',
+            cooldown:                 `You have already taken your action this tick (ready at tick ${data?.ready_at_tick ?? '?'}).`,
+            insufficient_party_funds: `Your party can't cover the $50K entry fee (treasury: $${(Number(data?.have) || 0).toLocaleString()}).`,
+            no_offer:                 'The race offer expired — try again.',
+          };
+          alert(REASON[data?.reason] || ('Could not file: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
+  });
+
   // Stand for Election now lives on a standalone button above the
   // ladder-branch (not in a rung), so the selector matches by data-action
   // alone rather than by .rung-btn class.
