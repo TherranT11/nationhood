@@ -55,6 +55,14 @@
 
   .loading { font-size:11px; color:#666; font-style:italic; padding:60px 22px; text-align:center; }
   .fail    { color:#d49a9a; font-size:11px; padding:60px 22px; text-align:center; }
+
+  .close-inv-btn { display:block; width:100%; padding:10px 14px; background:transparent;
+    border:0.5px solid rgba(200,120,120,0.35); border-radius:4px; color:#c87a7a;
+    font-size:9.5px; letter-spacing:0.14em; font-weight:700; cursor:pointer;
+    font-family:inherit; margin-top:12px; }
+  .close-inv-btn:hover:not(:disabled) { background:#160e0e; border-color:#c87a7a; color:#fff; }
+  .close-inv-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .close-inv-note { font-size:9.5px; color:#666; margin-top:6px; text-align:center; font-style:italic; }
 </style>
 </head>
 <body>
@@ -118,6 +126,10 @@ async function init() {
   const targetName = data.target_corp?.name || data.target_corp_name || '—';
   const industry   = (data.target_corp?.industry || '').replace(/_/g, ' ').toUpperCase();
   const hqNation   = data.target_corp?.hq_nation?.name || null;
+  // [Close Investigation] only renders for the owning agent on an
+  // active case — observers and sealed cases get the read-only view.
+  const isOwnActiveCase = data.status === 'active'
+    && data.agent_faction_id === (ctx.faction?.id || null);
 
   // Corporate History — same source the corp page's Corporate History
   // container reads (list_corp_history, 20270564: event_log scoped to
@@ -194,9 +206,53 @@ async function init() {
         <div class="card">
           <div class="card-lab">CASE ACTIONS</div>
           <div class="placeholder">Subpoena, interview, and evidence mechanics land in a follow-up. This page is the persistent surface for the case file.</div>
+          ${isOwnActiveCase ? `
+          <button type="button" class="close-inv-btn" id="close-inv-btn">&#10005; CLOSE INVESTIGATION</button>
+          <div class="close-inv-note">Closing without findings costs <strong>−1 Reputation</strong>.</div>` : ''}
         </div>
       </div>
     </div>`;
+
+  // [Close Investigation] — agent-only, active cases only. Confirm →
+  // RPC (status='closed', −1 Reputation) → back to politician-home
+  // (the Pressing Issues card drops since the list RPC filters
+  // status='active').
+  const closeBtn = document.getElementById('close-inv-btn');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', async () => {
+      if (closeBtn.disabled) return;
+      if (!confirm('Close this investigation? You found nothing — this costs 1 Reputation and the case file is sealed.')) return;
+      closeBtn.disabled = true;
+      const prev = closeBtn.textContent;
+      closeBtn.textContent = 'CLOSING…';
+      try {
+        const { data: res, error: rpcErr } = await _supabase.rpc('politician_fis_close_investigation', {
+          p_faction_id:       ctx.faction?.id || null,
+          p_investigation_id: id,
+        });
+        if (rpcErr) throw rpcErr;
+        if (!res?.success) {
+          const REASON = {
+            not_authenticated:       'You are not signed in.',
+            invalid_arguments:       'Malformed request — refresh and retry.',
+            no_politician:           'No politician faction found.',
+            investigation_not_found: 'This case no longer exists.',
+            not_your_case:           'This is not your case to close.',
+            already_closed:          'This case is already closed.',
+          };
+          alert(REASON[res?.reason] || ('Could not close: ' + (res?.reason || 'unknown')));
+          closeBtn.disabled = false;
+          closeBtn.textContent = prev;
+          return;
+        }
+        window.location.href = 'politician-home.html';
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        closeBtn.disabled = false;
+        closeBtn.textContent = prev;
+      }
+    });
+  }
 }
 
 init().catch(err => {
