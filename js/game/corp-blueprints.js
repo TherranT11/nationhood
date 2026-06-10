@@ -15,6 +15,15 @@ export const PILLARS = {
   ],
 };
 
+// Display mirror of the per-type material requirements stamped onto
+// blueprints by draft_blueprint (20270814) — the server CASE is
+// authoritative; this feeds the modal's live MATERIALS NEEDED line.
+export const BUILDING_MATERIALS_NEEDED = {
+  single_story_home: 1,
+  double_story: 2,
+  multitenant_living: 7,
+};
+
 // Display mirror of the quality-tier city effects applied by
 // complete_construction_projects (20270810) — the server CASE is
 // authoritative; this feeds the tier pills' hint text.
