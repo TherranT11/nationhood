@@ -8,7 +8,7 @@
 // ===== APP VERSION =====
 
 // Single source of truth for the build label shown in every faction navbar.
-export const APP_VERSION = 'ALPA — 2.9';
+export const APP_VERSION = 'MARIANNE — 3.0';
 
 // Junior Minister portfolios (20270669). Slug → display label + a
 // short hint surfaced on the portfolio picker and pressing-issues
