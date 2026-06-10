@@ -19,7 +19,7 @@ import {
     nextPoliticianSlot,
     activatePoliticianSlot,
 } from './game/factions.js';
-import { escapeHtml as escHtml, APP_VERSION, flagUrlFor } from './utils.js';
+import { escapeHtml as escHtml, flagUrlFor } from './utils.js';
 
 // Per-area theme key, mirroring corp-topbar's THEME_STORAGE_KEY
 // ('corpThemePref') and common.js's ('nationhood_theme') — each
@@ -81,10 +81,6 @@ const _MIL_TOPBAR_CSS = `
 .mil-topbar__tick-value {
   font-family: var(--font-mono); font-size: 13px; font-weight: 500;
   color: var(--text-bright);
-}
-.mil-topbar__version {
-  font-family: var(--font-mono); font-size: 10px;
-  color: #f0efe6; letter-spacing: 0.5px; opacity: 0.8;
 }
 .mil-topbar__right { display: flex; align-items: center; gap: 10px; }
 .mil-topbar__budget {
@@ -273,7 +269,6 @@ export function renderMilitaryTopBar(container, opts = {}) {
                     </div>
                 </div>
             </div>
-            <div class="mil-topbar__version">${APP_VERSION}</div>
             <div class="mil-topbar__right">
                 <div class="mil-topbar__budget">
                     <span class="mil-topbar__budget-label">Budget</span>

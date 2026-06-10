@@ -11,7 +11,7 @@ import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
-import { escapeHtml, APP_VERSION, flagUrlFor } from './utils.js';
+import { escapeHtml, flagUrlFor } from './utils.js';
 
 // ===== QUERY CACHE =====
 // Generic sessionStorage cache for Supabase query results.
@@ -441,7 +441,6 @@ export function renderTopBar(activeTab) {
                     </div>
                 </div>
             </div>
-            <div class="top-bar-version" style="font-family:var(--font-mono);font-size:10px;color:#f0efe6;letter-spacing:0.5px;opacity:0.8;">${APP_VERSION}</div>
             <div class="top-bar-right">
                 <div class="notif-wrap">
                     <button class="notif-bell" id="notif-bell" type="button" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
