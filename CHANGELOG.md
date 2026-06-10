@@ -7,6 +7,22 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Added — Foreign Service
 
+- **Foreign Events authoring tool + Day to Day in the Embassy.** The
+  Admin Backend's FOREIGN EVENTS tab is now a real authoring surface:
+  admins write embassy events (title + description) with up to three
+  decisions (A / B / C), each carrying up to three stat effects
+  against the four new embassy stats — **Embassy Budget** ($100
+  start, floor $0), **Embassy Reputation**, **Embassy Trust**, and
+  **Embassy Leverage** (each 0–100, starting at 50). Text supports
+  `{Nation}` (host country), `{City}` (the embassy's location),
+  `{Name1}` (a name drawn from the host nation's name list), and
+  `{Corp}` (a corporation operating in the country), substituted when
+  the event is drawn. On the home page, the Attaché card now shows
+  the embassy stat strip and **[Day to Day in the Embassy] is live**:
+  it draws a random event from the pool, you pick a decision, and the
+  effects land. Draws are snapshotted — refreshing can't re-roll a
+  bad hand, and an undecided event waits on your desk. Resigning the
+  posting resets the embassy stats and discards the pending event.
 - **Foreign Service Exam + Tier 1 (Attaché).** [Join the Service] on
   the career page now opens a 5-question multiple-choice exam on the
   active Politicianverse nations — population, Head of Government,
@@ -127,6 +143,14 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Party login redirect loop** — since the news-site cull turned
+  dashboard.html into a thin redirect to faction-select.html, any
+  account with an active party ping-ponged between "AUTHENTICATING"
+  and the faction chooser forever (faction-select sent parties to
+  dashboard.html, which sent them straight back). Party factions now
+  route to politics.html, their Actions home, everywhere: login, the
+  faction switcher, and faction-select all read the single-source
+  router in js/game/factions.js.
 - **Bankruptcy unblocked for aviation corps** — the aircraft/engine
   design self-reference no longer aborts the liquidation cascade.
 - **Witness testimony submit** — fixed the broken submit on

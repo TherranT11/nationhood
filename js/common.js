@@ -1331,15 +1331,16 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
 
     // Non-party faction on a party page — bounce to its own dashboard
     // (corp → corp-dashboard, army → army-dashboard, …) via the
-    // single-source router. Party factions resolve to dashboard.html so
-    // they stay. Shared pages (news, wiki) are usable by every type.
+    // single-source router. Party factions resolve to politics.html —
+    // their home inside this very page suite — so they stay. Shared
+    // pages (news, wiki) are usable by every type.
     // Preserve window.location.search so admin-inspector overrides
     // (?nation_id= and ?faction_id=) survive the redirect — otherwise
     // the target falls back to the admin's own faction instead of the
     // inspected one.
     const SHARED_TABS = ['news', 'wiki'];
     const factionHome = getFactionDashboardUrl(state.faction);
-    if (factionHome && factionHome !== 'dashboard.html' && !SHARED_TABS.includes(activeTab)) {
+    if (factionHome && factionHome !== 'politics.html' && !SHARED_TABS.includes(activeTab)) {
         window.location.href = factionHome + window.location.search;
         return;
     }
