@@ -1354,7 +1354,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { bootstrapSharedViewer } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, pctOwned, ownerDisplayName, escapeHtml, industryLabel, buildingTypeLabel, computeApartmentRent, apartmentOccupancy, tickToDate, tickToYear, APARTMENT_DEFS, OIL_GAS_DEFS, OIL_GAS_PRICES } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash, computeCorpBookValue } from './js/game/corp-valuation.js';
 import { fetchOneCorpBookAggregates } from './js/corp-book-value.js';
@@ -1365,7 +1365,7 @@ function initials(s, n) {
 
 (async () => {
   try {
-    const ctx = await bootstrapEntrepreneur('corporations');
+    const ctx = await bootstrapSharedViewer('corporations', 'corporations');
     if (!ctx) return;
     const id = new URLSearchParams(location.search).get('id');
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }
