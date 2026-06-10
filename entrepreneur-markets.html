@@ -484,7 +484,10 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
 
       const row = document.createElement('a');
       row.className = 'grid row' + (r.mine ? ' mine' : '');
-      row.href = 'entrepreneur-corp.html?id=' + encodeURIComponent(c.id);
+      // Businessmen get the business-corp design; entrepreneurs keep
+      // their management page.
+      row.href = (ctx.viewerType === 'businessman' ? 'business-corp.html?id=' : 'entrepreneur-corp.html?id=')
+        + encodeURIComponent(c.id);
 
       const nameCell = document.createElement('div');
       nameCell.className = 'c-cell';
