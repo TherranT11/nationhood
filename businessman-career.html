@@ -281,8 +281,8 @@ async function submitStartCompany() {
       scUpdateSubmit();
       return;
     }
-    alert(`${data.corp_name} is incorporated in ${data.city}. Make history.`);
-    location.reload();
+    // Straight to the corporation's own page.
+    window.location.href = 'business-corp.html?id=' + encodeURIComponent(data.corp_id);
   } catch (e) {
     errEl.textContent = 'Failed: ' + (e?.message || 'unknown error');
     scInFlight = false;
