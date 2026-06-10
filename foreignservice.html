@@ -5,27 +5,347 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Foreign Events — Admin</title>
 <style>
+  :root { --line:rgba(255,255,255,0.08); --mut:#888; --faint:#666; --red:#c87a7a;
+          --acc:#7aabab; --acc-bg:#0e1717; --acc-dim:#3a5a5a; --acc-bright:#a5c8c8; }
+  * { box-sizing:border-box; }
   body { margin:0; min-height:100vh; background:#050505; color:#d4d4d4;
-         font-family:-apple-system,system-ui,sans-serif;
-         display:flex; align-items:center; justify-content:center; padding:24px; }
-  .card { max-width:480px; width:100%; padding:36px 32px; background:#0d0d0d;
-          border:0.5px solid rgba(255,255,255,0.08); border-radius:6px; text-align:center; }
-  .eyebrow { font-size:9px; letter-spacing:0.2em; color:#7aabab; font-weight:700;
-             margin-bottom:8px; }
-  h1 { font-family:Georgia,serif; font-size:24px; color:#fff; margin:0 0 12px; font-weight:500; }
-  h1 em { font-style:italic; color:#a5c8c8; }
-  p { font-size:12px; color:#888; line-height:1.6; margin:0 0 6px; }
-  p strong { color:#bbb; font-weight:600; }
+         font-family:-apple-system,system-ui,sans-serif; padding:26px 22px 60px; }
+  .wrap { max-width:860px; margin:0 auto; }
+
+  .eyebrow { font-size:9px; letter-spacing:0.2em; color:var(--acc); font-weight:700; margin-bottom:6px; }
+  h1 { font-family:Georgia,serif; font-size:24px; color:#fff; margin:0 0 6px; font-weight:500; }
+  h1 em { font-style:italic; color:var(--acc-bright); }
+  .sub { font-size:11px; color:var(--mut); line-height:1.6; margin:0 0 18px; }
+  .sub strong { color:#bbb; font-weight:600; }
+
+  /* Stat + variable legends */
+  .legend { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:22px; }
+  .legend-chip { font-family:monospace; font-size:9.5px; letter-spacing:0.04em; color:var(--acc-bright);
+                 background:var(--acc-bg); border:0.5px solid var(--acc-dim); border-radius:3px;
+                 padding:5px 9px; }
+  .legend-chip span { color:var(--mut); }
+
+  /* ── List view ──────────────────────────────────────────── */
+  .list-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .list-lab { font-size:9px; letter-spacing:0.16em; color:var(--mut); font-weight:700; }
+  .btn { padding:9px 16px; background:rgba(122,171,171,0.1); border:0.5px solid var(--acc);
+         border-radius:3px; color:var(--acc-bright); font-size:9.5px; letter-spacing:0.13em;
+         font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn:hover:not(:disabled) { background:rgba(122,171,171,0.22); color:#fff; }
+  .btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .btn.secondary { background:transparent; border-color:#3a3a3a; color:var(--mut); }
+  .btn.secondary:hover:not(:disabled) { color:#d4d4d4; border-color:#5a5a5a; }
+  .btn.danger { background:transparent; border-color:#5a3030; color:var(--red); }
+  .btn.danger:hover:not(:disabled) { background:#1a0a0a; }
+
+  .ev-list { display:flex; flex-direction:column; gap:8px; }
+  .ev-row { display:flex; align-items:flex-start; gap:14px; padding:14px 16px; background:#0d0d0d;
+            border:0.5px solid var(--line); border-radius:5px; }
+  .ev-info { flex:1; min-width:0; }
+  .ev-title { font-size:13px; color:#fff; font-weight:600; margin-bottom:4px; }
+  .ev-desc { font-size:11px; color:var(--mut); line-height:1.5; overflow:hidden; display:-webkit-box;
+             -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  .ev-meta { font-family:monospace; font-size:8.5px; letter-spacing:0.1em; color:var(--faint);
+             margin-top:6px; }
+  .ev-actions { display:flex; gap:6px; flex-shrink:0; }
+  .ev-empty { padding:34px 16px; text-align:center; color:var(--faint); font-size:11.5px;
+              font-style:italic; background:#0a0a0a; border:0.5px dashed var(--line); border-radius:5px; }
+
+  /* ── Editor view ────────────────────────────────────────── */
+  #editor-view { display:none; }
+  .ed-card { background:#0d0d0d; border:0.5px solid var(--line); border-radius:6px;
+             padding:22px 24px; margin-bottom:14px; }
+  .ed-lab { font-size:9px; letter-spacing:0.14em; color:var(--mut); font-weight:700;
+            display:block; margin-bottom:6px; }
+  .ed-input, .ed-textarea, .ed-select {
+    width:100%; padding:9px 11px; background:#0a0a0a; border:0.5px solid var(--line);
+    border-radius:4px; color:#fff; font-size:12px; font-family:inherit; }
+  .ed-input:focus, .ed-textarea:focus, .ed-select:focus { outline:none; border-color:var(--acc-dim); }
+  .ed-textarea { resize:vertical; min-height:74px; line-height:1.55; }
+  .ed-field { margin-bottom:16px; }
+  .ed-field:last-child { margin-bottom:0; }
+  .ed-hint { font-size:10px; color:var(--faint); margin-top:5px; line-height:1.5; }
+  .ed-hint code { color:var(--acc-bright); font-size:9.5px; }
+
+  .dec-head { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  .dec-key { font-family:Georgia,serif; font-size:17px; color:var(--acc-bright); }
+  .dec-note { font-size:10px; color:var(--faint); font-style:italic; }
+  .eff-row { display:grid; grid-template-columns:1fr 110px 110px; gap:8px; margin-bottom:7px; }
+  .eff-row:last-child { margin-bottom:0; }
+  .eff-amount { text-align:right; }
+  .eff-lab { font-size:8.5px; letter-spacing:0.13em; color:var(--faint); font-weight:700;
+             margin:12px 0 7px; }
+
+  .ed-foot { display:flex; justify-content:flex-end; gap:10px; margin-top:4px; }
+  .ed-err { color:#d49a9a; font-size:10.5px; margin-right:auto; align-self:center; min-height:14px; }
+
+  .status { margin-bottom:16px; font-size:11px; color:var(--faint); font-style:italic; min-height:15px; }
+
+  @media (max-width:560px) {
+    .eff-row { grid-template-columns:1fr; }
+    .ev-row { flex-direction:column; }
+  }
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="eyebrow">FOREIGN MINISTRY · COMING SOON</div>
-    <h1>Foreign <em>Events</em></h1>
-    <p>This surface will let admins author world events at foreign nations
-       and review attaché dispatches.</p>
-    <p>The schema and RPCs land in a follow-up commit — this tab is the
-       placeholder so the backend nav reads complete.</p>
+<div class="wrap">
+  <div class="eyebrow">FOREIGN MINISTRY · EVENT AUTHORING</div>
+  <h1>Foreign <em>Events</em></h1>
+  <p class="sub">Author the <strong>Day to Day in the Embassy</strong> event pool. When an attaché
+     clicks the action, one of these events is drawn at random and they must pick a decision —
+     each decision moves the embassy's stats.</p>
+
+  <div class="legend">
+    <div class="legend-chip">Embassy Budget <span>($100 start · floor $0)</span></div>
+    <div class="legend-chip">Embassy Reputation <span>(0–100)</span></div>
+    <div class="legend-chip">Embassy Trust <span>(0–100)</span></div>
+    <div class="legend-chip">Embassy Leverage <span>(0–100)</span></div>
   </div>
+
+  <div class="status" id="status"></div>
+
+  <!-- LIST VIEW ─────────────────────────────────────────── -->
+  <div id="list-view">
+    <div class="list-bar">
+      <div class="list-lab">EVENT POOL</div>
+      <button type="button" class="btn" id="new-event-btn">+ NEW EVENT</button>
+    </div>
+    <div class="ev-list" id="ev-list"></div>
+  </div>
+
+  <!-- EDITOR VIEW ───────────────────────────────────────── -->
+  <div id="editor-view">
+    <div class="ed-card">
+      <div class="ed-field">
+        <label class="ed-lab" for="ed-title">EVENT TITLE</label>
+        <input class="ed-input" id="ed-title" maxlength="200" placeholder="e.g. A Knock After Hours">
+      </div>
+      <div class="ed-field">
+        <label class="ed-lab" for="ed-desc">EVENT DESCRIPTION</label>
+        <textarea class="ed-textarea" id="ed-desc"
+          placeholder="e.g. {Name1}, a mid-level official in {Nation}'s trade ministry, appears at the embassy in {City} asking to speak with someone — anyone — about {Corp}."></textarea>
+        <div class="ed-hint">Variables — substituted when the event is drawn:
+          <code>{Nation}</code> host country (e.g. Samgola) ·
+          <code>{City}</code> the embassy's location (e.g. Samgola Dawn) ·
+          <code>{Name1}</code> a person from the host nation's name list ·
+          <code>{Corp}</code> a corporation operating in the country.
+          They work in the title, description, and decision descriptions.</div>
+      </div>
+    </div>
+
+    <div id="decision-blocks"></div>
+
+    <div class="ed-foot">
+      <div class="ed-err" id="ed-err"></div>
+      <button type="button" class="btn secondary" id="ed-cancel">CANCEL</button>
+      <button type="button" class="btn" id="ed-save">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+const STATS = [
+  { key: '',           label: '— no effect —' },
+  { key: 'budget',     label: 'Embassy Budget' },
+  { key: 'reputation', label: 'Embassy Reputation' },
+  { key: 'trust',      label: 'Embassy Trust' },
+  { key: 'leverage',   label: 'Embassy Leverage' },
+];
+const STAT_LABEL = Object.fromEntries(STATS.map(s => [s.key, s.label]));
+const DECISION_KEYS = ['A', 'B', 'C'];
+const EFFECTS_PER_DECISION = 3;
+
+const statusEl   = document.getElementById('status');
+const listView   = document.getElementById('list-view');
+const editorView = document.getElementById('editor-view');
+const listEl     = document.getElementById('ev-list');
+const errEl      = document.getElementById('ed-err');
+
+let events = [];
+let editingId = null; // null = creating
+
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+function setStatus(msg) { statusEl.textContent = msg || ''; }
+
+// ── List view ───────────────────────────────────────────────
+async function loadEvents() {
+  setStatus('Loading events…');
+  const { data, error } = await _supabase.from('embassy_events')
+    .select('id, title, description, decisions, created_at')
+    .order('created_at', { ascending: false });
+  if (error) { setStatus('Failed to load: ' + error.message); return; }
+  events = data || [];
+  setStatus('');
+  renderList();
+}
+
+function decisionSummary(decisions) {
+  const decs = Array.isArray(decisions) ? decisions : [];
+  return decs.map(d => {
+    const effs = (Array.isArray(d.effects) ? d.effects : [])
+      .map(e => `${STAT_LABEL[e.stat] || e.stat} ${e.direction === 'down' ? '−' : '+'}${e.amount}`)
+      .join(', ');
+    return `${d.key}${effs ? ` (${effs})` : ''}`;
+  }).join(' · ');
+}
+
+function renderList() {
+  if (!events.length) {
+    listEl.innerHTML = '<div class="ev-empty">No events yet — the embassy day-to-day pool is empty. Create the first one.</div>';
+    return;
+  }
+  listEl.innerHTML = events.map(ev => `
+    <div class="ev-row" data-id="${escHtml(ev.id)}">
+      <div class="ev-info">
+        <div class="ev-title">${escHtml(ev.title)}</div>
+        <div class="ev-desc">${escHtml(ev.description)}</div>
+        <div class="ev-meta">DECISIONS: ${escHtml(decisionSummary(ev.decisions) || 'none')}</div>
+      </div>
+      <div class="ev-actions">
+        <button type="button" class="btn secondary" data-edit>EDIT</button>
+        <button type="button" class="btn danger" data-delete>DELETE</button>
+      </div>
+    </div>`).join('');
+}
+
+listEl.addEventListener('click', async (e) => {
+  const row = e.target.closest('.ev-row');
+  if (!row) return;
+  const id = row.dataset.id;
+  if (e.target.closest('[data-edit]')) {
+    openEditor(events.find(ev => ev.id === id) || null);
+  } else if (e.target.closest('[data-delete]')) {
+    const ev = events.find(x => x.id === id);
+    if (!confirm(`Delete "${ev?.title || 'this event'}" from the pool? Players with it already drawn keep their snapshot.`)) return;
+    const { error } = await _supabase.from('embassy_events').delete().eq('id', id);
+    if (error) { alert('Delete failed: ' + error.message); return; }
+    await loadEvents();
+  }
+});
+
+// ── Editor view ─────────────────────────────────────────────
+function effectRowHtml(decKey, idx, eff) {
+  const statOpts = STATS.map(s =>
+    `<option value="${s.key}" ${eff?.stat === s.key ? 'selected' : ''}>${s.label}</option>`).join('');
+  return `
+    <div class="eff-row" data-dec="${decKey}" data-idx="${idx}">
+      <select class="ed-select" data-eff-stat>${statOpts}</select>
+      <select class="ed-select" data-eff-dir>
+        <option value="up"   ${eff?.direction !== 'down' ? 'selected' : ''}>Up</option>
+        <option value="down" ${eff?.direction === 'down' ? 'selected' : ''}>Down</option>
+      </select>
+      <input class="ed-input eff-amount" data-eff-amount type="number" min="0" step="any"
+             placeholder="By…" value="${eff?.amount != null ? escHtml(String(eff.amount)) : ''}">
+    </div>`;
+}
+
+function decisionBlockHtml(key, dec) {
+  const effects = Array.isArray(dec?.effects) ? dec.effects : [];
+  const rows = Array.from({ length: EFFECTS_PER_DECISION }, (_, i) =>
+    effectRowHtml(key, i, effects[i])).join('');
+  return `
+    <div class="ed-card" data-decision="${key}">
+      <div class="dec-head">
+        <span class="dec-key">Event Decision ${key}.</span>
+        ${key === 'A' ? '' : '<span class="dec-note">optional — leave the description blank to omit</span>'}
+      </div>
+      <div class="ed-field">
+        <label class="ed-lab">DESCRIPTION</label>
+        <textarea class="ed-textarea" data-dec-desc
+          placeholder="What the attaché does if they choose ${key}…">${escHtml(dec?.description || '')}</textarea>
+      </div>
+      <div class="eff-lab">STAT EFFECTS · STAT AFFECTED / UP–DOWN / BY</div>
+      ${rows}
+    </div>`;
+}
+
+function openEditor(ev) {
+  editingId = ev?.id || null;
+  errEl.textContent = '';
+  document.getElementById('ed-title').value = ev?.title || '';
+  document.getElementById('ed-desc').value  = ev?.description || '';
+  const decs = Array.isArray(ev?.decisions) ? ev.decisions : [];
+  document.getElementById('decision-blocks').innerHTML =
+    DECISION_KEYS.map(k => decisionBlockHtml(k, decs.find(d => d.key === k))).join('');
+  listView.style.display = 'none';
+  editorView.style.display = 'block';
+  window.scrollTo(0, 0);
+}
+
+function closeEditor() {
+  editingId = null;
+  editorView.style.display = 'none';
+  listView.style.display = 'block';
+}
+
+// Reads the editor into the decisions jsonb shape, validating as it
+// goes. Returns { payload } or { error }.
+function collectForm() {
+  const title = document.getElementById('ed-title').value.trim();
+  const description = document.getElementById('ed-desc').value.trim();
+  if (!title)       return { error: 'Event Title is required.' };
+  if (!description) return { error: 'Event Description is required.' };
+
+  const decisions = [];
+  for (const key of DECISION_KEYS) {
+    const block = document.querySelector(`[data-decision="${key}"]`);
+    const desc = block.querySelector('[data-dec-desc]').value.trim();
+    const effects = [];
+    for (const row of block.querySelectorAll('.eff-row')) {
+      const stat = row.querySelector('[data-eff-stat]').value;
+      const direction = row.querySelector('[data-eff-dir]').value;
+      const amountRaw = row.querySelector('[data-eff-amount]').value;
+      if (!stat) continue;
+      const amount = Number(amountRaw);
+      if (!amountRaw || !isFinite(amount) || amount <= 0) {
+        return { error: `Decision ${key}: ${STAT_LABEL[stat]} needs a positive "By" amount.` };
+      }
+      effects.push({ stat, direction, amount });
+    }
+    if (!desc) {
+      if (effects.length) return { error: `Decision ${key} has stat effects but no description.` };
+      continue;
+    }
+    decisions.push({ key, description: desc, effects });
+  }
+  if (!decisions.length) return { error: 'At least one decision (A) needs a description.' };
+  return { payload: { title, description, decisions } };
+}
+
+document.getElementById('new-event-btn').addEventListener('click', () => openEditor(null));
+document.getElementById('ed-cancel').addEventListener('click', closeEditor);
+
+document.getElementById('ed-save').addEventListener('click', async () => {
+  const saveBtn = document.getElementById('ed-save');
+  errEl.textContent = '';
+  const { payload, error: vErr } = collectForm();
+  if (vErr) { errEl.textContent = vErr; return; }
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'SAVING…';
+  try {
+    let r;
+    if (editingId) {
+      r = await _supabase.from('embassy_events')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', editingId).select();
+    } else {
+      r = await _supabase.from('embassy_events').insert(payload).select();
+    }
+    if (r.error) throw r.error;
+    if (!r.data?.length) throw new Error('No row written — admin role required.');
+    closeEditor();
+    await loadEvents();
+  } catch (err) {
+    errEl.textContent = 'Save failed: ' + (err?.message || err);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'SAVE';
+  }
+});
+
+loadEvents();
+</script>
 </body>
 </html>
