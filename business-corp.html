@@ -73,6 +73,20 @@
       padding-top:9px; border-top:0.5px solid rgba(255,255,255,0.06); }
   }
 
+  /* ── Roles ── */
+  .rl-section { margin-top:22px; }
+  .rl-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
+    border-radius:6px; padding:16px 18px 18px; position:relative; }
+  .rl-post { position:absolute; top:12px; right:16px; padding:7px 14px;
+    background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a; border-radius:4px;
+    color:#8aaa6a; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.13em;
+    font-weight:700; cursor:pointer; }
+  .rl-post:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .rl-post:disabled { opacity:0.4; cursor:not-allowed; }
+  .rl-empty { padding:24px 16px; text-align:center; color:#555; font-size:11.5px;
+    font-style:italic; background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.08);
+    border-radius:4px; }
+
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.35); border-radius:6px; overflow:hidden; }
@@ -99,6 +113,58 @@
   .bc-foot .err { color:#d9534f; font-size:10px; font-family:var(--font-mono);
     margin-top:6px; min-height:12px; }
 
+  /* ── Post Job Opening modal ── */
+  #jm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+    align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  #jm-overlay.open { display:flex; }
+  .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
+    border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
+    max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+  .jm-head { padding:16px 20px 13px; border-bottom:0.5px solid rgba(138,170,106,0.3);
+    background:#10140e; }
+  .jm-title { font-family:Georgia,serif; font-size:18px; color:#fff; }
+  .jm-title em { font-style:italic; color:#aac88a; }
+  .jm-body { padding:18px 20px; overflow-y:auto; overflow-x:hidden; }
+  .jm-tracks { display:flex; gap:8px; margin-bottom:16px; }
+  .jm-track { flex:1; padding:10px; font-family:var(--font-mono); font-size:10.5px;
+    letter-spacing:0.08em; font-weight:700; background:#0a0a0a; color:#888;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; cursor:pointer; text-align:center; }
+  .jm-track.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
+  .jm-track.locked { opacity:0.35; cursor:not-allowed; }
+  .jm-rung { background:#0a0a0a; border:1px solid rgba(255,255,255,0.1); border-radius:4px;
+    padding:12px 14px; margin-bottom:8px; cursor:pointer; }
+  .jm-rung:hover:not(.locked) { border-color:rgba(138,170,106,0.4); }
+  .jm-rung.sel { background:#10140e; border-color:#8aaa6a; }
+  .jm-rung.locked { opacity:0.45; cursor:not-allowed; }
+  .jm-rung .top { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .jm-rung .nm { font-size:13px; color:#fff; font-weight:600; }
+  .jm-rung .rung-no { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.14em;
+    color:#666; font-weight:700; }
+  .jm-rung .staff { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; white-space:nowrap; }
+  .jm-rung .ds { font-size:11px; color:#888; line-height:1.55; margin-top:5px; }
+  .jm-rung .resp { font-family:var(--font-mono); font-size:9px; color:#aac88a; margin-top:6px; }
+  .jm-rung .resp .k { color:#666; }
+  .jm-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.14em; color:#888;
+    font-weight:700; margin:14px 0 6px; }
+  .jm-expected { font-family:var(--font-mono); font-size:12px; color:#8aaa6a; }
+  .jm-expected .dim { color:#666; font-size:10px; }
+  .jm-select { width:100%; box-sizing:border-box; padding:10px 12px; background:#0a0a0a;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-size:12px;
+    font-family:var(--font-mono); }
+  .jm-pills { display:flex; gap:8px; }
+  .jm-pill { flex:1; padding:9px; font-family:var(--font-mono); font-size:10px;
+    letter-spacing:0.08em; font-weight:700; background:#0a0a0a; color:#888;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; cursor:pointer; text-align:center; }
+  .jm-pill.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
+  .jm-foot { padding:13px 20px; background:#10140e; border-top:0.5px solid rgba(138,170,106,0.25);
+    display:flex; gap:10px; justify-content:flex-end; }
+  .jm-btn { padding:9px 16px; background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a;
+    border-radius:4px; color:#8aaa6a; font-family:var(--font-mono); font-size:10px;
+    letter-spacing:0.13em; font-weight:700; cursor:pointer; }
+  .jm-btn:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .jm-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .jm-btn.secondary { background:transparent; border-color:#3a3a3a; color:#888; }
+
   @media (max-width:860px) {
     .bc-wrap { flex-direction:column-reverse; }
     .bc-box { width:100%; }
@@ -119,6 +185,7 @@
       <div id="bc-ops"></div>
       <div class="pl-section" id="bc-pillars"></div>
       <div class="dp-section" id="bc-departments"></div>
+      <div class="rl-section" id="bc-roles"></div>
     </div>
     <div class="bc-box">
       <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
@@ -128,6 +195,33 @@
         <input type="file" id="bc-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;">
         <div class="err" id="bc-rebrand-err"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="jm-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Post a <em>Job Opening</em></div></div>
+    <div class="jm-body">
+      <div class="jm-tracks">
+        <div class="jm-track sel" data-track="operations">OPERATIONS</div>
+        <div class="jm-track locked" title="Coming soon">FINANCE</div>
+        <div class="jm-track locked" title="Coming soon">LEADERSHIP</div>
+      </div>
+      <div id="jm-rungs"></div>
+      <div class="jm-lab">EXPECTED SALARY</div>
+      <div class="jm-expected" id="jm-expected">—</div>
+      <div class="jm-lab">YOUR SALARY OFFERING</div>
+      <select class="jm-select" id="jm-offer"></select>
+      <div class="jm-lab">GLOBAL CANDIDATES OR LOCAL?</div>
+      <div class="jm-pills">
+        <div class="jm-pill sel" data-reach="local">LOCAL</div>
+        <div class="jm-pill" data-reach="global">GLOBAL</div>
+      </div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="jm-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="jm-post" disabled title="Job posting mechanics land next">POST OPENING</button>
     </div>
   </div>
 </div>
@@ -150,7 +244,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
       .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id, pillar_speed, pillar_efficiency, pillar_quality,
-               nation:nations!hq_nation_id(name),
+               nation:nations!hq_nation_id(name, wages, standard_of_living),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
       .eq('id', corpId).maybeSingle();
     if (error) throw error;
@@ -283,6 +377,108 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
           : `<div class="dp-card empty" title="Coming soon">
               <div class="soon">(To be chartered)</div>
             </div>`).join('') + '</div>';
+    }
+
+    // Roles — the corp's job board. Openings will list here and on the
+    // career page's Available Roles. The posting button (owner-only,
+    // construction corps for now — its ladder is the only one
+    // chartered) opens the Post Job Opening modal.
+    const isOwner = corp.owner_faction_id === ctx.faction.id;
+    const canPost = isOwner && corp.industry === 'construction';
+    document.getElementById('bc-roles').innerHTML = `
+      <div class="rl-panel">
+        ${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}
+        <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span></div>
+        <div class="rl-empty">No open positions.</div>
+      </div>`;
+
+    // ── Post Job Opening modal ─────────────────────────────────────
+    // The Operations ladder, six rungs. Rungs with full charters are
+    // postable; the ones still being designed render dimmed with
+    // their placeholders. On-staff counts default to 0 — there is no
+    // per-rung staff yet; hiring will count real rows here.
+    const OPS_LADDER = [
+      { rung: 1, name: 'Project Manager (PM)', postable: true,
+        desc: 'You own the execution of a single contract from start to finish. You handle the scheduling, solve logistical bottlenecks on-site, and aggressively push the Advance Build action to deliver the project on time.',
+        resp: 'Required to have an active project.' },
+      { rung: 2, name: 'Senior Project Manager', postable: true,
+        desc: 'You manage multiple simultaneous sub-contracts. You coordinate the allocation of the firm\u2019s shared resources, ensuring that a single rented excavator is seamlessly moved between sites without sitting idle for a single tick.',
+        resp: 'Required to have an active project, but often works quicker.' },
+      { rung: 3, name: 'Regional Director of Operations', postable: true,
+        desc: 'You oversee the entire field portfolio of the firm. You establish construction standard operating procedures, negotiate long-term agreements with specialized labor crews, and manage macro-level capacity bottlenecks.',
+        resp: 'Required to oversee multiple projects.' },
+      { rung: 4, name: 'National Director of Operations', postable: false,
+        desc: '(Description pending)', resp: '???' },
+      { rung: 5, name: 'Global Director of Operations', postable: false,
+        desc: '(Description pending)', resp: '???' },
+      { rung: 6, name: 'Chief Operating Officer (COO)', postable: false,
+        desc: 'The ultimate operational authority. You sit next to the founder and dictate corporate execution velocity. You decide how to split the firm\u2019s construction capacity across player B2B contracts and high-yield infrastructure builds.',
+        resp: '???' },
+    ];
+    let jmRung = null;
+
+    function jmRenderSalary(expectedYearly) {
+      const exp = document.getElementById('jm-expected');
+      const sel = document.getElementById('jm-offer');
+      if (!jmRung) {
+        exp.innerHTML = '<span class="dim">Select a rung above.</span>';
+        sel.innerHTML = '<option>Select a rung first</option>';
+        sel.disabled = true;
+        return;
+      }
+      exp.innerHTML = `${esc(hfFmtBig(expectedYearly))} / year <span class="dim">(${esc(hfFmtBig(Math.round(expectedYearly / 12)))} per tick)</span>`;
+      sel.disabled = false;
+      sel.innerHTML = [0.5, 0.75, 1, 1.25, 1.5].map(m => {
+        const v = Math.round(expectedYearly * m);
+        return `<option value="${v}"${m === 1 ? ' selected' : ''}>${hfFmtBig(v)} / year${m === 1 ? ' — expected' : ` (${Math.round(m * 100)}% of expected)`}</option>`;
+      }).join('');
+    }
+
+    function openJobModal() {
+      jmRung = null;
+      // Expected salary anchors: Wages 1 + SoL 60 → $6,000/yr;
+      // Wages 100 + SoL 100 → $1,000,000/yr. Both land exactly on
+      // wages × standard_of_living × 100. Stats ride the corp query's
+      // nation embed — no extra fetch.
+      const w   = Math.max(1, Number(corp.nation?.wages) || 50);
+      const sol = Math.max(1, Number(corp.nation?.standard_of_living) || 50);
+      const expectedYearly = Math.round(w * sol * 100);
+      const host = document.getElementById('jm-rungs');
+      host.innerHTML = OPS_LADDER.map(r => `
+        <div class="jm-rung${r.postable ? '' : ' locked'}" data-rung="${r.rung}" ${r.postable ? '' : 'title="Being chartered"'}>
+          <div class="top">
+            <div>
+              <div class="rung-no">RUNG ${r.rung}</div>
+              <div class="nm">${esc(r.name)}</div>
+            </div>
+            <span class="staff">ON STAFF: 0</span>
+          </div>
+          <div class="ds">${esc(r.desc)}</div>
+          <div class="resp"><span class="k">RESPONSIBILITIES:</span> ${esc(r.resp)}</div>
+        </div>`).join('');
+      host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
+        row.addEventListener('click', () => {
+          jmRung = Number(row.dataset.rung);
+          host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
+          jmRenderSalary(expectedYearly);
+        });
+      });
+      jmRenderSalary(expectedYearly);
+      document.getElementById('jm-overlay').classList.add('open');
+    }
+
+    if (canPost) {
+      document.getElementById('rl-post-btn').addEventListener('click', openJobModal);
+      document.getElementById('jm-cancel').addEventListener('click', () =>
+        document.getElementById('jm-overlay').classList.remove('open'));
+      document.getElementById('jm-overlay').addEventListener('click', (e) => {
+        if (e.target?.id === 'jm-overlay') document.getElementById('jm-overlay').classList.remove('open');
+      });
+      document.querySelectorAll('.jm-pill').forEach(p => {
+        p.addEventListener('click', () => {
+          document.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+        });
+      });
     }
 
     // Rebrand — owner-only: pick an image (2MB cap, same corp-logos
