@@ -27,6 +27,20 @@
     font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:5px; }
 
+  .role-row { display:flex; align-items:center; gap:14px; padding:13px 16px; background:#0d0d0d;
+    border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; margin-bottom:8px; }
+  .role-row .nm { font-size:13px; color:#fff; font-weight:600; }
+  .role-row .nm a { color:#fff; text-decoration:none; }
+  .role-row .nm a:hover { color:#aac88a; }
+  .role-row .meta { font-family:var(--font-mono); font-size:10px; color:#888; margin-top:3px; }
+  .role-row .meta .pay { color:#8aaa6a; }
+  .role-row .ago { margin-left:auto; font-family:Georgia,serif; font-style:italic; font-size:11px;
+    color:#666; white-space:nowrap; }
+  .role-apply { padding:7px 13px; background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a;
+    border-radius:4px; color:#8aaa6a; font-family:var(--font-mono); font-size:9px;
+    letter-spacing:0.12em; font-weight:700; cursor:pointer; flex-shrink:0; }
+  .role-apply:disabled { opacity:0.4; cursor:not-allowed; }
+
   .hist-list { display:flex; flex-direction:column; gap:8px; }
   .hist-row { display:flex; align-items:baseline; gap:14px; padding:13px 16px; background:#0d0d0d;
     border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; }
@@ -99,7 +113,7 @@
         <span class="sans">Available</span>
         <span class="serif">Roles</span>
       </div>
-      <div class="biz-soon">No roles on the board yet — the first employers are setting up shop.</div>
+      <div id="roles-list"><div class="biz-soon">Loading the board…</div></div>
     </div>
 
     <div class="biz-section">
@@ -147,7 +161,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { escapeHtml as esc, fmtBig } from './js/utils.js';
+import { escapeHtml as esc, fmtBig, hfFmtBig } from './js/utils.js';
 import { cityDisplayData } from './js/game/city-labels.js';
 
 // ── Start Company modal state ──
@@ -311,6 +325,43 @@ async function submitStartCompany() {
     });
     document.getElementById('sc-name').addEventListener('input', scUpdateSubmit);
     document.getElementById('sc-submit').addEventListener('click', submitStartCompany);
+
+    // Available Roles — open job_openings (20270796). Local-reach
+    // postings only show to businessmen in the corp's home nation;
+    // global ones show to everyone. "Posted X months ago" — one tick
+    // is one month. Applying is the next phase.
+    const currentTick = Number(ctx.shard?.current_tick) || 0;
+    try {
+      const { data: roles, error: rolesErr } = await _supabase.from('job_openings')
+        .select('id, title, salary_yearly, reach, posted_at_tick, corp:entrepreneur_corps!corp_id(id, name, hq_city, hq_nation_id)')
+        .eq('status', 'open')
+        .order('posted_at_tick', { ascending: false });
+      if (rolesErr) throw rolesErr;
+      const visible = (roles || []).filter(o =>
+        o.reach === 'global' || o.corp?.hq_nation_id === ctx.faction.nation_id);
+      const host = document.getElementById('roles-list');
+      if (!visible.length) {
+        host.innerHTML = '<div class="biz-soon">No roles on the board yet — the first employers are setting up shop.</div>';
+      } else {
+        host.innerHTML = visible.map(o => {
+          const m = Math.max(0, currentTick - (Number(o.posted_at_tick) || 0));
+          const ago = m === 0 ? 'Posted this month' : `Posted ${m} month${m === 1 ? '' : 's'} ago`;
+          return `
+          <div class="role-row">
+            <div>
+              <div class="nm"><a href="business-corp.html?id=${esc(o.corp?.id || '')}">${esc(o.title)} — ${esc(o.corp?.name || '—')}</a></div>
+              <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${esc(o.corp?.hq_city || '—')} &middot; ${o.reach === 'global' ? 'Global' : 'Local'}</div>
+            </div>
+            <span class="ago">${esc(ago)}</span>
+            <button type="button" class="role-apply" disabled title="Applications open soon">APPLY</button>
+          </div>`;
+        }).join('');
+      }
+    } catch (e) {
+      console.warn('businessman-career: roles load failed', e?.message || e);
+      document.getElementById('roles-list').innerHTML =
+        '<div class="biz-soon">Could not load the board — try again shortly.</div>';
+    }
 
     // History was rolled once at creation (20270787) and stored as
     // [{ year, label, sub }] — newest first as generated.

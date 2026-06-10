@@ -1366,6 +1366,13 @@ function initials(s, n) {
 (async () => {
   try {
     const ctx = await bootstrapSharedViewer('corporations', 'corporations');
+    // Businessmen always view corps through the business-corp design;
+    // this page is the entrepreneur management surface.
+    if (ctx && ctx.viewerType === 'businessman') {
+      const _cid = new URLSearchParams(window.location.search).get('id');
+      window.location.replace('business-corp.html' + (_cid ? '?id=' + encodeURIComponent(_cid) : ''));
+      return;
+    }
     if (!ctx) return;
     const id = new URLSearchParams(location.search).get('id');
     if (!id) { window.location.href = 'entrepreneur-corporations.html'; return; }

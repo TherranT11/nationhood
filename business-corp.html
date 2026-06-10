@@ -86,6 +86,18 @@
   .rl-empty { padding:24px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:4px; }
+  .rl-row { display:flex; align-items:center; gap:14px; padding:11px 14px; background:#0d0d0d;
+    border:0.5px solid rgba(255,255,255,0.07); border-radius:4px; margin-bottom:7px; }
+  .rl-row .nm { font-size:12.5px; color:#fff; font-weight:600; }
+  .rl-row .meta { font-family:var(--font-mono); font-size:9.5px; color:#888; margin-top:3px; }
+  .rl-row .meta .pay { color:#8aaa6a; }
+  .rl-row .ago { margin-left:auto; font-family:Georgia,serif; font-style:italic; font-size:10.5px;
+    color:#666; white-space:nowrap; }
+  .rl-withdraw { padding:6px 10px; background:transparent; border:0.5px solid #5a3030;
+    border-radius:3px; color:#c87a7a; font-family:var(--font-mono); font-size:8.5px;
+    letter-spacing:0.1em; font-weight:700; cursor:pointer; flex-shrink:0; }
+  .rl-withdraw:hover:not(:disabled) { background:#1a0a0a; }
+  .rl-withdraw:disabled { opacity:0.4; cursor:not-allowed; }
 
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
@@ -221,7 +233,7 @@
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="jm-cancel">CANCEL</button>
-      <button type="button" class="jm-btn" id="jm-post" disabled title="Job posting mechanics land next">POST OPENING</button>
+      <button type="button" class="jm-btn" id="jm-post" disabled title="Select a rung first">POST OPENING</button>
     </div>
   </div>
 </div>
@@ -385,12 +397,63 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     // chartered) opens the Post Job Opening modal.
     const isOwner = corp.owner_faction_id === ctx.faction.id;
     const canPost = isOwner && corp.industry === 'construction';
+    const currentTick = Number(ctx.shard?.current_tick) || 0;
     document.getElementById('bc-roles').innerHTML = `
       <div class="rl-panel">
         ${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}
         <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span></div>
-        <div class="rl-empty">No open positions.</div>
+        <div id="rl-list"><div class="rl-empty">Loading…</div></div>
       </div>`;
+
+    // "Posted {X} months ago" — one tick is one month.
+    function postedAgo(tick) {
+      const m = Math.max(0, currentTick - (Number(tick) || 0));
+      return m === 0 ? 'Posted this month' : `Posted ${m} month${m === 1 ? '' : 's'} ago`;
+    }
+
+    async function loadRoles() {
+      const host = document.getElementById('rl-list');
+      try {
+        const { data, error: rlErr } = await _supabase.from('job_openings')
+          .select('id, title, salary_yearly, reach, posted_at_tick')
+          .eq('corp_id', corp.id).eq('status', 'open')
+          .order('rung');
+        if (rlErr) throw rlErr;
+        if (!data?.length) {
+          host.innerHTML = '<div class="rl-empty">No open positions.</div>';
+          return;
+        }
+        host.innerHTML = data.map(o => `
+          <div class="rl-row">
+            <div>
+              <div class="nm">${esc(o.title)}</div>
+              <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${o.reach === 'global' ? 'Global candidates' : 'Local candidates'}</div>
+            </div>
+            <span class="ago">${esc(postedAgo(o.posted_at_tick))}</span>
+            ${isOwner ? `<button type="button" class="rl-withdraw" data-opening="${esc(o.id)}">WITHDRAW</button>` : ''}
+          </div>`).join('');
+        host.querySelectorAll('.rl-withdraw').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (btn.dataset.busy === '1') return;
+            if (!confirm('Withdraw this opening?')) return;
+            btn.dataset.busy = '1'; btn.disabled = true;
+            try {
+              const { data: res, error: wErr } = await _supabase.rpc('withdraw_job_opening',
+                { p_opening_id: btn.dataset.opening });
+              if (wErr) throw wErr;
+              if (!res?.success) throw new Error(res?.reason || 'unknown');
+              loadRoles();
+            } catch (e) {
+              alert('Withdraw failed: ' + (e?.message || e));
+              btn.dataset.busy = '0'; btn.disabled = false;
+            }
+          });
+        });
+      } catch (e) {
+        host.innerHTML = `<div class="rl-empty">Could not load openings — ${esc(e?.message || 'try again')}.</div>`;
+      }
+    }
+    loadRoles();
 
     // ── Post Job Opening modal ─────────────────────────────────────
     // The Operations ladder, six rungs. Rungs with full charters are
@@ -461,9 +524,15 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
           jmRung = Number(row.dataset.rung);
           host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
           jmRenderSalary(expectedYearly);
+          const postBtn = document.getElementById('jm-post');
+          postBtn.disabled = false;
+          postBtn.title = '';
         });
       });
       jmRenderSalary(expectedYearly);
+      const postBtn = document.getElementById('jm-post');
+      postBtn.disabled = true;
+      postBtn.title = 'Select a rung first';
       document.getElementById('jm-overlay').classList.add('open');
     }
 
@@ -478,6 +547,42 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
         p.addEventListener('click', () => {
           document.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
         });
+      });
+      let jmInFlight = false;
+      document.getElementById('jm-post').addEventListener('click', async () => {
+        if (jmInFlight || !jmRung) return;
+        const btn = document.getElementById('jm-post');
+        jmInFlight = true; btn.disabled = true;
+        const prev = btn.textContent; btn.textContent = 'POSTING…';
+        try {
+          const salary = Number(document.getElementById('jm-offer').value) || 0;
+          const reach = document.querySelector('.jm-pill.sel')?.dataset.reach || 'local';
+          const { data, error: pErr } = await _supabase.rpc('post_job_opening', {
+            p_corp_id: corp.id, p_track: 'operations', p_rung: jmRung,
+            p_salary_yearly: salary, p_reach: reach,
+          });
+          if (pErr) throw pErr;
+          if (!data?.success) {
+            const REASON = {
+              invalid_track: 'That track is not hiring yet.',
+              invalid_rung: 'That rung is not chartered yet.',
+              invalid_reach: 'Pick Local or Global.',
+              corp_not_found: 'Corporation not found.',
+              industry_not_chartered: 'Only Construction corps can post openings right now.',
+              not_owner: 'Only the owner can post openings.',
+              arrested: 'You are under arrest — your assets are frozen.',
+              salary_out_of_band: 'That offer is too far from the expected salary.',
+              already_open: 'This role already has an open posting.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          document.getElementById('jm-overlay').classList.remove('open');
+          loadRoles();
+        } catch (e) {
+          alert('Could not post: ' + (e?.message || e));
+        } finally {
+          jmInFlight = false; btn.disabled = false; btn.textContent = prev;
+        }
       });
     }
 
