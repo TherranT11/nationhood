@@ -112,10 +112,13 @@
     font-weight:700; margin-bottom:7px; }
   .ap-grid { display:grid; grid-template-columns: 1.3fr 0.8fr 1.2fr 1fr 0.5fr auto;
     gap:4px 12px; align-items:center; }
-  .ap-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em; color:#555;
-    font-weight:700; }
-  .ap-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
-  .ap-grid .c .tag { font-family:var(--font-mono); font-size:8.5px; color:#8aaa6a; }
+  .ap-grid .h, .pe-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
+    color:#555; font-weight:700; }
+  .ap-grid .c, .pe-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
+  .ap-grid .c .tag, .pe-grid .c .tag { font-family:var(--font-mono); font-size:8.5px; color:#8aaa6a; }
+  .pe-grid { display:grid; grid-template-columns:1.3fr 1.1fr 1.1fr 0.8fr 1.2fr;
+    gap:6px 12px; align-items:center; padding:4px 2px; }
+  .pe-grid .c.money { font-family:var(--font-mono); color:#8aaa6a; }
   .ap-btns { display:flex; gap:5px; justify-content:flex-end; }
   .ap-btn { padding:4px 8px; border-radius:3px; font-family:var(--font-mono); font-size:8px;
     letter-spacing:0.08em; font-weight:700; cursor:pointer; background:transparent; }
@@ -234,6 +237,7 @@
       <div class="pl-section" id="bc-pillars"></div>
       <div class="dp-section" id="bc-departments"></div>
       <div class="rl-section" id="bc-roles"></div>
+      <div class="rl-section" id="bc-employees"></div>
     </div>
     <div class="bc-box">
       <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
@@ -606,6 +610,65 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
       }
     }
     loadRoles();
+
+    // Prominent Employees — everyone the corp has hired (NPC and
+    // player alike, both live in job_applicants). Location pairs the
+    // hire's city with its nation via the cities table; CURRENT
+    // PROJECT is their latest blueprint assignment, '—' when idle.
+    (async () => {
+      const host = document.getElementById('bc-employees');
+      try {
+        const { data: emps, error: empErr } = await _supabase.from('job_applicants')
+          .select(`id, name, city, applicant_faction_id,
+                   applicant:factions!applicant_faction_id(nickname),
+                   opening:job_openings!opening_id!inner(title, salary_yearly, corp_id)`)
+          .eq('status', 'hired').eq('opening.corp_id', corp.id)
+          .order('created_at');
+        if (empErr) throw empErr;
+
+        let rowsHtml = '<div class="rl-empty">No hires yet.</div>';
+        if (emps?.length) {
+          const [{ data: cityRows, error: cityErr }, { data: bps, error: bpErr }] = await Promise.all([
+            _supabase.from('cities').select('city_name, nation:nations!nation_id(name)'),
+            _supabase.from('corp_blueprints')
+              .select('pm_applicant_id, building_type, quality_tier')
+              .eq('corp_id', corp.id)
+              .order('created_at', { ascending: false }),
+          ]);
+          if (cityErr) throw cityErr;
+          if (bpErr) throw bpErr;
+          const nationByCity = Object.fromEntries(
+            (cityRows || []).map(c => [c.city_name, c.nation?.name]));
+          const TYPE_LABELS = { single_story_home: 'Single Story Home',
+            double_story: 'Double Story', multitenant_living: 'Multitenant Living' };
+          const TIER_LABELS = { low_cost: 'Low Cost', standard: 'Standard',
+            high_end: 'High End', luxury: 'Luxury', ultra_rich: 'Ultra Rich' };
+          const projByPm = {};
+          for (const bp of (bps || [])) {
+            projByPm[bp.pm_applicant_id] ||=
+              `${TYPE_LABELS[bp.building_type] || bp.building_type} (${TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
+          }
+          rowsHtml = `
+            <div class="pe-grid">
+              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">CURRENT PROJECT</div>
+              ${emps.map(e => `
+                <div class="c">${applicantNameHtml(e)}</div>
+                <div class="c">${esc(e.opening?.title || '—')}</div>
+                <div class="c">${esc(e.city + (nationByCity[e.city] ? ', ' + nationByCity[e.city] : ''))}</div>
+                <div class="c money">${esc(hfFmtBig(Number(e.opening?.salary_yearly) || 0))}/yr</div>
+                <div class="c">${esc(projByPm[e.id] || '—')}</div>`).join('')}
+            </div>`;
+        }
+        host.innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">PROMINENT EMPLOYEES</span><span class="rule"></span></div>
+            ${rowsHtml}
+          </div>`;
+      } catch (e) {
+        console.warn('[business-corp] employees load failed:', e?.message || e);
+        host.innerHTML = '';
+      }
+    })();
 
     // ── Post Job Opening modal ─────────────────────────────────────
     // The Operations ladder, six rungs. Rungs with full charters are
