@@ -736,7 +736,7 @@ body {
   <div class="modal">
     <div class="modal__header">
       <div class="modal__dot" style="background:var(--purple,#8b5cf6);"></div>
-      <span class="modal__title">Found Your Business</span>
+      <span class="modal__title" id="entrepreneur-modal-title">Found Your Business</span>
     </div>
     <div class="modal__body">
       <div class="modal__text">Your businessman is from:</div>
@@ -1065,20 +1065,21 @@ function renderNations(nations, partiesByNation) {
 
     if (pendingFactionType === 'entrepreneur' || pendingFactionType === 'businessman') {
       // Businessman (alpha) shares the entrepreneur card shape plus
-      // per-nation corp counts. Its flow currently ENDS at this picker
-      // (character creation lands in a follow-up), so businessman
-      // cards are informational — no onclick, and the entrepreneur
-      // origin hard-lock doesn't apply.
+      // per-nation corp counts, and opens the same gender + generated-
+      // name modal in businessman mode (create_businessman, 20270783).
+      // The entrepreneur origin hard-lock doesn't apply — the standing
+      // one-non-politician-per-nation rule is enforced server-side and
+      // surfaced as 'nation_occupied'.
       const isBusinessman = pendingFactionType === 'businessman';
       const locked = !isBusinessman && userOccupiedNationIds.has(nation.id);
       const corpCounts = cachedCorpCountsByNation[nation.id] || { construction: 0, automotive: 0 };
       const ctaLine = locked
         ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party or Military Branch here</div>`
         : isBusinessman
-          ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)} — career opens soon</div>`
+          ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`
           : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`;
       return `
-        <div class="nation-card ${locked ? 'disabled' : ''}" data-nation-id="${nation.id}" ${locked || isBusinessman ? '' : `onclick="openEntrepreneurModal('${nation.id}')"`} style="cursor:${locked ? 'not-allowed' : isBusinessman ? 'default' : 'pointer'};">
+        <div class="nation-card ${locked ? 'disabled' : ''}" data-nation-id="${nation.id}" ${locked ? '' : isBusinessman ? `onclick="openBusinessmanModal('${nation.id}')"` : `onclick="openEntrepreneurModal('${nation.id}')"`} style="cursor:${locked ? 'not-allowed' : 'pointer'};">
           <div class="nation-card__header">
             ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
             <span class="nation-card__name">${escapeHtml(nation.name)}</span>
@@ -1411,6 +1412,19 @@ async function confirmMilitaryJoin() {
 }
 
 // ── Entrepreneur (nation-agnostic; nation = origin/name-pool only) ──
+// The same modal serves the Businessman (alpha) flow: businessmanMode
+// switches the title and routes confirm to create_businessman instead
+// of the entrepreneur archetype page.
+let businessmanMode = false;
+let businessmanJoinInFlight = false;
+
+function openBusinessmanModal(nationId) {
+  businessmanMode = true;
+  openEntrepreneurModal(nationId);
+  const title = document.getElementById('entrepreneur-modal-title');
+  if (title) title.textContent = 'Begin Your Career';
+}
+
 function openEntrepreneurModal(nationId) {
   const nation = allNations.find(n => n.id === nationId);
   if (!nation) return;
@@ -1459,8 +1473,12 @@ function populateEntrepreneurNames() {
 }
 
 function closeEntrepreneurModal() {
+  if (businessmanJoinInFlight) return;
   document.getElementById('entrepreneur-modal-overlay').classList.remove('active');
   pendingEntrepreneurNationId = null;
+  businessmanMode = false;
+  const title = document.getElementById('entrepreneur-modal-title');
+  if (title) title.textContent = 'Found Your Business';
 }
 
 function confirmEntrepreneurJoin() {
@@ -1476,6 +1494,10 @@ function confirmEntrepreneurJoin() {
     return;
   }
   errEl.style.display = 'none';
+  if (businessmanMode) {
+    confirmBusinessmanJoin(nation, fullName, errEl);
+    return;
+  }
   // Origin nation + gender + name collected. The archetype page is the
   // final setup step and performs the actual faction creation.
   sessionStorage.setItem('entrepreneur_setup', JSON.stringify({
@@ -1484,6 +1506,55 @@ function confirmEntrepreneurJoin() {
     name: fullName,
   }));
   window.location.href = 'entrepreneur-archetype.html';
+}
+
+// Businessman creation — server-side via create_businessman (20270783).
+async function confirmBusinessmanJoin(nation, fullName, errEl) {
+  if (businessmanJoinInFlight) return;
+  businessmanJoinInFlight = true;
+  const btn = document.getElementById('entrepreneur-modal-confirm-btn');
+  btn.disabled = true;
+  btn.textContent = 'STARTING…';
+  // Generated names are "First Last" (single-token first names from the
+  // nation pools); everything after the first space is the surname so
+  // multi-word surnames like "Al-Farouq de Soto" survive.
+  const sp = fullName.indexOf(' ');
+  const first = sp === -1 ? fullName : fullName.slice(0, sp);
+  const last  = sp === -1 ? ''       : fullName.slice(sp + 1);
+  try {
+    const { data, error } = await _supabase.rpc('create_businessman', {
+      p_nation_id:  nation.id,
+      p_first_name: first,
+      p_last_name:  last,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'You are not signed in.',
+        invalid_name:      'Please choose a name.',
+        nation_not_found:  'That nation no longer exists.',
+        not_foundable:     'Businessmen cannot start in this nation.',
+        already_in_nation: 'You already have a Businessman in this nation.',
+        banned_in_nation:  'Your Businessman in this nation was banned by an administrator.',
+        nation_occupied:   'You already hold a faction in this nation.',
+      };
+      errEl.textContent = REASON[data?.reason] || ('Could not start: ' + (data?.reason || 'unknown'));
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'CONFIRM';
+      businessmanJoinInFlight = false;
+      return;
+    }
+    sessionStorage.setItem('active_faction_id', data.faction_id);
+    sessionStorage.removeItem('pending_faction_type');
+    window.location.href = 'businessman-home.html';
+  } catch (err) {
+    errEl.textContent = 'Failed to start: ' + (err?.message || 'unknown error');
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'CONFIRM';
+    businessmanJoinInFlight = false;
+  }
 }
 
 function closeModal() {
@@ -1611,6 +1682,7 @@ window.openMilitaryJoin = openMilitaryJoin;
 window.closeMilitaryModal = closeMilitaryModal;
 window.confirmMilitaryJoin = confirmMilitaryJoin;
 window.openEntrepreneurModal = openEntrepreneurModal;
+window.openBusinessmanModal = openBusinessmanModal;
 window.setEntrepreneurGender = setEntrepreneurGender;
 window.closeEntrepreneurModal = closeEntrepreneurModal;
 window.confirmEntrepreneurJoin = confirmEntrepreneurJoin;

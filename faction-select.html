@@ -244,9 +244,8 @@ function confirmFactionChoice() {
     return;
   }
   if (selectedFaction === 'businessman') {
-    // Alpha gate, then the origin-nation picker. The picker is the
-    // current end of the Businessman flow — character creation lands
-    // in a follow-up.
+    // Alpha gate, then the origin-nation picker → gender + generated
+    // name → create_businessman (20270783) → businessman-home.html.
     const code = window.prompt('Alpha tester code required to join as a Businessman:');
     if (code !== BUSINESSMAN_ALPHA_CODE) {
       if (code != null) window.alert('Invalid alpha code.');

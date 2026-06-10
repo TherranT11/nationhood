@@ -13,8 +13,16 @@ All notable changes to Nationhood are recorded here. Format inspired by
   Confirming opens the origin-nation picker, which for this path also
   shows each nation's **Construction Corporations** and **Automotive
   Corporations** counts and includes **Sierramar** alongside Melizea,
-  Avelia, and Montequilla. The picker is the current end of the flow —
-  character creation lands in a follow-up.
+  Avelia, and Montequilla.
+- **Businessman character creation + Home.** Picking a nation opens
+  the gender + generated-name modal (20 names drawn from the nation's
+  name pools); confirming creates the character server-side
+  (`create_businessman` — nation-bound, $0 cash on hand, honest
+  refusals for duplicates/bans/occupied nations) and lands on
+  **businessman-home.html**: the entrepreneur-style chrome with
+  HOME | CAREER | CORPORATIONS | MARKET | FORUM tabs. Home is an
+  intentionally empty landing for now; the other desks are dimmed
+  "coming soon". Logins route businessmen straight there.
 
 ### Added — Foreign Service
 

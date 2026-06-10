@@ -17,6 +17,16 @@ const ENT_TABS = [
   { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
 ];
 
+// Businessman (alpha) shares this chrome with its own tab set. Only
+// HOME exists today — null hrefs render as dimmed coming-soon spans.
+const BIZ_TABS = [
+  { id: 'home',         label: 'HOME',         href: 'businessman-home.html' },
+  { id: 'career',       label: 'CAREER',       href: null },
+  { id: 'corporations', label: 'CORPORATIONS', href: null },
+  { id: 'market',       label: 'MARKET',       href: null },
+  { id: 'forum',        label: 'FORUM',        href: null },
+];
+
 const STYLE_ID = 'ent-topbar-styles';
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
@@ -62,6 +72,7 @@ function ensureStyles() {
   .ent-nav a { padding:14px 0; color:#888; text-decoration:none; cursor:pointer; }
   .ent-nav a:not(.active):hover { color:#d4d4d4; }
   .ent-nav a.active { color:#8aaa6a; border-bottom:1px solid #8aaa6a; }
+  .ent-nav span.soon { padding:14px 0; color:#4a4940; cursor:default; }
   .ent-content { padding:28px; }
 
   /* ── Mobile (≤700px): wrap the topbar onto two visual rows
@@ -266,7 +277,7 @@ function applyArrestLock(faction) {
   return true;
 }
 
-export function renderEntrepreneurTopbar(container, { faction, shard, allUserFactions, activeTab }) {
+export function renderEntrepreneurTopbar(container, { faction, shard, allUserFactions, activeTab, tabs = ENT_TABS }) {
   if (!container) return;
   ensureStyles();
   const f = faction || {};
@@ -295,7 +306,9 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
       </div>
     </div>
     <nav class="ent-nav">
-      ${ENT_TABS.map(t => `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`).join('')}
+      ${tabs.map(t => t.href
+        ? `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`
+        : `<span class="soon" title="Coming soon">${t.label}</span>`).join('')}
     </nav>`;
 
   buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && !isHiddenFromSwitcher(x)));
@@ -332,6 +345,11 @@ async function getAdminFactionOverride() {
   }
 }
 
+// Column list for the faction-switcher dropdown — shared by both
+// bootstraps so the role-label fields can't drift between them.
+const SWITCHER_FACTION_COLS =
+  'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick';
+
 const ENT_FACTION_COLS =
   'id, faction_name, leader_first_name, leader_last_name, leader_age, nation, ent_origin_nation, ' +
   'entrepreneur_archetype, ent_influence, ent_skill, ent_reputation, party_funds, status';
@@ -355,7 +373,7 @@ export async function bootstrapEntrepreneur(activeTab) {
           .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick')
+      .select(SWITCHER_FACTION_COLS)
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
 
@@ -374,6 +392,40 @@ export async function bootstrapEntrepreneur(activeTab) {
   // Single source for the arrest lock — runs after the topbar exists so the
   // banner can attach, and still applies the body-class lock on any page
   // without an #ent-topbar container.
+  applyArrestLock(faction);
+  return { user, faction, shard, allUserFactions };
+}
+
+// Businessman (alpha) variant — same chrome and switcher, BIZ_TABS nav,
+// faction_type='businessman' lookup. No admin-inspector override yet
+// (mirror getAdminFactionOverride here when the inspector grows a
+// businessman page list).
+export async function bootstrapBusinessman(activeTab) {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return null; }
+
+  const [facRes, shardRes, allFacRes] = await Promise.all([
+    _supabase.from('factions').select(ENT_FACTION_COLS)
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+      .eq('faction_type', 'businessman')
+      .is('abandoned_at', null)
+      .limit(1).maybeSingle(),
+    _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
+    _supabase.from('factions')
+      .select(SWITCHER_FACTION_COLS)
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
+  ]);
+
+  if (facRes.error) throw facRes.error;
+  const faction = facRes.data;
+  if (!faction) { window.location.href = 'faction-select.html'; return null; }
+  if (shardRes.error) console.warn('[entrepreneur-topbar] shard load failed:', shardRes.error.message);
+  if (allFacRes.error) console.warn('[entrepreneur-topbar] factions load failed:', allFacRes.error.message);
+
+  const shard = shardRes.data || {};
+  const allUserFactions = allFacRes.data || [];
+  renderEntrepreneurTopbar(document.getElementById('ent-topbar'),
+    { faction, shard, allUserFactions, activeTab, tabs: BIZ_TABS });
   applyArrestLock(faction);
   return { user, faction, shard, allUserFactions };
 }
