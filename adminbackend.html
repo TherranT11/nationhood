@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Backend — Nationhood</title>
+<style>
+  :root { --line:rgba(255,255,255,0.08); --mut:#888; --faint:#666; --red:#c87a7a;
+          --acc:#c8a26e; --acc-bg:#161208; --acc-dim:#5a4630; --acc-bright:#dcb88a; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:#050505; color:#d4d4d4;
+         font-family:-apple-system,system-ui,sans-serif; }
+
+  /* ── Login view ──────────────────────────────────────────── */
+  #login-view { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+  .login-card { width:100%; max-width:380px; background:#0d0d0d; border:0.5px solid var(--line);
+                border-radius:6px; padding:28px 30px; }
+  .login-eyebrow { font-size:9px; letter-spacing:0.2em; color:var(--acc); font-weight:700;
+                   text-align:center; margin-bottom:8px; }
+  .login-title { font-family:Georgia,serif; font-size:22px; color:#fff; text-align:center;
+                 margin:0 0 6px; }
+  .login-title em { font-style:italic; color:var(--acc-bright); }
+  .login-sub { font-size:11px; color:var(--mut); text-align:center; margin-bottom:22px; line-height:1.5; }
+  .login-field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+  .login-lab { font-size:9px; letter-spacing:0.14em; color:var(--mut); font-weight:600; }
+  .login-input { padding:10px 12px; background:#0a0a0a; border:0.5px solid var(--line);
+                 border-radius:4px; color:#fff; font-size:12px; font-family:inherit; }
+  .login-input:focus { outline:none; border-color:var(--acc-dim); }
+  .login-btn { width:100%; padding:11px; background:var(--acc-bg); border:0.5px solid var(--acc);
+               border-radius:4px; color:var(--acc-bright); font-size:10px; letter-spacing:0.16em;
+               font-weight:700; cursor:pointer; font-family:inherit; margin-top:6px; }
+  .login-btn:hover:not(:disabled) { background:#251710; color:#fff; }
+  .login-btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .login-err { display:none; margin-top:12px; padding:9px 11px; background:#1a0a0a;
+               border:0.5px solid #5a2020; border-radius:3px; color:#e07a7a;
+               font-size:10.5px; line-height:1.4; }
+  .login-err.show { display:block; }
+  .login-checking { display:none; margin-top:12px; font-size:10.5px; color:var(--mut);
+                    text-align:center; font-style:italic; }
+  .login-checking.show { display:block; }
+
+  /* ── Panel view ──────────────────────────────────────────── */
+  #panel-view { display:none; flex-direction:column; min-height:100vh; }
+  .panel-bar { display:flex; align-items:center; gap:14px; padding:10px 22px;
+               background:#0a0a0a; border-bottom:0.5px solid var(--line); flex-wrap:wrap; }
+  .panel-brand { font-size:11px; color:var(--acc); letter-spacing:0.16em; font-weight:700;
+                 margin-right:14px; flex-shrink:0; }
+  .panel-tabs { display:flex; gap:6px; flex:1; flex-wrap:wrap; }
+  .panel-tab { padding:7px 14px; background:transparent; border:0.5px solid var(--line);
+               border-radius:3px; color:var(--mut); font-size:9.5px; letter-spacing:0.13em;
+               font-weight:700; cursor:pointer; font-family:inherit; }
+  .panel-tab:hover { color:#fff; border-color:#3a3a3a; }
+  .panel-tab.active { background:var(--acc-bg); border-color:var(--acc); color:var(--acc-bright); }
+  .panel-signout { padding:6px 12px; background:transparent; border:0.5px solid #3a3a3a;
+                   border-radius:3px; color:var(--mut); font-size:9px; letter-spacing:0.12em;
+                   font-weight:700; cursor:pointer; font-family:inherit; }
+  .panel-signout:hover { color:var(--red); border-color:#5a3030; }
+  .panel-frame-wrap { flex:1; position:relative; }
+  .panel-frame { width:100%; height:calc(100vh - 47px); border:0; background:#050505; display:block; }
+  .panel-loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+                   color:var(--faint); font-size:11px; font-style:italic; pointer-events:none; }
+
+  @media (max-width:560px) {
+    .panel-bar { padding:8px 12px; gap:8px; }
+    .panel-brand { font-size:10px; margin-right:6px; width:100%; }
+    .panel-tab { padding:6px 10px; font-size:8.5px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN ─────────────────────────────────────────────────── -->
+<div id="login-view">
+  <form class="login-card" id="login-form">
+    <div class="login-eyebrow">RESTRICTED</div>
+    <h1 class="login-title">Admin <em>Backend</em></h1>
+    <div class="login-sub">Sign in with an admin-flagged account to access the consolidated moderation panel.</div>
+    <div class="login-field">
+      <label class="login-lab" for="login-email">EMAIL</label>
+      <input class="login-input" type="email" id="login-email" autocomplete="email" required>
+    </div>
+    <div class="login-field">
+      <label class="login-lab" for="login-password">PASSWORD</label>
+      <input class="login-input" type="password" id="login-password" autocomplete="current-password" required>
+    </div>
+    <button class="login-btn" type="submit" id="login-btn">SIGN IN &rsaquo;</button>
+    <div class="login-checking" id="login-checking">Verifying admin role…</div>
+    <div class="login-err" id="login-err"></div>
+  </form>
+</div>
+
+<!-- PANEL ─────────────────────────────────────────────────── -->
+<div id="panel-view">
+  <div class="panel-bar">
+    <span class="panel-brand">ADMIN BACKEND</span>
+    <div class="panel-tabs" id="panel-tabs">
+      <button type="button" class="panel-tab" data-tab="ordinance">ORDINANCE</button>
+      <button type="button" class="panel-tab" data-tab="courtcase">COURT CASE</button>
+      <button type="button" class="panel-tab" data-tab="modifier">NATIONAL MODIFIER</button>
+      <button type="button" class="panel-tab" data-tab="paperwork">PAPERWORK</button>
+      <button type="button" class="panel-tab" data-tab="foreign">FOREIGN EVENTS</button>
+    </div>
+    <button type="button" class="panel-signout" id="panel-signout">SIGN OUT</button>
+  </div>
+  <div class="panel-frame-wrap">
+    <div class="panel-loading" id="panel-loading">Loading…</div>
+    <iframe class="panel-frame" id="panel-frame" src="about:blank"
+            title="Admin tool" allow="clipboard-read; clipboard-write"></iframe>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+// Tab → iframe target. Paperwork uses an anchor since the queue lives
+// on courtcaseadmin.html alongside the court case queue — both tabs
+// route to the same page but Paperwork jumps to the moderation
+// section. Foreign Events is an empty placeholder pending wire-up.
+const TAB_TARGETS = {
+  ordinance: 'cityordinance.html',
+  courtcase: 'courtcaseadmin.html',
+  modifier:  'modifieradmin.html',
+  paperwork: 'courtcaseadmin.html#paperwork',
+  foreign:   'foreignservice.html',
+};
+
+const loginView   = document.getElementById('login-view');
+const panelView   = document.getElementById('panel-view');
+const loginForm   = document.getElementById('login-form');
+const loginBtn    = document.getElementById('login-btn');
+const loginErr    = document.getElementById('login-err');
+const loginCheck  = document.getElementById('login-checking');
+const panelFrame  = document.getElementById('panel-frame');
+const panelLoad   = document.getElementById('panel-loading');
+
+function showLogin() {
+  loginView.style.display = 'flex';
+  panelView.style.display = 'none';
+}
+function showPanel() {
+  loginView.style.display = 'none';
+  panelView.style.display = 'flex';
+  selectTab('ordinance');
+}
+
+function selectTab(tabKey) {
+  const target = TAB_TARGETS[tabKey];
+  if (!target) return;
+  document.querySelectorAll('.panel-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tabKey);
+  });
+  panelLoad.style.display = 'flex';
+  panelFrame.src = target;
+}
+
+panelFrame.addEventListener('load', () => { panelLoad.style.display = 'none'; });
+
+document.getElementById('panel-tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-tab]');
+  if (btn) selectTab(btn.dataset.tab);
+});
+
+document.getElementById('panel-signout').addEventListener('click', async () => {
+  try { await _supabase.auth.signOut(); }
+  catch (e) { console.warn('[adminbackend] signOut failed:', e?.message || e); }
+  showLogin();
+});
+
+function showLoginError(msg) {
+  loginErr.textContent = msg;
+  loginErr.classList.add('show');
+  loginCheck.classList.remove('show');
+  loginBtn.disabled = false;
+}
+function clearLoginError() {
+  loginErr.textContent = '';
+  loginErr.classList.remove('show');
+}
+
+async function verifyAdmin() {
+  // Returns true iff the current session is admin-authorized.
+  // Mirrors admin.html's pattern: Supabase Auth session + the
+  // verify_admin_access() RPC gate.
+  const { data: { user }, error: userErr } = await _supabase.auth.getUser();
+  if (userErr || !user) return false;
+  const { data: result, error: rpcErr } = await _supabase.rpc('verify_admin_access');
+  if (rpcErr) {
+    console.warn('[adminbackend] verify_admin_access failed:', rpcErr.message);
+    return false;
+  }
+  return !!result?.authorized;
+}
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearLoginError();
+  loginBtn.disabled = true;
+  loginCheck.classList.add('show');
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) {
+    showLoginError('Email and password are required.');
+    return;
+  }
+  try {
+    const { error: authErr } = await _supabase.auth.signInWithPassword({ email, password });
+    if (authErr) { showLoginError(authErr.message); return; }
+    const ok = await verifyAdmin();
+    if (!ok) {
+      // Sign out the non-admin session so a refresh doesn't keep
+      // them half-authenticated.
+      try { await _supabase.auth.signOut(); } catch (_) {}
+      showLoginError('Not authorized — admin role required.');
+      return;
+    }
+    loginCheck.classList.remove('show');
+    loginBtn.disabled = false;
+    showPanel();
+  } catch (err) {
+    showLoginError('Sign-in failed: ' + (err?.message || 'unknown error'));
+  }
+});
+
+// On boot: skip the login form if an existing session is already
+// admin-authorized.
+(async () => {
+  try {
+    const ok = await verifyAdmin();
+    if (ok) showPanel(); else showLogin();
+  } catch (e) {
+    console.warn('[adminbackend] boot check failed:', e?.message || e);
+    showLogin();
+  }
+})();
+</script>
+
+</body>
+</html>
