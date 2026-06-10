@@ -154,8 +154,7 @@ export function getPoliticianRoleLabel(faction) {
 /**
  * Dashboard URL for a faction the player is switching INTO from a faction
  * switcher dropdown. Returns null for unknown types so each caller can
- * apply its own home-page fallback (party pages default to dashboard.html,
- * corp pages to corp-dashboard.html). Military factions whose branch has
+ * apply its own home-page fallback. Military factions whose branch has
  * no dashboard yet (navy, air_force) route to faction-select.html so the
  * player isn't stranded.
  */
@@ -164,7 +163,12 @@ export function getFactionDashboardUrl(faction) {
     // Legacy corporations are retired (corp-cull) — send any stray login to
     // the neutral faction chooser rather than a deleted dashboard.
     if (faction.faction_type === 'corporation') return 'faction-select.html';
-    if (faction.faction_type === 'party')       return 'dashboard.html';
+    // Party home is the Actions page. It used to be dashboard.html (the
+    // newspaper landing), but 20270767 culled that into a thin redirect
+    // back to faction-select.html, which made party logins loop forever
+    // (login → dashboard → faction-select → dashboard → …). initPage's
+    // party-page guard in js/common.js keys on this exact value.
+    if (faction.faction_type === 'party')       return 'politics.html';
     if (faction.faction_type === 'military') {
         return BRANCH_DASHBOARDS[faction.branch] || 'faction-select.html';
     }
