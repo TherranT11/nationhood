@@ -119,6 +119,12 @@
   .pe-grid { display:grid; grid-template-columns:1.3fr 1.1fr 1.1fr 0.8fr 1.2fr;
     gap:6px 12px; align-items:center; padding:4px 2px; }
   .pe-grid .c.money { font-family:var(--font-mono); color:#8aaa6a; }
+  .bp-grid { display:grid; grid-template-columns:1.4fr 0.9fr 1.1fr 0.9fr 0.9fr;
+    gap:6px 12px; align-items:center; padding:4px 2px; }
+  .bp-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
+    color:#555; font-weight:700; }
+  .bp-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
+  .bp-grid .c.nm { color:#fff; font-weight:600; }
   .ap-btns { display:flex; gap:5px; justify-content:flex-end; }
   .ap-btn { padding:4px 8px; border-radius:3px; font-family:var(--font-mono); font-size:8px;
     letter-spacing:0.08em; font-weight:700; cursor:pointer; background:transparent; }
@@ -182,6 +188,9 @@
   .pb-act.bid:hover:not(:disabled) { background:rgba(138,170,106,0.18); }
   .pb-act.mk { border:0.5px solid #4a5a6a; color:#7a9ac8; }
   .pb-act.mk:hover { background:#0a0f14; }
+  .pb-price { width:92px; padding:6px 8px; background:#0a0a0a;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff;
+    font-size:10.5px; font-family:var(--font-mono); }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -266,6 +275,7 @@
       <div class="dp-section" id="bc-departments"></div>
       <div class="rl-section" id="bc-roles"></div>
       <div class="rl-section" id="bc-employees"></div>
+      <div class="rl-section" id="bc-blueprints"></div>
     </div>
     <div class="bc-side">
       <div class="bc-box">
@@ -374,8 +384,6 @@
       <div class="db-static">1</div>
       <div class="jm-lab">EQUIPMENT NEEDED</div>
       <div class="db-static">Light</div>
-      <div class="jm-lab">ASSIGN PROJECT MANAGER</div>
-      <select class="jm-select" id="db-pm"></select>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="db-cancel">CANCEL</button>
@@ -729,21 +737,25 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
           .order('created_at');
         if (empErr) throw empErr;
 
+        // Blueprints load regardless of hires — they feed both the
+        // BLUEPRINTS panel and (for legacy PM-assigned rows) the
+        // roster's CURRENT PROJECT column.
+        const { data: bps, error: bpErr } = await _supabase.from('corp_blueprints')
+          .select('pm_applicant_id, building_type, quality_tier, name, category, city, created_at_tick')
+          .eq('corp_id', corp.id)
+          .order('created_at', { ascending: false });
+        if (bpErr) throw bpErr;
+
         let rowsHtml = '<div class="rl-empty">No hires yet.</div>';
         if (emps?.length) {
-          const [{ data: cityRows, error: cityErr }, { data: bps, error: bpErr }] = await Promise.all([
-            _supabase.from('cities').select('city_name, nation:nations!nation_id(name)'),
-            _supabase.from('corp_blueprints')
-              .select('pm_applicant_id, building_type, quality_tier, name')
-              .eq('corp_id', corp.id)
-              .order('created_at', { ascending: false }),
-          ]);
+          const { data: cityRows, error: cityErr } = await _supabase.from('cities')
+            .select('city_name, nation:nations!nation_id(name)');
           if (cityErr) throw cityErr;
-          if (bpErr) throw bpErr;
           const nationByCity = Object.fromEntries(
             (cityRows || []).map(c => [c.city_name, c.nation?.name]));
           const projByPm = {};
           for (const bp of (bps || [])) {
+            if (!bp.pm_applicant_id) continue; // PM-less since 20270806
             // Named blueprints (20270803) show their name; pre-name
             // rows fall back to the type/tier label.
             projByPm[bp.pm_applicant_id] ||= bp.name
@@ -764,6 +776,23 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
           <div class="rl-panel">
             <div class="ea-head"><span class="rule"></span><span class="t">PROMINENT EMPLOYEES</span><span class="rule"></span></div>
             ${rowsHtml}
+          </div>`;
+
+        // ── Blueprints — the corp's design library ────────────────
+        document.getElementById('bc-blueprints').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">BLUEPRINTS</span><span class="rule"></span></div>
+            ${!bps?.length
+              ? '<div class="rl-empty">No blueprints drafted yet — design one from Executive Actions.</div>'
+              : `<div class="bp-grid">
+                  <div class="h">NAME</div><div class="h">CATEGORY</div><div class="h">TYPE OF BUILDING</div><div class="h">TYPE</div><div class="h">DRAFTED</div>
+                  ${bps.map(bp => `
+                    <div class="c nm">${esc(bp.name || '—')}</div>
+                    <div class="c">${esc(bp.category === 'residential' ? 'Residential' : bp.category)}</div>
+                    <div class="c">${esc(BUILDING_TYPE_LABELS[bp.building_type] || bp.building_type)}</div>
+                    <div class="c">${esc(QUALITY_TIER_LABELS[bp.quality_tier] || bp.quality_tier)}</div>
+                    <div class="c">${esc(tickToDate(bp.created_at_tick))}</div>`).join('')}
+                </div>`}
           </div>`;
 
         // ── Finances box (right column) ──────────────────────────
@@ -1121,9 +1150,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
       let dbType = null, dbTier = null;
 
       function dbRefreshConfirm() {
-        const pm = document.getElementById('db-pm').value;
         const name = document.getElementById('db-name').value.trim();
-        document.getElementById('db-confirm').disabled = !(name.length >= 2 && dbType && dbTier && pm);
+        document.getElementById('db-confirm').disabled = !(name.length >= 2 && dbType && dbTier);
       }
 
       function dbPills(hostId, items, onPick) {
@@ -1165,35 +1193,23 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         document.getElementById('db-location').textContent = corp.hq_city || '—';
         document.getElementById('db-overlay').classList.add('open');
 
-        // Infrastructure rating + the PM roster load behind the open.
+        // Infrastructure rating loads behind the open.
         try {
-          const [{ data: city, error: cityErr }, { data: pms, error: pmErr }] = await Promise.all([
-            _supabase.from('cities').select('infrastructure')
-              .eq('nation_id', corp.hq_nation_id).eq('city_name', corp.hq_city).maybeSingle(),
-            _supabase.from('job_applicants')
-              .select('id, name, opening:job_openings!opening_id!inner(title, corp_id)')
-              .eq('status', 'hired').eq('opening.corp_id', corp.id),
-          ]);
+          const { data: city, error: cityErr } = await _supabase.from('cities')
+            .select('infrastructure')
+            .eq('nation_id', corp.hq_nation_id).eq('city_name', corp.hq_city).maybeSingle();
           if (cityErr) throw cityErr;
-          if (pmErr) throw pmErr;
           if (city) {
             document.getElementById('db-location').innerHTML =
               `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/100</span>`;
           }
-          const sel = document.getElementById('db-pm');
-          sel.innerHTML = pms?.length
-            ? pms.map(p => `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.opening?.title || '—')}</option>`).join('')
-            : '<option value="">No hires yet — post a role first</option>';
         } catch (e) {
           console.warn('[business-corp] blueprint modal load failed:', e?.message || e);
-          document.getElementById('db-pm').innerHTML =
-            '<option value="">Could not load your hires — try again</option>';
         }
         dbRefreshConfirm();
       }
 
       document.getElementById('ea-draft-blueprint').addEventListener('click', () => openBlueprintModal());
-      document.getElementById('db-pm').addEventListener('change', dbRefreshConfirm);
       document.getElementById('db-name').addEventListener('input', dbRefreshConfirm);
       wireModalClose('db-overlay', 'db-cancel');
 
@@ -1238,7 +1254,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
                 const acts = pendingBid.has(r.id)
                   ? '<button type="button" class="pb-act bid" disabled>BID SUBMITTED</button>'
                   : bp
-                    ? `<button type="button" class="pb-act bid" data-req="${esc(r.id)}" data-bp="${esc(bp.id)}" title="Bid with ${esc(bp.name || 'your latest blueprint')}">SUBMIT BID</button>`
+                    ? `<input class="pb-price" type="number" min="1" placeholder="$ Price">
+                       <button type="button" class="pb-act bid" data-req="${esc(r.id)}" data-bp="${esc(bp.id)}" title="Bid with ${esc(bp.name || 'your latest blueprint')}">SUBMIT BID</button>`
                     : `<span class="nob">No available blueprint</span>
                        <button type="button" class="pb-act mk" data-type="${esc(r.building_type)}">CREATE BLUEPRINT</button>`;
                 return `
@@ -1252,13 +1269,16 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
           host.querySelectorAll('.pb-act.bid[data-req]').forEach(btn => {
             btn.addEventListener('click', async () => {
+              const price = Math.floor(Number(btn.previousElementSibling?.value));
+              if (!(price > 0)) { alert('Name your price first.'); return; }
               btn.disabled = true;
               try {
                 const { data, error: sErr } = await _supabase.rpc('submit_public_bid',
-                  { p_request_id: btn.dataset.req, p_blueprint_id: btn.dataset.bp });
+                  { p_request_id: btn.dataset.req, p_blueprint_id: btn.dataset.bp, p_price: price });
                 if (sErr) throw sErr;
                 if (!data?.success) {
                   const REASON = {
+                    invalid_price: 'Name a price above $0.',
                     no_actions_remaining: 'No executive actions remaining this tick.',
                     blueprint_type_mismatch: 'That blueprint doesn’t match the requested building type.',
                     already_bid: 'You already have a bid on this project.',
@@ -1301,7 +1321,6 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             p_category: 'residential',
             p_building_type: dbType,
             p_quality_tier: dbTier,
-            p_pm_applicant_id: document.getElementById('db-pm').value,
             p_name: document.getElementById('db-name').value.trim(),
           });
           if (dErr) throw dErr;
@@ -1309,16 +1328,15 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             const REASON = {
               invalid_name: 'Blueprint names run 2–60 characters.',
               no_actions_remaining: 'No executive actions remaining this tick.',
-              pm_not_found: 'That Project Manager no longer works here.',
               category_not_chartered: 'Only Residential blueprints can be drafted right now.',
               not_owner: 'Only the owner can draft blueprints.',
               arrested: 'You are under arrest — your assets are frozen.',
             };
             throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
           }
-          corp.exec_action_tick = currentTick;
-          document.getElementById('ea-remaining').textContent = '0 remaining';
-          document.getElementById('db-overlay').classList.remove('open');
+          // Reload: the BLUEPRINTS panel and the allowance pill both
+          // pick up the new state.
+          window.location.reload();
         } catch (e) {
           alert('Could not draft: ' + (e?.message || e));
           dbRefreshConfirm();

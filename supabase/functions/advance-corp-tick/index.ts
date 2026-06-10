@@ -154,7 +154,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-10-a (corp-payroll)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-10-b (corp-payroll+construction)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -250,6 +250,33 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (payErr) {
         console.error('[advance-corp-tick] FAILED corp payroll:', payErr);
         summary.errors.push({ scope: 'corp_payroll', error: String(payErr) });
+    }
+
+    // Construction (20270807): auto-award open city requests 3+ ticks
+    // old to the lowest affordable bid, then complete due projects
+    // (escrowed price → corp treasury, stamped as revenue).
+    try {
+        const { data: awardRes, error: awardErr } = await supabase.rpc(
+            'auto_award_construction_bids', { p_tick: currentTick });
+        if (awardErr) {
+            console.warn('[Construction] auto-award RPC failed:', awardErr.message);
+            summary.errors.push({ scope: 'construction_auto_award', error: awardErr.message });
+        } else if (awardRes && Number(awardRes.awarded) > 0) {
+            summary.constructionAutoAwards = awardRes;
+            console.log(`[Construction] tick ${currentTick}: ${awardRes.awarded} bids auto-awarded`);
+        }
+        const { data: doneRes, error: doneErr } = await supabase.rpc(
+            'complete_construction_projects', { p_tick: currentTick });
+        if (doneErr) {
+            console.warn('[Construction] completion RPC failed:', doneErr.message);
+            summary.errors.push({ scope: 'construction_complete', error: doneErr.message });
+        } else if (doneRes && Number(doneRes.completed) > 0) {
+            summary.constructionCompletions = doneRes;
+            console.log(`[Construction] tick ${currentTick}: ${doneRes.completed} projects completed`);
+        }
+    } catch (conErr) {
+        console.error('[advance-corp-tick] FAILED construction processing:', conErr);
+        summary.errors.push({ scope: 'construction', error: String(conErr) });
     }
 
     try {

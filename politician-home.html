@@ -1598,6 +1598,7 @@ let activeTrials = [];  // in-progress + recently-resolved (12-tick window) tria
 let stateAdvocateRequests = []; // pending state_advocate_appointment_requests where this politician is the reviewer (MoI). Surfaces as Pressing Issues cards (20270555).
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
+let constructionBidRequests = []; // open construction requests in the mayor's city with pending bids (20270807). Surfaces as Pressing Issues cards opening the award modal; lowest bid auto-accepts after 3 ticks.
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
 let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
@@ -1803,6 +1804,24 @@ async function init() {
     consultancyOffers = (consultancyRes.data?.success ? consultancyRes.data.offers : []) || [];
     openOrdinanceProposals = (openPropsRes.data?.success ? openPropsRes.data.proposals : []) || [];
     memberCommittees = (memberCommitteesRes.data?.success ? memberCommitteesRes.data.committees : []) || [];
+
+    // Mayor's award desk (20270807): open construction requests in
+    // their city with pending bids. One Pressing Issues card per
+    // request; the modal lists the bids with [ACCEPT]. The lowest
+    // bid auto-accepts server-side 3 ticks after the request posts.
+    constructionBidRequests = [];
+    if (ctx.mayorCity?.id) {
+      const { data: cbReqs, error: cbErr } = await _supabase.from('construction_project_requests')
+        .select(`id, source_ordinance_name, building_type, created_at_tick,
+                 bids:construction_project_bids(id, price, quality, build_ticks, status,
+                   corp:entrepreneur_corps!corp_id(name))`)
+        .eq('requester_city_id', ctx.mayorCity.id)
+        .eq('status', 'open');
+      if (cbErr) console.error('politician-home: construction bids fetch failed', cbErr);
+      constructionBidRequests = (cbReqs || [])
+        .map(r => ({ ...r, bids: (r.bids || []).filter(b => b.status === 'pending') }))
+        .filter(r => r.bids.length);
+    }
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -3971,6 +3990,8 @@ function renderPressingIssues(ctx) {
   // Open city ordinance proposals where this council seat hasn't
   // voted yet (20270747). One card per proposal/seat row.
   openOrdinanceProposals.forEach(p => blocks.push(renderOrdinanceProposalCard(p, ctx)));
+  // Construction bids awaiting the mayor's award (20270807).
+  constructionBidRequests.forEach(r => blocks.push(renderConstructionBidCard(r)));
   // Committee memberships (20270754) — one card per seat with the
   // pending agenda depth + a [VIEW COMMITTEE] CTA. The empty-roster
   // case naturally renders nothing.
@@ -3990,6 +4011,128 @@ function renderPressingIssues(ctx) {
   bindCommitteeHearingActions();
   bindOrdinanceProposalActions(ctx);
   bindMemberCommitteeActions();
+  bindConstructionBidActions();
+}
+
+// ── Construction bid award card + modal (20270807) ──────────────────
+// The mayor's award desk: one card per open request with pending
+// bids. VIEW BIDS opens the table — corp / bid amount / quality /
+// expected completion — with [ACCEPT] per row. Accepting escrows the
+// price out of the city budget; the lowest bid auto-accepts 3 ticks
+// after posting if the mayor sits on it.
+function renderConstructionBidCard(r) {
+  const ordName = r.source_ordinance_name || 'Construction';
+  return `
+    <div class="offer-card" data-cbid-req="${escAttr(r.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🏗️</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">CITY HALL &middot; PUBLIC PROCUREMENT</div>
+        <div class="oi-headline">View Construction Bid on <strong>${escHtml(ordName)}</strong> Ordinance</div>
+        <div class="oi-meta">
+          <span><b>${r.bids.length}</b> bid${r.bids.length === 1 ? '' : 's'} &middot; lowest auto-accepts ${escHtml(tickToDate(r.created_at_tick + 3))}</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn cbid-view-btn">VIEW BIDS</button>
+      </div>
+    </div>`;
+}
+
+function ensureConstructionBidModal() {
+  if (document.getElementById('cb-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #cb-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #cb-overlay.open { display:flex; }
+    .cb-modal { width:640px; max-width:94vw; max-height:84vh; overflow-y:auto;
+      background:#0a0807; border:0.5px solid rgba(200,166,78,0.35); border-radius:6px;
+      padding:20px 22px; }
+    .cb-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#c8a26e; font-weight:700; margin-bottom:14px; }
+    .cb-grid { display:grid; grid-template-columns:1.4fr 0.9fr 0.7fr 1.1fr auto;
+      gap:7px 12px; align-items:center; }
+    .cb-grid .h { font-family:monospace; font-size:8px; letter-spacing:0.12em;
+      color:#666; font-weight:700; }
+    .cb-grid .c { font-size:11.5px; color:#cfcabf; min-width:0; overflow-wrap:break-word; }
+    .cb-grid .c.money { font-family:monospace; color:#c8a26e; }
+    .cb-accept { padding:6px 11px; background:rgba(90,175,165,0.08);
+      border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+      font-family:monospace; font-size:8.5px; letter-spacing:0.1em; font-weight:700;
+      cursor:pointer; }
+    .cb-accept:hover:not(:disabled) { background:rgba(90,175,165,0.16); }
+    .cb-accept:disabled { opacity:0.4; cursor:not-allowed; }
+    .cb-foot { margin-top:16px; text-align:right; }
+    .cb-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+      cursor:pointer; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'cb-overlay';
+  host.innerHTML = `
+    <div class="cb-modal">
+      <div class="cb-title" id="cb-title">CONSTRUCTION BIDS</div>
+      <div id="cb-body"></div>
+      <div class="cb-foot"><button type="button" class="cb-close" id="cb-close">CLOSE</button></div>
+    </div>`;
+  document.body.appendChild(host);
+  document.getElementById('cb-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+function openConstructionBidModal(r) {
+  ensureConstructionBidModal();
+  document.getElementById('cb-title').textContent =
+    `CONSTRUCTION BIDS — ${(r.source_ordinance_name || 'Construction')} Ordinance`;
+  const body = document.getElementById('cb-body');
+  body.innerHTML = `
+    <div class="cb-grid">
+      <div class="h">NAME OF CONSTRUCTION CORP</div><div class="h">BID AMOUNT</div><div class="h">BID QUALITY</div><div class="h">EXPECTED COMPLETION DATE</div><div class="h"></div>
+      ${r.bids.slice().sort((a, b) => a.price - b.price).map(b => `
+        <div class="c">${escHtml(b.corp?.name || '—')}</div>
+        <div class="c money">$${(Number(b.price) || 0).toLocaleString()}</div>
+        <div class="c">Quality ${escHtml(String(b.quality ?? 1))}</div>
+        <div class="c">${escHtml(tickToDate(currentTick + (Number(b.build_ticks) || 1)))}</div>
+        <div><button type="button" class="cb-accept" data-bid="${escAttr(b.id)}">ACCEPT</button></div>`).join('')}
+    </div>`;
+  body.querySelectorAll('.cb-accept').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('accept_construction_bid',
+          { p_bid_id: btn.dataset.bid });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_mayor: 'Only this city’s sitting Mayor can accept bids.',
+            insufficient_city_budget: 'The city budget can’t cover this bid.',
+            bid_not_pending: 'This bid was already resolved.',
+            request_not_open: 'This project was already awarded.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        location.reload();
+      } catch (e) {
+        alert('Could not accept: ' + (e?.message || e));
+        btn.disabled = false;
+      }
+    });
+  });
+  document.getElementById('cb-overlay').classList.add('open');
+}
+
+function bindConstructionBidActions() {
+  document.querySelectorAll('.cbid-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const reqId = btn.closest('[data-cbid-req]')?.dataset?.cbidReq;
+      const req = constructionBidRequests.find(r => r.id === reqId);
+      if (req) openConstructionBidModal(req);
+    });
+  });
 }
 
 // ── Consultancy offer card (20270773) ───────────────────────────────
