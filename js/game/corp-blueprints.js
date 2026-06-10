@@ -15,6 +15,27 @@ export const PILLARS = {
   ],
 };
 
+// The seven stages of a construction project, displayed horizontally
+// on the assigned PM's (and owner's) Pressing Issues tracker. The
+// current stage derives from ticks elapsed vs build time — no stage
+// state is stored.
+export const CONSTRUCTION_STAGES = [
+  { name: 'Planning Stage', phase: 'Phase 1: Procurement & Logistics',
+    desc: 'Blueprints are locked in. Materials (concrete, lumber, steel) are ordered via your Supply Depot to secure bulk pricing and avoid supply bottlenecks.' },
+  { name: 'Work Scheduled', phase: 'Phase 2: Crew & Asset Allocation',
+    desc: 'Subcontractors are locked into contracts and your Motor Pool schedules the heavy machinery transport (excavators, operators) to arrive on-site simultaneously.' },
+  { name: 'Site Prep & Excavation', phase: 'Phase 3: The Earthmovers',
+    desc: 'Heavy equipment breaks ground. Crews clear vegetation, excavate the soil, dig utility trenches, and grade the earth to create a level, stable building pad.' },
+  { name: 'Foundation', phase: 'Phase 4: The Pour',
+    desc: 'Crews tie steel rebar matrixes into the trenches. Concrete mixing trucks arrive in sequence to pour the footings and slab, forming the permanent anchor for the structure.' },
+  { name: 'Framing & Structural Steel', phase: 'Phase 5: The Skeleton',
+    desc: 'The building goes vertical. Cranes and framing crews erect the structural steel beams, load-bearing concrete pillars, or wood framing to establish the building’s shell.' },
+  { name: 'Exterior Enclosure & Dry-In', phase: 'Phase 6: The Skin',
+    desc: 'Roofing crews and exterior installers seal the building. Windows, outer walls, and roofing membranes are installed to shield the interior from weather so internal trades can begin.' },
+  { name: 'Interior Fit-Out & MEP', phase: 'Phase 7: The Systems',
+    desc: 'Specialized crews take over the interior. Mechanical, Electrical, and Plumbing (MEP) systems are routed through the walls, followed by drywall, finishes, and final inspections.' },
+];
+
 export const DEPARTMENTS = {
   construction: [
     { dept: 'PROJECT MANAGEMENT', tier: 'The Truck & Clipboard',

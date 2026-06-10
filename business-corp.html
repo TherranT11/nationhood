@@ -191,6 +191,14 @@
   .pb-price { width:92px; padding:6px 8px; background:#0a0a0a;
     border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff;
     font-size:10.5px; font-family:var(--font-mono); }
+  .sp-city { background:#0a0a0a; border:1px solid rgba(255,255,255,0.1); border-radius:4px;
+    padding:10px 12px; margin-bottom:6px; cursor:pointer; }
+  .sp-city:hover { border-color:rgba(138,170,106,0.4); }
+  .sp-city.sel { background:#10140e; border-color:#8aaa6a; }
+  .sp-city .nm { font-size:12.5px; color:#fff; font-weight:600; }
+  .sp-city .stats { font-family:var(--font-mono); font-size:8.5px; color:#888;
+    margin-top:4px; line-height:1.7; }
+  .sp-city .stats b { color:#aac88a; font-weight:700; }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -327,9 +335,24 @@
         tick&rsquo;s executive action.</div>
       <div class="jm-lab">REQUESTED CONSTRUCTION PROJECTS</div>
       <div id="pb-list"><div class="rl-empty">Loading…</div></div>
+      <div class="jm-lab" style="margin-top:20px;">START YOUR OWN PROJECT</div>
+      <div class="db-mech">No buyer, no contract — a speculative build on your own book.
+        Pick a city, a blueprint, and the Project Manager who&rsquo;ll run the site.
+        Starting a project spends this tick&rsquo;s executive action.</div>
+      <div class="jm-pills" style="margin-top:8px;">
+        <div class="jm-pill sel">RESIDENTIAL HOUSING</div>
+        <div class="jm-pill locked" title="Coming soon">COMMERCIAL BUILDING</div>
+      </div>
+      <div class="jm-lab">CITY</div>
+      <div id="sp-cities"><div class="rl-empty">Loading…</div></div>
+      <div class="jm-lab">BLUEPRINT</div>
+      <div class="jm-pills db-cats" id="sp-bps"></div>
+      <div class="jm-lab">PROJECT MANAGER</div>
+      <select class="jm-select" id="sp-pm"></select>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="pb-cancel">CLOSE</button>
+      <button type="button" class="jm-btn" id="sp-start" disabled title="Pick a city, blueprint, and PM">START PROJECT</button>
     </div>
   </div>
 </div>
@@ -398,6 +421,7 @@ import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
 import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
+import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
   try {
@@ -1223,7 +1247,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
         host.innerHTML = '<div class="rl-empty">Loading…</div>';
         document.getElementById('pb-overlay').classList.add('open');
         try {
-          const [{ data: reqs, error: rErr }, { data: bps, error: bErr }, { data: myBids, error: mErr }] = await Promise.all([
+          const [{ data: reqs, error: rErr }, { data: bps, error: bErr }, { data: myBids, error: mErr },
+                 { data: spCities, error: cErr }, { data: spPms, error: pErr }] = await Promise.all([
             _supabase.from('construction_project_requests')
               .select('id, entity, city, building_type, nation:nations!nation_id(name)')
               .eq('status', 'open')
@@ -1235,8 +1260,15 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             _supabase.from('construction_project_bids')
               .select('request_id, status')
               .eq('corp_id', corp.id),
+            _supabase.from('cities')
+              .select(`id, city_name, ${CITY_STATS.map(s => s.key).join(', ')}`)
+              .eq('nation_id', corp.hq_nation_id).order('city_name'),
+            _supabase.from('job_applicants')
+              .select('id, name, opening:job_openings!opening_id!inner(title, corp_id)')
+              .eq('status', 'hired').eq('opening.corp_id', corp.id),
           ]);
-          if (rErr || bErr || mErr) throw (rErr || bErr || mErr);
+          if (rErr || bErr || mErr || cErr || pErr) throw (rErr || bErr || mErr || cErr || pErr);
+          renderStartProject(spCities || [], bps || [], spPms || []);
           if (!reqs?.length) {
             host.innerHTML = '<div class="rl-empty">No public projects are requesting bids right now.</div>';
             return;
@@ -1308,6 +1340,84 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
           host.innerHTML = '<div class="rl-empty">Could not load the board — try again shortly.</div>';
         }
       }
+
+      // ── Start Your Own Project (20270808) ───────────────────────
+      // Residential only (Commercial pill stays locked). City rows
+      // show every city stat; pick city + blueprint + PM and START
+      // PROJECT spends the tick's executive action. The project
+      // surfaces on the PM's and owner's Pressing Issues tracker.
+      let spCity = null, spBp = null;
+
+      function spRefreshStart() {
+        document.getElementById('sp-start').disabled =
+          !(spCity && spBp && document.getElementById('sp-pm').value);
+      }
+
+      function renderStartProject(cities, bps, pms) {
+        spCity = null; spBp = null;
+        const cityHost = document.getElementById('sp-cities');
+        cityHost.innerHTML = cities.length ? cities.map(c => `
+          <div class="sp-city" data-city="${esc(c.id)}">
+            <div class="nm">${esc(c.city_name)}</div>
+            <div class="stats">${CITY_STATS.map(s =>
+              `${esc(s.name.toUpperCase())} <b>${esc(String(c[s.key] ?? '—'))}</b>`).join(' &middot; ')}</div>
+          </div>`).join('')
+          : '<div class="rl-empty">No cities found.</div>';
+        cityHost.querySelectorAll('.sp-city').forEach(row => {
+          row.addEventListener('click', () => {
+            spCity = row.dataset.city;
+            cityHost.querySelectorAll('.sp-city').forEach(x => x.classList.toggle('sel', x === row));
+            spRefreshStart();
+          });
+        });
+
+        const bpHost = document.getElementById('sp-bps');
+        bpHost.innerHTML = bps.length ? bps.map(bp => `
+          <div class="jm-pill" data-bp="${esc(bp.id)}">${esc(bp.name || BUILDING_TYPE_LABELS[bp.building_type] || '—')}</div>`).join('')
+          : '<div class="rl-empty" style="flex:1;">No blueprints yet — draft one first.</div>';
+        bpHost.querySelectorAll('.jm-pill').forEach(p => {
+          p.addEventListener('click', () => {
+            spBp = p.dataset.bp;
+            bpHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+            spRefreshStart();
+          });
+        });
+
+        document.getElementById('sp-pm').innerHTML = pms.length
+          ? pms.map(p => `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.opening?.title || '—')}</option>`).join('')
+          : '<option value="">No hires yet — post a role first</option>';
+        spRefreshStart();
+      }
+
+      document.getElementById('sp-pm').addEventListener('change', spRefreshStart);
+      document.getElementById('sp-start').addEventListener('click', async () => {
+        const btn = document.getElementById('sp-start');
+        btn.disabled = true;
+        try {
+          const { data, error: spErr } = await _supabase.rpc('start_construction_project', {
+            p_corp_id: corp.id,
+            p_city_id: spCity,
+            p_blueprint_id: spBp,
+            p_pm_applicant_id: document.getElementById('sp-pm').value,
+          });
+          if (spErr) throw spErr;
+          if (!data?.success) {
+            const REASON = {
+              no_actions_remaining: 'No executive actions remaining this tick.',
+              blueprint_not_found: 'That blueprint isn’t this corporation’s.',
+              pm_not_found: 'That Project Manager no longer works here.',
+              category_not_chartered: 'Only Residential projects can start right now.',
+              not_owner: 'Only the owner can start projects.',
+              arrested: 'You are under arrest — your assets are frozen.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          window.location.reload();
+        } catch (e) {
+          alert('Could not start: ' + (e?.message || e));
+          spRefreshStart();
+        }
+      });
 
       document.getElementById('ea-submit-bid').addEventListener('click', openBidModal);
       wireModalClose('pb-overlay', 'pb-cancel');
