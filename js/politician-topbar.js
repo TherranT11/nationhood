@@ -6,6 +6,7 @@
 import { _supabase } from './supabase-client.js';
 import { displayName, currentAge, flagUrlFor } from './utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { bootstrapBusinessman } from './entrepreneur-topbar.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html',      icon: '🏠' },
@@ -360,4 +361,54 @@ export async function bootstrapPolitician(activeTab) {
     .catch(e => console.warn('[politician-topbar] resolve_due_committee_motions threw:', e?.message || e));
 
   return { user, faction, shard, nation, allUserFactions, party };
+}
+
+// Shared viewer for the nation-page family (nation / economy /
+// statutes / laws / modifiers / ministries / cabinet / committees /
+// elections / cities). Businessmen browse the same pages read-only
+// under their own chrome — a businessman faction has no politician
+// office or party, so every action gate on those pages falls through
+// to the no-permission paths an office-less politician already sees.
+// Politicians keep bootstrapPolitician untouched. The active faction
+// decides, same sessionStorage rule the shared forum uses.
+export async function bootstrapPoliticianOrBusinessman(polTab, bizTab) {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return null; }
+  const { data: facs } = await _supabase.from('factions')
+    .select('id, faction_type')
+    .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+    .in('faction_type', ['politician', 'businessman'])
+    .is('abandoned_at', null);
+  const activeId = sessionStorage.getItem('active_faction_id');
+  const active = (facs || []).find(x => x.id === activeId) || null;
+  const hasPol = (facs || []).some(x => x.faction_type === 'politician');
+  const wantBiz = active
+    ? active.faction_type === 'businessman'
+    : !hasPol && (facs || []).some(x => x.faction_type === 'businessman');
+  if (!wantBiz) return bootstrapPolitician(polTab);
+
+  const ctx = await bootstrapBusinessman(bizTab);
+  if (!ctx) return null;
+  // The family reads ctx.nation — supply the same columns
+  // bootstrapPolitician does.
+  try {
+    const { data: nation, error } = await _supabase.from('nations')
+      .select(`
+        id, name, flag_url, government_type, capital, total_seats,
+        election_frequency, next_election_tick, parliamentary_term_ticks,
+        head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+        population, dynasty_name,
+        politician_gdp, politician_budget, politician_debt,
+        politician_stability, politician_civil_freedoms, politician_gdp_growth,
+        nation_profiles(flag_url, official_name, motto, overview, founded_year)
+      `)
+      .eq('id', ctx.faction.nation_id).maybeSingle();
+    if (error) throw error;
+    ctx.nation = nation || null;
+  } catch (e) {
+    console.warn('[politician-topbar] businessman nation fetch failed:', e?.message || e);
+    ctx.nation = null;
+  }
+  ctx.viewerType = 'businessman';
+  return ctx;
 }
