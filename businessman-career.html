@@ -42,6 +42,17 @@
     letter-spacing:0.12em; font-weight:700; cursor:pointer; flex-shrink:0; }
   .role-apply:disabled { opacity:0.4; cursor:not-allowed; }
 
+  /* Live interview banners above the board */
+  .iv-banner { display:flex; align-items:center; gap:14px; padding:13px 16px; margin-bottom:8px;
+    background:rgba(122,154,200,0.05); border:0.5px solid rgba(122,154,200,0.35);
+    border-radius:5px; }
+  .iv-banner .t { font-family:var(--font-mono); font-size:10px; letter-spacing:0.12em;
+    color:#7a9ac8; font-weight:700; min-width:0; overflow-wrap:break-word; }
+  .iv-open { margin-left:auto; padding:7px 13px; background:rgba(122,154,200,0.08);
+    border:0.5px solid #4a5a6a; border-radius:4px; color:#7a9ac8; font-family:var(--font-mono);
+    font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; flex-shrink:0; }
+  .iv-open:hover { background:rgba(122,154,200,0.16); }
+
   .hist-list { display:flex; flex-direction:column; gap:8px; }
   .hist-row { display:flex; align-items:baseline; gap:14px; padding:13px 16px; background:#0d0d0d;
     border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; }
@@ -114,6 +125,7 @@
         <span class="sans">Available</span>
         <span class="serif">Roles</span>
       </div>
+      <div id="iv-list"></div>
       <div id="roles-list"><div class="biz-soon">Loading the board…</div></div>
     </div>
 
@@ -162,8 +174,9 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo } from './js/utils.js';
+import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo, displayName } from './js/utils.js';
 import { cityDisplayData } from './js/game/city-labels.js';
+import { openInterviewChat } from './js/job-interview-chat.js';
 
 // ── Start Company modal state ──
 let scCityId = null;
@@ -330,14 +343,22 @@ async function submitStartCompany() {
     // Available Roles — open job_openings (20270796). Local-reach
     // postings only show to businessmen in the corp's home nation;
     // global ones show to everyone. "Posted X months ago" — one tick
-    // is one month. Applying is the next phase.
+    // is one month. APPLY goes through apply_to_job_opening
+    // (20270798); your own corp's postings show no button.
     const currentTick = Number(ctx.shard?.current_tick) || 0;
     try {
-      const { data: roles, error: rolesErr } = await _supabase.from('job_openings')
-        .select('id, title, salary_yearly, reach, posted_at_tick, corp:entrepreneur_corps!corp_id(id, name, hq_city, hq_nation_id)')
-        .eq('status', 'open')
-        .order('posted_at_tick', { ascending: false });
+      const [{ data: roles, error: rolesErr }, { data: myApps, error: appsErr }] = await Promise.all([
+        _supabase.from('job_openings')
+          .select('id, title, salary_yearly, reach, posted_at_tick, corp:entrepreneur_corps!corp_id(id, name, hq_city, hq_nation_id, owner_faction_id)')
+          .eq('status', 'open')
+          .order('posted_at_tick', { ascending: false }),
+        _supabase.from('job_applicants')
+          .select('opening_id')
+          .eq('applicant_faction_id', ctx.faction.id),
+      ]);
       if (rolesErr) throw rolesErr;
+      if (appsErr) throw appsErr;
+      const appliedTo = new Set((myApps || []).map(a => a.opening_id));
       const visible = (roles || []).filter(o =>
         o.reach === 'global' || o.corp?.hq_nation_id === ctx.faction.nation_id);
       const host = document.getElementById('roles-list');
@@ -346,6 +367,8 @@ async function submitStartCompany() {
       } else {
         host.innerHTML = visible.map(o => {
           const ago = postedMonthsAgo(o.posted_at_tick, currentTick);
+          const mine = o.corp?.owner_faction_id === ctx.faction.id;
+          const applied = appliedTo.has(o.id);
           return `
           <div class="role-row">
             <div>
@@ -353,14 +376,80 @@ async function submitStartCompany() {
               <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${esc(o.corp?.hq_city || '—')} &middot; ${o.reach === 'global' ? 'Global' : 'Local'}</div>
             </div>
             <span class="ago">${esc(ago)}</span>
-            <button type="button" class="role-apply" disabled title="Applications open soon">APPLY</button>
+            ${mine ? '' : applied
+              ? '<button type="button" class="role-apply" disabled>APPLIED</button>'
+              : `<button type="button" class="role-apply" data-opening="${esc(o.id)}">APPLY</button>`}
           </div>`;
         }).join('');
+        host.querySelectorAll('.role-apply[data-opening]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const { data: res, error: aErr } = await _supabase.rpc('apply_to_job_opening',
+                { p_opening_id: btn.dataset.opening, p_faction_id: ctx.faction.id });
+              if (aErr) throw aErr;
+              if (!res?.success) {
+                const REASON = {
+                  already_applied: 'You already applied to this role.',
+                  local_only: 'This posting only accepts local candidates.',
+                  own_corp: 'You cannot apply to your own corporation.',
+                  not_open: 'This posting is no longer open.',
+                  arrested: 'You are under arrest — applications are frozen.',
+                };
+                throw new Error(REASON[res?.reason] || res?.reason || 'unknown');
+              }
+              btn.textContent = 'APPLIED';
+            } catch (e) {
+              alert('Could not apply: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
       }
     } catch (e) {
       console.warn('businessman-career: roles load failed', e?.message || e);
       document.getElementById('roles-list').innerHTML =
         '<div class="biz-soon">Could not load the board — try again shortly.</div>';
+    }
+
+    // Live interviews — when an employer opens a chat, the banner
+    // shows up here for the interviewee. They can only chat; HIRE /
+    // CLOSE OUT belong to the other side of the table.
+    try {
+      const { data: ivs, error: ivErr } = await _supabase.from('job_interviews')
+        .select(`id, owner_faction_id, applicant_faction_id,
+                 opening:job_openings!opening_id(title),
+                 corp:entrepreneur_corps!corp_id(name),
+                 owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
+        .eq('applicant_faction_id', ctx.faction.id)
+        .eq('status', 'open');
+      if (ivErr) throw ivErr;
+      if (ivs?.length) {
+        const me = displayName(ctx.faction);
+        document.getElementById('iv-list').innerHTML = ivs.map(iv => `
+          <div class="iv-banner">
+            <span class="t">JOB INTERVIEW — ${esc(iv.opening?.title || 'Role')} for ${esc(iv.corp?.name || '—')}</span>
+            <button type="button" class="iv-open" data-iv="${esc(iv.id)}">OPEN CHAT</button>
+          </div>`).join('');
+        document.querySelectorAll('.iv-open').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const iv = ivs.find(x => x.id === btn.dataset.iv);
+            if (!iv) return;
+            openInterviewChat({
+              interviewId: iv.id,
+              heading: `JOB INTERVIEW — ${iv.opening?.title || 'Role'} for ${iv.corp?.name || '—'}`,
+              canManage: false,
+              myFactionId: ctx.faction.id,
+              names: {
+                [iv.owner_faction_id]: displayName(iv.owner),
+                [iv.applicant_faction_id]: me,
+              },
+            });
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('businessman-career: interviews load failed', e?.message || e);
     }
 
     // History was rolled once at creation (20270787) and stored as
