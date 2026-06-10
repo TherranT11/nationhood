@@ -4,7 +4,7 @@
 // one-for-one — same patterns for styles, switcher, countdown, bootstrap —
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
-import { APP_VERSION, fmtBig, displayName, currentAge, flagUrlFor } from './utils.js';
+import { APP_VERSION, displayName, currentAge, flagUrlFor } from './utils.js';
 import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
 
 const POL_TABS = [
@@ -197,11 +197,6 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
   const display = displayName(f) || 'Politician';
   const baseLabel = last ? `${(first[0] || '').toUpperCase()}. ${last}` : (first || 'Politician');
   const pillLabel = nick ? `${baseLabel} (${nick})` : baseLabel;
-  // Politician topbar shows INFLUENCE — sourced from factions.politician
-  // _influence (column name matches the display label since 20270646).
-  // fmtBig keeps small values plain ("0", "27") and magnitude-scales
-  // higher ones ("1.2k").
-  const influenceDisplay = fmtBig(Number(f.politician_influence) || 0);
   const age = String(currentAge(f, s.current_tick || 0));
   const nationHtml = nation
     ? `<img class="flag" src="${escAttr(flagFor(nation))}" alt="" onerror="this.style.visibility='hidden'">${esc(nation.name)}`
@@ -222,7 +217,6 @@ export function renderPoliticianTopbar(container, { faction, shard, nation, allU
         <div><div class="label">NEXT TICK</div><div class="value" id="pol-next-tick">—</div></div>
       </div>
       <div class="right">
-        <div class="cash-pill"><span class="label">INFLUENCE: </span><span class="value">${esc(influenceDisplay)}</span></div>
         <div class="pol-switcher">
           <span class="pol-pill" id="pol-pill" title="Switch faction">${esc(pillLabel)} &#x25BE;</span>
           <div class="pol-dd" id="pol-dd"></div>
