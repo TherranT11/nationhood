@@ -1347,6 +1347,24 @@
             </div>
             <div class="tc-msg" id="cp-wd-msg"></div>
           </div>
+          <!-- Retain Consultancy (20270773) — owner-only, public AND
+               private corps. Pays a player from the treasury;
+               politicians also gain 1 Capital per $5M. -->
+          <div id="cp-consult" style="display:none;margin-bottom:14px;">
+            <div class="role-eyebrow">CONSULTANCY</div>
+            <div class="tc-row" style="margin-top:8px;">
+              <button id="cp-consult-btn" class="tc-btn">RETAIN CONSULTANCY</button>
+            </div>
+          </div>
+          <!-- Performance Bonus (20270775) — owner-only, PUBLIC corps.
+               Board-voted CEO payout: YES → +3% share price, NO →
+               −0.2%/$1M proposed. -->
+          <div id="cp-bonus" style="display:none;margin-bottom:14px;">
+            <div class="role-eyebrow">PERFORMANCE BONUS</div>
+            <div class="tc-row" style="margin-top:8px;">
+              <button id="cp-bonus-btn" class="tc-btn">PROPOSE PERFORMANCE BONUS</button>
+            </div>
+          </div>
           <div id="cp-forsale" style="display:none;margin-bottom:14px;"></div>
           <div id="cp-negotiations" style="display:none;margin-bottom:14px;"></div>
           <div id="cp-bankrupt" style="display:none;"></div>
@@ -3078,6 +3096,301 @@ function initials(s, n) {
     if (isConstructionCorp) {
       const cpPillars = document.getElementById('cp-pillars');
       if (cpPillars) cpPillars.style.display = 'block';
+    }
+
+    // ── Performance Bonus (20270775) ──────────────────────────────
+    // Owner-only, PUBLIC corps. Propose a board-voted bonus for
+    // yourself: YES majority → escrow pays out +3% share price;
+    // NO → refund and −0.2%/$1M proposed. Modal first checks for a
+    // pending proposal and offers Cancel instead of the form.
+    const cpBonus = document.getElementById('cp-bonus');
+    if (cpBonus && isOwner && isPublic) {
+      cpBonus.style.display = 'block';
+      showAdminHub();
+      document.getElementById('cp-bonus-btn').onclick = () => openBonusModal();
+    }
+
+    async function openBonusModal() {
+      const overlay = document.getElementById('cp-bonus-overlay');
+      if (!overlay) return;
+      let submitting = false;
+
+      // Pending proposal? Offer cancel instead of a second proposal.
+      let pending = null;
+      try {
+        const { data, error } = await _supabase.from('corp_bonus_proposals')
+          .select('id, amount, proposed_at_tick')
+          .eq('corp_id', id).eq('status', 'pending')
+          .maybeSingle();
+        if (error) throw error;
+        pending = data || null;
+      } catch (e) {
+        console.warn('[corp] pending bonus fetch failed:', e?.message || e);
+      }
+
+      if (pending) {
+        overlay.innerHTML = `
+          <div class="bm-modal" style="max-width:440px;">
+            <div class="bm-head"><div class="ti">Performance <em>Bonus</em></div><div class="bm-x" id="pb-close">×</div></div>
+            <div class="bm-body">
+              <div style="font-size:11px;color:#8a8680;">A <b style="color:#cfcabf;">$${(Number(pending.amount) || 0).toLocaleString()}</b> bonus proposal is already before the board. You can cancel it — the escrowed amount refunds to the treasury with no share-price effect.</div>
+              <div class="bm-err" id="pb-err"></div>
+            </div>
+            <div class="bm-foot">
+              <button class="bm-btn sec" id="pb-cancel">Close</button>
+              <button class="bm-btn pri" id="pb-withdraw">Cancel Proposal</button>
+            </div>
+          </div>`;
+        const close = () => { if (!submitting) overlay.classList.remove('open'); };
+        document.getElementById('pb-close').onclick = close;
+        document.getElementById('pb-cancel').onclick = close;
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        document.getElementById('pb-withdraw').onclick = async () => {
+          if (submitting) return;
+          submitting = true;
+          const btn = document.getElementById('pb-withdraw');
+          btn.disabled = true; btn.textContent = 'Cancelling…';
+          try {
+            const { data, error } = await _supabase.rpc('cancel_performance_bonus',
+              { p_proposal_id: pending.id });
+            if (error) throw error;
+            if (!data?.success) {
+              document.getElementById('pb-err').textContent =
+                'Failed: ' + (data?.reason || 'unknown');
+              submitting = false; btn.disabled = false; btn.textContent = 'Cancel Proposal';
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            document.getElementById('pb-err').textContent = 'Failed: ' + (e?.message || e);
+            submitting = false; btn.disabled = false; btn.textContent = 'Cancel Proposal';
+          }
+        };
+        overlay.classList.add('open');
+        return;
+      }
+
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:440px;">
+          <div class="bm-head"><div class="ti">Performance <em>Bonus</em></div><div class="bm-x" id="pb-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Propose a performance bonus for yourself, paid from <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b>'s treasury. The Board of Directors votes YES or NO. <b style="color:#5cc55c;">Approved: the bonus pays out and the share price rises 3%.</b> <b style="color:#d98a8a;">Rejected: the escrow refunds and the share price falls 0.2% per $1M proposed.</b></div>
+            <div class="bm-label">Bonus amount ($)</div>
+            <input type="text" class="bm-input" id="pb-amt" inputmode="numeric" placeholder="e.g. 10,000,000">
+            <div style="font-size:11px;color:#8a8680;margin-top:8px;" id="pb-risk">&nbsp;</div>
+            <div class="bm-err" id="pb-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="pb-cancel">Cancel</button>
+            <button class="bm-btn pri" id="pb-submit">Send to the Board</button>
+          </div>
+        </div>`;
+      const close = () => { if (!submitting) overlay.classList.remove('open'); };
+      document.getElementById('pb-close').onclick = close;
+      document.getElementById('pb-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+      // Live risk preview mirrors the server math (server is
+      // authoritative): −0.2% per full $1M, clamped at 90%.
+      document.getElementById('pb-amt').oninput = () => {
+        const amt = parseNum(document.getElementById('pb-amt').value);
+        const riskEl = document.getElementById('pb-risk');
+        if (amt > 0) {
+          const drop = Math.min(90, 0.2 * Math.floor(amt / 1000000));
+          riskEl.innerHTML = `If rejected: share price falls <b style="color:#d98a8a;">−${drop.toFixed(1)}%</b>.`;
+        } else {
+          riskEl.innerHTML = '&nbsp;';
+        }
+      };
+
+      document.getElementById('pb-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('pb-err');
+        const amt = parseNum(document.getElementById('pb-amt').value);
+        if (!(amt > 0)) { errEl.textContent = 'Enter a bonus amount.'; return; }
+        submitting = true;
+        const btn = document.getElementById('pb-submit');
+        btn.disabled = true; btn.textContent = 'Sending…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('propose_performance_bonus', {
+            p_corp_id: id, p_amount: Math.floor(amt),
+          });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = {
+              not_owner:                'Only the founder can propose a bonus.',
+              not_public:               'Performance bonuses are for public corps — private corps can just Withdraw.',
+              no_board:                 'The board has no directors to vote.',
+              proposal_already_pending: 'A bonus proposal is already before the board.',
+              insufficient_treasury:    `Treasury can’t cover the bonus (has $${(Number(data?.have) || 0).toLocaleString()}).`,
+              invalid_amount:           'Enter a valid amount.',
+              corp_not_found:           'Corp not found.',
+              no_entrepreneur:          'No entrepreneur faction found.',
+            };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Send to the Board';
+            return;
+          }
+          btn.textContent = 'SENT ✓';
+          setTimeout(() => {
+            alert('Sent to the board — directors will see the vote in their Pressing Issues.');
+            location.reload();
+          }, 500);
+        } catch (e) {
+          errEl.textContent = 'Failed: ' + (e?.message || e);
+          submitting = false; btn.disabled = false; btn.textContent = 'Send to the Board';
+        }
+      };
+
+      overlay.classList.add('open');
+    }
+
+    // ── Retain Consultancy (20270773) ─────────────────────────────
+    // Owner-only, available to public AND private corps (unlike
+    // withdraw, which public corps lose to the dividend rule —
+    // the consultancy line appears in corporate history either way,
+    // with the amount shown only when the corp is public).
+    const cpConsult = document.getElementById('cp-consult');
+    if (cpConsult && isOwner) {
+      cpConsult.style.display = 'block';
+      showAdminHub();
+      document.getElementById('cp-consult-btn').onclick = () => openRetainConsultModal();
+    }
+
+    function openRetainConsultModal() {
+      const overlay = document.getElementById('cp-consult-overlay');
+      if (!overlay) return;
+      let submitting = false;
+      let selectedId = null;
+      let people = [];
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:480px;">
+          <div class="bm-head"><div class="ti">Retain <em>Consultancy</em></div><div class="bm-x" id="rc-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Offer an Entrepreneur or Politician a consultancy with <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b>. The fee is escrowed from the treasury and pays out to their personal funds <b style="color:#cfcabf;">if they accept</b> (declined offers refund). Politicians also gain <b style="color:#cfcabf;">1 Capital per $5,000,000</b>. Accepted engagements enter the corporate record${isPublic ? ' — as a public company, the amount is disclosed' : ''}.</div>
+            <div class="bm-label">Consultant</div>
+            <input type="text" class="bm-input" id="rc-filter" placeholder="Filter by name…">
+            <div id="rc-list" style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-top:6px;background:#0a0a0a;border:0.5px solid rgba(255,255,255,0.08);border-radius:4px;padding:5px;">
+              <div style="padding:14px;color:#666;font-size:11px;font-style:italic;text-align:center;">Loading people…</div>
+            </div>
+            <div class="bm-label" style="margin-top:12px;">Consultancy fee ($)</div>
+            <input type="text" class="bm-input" id="rc-amt" inputmode="numeric" placeholder="e.g. 5,000,000">
+            <div style="font-size:11px;color:#8a8680;margin-top:8px;" id="rc-cap-note"></div>
+            <div class="bm-err" id="rc-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="rc-cancel">Cancel</button>
+            <button class="bm-btn pri" id="rc-submit" disabled>Retain</button>
+          </div>
+        </div>`;
+      const close = () => { if (!submitting) overlay.classList.remove('open'); };
+      document.getElementById('rc-close').onclick = close;
+      document.getElementById('rc-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+      const personName = (p) => {
+        const full = [p.leader_first_name, p.leader_last_name].filter(Boolean).join(' ').trim();
+        return full || p.faction_name || '—';
+      };
+      const refreshSubmit = () => {
+        const amt = parseNum(document.getElementById('rc-amt').value);
+        const sel = people.find(p => p.id === selectedId);
+        document.getElementById('rc-submit').disabled = !(selectedId && amt > 0) || submitting;
+        // Live Capital preview for politician picks.
+        const note = document.getElementById('rc-cap-note');
+        if (sel?.faction_type === 'politician' && amt > 0) {
+          note.textContent = `${personName(sel)} will gain ${Math.floor(amt / 5000000)} Capital.`;
+        } else {
+          note.textContent = '';
+        }
+      };
+      const renderList = () => {
+        const q = (document.getElementById('rc-filter').value || '').toLowerCase();
+        const listEl = document.getElementById('rc-list');
+        const rows = people.filter(p => personName(p).toLowerCase().includes(q));
+        if (!rows.length) {
+          listEl.innerHTML = '<div style="padding:14px;color:#666;font-size:11px;font-style:italic;text-align:center;">No matches.</div>';
+          return;
+        }
+        listEl.innerHTML = rows.map(p => `
+          <button type="button" class="rc-row" data-fid="${escapeHtml(p.id)}"
+                  style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;
+                         background:${p.id === selectedId ? '#131613' : '#0d0d0d'};
+                         border:0.5px solid ${p.id === selectedId ? '#6a8a4a' : 'rgba(255,255,255,0.07)'};
+                         border-radius:3px;color:#d4d4d4;cursor:pointer;font-family:inherit;text-align:left;">
+            <span style="font-size:11.5px;color:#fff;font-weight:600;">${escapeHtml(personName(p))}</span>
+            <span style="font-size:8.5px;letter-spacing:0.12em;color:${p.faction_type === 'politician' ? '#5aafa5' : '#8aaa6a'};font-weight:700;">${p.faction_type === 'politician' ? 'POLITICIAN' : 'ENTREPRENEUR'}</span>
+          </button>`).join('');
+        listEl.querySelectorAll('.rc-row').forEach(btn => {
+          btn.onclick = () => { selectedId = btn.dataset.fid; renderList(); refreshSubmit(); };
+        });
+      };
+
+      document.getElementById('rc-filter').oninput = renderList;
+      document.getElementById('rc-amt').oninput = refreshSubmit;
+
+      // Load the people roster: every active entrepreneur + politician
+      // except the corp's own founder (the RPC rejects self-retain too).
+      _supabase.from('factions')
+        .select('id, faction_name, leader_first_name, leader_last_name, faction_type')
+        .in('faction_type', ['entrepreneur', 'politician'])
+        .is('abandoned_at', null)
+        .neq('id', c.owner_faction_id)
+        .order('leader_last_name', { ascending: true })
+        .then(({ data, error }) => {
+          if (error) {
+            document.getElementById('rc-list').innerHTML =
+              `<div style="padding:14px;color:#d49a9a;font-size:11px;text-align:center;">Could not load people — ${escapeHtml(error.message || 'try again')}.</div>`;
+            return;
+          }
+          people = data || [];
+          renderList();
+        });
+
+      document.getElementById('rc-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('rc-err');
+        const amt = parseNum(document.getElementById('rc-amt').value);
+        if (!selectedId) { errEl.textContent = 'Pick a consultant.'; return; }
+        if (!(amt > 0)) { errEl.textContent = 'Enter a consultancy fee.'; return; }
+        submitting = true;
+        const btn = document.getElementById('rc-submit');
+        btn.disabled = true; btn.textContent = 'Retaining…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('retain_corp_consultant', {
+            p_corp_id: id, p_target_faction_id: selectedId, p_amount: Math.floor(amt),
+          });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = {
+              not_owner:             'Only the founder can retain consultants.',
+              cannot_retain_self:    'You can’t retain yourself — use Withdraw.',
+              target_not_found:      'That person is no longer active.',
+              offer_already_pending: 'You already have a pending offer to this person.',
+              insufficient_treasury: `Treasury can’t cover the fee (has $${(Number(data?.have) || 0).toLocaleString()}).`,
+              invalid_amount:        'Enter a valid fee.',
+              corp_not_found:        'Corp not found.',
+              no_entrepreneur:       'No entrepreneur faction found.',
+            };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Retain';
+            return;
+          }
+          // Offer flow (not instant payment): the fee is escrowed and
+          // the target decides in their Pressing Issues. Reload after
+          // the toast so the escrowed treasury repaints.
+          btn.textContent = 'SENT ✓';
+          setTimeout(() => {
+            alert('Offer sent — they’ll see it in their Pressing Issues.');
+            location.reload();
+          }, 500);
+        } catch (e) {
+          errEl.textContent = 'Failed: ' + (e?.message || e);
+          submitting = false; btn.disabled = false; btn.textContent = 'Retain';
+        }
+      };
+
+      overlay.classList.add('open');
     }
 
     const cpWd = document.getElementById('cp-withdraw');
@@ -9217,6 +9530,8 @@ const openBidModal = (contractId, label, yourCost) => {
      openOfferInvestModal / openSellEquityModal. RPCs:
      offer_corp_investment / sell_corp_equity. -->
 <div class="bm-overlay" id="cp-invest-overlay"></div>
+<div class="bm-overlay" id="cp-consult-overlay"></div>
+<div class="bm-overlay" id="cp-bonus-overlay"></div>
 <div class="bm-overlay" id="cp-sellequity-overlay"></div>
 <div class="bm-overlay" id="ad-engine-overlay"></div>
 <div class="bm-overlay" id="ad-aircraft-overlay"></div>
