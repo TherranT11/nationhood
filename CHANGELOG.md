@@ -14,6 +14,12 @@ All notable changes to Nationhood are recorded here. Format inspired by
   shows each nation's **Construction Corporations** and **Automotive
   Corporations** counts and includes **Sierramar** alongside Melizea,
   Avelia, and Montequilla.
+- **Businessman archetypes.** After gender + name, creation asks
+  "And remind me of who you are:" — **Wealthy Entrepreneur** ($65M ·
+  age 60), **Seasoned Executive** ($2M · age 50), or **Youthful
+  Salaryman** ($150k · age 25). Wealth and age are applied
+  server-side; the chosen archetype is stored for future career
+  mechanics to branch on.
 - **Businessman character creation + Home.** Picking a nation opens
   the gender + generated-name modal (20 names drawn from the nation's
   name pools); confirming creates the character server-side

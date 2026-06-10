@@ -741,6 +741,7 @@ body {
     <div class="modal__body">
       <div class="modal__text">Your businessman is from:</div>
       <div class="modal__nation-name" id="entrepreneur-modal-name"></div>
+      <div id="ent-modal-step1">
       <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Gender</div>
       <div style="display:flex;gap:8px;margin-top:6px;">
         <button type="button" id="ent-gender-male" onclick="setEntrepreneurGender('male')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-3);border:1px solid var(--purple,#8b5cf6);color:var(--text-bright);cursor:pointer;">Male</button>
@@ -748,6 +749,13 @@ body {
       </div>
       <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Name</div>
       <select id="entrepreneur-modal-name-select" style="width:100%;margin-top:6px;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;"></select>
+      </div>
+      <!-- Businessman step 2 — archetype pick (20270785). Hidden for the
+           entrepreneur flow, which keeps its single-step modal. -->
+      <div id="biz-modal-step2" style="display:none;">
+        <div style="margin-top:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">And remind me of who you are:</div>
+        <div id="biz-archetype-list" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
+      </div>
       <div id="entrepreneur-modal-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;line-height:1.5;"></div>
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" onclick="closeEntrepreneurModal()">CANCEL</button>
@@ -1414,13 +1422,62 @@ async function confirmMilitaryJoin() {
 // ── Entrepreneur (nation-agnostic; nation = origin/name-pool only) ──
 // The same modal serves the Businessman (alpha) flow: businessmanMode
 // switches the title and routes confirm to create_businessman instead
-// of the entrepreneur archetype page.
+// of the entrepreneur archetype page. Two steps: gender + name, then
+// the archetype pick. Wealth/age numbers below are DISPLAY copy —
+// the authoritative values live in create_businessman (20270785).
 let businessmanMode = false;
 let businessmanJoinInFlight = false;
+let businessmanStep = 1;
+let businessmanArchetype = null;
+let businessmanChosenName = '';
+
+const BUSINESSMAN_ARCHETYPES = [
+  { key: 'wealthy_entrepreneur', name: 'Wealthy Entrepreneur', wealth: '$65M',  age: 60,
+    blurb: 'You\u2019ve had a long history of successful business dealings, but you are a bit long in the tooth.' },
+  { key: 'seasoned_executive',   name: 'Seasoned Executive',   wealth: '$2M',   age: 50,
+    blurb: 'You\u2019ve been an accomplished leader at several major corporations and now you\u2019re ready for the next chapter.' },
+  { key: 'youthful_salaryman',   name: 'Youthful Salaryman',   wealth: '$150k', age: 25,
+    blurb: 'Fresh out of school or your first major role, you turn your sights to the next big move.' },
+];
+
+function renderBusinessmanArchetypes() {
+  const host = document.getElementById('biz-archetype-list');
+  if (!host) return;
+  host.innerHTML = BUSINESSMAN_ARCHETYPES.map(a => {
+    const sel = businessmanArchetype === a.key;
+    return `
+      <div data-archetype="${a.key}" onclick="selectBusinessmanArchetype('${a.key}')"
+           style="background:${sel ? 'var(--bg-3)' : 'var(--bg-1)'};border:1px solid ${sel ? 'var(--green)' : 'var(--border-1)'};padding:12px 14px;cursor:pointer;">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;">
+          <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${sel ? 'var(--green)' : 'var(--text-bright)'};text-transform:uppercase;letter-spacing:0.05em;">${a.name}</span>
+          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);white-space:nowrap;">Wealth: ${a.wealth} &middot; Age: ${a.age}</span>
+        </div>
+        <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:5px;">${a.blurb}</div>
+      </div>`;
+  }).join('');
+}
+
+function selectBusinessmanArchetype(key) {
+  businessmanArchetype = key;
+  renderBusinessmanArchetypes();
+}
+window.selectBusinessmanArchetype = selectBusinessmanArchetype;
+
+function setBusinessmanStep(step) {
+  businessmanStep = step;
+  const s1 = document.getElementById('ent-modal-step1');
+  const s2 = document.getElementById('biz-modal-step2');
+  if (s1) s1.style.display = step === 1 ? '' : 'none';
+  if (s2) s2.style.display = step === 2 ? '' : 'none';
+  if (step === 2) renderBusinessmanArchetypes();
+}
 
 function openBusinessmanModal(nationId) {
   businessmanMode = true;
+  businessmanArchetype = null;
+  businessmanChosenName = '';
   openEntrepreneurModal(nationId);
+  setBusinessmanStep(1);
   const title = document.getElementById('entrepreneur-modal-title');
   if (title) title.textContent = 'Begin Your Career';
 }
@@ -1477,6 +1534,9 @@ function closeEntrepreneurModal() {
   document.getElementById('entrepreneur-modal-overlay').classList.remove('active');
   pendingEntrepreneurNationId = null;
   businessmanMode = false;
+  businessmanArchetype = null;
+  businessmanChosenName = '';
+  setBusinessmanStep(1);
   const title = document.getElementById('entrepreneur-modal-title');
   if (title) title.textContent = 'Found Your Business';
 }
@@ -1495,7 +1555,17 @@ function confirmEntrepreneurJoin() {
   }
   errEl.style.display = 'none';
   if (businessmanMode) {
-    confirmBusinessmanJoin(nation, fullName, errEl);
+    if (businessmanStep === 1) {
+      businessmanChosenName = fullName;
+      setBusinessmanStep(2);
+      return;
+    }
+    if (!businessmanArchetype) {
+      errEl.textContent = 'Choose who you are.';
+      errEl.style.display = 'block';
+      return;
+    }
+    confirmBusinessmanJoin(nation, businessmanChosenName, errEl);
     return;
   }
   // Origin nation + gender + name collected. The archetype page is the
@@ -1526,6 +1596,7 @@ async function confirmBusinessmanJoin(nation, fullName, errEl) {
       p_nation_id:  nation.id,
       p_first_name: first,
       p_last_name:  last,
+      p_archetype:  businessmanArchetype,
     });
     if (error) throw error;
     if (!data?.success) {
@@ -1534,6 +1605,7 @@ async function confirmBusinessmanJoin(nation, fullName, errEl) {
         invalid_name:      'Please choose a name.',
         nation_not_found:  'That nation no longer exists.',
         not_foundable:     'Businessmen cannot start in this nation.',
+        invalid_archetype: 'Choose who you are.',
         already_in_nation: 'You already have a Businessman in this nation.',
         banned_in_nation:  'Your Businessman in this nation was banned by an administrator.',
         nation_occupied:   'You already hold a faction in this nation.',
