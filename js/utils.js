@@ -608,6 +608,14 @@ export function hfFmtBig(n) {
     return sign + '$' + abs.toLocaleString();
 }
 
+/** "Posted {X} months ago" for job boards — one tick is one month.
+ *  Shared by business-corp.html's ROLES panel and the career page's
+ *  Available Roles so the phrasing can't drift. */
+export function postedMonthsAgo(postedTick, currentTick) {
+    const m = Math.max(0, (Number(currentTick) || 0) - (Number(postedTick) || 0));
+    return m === 0 ? 'Posted this month' : `Posted ${m} month${m === 1 ? '' : 's'} ago`;
+}
+
 /**
  * Magnitude formatter for counts/populations — same B / M / k scaling as
  * hfFmtBig but without the currency prefix. e.g. 23_500_000 → "23.50M".

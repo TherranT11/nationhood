@@ -88,6 +88,7 @@
     border-radius:4px; }
   .rl-row { display:flex; align-items:center; gap:14px; padding:11px 14px; background:#0d0d0d;
     border:0.5px solid rgba(255,255,255,0.07); border-radius:4px; margin-bottom:7px; }
+  .rl-row > div:first-child { min-width:0; overflow-wrap:break-word; }
   .rl-row .nm { font-size:12.5px; color:#fff; font-weight:600; }
   .rl-row .meta { font-family:var(--font-mono); font-size:9.5px; color:#888; margin-top:3px; }
   .rl-row .meta .pay { color:#8aaa6a; }
@@ -241,7 +242,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
+import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from './js/utils.js';
 
 (async () => {
   try {
@@ -265,12 +266,15 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
       return;
     }
 
+    const isOwner = corp.owner_faction_id === ctx.faction.id;
+    const currentTick = Number(ctx.shard?.current_tick) || 0;
+
     // Revenue (current year) from the one source — corp_revenue_by_year
     // reads the stamp accumulator (20270780). Soft-fails to $0.
     let revenueYtd = 0;
     try {
       const { data: rev, error: revErr } = await _supabase.rpc('corp_revenue_by_year', {
-        p_corp_id: corp.id, p_current_tick: Number(ctx.shard?.current_tick) || 0,
+        p_corp_id: corp.id, p_current_tick: currentTick,
       });
       if (revErr) throw revErr;
       if (rev?.success) revenueYtd = Number(rev.this_year_delta) || 0;
@@ -395,21 +399,13 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     // career page's Available Roles. The posting button (owner-only,
     // construction corps for now — its ladder is the only one
     // chartered) opens the Post Job Opening modal.
-    const isOwner = corp.owner_faction_id === ctx.faction.id;
     const canPost = isOwner && corp.industry === 'construction';
-    const currentTick = Number(ctx.shard?.current_tick) || 0;
     document.getElementById('bc-roles').innerHTML = `
       <div class="rl-panel">
         ${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}
         <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span></div>
         <div id="rl-list"><div class="rl-empty">Loading…</div></div>
       </div>`;
-
-    // "Posted {X} months ago" — one tick is one month.
-    function postedAgo(tick) {
-      const m = Math.max(0, currentTick - (Number(tick) || 0));
-      return m === 0 ? 'Posted this month' : `Posted ${m} month${m === 1 ? '' : 's'} ago`;
-    }
 
     async function loadRoles() {
       const host = document.getElementById('rl-list');
@@ -429,7 +425,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
               <div class="nm">${esc(o.title)}</div>
               <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${o.reach === 'global' ? 'Global candidates' : 'Local candidates'}</div>
             </div>
-            <span class="ago">${esc(postedAgo(o.posted_at_tick))}</span>
+            <span class="ago">${esc(postedMonthsAgo(o.posted_at_tick, currentTick))}</span>
             ${isOwner ? `<button type="button" class="rl-withdraw" data-opening="${esc(o.id)}">WITHDRAW</button>` : ''}
           </div>`).join('');
         host.querySelectorAll('.rl-withdraw').forEach(btn => {
@@ -589,7 +585,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     // Rebrand — owner-only: pick an image (2MB cap, same corp-logos
     // bucket the founding modal uses), upload, stamp logo_url via the
     // owner-writes RLS policy, and swap the logo in place.
-    if (corp.owner_faction_id === ctx.faction.id) {
+    if (isOwner) {
       const foot = document.getElementById('bc-foot');
       const fileEl = document.getElementById('bc-logo-file');
       const btn = document.getElementById('bc-rebrand');
@@ -632,7 +628,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     // Executive Actions — owner-only surface. Five slots, all coming
     // soon; the "1 remaining" allowance is the per-tick default and
     // becomes derived state when the first action lands.
-    if (corp.owner_faction_id === ctx.faction.id) {
+    if (isOwner) {
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
           <span class="ea-remaining">1 remaining</span>
