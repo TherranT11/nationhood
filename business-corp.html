@@ -474,6 +474,17 @@ import { CITY_STATS } from './js/game/city-labels.js';
       luxury: 'Luxury', ultra_rich: 'Ultra Rich',
     };
 
+    // The corp's hired roster — one query definition, read by the
+    // Prominent Employees panel and the Start Project PM dropdown.
+    function fetchHires() {
+      return _supabase.from('job_applicants')
+        .select(`id, name, city, applicant_faction_id,
+                 applicant:factions!applicant_faction_id(nickname),
+                 opening:job_openings!opening_id!inner(title, salary_yearly, corp_id)`)
+        .eq('status', 'hired').eq('opening.corp_id', corp.id)
+        .order('created_at');
+    }
+
     // Revenue (current year) from the one source — corp_revenue_by_year
     // reads the stamp accumulator (20270780). Soft-fails to $0.
     let revenueYtd = 0;
@@ -753,12 +764,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     (async () => {
       const host = document.getElementById('bc-employees');
       try {
-        const { data: emps, error: empErr } = await _supabase.from('job_applicants')
-          .select(`id, name, city, applicant_faction_id,
-                   applicant:factions!applicant_faction_id(nickname),
-                   opening:job_openings!opening_id!inner(title, salary_yearly, corp_id)`)
-          .eq('status', 'hired').eq('opening.corp_id', corp.id)
-          .order('created_at');
+        const { data: emps, error: empErr } = await fetchHires();
         if (empErr) throw empErr;
 
         // Blueprints load regardless of hires — they feed both the
@@ -1263,9 +1269,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             _supabase.from('cities')
               .select(`id, city_name, ${CITY_STATS.map(s => s.key).join(', ')}`)
               .eq('nation_id', corp.hq_nation_id).order('city_name'),
-            _supabase.from('job_applicants')
-              .select('id, name, opening:job_openings!opening_id!inner(title, corp_id)')
-              .eq('status', 'hired').eq('opening.corp_id', corp.id),
+            fetchHires(),
           ]);
           if (rErr || bErr || mErr || cErr || pErr) throw (rErr || bErr || mErr || cErr || pErr);
           renderStartProject(spCities || [], bps || [], spPms || []);
