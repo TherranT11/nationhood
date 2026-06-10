@@ -9362,7 +9362,7 @@ const openBidModal = (contractId, label, yourCost) => {
       fc.innerHTML = `<div class="ch-list">${rows}</div>`;
     };
 
-    // V. Corporate Taxes (20270773). Net-profit basis: this year's net
+    // V. Corporate Taxes (20270776). Net-profit basis: this year's net
     // cash change (corp_revenue_by_year — same source as the Revenue
     // cards) × the HQ nation's corporate_tax rate. The owner files once
     // per year at one of four disclosure tiers; sub-100% tiers leave the
@@ -9383,7 +9383,7 @@ const openBidModal = (contractId, label, yourCost) => {
           _supabase.rpc('corp_revenue_by_year', { p_corp_id: id, p_current_tick: currentTick }),
           _supabase.from('nations').select('corporate_tax, corruption').eq('id', c.hq_nation_id).maybeSingle(),
           _supabase.from('corp_tax_filings')
-            .select('disclosure_pct, amount_paid, amount_evaded, tax_owed, taxable_profit, status')
+            .select('disclosure_pct, amount_paid, tax_owed, taxable_profit, status, rate_pct')
             .eq('corp_id', id).eq('year', year).maybeSingle(),
           _supabase.from('factions').select('id', { count: 'exact', head: true })
             .eq('faction_type', 'politician').eq('nation_id', c.hq_nation_id)
@@ -9406,11 +9406,19 @@ const openBidModal = (contractId, label, yourCost) => {
           fc.innerHTML = card(`
             <div class="ctx-grid">
               <div class="ctx-cell"><div class="ctx-k">Taxable Profit</div><div class="ctx-v">${fmtUsd(filing.taxable_profit)}</div></div>
-              <div class="ctx-cell"><div class="ctx-k">Tax Owed (${rate}%)</div><div class="ctx-v">${fmtUsd(filing.tax_owed)}</div></div>
+              <div class="ctx-cell"><div class="ctx-k">Tax Owed (${filing.rate_pct}%)</div><div class="ctx-v">${fmtUsd(filing.tax_owed)}</div></div>
               <div class="ctx-cell"><div class="ctx-k">Declared &amp; Paid</div><div class="ctx-v">${fmtUsd(filing.amount_paid)} · ${filing.disclosure_pct}%</div></div>
             </div>
             <div class="ctx-status" style="color:${color};">${label}</div>
             <div class="cf-hint">Already filed for ${year}. The next return opens next year.</div>`);
+          return;
+        }
+
+        // Unfiled return needs reliable live reads. If the rate or the
+        // profit fetch failed, bail to a soft state — never show a
+        // misleading $0 / "nothing owed" prompt off a transient error.
+        if (natRes.error || revRes.error || !revRes?.data?.success) {
+          fc.innerHTML = card('<div class="cf-empty">Couldn’t load this year’s tax figures — refresh to try again.</div>');
           return;
         }
 
