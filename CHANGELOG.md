@@ -5,6 +5,17 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ## [MARIANNE — 3.0] — 2026-06-10
 
+### Added — Businessman (Alpha)
+
+- **Third faction path: Businessman.** "Join a corporation, work your
+  way up, or start from scratch and make history." Gated behind alpha
+  code `Vanderbilt1` (same prompt pattern as politician slot #4).
+  Confirming opens the origin-nation picker, which for this path also
+  shows each nation's **Construction Corporations** and **Automotive
+  Corporations** counts and includes **Sierramar** alongside Melizea,
+  Avelia, and Montequilla. The picker is the current end of the flow —
+  character creation lands in a follow-up.
+
 ### Added — Foreign Service
 
 - **Foreign Events authoring tool + Day to Day in the Embassy.** The
@@ -143,6 +154,14 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Banned politician login dead-end** — a player whose politician was
+  admin-banned was routed to the faction chooser as if they owned
+  nothing, then refused at creation with the misleading "You already
+  hold a politician in this nation." Creation still blocks (a ban
+  can't be dodged by re-rolling) but now says so honestly
+  (`banned_in_nation`), and a failed faction read at login no longer
+  silently dumps existing players into the chooser — it surfaces an
+  error and lets them retry.
 - **Corporate tax was assessing $0 profit for everyone** — File Taxes
   computed the taxable base from the same dead `corp_cash_events`
   ledger as the Revenue cards, so every filing owed nothing and

@@ -97,10 +97,15 @@ import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js
     async function routeUser(user) {
         try {
             // Load all factions owned by this user (primary + linked)
-            const { data: allFactions } = await _supabase
+            const { data: allFactions, error: facErr } = await _supabase
                 .from('factions')
                 .select('id, faction_type, branch, nation_id, abandoned_at, is_banned')
                 .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+            // A failed read must NOT fall through to faction-select:
+            // misrouting an existing player into the creation flow dead-
+            // ends at "You already hold a politician in this nation"
+            // (20270782). Surface the failure and let them retry instead.
+            if (facErr) throw facErr;
 
             // Filter out dissolved/abandoned/banned factions
             const ownedFactions = (allFactions || []).filter(f => !isFactionInactive(f));
@@ -121,7 +126,10 @@ import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js
             window.location.href = getFactionDashboardUrl(activeFaction) || 'dashboard.html';
         } catch (error) {
             console.error('Faction check error:', error);
-            window.location.href = 'faction-select.html';
+            const errorMsg = document.getElementById('error-message');
+            const submitBtn = document.getElementById('submit-btn');
+            if (errorMsg) errorMsg.textContent = 'Signed in, but your characters failed to load — please try again.';
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'ENTER THE CHRONICLE'; }
         }
     }
 </script>

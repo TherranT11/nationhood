@@ -539,6 +539,7 @@ async function createPolitician() {
         invalid_name:      'Pick a first and last name.',
         nation_not_found:  'That nation no longer exists.',
         already_in_nation: 'You already hold a politician in this nation.',
+        banned_in_nation:  'Your politician in this nation was banned by an administrator — contact the admins.',
       };
       errEl.textContent = REASON[data?.reason] || ('Could not create politician (' + (data?.reason || 'unknown') + ').');
       btn.disabled = false;
