@@ -16,12 +16,12 @@
     font-weight:700; margin-bottom:22px; }
   /* ── Executive Actions panel ── */
   .ea-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
-    border-radius:6px; padding:16px 18px 18px; position:relative; }
+    border-radius:6px; padding:16px 18px 18px; }
   .ea-head { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
   .ea-head .rule { flex:1; height:1px; background:rgba(138,170,106,0.25); }
   .ea-head .t { font-family:var(--font-mono); font-size:11px; letter-spacing:0.3em;
     color:#aac88a; font-weight:700; white-space:nowrap; }
-  .ea-remaining { position:absolute; top:14px; right:16px; font-family:Georgia,serif;
+  .ea-remaining { flex-shrink:0; font-family:Georgia,serif;
     font-style:italic; font-size:11px; color:#8aaa6a; border:0.5px solid #4a6a4a;
     border-radius:3px; padding:3px 9px; background:rgba(138,170,106,0.06); }
   .ea-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px; }
@@ -76,8 +76,8 @@
   /* ── Roles ── */
   .rl-section { margin-top:22px; }
   .rl-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
-    border-radius:6px; padding:16px 18px 18px; position:relative; }
-  .rl-post { position:absolute; top:12px; right:16px; padding:7px 14px;
+    border-radius:6px; padding:16px 18px 18px; }
+  .rl-post { flex-shrink:0; padding:7px 14px;
     background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a; border-radius:4px;
     color:#8aaa6a; font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.13em;
     font-weight:700; cursor:pointer; }
@@ -426,8 +426,7 @@ import { openInterviewChat } from './js/job-interview-chat.js';
     const canPost = isOwner && corp.industry === 'construction';
     document.getElementById('bc-roles').innerHTML = `
       <div class="rl-panel">
-        ${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}
-        <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span></div>
+        <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span>${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}</div>
         <div id="rl-list"><div class="rl-empty">Loading…</div></div>
       </div>`;
 
@@ -778,8 +777,7 @@ import { openInterviewChat } from './js/job-interview-chat.js';
     if (isOwner) {
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
-          <span class="ea-remaining">1 remaining</span>
-          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span></div>
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining">1 remaining</span></div>
           <div class="ea-grid">
             ${Array.from({ length: 5 }, () => `
               <div class="ea-card" title="Coming soon">
