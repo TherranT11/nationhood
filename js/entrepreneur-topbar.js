@@ -345,6 +345,11 @@ async function getAdminFactionOverride() {
   }
 }
 
+// Column list for the faction-switcher dropdown — shared by both
+// bootstraps so the role-label fields can't drift between them.
+const SWITCHER_FACTION_COLS =
+  'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick';
+
 const ENT_FACTION_COLS =
   'id, faction_name, leader_first_name, leader_last_name, leader_age, nation, ent_origin_nation, ' +
   'entrepreneur_archetype, ent_influence, ent_skill, ent_reputation, party_funds, status';
@@ -368,7 +373,7 @@ export async function bootstrapEntrepreneur(activeTab) {
           .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick')
+      .select(SWITCHER_FACTION_COLS)
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
 
@@ -407,7 +412,7 @@ export async function bootstrapBusinessman(activeTab) {
       .limit(1).maybeSingle(),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
-      .select('id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick')
+      .select(SWITCHER_FACTION_COLS)
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
   ]);
 
