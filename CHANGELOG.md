@@ -136,6 +136,14 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Banned politician login dead-end** — a player whose politician was
+  admin-banned was routed to the faction chooser as if they owned
+  nothing, then refused at creation with the misleading "You already
+  hold a politician in this nation." Creation still blocks (a ban
+  can't be dodged by re-rolling) but now says so honestly
+  (`banned_in_nation`), and a failed faction read at login no longer
+  silently dumps existing players into the chooser — it surfaces an
+  error and lets them retry.
 - **Corporate tax was assessing $0 profit for everyone** — File Taxes
   computed the taxable base from the same dead `corp_cash_events`
   ledger as the Revenue cards, so every filing owed nothing and
