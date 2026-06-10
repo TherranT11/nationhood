@@ -306,11 +306,11 @@ function collectForm() {
     }
     if (!desc) {
       if (effects.length) return { error: `Decision ${key} has stat effects but no description.` };
+      if (key === 'A')    return { error: 'Decision A needs a description.' };
       continue;
     }
     decisions.push({ key, description: desc, effects });
   }
-  if (!decisions.length) return { error: 'At least one decision (A) needs a description.' };
   return { payload: { title, description, decisions } };
 }
 
