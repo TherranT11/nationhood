@@ -96,6 +96,7 @@
 <body>
 
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
   <div class="crumb">
@@ -147,7 +148,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToDate, fmtBig } from './js/utils.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -161,7 +162,7 @@ const nationId = url.searchParams.get('nation');
 
 let ctx = null;
 try {
-  ctx = await bootstrapPolitician('nation');
+  ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation');
 } catch (e) {
   console.error('[election] bootstrap failed', e);
   showFail('Could not load politician context. Try refreshing.');

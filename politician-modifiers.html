@@ -84,6 +84,7 @@
 <body>
 
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
   <div class="crumb">
@@ -102,7 +103,7 @@
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
-import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { SEVERITY_LABELS } from './js/game/modifiers.js';
@@ -117,7 +118,7 @@ const CATEGORIES = [
 
 async function init() {
   let ctx = null;
-  try { ctx = await bootstrapPolitician('nation'); }
+  try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
   catch (err) {
     console.error('politician-modifiers: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';

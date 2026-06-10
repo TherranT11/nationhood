@@ -404,6 +404,7 @@
 <body>
 
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
   <div class="crumb" id="crumb-host"></div>
@@ -445,7 +446,7 @@
 <div id="loading" class="loading">LOADING…</div>
 
 <script type="module">
-import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { safeHexColor, factionInitials, displayName, truncate } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
@@ -466,7 +467,7 @@ async function init() {
   if (!meta) { showFail('Unknown committee.'); return; }
 
   let ctx = null;
-  try { ctx = await bootstrapPolitician('nation'); }
+  try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
   catch (err) {
     console.error('committee: bootstrap failed', err);
     showFail('Failed to load. Please reload the page.');

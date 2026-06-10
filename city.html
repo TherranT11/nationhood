@@ -178,12 +178,13 @@
 </head>
 <body>
 
-<!-- Topbar mount slot. bootstrapPolitician('nation') injects the
+<!-- Topbar mount slot. bootstrapPoliticianOrBusinessman('nation', 'nation') injects the
      politician topbar + nav into this div + the body background style
      into <head>. Without this slot the topbar silently no-ops AND the
      body background never gets the dark color the rest of the
      politician pages share. -->
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
   <a class="city-back" href="politician-nation.html#sec-geography">&larr; Back to Geography</a>
@@ -194,7 +195,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { tickToDate, CITY_ORDINANCE_VOTE_REASONS } from './js/utils.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
 
@@ -220,7 +221,7 @@ async function init() {
   }
 
   let ctx = null;
-  try { ctx = await bootstrapPolitician('nation'); }
+  try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
   catch (err) {
     console.error('city: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';

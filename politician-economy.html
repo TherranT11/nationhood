@@ -140,6 +140,7 @@
 <body>
 
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
   <div class="wrap">
@@ -166,7 +167,7 @@
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
-import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, industryLabel } from './js/utils.js';
 import { COMMODITIES } from './js/game/commodities.js';
@@ -331,7 +332,7 @@ for (const sector of SECTORS) {
 
 async function init() {
   let ctx = null;
-  try { ctx = await bootstrapPolitician('nation'); }
+  try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
   catch (err) {
     console.error('politician-economy: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';

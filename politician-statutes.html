@@ -261,6 +261,7 @@
 <body>
 
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
 
@@ -520,7 +521,7 @@
 </div>
 
 <script type="module">
-import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { COMMITTEES } from './js/committees.js';
 import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
@@ -597,7 +598,7 @@ let submitInFlight = false;
 
 (async () => {
   let ctx;
-  try { ctx = await bootstrapPolitician('nation'); }
+  try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
   catch (e) { console.warn('[politician-statutes] bootstrap failed:', e?.message || e); return; }
   if (!ctx) return;
   politicianCtx = ctx;
