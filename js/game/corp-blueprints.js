@@ -15,6 +15,22 @@ export const PILLARS = {
   ],
 };
 
+// The yard ladder — supply_tier (20270816/17) rendered as the HEAVY
+// EQUIPMENT department's tier. Caps/sourcing are enforced
+// server-side (yard_storage_caps + buy_construction_goods); this is
+// the display copy.
+export const YARD_TIERS = [
+  { tier: 'Level 0: Commercial Rental Yard',
+    desc: 'Your physical yard is completely empty. You own zero iron. Every time you secure a contract, you must lease skid-steers or excavators at a high per-turn premium.',
+    effect: 'Buy materials only to fulfill an active project, from your nation. No storage.' },
+  { tier: 'Level I: Local Maintenance Yard',
+    desc: 'A small gravel yard with a chain-link fence. You own a single used flatbed truck and a handful of commercial power tools, keeping basic maintenance in-house.',
+    effect: 'Store up to 10 Construction Materials · home-nation purchases only.' },
+  { tier: 'Level II: District Equipment Depot',
+    desc: 'A paved garage facility housing a modest inventory of company-owned light machinery (backhoes, small dump trucks, mini-excavators).',
+    effect: 'Store 10 Materials (buy from any nation) · 5 Equipment (home nation only).' },
+];
+
 // Display mirror of the per-type material requirements stamped onto
 // blueprints by draft_blueprint (20270814) — the server CASE is
 // authoritative; this feeds the modal's live MATERIALS NEEDED line.
@@ -61,9 +77,7 @@ export const DEPARTMENTS = {
     { dept: 'PROJECT MANAGEMENT', tier: 'The Truck & Clipboard',
       desc: 'You handle all local permitting, contract estimates, and safety compliance yourself out of the cab of your truck. Administrative bottlenecks limit you to chasing one tiny contract at a time.',
       effect: 'Number of Active Projects: 1' },
-    { dept: 'HEAVY EQUIPMENT', tier: 'Level 0: Commercial Rental Yard',
-      desc: 'Your physical yard is completely empty. You own zero iron. Every time you secure a contract, you must lease skid-steers or excavators at a high per-turn premium.',
-      effect: 'Construction Project costs require equipment rentals.' },
+    { dept: 'HEAVY EQUIPMENT', ...YARD_TIERS[0] },
     { dept: 'SUPPLY & MATERIAL', tier: 'Retail Hardware Store',
       desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
       effect: 'Construction Project costs require standard upfront prices.' },

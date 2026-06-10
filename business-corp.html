@@ -202,9 +202,11 @@
   .pr-warn { margin-top:12px; padding:10px 13px; font-family:var(--font-mono); font-size:10px;
     color:#c8a96a; background:rgba(200,169,106,0.06); border:0.5px solid rgba(200,169,106,0.4);
     border-radius:4px; }
-  .pr-row { display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:6px 12px; align-items:center;
-    background:#0a0a0a; border:1px solid rgba(255,255,255,0.1); border-radius:4px;
-    padding:11px 13px; margin-bottom:7px; }
+  .pr-row { display:grid; grid-template-columns:1.2fr 0.8fr 0.9fr auto; gap:6px 12px;
+    align-items:center; background:#0a0a0a; border:1px solid rgba(255,255,255,0.1);
+    border-radius:4px; padding:11px 13px; margin-bottom:7px; }
+  .pr-buy { display:flex; gap:6px; align-items:center; justify-content:flex-end; }
+  .pr-buy .pb-price { width:64px; }
   .pr-row .nm { font-size:12.5px; color:#fff; font-weight:600; }
   .pr-row .c { font-family:var(--font-mono); font-size:10.5px; color:#ccc; }
   .pr-row .c.money { color:#8aaa6a; }
@@ -374,10 +376,11 @@
       <div class="db-mech">The Mechanic: Spend corporate cash to secure raw construction
         materials (steel, concrete, aggregates), generating Procurement Credits that lower
         the future cash costs of your Advance Build actions.</div>
-      <div class="pr-warn" id="pr-warn" style="display:none;">You have no storage available,
-        upgrade your Supply &amp; Material asset.</div>
+      <div class="pr-warn" id="pr-warn" style="display:none;"></div>
       <div class="jm-lab">THE EXCHANGE &middot; HQ NATION PRICES</div>
       <div id="pr-rows"><div class="rl-empty">Loading…</div></div>
+      <div class="jm-lab">ACTIVE PROJECTS</div>
+      <div id="pr-projects"><div class="rl-empty">Loading…</div></div>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="pr-cancel">CLOSE</button>
@@ -448,7 +451,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -463,7 +466,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, materials_stock, equipment_stock, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -590,8 +593,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // via corp-blueprints.js). Every corp starts at its industry's
     // entry tier; these baselines are display copy until upgrade
     // mechanics land (tier state moves to columns then).
-    const depts = DEPARTMENTS[corp.industry];
+    let depts = DEPARTMENTS[corp.industry];
     if (depts) {
+      // HEAVY EQUIPMENT renders the corp's actual yard tier
+      // (supply_tier → YARD_TIERS); the other slots stay on their
+      // entry-tier display copy until they grow columns too.
+      const yard = YARD_TIERS[Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1)];
+      depts = depts.map(d => d?.dept === 'HEAVY EQUIPMENT' ? { ...d, ...yard } : d);
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
           ? `<div class="dp-card">
@@ -1471,39 +1479,141 @@ import { CITY_STATS } from './js/game/city-labels.js';
       document.getElementById('ea-submit-bid').addEventListener('click', openBidModal);
       wireModalClose('pb-overlay', 'pb-cancel');
 
-      // ── Procurement Run (Executive Action #4) ───────────────────
-      // Lists both market goods at the HQ nation's live prices (the
-      // same one-source market functions the MARKET tab reads). At
-      // Supply & Material Tier 0 — the Retail Hardware Store — there
-      // is no storage: the warning shows and nothing is buyable.
-      // The buy flow lands with the Supply & Material upgrade
-      // mechanics (20270816 holds the tier column).
+      // ── Procurement Run (Executive Action #4 / 20270817) ────────
+      // Live prices through the same one-source market functions the
+      // MARKET tab reads; buy_construction_goods charges exactly the
+      // listed price and spends the tick's executive action. Tier
+      // rules (yard ladder on supply_tier): L0 buys materials only,
+      // straight into an active project, home nation; L1 stores up
+      // to 10 materials (home only); L2 adds 5 equipment (home only)
+      // and foreign material sourcing (the foreign-buy picker lands
+      // with the yard upgrade action). The ACTIVE PROJECTS list shows
+      // each build's materials and, at L1+, supplies from the yard.
+      const PR_REASON = {
+        no_actions_remaining: 'No executive actions remaining this tick.',
+        project_required: 'At Level 0 you must buy into an active project — start or win one first.',
+        project_not_found: 'That project is no longer building.',
+        exceeds_project_need: 'That build doesn’t need that many materials.',
+        storage_full: 'Your yard is full.',
+        no_storage: 'No equipment storage — upgrade your yard to Level II.',
+        home_nation_only: 'Your yard can only source from your home nation.',
+        market_sold_out: 'The market doesn’t have that many units.',
+        insufficient_treasury: 'The treasury can’t cover it.',
+        insufficient_stock: 'Not enough materials in the yard.',
+        not_owner: 'Only the owner can run procurement.',
+        not_authorized: 'Only the owner or the project’s PM can supply it.',
+        arrested: 'You are under arrest — your assets are frozen.',
+      };
+
       async function openProcurementModal() {
+        const tier = Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1);
         const host = document.getElementById('pr-rows');
+        const projHost = document.getElementById('pr-projects');
         host.innerHTML = '<div class="rl-empty">Loading…</div>';
-        document.getElementById('pr-warn').style.display =
-          (Number(corp.supply_tier) || 0) === 0 ? 'block' : 'none';
+        projHost.innerHTML = '<div class="rl-empty">Loading…</div>';
+        const warn = document.getElementById('pr-warn');
+        warn.style.display = 'block';
+        warn.textContent = `${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
+          + (tier >= 1 ? ` Yard: ${corp.materials_stock || 0}/10 materials · ${corp.equipment_stock || 0}/5 equipment.` : '');
         document.getElementById('pr-overlay').classList.add('open');
+
         try {
-          const [mats, equip] = await Promise.all([
+          const [mats, equip, projsRes] = await Promise.all([
             _supabase.rpc('construction_materials_market', { p_nation_id: corp.hq_nation_id }),
             _supabase.rpc('construction_equipment_market', { p_nation_id: corp.hq_nation_id }),
+            _supabase.from('corp_construction_projects')
+              .select('id, city, materials_supplied, blueprint:corp_blueprints!blueprint_id(name, materials_needed)')
+              .eq('corp_id', corp.id).eq('status', 'building').order('created_at'),
           ]);
-          if (mats.error || equip.error) throw (mats.error || equip.error);
-          const row = (name, mkt) => !mkt?.success ? '' : `
+          if (mats.error || equip.error || projsRes.error)
+            throw (mats.error || equip.error || projsRes.error);
+          const projs = projsRes.data || [];
+
+          const row = (good, name, mkt, buyable, lockNote) => !mkt?.success ? '' : `
             <div class="pr-row">
               <div class="nm">${esc(name)}</div>
               <div class="c">${esc(Number(mkt.amount_available).toLocaleString())} units</div>
               <div class="c money">${esc(hfFmtBig(Number(mkt.cost_per_unit) || 0))}
                 <span class="sub">base ${esc(hfFmtBig(Number(mkt.base_cost) || 0))} × ${esc(String(mkt.scarcity_mult))} scarcity</span>
               </div>
+              <div class="pr-buy">
+                ${buyable
+                  ? `<input class="pb-price" type="number" min="1" placeholder="Qty" data-qty="${good}">
+                     ${good === 'materials' && tier === 0 ? `
+                       <select class="jm-select" style="width:auto;padding:6px 8px;font-size:9.5px;" data-proj="${good}">
+                         ${projs.map(p => `<option value="${esc(p.id)}">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</option>`).join('')}
+                       </select>` : ''}
+                     <button type="button" class="pb-act bid" data-buy="${good}">BUY</button>`
+                  : `<span class="nob">${esc(lockNote)}</span>`}
+              </div>
             </div>`;
-          host.innerHTML = row('Construction Materials', mats.data)
-            + row('Construction Equipment', equip.data)
+
+          const matsBuyable = tier >= 1 || projs.length > 0;
+          host.innerHTML =
+            row('materials', 'Construction Materials', mats.data, matsBuyable,
+                'No active project — Level 0 buys must fulfill one.')
+            + row('equipment', 'Construction Equipment', equip.data, tier >= 2,
+                'Upgrade your yard to Level II for equipment storage.')
             || '<div class="rl-empty">Could not load the exchange.</div>';
+
+          projHost.innerHTML = projs.length ? projs.map(p => {
+            const need = Number(p.blueprint?.materials_needed) || 0;
+            const got  = Number(p.materials_supplied) || 0;
+            const remaining = Math.max(0, need - got);
+            return `
+            <div class="pr-row" style="grid-template-columns:1.4fr 1fr 1fr;">
+              <div class="nm">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</div>
+              <div class="c">Materials ${got}/${need}${remaining === 0 ? ' ✓' : ''}</div>
+              <div class="pr-buy">
+                ${tier >= 1 && remaining > 0 && (corp.materials_stock || 0) > 0
+                  ? `<button type="button" class="pb-act bid" data-supply="${esc(p.id)}" data-rem="${remaining}">SUPPLY FROM YARD</button>`
+                  : ''}
+              </div>
+            </div>`;
+          }).join('') : '<div class="rl-empty">No active job sites.</div>';
+
+          host.querySelectorAll('[data-buy]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const good = btn.dataset.buy;
+              const qty = Math.floor(Number(host.querySelector(`[data-qty="${good}"]`)?.value));
+              if (!(qty > 0)) { alert('Enter a quantity.'); return; }
+              const projSel = host.querySelector(`[data-proj="${good}"]`);
+              btn.disabled = true;
+              try {
+                const { data, error: bErr } = await _supabase.rpc('buy_construction_goods', {
+                  p_corp_id: corp.id, p_good: good, p_qty: qty,
+                  p_nation_id: corp.hq_nation_id,
+                  p_project_id: projSel ? projSel.value : null,
+                });
+                if (bErr) throw bErr;
+                if (!data?.success) throw new Error(PR_REASON[data?.reason] || data?.reason || 'unknown');
+                window.location.reload();
+              } catch (e) {
+                alert('Could not buy: ' + (e?.message || e));
+                btn.disabled = false;
+              }
+            });
+          });
+          projHost.querySelectorAll('[data-supply]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const qty = Math.min(Number(btn.dataset.rem), Number(corp.materials_stock) || 0);
+              btn.disabled = true;
+              try {
+                const { data, error: sErr } = await _supabase.rpc('apply_materials_to_project',
+                  { p_project_id: btn.dataset.supply, p_qty: qty });
+                if (sErr) throw sErr;
+                if (!data?.success) throw new Error(PR_REASON[data?.reason] || data?.reason || 'unknown');
+                window.location.reload();
+              } catch (e) {
+                alert('Could not supply: ' + (e?.message || e));
+                btn.disabled = false;
+              }
+            });
+          });
         } catch (e) {
           console.warn('[business-corp] procurement modal load failed:', e?.message || e);
           host.innerHTML = '<div class="rl-empty">Could not load the exchange — try again shortly.</div>';
+          projHost.innerHTML = '';
         }
       }
       document.getElementById('ea-procurement-run').addEventListener('click', openProcurementModal);

@@ -293,8 +293,8 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
     try {
       const currentTick = Number(ctx.shard?.current_tick) || 0;
       const { data: projs, error: pjErr } = await _supabase.from('corp_construction_projects')
-        .select(`id, city, started_tick, completes_at_tick,
-                 blueprint:corp_blueprints!blueprint_id(name, building_type),
+        .select(`id, city, started_tick, completes_at_tick, materials_supplied,
+                 blueprint:corp_blueprints!blueprint_id(name, building_type, materials_needed),
                  corp:entrepreneur_corps!corp_id(name, owner_faction_id),
                  pm:job_applicants!pm_applicant_id(applicant_faction_id)`)
         .eq('status', 'building');
@@ -308,11 +308,18 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
           Math.floor((elapsed / total) * CONSTRUCTION_STAGES.length));
         const remaining = Math.max(0, p.completes_at_tick - currentTick);
         const cur = CONSTRUCTION_STAGES[stageIdx];
+        // Materials gate completion (20270817): a due build parks
+        // until supplied — say so instead of a misleading countdown.
+        const need = Number(p.blueprint?.materials_needed) || 0;
+        const got  = Number(p.materials_supplied) || 0;
+        const parked = remaining === 0 && got < need;
         piCards.push(`
           <div class="biz-proj-card">
             <div class="t">${esc(p.blueprint?.name || 'Construction')} Project in ${esc(p.city)}.
-              <span class="due">Expected Completion Date: ${esc(tickToDate(p.completes_at_tick))}
-              (${remaining} tick${remaining === 1 ? '' : 's'} remaining)</span></div>
+              <span class="due">${parked
+                ? `AWAITING MATERIALS (${got}/${need}) — run Procurement`
+                : `Expected Completion Date: ${esc(tickToDate(p.completes_at_tick))}
+                   (${remaining} tick${remaining === 1 ? '' : 's'} remaining) · Materials ${got}/${need}`}</span></div>
             <div class="stages">
               ${CONSTRUCTION_STAGES.map((s, i) => `
                 <div class="stage${i < stageIdx ? ' done' : i === stageIdx ? ' cur' : ''}" title="${esc(s.phase)} — ${esc(s.desc)}">
