@@ -374,6 +374,17 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
     const isOwner = corp.owner_faction_id === ctx.faction.id;
     const currentTick = Number(ctx.shard?.current_tick) || 0;
 
+    // One close idiom for the page's modals (Post Job Opening,
+    // Draft Blueprint, Pay Taxes): CANCEL button + backdrop click.
+    function wireModalClose(overlayId, cancelId) {
+      const overlay = document.getElementById(overlayId);
+      document.getElementById(cancelId).addEventListener('click', () =>
+        overlay.classList.remove('open'));
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.classList.remove('open');
+      });
+    }
+
     // Revenue (current year) from the one source — corp_revenue_by_year
     // reads the stamp accumulator (20270780). Soft-fails to $0.
     let revenueYtd = 0;
@@ -806,12 +817,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             document.getElementById('px-overlay').classList.add('open');
           });
 
-          document.getElementById('px-cancel').addEventListener('click', () =>
-            document.getElementById('px-overlay').classList.remove('open'));
-          document.getElementById('px-overlay').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('px-overlay'))
-              document.getElementById('px-overlay').classList.remove('open');
-          });
+          wireModalClose('px-overlay', 'px-cancel');
           document.getElementById('px-confirm').addEventListener('click', async () => {
             const btn = document.getElementById('px-confirm');
             if (!pxTier || btn.disabled) return;
@@ -927,11 +933,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
     if (canPost) {
       document.getElementById('rl-post-btn').addEventListener('click', openJobModal);
-      document.getElementById('jm-cancel').addEventListener('click', () =>
-        document.getElementById('jm-overlay').classList.remove('open'));
-      document.getElementById('jm-overlay').addEventListener('click', (e) => {
-        if (e.target?.id === 'jm-overlay') document.getElementById('jm-overlay').classList.remove('open');
-      });
+      wireModalClose('jm-overlay', 'jm-cancel');
       document.querySelectorAll('.jm-pill').forEach(p => {
         p.addEventListener('click', () => {
           document.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
@@ -1125,12 +1127,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
       document.getElementById('ea-draft-blueprint').addEventListener('click', openBlueprintModal);
       document.getElementById('db-pm').addEventListener('change', dbRefreshConfirm);
-      document.getElementById('db-cancel').addEventListener('click', () =>
-        document.getElementById('db-overlay').classList.remove('open'));
-      document.getElementById('db-overlay').addEventListener('click', (e) => {
-        if (e.target === document.getElementById('db-overlay'))
-          document.getElementById('db-overlay').classList.remove('open');
-      });
+      wireModalClose('db-overlay', 'db-cancel');
 
       document.getElementById('db-confirm').addEventListener('click', async () => {
         const btn = document.getElementById('db-confirm');
