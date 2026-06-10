@@ -33,6 +33,22 @@
     color:#888; font-weight:700; margin-bottom:5px; }
   .ea-card .soon { font-family:Georgia,serif; font-style:italic; font-size:10.5px; color:#4a4940; }
 
+  /* ── Core Metrics: the three pillars ── */
+  .pl-section { margin-top:22px; }
+  .pl-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
+    border-radius:6px; padding:16px 18px 18px; }
+  .pl-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
+  @media (max-width:860px) { .pl-grid { grid-template-columns:1fr; } }
+  .pl-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
+    padding:16px; display:flex; flex-direction:column; min-width:0; }
+  .pl-name { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em; color:#aac88a;
+    font-weight:700; }
+  .pl-kind { font-family:Georgia,serif; font-style:italic; font-size:11px; color:#666;
+    margin:2px 0 10px; }
+  .pl-val { font-family:var(--font-mono); font-size:30px; color:#fff; line-height:1;
+    margin-bottom:10px; }
+  .pl-desc { font-size:11px; color:#888; line-height:1.55; }
+
   /* ── Departments (per-industry tier containers) ──
      Horizontal bars, same wide shape as the Executive Actions panel:
      one full-width container per department, stacked. */
@@ -101,6 +117,7 @@
       <h1 class="bc-title" id="bc-name">—</h1>
       <div class="bc-sub" id="bc-tagline">—</div>
       <div id="bc-ops"></div>
+      <div class="pl-section" id="bc-pillars"></div>
       <div class="dp-section" id="bc-departments"></div>
     </div>
     <div class="bc-box">
@@ -132,7 +149,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id,
+      .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id, pillar_speed, pillar_efficiency, pillar_quality,
                nation:nations!hq_nation_id(name),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
       .eq('id', corpId).maybeSingle();
@@ -193,6 +210,37 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
         <div class="v"><a>${esc(site)}</a></div></div>`;
+
+    // Core Metrics — the three pillars. VALUES come from the corp's
+    // pillar columns (20270794, all start at 1; upgrades increment
+    // there); the per-industry LABELS and copy live here. Only
+    // construction's trio is chartered so far.
+    const PILLARS = {
+      construction: [
+        { col: 'pillar_speed', name: 'STRUCTURAL SPEED', kind: 'Throughput',
+          desc: 'Decreases the baseline number of ticks required to deliver a finished building. Faster completion liquidates contracts quickly, avoiding penalties and freeing up your project queue.' },
+        { col: 'pillar_efficiency', name: 'PROCUREMENT EFFICIENCY', kind: 'Cost Reduction',
+          desc: 'Reflects your vertical supply-chain dominance. Higher efficiency permanently slashes the baseline corporate cash you must spend out-of-pocket on the raw steel, concrete, and aggregates a project requires.' },
+        { col: 'pillar_quality', name: 'ENGINEERING QUALITY', kind: 'Value-Add',
+          desc: 'Applies a permanent, positive performance modifier to the completed building. A high-tier builder delivers an Assembly Plant granting +0.3 GDP growth instead of the baseline +0.2 — and charges premium margins for it.' },
+      ],
+    };
+    const pillars = PILLARS[corp.industry];
+    if (pillars) {
+      document.getElementById('bc-pillars').innerHTML = `
+        <div class="pl-panel">
+          <div class="ea-head"><span class="rule"></span><span class="t">CORE METRICS</span><span class="rule"></span></div>
+          <div class="pl-grid">
+            ${pillars.map(p => `
+              <div class="pl-card">
+                <div class="pl-name">${esc(p.name)}</div>
+                <div class="pl-kind">${esc(p.kind)}</div>
+                <div class="pl-val">${esc(String(corp[p.col] ?? 1))}</div>
+                <div class="pl-desc">${esc(p.desc)}</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }
 
     // Departments — five per-industry tier containers. Every corp
     // starts at its industry's entry tier; these baselines are
