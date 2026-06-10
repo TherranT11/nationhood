@@ -33,6 +33,22 @@
     color:#888; font-weight:700; margin-bottom:5px; }
   .ea-card .soon { font-family:Georgia,serif; font-style:italic; font-size:10.5px; color:#4a4940; }
 
+  /* ── Departments (per-industry tier containers) ── */
+  .dp-section { margin-top:22px; }
+  .dp-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px; }
+  @media (max-width:1100px) { .dp-grid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .dp-card { background:#0d0d0d; border:0.5px solid rgba(138,170,106,0.2); border-radius:5px;
+    padding:14px 14px 15px; display:flex; flex-direction:column; min-width:0; }
+  .dp-card.empty { opacity:0.5; align-items:center; justify-content:center; text-align:center;
+    border-style:dashed; }
+  .dp-dept { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.16em; color:#666;
+    font-weight:700; margin-bottom:7px; }
+  .dp-tier { font-size:13px; color:#fff; font-weight:600; line-height:1.35; margin-bottom:7px; }
+  .dp-desc { font-size:11px; color:#888; line-height:1.55; flex:1; }
+  .dp-effect { font-family:var(--font-mono); font-size:9.5px; color:#8aaa6a; line-height:1.5;
+    margin-top:10px; padding-top:9px; border-top:0.5px solid rgba(255,255,255,0.06); }
+  .dp-card.empty .soon { font-family:Georgia,serif; font-style:italic; font-size:11px; color:#4a4940; }
+
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.35); border-radius:6px; overflow:hidden; }
@@ -77,6 +93,7 @@
       <h1 class="bc-title" id="bc-name">—</h1>
       <div class="bc-sub" id="bc-tagline">—</div>
       <div id="bc-ops"></div>
+      <div class="dp-section" id="bc-departments"></div>
     </div>
     <div class="bc-box">
       <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
@@ -168,6 +185,46 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
         <div class="v"><a>${esc(site)}</a></div></div>`;
+
+    // Departments — five per-industry tier containers. Every corp
+    // starts at its industry's entry tier; these baselines are
+    // display copy until upgrade mechanics land (tier state moves to
+    // columns then). Construction has four chartered so far — the
+    // fifth slot (and the automotive set) render as placeholders
+    // until designed.
+    const DEPARTMENTS = {
+      construction: [
+        { dept: 'PROJECT MANAGEMENT', tier: 'The Truck & Clipboard',
+          desc: 'You handle all local permitting, contract estimates, and safety compliance yourself out of the cab of your truck. Administrative bottlenecks limit you to chasing one tiny contract at a time.',
+          effect: 'Number of Active Projects: 1' },
+        { dept: 'HEAVY EQUIPMENT', tier: 'Level 0: Commercial Rental Yard',
+          desc: 'Your physical yard is completely empty. You own zero iron. Every time you secure a contract, you must lease skid-steers or excavators at a high per-turn premium.',
+          effect: 'Construction Project costs require equipment rentals.' },
+        { dept: 'SUPPLY & MATERIAL', tier: 'Retail Hardware Store',
+          desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
+          effect: 'Construction Project costs require standard upfront prices.' },
+        { dept: 'SYSTEM DESIGN', tier: 'CAD System & Laptop',
+          desc: 'You implement your own designs, limited by your own project expertise.',
+          effect: 'You gain Experience at +3 per completed project.' },
+        null,
+      ],
+      automotive: [null, null, null, null, null],
+    };
+    const depts = DEPARTMENTS[corp.industry];
+    if (depts) {
+      document.getElementById('bc-departments').innerHTML =
+        '<div class="dp-grid">' + depts.map(d => d
+          ? `<div class="dp-card">
+              <div class="dp-dept">${esc(d.dept)}</div>
+              <div class="dp-tier">${esc(d.tier)}</div>
+              <div class="dp-desc">${esc(d.desc)}</div>
+              <div class="dp-effect">${esc(d.effect)}</div>
+            </div>`
+          : `<div class="dp-card empty" title="Coming soon">
+              <div class="dp-dept">—</div>
+              <div class="soon">(To be chartered)</div>
+            </div>`).join('') + '</div>';
+    }
 
     // Rebrand — owner-only: pick an image (2MB cap, same corp-logos
     // bucket the founding modal uses), upload, stamp logo_url via the
