@@ -162,6 +162,12 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Embassy event variables match forgivingly** — `{Name}` left raw in
+  a live dispatch because only the exact `{Name1}` token was replaced.
+  Tokens are now case-insensitive and `{Name}` is an alias of
+  `{Name1}`; the name still generates from the host nation's name
+  list, `{Corp}` from corps operating there. Pending draws snapshotted
+  with raw tokens were re-substituted in place.
 - **Banned politician login dead-end** — a player whose politician was
   admin-banned was routed to the faction chooser as if they owned
   nothing, then refused at creation with the misleading "You already
