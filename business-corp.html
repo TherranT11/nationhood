@@ -33,21 +33,29 @@
     color:#888; font-weight:700; margin-bottom:5px; }
   .ea-card .soon { font-family:Georgia,serif; font-style:italic; font-size:10.5px; color:#4a4940; }
 
-  /* ── Departments (per-industry tier containers) ── */
+  /* ── Departments (per-industry tier containers) ──
+     Horizontal bars, same wide shape as the Executive Actions panel:
+     one full-width container per department, stacked. */
   .dp-section { margin-top:22px; }
-  .dp-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px; }
-  @media (max-width:1100px) { .dp-grid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
-  .dp-card { background:#0d0d0d; border:0.5px solid rgba(138,170,106,0.2); border-radius:5px;
-    padding:14px 14px 15px; display:flex; flex-direction:column; min-width:0; }
-  .dp-card.empty { opacity:0.5; align-items:center; justify-content:center; text-align:center;
-    border-style:dashed; }
+  .dp-grid { display:flex; flex-direction:column; gap:12px; }
+  .dp-card { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25); border-radius:6px;
+    padding:14px 18px; display:flex; align-items:center; gap:22px; min-width:0; }
+  .dp-card.empty { opacity:0.5; justify-content:center; border-style:dashed; }
+  .dp-id { width:200px; flex-shrink:0; }
   .dp-dept { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.16em; color:#666;
-    font-weight:700; margin-bottom:7px; }
-  .dp-tier { font-size:13px; color:#fff; font-weight:600; line-height:1.35; margin-bottom:7px; }
-  .dp-desc { font-size:11px; color:#888; line-height:1.55; flex:1; }
+    font-weight:700; margin-bottom:5px; }
+  .dp-tier { font-size:14px; color:#fff; font-weight:600; line-height:1.35; }
+  .dp-desc { font-size:11.5px; color:#888; line-height:1.6; flex:1; min-width:0; }
   .dp-effect { font-family:var(--font-mono); font-size:9.5px; color:#8aaa6a; line-height:1.5;
-    margin-top:10px; padding-top:9px; border-top:0.5px solid rgba(255,255,255,0.06); }
+    width:220px; flex-shrink:0; text-align:right; padding-left:18px;
+    border-left:0.5px solid rgba(255,255,255,0.06); }
   .dp-card.empty .soon { font-family:Georgia,serif; font-style:italic; font-size:11px; color:#4a4940; }
+  @media (max-width:860px) {
+    .dp-card { flex-direction:column; align-items:stretch; gap:9px; }
+    .dp-id { width:auto; }
+    .dp-effect { width:auto; text-align:left; padding-left:0; border-left:none;
+      padding-top:9px; border-top:0.5px solid rgba(255,255,255,0.06); }
+  }
 
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
@@ -217,13 +225,14 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
           ? `<div class="dp-card">
-              <div class="dp-dept">${esc(d.dept)}</div>
-              <div class="dp-tier">${esc(d.tier)}</div>
+              <div class="dp-id">
+                <div class="dp-dept">${esc(d.dept)}</div>
+                <div class="dp-tier">${esc(d.tier)}</div>
+              </div>
               <div class="dp-desc">${esc(d.desc)}</div>
               <div class="dp-effect">${esc(d.effect)}</div>
             </div>`
           : `<div class="dp-card empty" title="Coming soon">
-              <div class="dp-dept">—</div>
               <div class="soon">(To be chartered)</div>
             </div>`).join('') + '</div>';
     }
