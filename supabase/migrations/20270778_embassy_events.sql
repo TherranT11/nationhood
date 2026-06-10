@@ -1,5 +1,5 @@
 -- ════════════════════════════════════════════════════════════════════
--- 20270776 — Embassy Events: admin-authored Day-to-Day event pool
+-- 20270778 — Embassy Events: admin-authored Day-to-Day event pool
 --
 -- The adminbackend's FOREIGN EVENTS tab (foreignservice.html) goes
 -- from placeholder to a real authoring tool. Admins write events with
@@ -473,7 +473,7 @@ BEGIN
     -- No stat claw-back: re-entry requires re-passing the FS exam
     -- (plus its 1-tick retry cooldown), which is its own barrier.
     -- foreign_service_last_attempt_tick is intentionally preserved.
-    -- Embassy stats reset to baseline (20270776) — they belong to
+    -- Embassy stats reset to baseline (20270778) — they belong to
     -- the posting, not the politician.
     UPDATE factions
        SET politician_foreign_service_nation_id = NULL,

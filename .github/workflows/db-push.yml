@@ -46,6 +46,26 @@ jobs:
           supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
                         --password    "${{ secrets.SUPABASE_DB_PASSWORD }}"
 
+      # Two migrations sharing a version prefix is fatal but reads as a
+      # baffling "duplicate key value violates unique constraint
+      # schema_migrations_pkey" at push time: the first file records the
+      # version, the second can never record itself, and every
+      # subsequent run fails the same way. It has happened twice now
+      # (parallel branches both taking the "next" number — 20270776 was
+      # corp_tax_filing AND embassy_events). Fail fast with a readable
+      # message instead.
+      - name: Guard against duplicate migration versions
+        run: |
+          dups=$(ls supabase/migrations/*.sql | sed 's|.*/||; s|_.*||' | sort | uniq -d)
+          if [ -n "$dups" ]; then
+            echo "::error::Duplicate migration version number(s): $dups"
+            echo "Two files in supabase/migrations/ share a version prefix."
+            echo "Rename one of them to an unused number — the migration"
+            echo "history table keys on the version, so duplicates can"
+            echo "never both be recorded."
+            exit 1
+          fi
+
       - name: Show pending migrations (dry run)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
