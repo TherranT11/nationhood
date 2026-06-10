@@ -125,6 +125,13 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Corporate tax was assessing $0 profit for everyone** — File Taxes
+  computed the taxable base from the same dead `corp_cash_events`
+  ledger as the Revenue cards, so every filing owed nothing and
+  auto-stamped 'compliant'. `file_corporate_tax` now reads its base
+  through `corp_revenue_by_year` itself, so the taxable profit is by
+  construction the figure shown on the corp page's This Year's
+  Revenue card.
 - **"This Year's / Last Year's Revenue" cards never populated** — they
   summed `corp_cash_events`, a ledger the corp simplification stopped
   writing months ago (frozen at tick 140), so every corp showed $0
