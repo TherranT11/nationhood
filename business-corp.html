@@ -49,6 +49,15 @@
   .bc-row .v .dim { color:#888; font-size:11px; }
   .bc-row .v.money { font-family:var(--font-mono); color:#8aaa6a; }
   .bc-row .v a { color:#8aaa6a; text-decoration:none; }
+  .bc-foot { padding:12px 16px; border-top:0.5px solid rgba(138,170,106,0.2); }
+  .bc-btn { width:100%; padding:10px; background:rgba(138,170,106,0.08);
+    border:0.5px solid #4a6a4a; border-radius:4px; color:#8aaa6a;
+    font-family:var(--font-mono); font-size:10px; letter-spacing:0.13em; font-weight:700;
+    cursor:pointer; }
+  .bc-btn:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .bc-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .bc-foot .err { color:#d9534f; font-size:10px; font-family:var(--font-mono);
+    margin-top:6px; min-height:12px; }
 
   @media (max-width:860px) {
     .bc-wrap { flex-direction:column-reverse; }
@@ -72,6 +81,11 @@
     <div class="bc-box">
       <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
       <div class="bc-rows" id="bc-rows"></div>
+      <div class="bc-foot" id="bc-foot" style="display:none;">
+        <button type="button" class="bc-btn" id="bc-rebrand">REBRAND</button>
+        <input type="file" id="bc-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;">
+        <div class="err" id="bc-rebrand-err"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -154,6 +168,49 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
         <div class="v"><a>${esc(site)}</a></div></div>`;
+
+    // Rebrand — owner-only: pick an image (2MB cap, same corp-logos
+    // bucket the founding modal uses), upload, stamp logo_url via the
+    // owner-writes RLS policy, and swap the logo in place.
+    if (corp.owner_faction_id === ctx.faction.id) {
+      const foot = document.getElementById('bc-foot');
+      const fileEl = document.getElementById('bc-logo-file');
+      const btn = document.getElementById('bc-rebrand');
+      const errEl = document.getElementById('bc-rebrand-err');
+      foot.style.display = 'block';
+      btn.addEventListener('click', () => { errEl.textContent = ''; fileEl.click(); });
+      fileEl.addEventListener('change', async () => {
+        const file = fileEl.files?.[0];
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) {
+          errEl.textContent = 'Logo is over 2MB — choose a smaller image.';
+          fileEl.value = '';
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'UPLOADING…';
+        try {
+          const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+          const path = `${ctx.faction.id}/${Date.now()}.${ext}`;
+          const { error: upErr } = await _supabase.storage.from('corp-logos')
+            .upload(path, file, { contentType: file.type || 'image/png' });
+          if (upErr) throw new Error('Upload failed: ' + upErr.message);
+          const logoUrl = _supabase.storage.from('corp-logos').getPublicUrl(path)?.data?.publicUrl;
+          if (!logoUrl) throw new Error('Could not resolve logo URL.');
+          const { data: updated, error: updErr } = await _supabase.from('entrepreneur_corps')
+            .update({ logo_url: logoUrl }).eq('id', corp.id).select('id');
+          if (updErr) throw updErr;
+          if (!updated?.length) throw new Error('Not authorized to rebrand this corporation.');
+          logoEl.innerHTML = `<img src="${esc(logoUrl)}" alt="${esc(corp.name)} logo">`;
+        } catch (e) {
+          errEl.textContent = e?.message || 'Rebrand failed.';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'REBRAND';
+          fileEl.value = '';
+        }
+      });
+    }
 
     // Executive Actions — owner-only surface. Five slots, all coming
     // soon; the "1 remaining" allowance is the per-tick default and
