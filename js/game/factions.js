@@ -173,6 +173,7 @@ export function getFactionDashboardUrl(faction) {
         return BRANCH_DASHBOARDS[faction.branch] || 'faction-select.html';
     }
     if (faction.faction_type === 'entrepreneur') return 'entrepreneur-dashboard.html';
+    if (faction.faction_type === 'businessman')  return 'businessman-home.html';
     if (faction.faction_type === 'politician')   return 'politician-home.html';
     return null;
 }
