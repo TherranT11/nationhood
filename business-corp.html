@@ -14,9 +14,24 @@
   .bc-title { font-family:Georgia,serif; font-size:28px; color:#fff; margin:0 0 4px; font-weight:500; }
   .bc-sub { font-family:var(--font-mono); font-size:10px; letter-spacing:0.14em; color:#666;
     font-weight:700; margin-bottom:22px; }
-  .bc-soon { padding:34px 16px; text-align:center; color:#555; font-size:11.5px;
-    font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
-    border-radius:5px; }
+  /* ── Executive Actions panel ── */
+  .ea-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
+    border-radius:6px; padding:16px 18px 18px; position:relative; }
+  .ea-head { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+  .ea-head .rule { flex:1; height:1px; background:rgba(138,170,106,0.25); }
+  .ea-head .t { font-family:var(--font-mono); font-size:11px; letter-spacing:0.3em;
+    color:#aac88a; font-weight:700; white-space:nowrap; }
+  .ea-remaining { position:absolute; top:14px; right:16px; font-family:Georgia,serif;
+    font-style:italic; font-size:11px; color:#8aaa6a; border:0.5px solid #4a6a4a;
+    border-radius:3px; padding:3px 9px; background:rgba(138,170,106,0.06); }
+  .ea-grid { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:12px; }
+  @media (max-width:980px) { .ea-grid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  .ea-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
+    padding:22px 10px; text-align:center; opacity:0.65; }
+  .ea-card .ic { font-size:13px; color:#555; margin-bottom:8px; }
+  .ea-card .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em;
+    color:#888; font-weight:700; margin-bottom:5px; }
+  .ea-card .soon { font-family:Georgia,serif; font-style:italic; font-size:10.5px; color:#4a4940; }
 
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
@@ -52,7 +67,7 @@
     <div class="bc-main">
       <h1 class="bc-title" id="bc-name">—</h1>
       <div class="bc-sub" id="bc-tagline">—</div>
-      <div class="bc-soon">Operations open soon — hire staff, take contracts, and grow the books.</div>
+      <div id="bc-ops"></div>
     </div>
     <div class="bc-box">
       <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
@@ -78,7 +93,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, logo_url, employee_count,
+      .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id,
                nation:nations!hq_nation_id(name),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
       .eq('id', corpId).maybeSingle();
@@ -139,6 +154,25 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
         <div class="v"><a>${esc(site)}</a></div></div>`;
+
+    // Executive Actions — owner-only surface. Five slots, all coming
+    // soon; the "1 remaining" allowance is the per-tick default and
+    // becomes derived state when the first action lands.
+    if (corp.owner_faction_id === ctx.faction.id) {
+      document.getElementById('bc-ops').innerHTML = `
+        <div class="ea-panel">
+          <span class="ea-remaining">1 remaining</span>
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span></div>
+          <div class="ea-grid">
+            ${Array.from({ length: 5 }, () => `
+              <div class="ea-card" title="Coming soon">
+                <div class="ic">—</div>
+                <div class="nm">ACTION</div>
+                <div class="soon">(Coming Soon)</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }
 
     document.getElementById('loading').style.display = 'none';
     document.getElementById('page-content').style.display = 'block';
