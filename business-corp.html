@@ -1154,7 +1154,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">SUBMIT PUBLIC BID</div>
               <div class="soon">Bid on requested projects</div>
             </div>
-            ${Array.from({ length: 3 }, () => `
+            <div class="ea-card live" id="ea-advance-build">
+              <div class="ic">🚧</div>
+              <div class="nm">ADVANCE BUILD</div>
+              <div class="soon">$10k per site — push every build 1 tick</div>
+            </div>
+            ${Array.from({ length: 2 }, () => `
               <div class="ea-card" title="Coming soon">
                 <div class="ic">—</div>
                 <div class="nm">ACTION</div>
@@ -1428,6 +1433,43 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
       document.getElementById('ea-submit-bid').addEventListener('click', openBidModal);
       wireModalClose('pb-overlay', 'pb-cancel');
+
+      // ── Advance Build (20270813) ────────────────────────────────
+      // No inputs — one confirm with the live cost ($10k × active
+      // sites), then the RPC pushes every building project 1 tick
+      // and completes anything that comes due through the canonical
+      // sweep. Server recomputes the count, so a stale confirm can't
+      // overcharge.
+      document.getElementById('ea-advance-build').addEventListener('click', async () => {
+        const card = document.getElementById('ea-advance-build');
+        if (card.dataset.busy === '1') return;
+        card.dataset.busy = '1';
+        try {
+          const { count, error: cntErr } = await _supabase.from('corp_construction_projects')
+            .select('id', { count: 'exact', head: true })
+            .eq('corp_id', corp.id).eq('status', 'building');
+          if (cntErr) throw cntErr;
+          if (!count) { alert('No active job sites to advance — start or win a project first.'); return; }
+          if (!confirm(`Mobilize your workforce and machinery fleet: $10,000 × ${count} active site${count === 1 ? '' : 's'} = ${hfFmtBig(count * 10000)}. Advance every build 1 tick toward completion?`)) return;
+          const { data, error: abErr } = await _supabase.rpc('advance_build', { p_corp_id: corp.id });
+          if (abErr) throw abErr;
+          if (!data?.success) {
+            const REASON = {
+              no_actions_remaining: 'No executive actions remaining this tick.',
+              no_active_projects: 'No active job sites to advance.',
+              insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+              not_owner: 'Only the owner can advance builds.',
+              arrested: 'You are under arrest — your assets are frozen.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          window.location.reload();
+        } catch (e) {
+          alert('Could not advance: ' + (e?.message || e));
+        } finally {
+          card.dataset.busy = '0';
+        }
+      });
 
       document.getElementById('db-confirm').addEventListener('click', async () => {
         const btn = document.getElementById('db-confirm');
