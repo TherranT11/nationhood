@@ -57,6 +57,9 @@
   .sc-city { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
     padding:10px 12px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.1);
     border-radius:4px; cursor:pointer; margin-bottom:6px; }
+  .sc-city .left { min-width:0; }
+  .sc-city .mayor { font-family:var(--font-mono); font-size:9px; color:#666; margin-top:3px; }
+  .sc-city .mayor .tag { color:#8aaa6a; }
   .sc-city:hover { border-color:rgba(138,170,106,0.4); }
   .sc-city.sel { background:#10140e; border-color:#8aaa6a; }
   .sc-city .nm { font-size:12.5px; color:#fff; font-weight:600; }
@@ -144,7 +147,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { escapeHtml as esc } from './js/utils.js';
+import { escapeHtml as esc, fmtBig } from './js/utils.js';
 
 // ── Start Company modal state ──
 let scCityId = null;
@@ -174,20 +177,39 @@ async function openStartCompany(faction) {
   const host = document.getElementById('sc-cities');
   host.innerHTML = '<div class="sc-file">Loading cities…</div>';
   try {
-    const { data, error } = await _supabase.from('cities')
-      .select('id, city_name, jobs')
-      .eq('nation_id', faction.nation_id)
-      .order('city_type');
-    if (error) throw error;
+    const [cityRes, natRes] = await Promise.all([
+      _supabase.from('cities')
+        .select('id, city_name, city_type, jobs, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, party:factions!mayor_party_id(abbreviation, faction_name)')
+        .eq('nation_id', faction.nation_id)
+        .order('city_type'),
+      _supabase.from('nations').select('population').eq('id', faction.nation_id).maybeSingle(),
+    ]);
+    if (cityRes.error) throw cityRes.error;
+    const data = cityRes.data;
     if (!data?.length) {
       host.innerHTML = '<div class="sc-file">No cities found for this nation.</div>';
       return;
     }
-    host.innerHTML = data.map(c => `
+    const natPop = Number(natRes.data?.population) || 0;
+    host.innerHTML = data.map(c => {
+      // City population = population_pct × nation population / 100;
+      // NULL pct falls back to the 11% blanket (cities.population_pct
+      // comment, 20270711) — same math the Geography card uses.
+      const pop = Math.round(natPop * (Number(c.population_pct ?? 11)) / 100);
+      const mayorName = [c.mayor_first_name, c.mayor_last_name].filter(Boolean).join(' ');
+      const party = c.party?.abbreviation || c.party?.faction_name || null;
+      const mayorBits = mayorName
+        ? `Mayor: ${esc(mayorName)}${party ? ` <span class="tag">[${esc(party)}]</span>` : ''}${c.mayor_archetype ? ` <span class="tag">[${esc(c.mayor_archetype)}]</span>` : ''}`
+        : 'Mayor: —';
+      return `
       <div class="sc-city" data-city="${esc(c.id)}">
-        <span class="nm">${esc(c.city_name)}</span>
-        <span class="st">JOBS: ${esc(String(c.jobs ?? '—'))}</span>
-      </div>`).join('')
+        <div class="left">
+          <span class="nm">${esc(c.city_name)}${c.city_type === 'capital' ? ' (Capital)' : ''}</span>
+          <div class="mayor">${mayorBits}</div>
+        </div>
+        <span class="st">JOBS: ${esc(String(c.jobs ?? '—'))} &middot; POPULATION: ${esc(fmtBig(pop))}</span>
+      </div>`;
+    }).join('')
       + '<div class="sc-file" style="margin-top:2px;color:#555;">Jobs represent the amount of those looking for jobs in those cities.</div>';
     host.querySelectorAll('.sc-city').forEach(row => {
       row.addEventListener('click', () => {
