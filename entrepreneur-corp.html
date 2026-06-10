@@ -1334,6 +1334,15 @@
               <button id="cp-consult-btn" class="tc-btn">RETAIN CONSULTANCY</button>
             </div>
           </div>
+          <!-- Performance Bonus (20270775) — owner-only, PUBLIC corps.
+               Board-voted CEO payout: YES → +3% share price, NO →
+               −0.2%/$1M proposed. -->
+          <div id="cp-bonus" style="display:none;margin-bottom:14px;">
+            <div class="role-eyebrow">PERFORMANCE BONUS</div>
+            <div class="tc-row" style="margin-top:8px;">
+              <button id="cp-bonus-btn" class="tc-btn">PROPOSE PERFORMANCE BONUS</button>
+            </div>
+          </div>
           <div id="cp-forsale" style="display:none;margin-bottom:14px;"></div>
           <div id="cp-negotiations" style="display:none;margin-bottom:14px;"></div>
           <div id="cp-bankrupt" style="display:none;"></div>
@@ -3065,6 +3074,153 @@ function initials(s, n) {
     if (isConstructionCorp) {
       const cpPillars = document.getElementById('cp-pillars');
       if (cpPillars) cpPillars.style.display = 'block';
+    }
+
+    // ── Performance Bonus (20270775) ──────────────────────────────
+    // Owner-only, PUBLIC corps. Propose a board-voted bonus for
+    // yourself: YES majority → escrow pays out +3% share price;
+    // NO → refund and −0.2%/$1M proposed. Modal first checks for a
+    // pending proposal and offers Cancel instead of the form.
+    const cpBonus = document.getElementById('cp-bonus');
+    if (cpBonus && isOwner && isPublic) {
+      cpBonus.style.display = 'block';
+      showAdminHub();
+      document.getElementById('cp-bonus-btn').onclick = () => openBonusModal();
+    }
+
+    async function openBonusModal() {
+      const overlay = document.getElementById('cp-bonus-overlay');
+      if (!overlay) return;
+      let submitting = false;
+
+      // Pending proposal? Offer cancel instead of a second proposal.
+      let pending = null;
+      try {
+        const { data, error } = await _supabase.from('corp_bonus_proposals')
+          .select('id, amount, proposed_at_tick')
+          .eq('corp_id', id).eq('status', 'pending')
+          .maybeSingle();
+        if (error) throw error;
+        pending = data || null;
+      } catch (e) {
+        console.warn('[corp] pending bonus fetch failed:', e?.message || e);
+      }
+
+      if (pending) {
+        overlay.innerHTML = `
+          <div class="bm-modal" style="max-width:440px;">
+            <div class="bm-head"><div class="ti">Performance <em>Bonus</em></div><div class="bm-x" id="pb-close">×</div></div>
+            <div class="bm-body">
+              <div style="font-size:11px;color:#8a8680;">A <b style="color:#cfcabf;">$${(Number(pending.amount) || 0).toLocaleString()}</b> bonus proposal is already before the board. You can cancel it — the escrowed amount refunds to the treasury with no share-price effect.</div>
+              <div class="bm-err" id="pb-err"></div>
+            </div>
+            <div class="bm-foot">
+              <button class="bm-btn sec" id="pb-cancel">Close</button>
+              <button class="bm-btn pri" id="pb-withdraw">Cancel Proposal</button>
+            </div>
+          </div>`;
+        const close = () => { if (!submitting) overlay.classList.remove('open'); };
+        document.getElementById('pb-close').onclick = close;
+        document.getElementById('pb-cancel').onclick = close;
+        overlay.onclick = (e) => { if (e.target === overlay) close(); };
+        document.getElementById('pb-withdraw').onclick = async () => {
+          if (submitting) return;
+          submitting = true;
+          const btn = document.getElementById('pb-withdraw');
+          btn.disabled = true; btn.textContent = 'Cancelling…';
+          try {
+            const { data, error } = await _supabase.rpc('cancel_performance_bonus',
+              { p_proposal_id: pending.id });
+            if (error) throw error;
+            if (!data?.success) {
+              document.getElementById('pb-err').textContent =
+                'Failed: ' + (data?.reason || 'unknown');
+              submitting = false; btn.disabled = false; btn.textContent = 'Cancel Proposal';
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            document.getElementById('pb-err').textContent = 'Failed: ' + (e?.message || e);
+            submitting = false; btn.disabled = false; btn.textContent = 'Cancel Proposal';
+          }
+        };
+        overlay.classList.add('open');
+        return;
+      }
+
+      overlay.innerHTML = `
+        <div class="bm-modal" style="max-width:440px;">
+          <div class="bm-head"><div class="ti">Performance <em>Bonus</em></div><div class="bm-x" id="pb-close">×</div></div>
+          <div class="bm-body">
+            <div style="font-size:11px;color:#8a8680;margin-bottom:12px;">Propose a performance bonus for yourself, paid from <b style="color:#cfcabf;">${escapeHtml(c.name || 'this corp')}</b>'s treasury. The Board of Directors votes YES or NO. <b style="color:#5cc55c;">Approved: the bonus pays out and the share price rises 3%.</b> <b style="color:#d98a8a;">Rejected: the escrow refunds and the share price falls 0.2% per $1M proposed.</b></div>
+            <div class="bm-label">Bonus amount ($)</div>
+            <input type="text" class="bm-input" id="pb-amt" inputmode="numeric" placeholder="e.g. 10,000,000">
+            <div style="font-size:11px;color:#8a8680;margin-top:8px;" id="pb-risk">&nbsp;</div>
+            <div class="bm-err" id="pb-err"></div>
+          </div>
+          <div class="bm-foot">
+            <button class="bm-btn sec" id="pb-cancel">Cancel</button>
+            <button class="bm-btn pri" id="pb-submit">Send to the Board</button>
+          </div>
+        </div>`;
+      const close = () => { if (!submitting) overlay.classList.remove('open'); };
+      document.getElementById('pb-close').onclick = close;
+      document.getElementById('pb-cancel').onclick = close;
+      overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+      // Live risk preview mirrors the server math (server is
+      // authoritative): −0.2% per full $1M, clamped at 90%.
+      document.getElementById('pb-amt').oninput = () => {
+        const amt = parseNum(document.getElementById('pb-amt').value);
+        const riskEl = document.getElementById('pb-risk');
+        if (amt > 0) {
+          const drop = Math.min(90, 0.2 * Math.floor(amt / 1000000));
+          riskEl.innerHTML = `If rejected: share price falls <b style="color:#d98a8a;">−${drop.toFixed(1)}%</b>.`;
+        } else {
+          riskEl.innerHTML = '&nbsp;';
+        }
+      };
+
+      document.getElementById('pb-submit').onclick = async () => {
+        if (submitting) return;
+        const errEl = document.getElementById('pb-err');
+        const amt = parseNum(document.getElementById('pb-amt').value);
+        if (!(amt > 0)) { errEl.textContent = 'Enter a bonus amount.'; return; }
+        submitting = true;
+        const btn = document.getElementById('pb-submit');
+        btn.disabled = true; btn.textContent = 'Sending…'; errEl.textContent = '';
+        try {
+          const { data, error } = await _supabase.rpc('propose_performance_bonus', {
+            p_corp_id: id, p_amount: Math.floor(amt),
+          });
+          if (error) throw error;
+          if (!data || !data.success) {
+            const R = {
+              not_owner:                'Only the founder can propose a bonus.',
+              not_public:               'Performance bonuses are for public corps — private corps can just Withdraw.',
+              no_board:                 'The board has no directors to vote.',
+              proposal_already_pending: 'A bonus proposal is already before the board.',
+              insufficient_treasury:    `Treasury can’t cover the bonus (has $${(Number(data?.have) || 0).toLocaleString()}).`,
+              invalid_amount:           'Enter a valid amount.',
+              corp_not_found:           'Corp not found.',
+              no_entrepreneur:          'No entrepreneur faction found.',
+            };
+            errEl.textContent = R[data?.reason] || ('Failed: ' + (data?.reason || 'unknown'));
+            submitting = false; btn.disabled = false; btn.textContent = 'Send to the Board';
+            return;
+          }
+          btn.textContent = 'SENT ✓';
+          setTimeout(() => {
+            alert('Sent to the board — directors will see the vote in their Pressing Issues.');
+            location.reload();
+          }, 500);
+        } catch (e) {
+          errEl.textContent = 'Failed: ' + (e?.message || e);
+          submitting = false; btn.disabled = false; btn.textContent = 'Send to the Board';
+        }
+      };
+
+      overlay.classList.add('open');
     }
 
     // ── Retain Consultancy (20270773) ─────────────────────────────
@@ -9225,6 +9381,7 @@ const openBidModal = (contractId, label, yourCost) => {
      offer_corp_investment / sell_corp_equity. -->
 <div class="bm-overlay" id="cp-invest-overlay"></div>
 <div class="bm-overlay" id="cp-consult-overlay"></div>
+<div class="bm-overlay" id="cp-bonus-overlay"></div>
 <div class="bm-overlay" id="cp-sellequity-overlay"></div>
 <div class="bm-overlay" id="ad-engine-overlay"></div>
 <div class="bm-overlay" id="ad-aircraft-overlay"></div>
