@@ -36,6 +36,13 @@ All notable changes to Nationhood are recorded here. Format inspired by
   a **$10,000** filing cost from cash on hand. The corp is born
   private, $0 capital, HQ'd in the chosen city — cheap to start,
   expensive to run, as the modal warns.
+- **Corporations Directory + Forum unlock.** The CORPORATIONS tab
+  opens the shared Corporations Directory (the entrepreneur Markets
+  page, made dual-mode — one page, businessman chrome, portfolio and
+  valuations keyed to your character; trading actions stay
+  entrepreneur-only pending an economy call). The FORUM tab opens the
+  shared forum — same categories and threads politicians and
+  entrepreneurs use — and businessmen can author threads and replies.
 - **Businessman identity row.** The Home page opens with Current
   Location and Residence — a home city rolled uniformly at random
   from the nation's towns at creation (the Salaryman's university
