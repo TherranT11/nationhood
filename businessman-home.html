@@ -89,16 +89,18 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
     if (!ctx) return; // redirected (no auth / no businessman faction)
     const f = ctx.faction;
 
-    // {City}: the businessman lives in the home nation's capital until
-    // a relocation mechanic exists. Soft-fails to '—'.
-    let city = '—';
-    try {
-      const { data, error } = await _supabase.from('nations')
-        .select('capital').eq('id', f.nation_id).maybeSingle();
-      if (error) throw error;
-      city = data?.capital || '—';
-    } catch (e) {
-      console.warn('[businessman-home] capital fetch failed:', e?.message || e);
+    // {City}: rolled uniformly at creation (biz_home_city, 20270789).
+    // Capital fetch is only the fallback for a pre-backfill row.
+    let city = f.biz_home_city || '—';
+    if (!f.biz_home_city) {
+      try {
+        const { data, error } = await _supabase.from('nations')
+          .select('capital').eq('id', f.nation_id).maybeSingle();
+        if (error) throw error;
+        city = data?.capital || '—';
+      } catch (e) {
+        console.warn('[businessman-home] capital fetch failed:', e?.message || e);
+      }
     }
 
     const cash      = Number(f.party_funds) || 0;

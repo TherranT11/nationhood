@@ -37,7 +37,9 @@ All notable changes to Nationhood are recorded here. Format inspired by
   private, $0 capital, HQ'd in the chosen city — cheap to start,
   expensive to run, as the modal warns.
 - **Businessman identity row.** The Home page opens with Current
-  Location and Residence ({Capital}, {Nation}), a residence rolled
+  Location and Residence — a home city rolled uniformly at random
+  from the nation's towns at creation (the Salaryman's university
+  follows it), a residence rolled
   once at creation — estates worth $4M–$19M for Wealthy
   Entrepreneurs, $600–900k neighborhoods for Executives, a $250–400k
   Modest Townhome for Salarymen — plus Debt, Net Worth (cash +
