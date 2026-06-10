@@ -23,6 +23,13 @@
   .biz-status-line { font-size:11.5px; color:#8aaa6a; line-height:1.6; }
   .biz-status-line.bad { color:#d9534f; }
 
+  .biz-section { max-width:1280px; margin:26px auto 0; }
+  .biz-section .sec-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.18em;
+    color:#666; font-weight:700; margin-bottom:10px; }
+  .biz-pi-empty { padding:26px 16px; text-align:center; color:#555; font-size:11.5px;
+    font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
+    border-radius:5px; }
+
   .biz-empty { max-width: 560px; margin: 48px auto 0; text-align: center; }
   .biz-empty .eyebrow { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em;
     color: #8aaa6a; font-weight: 700; margin-bottom: 10px; }
@@ -39,6 +46,16 @@
 <div id="loading">LOADING...</div>
 <div class="ent-content" id="page-content" style="display:none;">
   <div class="biz-row" id="biz-row"></div>
+  <!-- Pressing Issues — same surface every faction home carries.
+       Cards render into #biz-pressing-issues as businessman
+       mechanics land (job offers, warrants, audits…); until then the
+       empty state shows. -->
+  <div class="biz-section">
+    <div class="sec-lab">PRESSING ISSUES</div>
+    <div id="biz-pressing-issues">
+      <div class="biz-pi-empty">No pressing issues right now.</div>
+    </div>
+  </div>
   <div class="biz-empty">
     <div class="eyebrow">BUSINESSMAN · ALPHA</div>
     <h1>The first day of the <em>rest of your life</em></h1>
