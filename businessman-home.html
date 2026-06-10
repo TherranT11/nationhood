@@ -86,6 +86,9 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
     // and investigations have no businessman-targeting systems yet,
     // so they read their all-clear defaults — wire real queries here
     // when those mechanics land.
+    // Occupation/Salary: no employment system exists yet, so the only
+    // truthful state is Unemployed / $0 per tick. When the career
+    // mechanics land, read the employer + title + wage here.
     const arrested  = String(f.status || '').toLowerCase() === 'arrested';
     const statusHtml = arrested
       ? `<div class="biz-status-line bad">Under Arrest</div>
@@ -121,6 +124,15 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
       <div class="biz-card">
         <div class="lab">STATUS</div>
         ${statusHtml}
+      </div>
+      <div class="biz-card">
+        <div class="lab">OCCUPATION</div>
+        <div class="val">Unemployed</div>
+      </div>
+      <div class="biz-card">
+        <div class="lab">SALARY</div>
+        <div class="val money">${esc(hfFmtBig(0))}</div>
+        <div class="sub">per tick</div>
       </div>`;
 
     document.getElementById('loading').style.display = 'none';
