@@ -125,6 +125,15 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **"This Year's / Last Year's Revenue" cards never populated** — they
+  summed `corp_cash_events`, a ledger the corp simplification stopped
+  writing months ago (frozen at tick 140), so every corp showed $0
+  year-to-date no matter what the month card said. The revenue stamp
+  helper (the single choke point all revenue processors call) now
+  rolls per-year accumulators on the corp row, `corp_revenue_by_year`
+  reads them, and existing stamps are backfilled so the cards open
+  consistent with the month card. Months before the fix were never
+  recorded anywhere and are unrecoverable.
 - **Party login redirect loop** — since the news-site cull turned
   dashboard.html into a thin redirect to faction-select.html, any
   account with an active party ping-ponged between "AUTHENTICATING"
