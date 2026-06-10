@@ -20,6 +20,15 @@ All notable changes to Nationhood are recorded here. Format inspired by
   Salaryman** ($150k · age 25). Wealth and age are applied
   server-side; the chosen archetype is stored for future career
   mechanics to branch on.
+- **Businessman Career page.** The CAREER tab unlocks with [Apply
+  for Job] and [Start Company] (mechanics next), the Career Ladders
+  section, and **Career History** — auto-rolled once at creation:
+  Salarymen graduated last year from {Capital} University (Economics /
+  Accounting / Communications / Business); Executives spent 1–3
+  directorships (Operations/Finances/Sales, 1d12+5 years each) at
+  real corporations in their nation; Wealthy Entrepreneurs founded
+  and sold 2–4 ventures for $6M–$45M apiece. Existing businessmen
+  are backfilled.
 - **Businessman identity row.** The Home page opens with Current
   Location and Residence ({Capital}, {Nation}), a residence rolled
   once at creation — estates worth $4M–$19M for Wealthy
