@@ -796,6 +796,10 @@ let cachedMilitaryByNation = {};
 // in the `nation` text column; this map counts active entrepreneurs by origin
 // nation name, used in the entrepreneur picker's per-nation stat block.
 let cachedEntrepreneursByNation = {};
+// Businessman picker only: { nation_id: { construction: n, automotive: n } }
+// counted from entrepreneur_corps.hq_nation_id (disbanded corps are
+// hard-DELETEd, so a plain count is live).
+let cachedCorpCountsByNation = {};
 let pendingFactionType = null;
 let pendingMilitaryNationId = null;
 let militaryJoinInFlight = false;
@@ -815,6 +819,11 @@ const ALPHA_CODE_NATIONS = new Set();
 // nations.spawnable_for_entrepreneur column rather than adding a
 // second hardcoded list here.
 const ENTREPRENEUR_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla']);
+
+// Businessman (alpha) origin picker: the entrepreneur trio plus
+// Sierramar. Kept separate so widening one path doesn't widen the
+// other.
+const BUSINESSMAN_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla', 'Sierramar']);
 
 // Branches currently open for player recruitment. Navy and Air Force are
 // scaffolded but disabled until their dashboards land.
@@ -838,11 +847,12 @@ async function init() {
     const pendingParty = pendingFactionType === 'party';
     const pendingMilitary = pendingFactionType === 'military';
     const pendingEntrepreneur = pendingFactionType === 'entrepreneur';
+    const pendingBusinessman = pendingFactionType === 'businessman';
     const { data: faction } = await _supabase
       .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
     if (faction && faction.nation_id
         && !(pendingParty && faction.faction_type === 'corporation')
-        && !pendingMilitary && !pendingEntrepreneur) {
+        && !pendingMilitary && !pendingEntrepreneur && !pendingBusinessman) {
       window.location.href = 'dashboard.html';
       return;
     }
@@ -862,6 +872,13 @@ async function init() {
         .is('abandoned_at', null);
       if (ownErr) console.warn('[select-nation] occupied-nations fetch failed:', ownErr.message);
       userOccupiedNationIds = new Set((own || []).map(f => f.nation_id).filter(Boolean));
+    }
+
+    if (pendingBusinessman) {
+      const titleEl = document.querySelector('.page-header .title');
+      const subEl = document.querySelector('.page-header .subtitle');
+      if (titleEl) titleEl.textContent = 'Where is your Businessman from?';
+      if (subEl) subEl.textContent = 'Choose carefully — your origin nation is where your career begins, and its corporations are the ladder you\u2019ll climb.';
     }
 
     if (pendingMilitary) {
@@ -923,6 +940,24 @@ async function loadNations() {
     cachedEntrepreneursByNation[e.nation] = (cachedEntrepreneursByNation[e.nation] || 0) + 1;
   }
 
+  // Businessman picker shows per-nation corp counts for the industries
+  // a hire could join. Fetched only on that flow — other pickers don't
+  // render the rows. Disbanded corps are hard-DELETEd (20270427), so a
+  // plain count is live.
+  cachedCorpCountsByNation = {};
+  if (pendingFactionType === 'businessman') {
+    const { data: corps, error: corpsErr } = await _supabase
+      .from('entrepreneur_corps').select('industry, hq_nation_id');
+    if (corpsErr) console.warn('[select-nation] corp counts fetch failed:', corpsErr.message);
+    for (const c of (corps || [])) {
+      if (!c.hq_nation_id) continue;
+      const bucket = cachedCorpCountsByNation[c.hq_nation_id]
+        || (cachedCorpCountsByNation[c.hq_nation_id] = { construction: 0, automotive: 0 });
+      if (c.industry === 'construction') bucket.construction += 1;
+      else if (c.industry === 'automotive') bucket.automotive += 1;
+    }
+  }
+
   allNations = nations;
   renderNations(nations, cachedPartiesByNation);
 }
@@ -962,10 +997,12 @@ function renderNations(nations, partiesByNation) {
   // see every nation.
   const hideNeptune = pendingFactionType === 'party';
   const restrictEntrepreneur = pendingFactionType === 'entrepreneur';
+  const restrictBusinessman = pendingFactionType === 'businessman';
   const filtered = nations.filter(n =>
     (n.continent || 'Crucera') === activeContinent
     && !(hideNeptune && n.is_neptune_nation)
     && !(restrictEntrepreneur && !ENTREPRENEUR_ALLOWED_NATIONS.has(n.name))
+    && !(restrictBusinessman && !BUSINESSMAN_ALLOWED_NATIONS.has(n.name))
   );
 
   // Sort: nations with open spots first, then full nations. Within each group, by name.
@@ -1026,10 +1063,22 @@ function renderNations(nations, partiesByNation) {
       return renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode);
     }
 
-    if (pendingFactionType === 'entrepreneur') {
-      const locked = userOccupiedNationIds.has(nation.id);
+    if (pendingFactionType === 'entrepreneur' || pendingFactionType === 'businessman') {
+      // Businessman (alpha) shares the entrepreneur card shape plus
+      // per-nation corp counts. Its flow currently ENDS at this picker
+      // (character creation lands in a follow-up), so businessman
+      // cards are informational — no onclick, and the entrepreneur
+      // origin hard-lock doesn't apply.
+      const isBusinessman = pendingFactionType === 'businessman';
+      const locked = !isBusinessman && userOccupiedNationIds.has(nation.id);
+      const corpCounts = cachedCorpCountsByNation[nation.id] || { construction: 0, automotive: 0 };
+      const ctaLine = locked
+        ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party or Military Branch here</div>`
+        : isBusinessman
+          ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)} — career opens soon</div>`
+          : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`;
       return `
-        <div class="nation-card ${locked ? 'disabled' : ''}" data-nation-id="${nation.id}" ${locked ? '' : `onclick="openEntrepreneurModal('${nation.id}')"`} style="cursor:${locked ? 'not-allowed' : 'pointer'};">
+        <div class="nation-card ${locked ? 'disabled' : ''}" data-nation-id="${nation.id}" ${locked || isBusinessman ? '' : `onclick="openEntrepreneurModal('${nation.id}')"`} style="cursor:${locked ? 'not-allowed' : isBusinessman ? 'default' : 'pointer'};">
           <div class="nation-card__header">
             ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
             <span class="nation-card__name">${escapeHtml(nation.name)}</span>
@@ -1040,10 +1089,11 @@ function renderNations(nations, partiesByNation) {
             <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value" style="color:var(--text-secondary);">${hfFmtBig(Number(nation.politician_gdp) || 0)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value" style="color:var(--text-secondary);">${fmtBig(nation.population)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Active Entrepreneurs</span><span class="stat-row__value" style="color:var(--text-secondary);">${cachedEntrepreneursByNation[nation.name] || 0}</span></div>
+            ${isBusinessman ? `
+            <div class="stat-row"><span class="stat-row__label">Construction Corporations</span><span class="stat-row__value" style="color:var(--text-secondary);">${corpCounts.construction}</span></div>
+            <div class="stat-row"><span class="stat-row__label">Automotive Corporations</span><span class="stat-row__value" style="color:var(--text-secondary);">${corpCounts.automotive}</span></div>` : ''}
             <div class="stat-row"><span class="stat-row__label">Corporate Tax Law</span><span class="stat-row__value" style="color:var(--text-secondary);">${escapeHtml(corporateTaxPolicyLabel(nation.corporate_tax))}</span></div>
-            ${locked
-              ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party or Military Branch here</div>`
-              : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`}
+            ${ctaLine}
           </div>
         </div>
       `;

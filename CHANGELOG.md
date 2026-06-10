@@ -5,6 +5,17 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ## [MARIANNE — 3.0] — 2026-06-10
 
+### Added — Businessman (Alpha)
+
+- **Third faction path: Businessman.** "Join a corporation, work your
+  way up, or start from scratch and make history." Gated behind alpha
+  code `Vanderbilt1` (same prompt pattern as politician slot #4).
+  Confirming opens the origin-nation picker, which for this path also
+  shows each nation's **Construction Corporations** and **Automotive
+  Corporations** counts and includes **Sierramar** alongside Melizea,
+  Avelia, and Montequilla. The picker is the current end of the flow —
+  character creation lands in a follow-up.
+
 ### Added — Foreign Service
 
 - **Foreign Events authoring tool + Day to Day in the Embassy.** The

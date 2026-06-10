@@ -136,6 +136,13 @@ body {
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Invest in corporations, be a CEO, join a board of directors, merge, acquire and do hostile takeovers.</div>
     </div>
+    <div id="opt-businessman" onclick="selectFactionOption('businessman')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Businessman</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA CODE</span>
+      </div>
+      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Join a corporation, work your way up, or start from scratch and make history.</div>
+    </div>
     <button id="btn-confirm-faction" onclick="confirmFactionChoice()" disabled style="width:100%;padding:12px;font-family:var(--font-mono);font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;background:var(--bg-3);border:1px solid var(--border-0);color:var(--text-dim);cursor:not-allowed;transition:all 0.15s;">CONFIRM</button>
   </div>
 </div>
@@ -174,16 +181,21 @@ async function init() {
 
 let selectedFaction = null;
 
+// Businessman is alpha-gated — same client-side prompt pattern as
+// politician slot #4 (js/game/factions.js, Patreon11).
+const BUSINESSMAN_ALPHA_CODE = 'Vanderbilt1';
+
 function selectFactionOption(type) {
   selectedFaction = type;
   const optParty = document.getElementById('opt-party');
   const optCorp = document.getElementById('opt-corp');
   const optPol = document.getElementById('opt-politician');
   const optEnt = document.getElementById('opt-entrepreneur');
+  const optBus = document.getElementById('opt-businessman');
   const confirmBtn = document.getElementById('btn-confirm-faction');
 
   // Reset all cards
-  for (const opt of [optParty, optCorp, optPol, optEnt]) {
+  for (const opt of [optParty, optCorp, optPol, optEnt, optBus]) {
     opt.classList.remove('fs-selected');
     opt.style.borderColor = 'var(--border-0)';
   }
@@ -200,6 +212,9 @@ function selectFactionOption(type) {
   } else if (type === 'entrepreneur') {
     optEnt.classList.add('fs-selected');
     optEnt.style.borderColor = 'var(--purple,#8b5cf6)';
+  } else if (type === 'businessman') {
+    optBus.classList.add('fs-selected');
+    optBus.style.borderColor = 'var(--green-border)';
   }
 
   // Enable confirm button
@@ -226,6 +241,19 @@ function confirmFactionChoice() {
     // any downstream surface that wants to read it.
     sessionStorage.setItem('pending_faction_type', 'politician');
     window.location.href = 'first-steps.html';
+    return;
+  }
+  if (selectedFaction === 'businessman') {
+    // Alpha gate, then the origin-nation picker. The picker is the
+    // current end of the Businessman flow — character creation lands
+    // in a follow-up.
+    const code = window.prompt('Alpha tester code required to join as a Businessman:');
+    if (code !== BUSINESSMAN_ALPHA_CODE) {
+      if (code != null) window.alert('Invalid alpha code.');
+      return;
+    }
+    sessionStorage.setItem('pending_faction_type', 'businessman');
+    window.location.href = 'select-nation.html';
     return;
   }
   // The other two faction types (party, corporation) are hidden DOM
