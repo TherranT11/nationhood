@@ -420,7 +420,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -473,6 +473,17 @@ import { CITY_STATS } from './js/game/city-labels.js';
       low_cost: 'Low Cost', standard: 'Standard', high_end: 'High End',
       luxury: 'Luxury', ultra_rich: 'Ultra Rich',
     };
+
+    // The corp's hired roster — one query definition, read by the
+    // Prominent Employees panel and the Start Project PM dropdown.
+    function fetchHires() {
+      return _supabase.from('job_applicants')
+        .select(`id, name, city, applicant_faction_id,
+                 applicant:factions!applicant_faction_id(nickname),
+                 opening:job_openings!opening_id!inner(title, salary_yearly, corp_id)`)
+        .eq('status', 'hired').eq('opening.corp_id', corp.id)
+        .order('created_at');
+    }
 
     // Revenue (current year) from the one source — corp_revenue_by_year
     // reads the stamp accumulator (20270780). Soft-fails to $0.
@@ -753,12 +764,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     (async () => {
       const host = document.getElementById('bc-employees');
       try {
-        const { data: emps, error: empErr } = await _supabase.from('job_applicants')
-          .select(`id, name, city, applicant_faction_id,
-                   applicant:factions!applicant_faction_id(nickname),
-                   opening:job_openings!opening_id!inner(title, salary_yearly, corp_id)`)
-          .eq('status', 'hired').eq('opening.corp_id', corp.id)
-          .order('created_at');
+        const { data: emps, error: empErr } = await fetchHires();
         if (empErr) throw empErr;
 
         // Blueprints load regardless of hires — they feed both the
@@ -1170,7 +1176,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         ['military', 'MILITARY', false],
       ];
       const DB_TYPES = Object.entries(BUILDING_TYPE_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
-      const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
+      // Tier pills carry their city effect ("LUXURY · −0.3 Affordability
+      // · +0.1 Appeal") so the trade-off is visible at pick time.
+      const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) =>
+        [v, l.toUpperCase() + (TIER_CITY_EFFECTS[v] ? ' · ' + TIER_CITY_EFFECTS[v] : '')]);
       let dbType = null, dbTier = null;
 
       function dbRefreshConfirm() {
@@ -1225,7 +1234,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           if (cityErr) throw cityErr;
           if (city) {
             document.getElementById('db-location').innerHTML =
-              `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/100</span>`;
+              `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/10</span>`;
           }
         } catch (e) {
           console.warn('[business-corp] blueprint modal load failed:', e?.message || e);
@@ -1263,9 +1272,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             _supabase.from('cities')
               .select(`id, city_name, ${CITY_STATS.map(s => s.key).join(', ')}`)
               .eq('nation_id', corp.hq_nation_id).order('city_name'),
-            _supabase.from('job_applicants')
-              .select('id, name, opening:job_openings!opening_id!inner(title, corp_id)')
-              .eq('status', 'hired').eq('opening.corp_id', corp.id),
+            fetchHires(),
           ]);
           if (rErr || bErr || mErr || cErr || pErr) throw (rErr || bErr || mErr || cErr || pErr);
           renderStartProject(spCities || [], bps || [], spPms || []);
