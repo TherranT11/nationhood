@@ -125,6 +125,14 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Party login redirect loop** — since the news-site cull turned
+  dashboard.html into a thin redirect to faction-select.html, any
+  account with an active party ping-ponged between "AUTHENTICATING"
+  and the faction chooser forever (faction-select sent parties to
+  dashboard.html, which sent them straight back). Party factions now
+  route to politics.html, their Actions home, everywhere: login, the
+  faction switcher, and faction-select all read the single-source
+  router in js/game/factions.js.
 - **Bankruptcy unblocked for aviation corps** — the aircraft/engine
   design self-reference no longer aborts the liquidation cascade.
 - **Witness testimony submit** — fixed the broken submit on

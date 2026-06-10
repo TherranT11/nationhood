@@ -115,7 +115,7 @@ import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js
             const activeFaction = ownedFactions.find(f => f.id === activeFactionId) || ownedFactions[0];
 
             // Single-source router (js/game/factions.js): corp →
-            // corp-dashboard, party → dashboard, army → army-dashboard,
+            // faction-select, party → politics, army → army-dashboard,
             // branch-less military → faction-select. Fallback covers
             // any unknown type.
             window.location.href = getFactionDashboardUrl(activeFaction) || 'dashboard.html';

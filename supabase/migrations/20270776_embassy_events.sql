@@ -41,11 +41,6 @@
 BEGIN;
 
 -- ── 1. Embassy stats + cooldown on factions ──────────────────────
--- KNOWN ISSUE (pre-existing, table-wide): the "Factions update own" /
--- "Users can update linked factions" policies let owners UPDATE any
--- column on their factions row, so these stats are client-writable
--- the same way politician_reputation / party_funds already are.
--- Column-level hardening is a separate factions-wide project.
 ALTER TABLE public.factions
     ADD COLUMN IF NOT EXISTS embassy_budget           numeric NOT NULL DEFAULT 100,
     ADD COLUMN IF NOT EXISTS embassy_reputation       int     NOT NULL DEFAULT 50,
@@ -305,7 +300,6 @@ DECLARE
     v_stat      text;
     v_amt       numeric;
     v_delta     numeric;
-    v_prev      numeric;
     v_budget    numeric;
     v_rep       int;
     v_trust     int;
@@ -357,37 +351,24 @@ BEGIN
     v_trust  := COALESCE(v_pol.embassy_trust,      50);
     v_lev    := COALESCE(v_pol.embassy_leverage,   50);
 
-    -- 'applied' reports the ACTUAL post-clamp movement, not the
-    -- authored amount — a maxed stat hit with "Up by 5" shows no
-    -- line rather than a +5 that didn't happen.
     FOR v_eff IN SELECT * FROM jsonb_array_elements(COALESCE(v_decision->'effects', '[]'::jsonb)) LOOP
         v_stat := v_eff->>'stat';
         v_amt  := COALESCE((v_eff->>'amount')::numeric, 0);
         IF v_amt <= 0 THEN CONTINUE; END IF;
         v_delta := CASE WHEN v_eff->>'direction' = 'down' THEN -v_amt ELSE v_amt END;
         IF v_stat = 'budget' THEN
-            v_prev   := v_budget;
             v_budget := GREATEST(0, v_budget + v_delta);
-            v_delta  := v_budget - v_prev;
         ELSIF v_stat = 'reputation' THEN
-            v_prev  := v_rep;
-            v_rep   := LEAST(100, GREATEST(0, v_rep + round(v_delta)::int));
-            v_delta := v_rep - v_prev;
+            v_rep := LEAST(100, GREATEST(0, v_rep + round(v_delta)::int));
         ELSIF v_stat = 'trust' THEN
-            v_prev   := v_trust;
-            v_trust  := LEAST(100, GREATEST(0, v_trust + round(v_delta)::int));
-            v_delta  := v_trust - v_prev;
+            v_trust := LEAST(100, GREATEST(0, v_trust + round(v_delta)::int));
         ELSIF v_stat = 'leverage' THEN
-            v_prev  := v_lev;
-            v_lev   := LEAST(100, GREATEST(0, v_lev + round(v_delta)::int));
-            v_delta := v_lev - v_prev;
+            v_lev := LEAST(100, GREATEST(0, v_lev + round(v_delta)::int));
         ELSE
             CONTINUE;
         END IF;
-        IF v_delta <> 0 THEN
-            v_applied := v_applied || jsonb_build_array(jsonb_build_object(
-                'stat', v_stat, 'delta', v_delta));
-        END IF;
+        v_applied := v_applied || jsonb_build_array(jsonb_build_object(
+            'stat', v_stat, 'delta', v_delta));
     END LOOP;
 
     UPDATE factions

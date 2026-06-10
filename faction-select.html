@@ -142,7 +142,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { isFactionInactive } from './js/game/factions.js';
+import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -155,10 +155,14 @@ async function init() {
   // (entrepreneur or politician).
   if (pendingType !== 'entrepreneur' && pendingType !== 'politician') {
     const { data: faction, error: partyErr } = await _supabase
-      .from('factions').select('id, nation_id, abandoned_at, is_banned').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
+      .from('factions').select('id, faction_type, nation_id, abandoned_at, is_banned').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
     if (partyErr) console.warn('Party check failed:', partyErr.message);
     if (faction && !isFactionInactive(faction)) {
-      window.location.href = 'dashboard.html';
+      // Route through the single-source router (party → politics.html).
+      // This used to hardcode dashboard.html, which 20270767 turned
+      // into a thin redirect back to THIS page — every party login
+      // ping-ponged dashboard ↔ faction-select forever.
+      window.location.href = getFactionDashboardUrl(faction) || 'politics.html';
       return;
     }
   }
