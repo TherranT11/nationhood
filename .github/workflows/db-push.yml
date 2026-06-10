@@ -28,6 +28,14 @@ concurrency:
   group: supabase-db-push
   cancel-in-progress: false
 
+# DO_NOT_TRACK disables the CLI's PostHog telemetry client entirely.
+# Without it, `supabase link` can exit 1 AFTER succeeding ("Finished
+# supabase link." then "Timeout while shutting down PostHog") when the
+# telemetry flush hangs on the runner — failing the whole job over an
+# analytics ping.
+env:
+  DO_NOT_TRACK: "1"
+
 jobs:
   db-push:
     runs-on: ubuntu-latest
@@ -37,7 +45,11 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned (matching deploy.yml) instead of `latest`: a floating
+          # version means every workflow run gambles on this week's CLI
+          # release — the PostHog shutdown-timeout exit-1 arrived that
+          # way. Bump deliberately.
+          version: 2.101.0
 
       - name: Link project
         env:
