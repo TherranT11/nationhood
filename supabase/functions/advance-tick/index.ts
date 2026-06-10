@@ -5765,17 +5765,13 @@ async function expireCommitteeBills(supabase, nationId, currentTick) {
 
     if (error || !expired || expired.length === 0) return [];
 
+    // 20270767: insert_news_event RPC was a stub for the (now culled)
+    // newspaper surface — never landed on the server side. Removed the
+    // RPC call + the nation-name fetch that only fed it, plus the
+    // debug console.log.
     const results = [];
     for (const bill of expired) {
         await supabase.from('bills').update({ status: 'failed' }).eq('id', bill.id);
-        const { data: nation } = await supabase.from('nations').select('name').eq('id', nationId).single();
-        await supabase.rpc('insert_news_event', {
-            p_nation_id: nationId,
-            p_trigger_key: 'bill_failed',
-            p_tick: currentTick,
-            p_placeholders: { nation: nation?.name || 'Unknown', bill_name: bill.bill_name, reason: 'expired in committee' }
-        });
-        console.log(`[expireCommitteeBills] ${bill.bill_name} expired in committee after ${GAME_CONFIG.COMMITTEE_EXPIRY_TICKS} ticks`);
         results.push({ billId: bill.id, billName: bill.bill_name, result: 'expired_committee' });
     }
     return results;
