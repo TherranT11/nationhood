@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIS Investigation — Nationhood</title>
+<style>
+  body { margin:0; min-height:100vh; background:#050505; color:#d4d4d4;
+         font-family:-apple-system,system-ui,sans-serif; }
+  .wrap { max-width:880px; margin:0 auto; padding:24px 22px 60px; }
+  .crumb { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:14px; }
+  .crumb a { color:#888; text-decoration:none; }
+  .crumb a:hover { color:#a5c0d0; }
+  .crumb .sep { margin:0 7px; color:#3a3a3a; }
+  .crumb .here { color:#a5c0d0; }
+
+  .page-head { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+               border-left:3px solid #7a9aab; border-radius:6px; padding:18px 22px;
+               margin-bottom:18px; display:flex; align-items:flex-start; gap:18px; }
+  .ph-icon { width:42px; height:42px; border-radius:5px; background:#0e1218;
+             border:0.5px solid #3a5060; color:#a5c0d0; display:flex;
+             align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+  .ph-info { flex:1; min-width:0; }
+  .ph-eyebrow { font-size:8.5px; letter-spacing:0.18em; color:#7a9aab; font-weight:700; margin-bottom:4px; }
+  .ph-title { font-family:Georgia,serif; font-size:22px; font-weight:500; color:#fff; line-height:1.2; }
+  .ph-title em { font-style:italic; color:#a5c0d0; }
+  .ph-meta { font-size:10.5px; color:#888; margin-top:8px; line-height:1.6; }
+  .ph-meta strong { color:#bbb; font-weight:600; }
+
+  .card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+          border-radius:6px; padding:18px 22px; margin-bottom:14px; }
+  .card-lab { font-size:9px; letter-spacing:0.16em; color:#7a9aab; font-weight:700; margin-bottom:10px; }
+  .card-body { font-size:12px; color:#cfcabf; line-height:1.6; }
+  .card-body strong { color:#fff; font-weight:600; }
+
+  .placeholder { font-size:11px; color:#666; font-style:italic; padding:18px 0; text-align:center; }
+
+  .loading { font-size:11px; color:#666; font-style:italic; padding:60px 22px; text-align:center; }
+  .fail    { color:#d49a9a; font-size:11px; padding:60px 22px; text-align:center; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="crumb">
+    <a href="politician-home.html">HOME</a>
+    <span class="sep">&rsaquo;</span>
+    <span class="here">INVESTIGATION</span>
+  </div>
+  <div id="content" class="loading">Loading case file&hellip;</div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+function fmtCategory(c) {
+  return (c || '').replace(/_/g, ' ').replace(/\b\w/g, x => x.toUpperCase());
+}
+
+async function init() {
+  const id = new URLSearchParams(location.search).get('id');
+  const content = document.getElementById('content');
+  if (!id) { content.className = 'fail'; content.textContent = 'No investigation id.'; return; }
+
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) { window.location.href = 'login.html'; return; }
+
+  // fis_investigations has public SELECT to authenticated users
+  // (matches the bar-exam / career-events posture per 20270769).
+  // The corp join surfaces the canonical name; the denormalized
+  // target_corp_name on the row covers the bankruptcy-erased case.
+  const { data, error } = await _supabase.from('fis_investigations')
+    .select('id, category, target_corp_id, target_corp_name, status, opened_at_tick, closed_at_tick, agent_faction_id, target_corp:entrepreneur_corps!target_corp_id(name, industry, hq)')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) { content.className = 'fail'; content.textContent = 'Could not load case: ' + (error.message || 'try again'); return; }
+  if (!data)  { content.className = 'fail'; content.textContent = 'Case not found.'; return; }
+
+  const targetName = data.target_corp?.name || data.target_corp_name || '—';
+  const industry   = (data.target_corp?.industry || '').replace(/_/g, ' ').toUpperCase();
+  const hq         = data.target_corp?.hq || null;
+
+  content.className = '';
+  content.innerHTML = `
+    <div class="page-head">
+      <div class="ph-icon">🔍</div>
+      <div class="ph-info">
+        <div class="ph-eyebrow">FEDERAL INVESTIGATIONS SERVICE &middot; ACTIVE CASE</div>
+        <div class="ph-title">Investigation into <em>${escHtml(targetName)}</em></div>
+        <div class="ph-meta">
+          <strong>${escHtml(fmtCategory(data.category))}</strong>
+          &middot; Opened at tick ${escHtml(String(data.opened_at_tick ?? '?'))}
+          &middot; Status: <strong>${escHtml((data.status || '').toUpperCase())}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-lab">TARGET</div>
+      <div class="card-body">
+        <strong>${escHtml(targetName)}</strong>${industry ? ` &middot; ${escHtml(industry)}` : ''}
+        ${hq ? `<br>Headquartered in ${escHtml(hq)}.` : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-lab">CASE ACTIONS</div>
+      <div class="placeholder">Subpoena, interview, and evidence mechanics land in a follow-up. This page is the persistent surface for the case file.</div>
+    </div>`;
+}
+
+init().catch(err => {
+  const content = document.getElementById('content');
+  content.className = 'fail';
+  content.textContent = 'Init failed: ' + (err?.message || 'unknown error');
+});
+</script>
+
+</body>
+</html>
