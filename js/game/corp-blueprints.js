@@ -15,6 +15,17 @@ export const PILLARS = {
   ],
 };
 
+// Display mirror of the quality-tier city effects applied by
+// complete_construction_projects (20270810) — the server CASE is
+// authoritative; this feeds the tier pills' hint text.
+export const TIER_CITY_EFFECTS = {
+  low_cost: '+0.1 Affordability',
+  standard: null,
+  high_end: '−0.1 Affordability',
+  luxury: '−0.3 Affordability · +0.1 Appeal',
+  ultra_rich: '−0.3 Affordability · +0.1 Appeal',
+};
+
 // The seven stages of a construction project, displayed horizontally
 // on the assigned PM's (and owner's) Pressing Issues tracker. The
 // current stage derives from ticks elapsed vs build time — no stage

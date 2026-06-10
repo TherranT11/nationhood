@@ -420,7 +420,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -1176,7 +1176,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         ['military', 'MILITARY', false],
       ];
       const DB_TYPES = Object.entries(BUILDING_TYPE_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
-      const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
+      // Tier pills carry their city effect ("LUXURY · −0.3 Affordability
+      // · +0.1 Appeal") so the trade-off is visible at pick time.
+      const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) =>
+        [v, l.toUpperCase() + (TIER_CITY_EFFECTS[v] ? ' · ' + TIER_CITY_EFFECTS[v] : '')]);
       let dbType = null, dbTier = null;
 
       function dbRefreshConfirm() {
@@ -1231,7 +1234,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           if (cityErr) throw cityErr;
           if (city) {
             document.getElementById('db-location').innerHTML =
-              `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/100</span>`;
+              `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/10</span>`;
           }
         } catch (e) {
           console.warn('[business-corp] blueprint modal load failed:', e?.message || e);
