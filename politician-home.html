@@ -455,6 +455,7 @@
 .affil.var-leg   { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
 .affil.var-civ   { --acc:#ab9a7a; --acc-bg:#181410; --acc-dim:#605040; --acc-bright:#d0c0a5; }
 .affil.var-foreign { --acc:#7aabab; --acc-bg:#0e1717; --acc-dim:#3a5a5a; --acc-bright:#a5c8c8; }
+.affil.var-fis     { --acc:#7a9aab; --acc-bg:#0e1218; --acc-dim:#3a5060; --acc-bright:#a5c0d0; }
 
 .ah-row { display:flex; align-items:flex-start; gap:14px; padding:16px 20px;
   border-bottom:0.5px solid rgba(255,255,255,0.07); background:var(--acc-bg); }
@@ -1349,6 +1350,7 @@
   </div>
   <div id="affiliation-host"></div>
   <div id="foreign-affiliation-host"></div>
+  <div id="fis-affiliation-host"></div>
 
   <div class="section-heading" style="margin-top:28px;">
     <span class="roman">III.</span>
@@ -1598,6 +1600,7 @@ let juniorMinisterApplications = []; // pending politician_junior_appointments w
 let committeeHearings = [];   // open committee hearings in the viewer's nation where they're not on the committee and haven't testified yet (20270691). Surfaces as Pressing Issues cards with Accept (navigate to committee) / Close (localStorage dismissal).
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
 let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
+let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1695,7 +1698,7 @@ async function init() {
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null });
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, memberCommitteesRes, mayorCityRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, memberCommitteesRes, mayorCityRes, fisRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1750,6 +1753,10 @@ async function init() {
       // as Pressing Issues cards with [VIEW COMMITTEE] buttons.
       _supabase.rpc('list_committees_for_member', { p_faction_id: politician.id }),
       cityFetch,
+      // Active FIS investigations (20270769). Empty result for any
+      // politician without the agent flag set. Each row surfaces as
+      // a persistent Pressing Issues card linking to fis-investigation.html.
+      _supabase.rpc('list_active_fis_investigations_for_agent', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
@@ -1786,6 +1793,8 @@ async function init() {
     stateAdvocateRequests = saReqRes.data || [];
     juniorMinisterApplications = jmAppsRes.data || [];
     committeeHearings = (hearingsRes.data?.success ? hearingsRes.data.hearings : []) || [];
+    if (fisRes.error) console.error('politician-home: FIS investigations fetch failed', fisRes.error);
+    fisInvestigations = (fisRes.data?.success ? fisRes.data.investigations : []) || [];
     openOrdinanceProposals = (openPropsRes.data?.success ? openPropsRes.data.proposals : []) || [];
     memberCommittees = (memberCommitteesRes.data?.success ? memberCommitteesRes.data.committees : []) || [];
   } catch (err) {
@@ -1830,6 +1839,10 @@ async function init() {
   _supabase.rpc('resolve_due_city_ordinance_proposals')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_city_ordinance_proposals:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
+  // 20270769: expose ctx to FIS modal handlers (which fire much
+  // later from button clicks and can't close over ctx directly).
+  // Mirrors the __careerCtx pattern on politician-career.html.
+  window.__politicianCtx = ctx;
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
   // Foreign Service is additive: politicians who've passed the Tier 1
@@ -1837,6 +1850,11 @@ async function init() {
   // Function self-noops when the column is null.
   renderForeignAffiliation(ctx).catch(err =>
     console.warn('[politician-home] foreign affiliation render failed:', err?.message || err));
+  // FIS Tier 1 (20270769): same additive pattern — politicians who've
+  // passed academy onboarding get a third affiliation card with the
+  // Agent's three repeatable actions. Self-noops when the column is null.
+  renderFisAffiliation(ctx).catch(err =>
+    console.warn('[politician-home] FIS affiliation render failed:', err?.message || err));
   renderCareer();
   renderDispatches();
   bindDispatchTabs();
@@ -2761,6 +2779,7 @@ function renderAffiliation(ctx) {
   const ministry   = ctx.faction?.politician_ministry     || null;
   const barNation  = ctx.faction?.bar_admitted_nation_id  || null;
   const fsNation   = ctx.faction?.politician_foreign_service_nation_id || null;
+  const fisAgent   = ctx.faction?.politician_fis_joined_at_tick != null;
   // Variant fallback ladder: elected office → civil-servant (ministry
   // set, no office) → judicial (bar-admitted, no ministry/office;
   // pickJudicialVariant walks the bench rungs) → party-member default.
@@ -2770,11 +2789,10 @@ function renderAffiliation(ctx) {
   // tier 2 outranks tier 1 via politician_senior_civil_servant_at_tick
   // (20270633). NULL = still Tier 1.
   //
-  // 20270765: Foreign Service Tier 1 is rendered as its own
-  // additional card by renderForeignAffiliation. If the player has
-  // a foreign posting AND no other "primary" affiliation, drop the
-  // Party Member fallback so the Foreign Attaché card is the only
-  // card shown — matches the user spec "when it adds any other
+  // 20270765 + 20270769: Foreign Service / FIS Tier 1 each render as
+  // their own additional card. If the player has EITHER but no other
+  // "primary" affiliation, drop the Party Member fallback so the
+  // additional card stands alone — matches "when it adds any other
   // affiliation it should remove the Party Member one".
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
@@ -2783,7 +2801,7 @@ function renderAffiliation(ctx) {
     : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
                               : (barNation ? pickJudicialVariant(ctx.faction)
-                                           : (fsNation ? null
+                                           : ((fsNation || fisAgent) ? null
                                                        : AFFIL_VARIANTS.party_member))));
   if (!variant) {
     // Foreign Service is the only affiliation — the secondary host
@@ -3098,6 +3116,269 @@ async function renderForeignAffiliation(ctx) {
     </div>`;
 }
 
+// 20270769 — Federal Investigations Tier 1 (Agent) affiliation card.
+// Same additive posture as renderForeignAffiliation: rendered into
+// #fis-affiliation-host as an extra card below the main affiliation.
+// Three repeatable actions, all live. Begin Investigation opens a
+// 2-step modal (category → corp picker); Run Field Ops + Make
+// Friends fire RPCs directly with a one-tick cooldown.
+async function renderFisAffiliation(ctx) {
+  const host = document.getElementById('fis-affiliation-host');
+  if (!host) return;
+  const joinedAtTick = ctx?.faction?.politician_fis_joined_at_tick;
+  if (joinedAtTick == null) { host.innerHTML = ''; return; }
+
+  const nextActionTick = Number(ctx?.faction?.next_fis_action_tick) || 0;
+  const onCooldown = nextActionTick > currentTick;
+  const cooldownLeft = onCooldown ? nextActionTick - currentTick : 0;
+
+  const actions = [
+    { ic: '🔎', name: 'BEGIN INVESTIGATION',     cost: 'no cost', desc: 'Choose a target to begin your investigation. Make or break your career.', action: 'fis-begin-investigation' },
+    { ic: '🚓', name: 'RUN FIELD OPS',           cost: 'no cost', desc: 'Help other agents with their investigations. +0.5 Experience.',           action: 'fis-run-field-ops' },
+    { ic: '🤝', name: 'MAKE FRIENDS AT THE BUREAU', cost: 'no cost', desc: 'Quiet networking inside the agency. +0.3 Influence.',                  action: 'fis-make-friends' },
+  ];
+  const actionsHtml = actions.map(a => {
+    const cls = onCooldown ? 'act-btn cooldown' : 'act-btn';
+    const attrs = onCooldown
+      ? ` aria-disabled="true" title="Cooldown — ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'} remaining"`
+      : ` data-action="${escHtml(a.action)}"`;
+    const cooldownLine = onCooldown
+      ? `<div class="act-cooldown">Ready in ${cooldownLeft} tick${cooldownLeft === 1 ? '' : 's'}</div>`
+      : '';
+    return `
+    <div class="${cls}"${attrs}>
+      <div class="act-head">
+        <span class="act-ic">${a.ic}</span>
+        <span class="act-name">${escHtml(a.name)}</span>
+        <span class="act-cost">${escHtml(a.cost)}</span>
+      </div>
+      <div class="act-desc">${escHtml(a.desc)}</div>
+      ${cooldownLine}
+    </div>`;
+  }).join('');
+
+  host.innerHTML = `
+    <div class="affil var-fis" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🔍</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FEDERAL INVESTIGATIONS · TIER 1</div>
+          <div class="ah-name">Agent (Probationary)</div>
+          <div class="ah-desc">You sit at someone else’s case team. Files, interviews, paperwork — every move evaluated. Clear probation and you’re a real agent.</div>
+        </div>
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
+        <div class="ar-buttons">${actionsHtml}</div>
+      </div>
+    </div>`;
+
+  // Wire enabled buttons. Cooldown variants carry no data-action so
+  // the selector skips them naturally.
+  host.querySelectorAll('.act-btn[data-action]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.action;
+      if (key === 'fis-begin-investigation') {
+        openFisInvestigationModal();
+      } else if (key === 'fis-run-field-ops') {
+        handleFisStatAction(btn, 'politician_fis_run_field_ops', 'Field Ops');
+      } else if (key === 'fis-make-friends') {
+        handleFisStatAction(btn, 'politician_fis_make_friends', 'Make Friends');
+      }
+    });
+  });
+}
+
+// Shared submit handler for the two stat-grant FIS actions. Disables
+// the button + reloads on success so the cooldown takes effect.
+async function handleFisStatAction(btn, rpcName, label) {
+  if (btn.dataset.busy === '1') return;
+  btn.dataset.busy = '1';
+  const factionId = window.__politicianCtx?.faction?.id || null;
+  try {
+    const { data, error } = await _supabase.rpc(rpcName, { p_faction_id: factionId });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'You are not signed in.',
+        no_politician:     'No politician faction found.',
+        not_agent:         'You are not an FIS agent.',
+        cooldown:          `On cooldown — ready at tick ${data?.ready_at_tick ?? '?'}.`,
+      };
+      alert(REASON[data?.reason] || (label + ' failed: ' + (data?.reason || 'unknown')));
+      btn.dataset.busy = '0';
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert(label + ' failed: ' + (e?.message || e));
+    btn.dataset.busy = '0';
+  }
+}
+
+// ─── Begin Investigation modal ──────────────────────────────────────
+// Two views: category picker (only financial_crimes enabled) → target
+// corp picker. Submit calls politician_fis_begin_investigation which
+// creates the case row + burns the FIS per-tick cooldown.
+let _fisModalState = { category: null, corpId: null, inFlight: false };
+let _fisModalWired = false;
+
+function openFisInvestigationModal() {
+  const overlay = document.getElementById('fisInvestigationModal');
+  if (!overlay) return;
+  if (!_fisModalWired) {
+    // First-open binders: backdrop click, Escape key, and a delegated
+    // click on [data-fis-close] (so the per-view Cancel buttons,
+    // which are re-rendered, are caught automatically without
+    // re-binding). Idempotent guard so re-opens don't stack listeners.
+    overlay.addEventListener('click', (e) => {
+      if (e.target?.id === 'fisInvestigationModal') { closeFisInvestigationModal(); return; }
+      if (e.target.closest('[data-fis-close]')) closeFisInvestigationModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('show')) closeFisInvestigationModal();
+    });
+    _fisModalWired = true;
+  }
+  _fisModalState = { category: null, corpId: null, inFlight: false };
+  renderFisCategoryView();
+  // The body's [data-fis-close] buttons are re-bound on each view
+  // render below, so they pick up the latest closure for free.
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeFisInvestigationModal() {
+  if (_fisModalState.inFlight) return;
+  const overlay = document.getElementById('fisInvestigationModal');
+  if (!overlay) return;
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+}
+
+function renderFisCategoryView() {
+  const body = document.getElementById('fis-modal-body');
+  const foot = document.getElementById('fis-modal-foot');
+  body.innerHTML = `
+    <div class="fis-step">
+      <div class="fis-step-lab">SELECT INVESTIGATION TYPE</div>
+      <div class="fis-cat-grid">
+        <button type="button" class="fis-cat-btn" data-cat="financial_crimes">FINANCIAL CRIMES</button>
+        <button type="button" class="fis-cat-btn disabled" disabled title="Locked at Tier 1">CORRUPTION</button>
+        <button type="button" class="fis-cat-btn disabled" disabled title="Locked at Tier 1">ANTI-TERRORISM</button>
+      </div>
+      <div class="fis-err" id="fis-err"></div>
+    </div>`;
+  foot.innerHTML = `
+    <button type="button" class="fis-btn secondary" data-fis-close>CANCEL</button>`;
+  body.querySelectorAll('.fis-cat-btn:not(.disabled)').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      _fisModalState.category = btn.dataset.cat;
+      await renderFisCorpPickerView();
+    });
+  });
+}
+
+async function renderFisCorpPickerView() {
+  const body = document.getElementById('fis-modal-body');
+  const foot = document.getElementById('fis-modal-foot');
+  body.innerHTML = `
+    <div class="fis-step">
+      <div class="fis-step-lab">CHOOSE YOUR TARGET</div>
+      <div class="fis-hint">Choose the target of your investigation. Ensure you do things by the book, or your career might be short.</div>
+      <div class="fis-corp-list" id="fis-corp-list"><div class="fis-corp-empty">Loading corporations&hellip;</div></div>
+      <div class="fis-err" id="fis-err"></div>
+    </div>`;
+  foot.innerHTML = `
+    <button type="button" class="fis-btn secondary" data-fis-close>CANCEL</button>
+    <button type="button" class="fis-btn" id="fis-submit" disabled>BEGIN INVESTIGATION &rsaquo;</button>`;
+
+  let corps = [];
+  try {
+    const factionId = window.__politicianCtx?.faction?.id || null;
+    const { data, error } = await _supabase.rpc('list_fis_targetable_corps_for_agent',
+      { p_faction_id: factionId });
+    if (error) throw error;
+    if (!data?.success) {
+      document.getElementById('fis-corp-list').innerHTML =
+        `<div class="fis-corp-empty">Could not load targets (${escHtml(data?.reason || 'unknown')}).</div>`;
+      return;
+    }
+    corps = Array.isArray(data.corps) ? data.corps : [];
+  } catch (err) {
+    document.getElementById('fis-corp-list').innerHTML =
+      `<div class="fis-corp-empty">Could not load targets — ${escHtml(err?.message || 'try again')}.</div>`;
+    return;
+  }
+
+  const listEl = document.getElementById('fis-corp-list');
+  if (!corps.length) {
+    listEl.innerHTML = '<div class="fis-corp-empty">No corporations with assets in this nation.</div>';
+    return;
+  }
+  listEl.innerHTML = corps.map(c => `
+    <button type="button" class="fis-corp-row" data-corp-id="${escHtml(c.corp_id)}">
+      <span class="fis-corp-name">${escHtml(c.name)}</span>
+      <span class="fis-corp-ind">${escHtml((c.industry || '').replace(/_/g, ' ').toUpperCase())}</span>
+    </button>`).join('');
+  const submitBtn = document.getElementById('fis-submit');
+  listEl.querySelectorAll('.fis-corp-row').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _fisModalState.corpId = btn.dataset.corpId;
+      listEl.querySelectorAll('.fis-corp-row').forEach(r => r.classList.toggle('selected', r === btn));
+      submitBtn.disabled = false;
+    });
+  });
+  submitBtn.addEventListener('click', submitFisInvestigation);
+}
+
+async function submitFisInvestigation() {
+  if (_fisModalState.inFlight) return;
+  if (!_fisModalState.category || !_fisModalState.corpId) return;
+  const errEl = document.getElementById('fis-err');
+  const submitBtn = document.getElementById('fis-submit');
+  errEl.textContent = '';
+  _fisModalState.inFlight = true;
+  submitBtn.disabled = true;
+  const prev = submitBtn.textContent;
+  submitBtn.textContent = 'OPENING…';
+  try {
+    const factionId = window.__politicianCtx?.faction?.id || null;
+    const { data, error } = await _supabase.rpc('politician_fis_begin_investigation', {
+      p_faction_id:     factionId,
+      p_category:       _fisModalState.category,
+      p_target_corp_id: _fisModalState.corpId,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:     'You are not signed in.',
+        invalid_arguments:     'Submission was malformed.',
+        invalid_category:      'Pick an investigation type.',
+        category_not_unlocked: 'That category is locked until a higher tier.',
+        no_politician:         'No politician faction found.',
+        not_agent:             'You are not an FIS agent.',
+        cooldown:              `On cooldown — ready at tick ${data?.ready_at_tick ?? '?'}.`,
+        target_not_found:      'That corporation no longer exists.',
+        target_not_in_nation:  'That corporation has no assets in your nation.',
+      };
+      errEl.textContent = REASON[data?.reason] || ('Could not open: ' + (data?.reason || 'unknown'));
+      _fisModalState.inFlight = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    errEl.textContent = 'Failed: ' + (e?.message || 'unknown error');
+    _fisModalState.inFlight = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = prev;
+  }
+}
+
 // Unified action catalog — MP (20270433/20270460) + Local (20270461).
 // `needsParty` distinguishes the two RPC signatures: MP actions are
 // arg-less (the _mp_action_check helper resolves the party); local
@@ -3392,6 +3673,9 @@ function renderPressingIssues(ctx) {
   committeeHearings
     .filter(h => !dismissed.has(h.hearing_id))
     .forEach(h => blocks.push(renderCommitteeHearingCard(h)));
+  // Active FIS investigations (20270769). One persistent card per
+  // open case, links to fis-investigation.html?id=<id>.
+  fisInvestigations.forEach(inv => blocks.push(renderFisInvestigationCard(inv)));
   // Open city ordinance proposals where this council seat hasn't
   // voted yet (20270747). One card per proposal/seat row.
   openOrdinanceProposals.forEach(p => blocks.push(renderOrdinanceProposalCard(p, ctx)));
@@ -3542,6 +3826,28 @@ function getDismissedHearings() {
     return new Set(raw ? JSON.parse(raw) : []);
   } catch { return new Set(); }
 }
+
+// 20270769 — Persistent Pressing Issues card for an active FIS
+// investigation. Links to fis-investigation.html?id=<id> so the
+// agent can drill in. No dismiss action — the case stays surfaced
+// until closed by the case-resolution flow (out of scope today).
+function renderFisInvestigationCard(inv) {
+  const target = inv.target_corp_name || 'an unknown target';
+  return `
+    <a class="offer-card" href="fis-investigation.html?id=${escHtml(inv.investigation_id)}"
+       style="text-decoration:none; color:inherit; cursor:pointer;">
+      <div class="offer-icon-wrap"><div class="offer-icon">🔍</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">FEDERAL INVESTIGATIONS · ACTIVE CASE</div>
+        <div class="oi-headline">Investigation into <strong>${escHtml(target)}</strong></div>
+        <div class="oi-meta"><span class="oi-corp">FINANCIAL CRIMES</span></div>
+      </div>
+      <div class="offer-right">
+        <span class="offer-accept-btn" style="cursor:pointer;">OPEN &rsaquo;</span>
+      </div>
+    </a>`;
+}
+
 function dismissHearing(hearingId) {
   const set = getDismissedHearings();
   set.add(hearingId);
@@ -6467,6 +6773,67 @@ init();
     <div class="tc-body">
       <div class="po-content" id="tx-content"></div>
     </div>
+  </div>
+</div>
+
+<!-- Begin Investigation modal (20270769). Two-view shell:
+     category picker → corp picker → submit. -->
+<style>
+  #fisInvestigationModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+    align-items:flex-start; justify-content:center; padding:60px 16px 16px;
+    z-index:1000; overflow-y:auto; }
+  #fisInvestigationModal.show { display:flex; }
+  #fisInvestigationModal .fis-modal { width:100%; max-width:560px; background:#0d0d0d;
+    border:0.5px solid rgba(122,154,171,0.35); border-radius:6px; overflow:hidden;
+    color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; }
+  .fis-head { padding:18px 22px 14px; border-bottom:0.5px solid rgba(122,154,171,0.3);
+    background:#0e1218; position:relative; }
+  .fis-eyebrow { font-size:9px; letter-spacing:0.18em; color:#7a9aab; font-weight:700; margin-bottom:6px; }
+  .fis-title { font-family:Georgia,serif; font-size:18px; color:#fff; font-weight:500; padding-right:32px; }
+  .fis-title em { font-style:italic; color:#a5c0d0; }
+  .fis-close { position:absolute; top:14px; right:18px; width:26px; height:26px; background:transparent;
+    border:0.5px solid #3a3a3a; border-radius:3px; color:#888; font-size:12px;
+    cursor:pointer; font-family:inherit; display:flex; align-items:center; justify-content:center; }
+  .fis-close:hover { color:#fff; border-color:#5a5a5a; }
+  .fis-body { padding:20px 22px; }
+  .fis-step-lab { font-size:9px; letter-spacing:0.14em; color:#7a9aab; font-weight:700; margin-bottom:10px; }
+  .fis-hint { font-size:11px; color:#888; line-height:1.55; margin-bottom:14px; font-style:italic; }
+  .fis-cat-grid { display:grid; grid-template-columns:1fr; gap:7px; margin-bottom:12px; }
+  .fis-cat-btn { padding:12px 14px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.1);
+    border-radius:3px; color:#d4d4d4; font-size:11px; letter-spacing:0.13em; font-weight:700;
+    text-align:left; cursor:pointer; font-family:inherit; }
+  .fis-cat-btn:hover:not(.disabled) { background:#0e1218; border-color:#7a9aab; color:#a5c0d0; }
+  .fis-cat-btn.disabled { opacity:0.35; cursor:not-allowed; }
+  .fis-corp-list { max-height:340px; overflow-y:auto; display:flex; flex-direction:column; gap:5px;
+    padding:4px; background:#080808; border:0.5px solid rgba(255,255,255,0.06); border-radius:3px; }
+  .fis-corp-row { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 12px; background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.07);
+    border-radius:3px; color:#d4d4d4; cursor:pointer; font-family:inherit; text-align:left; }
+  .fis-corp-row:hover { background:#0e1218; border-color:rgba(122,154,171,0.4); }
+  .fis-corp-row.selected { background:#101820; border-color:#7a9aab; color:#a5c0d0; }
+  .fis-corp-name { font-size:11.5px; color:#fff; font-weight:600; }
+  .fis-corp-ind { font-size:8.5px; letter-spacing:0.13em; color:#888; font-weight:700; }
+  .fis-corp-empty { padding:20px 12px; color:#666; font-size:11px; font-style:italic; text-align:center; }
+  .fis-err { margin-top:10px; color:#d49a9a; font-size:10.5px; min-height:14px; }
+  .fis-foot { padding:14px 22px; background:#0e1218; border-top:0.5px solid rgba(122,154,171,0.25);
+    display:flex; gap:10px; justify-content:flex-end; }
+  .fis-btn { padding:9px 16px; background:rgba(122,154,171,0.1); border:0.5px solid #7a9aab;
+    color:#a5c0d0; font-size:9.5px; letter-spacing:0.14em; font-weight:700;
+    border-radius:3px; cursor:pointer; font-family:inherit; }
+  .fis-btn:hover:not(:disabled) { background:rgba(122,154,171,0.22); color:#fff; }
+  .fis-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .fis-btn.secondary { background:transparent; border-color:#3a3a3a; color:#888; }
+  .fis-btn.secondary:hover:not(:disabled) { color:#d4d4d4; border-color:#5a5a5a; }
+</style>
+<div id="fisInvestigationModal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="fis-modal">
+    <div class="fis-head">
+      <div class="fis-eyebrow">FEDERAL INVESTIGATIONS SERVICE</div>
+      <div class="fis-title">Begin an <em>Investigation</em></div>
+      <button type="button" class="fis-close" data-fis-close title="Cancel">&#10005;</button>
+    </div>
+    <div class="fis-body" id="fis-modal-body"></div>
+    <div class="fis-foot" id="fis-modal-foot"></div>
   </div>
 </div>
 

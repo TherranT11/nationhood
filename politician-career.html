@@ -1829,11 +1829,13 @@ const FEDERAL_INVESTIGATIONS_RUNGS = [
   {
     tierName: 'FIRST OFFICE',
     name: 'Agent (Probationary)',
-    held:        ()  => false,
+    // 20270769: live. held() reads off the agent-state flag;
+    // [Join the Academy] dispatches politician_fis_join_academy.
+    held:        (s) => !!s?.fisJoinedAtTick,
     descIfHeld:  ()  => 'You are a probationary agent — junior on someone else’s case team, every move evaluated.',
     descIfNot:   ()  => 'Two years out of the academy. You’re the junior member on someone else’s case team. You go where you’re told, interview who you’re told to interview, file the paperwork that holds the case together. You’re being evaluated constantly — clear probation and you’re a real agent; mess up badly and you’re out.',
     actions:     ['Interview a Subject', 'File the Paperwork'],
-    actionIfNot: { label: 'Join the Academy', kind: 'disabled' },
+    actionIfNot: { label: 'Join the Academy', kind: 'primary', action: 'fis-join-academy' },
   },
   {
     name: 'Section Head',
@@ -2424,6 +2426,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // by any rung today — surface it here when that lands.
     foreignServiceNationId:   ctx?.faction?.politician_foreign_service_nation_id || null,
     foreignServiceLastAttemptTick: Number(ctx?.faction?.foreign_service_last_attempt_tick) || 0,
+    // Federal Investigations Tier 1 (20270769). fisJoinedAtTick set
+    // means the politician has passed academy onboarding and is a
+    // probationary Agent — drives held() on the FIS Agent rung and
+    // the matching affiliation card on politician-home.
+    fisJoinedAtTick:          ctx?.faction?.politician_fis_joined_at_tick || null,
     // politician_reputation still feeds the upstream judicial gates
     // (State Advocate / Magistrate / etc.). The Experienced Advocate
     // step-up moved to politician_skill (Experience) in 20270727,
@@ -3007,6 +3014,41 @@ function bindRungActions(ctx) {
   });
   document.querySelectorAll('#fsModal [data-fs-close]').forEach(btn => {
     btn.addEventListener('click', () => closeForeignServiceModal());
+  });
+
+  // Join the Academy — Federal Investigations Tier 1 (Agent). One-
+  // click: politician_fis_join_academy fires immediately, page
+  // reloads on success so the rung flips to held + the affiliation
+  // card lands on politician-home. No modal — academy onboarding
+  // is a single stamp, not an exam.
+  document.querySelectorAll('[data-action="fis-join-academy"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = 'JOINING…';
+      try {
+        const factionId = window.__careerCtx?.faction?.id || null;
+        if (!factionId) { alert('No active politician found.'); btn.disabled = false; btn.textContent = prev; return; }
+        const { data, error } = await _supabase.rpc('politician_fis_join_academy',
+          { p_faction_id: factionId });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authenticated: 'You are not signed in.',
+            no_politician:     'No politician faction found.',
+            already_agent:     'You are already an FIS agent.',
+          };
+          alert(REASON[data?.reason] || ('Could not join: ' + (data?.reason || 'unknown')));
+          btn.disabled = false; btn.textContent = prev;
+          return;
+        }
+        location.reload();
+      } catch (e) {
+        alert('Failed: ' + (e?.message || e));
+        btn.disabled = false; btn.textContent = prev;
+      }
+    });
   });
 
   // Bench-ladder climb actions (Experienced Advocate 20270529, Take
