@@ -131,9 +131,14 @@
   .ap-btn.hr:hover:not(:disabled)  { background:rgba(138,170,106,0.1); }
   .ap-none { font-size:10.5px; color:#555; font-style:italic; }
 
-  /* ── Registry infobox (right column) ── */
-  .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
+  /* ── Registry infobox + Finances (right column) ── */
+  .bc-side { width:300px; flex-shrink:0; }
+  .bc-box { width:100%; box-sizing:border-box; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.35); border-radius:6px; overflow:hidden; }
+  #bc-finbox { margin-top:14px; }
+  .fin-amt { width:100%; box-sizing:border-box; padding:9px 11px; margin-bottom:8px;
+    background:#0a0a0a; border:1px solid rgba(255,255,255,0.1); border-radius:4px;
+    color:#fff; font-size:12px; font-family:var(--font-mono); }
   .bc-logo { width:100%; aspect-ratio:16/9; background:#10140e; display:flex;
     align-items:center; justify-content:center; border-bottom:0.5px solid rgba(138,170,106,0.25); }
   .bc-logo img { max-width:80%; max-height:80%; object-fit:contain; }
@@ -157,10 +162,10 @@
   .bc-foot .err { color:#d9534f; font-size:10px; font-family:var(--font-mono);
     margin-top:6px; min-height:12px; }
 
-  /* ── Post Job Opening + Draft Blueprint modals (shared chrome) ── */
-  #jm-overlay, #db-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
-    align-items:center; justify-content:center; padding:20px; z-index:1000; }
-  #jm-overlay.open, #db-overlay.open { display:flex; }
+  /* ── Post Job Opening / Draft Blueprint / Pay Taxes modals (shared chrome) ── */
+  #jm-overlay, #db-overlay, #px-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78);
+    display:none; align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  #jm-overlay.open, #db-overlay.open, #px-overlay.open { display:flex; }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -218,7 +223,7 @@
 
   @media (max-width:860px) {
     .bc-wrap { flex-direction:column-reverse; }
-    .bc-box { width:100%; }
+    .bc-side { width:100%; }
   }
   #loading { font-family:var(--font-mono); font-size:10px; color:#4a4940;
     text-align:center; padding:80px 20px; }
@@ -239,14 +244,43 @@
       <div class="rl-section" id="bc-roles"></div>
       <div class="rl-section" id="bc-employees"></div>
     </div>
-    <div class="bc-box">
-      <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
-      <div class="bc-rows" id="bc-rows"></div>
-      <div class="bc-foot" id="bc-foot" style="display:none;">
-        <button type="button" class="bc-btn" id="bc-rebrand">REBRAND</button>
-        <input type="file" id="bc-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;">
-        <div class="err" id="bc-rebrand-err"></div>
+    <div class="bc-side">
+      <div class="bc-box">
+        <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
+        <div class="bc-rows" id="bc-rows"></div>
+        <div class="bc-foot" id="bc-foot" style="display:none;">
+          <button type="button" class="bc-btn" id="bc-rebrand">REBRAND</button>
+          <input type="file" id="bc-logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp" style="display:none;">
+          <div class="err" id="bc-rebrand-err"></div>
+        </div>
       </div>
+      <div class="bc-box" id="bc-finbox">
+        <div class="bc-rows" id="fin-rows">
+          <div class="bc-row"><div class="k">FINANCES</div>
+            <div class="v"><span class="dim">Loading…</span></div></div>
+        </div>
+        <div class="bc-foot" id="fin-foot" style="display:none;">
+          <input type="number" min="1" id="fin-invest-amt" class="fin-amt" placeholder="Amount ($)">
+          <button type="button" class="bc-btn" id="fin-invest">INVEST</button>
+          <button type="button" class="bc-btn" id="fin-paytaxes" style="margin-top:8px;">PAY TAXES</button>
+          <div class="err" id="fin-err"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="px-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Pay <em>Taxes</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech" id="px-summary">—</div>
+      <div class="jm-lab">DISCLOSURE</div>
+      <div id="px-tiers"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="px-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="px-confirm" disabled title="Pick a disclosure tier">FILE TAXES</button>
     </div>
   </div>
 </div>
@@ -310,7 +344,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName } from './js/utils.js';
+import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
 import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
@@ -327,7 +361,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
       .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, pillar_speed, pillar_efficiency, pillar_quality,
-               nation:nations!hq_nation_id(name, wages, standard_of_living),
+               treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
+               nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
       .eq('id', corpId).maybeSingle();
     if (error) throw error;
@@ -664,9 +699,148 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             <div class="ea-head"><span class="rule"></span><span class="t">PROMINENT EMPLOYEES</span><span class="rule"></span></div>
             ${rowsHtml}
           </div>`;
+
+        // ── Finances box (right column) ──────────────────────────
+        // Reads the same sources everything else does: treasury_cash,
+        // the revenue stamps (20270780), the payroll accumulator
+        // (20270802), nation.corporate_tax, and corp_tax_filings.
+        // Payroll this month is the live formula — employee_count ×
+        // $1k + hired salaries ÷ 12 — the exact charge
+        // process_corp_payroll makes each tick.
+        const wagesSum = (emps || []).reduce((s, e) => s + (Number(e.opening?.salary_yearly) || 0), 0);
+        const payrollMonth = Math.max(1, Number(corp.employee_count) || 1) * 1000 + Math.floor(wagesSum / 12);
+        const payrollYear = corp.payroll_ytd_year === Math.floor(currentTick / 12)
+          ? (Number(corp.payroll_ytd) || 0) : 0;
+        const revenueMonth = Number(corp.last_revenue_tick) === currentTick
+          ? (Number(corp.last_tick_revenue) || 0) : 0;
+        const taxRate = Math.max(0, Math.min(100, Number(corp.nation?.corporate_tax) || 0));
+        const taxesOwed = Math.floor(Math.max(0, revenueYtd) * taxRate / 100);
+
+        let lastPaid = 'Never';
+        try {
+          const { data: filing, error: fErr } = await _supabase.from('corp_tax_filings')
+            .select('filed_at_tick, year').eq('corp_id', corp.id)
+            .order('filed_at_tick', { ascending: false }).limit(1).maybeSingle();
+          if (fErr) throw fErr;
+          if (filing) lastPaid = `${tickToDate(filing.filed_at_tick)} (FY ${filing.year})`;
+        } catch (e) {
+          console.warn('[business-corp] tax filings fetch failed:', e?.message || e);
+          lastPaid = '—';
+        }
+
+        document.getElementById('fin-rows').innerHTML = `
+          <div class="bc-row"><div class="k">CASH ON HAND</div>
+            <div class="v money">${esc(hfFmtBig(Number(corp.treasury_cash) || 0))}</div></div>
+          <div class="bc-row"><div class="k">REVENUE THIS MONTH</div>
+            <div class="v money">${esc(hfFmtBig(revenueMonth))}</div></div>
+          <div class="bc-row"><div class="k">REVENUE THIS YEAR</div>
+            <div class="v money">${esc(hfFmtBig(revenueYtd))}</div></div>
+          <div class="bc-row"><div class="k">PAYROLL COSTS THIS MONTH</div>
+            <div class="v money">${esc(hfFmtBig(payrollMonth))}</div></div>
+          <div class="bc-row"><div class="k">PAYROLL COSTS THIS YEAR</div>
+            <div class="v money">${esc(hfFmtBig(payrollYear))}</div></div>
+          <div class="bc-row"><div class="k">CORPORATE TAX RATE</div>
+            <div class="v">${esc(String(taxRate))}%</div></div>
+          <div class="bc-row"><div class="k">TAXES OWED</div>
+            <div class="v money">${esc(hfFmtBig(taxesOwed))} <span class="dim">(if filed today)</span></div></div>
+          <div class="bc-row"><div class="k">TAXES LAST PAID ON</div>
+            <div class="v">${esc(lastPaid)}</div></div>`;
+
+        if (isOwner) {
+          document.getElementById('fin-foot').style.display = 'block';
+          const finErr = document.getElementById('fin-err');
+
+          document.getElementById('fin-invest').addEventListener('click', async () => {
+            const btn = document.getElementById('fin-invest');
+            const amt = Math.floor(Number(document.getElementById('fin-invest-amt').value));
+            finErr.textContent = '';
+            if (!(amt > 0)) { finErr.textContent = 'Enter an amount to invest.'; return; }
+            btn.disabled = true;
+            try {
+              const { data, error: iErr } = await _supabase.rpc('invest_into_corp',
+                { p_corp_id: corp.id, p_amount: amt });
+              if (iErr) throw iErr;
+              if (!data?.success) {
+                const REASON = {
+                  insufficient_funds: `You have ${hfFmtBig(data?.have ?? 0)} on hand — ${hfFmtBig(data?.need ?? amt)} required.`,
+                  use_share_issuance: 'Public corps raise capital by issuing shares.',
+                  not_owner: 'Only the owner can invest in this corporation.',
+                  no_entrepreneur: 'No owner faction found.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              window.location.reload();
+            } catch (e) {
+              finErr.textContent = 'Invest failed: ' + (e?.message || e);
+              btn.disabled = false;
+            }
+          });
+
+          // Pay Taxes — file_corporate_tax (20270781). Disclosure
+          // tiers; under-declaring risks an audit / Balanced-roll
+          // catch server-side.
+          let pxTier = null;
+          document.getElementById('fin-paytaxes').addEventListener('click', () => {
+            pxTier = null;
+            document.getElementById('px-confirm').disabled = true;
+            document.getElementById('px-summary').textContent =
+              `Taxable profit (revenue YTD): ${hfFmtBig(Math.max(0, revenueYtd))} · Rate: ${taxRate}% · Owed in full: ${hfFmtBig(taxesOwed)}. Treasury: ${hfFmtBig(Number(corp.treasury_cash) || 0)}.`;
+            document.getElementById('px-tiers').innerHTML = [100, 75, 50, 25].map(pct => `
+              <div class="jm-rung" data-pct="${pct}">
+                <div class="top">
+                  <div class="nm">Declare ${pct}%</div>
+                  <div class="staff">pay ${esc(hfFmtBig(Math.floor(taxesOwed * pct / 100)))}</div>
+                </div>
+                <div class="ds">${pct === 100
+                  ? 'Full disclosure — clean books, nothing to find.'
+                  : 'Hide the rest. An FIS agent or a sharp inspector can claw back the evaded amount plus a 10% fine.'}</div>
+              </div>`).join('');
+            document.querySelectorAll('#px-tiers .jm-rung').forEach(row => {
+              row.addEventListener('click', () => {
+                pxTier = Number(row.dataset.pct);
+                document.querySelectorAll('#px-tiers .jm-rung').forEach(x =>
+                  x.classList.toggle('sel', x === row));
+                document.getElementById('px-confirm').disabled = false;
+              });
+            });
+            document.getElementById('px-overlay').classList.add('open');
+          });
+
+          document.getElementById('px-cancel').addEventListener('click', () =>
+            document.getElementById('px-overlay').classList.remove('open'));
+          document.getElementById('px-overlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('px-overlay'))
+              document.getElementById('px-overlay').classList.remove('open');
+          });
+          document.getElementById('px-confirm').addEventListener('click', async () => {
+            const btn = document.getElementById('px-confirm');
+            if (!pxTier || btn.disabled) return;
+            btn.disabled = true;
+            try {
+              const { data, error: tErr } = await _supabase.rpc('file_corporate_tax',
+                { p_corp_id: corp.id, p_disclosure_pct: pxTier });
+              if (tErr) throw tErr;
+              if (!data?.success) {
+                const REASON = {
+                  already_filed_this_year: 'Taxes already filed this game-year.',
+                  insufficient_treasury: 'The treasury can’t cover the declared amount — pick a lower disclosure or invest cash.',
+                  not_authorized: 'Only the owner can file taxes.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              window.location.reload();
+            } catch (e) {
+              alert('Filing failed: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        }
       } catch (e) {
         console.warn('[business-corp] employees load failed:', e?.message || e);
         host.innerHTML = '';
+        document.getElementById('fin-rows').innerHTML = `
+          <div class="bc-row"><div class="k">FINANCES</div>
+            <div class="v"><span class="dim">Could not load — refresh.</span></div></div>`;
       }
     })();
 
