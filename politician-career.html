@@ -927,6 +927,7 @@ const LADDERS = [
     } },
   { id: 'civil',      icon: '\u{1F91D}', name: 'Civil Society' },
   { id: 'underground',icon: '\u{1F3AD}', name: 'Underground' },
+  { id: 'federal_investigations', icon: '\u{1F50D}', name: 'Federal Investigations', rungs: () => FEDERAL_INVESTIGATIONS_RUNGS },
   { id: 'army',       icon: '\u{2694}\u{FE0F}',  name: 'Army', rungs: () => ARMY_RUNGS },
   { id: 'navy',       icon: '\u{2693}',  name: 'Navy', rungs: () => NAVY_RUNGS,
     footer: 'Admirals do not retire to fish. They retire to boards of directors, to ministries, to embassies — the Republic does not waste a man who has commanded the Fleet. Industry chairmanships, cabinet appointments, ambassadorial posts; the Fleet’s last command picks the path.' },
@@ -1813,6 +1814,57 @@ const NATIONAL_SECURITY_RUNGS = [
       { label: '☉ Set National Threat Doctrine', signature: true },
       { label: 'Authorize Black Programs', dark: true },
       'Sit on the NSC',
+    ],
+  },
+];
+
+// Federal Investigations rungs — the FIS career, Agent (Probationary)
+// through Director of FIS. Five-tier linear climb; overt federal law
+// enforcement, distinct from the National Security ladder's
+// clandestine intelligence track. No FIS office tracking yet, so
+// every held() returns false; the rungs render as inert flavor until
+// the schema lands. Tier 1's [Join the Academy] CTA ships disabled
+// per spec — the Academy mechanic comes in a follow-up.
+const FEDERAL_INVESTIGATIONS_RUNGS = [
+  {
+    tierName: 'FIRST OFFICE',
+    name: 'Agent (Probationary)',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are a probationary agent — junior on someone else’s case team, every move evaluated.',
+    descIfNot:   ()  => 'Two years out of the academy. You’re the junior member on someone else’s case team. You go where you’re told, interview who you’re told to interview, file the paperwork that holds the case together. You’re being evaluated constantly — clear probation and you’re a real agent; mess up badly and you’re out.',
+    actions:     ['Interview a Subject', 'File the Paperwork'],
+    actionIfNot: { label: 'Join the Academy', kind: 'disabled' },
+  },
+  {
+    name: 'Section Head',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You run your own cases with a small team of agents reporting to you.',
+    descIfNot:   ()  => 'Off probation. You run your own cases now. You have a small team of three to five agents reporting to you. You decide which leads matter, when to make an arrest, when to walk a case over to the prosecutor’s office.',
+    actions:     ['Assign a Lead', 'Authorize an Arrest'],
+  },
+  {
+    name: 'Head of Task Force',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You are the national lead for your specialty — every major case in the country crosses your desk.',
+    descIfNot:   ()  => 'The national lead for your specialty. Every major financial-crime case (or anti-corruption case, or anti-terror case) in the country eventually crosses your desk. You decide what FIS investigates and what it doesn’t.',
+    actions:     ['Set Investigative Priority', 'Brief the Director'],
+  },
+  {
+    name: 'Deputy Director',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You oversee multiple task forces — your work is now management, budgets, and congressional testimony.',
+    descIfNot:   ()  => 'C-suite of FIS. You report directly to the Director. You oversee multiple task forces, including the one you used to run. Your daily work is less investigation and more management — budgets, staffing, congressional testimony, briefings to the Attorney General.',
+    actions:     ['Approve a Budget', 'Brief the Attorney General'],
+  },
+  {
+    tierName: 'APEX',
+    name: 'Director of FIS',
+    held:        ()  => false,
+    descIfHeld:  ()  => 'You command the Federal Investigations Service — single appointed post, public face of federal law enforcement.',
+    descIfNot:   ()  => 'The top of the agency. Single appointed post. You command the entire Federal Investigations Service. You report to the Minister of Justice and brief the head of government on major threats. You set national investigative priorities, coordinate with intelligence services and foreign law enforcement, and serve as the public face of federal law enforcement.',
+    actions:     [
+      { label: '\u{1F50D} Set National Investigative Priorities', signature: true },
+      'Direct the Service',
     ],
   },
 ];
