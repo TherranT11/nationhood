@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corporation | Nationhood</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root { --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif; }
+  /* Page chrome (topbar/nav/.ent-content) is injected by
+     js/entrepreneur-topbar.js — shared with the entrepreneur pages. */
+  .bc-wrap { max-width:1280px; margin:0 auto; display:flex; gap:26px; align-items:flex-start; }
+  .bc-main { flex:1; min-width:0; }
+  .bc-title { font-family:Georgia,serif; font-size:28px; color:#fff; margin:0 0 4px; font-weight:500; }
+  .bc-sub { font-family:var(--font-mono); font-size:10px; letter-spacing:0.14em; color:#666;
+    font-weight:700; margin-bottom:22px; }
+  .bc-soon { padding:34px 16px; text-align:center; color:#555; font-size:11.5px;
+    font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
+    border-radius:5px; }
+
+  /* ── Registry infobox (right column) ── */
+  .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
+    border:0.5px solid rgba(138,170,106,0.35); border-radius:6px; overflow:hidden; }
+  .bc-logo { width:100%; aspect-ratio:16/9; background:#10140e; display:flex;
+    align-items:center; justify-content:center; border-bottom:0.5px solid rgba(138,170,106,0.25); }
+  .bc-logo img { max-width:80%; max-height:80%; object-fit:contain; }
+  .bc-logo .ini { font-family:Georgia,serif; font-size:34px; color:#4a6a4a; }
+  .bc-rows { padding:14px 16px; }
+  .bc-row { padding:8px 0; border-bottom:0.5px solid rgba(255,255,255,0.05); }
+  .bc-row:last-child { border-bottom:none; }
+  .bc-row .k { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.14em;
+    color:#666; font-weight:700; margin-bottom:3px; }
+  .bc-row .v { font-size:12.5px; color:#fff; line-height:1.45; overflow-wrap:break-word; }
+  .bc-row .v .dim { color:#888; font-size:11px; }
+  .bc-row .v.money { font-family:var(--font-mono); color:#8aaa6a; }
+  .bc-row .v a { color:#8aaa6a; text-decoration:none; }
+
+  @media (max-width:860px) {
+    .bc-wrap { flex-direction:column-reverse; }
+    .bc-box { width:100%; }
+  }
+  #loading { font-family:var(--font-mono); font-size:10px; color:#4a4940;
+    text-align:center; padding:80px 20px; }
+</style>
+</head>
+<body>
+
+<div id="ent-topbar"></div>
+<div id="loading">LOADING...</div>
+<div class="ent-content" id="page-content" style="display:none;">
+  <div class="bc-wrap">
+    <div class="bc-main">
+      <h1 class="bc-title" id="bc-name">—</h1>
+      <div class="bc-sub" id="bc-tagline">—</div>
+      <div class="bc-soon">Operations open soon — hire staff, take contracts, and grow the books.</div>
+    </div>
+    <div class="bc-box">
+      <div class="bc-logo" id="bc-logo"><span class="ini">—</span></div>
+      <div class="bc-rows" id="bc-rows"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { _supabase } from './js/supabase-client.js';
+import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
+import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
+
+(async () => {
+  try {
+    const ctx = await bootstrapBusinessman('corporations');
+    if (!ctx) return; // redirected (no auth / no businessman faction)
+
+    const corpId = new URLSearchParams(window.location.search).get('id');
+    if (!corpId) {
+      document.getElementById('loading').textContent = 'NO CORPORATION SPECIFIED';
+      return;
+    }
+
+    const { data: corp, error } = await _supabase.from('entrepreneur_corps')
+      .select(`id, name, industry, listing, hq, logo_url, employee_count,
+               nation:nations!hq_nation_id(name),
+               owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
+      .eq('id', corpId).maybeSingle();
+    if (error) throw error;
+    if (!corp) {
+      document.getElementById('loading').textContent = 'CORPORATION NOT FOUND';
+      return;
+    }
+
+    // Revenue (current year) from the one source — corp_revenue_by_year
+    // reads the stamp accumulator (20270780). Soft-fails to $0.
+    let revenueYtd = 0;
+    try {
+      const { data: rev, error: revErr } = await _supabase.rpc('corp_revenue_by_year', {
+        p_corp_id: corp.id, p_current_tick: Number(ctx.shard?.current_tick) || 0,
+      });
+      if (revErr) throw revErr;
+      if (rev?.success) revenueYtd = Number(rev.this_year_delta) || 0;
+    } catch (e) {
+      console.warn('[business-corp] revenue fetch failed:', e?.message || e);
+    }
+
+    const ownerName = [corp.owner?.leader_first_name, corp.owner?.leader_last_name]
+      .filter(Boolean).join(' ') || corp.owner?.faction_name || '—';
+    const hqLine  = `${corp.hq || '—'}, ${corp.nation?.name || '—'}`;
+    // Type starts Private; Public via IPO; State is a future status.
+    const typeLabel = corp.listing === 'public' ? 'Public' : 'Private';
+    // {corpname}.nh — lowercase alphanumerics of the corp name.
+    const site = (corp.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '') + '.nh';
+
+    document.title = `${corp.name} | Nationhood`;
+    document.getElementById('bc-name').textContent = corp.name;
+    document.getElementById('bc-tagline').textContent =
+      `${industryTitleLabel(corp.industry).toUpperCase()} · ${(corp.hq || '—').toUpperCase()}`;
+
+    const logoEl = document.getElementById('bc-logo');
+    if (corp.logo_url) {
+      logoEl.innerHTML = `<img src="${esc(corp.logo_url)}" alt="${esc(corp.name)} logo"
+        onerror="this.parentElement.innerHTML='<span class=&quot;ini&quot;>${esc((corp.name || '?')[0])}</span>'">`;
+    } else {
+      logoEl.innerHTML = `<span class="ini">${esc((corp.name || '?').slice(0, 2).toUpperCase())}</span>`;
+    }
+
+    document.getElementById('bc-rows').innerHTML = `
+      <div class="bc-row"><div class="k">CORPORATION</div>
+        <div class="v">${esc(corp.name)}</div></div>
+      <div class="bc-row"><div class="k">HEADQUARTERS</div>
+        <div class="v">${esc(hqLine)}</div></div>
+      <div class="bc-row"><div class="k">NUMBER OF EMPLOYEES</div>
+        <div class="v">${esc(String(corp.employee_count ?? 1))}</div></div>
+      <div class="bc-row"><div class="k">TYPE</div>
+        <div class="v">${esc(typeLabel)}</div></div>
+      <div class="bc-row"><div class="k">SECTOR</div>
+        <div class="v">${esc(industryTitleLabel(corp.industry))}</div></div>
+      <div class="bc-row"><div class="k">KEY PEOPLE</div>
+        <div class="v">${esc(ownerName)} <span class="dim">· Owner</span></div></div>
+      <div class="bc-row"><div class="k">REVENUE</div>
+        <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
+      <div class="bc-row"><div class="k">WEBSITE</div>
+        <div class="v"><a>${esc(site)}</a></div></div>`;
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('page-content').style.display = 'block';
+  } catch (err) {
+    console.error('business-corp: load failed', err);
+    document.getElementById('loading').textContent = 'FAILED TO LOAD — PLEASE REFRESH';
+  }
+})();
+</script>
+</body>
+</html>

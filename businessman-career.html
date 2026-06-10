@@ -148,6 +148,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { escapeHtml as esc, fmtBig } from './js/utils.js';
+import { cityDisplayData } from './js/game/city-labels.js';
 
 // ── Start Company modal state ──
 let scCityId = null;
@@ -179,7 +180,7 @@ async function openStartCompany(faction) {
   try {
     const [cityRes, natRes] = await Promise.all([
       _supabase.from('cities')
-        .select('id, city_name, city_type, jobs, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, party:factions!mayor_party_id(abbreviation, faction_name)')
+        .select('id, city_name, city_type, jobs, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype)')
         .eq('nation_id', faction.nation_id)
         .order('city_type'),
       _supabase.from('nations').select('population').eq('id', faction.nation_id).maybeSingle(),
@@ -192,14 +193,13 @@ async function openStartCompany(faction) {
     }
     const natPop = Number(natRes.data?.population) || 0;
     host.innerHTML = data.map(c => {
-      // City population = population_pct × nation population / 100;
-      // NULL pct falls back to the 11% blanket (cities.population_pct
-      // comment, 20270711) — same math the Geography card uses.
-      const pop = Math.round(natPop * (Number(c.population_pct ?? 11)) / 100);
-      const mayorName = [c.mayor_first_name, c.mayor_last_name].filter(Boolean).join(' ');
-      const party = c.party?.abbreviation || c.party?.faction_name || null;
-      const mayorBits = mayorName
-        ? `Mayor: ${esc(mayorName)}${party ? ` <span class="tag">[${esc(party)}]</span>` : ''}${c.mayor_archetype ? ` <span class="tag">[${esc(c.mayor_archetype)}]</span>` : ''}`
+      // cityDisplayData (20270713) is the single source for the
+      // population math and the mayor's party/archetype resolution —
+      // the party's archetype wins, the legacy city field is the
+      // fallback. Same extractor the Geography card uses.
+      const { population, mayorName, partyAbbr, archetype } = cityDisplayData(c, natPop);
+      const mayorBits = mayorName !== '—'
+        ? `Mayor: ${esc(mayorName)}${partyAbbr ? ` <span class="tag">[${esc(partyAbbr)}]</span>` : ''}${archetype ? ` <span class="tag">[${esc(archetype)}]</span>` : ''}`
         : 'Mayor: —';
       return `
       <div class="sc-city" data-city="${esc(c.id)}">
@@ -207,7 +207,7 @@ async function openStartCompany(faction) {
           <span class="nm">${esc(c.city_name)}${c.city_type === 'capital' ? ' (Capital)' : ''}</span>
           <div class="mayor">${mayorBits}</div>
         </div>
-        <span class="st">JOBS: ${esc(String(c.jobs ?? '—'))} &middot; POPULATION: ${esc(fmtBig(pop))}</span>
+        <span class="st">JOBS: ${esc(String(c.jobs ?? '—'))} &middot; POPULATION: ${esc(fmtBig(population))}</span>
       </div>`;
     }).join('')
       + '<div class="sc-file" style="margin-top:2px;color:#555;">Jobs represent the amount of those looking for jobs in those cities.</div>';
@@ -281,8 +281,8 @@ async function submitStartCompany() {
       scUpdateSubmit();
       return;
     }
-    alert(`${data.corp_name} is incorporated in ${data.city}. Make history.`);
-    location.reload();
+    // Straight to the corporation's own page.
+    window.location.href = 'business-corp.html?id=' + encodeURIComponent(data.corp_id);
   } catch (e) {
     errEl.textContent = 'Failed: ' + (e?.message || 'unknown error');
     scInFlight = false;

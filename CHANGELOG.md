@@ -29,6 +29,12 @@ All notable changes to Nationhood are recorded here. Format inspired by
   real corporations in their nation; Wealthy Entrepreneurs founded
   and sold 2–4 ventures for $6M–$45M apiece. Existing businessmen
   are backfilled.
+- **Corporation pages.** Founding a corporation lands on its own
+  page (business-corp.html) under the businessman chrome: a registry
+  infobox with the logo, headquarters, employee count (a real column
+  defaulting to 1 — the owner), Private/Public type, sector, key
+  people, current-year revenue from the accumulator, and a
+  {corpname}.nh website line.
 - **Start Company.** The career page's [Start Company] opens the
   incorporation modal: your nation, a city picker showing each city's
   GROWTH · JOBS · TAX PACKAGES, corporation type (**Construction** or
