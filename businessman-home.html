@@ -89,6 +89,11 @@
   .cr-act .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.12em; color:#ddd;
     font-weight:700; }
   .cr-act .ds { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
+  .cr-foot { padding:12px 18px 14px; }
+  .cr-go { font-family:var(--font-mono); font-size:9px; letter-spacing:0.13em; font-weight:700;
+    color:#8aaa6a; text-decoration:none; padding:7px 12px; border:0.5px solid #4a6a4a;
+    border-radius:4px; display:inline-block; }
+  .cr-go:hover { background:rgba(138,170,106,0.1); color:#aac88a; }
 
   #loading { font-family: var(--font-mono); font-size: 10px; color: #4a4940;
     text-align: center; padding: 80px 20px; }
@@ -176,10 +181,11 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
     let occupationHtml = '<div class="val">Unemployed</div>';
     let salaryYearly = 0;
     let employerName = null;
+    let ownedCorps = [];
     try {
       const [{ data: corps, error: ownErr }, employer] = await Promise.all([
         _supabase.from('entrepreneur_corps')
-          .select('name').eq('owner_faction_id', f.id).order('created_at'),
+          .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
           ? _supabase.from('entrepreneur_corps')
               .select('name').eq('id', f.biz_employer_corp_id).maybeSingle()
@@ -200,6 +206,7 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
         occupationHtml = `<div class="val">Owner of ${esc(corps[0].name)}</div>`
           + (corps.length > 1 ? `<div class="sub">+${corps.length - 1} more</div>` : '');
       }
+      ownedCorps = corps || [];
     } catch (e) {
       console.warn('[businessman-home] occupation fetch failed:', e?.message || e);
     }
@@ -324,10 +331,11 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
       document.getElementById('biz-pressing-issues').innerHTML = piCards.join('');
     }
 
-    // Current Role — renders only when the employment record is set;
-    // otherwise the "go apply" empty state stands. The three
-    // Operations actions are chartered but unwired, so they're
-    // greyed out until their mechanics land.
+    // Current Role — a salaried job renders the employment card
+    // (Operations actions greyed until their mechanics land); owning
+    // a corporation IS a role too, so owners get an ownership card
+    // per corp pointing at the Executive Actions desk. Only with
+    // neither does the "go apply" empty state stand.
     if (f.biz_job_title) {
       const ROLE_DESCS = {
         'Project Manager (PM)':
@@ -360,6 +368,19 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
             </div>
           </div>
         </div>`;
+    } else if (ownedCorps.length) {
+      document.getElementById('biz-current-role').innerHTML = ownedCorps.map(c => `
+        <div class="cr-card" style="margin-bottom:10px;">
+          <div class="cr-head">
+            <div class="cr-tier">OWNERSHIP &middot; EXECUTIVE</div>
+            <div class="cr-title">Owner of ${esc(c.name)}</div>
+            <div class="cr-desc">You sit at the top of the org chart — hiring, blueprints,
+              bids, and builds are all run from the corporation&rsquo;s Executive Actions desk.</div>
+          </div>
+          <div class="cr-foot">
+            <a class="cr-go" href="business-corp.html?id=${encodeURIComponent(c.id)}">GO TO CORPORATION &rarr;</a>
+          </div>
+        </div>`).join('');
     }
 
     document.getElementById('loading').style.display = 'none';

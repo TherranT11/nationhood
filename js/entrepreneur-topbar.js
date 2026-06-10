@@ -23,6 +23,7 @@ const BIZ_TABS = [
   { id: 'career',       label: 'CAREER',       href: 'businessman-career.html' },
   { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-markets.html' },
   { id: 'market',       label: 'MARKET',       href: 'businessman-market.html' },
+  { id: 'nation',       label: 'NATION',       href: 'politician-nation.html' },
   { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
 ];
 

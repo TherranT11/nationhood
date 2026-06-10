@@ -472,6 +472,7 @@
 <body>
 
 <div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
 
 <div class="content" id="content" style="display:none;">
   <!-- Hero row: map placeholder + scope buttons (left), nation card (right).
@@ -754,6 +755,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
+import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { COMMITTEES, applyForCommittee } from './js/committees.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
@@ -854,9 +856,55 @@ function buildTags(nation, profile) {
   return tags;
 }
 
+// Businessmen reach this page from their NATION tab and get their own
+// chrome; the page body is shared read-only (no politician office or
+// party on the faction, so every action gate falls through to the
+// same no-permission paths a fresh office-less politician sees).
+// Returns the businessman ctx, 'redirected' when their bootstrap
+// navigated away, or null — meaning use the politician path as ever.
+async function bootstrapNationViewer() {
+  const { data: { user } } = await _supabase.auth.getUser();
+  if (!user) return null; // bootstrapPolitician owns the login redirect
+  const { data: facs } = await _supabase.from('factions')
+    .select('id, faction_type')
+    .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
+    .in('faction_type', ['politician', 'businessman'])
+    .is('abandoned_at', null);
+  const activeId = sessionStorage.getItem('active_faction_id');
+  const active = (facs || []).find(x => x.id === activeId) || null;
+  const hasPol = (facs || []).some(x => x.faction_type === 'politician');
+  const wantBiz = active
+    ? active.faction_type === 'businessman'
+    : !hasPol && (facs || []).some(x => x.faction_type === 'businessman');
+  if (!wantBiz) return null;
+  const ctx = await bootstrapBusinessman('nation');
+  if (!ctx) return 'redirected';
+  // The page reads ctx.nation — supply the same columns the
+  // politician bootstrap does (the select below mirrors the
+  // URL-override fetch in init()).
+  const { data: nation, error } = await _supabase.from('nations')
+    .select(`
+      id, name, flag_url, government_type, capital, total_seats,
+      election_frequency, next_election_tick, parliamentary_term_ticks,
+      head_of_state_title, head_of_state_first_name, head_of_state_last_name,
+      population, dynasty_name,
+      politician_gdp, politician_budget, politician_debt,
+      politician_stability, politician_civil_freedoms, politician_gdp_growth,
+      nation_profiles(flag_url, official_name, motto, overview, founded_year)
+    `)
+    .eq('id', ctx.faction.nation_id).maybeSingle();
+  if (error) console.warn('politician-nation: businessman nation fetch failed', error);
+  ctx.nation = nation || null;
+  return ctx;
+}
+
 async function init() {
   let ctx = null;
-  try { ctx = await bootstrapPolitician('nation'); }
+  try {
+    const biz = await bootstrapNationViewer();
+    if (biz === 'redirected') return;
+    ctx = biz || await bootstrapPolitician('nation');
+  }
   catch (err) {
     console.error('politician-nation: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
