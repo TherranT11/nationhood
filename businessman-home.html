@@ -50,6 +50,29 @@
   .biz-pi-card .go { margin-left:auto; font-family:var(--font-mono); font-size:9px;
     color:#7a9ac8; white-space:nowrap; flex-shrink:0; }
 
+  /* Construction project tracker (7 stages, horizontal) */
+  .biz-proj-card { padding:14px 16px; margin-bottom:8px; background:#0b0d0a;
+    border:0.5px solid rgba(138,170,106,0.35); border-radius:5px; }
+  .biz-proj-card .t { font-size:12.5px; color:#fff; font-weight:600; }
+  .biz-proj-card .due { font-family:var(--font-mono); font-size:9.5px; color:#8aaa6a;
+    font-weight:400; }
+  .biz-proj-card .stages { display:grid; grid-template-columns:repeat(7, 1fr); gap:5px;
+    margin-top:11px; }
+  .biz-proj-card .stage { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+    border-radius:4px; padding:7px 5px; text-align:center; opacity:0.45; min-width:0; }
+  .biz-proj-card .stage.done { opacity:0.8; border-color:rgba(138,170,106,0.3); }
+  .biz-proj-card .stage.done .n { color:#8aaa6a; }
+  .biz-proj-card .stage.cur { opacity:1; background:#10140e; border-color:#8aaa6a; }
+  .biz-proj-card .stage.cur .n, .biz-proj-card .stage.cur .s { color:#aac88a; }
+  .biz-proj-card .stage .n { font-family:var(--font-mono); font-size:11px; color:#888;
+    font-weight:700; }
+  .biz-proj-card .stage .s { font-size:8.5px; color:#999; margin-top:3px; line-height:1.35;
+    overflow-wrap:break-word; }
+  .biz-proj-card .stage-desc { margin-top:10px; font-size:10.5px; color:#999;
+    line-height:1.55; }
+  .biz-proj-card .stage-desc b { color:#aac88a; font-weight:600; }
+  @media (max-width:760px) { .biz-proj-card .stages { grid-template-columns:repeat(4, 1fr); } }
+
   /* Current Role card */
   .cr-card { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.3); border-radius:6px;
     overflow:hidden; }
@@ -108,7 +131,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
+import { hfFmtBig, escapeHtml as esc, tickToDate } from './js/utils.js';
+import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
 
 (async () => {
   try {
@@ -226,9 +250,11 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
         <div class="sub">per tick${salaryYearly ? ` &middot; ${esc(hfFmtBig(salaryYearly))}/yr` : ''}</div>
       </div>`;
 
-    // Pressing Issues — open job interviews surface for both sides
-    // of the table: the interviewer is pointed at the corp page's
-    // applicant board, the interviewee at the career page banner.
+    // Pressing Issues — two sources share the container: open job
+    // interviews (both sides of the table) and construction projects
+    // in flight where this character is the assigned PM or the corp
+    // owner (the 7-stage tracker, 20270808).
+    const piCards = [];
     try {
       const { data: ivs, error: ivErr } = await _supabase.from('job_interviews')
         .select(`id, corp_id, owner_faction_id,
@@ -237,13 +263,12 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
         .or(`owner_faction_id.eq.${f.id},applicant_faction_id.eq.${f.id}`)
         .eq('status', 'open');
       if (ivErr) throw ivErr;
-      if (ivs?.length) {
-        document.getElementById('biz-pressing-issues').innerHTML = ivs.map(iv => {
-          const interviewer = iv.owner_faction_id === f.id;
-          const href = interviewer
-            ? `business-corp.html?id=${encodeURIComponent(iv.corp_id)}`
-            : 'businessman-career.html';
-          return `
+      for (const iv of (ivs || [])) {
+        const interviewer = iv.owner_faction_id === f.id;
+        const href = interviewer
+          ? `business-corp.html?id=${encodeURIComponent(iv.corp_id)}`
+          : 'businessman-career.html';
+        piCards.push(`
           <a class="biz-pi-card" href="${esc(href)}">
             <div>
               <div class="t">JOB INTERVIEW — ${esc(iv.opening?.title || 'Role')} for ${esc(iv.corp?.name || '—')}</div>
@@ -252,11 +277,51 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
                 : 'An employer wants to talk to you. Open the chat from your Career page.'}</div>
             </div>
             <span class="go">${interviewer ? 'GO TO CORP →' : 'GO TO CAREER →'}</span>
-          </a>`;
-        }).join('');
+          </a>`);
       }
     } catch (e) {
       console.warn('[businessman-home] interviews fetch failed:', e?.message || e);
+    }
+
+    try {
+      const currentTick = Number(ctx.shard?.current_tick) || 0;
+      const { data: projs, error: pjErr } = await _supabase.from('corp_construction_projects')
+        .select(`id, city, started_tick, completes_at_tick,
+                 blueprint:corp_blueprints!blueprint_id(name, building_type),
+                 corp:entrepreneur_corps!corp_id(name, owner_faction_id),
+                 pm:job_applicants!pm_applicant_id(applicant_faction_id)`)
+        .eq('status', 'building');
+      if (pjErr) throw pjErr;
+      const mine = (projs || []).filter(p =>
+        p.pm?.applicant_faction_id === f.id || p.corp?.owner_faction_id === f.id);
+      for (const p of mine) {
+        const total   = Math.max(1, p.completes_at_tick - p.started_tick);
+        const elapsed = Math.min(total, Math.max(0, currentTick - p.started_tick));
+        const stageIdx = Math.min(CONSTRUCTION_STAGES.length - 1,
+          Math.floor((elapsed / total) * CONSTRUCTION_STAGES.length));
+        const remaining = Math.max(0, p.completes_at_tick - currentTick);
+        const cur = CONSTRUCTION_STAGES[stageIdx];
+        piCards.push(`
+          <div class="biz-proj-card">
+            <div class="t">${esc(p.blueprint?.name || 'Construction')} Project in ${esc(p.city)}.
+              <span class="due">Expected Completion Date: ${esc(tickToDate(p.completes_at_tick))}
+              (${remaining} tick${remaining === 1 ? '' : 's'} remaining)</span></div>
+            <div class="stages">
+              ${CONSTRUCTION_STAGES.map((s, i) => `
+                <div class="stage${i < stageIdx ? ' done' : i === stageIdx ? ' cur' : ''}" title="${esc(s.phase)} — ${esc(s.desc)}">
+                  <div class="n">${i + 1}</div>
+                  <div class="s">${esc(s.name)}</div>
+                </div>`).join('')}
+            </div>
+            <div class="stage-desc"><b>${esc(cur.phase)}.</b> ${esc(cur.desc)}</div>
+          </div>`);
+      }
+    } catch (e) {
+      console.warn('[businessman-home] projects fetch failed:', e?.message || e);
+    }
+
+    if (piCards.length) {
+      document.getElementById('biz-pressing-issues').innerHTML = piCards.join('');
     }
 
     // Current Role — renders only when the employment record is set;
