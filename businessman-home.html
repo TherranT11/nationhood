@@ -106,9 +106,23 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
     // and investigations have no businessman-targeting systems yet,
     // so they read their all-clear defaults — wire real queries here
     // when those mechanics land.
-    // Occupation/Salary: no employment system exists yet, so the only
-    // truthful state is Unemployed / $0 per tick. When the career
-    // mechanics land, read the employer + title + wage here.
+    // Occupation derives from corp ownership: "Owner of {first corp}"
+    // (+N more if they hold several). Salaried employment doesn't
+    // exist yet — when hiring lands, read the employer + title + wage
+    // here too.
+    let occupationHtml = '<div class="val">Unemployed</div>';
+    try {
+      const { data: corps, error } = await _supabase.from('entrepreneur_corps')
+        .select('name').eq('owner_faction_id', f.id).order('created_at');
+      if (error) throw error;
+      if (corps?.length) {
+        occupationHtml = `<div class="val">Owner of ${esc(corps[0].name)}</div>`
+          + (corps.length > 1 ? `<div class="sub">+${corps.length - 1} more</div>` : '');
+      }
+    } catch (e) {
+      console.warn('[businessman-home] owned corps fetch failed:', e?.message || e);
+    }
+
     const arrested  = String(f.status || '').toLowerCase() === 'arrested';
     const statusHtml = arrested
       ? `<div class="biz-status-line bad">Under Arrest</div>
@@ -147,7 +161,7 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
       </div>
       <div class="biz-card">
         <div class="lab">OCCUPATION</div>
-        <div class="val">Unemployed</div>
+        ${occupationHtml}
       </div>
       <div class="biz-card">
         <div class="lab">SALARY</div>

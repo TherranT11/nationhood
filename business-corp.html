@@ -495,13 +495,13 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from
 
     function openJobModal() {
       jmRung = null;
-      // Expected salary anchors: Wages 1 + SoL 60 → $6,000/yr;
-      // Wages 100 + SoL 100 → $1,000,000/yr. Both land exactly on
-      // wages × standard_of_living × 100. Stats ride the corp query's
-      // nation embed — no extra fetch.
+      // Expected salary = wages × standard_of_living × 30 — the
+      // original × 100 anchor cut by 70% to fit small-economy nations
+      // like Sierramar. Must match post_job_opening's server band.
+      // Stats ride the corp query's nation embed — no extra fetch.
       const w   = Math.max(1, Number(corp.nation?.wages) || 50);
       const sol = Math.max(1, Number(corp.nation?.standard_of_living) || 50);
-      const expectedYearly = Math.round(w * sol * 100);
+      const expectedYearly = Math.round(w * sol * 30);
       const host = document.getElementById('jm-rungs');
       host.innerHTML = OPS_LADDER.map(r => `
         <div class="jm-rung${r.postable ? '' : ' locked'}" data-rung="${r.rung}" ${r.postable ? '' : 'title="Being chartered"'}>
