@@ -35,6 +35,24 @@
 
   .placeholder { font-size:11px; color:#666; font-style:italic; padding:18px 0; text-align:center; }
 
+  /* Two-column case layout: history feed left, target + actions right. */
+  .case-grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:14px; align-items:start; }
+  @media (max-width: 760px) { .case-grid { grid-template-columns:1fr; } }
+
+  .hist-list { display:flex; flex-direction:column; max-height:65vh; overflow-y:auto; }
+  .hist-row { padding:11px 2px; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+  .hist-row:last-child { border-bottom:none; }
+  .hist-meta { display:flex; align-items:baseline; gap:8px; margin-bottom:4px; }
+  .hist-title { font-size:11.5px; color:#fff; font-weight:600; }
+  .hist-tick { margin-left:auto; font-size:8.5px; color:#666; font-family:monospace;
+               letter-spacing:0.04em; flex-shrink:0; }
+  .hist-body { font-size:10.5px; color:#999; line-height:1.55; }
+  /* Fraud-flavoured rows get the red accent — these are exactly the
+     lines an agent is hunting for. */
+  .hist-row.flagged .hist-title { color:#e07a7a; }
+  .hist-row.flagged { border-left:2px solid #5a2020; padding-left:9px; }
+  .hist-empty { padding:24px 8px; font-size:11px; color:#666; font-style:italic; text-align:center; }
+
   .loading { font-size:11px; color:#666; font-style:italic; padding:60px 22px; text-align:center; }
   .fail    { color:#d49a9a; font-size:11px; padding:60px 22px; text-align:center; }
 </style>
@@ -57,6 +75,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
+import { tickToDate } from './js/utils.js';
 
 function escHtml(s) {
   const d = document.createElement('div');
@@ -100,6 +119,48 @@ async function init() {
   const industry   = (data.target_corp?.industry || '').replace(/_/g, ' ').toUpperCase();
   const hqNation   = data.target_corp?.hq_nation?.name || null;
 
+  // Corporate History — same source the corp page's Corporate History
+  // container reads (list_corp_history, 20270564: event_log scoped to
+  // the corp + corp_tax_bills issuance/payment rows, capped at 50).
+  // Soft-fail: a fetch error degrades to an inline message rather than
+  // tanking the case file.
+  let histEvents = null;   // null = fetch failed; [] = genuinely empty
+  if (data.target_corp_id) {
+    try {
+      const { data: hist, error: histErr } = await _supabase.rpc('list_corp_history',
+        { p_corp_id: data.target_corp_id });
+      if (histErr) throw histErr;
+      if (hist?.success) histEvents = Array.isArray(hist.events) ? hist.events : [];
+    } catch (err) {
+      console.warn('[fis-investigation] corp history fetch failed:', err?.message || err);
+    }
+  }
+
+  const histHtml = (() => {
+    if (!data.target_corp_id) {
+      return '<div class="hist-empty">Target corporation no longer exists — its records went with it.</div>';
+    }
+    if (histEvents === null) {
+      return '<div class="hist-empty">Could not load corporate records. Refresh to retry.</div>';
+    }
+    if (histEvents.length === 0) {
+      return '<div class="hist-empty">No recorded transactions yet.</div>';
+    }
+    return histEvents.map(ev => {
+      // Fraud-flavoured kinds get the red accent — the needles the
+      // agent is hunting in this haystack.
+      const flagged = String(ev.kind || '').includes('fraud');
+      return `
+      <div class="hist-row${flagged ? ' flagged' : ''}">
+        <div class="hist-meta">
+          <span class="hist-title">${escHtml(ev.title || '—')}</span>
+          <span class="hist-tick">${escHtml(tickToDate(Number(ev.tick) || 0))}</span>
+        </div>
+        <div class="hist-body">${escHtml(ev.body || '')}</div>
+      </div>`;
+    }).join('');
+  })();
+
   content.className = '';
   content.innerHTML = `
     <div class="page-head">
@@ -115,17 +176,26 @@ async function init() {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-lab">TARGET</div>
-      <div class="card-body">
-        <strong>${escHtml(targetName)}</strong>${industry ? ` &middot; ${escHtml(industry)}` : ''}
-        ${hqNation ? `<br>Headquartered in ${escHtml(hqNation)}.` : ''}
+    <div class="case-grid">
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-lab">CORPORATE HISTORY AND TRANSACTIONS</div>
+        <div class="hist-list">${histHtml}</div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="card-lab">CASE ACTIONS</div>
-      <div class="placeholder">Subpoena, interview, and evidence mechanics land in a follow-up. This page is the persistent surface for the case file.</div>
+      <div>
+        <div class="card">
+          <div class="card-lab">TARGET</div>
+          <div class="card-body">
+            <strong>${escHtml(targetName)}</strong>${industry ? ` &middot; ${escHtml(industry)}` : ''}
+            ${hqNation ? `<br>Headquartered in ${escHtml(hqNation)}.` : ''}
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-lab">CASE ACTIONS</div>
+          <div class="placeholder">Subpoena, interview, and evidence mechanics land in a follow-up. This page is the persistent surface for the case file.</div>
+        </div>
+      </div>
     </div>`;
 }
 
