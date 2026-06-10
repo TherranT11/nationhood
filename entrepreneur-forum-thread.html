@@ -342,7 +342,7 @@
 <div id="loading" class="loading">LOADING...</div>
 
 <script type="module">
-import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { bootstrapSharedViewer } from './js/entrepreneur-topbar.js';
 import { _supabase }            from './js/supabase-client.js';
 import { escHtml, sanitizeHtml, countWords, formatRelative, ZONE_META, insertImageAtCursor, renderNationChip }
   from './js/forum-utils.js';
@@ -362,7 +362,7 @@ function initialsFromName(name) {
 
 async function init() {
   let ctx = null;
-  try { ctx = await bootstrapEntrepreneur('forum'); }
+  try { ctx = await bootstrapSharedViewer('forum', 'forum'); }
   catch (err) {
     console.error('entrepreneur-forum-thread: bootstrap failed', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';

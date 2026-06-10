@@ -376,7 +376,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { bootstrapMarketViewer } from './js/entrepreneur-topbar.js';
+import { bootstrapSharedViewer } from './js/entrepreneur-topbar.js';
 import { fmtUsd, fmtValuation, titleCase, viewerStakePct, ownerDisplayName, escapeHtml, industryLabel, industryTitleLabel, buildingTypeLabel } from './js/utils.js';
 
 // Monogram fallback for a corp with no custom logo (first letters of the
@@ -399,7 +399,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // RPCs (broker_buy_listing / place_offer / withdraw_offer) still
     // resolve entrepreneur characters only server-side — widening
     // them to businessmen is a separate economy decision.
-    const ctx = await bootstrapMarketViewer('markets', 'corporations');
+    const ctx = await bootstrapSharedViewer('markets', 'corporations');
     if (!ctx) return;
     const entId = ctx.faction?.id || null;
 

@@ -24,7 +24,7 @@ const BIZ_TABS = [
   { id: 'career',       label: 'CAREER',       href: 'businessman-career.html' },
   { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-markets.html' },
   { id: 'market',       label: 'MARKET',       href: null },
-  { id: 'forum',        label: 'FORUM',        href: null },
+  { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
 ];
 
 const STYLE_ID = 'ent-topbar-styles';
@@ -436,14 +436,14 @@ export async function bootstrapBusinessman(activeTab) {
   return { user, faction, shard, allUserFactions };
 }
 
-// Shared-page variant: the Corporations Directory (entrepreneur-
-// markets.html) serves BOTH entrepreneurs (MARKETS tab) and
-// businessmen (CORPORATIONS tab). Resolves whichever the user is —
-// the active switcher pick wins when they hold both, entrepreneur
-// is the tie-break default so existing behavior is unchanged — and
-// renders the matching chrome. Returns { ..., viewerType }.
+// Shared-page variant: pages that serve BOTH entrepreneurs and
+// businessmen (the Corporations Directory and the four forum pages).
+// Resolves whichever the user is — the active switcher pick wins
+// when they hold both, entrepreneur is the tie-break default so
+// existing behavior is unchanged — and renders the matching chrome
+// with the per-type active tab. Returns { ..., viewerType }.
 // Admin-inspector override mirrors bootstrapEntrepreneur.
-export async function bootstrapMarketViewer(entTab, bizTab) {
+export async function bootstrapSharedViewer(entTab, bizTab) {
   const { data: { user } } = await _supabase.auth.getUser();
   if (!user) { window.location.href = 'login.html'; return null; }
 
