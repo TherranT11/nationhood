@@ -3063,8 +3063,9 @@ function renderAffiliation(ctx) {
 // below the main affiliation, so a player can hold (e.g.) MP +
 // Foreign Attaché simultaneously. Self-noops when the politician
 // hasn't passed the entry exam (politician_foreign_service_nation_id
-// is NULL). Three placeholder action tiles, all .disabled — RPCs
-// land in a follow-up commit per spec.
+// is NULL). Day to Day in the Embassy is live (20270776): it draws
+// an admin-authored event from the embassy_events pool and opens the
+// A/B/C decision modal. The other two tiles remain placeholders.
 async function renderForeignAffiliation(ctx) {
   const host = document.getElementById('foreign-affiliation-host');
   if (!host) return;
@@ -3090,12 +3091,55 @@ async function renderForeignAffiliation(ctx) {
     console.warn('[politician-home] foreign nation fetch failed:', err?.message || err);
   }
 
-  const actions = [
-    { ic: '🏛', name: 'DAY TO DAY IN THE EMBASSY',     cost: 'no cost', desc: 'Routine consular and reporting work — files, memos, the trade.' },
+  // 20270776: an unresolved draw keeps the Day-to-Day tile live even
+  // during the cooldown (the cooldown burned when it was drawn) so
+  // the player can always resolve the event waiting on their desk.
+  // Soft-fails to false — worst case the tile greys out and the RPC
+  // path still surfaces the pending event next tick.
+  let hasPendingDraw = false;
+  try {
+    const { data } = await _supabase.from('embassy_event_draws')
+      .select('id')
+      .eq('faction_id', ctx.faction?.id)
+      .is('resolved_at_tick', null)
+      .limit(1);
+    hasPendingDraw = !!data?.length;
+  } catch (err) {
+    console.warn('[politician-home] pending embassy draw check failed:', err?.message || err);
+  }
+
+  const embBudget = Number(ctx.faction?.embassy_budget     ?? 100);
+  const embRep    = Number(ctx.faction?.embassy_reputation ?? 50);
+  const embTrust  = Number(ctx.faction?.embassy_trust      ?? 50);
+  const embLev    = Number(ctx.faction?.embassy_leverage   ?? 50);
+
+  const nextEmbTick  = Number(ctx.faction?.next_embassy_action_tick) || 0;
+  const embCooldown  = nextEmbTick > currentTick && !hasPendingDraw;
+  const embCdLeft    = Math.max(0, nextEmbTick - currentTick);
+
+  // Same conditional-attrs shape as the FIS tiles: cooldown variants
+  // carry no data-action so the click wiring skips them naturally.
+  const dayToDayAttrs = embCooldown
+    ? ` aria-disabled="true" title="Cooldown — ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'} remaining"`
+    : ' data-action="embassy-day-to-day"';
+  const dayToDayTile = `
+    <div class="act-btn${embCooldown ? ' cooldown' : ''}"${dayToDayAttrs}>
+      <div class="act-head">
+        <span class="act-ic">🏛</span>
+        <span class="act-name">DAY TO DAY IN THE EMBASSY</span>
+        <span class="act-cost">no cost</span>
+      </div>
+      <div class="act-desc">${hasPendingDraw
+        ? 'An incident is waiting on your desk — resolve it.'
+        : 'Routine consular and reporting work — files, memos, the trade. Something always comes up.'}</div>
+      ${embCooldown ? `<div class="act-cooldown">Ready in ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'}</div>` : ''}
+    </div>`;
+
+  const placeholderActions = [
     { ic: '🤝', name: 'BUILD LOCAL CONTACTS',          cost: 'no cost', desc: 'Cultivate sources inside the host nation — ministers, journalists, opposition figures.' },
     { ic: '📡', name: 'SEND CABLE TO FOREIGN MINISTRY', cost: 'no cost', desc: 'File a coded dispatch back to your Foreign Ministry — the channel that grades your posting.' },
   ];
-  const actionsHtml = actions.map(a => `
+  const actionsHtml = dayToDayTile + placeholderActions.map(a => `
     <div class="act-btn disabled" aria-disabled="true" title="Action mechanics coming soon">
       <div class="act-head">
         <span class="act-ic">${a.ic}</span>
@@ -3118,6 +3162,12 @@ async function renderForeignAffiliation(ctx) {
                 style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
                        font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
                        cursor:pointer; font-family:inherit; flex-shrink:0;">RESIGN</button>
+      </div>
+      <div class="emb-stats">
+        <div class="emb-stat"><span class="emb-stat-lab">EMBASSY BUDGET</span><span class="emb-stat-val">$${escHtml(embBudget.toLocaleString())}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
       </div>
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
@@ -3147,6 +3197,9 @@ async function renderForeignAffiliation(ctx) {
       btn.dataset.busy = '0';
     }
   });
+
+  host.querySelector('.act-btn[data-action="embassy-day-to-day"]')
+    ?.addEventListener('click', () => openEmbassyEventModal());
 }
 
 // 20270769 — Federal Investigations Tier 1 (Agent) affiliation card.
@@ -3438,6 +3491,181 @@ async function submitFisInvestigation() {
     submitBtn.disabled = false;
     submitBtn.textContent = prev;
   }
+}
+
+// ─── Day to Day in the Embassy modal (20270776) ────────────────────
+// Three views: draw (calls embassy_day_to_day — returns the pending
+// event if one is already on the desk, otherwise draws fresh and
+// burns the per-tick cooldown) → A/B/C decision picker → result with
+// the applied stat deltas. Closing after a resolve reloads so the
+// card's stat strip catches up.
+let _embModalState = { drawId: null, decisionKey: null, inFlight: false, resolved: false };
+let _embModalWired = false;
+
+const EMB_STAT_LABEL = {
+  budget:     'Embassy Budget',
+  reputation: 'Embassy Reputation',
+  trust:      'Embassy Trust',
+  leverage:   'Embassy Leverage',
+};
+
+function openEmbassyEventModal() {
+  const overlay = document.getElementById('embassyEventModal');
+  if (!overlay) return;
+  if (!_embModalWired) {
+    overlay.addEventListener('click', (e) => {
+      if (e.target?.id === 'embassyEventModal') { closeEmbassyEventModal(); return; }
+      if (e.target.closest('[data-emb-close]')) closeEmbassyEventModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('show')) closeEmbassyEventModal();
+    });
+    _embModalWired = true;
+  }
+  _embModalState = { drawId: null, decisionKey: null, inFlight: false, resolved: false };
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  loadEmbassyEvent();
+}
+
+function closeEmbassyEventModal() {
+  if (_embModalState.inFlight) return;
+  const overlay = document.getElementById('embassyEventModal');
+  if (!overlay) return;
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.style.overflow = '';
+  // Stats changed server-side — reload so the card strip + cooldown
+  // reflect the resolved event.
+  if (_embModalState.resolved) location.reload();
+}
+
+async function loadEmbassyEvent() {
+  const body = document.getElementById('emb-modal-body');
+  const foot = document.getElementById('emb-modal-foot');
+  body.innerHTML = '<div class="emb-loading">Checking the day’s traffic…</div>';
+  foot.innerHTML = '<button type="button" class="emb-btn secondary" data-emb-close>CANCEL</button>';
+  try {
+    const factionId = window.__politicianCtx?.faction?.id || null;
+    const { data, error } = await _supabase.rpc('embassy_day_to_day', { p_faction_id: factionId });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'You are not signed in.',
+        no_politician:     'No politician faction found.',
+        not_in_service:    'You no longer hold a Foreign Service posting.',
+        cooldown:          `You already worked the embassy this tick — ready at tick ${data?.ready_at_tick ?? '?'}.`,
+        no_events:         'A quiet day — the Foreign Ministry has nothing on file for you. Check back soon.',
+      };
+      body.innerHTML = `<div class="emb-loading">${escHtml(REASON[data?.reason] || ('Could not draw an event: ' + (data?.reason || 'unknown')))}</div>`;
+      foot.innerHTML = '<button type="button" class="emb-btn secondary" data-emb-close>CLOSE</button>';
+      return;
+    }
+    renderEmbassyDecisionView(data);
+  } catch (err) {
+    body.innerHTML = `<div class="emb-loading">Failed to load — ${escHtml(err?.message || 'try again')}.</div>`;
+    foot.innerHTML = '<button type="button" class="emb-btn secondary" data-emb-close>CLOSE</button>';
+  }
+}
+
+function renderEmbassyDecisionView(draw) {
+  _embModalState.drawId = draw.draw_id;
+  _embModalState.decisionKey = null;
+  const body = document.getElementById('emb-modal-body');
+  const foot = document.getElementById('emb-modal-foot');
+  const decisions = Array.isArray(draw.decisions) ? draw.decisions : [];
+  body.innerHTML = `
+    <div class="emb-event-title">${escHtml(draw.title)}</div>
+    <div class="emb-event-desc">${escHtml(draw.description)}</div>
+    <div class="emb-step-lab">MAKE A DECISION</div>
+    <div class="emb-dec-list">
+      ${decisions.map(d => `
+        <button type="button" class="emb-dec-row" data-key="${escHtml(d.key)}">
+          <span class="emb-dec-key">${escHtml(d.key)}</span>
+          <span class="emb-dec-desc">${escHtml(d.description)}</span>
+        </button>`).join('')}
+    </div>
+    <div class="emb-err" id="emb-err"></div>`;
+  foot.innerHTML = `
+    <button type="button" class="emb-btn secondary" data-emb-close>DECIDE LATER</button>
+    <button type="button" class="emb-btn" id="emb-submit" disabled>COMMIT &rsaquo;</button>`;
+  const submitBtn = document.getElementById('emb-submit');
+  body.querySelectorAll('.emb-dec-row').forEach(btn => {
+    btn.addEventListener('click', () => {
+      _embModalState.decisionKey = btn.dataset.key;
+      body.querySelectorAll('.emb-dec-row').forEach(r => r.classList.toggle('selected', r === btn));
+      submitBtn.disabled = false;
+    });
+  });
+  submitBtn.addEventListener('click', submitEmbassyDecision);
+}
+
+async function submitEmbassyDecision() {
+  if (_embModalState.inFlight) return;
+  if (!_embModalState.drawId || !_embModalState.decisionKey) return;
+  const errEl = document.getElementById('emb-err');
+  const submitBtn = document.getElementById('emb-submit');
+  errEl.textContent = '';
+  _embModalState.inFlight = true;
+  submitBtn.disabled = true;
+  const prev = submitBtn.textContent;
+  submitBtn.textContent = 'COMMITTING…';
+  try {
+    const factionId = window.__politicianCtx?.faction?.id || null;
+    const { data, error } = await _supabase.rpc('embassy_event_decide', {
+      p_faction_id:   factionId,
+      p_draw_id:      _embModalState.drawId,
+      p_decision_key: _embModalState.decisionKey,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated: 'You are not signed in.',
+        invalid_arguments: 'Submission was malformed.',
+        no_politician:     'No politician faction found.',
+        draw_not_found:    'That event is no longer on your desk.',
+        already_resolved:  'You already decided this one.',
+        invalid_decision:  'Pick one of the listed decisions.',
+      };
+      errEl.textContent = REASON[data?.reason] || ('Could not resolve: ' + (data?.reason || 'unknown'));
+      _embModalState.inFlight = false;
+      submitBtn.disabled = false;
+      submitBtn.textContent = prev;
+      return;
+    }
+    _embModalState.inFlight = false;
+    _embModalState.resolved = true;
+    renderEmbassyResultView(data);
+  } catch (e) {
+    errEl.textContent = 'Failed: ' + (e?.message || 'unknown error');
+    _embModalState.inFlight = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = prev;
+  }
+}
+
+function renderEmbassyResultView(result) {
+  const body = document.getElementById('emb-modal-body');
+  const foot = document.getElementById('emb-modal-foot');
+  const applied = Array.isArray(result.applied) ? result.applied : [];
+  const lines = applied.length
+    ? applied.map(a => {
+        const delta = Number(a.delta) || 0;
+        const up = delta >= 0;
+        const fmt = a.stat === 'budget'
+          ? `${up ? '+' : '−'}$${Math.abs(delta).toLocaleString()}`
+          : `${up ? '+' : '−'}${Math.abs(delta)}`;
+        return `<div class="emb-result-line ${up ? 'up' : 'down'}">
+            <span>${escHtml(EMB_STAT_LABEL[a.stat] || a.stat)}</span><span>${escHtml(fmt)}</span>
+          </div>`;
+      }).join('')
+    : '<div class="emb-result-line">No stat changes — a day like any other.</div>';
+  body.innerHTML = `
+    <div class="emb-step-lab">DECISION ${escHtml(result.decision_key || '')} TAKEN</div>
+    <div class="emb-event-desc">The cable goes out under your name. Consequences follow.</div>
+    <div class="emb-result-list">${lines}</div>`;
+  foot.innerHTML = '<button type="button" class="emb-btn" data-emb-close>CLOSE</button>';
 }
 
 // Unified action catalog — MP (20270433/20270460) + Local (20270461).
@@ -6972,6 +7200,77 @@ init();
     </div>
     <div class="fis-body" id="fis-modal-body"></div>
     <div class="fis-foot" id="fis-modal-foot"></div>
+  </div>
+</div>
+
+<!-- Day to Day in the Embassy modal (20270776). Same chrome as the
+     FIS modal above but on the foreign-service teal accent. Views are
+     rendered into emb-modal-body/foot by loadEmbassyEvent() →
+     renderEmbassyDecisionView() → renderEmbassyResultView(). -->
+<style>
+  /* Embassy stat strip on the Attaché affiliation card. */
+  .emb-stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:7px; margin-top:12px; }
+  .emb-stat { background:#0a0a0a; border:0.5px solid rgba(122,171,171,0.22); border-radius:4px;
+              padding:8px 10px; display:flex; flex-direction:column; gap:3px; }
+  .emb-stat-lab { font-size:8px; letter-spacing:0.14em; color:#7aabab; font-weight:700; }
+  .emb-stat-val { font-family:monospace; font-size:13px; color:#fff; }
+  .emb-stat-max { font-size:9px; color:#666; }
+  @media (max-width:560px) { .emb-stats { grid-template-columns:repeat(2, 1fr); } }
+
+  #embassyEventModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+                       align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  #embassyEventModal.show { display:flex; }
+  #embassyEventModal .emb-modal { width:100%; max-width:560px; background:#0d0d0d;
+                                  border:0.5px solid rgba(122,171,171,0.45); border-radius:8px;
+                                  max-height:88vh; display:flex; flex-direction:column; overflow:hidden; }
+  .emb-head { padding:18px 22px 14px; border-bottom:0.5px solid rgba(122,171,171,0.3);
+              background:#0e1717; position:relative; }
+  .emb-eyebrow { font-size:9px; letter-spacing:0.18em; color:#7aabab; font-weight:700; margin-bottom:6px; }
+  .emb-title { font-family:Georgia,serif; font-size:18px; color:#fff; font-weight:500; padding-right:32px; }
+  .emb-title em { font-style:italic; color:#a5c8c8; }
+  .emb-close { position:absolute; top:14px; right:18px; width:26px; height:26px; background:transparent;
+               border:0.5px solid #3a3a3a; border-radius:4px; color:#888; font-size:12px;
+               cursor:pointer; font-family:inherit; }
+  .emb-close:hover { color:#fff; border-color:#5a5a5a; }
+  .emb-body { padding:20px 22px; overflow-y:auto; }
+  .emb-loading { padding:18px 4px; color:#888; font-size:11.5px; font-style:italic; text-align:center; }
+  .emb-event-title { font-family:Georgia,serif; font-size:17px; color:#fff; margin-bottom:8px; }
+  .emb-event-desc { font-size:12px; color:#aaa; line-height:1.6; margin-bottom:16px; }
+  .emb-step-lab { font-size:9px; letter-spacing:0.14em; color:#7aabab; font-weight:700; margin-bottom:10px; }
+  .emb-dec-list { display:flex; flex-direction:column; gap:7px; }
+  .emb-dec-row { display:flex; align-items:flex-start; gap:12px; padding:12px 14px; background:#0a0a0a;
+                 border:0.5px solid rgba(255,255,255,0.1); border-radius:4px; cursor:pointer;
+                 font-family:inherit; text-align:left; }
+  .emb-dec-row:hover { background:#0e1717; border-color:rgba(122,171,171,0.4); }
+  .emb-dec-row.selected { background:#101c1c; border-color:#7aabab; }
+  .emb-dec-key { font-family:Georgia,serif; font-size:16px; color:#a5c8c8; flex-shrink:0; width:18px; }
+  .emb-dec-desc { font-size:11.5px; color:#ccc; line-height:1.55; }
+  .emb-result-list { display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+  .emb-result-line { display:flex; justify-content:space-between; gap:12px; padding:9px 12px;
+                     background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
+                     font-family:monospace; font-size:11px; color:#aaa; }
+  .emb-result-line.up   { color:#9ac8a0; border-color:rgba(122,171,122,0.3); }
+  .emb-result-line.down { color:#d49a9a; border-color:rgba(200,122,122,0.3); }
+  .emb-err { margin-top:10px; color:#d49a9a; font-size:10.5px; min-height:14px; }
+  .emb-foot { padding:14px 22px; background:#0e1717; border-top:0.5px solid rgba(122,171,171,0.25);
+              display:flex; gap:10px; justify-content:flex-end; }
+  .emb-btn { padding:9px 16px; background:rgba(122,171,171,0.1); border:0.5px solid #7aabab;
+             color:#a5c8c8; font-size:9.5px; letter-spacing:0.13em; font-weight:700;
+             border-radius:3px; cursor:pointer; font-family:inherit; }
+  .emb-btn:hover:not(:disabled) { background:rgba(122,171,171,0.22); color:#fff; }
+  .emb-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .emb-btn.secondary { background:transparent; border-color:#3a3a3a; color:#888; }
+  .emb-btn.secondary:hover:not(:disabled) { color:#d4d4d4; border-color:#5a5a5a; }
+</style>
+<div id="embassyEventModal" aria-hidden="true" role="dialog" aria-modal="true">
+  <div class="emb-modal">
+    <div class="emb-head">
+      <div class="emb-eyebrow">FOREIGN SERVICE · EMBASSY DISPATCH</div>
+      <div class="emb-title">Day to Day in the <em>Embassy</em></div>
+      <button type="button" class="emb-close" data-emb-close title="Close">&#10005;</button>
+    </div>
+    <div class="emb-body" id="emb-modal-body"></div>
+    <div class="emb-foot" id="emb-modal-foot"></div>
   </div>
 </div>
 
