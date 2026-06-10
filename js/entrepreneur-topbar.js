@@ -358,6 +358,7 @@ const SWITCHER_FACTION_COLS =
 
 const ENT_FACTION_COLS =
   'id, faction_type, faction_name, leader_first_name, leader_last_name, leader_age, founded_tick, nation, nation_id, biz_residence_name, biz_residence_worth, biz_career_history, biz_home_city, ent_origin_nation, ' +
+  'biz_employer_corp_id, biz_job_title, biz_salary_yearly, nickname, ' +
   'entrepreneur_archetype, ent_influence, ent_skill, ent_reputation, party_funds, status';
 
 export async function bootstrapEntrepreneur(activeTab) {

@@ -86,8 +86,9 @@
   .rl-empty { padding:24px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:4px; }
-  .rl-row { display:flex; align-items:center; gap:14px; padding:11px 14px; background:#0d0d0d;
-    border:0.5px solid rgba(255,255,255,0.07); border-radius:4px; margin-bottom:7px; }
+  .rl-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
+    margin-bottom:7px; }
+  .rl-row { display:flex; align-items:center; gap:14px; padding:11px 14px; }
   .rl-row > div:first-child { min-width:0; overflow-wrap:break-word; }
   .rl-row .nm { font-size:12.5px; color:#fff; font-weight:600; }
   .rl-row .meta { font-family:var(--font-mono); font-size:9.5px; color:#888; margin-top:3px; }
@@ -99,6 +100,28 @@
     letter-spacing:0.1em; font-weight:700; cursor:pointer; flex-shrink:0; }
   .rl-withdraw:hover:not(:disabled) { background:#1a0a0a; }
   .rl-withdraw:disabled { opacity:0.4; cursor:not-allowed; }
+
+  /* Applicants under each posting (owner view) */
+  .rl-apps { border-top:0.5px solid rgba(255,255,255,0.07); padding:9px 14px 11px; }
+  .rl-apps-h { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.16em; color:#888;
+    font-weight:700; margin-bottom:7px; }
+  .ap-grid { display:grid; grid-template-columns: 1.3fr 0.8fr 1.2fr 1fr 0.5fr auto;
+    gap:4px 12px; align-items:center; }
+  .ap-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em; color:#555;
+    font-weight:700; }
+  .ap-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
+  .ap-grid .c .tag { font-family:var(--font-mono); font-size:8.5px; color:#8aaa6a; }
+  .ap-btns { display:flex; gap:5px; justify-content:flex-end; }
+  .ap-btn { padding:4px 8px; border-radius:3px; font-family:var(--font-mono); font-size:8px;
+    letter-spacing:0.08em; font-weight:700; cursor:pointer; background:transparent; }
+  .ap-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .ap-btn.iv  { border:0.5px solid #4a5a6a; color:#7a9ac8; }
+  .ap-btn.iv:hover:not(:disabled)  { background:#0a0f14; }
+  .ap-btn.rej { border:0.5px solid #5a3030; color:#c87a7a; }
+  .ap-btn.rej:hover:not(:disabled) { background:#1a0a0a; }
+  .ap-btn.hr  { border:0.5px solid #4a6a4a; color:#8aaa6a; }
+  .ap-btn.hr:hover:not(:disabled)  { background:rgba(138,170,106,0.1); }
+  .ap-none { font-size:10.5px; color:#555; font-style:italic; }
 
   /* ── Registry infobox (right column) ── */
   .bc-box { width:300px; flex-shrink:0; background:#0d0d0d;
@@ -242,7 +265,8 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from './js/utils.js';
+import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName } from './js/utils.js';
+import { openInterviewChat } from './js/job-interview-chat.js';
 
 (async () => {
   try {
@@ -258,7 +282,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
       .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id, pillar_speed, pillar_efficiency, pillar_quality,
                nation:nations!hq_nation_id(name, wages, standard_of_living),
-               owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
+               owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
       .eq('id', corpId).maybeSingle();
     if (error) throw error;
     if (!corp) {
@@ -407,6 +431,17 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from
         <div id="rl-list"><div class="rl-empty">Loading…</div></div>
       </div>`;
 
+    // Applicant name cell: players carry their live nickname in
+    // parens — or a [player] tag when they haven't set one — so the
+    // owner can tell them apart from the NPC pool at a glance.
+    function applicantNameHtml(a) {
+      const base = esc(a.name);
+      if (!a.applicant_faction_id) return base;
+      const nick = (a.applicant?.nickname || '').trim();
+      return nick ? `${base} <span class="tag">(${esc(nick)})</span>`
+                  : `${base} <span class="tag">[player]</span>`;
+    }
+
     async function loadRoles() {
       const host = document.getElementById('rl-list');
       try {
@@ -419,15 +454,127 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from
           host.innerHTML = '<div class="rl-empty">No open positions.</div>';
           return;
         }
-        host.innerHTML = data.map(o => `
-          <div class="rl-row">
-            <div>
-              <div class="nm">${esc(o.title)}</div>
-              <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${o.reach === 'global' ? 'Global candidates' : 'Local candidates'}</div>
+
+        // The applicant stack is the owner's hiring desk; everyone
+        // else just sees the posting.
+        let appsByOpening = {};
+        if (isOwner) {
+          const { data: apps, error: apErr } = await _supabase.from('job_applicants')
+            .select('id, opening_id, name, city, current_employment, current_title, years_experience, applicant_faction_id, applicant:factions!applicant_faction_id(nickname)')
+            .in('opening_id', data.map(o => o.id))
+            .eq('status', 'applied')
+            .order('created_at');
+          if (apErr) throw apErr;
+          for (const a of (apps || [])) {
+            (appsByOpening[a.opening_id] ||= []).push(a);
+          }
+        }
+
+        host.innerHTML = data.map(o => {
+          const apps = appsByOpening[o.id] || [];
+          const appsHtml = !isOwner ? '' : `
+            <div class="rl-apps">
+              <div class="rl-apps-h">APPLICANTS (${apps.length})</div>
+              ${!apps.length ? '<div class="ap-none">No applicants yet.</div>' : `
+              <div class="ap-grid">
+                <div class="h">NAME</div><div class="h">CITY</div><div class="h">CURRENT EMPLOYMENT</div><div class="h">CURRENT TITLE</div><div class="h">YRS EXP</div><div class="h"></div>
+                ${apps.map(a => `
+                  <div class="c">${applicantNameHtml(a)}</div>
+                  <div class="c">${esc(a.city)}</div>
+                  <div class="c">${esc(a.current_employment)}</div>
+                  <div class="c">${esc(a.current_title)}</div>
+                  <div class="c">${esc(String(a.years_experience))}</div>
+                  <div class="ap-btns">
+                    ${a.applicant_faction_id ? `<button type="button" class="ap-btn iv" data-app="${esc(a.id)}">INTERVIEW</button>` : ''}
+                    <button type="button" class="ap-btn rej" data-app="${esc(a.id)}">REJECT</button>
+                    <button type="button" class="ap-btn hr" data-app="${esc(a.id)}">HIRE</button>
+                  </div>`).join('')}
+              </div>`}
+            </div>`;
+          return `
+          <div class="rl-card">
+            <div class="rl-row">
+              <div>
+                <div class="nm">${esc(o.title)}</div>
+                <div class="meta"><span class="pay">${esc(hfFmtBig(Number(o.salary_yearly) || 0))} / year</span> &middot; ${o.reach === 'global' ? 'Global candidates' : 'Local candidates'}</div>
+              </div>
+              <span class="ago">${esc(postedMonthsAgo(o.posted_at_tick, currentTick))}</span>
+              ${isOwner ? `<button type="button" class="rl-withdraw" data-opening="${esc(o.id)}">WITHDRAW</button>` : ''}
             </div>
-            <span class="ago">${esc(postedMonthsAgo(o.posted_at_tick, currentTick))}</span>
-            ${isOwner ? `<button type="button" class="rl-withdraw" data-opening="${esc(o.id)}">WITHDRAW</button>` : ''}
-          </div>`).join('');
+            ${appsHtml}
+          </div>`;
+        }).join('');
+
+        const flatApps = Object.values(appsByOpening).flat();
+        const titleByOpening = Object.fromEntries(data.map(o => [o.id, o.title]));
+
+        // [HIRE] fills the opening and bumps the headcount shown in
+        // the registry box — full reload keeps every surface honest.
+        host.querySelectorAll('.ap-btn.hr').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Hire this applicant? This fills the opening.')) return;
+            btn.disabled = true;
+            try {
+              const { data: res, error: hErr } = await _supabase.rpc('hire_job_applicant',
+                { p_applicant_id: btn.dataset.app });
+              if (hErr) throw hErr;
+              if (!res?.success) throw new Error(res?.reason || 'unknown');
+              window.location.reload();
+            } catch (e) {
+              alert('Could not hire: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
+
+        host.querySelectorAll('.ap-btn.rej').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const { data: res, error: rErr } = await _supabase.rpc('reject_job_applicant',
+                { p_applicant_id: btn.dataset.app });
+              if (rErr) throw rErr;
+              if (!res?.success) throw new Error(res?.reason || 'unknown');
+              loadRoles();
+            } catch (e) {
+              alert('Could not reject: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
+
+        // [INTERVIEW] — player applicants only; opens (or reopens)
+        // the private chat.
+        host.querySelectorAll('.ap-btn.iv').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const app = flatApps.find(a => a.id === btn.dataset.app);
+            if (!app) return;
+            btn.disabled = true;
+            try {
+              const { data: res, error: sErr } = await _supabase.rpc('start_job_interview',
+                { p_applicant_id: app.id });
+              if (sErr) throw sErr;
+              if (!res?.success) throw new Error(res?.reason || 'unknown');
+              openInterviewChat({
+                interviewId: res.interview_id,
+                applicantId: app.id,
+                heading: `JOB INTERVIEW — ${titleByOpening[app.opening_id] || 'Role'} for ${corp.name}`,
+                canManage: true,
+                myFactionId: ctx.faction.id,
+                names: {
+                  [corp.owner_faction_id]: displayName(corp.owner),
+                  [app.applicant_faction_id]: app.name,
+                },
+                onHired: () => window.location.reload(),
+              });
+            } catch (e) {
+              alert('Could not start interview: ' + (e?.message || e));
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
         host.querySelectorAll('.rl-withdraw').forEach(btn => {
           btn.addEventListener('click', async () => {
             if (btn.dataset.busy === '1') return;
@@ -495,13 +642,13 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo } from
 
     function openJobModal() {
       jmRung = null;
-      // Expected salary anchors: Wages 1 + SoL 60 → $6,000/yr;
-      // Wages 100 + SoL 100 → $1,000,000/yr. Both land exactly on
-      // wages × standard_of_living × 100. Stats ride the corp query's
-      // nation embed — no extra fetch.
+      // Expected salary = wages × standard_of_living × 30 — the
+      // original × 100 anchor cut by 70% to fit small-economy nations
+      // like Sierramar. Must match post_job_opening's server band.
+      // Stats ride the corp query's nation embed — no extra fetch.
       const w   = Math.max(1, Number(corp.nation?.wages) || 50);
       const sol = Math.max(1, Number(corp.nation?.standard_of_living) || 50);
-      const expectedYearly = Math.round(w * sol * 100);
+      const expectedYearly = Math.round(w * sol * 30);
       const host = document.getElementById('jm-rungs');
       host.innerHTML = OPS_LADDER.map(r => `
         <div class="jm-rung${r.postable ? '' : ' locked'}" data-rung="${r.rung}" ${r.postable ? '' : 'title="Being chartered"'}>

@@ -106,9 +106,39 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
     // and investigations have no businessman-targeting systems yet,
     // so they read their all-clear defaults — wire real queries here
     // when those mechanics land.
-    // Occupation/Salary: no employment system exists yet, so the only
-    // truthful state is Unemployed / $0 per tick. When the career
-    // mechanics land, read the employer + title + wage here.
+    // Occupation, in precedence order: a salaried job (the 20270799
+    // employment record — set when a corp owner hires you), then corp
+    // ownership ("Owner of {first corp}", +N more if several), then
+    // Unemployed. Salary reads the same record: yearly ÷ 12 per tick.
+    let occupationHtml = '<div class="val">Unemployed</div>';
+    let salaryYearly = 0;
+    try {
+      const [{ data: corps, error: ownErr }, employer] = await Promise.all([
+        _supabase.from('entrepreneur_corps')
+          .select('name').eq('owner_faction_id', f.id).order('created_at'),
+        f.biz_employer_corp_id
+          ? _supabase.from('entrepreneur_corps')
+              .select('name').eq('id', f.biz_employer_corp_id).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (ownErr) throw ownErr;
+      if (employer.error) throw employer.error;
+      const ownerSub = corps?.length
+        ? `<div class="sub">Owner of ${esc(corps[0].name)}${corps.length > 1 ? ` +${corps.length - 1} more` : ''}</div>`
+        : '';
+      if (f.biz_job_title) {
+        salaryYearly = Number(f.biz_salary_yearly) || 0;
+        occupationHtml = `<div class="val">${esc(f.biz_job_title)}</div>`
+          + (employer.data?.name ? `<div class="sub">at ${esc(employer.data.name)}</div>` : '')
+          + ownerSub;
+      } else if (corps?.length) {
+        occupationHtml = `<div class="val">Owner of ${esc(corps[0].name)}</div>`
+          + (corps.length > 1 ? `<div class="sub">+${corps.length - 1} more</div>` : '');
+      }
+    } catch (e) {
+      console.warn('[businessman-home] occupation fetch failed:', e?.message || e);
+    }
+
     const arrested  = String(f.status || '').toLowerCase() === 'arrested';
     const statusHtml = arrested
       ? `<div class="biz-status-line bad">Under Arrest</div>
@@ -147,12 +177,12 @@ import { hfFmtBig, escapeHtml as esc } from './js/utils.js';
       </div>
       <div class="biz-card">
         <div class="lab">OCCUPATION</div>
-        <div class="val">Unemployed</div>
+        ${occupationHtml}
       </div>
       <div class="biz-card">
         <div class="lab">SALARY</div>
-        <div class="val money">${esc(hfFmtBig(0))}</div>
-        <div class="sub">per tick</div>
+        <div class="val money">${esc(hfFmtBig(Math.round(salaryYearly / 12)))}</div>
+        <div class="sub">per tick${salaryYearly ? ` &middot; ${esc(hfFmtBig(salaryYearly))}/yr` : ''}</div>
       </div>`;
 
     document.getElementById('loading').style.display = 'none';
