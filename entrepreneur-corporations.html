@@ -406,7 +406,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { bootstrapEntrepreneur } from './js/entrepreneur-topbar.js';
+import { bootstrapSharedViewer } from './js/entrepreneur-topbar.js';
 import { fmtM, fmtUsd, fmtValuation, titleCase, ownerDisplayName, viewerStakePct, industryLabel, homeNationName } from './js/utils.js';
 import { computeEntrepreneurValuation, getEntrepreneurCorpCash } from './js/game/corp-valuation.js';
 import { fetchCorpBookAggregates } from './js/corp-book-value.js';
@@ -661,7 +661,7 @@ function renderPositions(corps, filter) {
 
 (async () => {
   try {
-    const ctx = await bootstrapEntrepreneur('corporations');
+    const ctx = await bootstrapSharedViewer('corporations', 'corporations');
     if (!ctx) return;
     const entId = ctx.faction?.id;
     entFunds = Number(ctx.faction?.party_funds) || 0;
