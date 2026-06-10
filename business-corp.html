@@ -169,10 +169,10 @@
     margin-top:6px; min-height:12px; }
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
-  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay { position:fixed; inset:0;
+  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay { position:fixed; inset:0;
     background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center;
     padding:20px; z-index:1000; }
-  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open { display:flex; }
+  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -199,6 +199,16 @@
   .sp-city .stats { font-family:var(--font-mono); font-size:8.5px; color:#888;
     margin-top:4px; line-height:1.7; }
   .sp-city .stats b { color:#aac88a; font-weight:700; }
+  .pr-warn { margin-top:12px; padding:10px 13px; font-family:var(--font-mono); font-size:10px;
+    color:#c8a96a; background:rgba(200,169,106,0.06); border:0.5px solid rgba(200,169,106,0.4);
+    border-radius:4px; }
+  .pr-row { display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:6px 12px; align-items:center;
+    background:#0a0a0a; border:1px solid rgba(255,255,255,0.1); border-radius:4px;
+    padding:11px 13px; margin-bottom:7px; }
+  .pr-row .nm { font-size:12.5px; color:#fff; font-weight:600; }
+  .pr-row .c { font-family:var(--font-mono); font-size:10.5px; color:#ccc; }
+  .pr-row .c.money { color:#8aaa6a; }
+  .pr-row .c .sub { display:block; font-size:8.5px; color:#666; margin-top:2px; }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -357,6 +367,24 @@
   </div>
 </div>
 
+<div id="pr-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Procurement <em>Run</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Spend corporate cash to secure raw construction
+        materials (steel, concrete, aggregates), generating Procurement Credits that lower
+        the future cash costs of your Advance Build actions.</div>
+      <div class="pr-warn" id="pr-warn" style="display:none;">You have no storage available,
+        upgrade your Supply &amp; Material asset.</div>
+      <div class="jm-lab">THE EXCHANGE &middot; HQ NATION PRICES</div>
+      <div id="pr-rows"><div class="rl-empty">Loading…</div></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="pr-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
 <div id="jm-overlay">
   <div class="jm-modal">
     <div class="jm-head"><div class="jm-title">Post a <em>Job Opening</em></div></div>
@@ -435,7 +463,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -1159,12 +1187,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">ADVANCE BUILD</div>
               <div class="soon">$10k per site — push every build 1 tick</div>
             </div>
-            ${Array.from({ length: 2 }, () => `
-              <div class="ea-card" title="Coming soon">
-                <div class="ic">—</div>
-                <div class="nm">ACTION</div>
-                <div class="soon">(Coming Soon)</div>
-              </div>`).join('')}
+            <div class="ea-card live" id="ea-procurement-run">
+              <div class="ic">📦</div>
+              <div class="nm">PROCUREMENT RUN</div>
+              <div class="soon">Buy materials &amp; equipment</div>
+            </div>
+            <div class="ea-card" title="Coming soon">
+              <div class="ic">—</div>
+              <div class="nm">ACTION</div>
+              <div class="soon">(Coming Soon)</div>
+            </div>
           </div>
         </div>`;
 
@@ -1438,6 +1470,44 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
       document.getElementById('ea-submit-bid').addEventListener('click', openBidModal);
       wireModalClose('pb-overlay', 'pb-cancel');
+
+      // ── Procurement Run (Executive Action #4) ───────────────────
+      // Lists both market goods at the HQ nation's live prices (the
+      // same one-source market functions the MARKET tab reads). At
+      // Supply & Material Tier 0 — the Retail Hardware Store — there
+      // is no storage: the warning shows and nothing is buyable.
+      // The buy flow lands with the Supply & Material upgrade
+      // mechanics (20270816 holds the tier column).
+      async function openProcurementModal() {
+        const host = document.getElementById('pr-rows');
+        host.innerHTML = '<div class="rl-empty">Loading…</div>';
+        document.getElementById('pr-warn').style.display =
+          (Number(corp.supply_tier) || 0) === 0 ? 'block' : 'none';
+        document.getElementById('pr-overlay').classList.add('open');
+        try {
+          const [mats, equip] = await Promise.all([
+            _supabase.rpc('construction_materials_market', { p_nation_id: corp.hq_nation_id }),
+            _supabase.rpc('construction_equipment_market', { p_nation_id: corp.hq_nation_id }),
+          ]);
+          if (mats.error || equip.error) throw (mats.error || equip.error);
+          const row = (name, mkt) => !mkt?.success ? '' : `
+            <div class="pr-row">
+              <div class="nm">${esc(name)}</div>
+              <div class="c">${esc(Number(mkt.amount_available).toLocaleString())} units</div>
+              <div class="c money">${esc(hfFmtBig(Number(mkt.cost_per_unit) || 0))}
+                <span class="sub">base ${esc(hfFmtBig(Number(mkt.base_cost) || 0))} × ${esc(String(mkt.scarcity_mult))} scarcity</span>
+              </div>
+            </div>`;
+          host.innerHTML = row('Construction Materials', mats.data)
+            + row('Construction Equipment', equip.data)
+            || '<div class="rl-empty">Could not load the exchange.</div>';
+        } catch (e) {
+          console.warn('[business-corp] procurement modal load failed:', e?.message || e);
+          host.innerHTML = '<div class="rl-empty">Could not load the exchange — try again shortly.</div>';
+        }
+      }
+      document.getElementById('ea-procurement-run').addEventListener('click', openProcurementModal);
+      wireModalClose('pr-overlay', 'pr-cancel');
 
       // ── Advance Build (20270813) ────────────────────────────────
       // No inputs — one confirm with the live cost ($10k × active
