@@ -212,6 +212,13 @@
     line-height:1.55; }
   .db-static { font-family:var(--font-mono); font-size:12px; color:#fff; }
   .db-static .dim { color:#8aaa6a; font-size:10.5px; }
+  .db-metric { display:flex; align-items:baseline; gap:10px; padding:7px 11px; background:#0a0a0a;
+    border:1px solid rgba(255,255,255,0.08); border-radius:4px; margin-bottom:6px; }
+  .db-metric .nm { font-family:var(--font-mono); font-size:9px; letter-spacing:0.12em;
+    color:#aac88a; font-weight:700; }
+  .db-metric .vl { font-family:var(--font-mono); font-size:12px; color:#fff; font-weight:700; }
+  .db-metric .fx { margin-left:auto; font-family:var(--font-mono); font-size:9.5px;
+    color:#8aaa6a; text-align:right; }
   .jm-foot { padding:13px 20px; background:#10140e; border-top:0.5px solid rgba(138,170,106,0.25);
     display:flex; gap:10px; justify-content:flex-end; }
   .jm-btn { padding:9px 16px; background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a;
@@ -319,6 +326,10 @@
       <div class="db-mech">The Mechanic: Spend accumulated Experience Points to design a
         proprietary structural design template, allocating Experience Points into
         Speed, Procurement, or Quality.</div>
+      <div class="jm-lab">BLUEPRINT NAME</div>
+      <input type="text" class="fin-amt" id="db-name" maxlength="60" placeholder="e.g. Casa Verde Mk. I" style="margin-bottom:0;">
+      <div class="jm-lab">CORE METRICS</div>
+      <div id="db-metrics"></div>
       <div class="jm-lab">CATEGORY</div>
       <div class="jm-pills db-cats" id="db-cats"></div>
       <div class="jm-lab">BUILD LOCATION</div>
@@ -677,7 +688,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
           const [{ data: cityRows, error: cityErr }, { data: bps, error: bpErr }] = await Promise.all([
             _supabase.from('cities').select('city_name, nation:nations!nation_id(name)'),
             _supabase.from('corp_blueprints')
-              .select('pm_applicant_id, building_type, quality_tier')
+              .select('pm_applicant_id, building_type, quality_tier, name')
               .eq('corp_id', corp.id)
               .order('created_at', { ascending: false }),
           ]);
@@ -691,8 +702,10 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             high_end: 'High End', luxury: 'Luxury', ultra_rich: 'Ultra Rich' };
           const projByPm = {};
           for (const bp of (bps || [])) {
-            projByPm[bp.pm_applicant_id] ||=
-              `${TYPE_LABELS[bp.building_type] || bp.building_type} (${TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
+            // Named blueprints (20270803) show their name; pre-name
+            // rows fall back to the type/tier label.
+            projByPm[bp.pm_applicant_id] ||= bp.name
+              || `${TYPE_LABELS[bp.building_type] || bp.building_type} (${TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
           }
           rowsHtml = `
             <div class="pe-grid">
@@ -1072,7 +1085,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
       function dbRefreshConfirm() {
         const pm = document.getElementById('db-pm').value;
-        document.getElementById('db-confirm').disabled = !(dbType && dbTier && pm);
+        const name = document.getElementById('db-name').value.trim();
+        document.getElementById('db-confirm').disabled = !(name.length >= 2 && dbType && dbTier && pm);
       }
 
       function dbPills(hostId, items, onPick) {
@@ -1091,6 +1105,17 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
       async function openBlueprintModal() {
         dbType = null; dbTier = null;
+        document.getElementById('db-name').value = '';
+        // What each rating point buys on this template: speed −1 tick
+        // off the build time, efficiency −3% material costs, quality
+        // +0.1 city Appeal. Values read the corp's pillar columns.
+        const mSpeed = Number(corp.pillar_speed) || 1;
+        const mEff   = Number(corp.pillar_efficiency) || 1;
+        const mQual  = Number(corp.pillar_quality) || 1;
+        document.getElementById('db-metrics').innerHTML = `
+          <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed} tick${mSpeed === 1 ? '' : 's'} off the build time</span></div>
+          <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff * 3}% material costs</span></div>
+          <div class="db-metric"><span class="nm">ENGINEERING QUALITY</span><span class="vl">${mQual}</span><span class="fx">+${(mQual * 0.1).toFixed(1)} Appeal when built in a city</span></div>`;
         dbPills('db-cats', DB_CATS, () => {});
         document.querySelector('#db-cats .jm-pill').classList.add('sel');
         dbPills('db-types', DB_TYPES, v => { dbType = v; });
@@ -1127,6 +1152,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
       document.getElementById('ea-draft-blueprint').addEventListener('click', openBlueprintModal);
       document.getElementById('db-pm').addEventListener('change', dbRefreshConfirm);
+      document.getElementById('db-name').addEventListener('input', dbRefreshConfirm);
       wireModalClose('db-overlay', 'db-cancel');
 
       document.getElementById('db-confirm').addEventListener('click', async () => {
@@ -1139,10 +1165,12 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
             p_building_type: dbType,
             p_quality_tier: dbTier,
             p_pm_applicant_id: document.getElementById('db-pm').value,
+            p_name: document.getElementById('db-name').value.trim(),
           });
           if (dErr) throw dErr;
           if (!data?.success) {
             const REASON = {
+              invalid_name: 'Blueprint names run 2–60 characters.',
               no_actions_remaining: 'No executive actions remaining this tick.',
               pm_not_found: 'That Project Manager no longer works here.',
               category_not_chartered: 'Only Residential blueprints can be drafted right now.',
