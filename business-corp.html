@@ -404,7 +404,7 @@
       <div class="jm-lab">TYPE</div>
       <div class="jm-pills db-cats" id="db-tiers"></div>
       <div class="jm-lab">MATERIALS NEEDED</div>
-      <div class="db-static">1</div>
+      <div class="db-static" id="db-materials">—</div>
       <div class="jm-lab">EQUIPMENT NEEDED</div>
       <div class="db-static">Light</div>
     </div>
@@ -420,7 +420,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -1221,7 +1221,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
           <div class="db-metric"><span class="nm">ENGINEERING QUALITY</span><span class="vl">${mQual}</span><span class="fx">+${(mQual * 0.1).toFixed(1)} Appeal when built in a city</span></div>`;
         dbPills('db-cats', DB_CATS, () => {});
         document.querySelector('#db-cats .jm-pill').classList.add('sel');
-        dbPills('db-types', DB_TYPES, v => { dbType = v; });
+        dbPills('db-types', DB_TYPES, v => {
+          dbType = v;
+          document.getElementById('db-materials').textContent =
+            String(BUILDING_MATERIALS_NEEDED[v] ?? 1);
+        });
+        document.getElementById('db-materials').textContent = '—';
         dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
         // Arriving from the bid board's [CREATE BLUEPRINT]: the
         // request's building type comes preselected.
