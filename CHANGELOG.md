@@ -3,6 +3,138 @@
 All notable changes to Nationhood are recorded here. Format inspired by
 [Keep a Changelog](https://keepachangelog.com/); dates use ISO 8601.
 
+## [MARIANNE — 3.0] — 2026-06-10
+
+### Added — Foreign Service
+
+- **Foreign Service Exam + Tier 1 (Attaché).** [Join the Service] on
+  the career page now opens a 5-question multiple-choice exam on the
+  active Politicianverse nations — population, Head of Government,
+  capital, legislature seats, government type. All five correct →
+  you are admitted to the Foreign Service, assigned to a random
+  foreign nation, and stationed at the embassy in its capital. Any
+  miss → −1 Reputation and a retry next month. Passing surfaces a
+  **Foreign Attaché in {Nation}** affiliation card on the home page
+  with three embassy actions (Day to Day in the Embassy / Build
+  Local Contacts / Send Cable to the Foreign Ministry — mechanics
+  coming), an **(Attaché)** suffix in the character switcher, and a
+  Political Career timeline entry. **RESIGN** (top right of the
+  card) returns you to civilian life — re-entry means re-taking the
+  exam.
+
+### Added — Federal Investigations
+
+- **Federal Investigations Service ladder** — new 5-tier career on
+  the career page above the armed services: Agent (Probationary) →
+  Section Head → Head of Task Force → Deputy Director → Director of
+  FIS.
+- **Tier 1 Agent is live.** [Join the Academy] grants +1 Experience
+  and +1 Influence (with a confirmation prompt if you already hold
+  another career — roles stack deliberately). Three repeatable
+  actions, one per tick: **Begin Investigation** (choose a Financial
+  Crimes target from every corporation holding assets in your
+  nation — Corruption and Anti-Terrorism unlock at higher tiers),
+  **Run Field Ops** (+0.5 Experience), **Make Friends at the
+  Bureau** (+0.3 Influence).
+- **Case files.** Every investigation creates a persistent Pressing
+  Issues card and its own case-file page showing the target's full
+  **Corporate History and Transactions** — every building, loan,
+  share trade, and tax bill on the corporate record. **Close
+  Investigation** seals an empty-handed case at −1 Reputation.
+  Resigning the Service dismisses your open cases and withdraws the
+  academy bonus. Subpoena / interview / evidence mechanics are the
+  next phase.
+
+### Added — Corporations
+
+- **Retain Consultancy.** Corp owners can offer any Entrepreneur or
+  Politician a consultancy from the corp page's Administrative Hub.
+  The fee is escrowed from the treasury at offer time; the target
+  gets an ACCEPT / DECLINE card in their Pressing Issues. On accept
+  the fee lands in their personal funds — politicians also gain
+  **1 Capital per $5,000,000**, rounded down. Declines refund the
+  treasury. Accepted engagements enter the corporate record:
+  *"{Corporation} retained {Person} for a consultancy."* Public
+  companies disclose the amount; private companies don't — until
+  someone investigates.
+
+### Added — Committees & Legislation
+
+- **Set the Agenda.** Any committee member, once per tick, can click
+  a queued bill in Upcoming Agenda to put it before the committee.
+  All five seats vote **HEAR / VOTE / AMEND** (NPCs vote by party
+  archetype and never vote Amend); the first action to 3 votes
+  carries, with the chair breaking 2-2-1 splits.
+- **Hearing deliberation chat.** While a hearing is in session,
+  committee members get a live composer on the Hearing Record to
+  respond to witness testimony; everyone else can read the
+  deliberations.
+- **Witness calls now reach entrepreneurs.** Open hearings invite
+  every non-committee player in the nation — entrepreneurs get the
+  Pressing Issues card and an inline persona + testimony modal on
+  their own dashboard.
+- **MP action redesign.** The Member of Parliament action set is now
+  **Propose New Statute / Propose New Law / Fundraising** (1d20 ×
+  $1,000 to party funds, −0.5 party approval).
+- **Per-article type picker** on Propose New Law — each article can
+  be tagged Operative / Remedy / Administrative / Definition /
+  Exception — and the 2-archetype cap on supporting/opposing lists
+  is gone.
+- **Amend Statute redesign.** Pick a category → pick an enacted
+  statute → write what it should say once amended → choose the
+  committee to refer it to.
+- **Committee seat cards** in Pressing Issues — each seat you hold
+  shows pending agenda items and a [View Committee] button.
+
+### Added — Elections
+
+- **Run for Re-Election.** Incumbent MPs within 5 ticks of the
+  general election can file for re-election from the career page;
+  the candidacy is assigned to the general election itself and
+  resolves there.
+- **Popularity-driven odds.** Starting election odds now derive from
+  party strength: your party's popularity + (your Experience ÷ 2)
+  against the opponent's party popularity + 5.
+- **+1 Experience on election wins.** Parliament wins now grant
+  Experience alongside the existing Capital reward; community wins
+  already did.
+
+### Added — Admin
+
+- **Consolidated admin backend** at `adminbackend.html` — one
+  password-gated console with [Ordinance] [Court Case] [National
+  Modifier] [Paperwork] [Foreign Events] tabs replacing the loose
+  standalone tools. Foreign Events is a placeholder pending the
+  Foreign Service event mechanics.
+
+### Fixed
+
+- **Bankruptcy unblocked for aviation corps** — the aircraft/engine
+  design self-reference no longer aborts the liquidation cascade.
+- **Witness testimony submit** — fixed the broken submit on
+  committee.html (scope bug + missing faction argument on the
+  entrepreneur path).
+- **HEARING IN SESSION** pill on Monthly Agenda is now red — a live,
+  time-pressure state should look like one.
+- **Foreign Service exam generation** — questions now draw only from
+  the four active Politicianverse nations, the 4-nation roster
+  passes the eligibility gate, and the government-type question
+  always offers Parliamentary Republic / Presidential Republic /
+  Absolute Monarchy / Constitutional Monarchy as options.
+- **FIS resign exploit** closed — resigning no longer clears the
+  per-tick action cooldown (an in-tick rejoin loop could farm
+  Experience).
+- **Private-corp consultancy amounts** are no longer readable by
+  third parties querying the table directly — confidential until
+  investigated, as intended.
+
+### Removed
+
+- **The news site.** `news.html`, the newspaper engine, its styles,
+  and the underlying article schema are gone (−4,400 lines).
+  `dashboard.html` now redirects to faction select; every legacy
+  "back to game" link keeps working.
+
 ## [ALPA — 2.9] — 2026-06-04
 
 ### Removed

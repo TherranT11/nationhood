@@ -260,6 +260,8 @@
               <div id="ent-pi-counsel"></div>
               <div id="ent-pi-negotiations"></div>
               <div id="ent-pi-hearings"></div>
+              <div id="ent-pi-consultancy"></div>
+              <div id="ent-pi-bonusvotes"></div>
               <div id="ent-pi-empty"><div class="empty">No pressing issues.</div></div>
             </div>
           </div>
@@ -304,6 +306,8 @@ import { mountInvestmentPressingIssues } from './js/corp-investment-pressing-iss
 import { mountTrialCounselPressingIssues } from './js/trial-counsel-pressing-issues.js';
 import { mountContractNegotiationPressingIssues } from './js/contract-negotiation-pressing-issues.js';
 import { mountCommitteeHearingPressingIssues } from './js/committee-hearing-pressing-issues.js';
+import { mountConsultancyPressingIssues } from './js/consultancy-pressing-issues.js';
+import { mountBonusVotePressingIssues } from './js/bonus-vote-pressing-issues.js';
 
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 
@@ -850,11 +854,12 @@ async function handleMakePayment(e) {
     // Each renders into its own host; the shared empty line shows only
     // when both are empty, so a single source still suppresses it.
     const tickFn = () => Number(ctx.shard?.current_tick) || 0;
-    let _acqCtl = null, _boardCtl = null, _investCtl = null, _counselCtl = null, _negCtl = null, _hearingsCtl = null;
+    let _acqCtl = null, _boardCtl = null, _investCtl = null, _counselCtl = null, _negCtl = null, _hearingsCtl = null, _consultCtl = null, _bonusCtl = null;
     const syncPiEmpty = () => {
       const total = (_acqCtl?.getCount() || 0) + (_boardCtl?.getCount() || 0)
                   + (_investCtl?.getCount() || 0) + (_counselCtl?.getCount() || 0)
-                  + (_negCtl?.getCount() || 0) + (_hearingsCtl?.getCount() || 0);
+                  + (_negCtl?.getCount() || 0) + (_hearingsCtl?.getCount() || 0)
+                  + (_consultCtl?.getCount() || 0) + (_bonusCtl?.getCount() || 0);
       const el = document.getElementById('ent-pi-empty');
       if (el) el.style.display = total === 0 ? '' : 'none';
     };
@@ -886,6 +891,16 @@ async function handleMakePayment(e) {
     _hearingsCtl = mountCommitteeHearingPressingIssues({
       supabase: _supabase, faction: f,
       host: document.getElementById('ent-pi-hearings'),
+      showEmpty: false, onChange: syncPiEmpty,
+    });
+    _consultCtl = mountConsultancyPressingIssues({
+      supabase: _supabase, faction: f,
+      host: document.getElementById('ent-pi-consultancy'),
+      showEmpty: false, onChange: syncPiEmpty,
+    });
+    _bonusCtl = mountBonusVotePressingIssues({
+      supabase: _supabase, faction: f,
+      host: document.getElementById('ent-pi-bonusvotes'),
       showEmpty: false, onChange: syncPiEmpty,
     });
 

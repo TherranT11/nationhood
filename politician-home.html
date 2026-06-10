@@ -1601,6 +1601,7 @@ let committeeHearings = [];   // open committee hearings in the viewer's nation 
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
 let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
+let consultancyOffers = [];     // pending corp consultancy offers targeting this politician (20270773). Accept pays the fee + Capital kicker; decline refunds the corp's escrow.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
 // chat_type='nation' row. Resolved during init; null = no chat available.
 let nationChatId = null;
@@ -1698,7 +1699,7 @@ async function init() {
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
           : Promise.resolve({ data: null, error: null });
-    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, memberCommitteesRes, mayorCityRes, fisRes] = await Promise.all([
+    const [evRes, careerRes, raceRes, offersRes, pretrialRes, trialsRes, saReqRes, jmAppsRes, hearingsRes, openPropsRes, memberCommitteesRes, mayorCityRes, fisRes, consultancyRes] = await Promise.all([
       _supabase.from('event_log')
         .select('id, event_name, description_used, description_chosen, category, trigger_key, fired_at_tick, nation_id, nations(name, nation_profiles(flag_url))')
         .not('category', 'is', null)
@@ -1757,6 +1758,9 @@ async function init() {
       // politician without the agent flag set. Each row surfaces as
       // a persistent Pressing Issues card linking to fis-investigation.html.
       _supabase.rpc('list_active_fis_investigations_for_agent', { p_faction_id: politician.id }),
+      // Pending corp consultancy offers targeting this politician
+      // (20270773). Accept/decline cards in Pressing Issues.
+      _supabase.rpc('list_pending_consultancy_offers_for_faction', { p_faction_id: politician.id }),
     ]);
     if (evRes.error) throw evRes.error;
     if (careerRes.error) throw careerRes.error;
@@ -1795,6 +1799,8 @@ async function init() {
     committeeHearings = (hearingsRes.data?.success ? hearingsRes.data.hearings : []) || [];
     if (fisRes.error) console.error('politician-home: FIS investigations fetch failed', fisRes.error);
     fisInvestigations = (fisRes.data?.success ? fisRes.data.investigations : []) || [];
+    if (consultancyRes.error) console.error('politician-home: consultancy offers fetch failed', consultancyRes.error);
+    consultancyOffers = (consultancyRes.data?.success ? consultancyRes.data.offers : []) || [];
     openOrdinanceProposals = (openPropsRes.data?.success ? openPropsRes.data.proposals : []) || [];
     memberCommittees = (memberCommitteesRes.data?.success ? memberCommitteesRes.data.committees : []) || [];
   } catch (err) {
@@ -3715,6 +3721,9 @@ function renderPressingIssues(ctx) {
   // waiting — so they sit next to each other in the feed.
   juniorMinisterApplications.forEach(r => blocks.push(renderJuniorMinisterApplicationCard(r)));
   counselOffers.forEach(o => blocks.push(renderCounselOfferCard(o)));
+  // Corp consultancy offers (20270773) — accept pays the escrowed
+  // fee (+1 Capital per $5M for politicians); decline refunds it.
+  consultancyOffers.forEach(o => blocks.push(renderConsultancyOfferCard(o)));
   // Active trials surface above pre-trial broadcasts — the lawyer's
   // own in-progress courtrooms outrank any "case looking for counsel"
   // broadcasts they could join.
@@ -3747,11 +3756,84 @@ function renderPressingIssues(ctx) {
   bindStateAdvocateRequestActions();
   bindJuniorMinisterApplicationActions();
   bindCounselOfferActions();
+  bindConsultancyOfferActions();
   bindPretrialActions();
   bindActiveTrialActions();
   bindCommitteeHearingActions();
   bindOrdinanceProposalActions(ctx);
   bindMemberCommitteeActions();
+}
+
+// ── Consultancy offer card (20270773) ───────────────────────────────
+// A corp has offered to retain this politician as a consultant. The
+// fee is escrowed corp-side; Accept pays it out (+1 Capital per $5M),
+// Decline refunds the corp.
+function renderConsultancyOfferCard(o) {
+  const fee = '$' + (Number(o.amount) || 0).toLocaleString();
+  const capLine = (Number(o.capital_preview) || 0) > 0
+    ? ` &middot; <b>+${Number(o.capital_preview)}</b> Capital`
+    : '';
+  return `
+    <div class="offer-card" data-consult-offer-id="${escAttr(o.offer_id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">💼</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">PRIVATE SECTOR &middot; CONSULTANCY OFFER</div>
+        <div class="oi-headline"><strong>${escHtml(o.corp_name || 'A corporation')}</strong> offers to retain you as a consultant.</div>
+        <div class="oi-meta">
+          <span>Fee: <b>${escHtml(fee)}</b>${capLine}</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn consult-accept-btn">&#10003; ACCEPT</button>
+        <button type="button" class="offer-reject-btn consult-decline-btn">&#10005; DECLINE</button>
+      </div>
+    </div>`;
+}
+
+function bindConsultancyOfferActions() {
+  const respond = async (btn, accept) => {
+    if (btn.dataset.busy === '1') return;
+    const card = btn.closest('[data-consult-offer-id]');
+    const offerId = card?.dataset?.consultOfferId;
+    if (!offerId) return;
+    btn.dataset.busy = '1';
+    card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    try {
+      const { data, error } = await _supabase.rpc('respond_consultancy_offer', {
+        p_offer_id:   offerId,
+        p_faction_id: politician?.id || null,
+        p_accept:     accept,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_authenticated: 'Sign in to respond.',
+          no_faction:        'No politician faction found.',
+          offer_not_found:   'That offer no longer exists.',
+          not_your_offer:    'This offer isn’t addressed to you.',
+          already_resolved:  'This offer was already resolved.',
+          corp_not_found:    'The corporation no longer exists.',
+        };
+        alert(REASON[data?.reason] || ('Could not respond: ' + (data?.reason || 'unknown')));
+        btn.dataset.busy = '0';
+        card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+        return;
+      }
+      location.reload();
+    } catch (e) {
+      alert('Failed: ' + (e?.message || e));
+      btn.dataset.busy = '0';
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    }
+  };
+  document.querySelectorAll('.consult-accept-btn').forEach(btn => {
+    btn.addEventListener('click', () => respond(btn, true));
+  });
+  document.querySelectorAll('.consult-decline-btn').forEach(btn => {
+    btn.addEventListener('click', () => respond(btn, false));
+  });
 }
 
 // ── Member Committee Pressing Issues card (20270754) ────────────────

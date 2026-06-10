@@ -2324,11 +2324,18 @@ function renderResolutionBanner(r) {
   }
   const statReward = r.stat_reward;
   if (won && statReward) {
-    const statLabel = statReward.kind === 'influence' ? 'Capital'
-                    : statReward.kind === 'skill' ? 'Experience'
-                    : null;
-    if (statLabel) {
-      sentences.push(`Your ${statLabel} rose to ${Number(statReward.new_value) || 0}.`);
+    // 20270770: parliament wins grant Capital AND Experience in one
+    // envelope (kind: influence_and_skill, capital_new / skill_new).
+    // Single-stat kinds keep the legacy new_value shape.
+    if (statReward.kind === 'influence_and_skill') {
+      sentences.push(`Your Capital rose to ${Number(statReward.capital_new) || 0} and your Experience rose to ${Number(statReward.skill_new) || 0}.`);
+    } else {
+      const statLabel = statReward.kind === 'influence' ? 'Capital'
+                      : statReward.kind === 'skill' ? 'Experience'
+                      : null;
+      if (statLabel) {
+        sentences.push(`Your ${statLabel} rose to ${Number(statReward.new_value) || 0}.`);
+      }
     }
   }
   if (deltaLabel) {
