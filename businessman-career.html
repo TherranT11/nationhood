@@ -18,8 +18,11 @@
   .biz-btn:disabled { opacity:0.4; cursor:not-allowed; }
 
   .biz-section { margin-bottom:30px; }
-  .biz-section .sec-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.18em;
-    color:#666; font-weight:700; margin-bottom:10px; }
+  .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+  .section-heading .sans { font-size:22px; font-weight:500; color:#fff; }
+  .section-heading .serif { font-size:22px; font-family:Georgia, 'Times New Roman', serif;
+    font-style:italic; color:#8aaa6a; }
   .biz-soon { padding:26px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:5px; }
@@ -43,17 +46,24 @@
 <div class="ent-content" id="page-content" style="display:none;">
   <div class="biz-wrap">
     <div class="biz-actions">
-      <button type="button" class="biz-btn" disabled title="Coming soon">APPLY FOR JOB</button>
       <button type="button" class="biz-btn" disabled title="Coming soon">START COMPANY</button>
     </div>
 
     <div class="biz-section">
-      <div class="sec-lab">I. CAREER LADDERS</div>
-      <div class="biz-soon">The ladders open with the first employers — join a corporation and climb.</div>
+      <div class="section-heading">
+        <span class="roman">I.</span>
+        <span class="sans">Available</span>
+        <span class="serif">Roles</span>
+      </div>
+      <div class="biz-soon">No roles on the board yet — the first employers are setting up shop.</div>
     </div>
 
     <div class="biz-section">
-      <div class="sec-lab">II. CAREER HISTORY</div>
+      <div class="section-heading">
+        <span class="roman">II.</span>
+        <span class="sans">Career</span>
+        <span class="serif">History</span>
+      </div>
       <div class="hist-list" id="hist-list"></div>
     </div>
   </div>
