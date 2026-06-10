@@ -29,6 +29,7 @@
 
   .role-row { display:flex; align-items:center; gap:14px; padding:13px 16px; background:#0d0d0d;
     border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; margin-bottom:8px; }
+  .role-row > div:first-child { min-width:0; overflow-wrap:break-word; }
   .role-row .nm { font-size:13px; color:#fff; font-weight:600; }
   .role-row .nm a { color:#fff; text-decoration:none; }
   .role-row .nm a:hover { color:#aac88a; }
@@ -161,7 +162,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { escapeHtml as esc, fmtBig, hfFmtBig } from './js/utils.js';
+import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo } from './js/utils.js';
 import { cityDisplayData } from './js/game/city-labels.js';
 
 // ── Start Company modal state ──
@@ -344,8 +345,7 @@ async function submitStartCompany() {
         host.innerHTML = '<div class="biz-soon">No roles on the board yet — the first employers are setting up shop.</div>';
       } else {
         host.innerHTML = visible.map(o => {
-          const m = Math.max(0, currentTick - (Number(o.posted_at_tick) || 0));
-          const ago = m === 0 ? 'Posted this month' : `Posted ${m} month${m === 1 ? '' : 's'} ago`;
+          const ago = postedMonthsAgo(o.posted_at_tick, currentTick);
           return `
           <div class="role-row">
             <div>
