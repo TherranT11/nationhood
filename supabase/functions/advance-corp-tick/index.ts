@@ -154,7 +154,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-05-24-c (corp-cull-4g-loan-negotiations)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-10-a (corp-payroll)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -231,6 +231,25 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (cbErr) {
         console.error('[advance-corp-tick] FAILED central bank loan payments:', cbErr);
         summary.errors.push({ scope: 'central_bank_loan_payments', error: String(cbErr) });
+    }
+
+    // Corp payroll (20270802): every corp pays employee_count × $1k +
+    // hired salaries ÷ 12 from treasury_cash (floored at $0; full cost
+    // accumulates into payroll_ytd). Hired players collect salary ÷ 12
+    // on fully-covered ticks. Idempotent via last_payroll_tick.
+    try {
+        const { data: payRes, error: payErr } = await supabase.rpc(
+            'process_corp_payroll', { p_tick: currentTick });
+        if (payErr) {
+            console.warn('[CorpPayroll] RPC failed:', payErr.message);
+            summary.errors.push({ scope: 'corp_payroll', error: payErr.message });
+        } else if (payRes && Number(payRes.corps_processed) > 0) {
+            summary.corpPayroll = payRes;
+            console.log(`[CorpPayroll] tick ${currentTick}: ${payRes.corps_processed} corps charged $${payRes.total_charged}, ${payRes.players_paid} player wages, ${payRes.shortfalls} shortfalls`);
+        }
+    } catch (payErr) {
+        console.error('[advance-corp-tick] FAILED corp payroll:', payErr);
+        summary.errors.push({ scope: 'corp_payroll', error: String(payErr) });
     }
 
     try {
