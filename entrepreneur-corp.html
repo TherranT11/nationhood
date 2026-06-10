@@ -190,6 +190,23 @@
   .ds-row .key { color:#888; }
   .ds-row .val { color:#d4d4d4; font-weight:500; text-align:right; overflow-wrap:anywhere; }
 
+  /* Corporate Taxes (20270773) */
+  .ctx-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
+  .ctx-cell { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.06); border-radius:3px; padding:10px 12px; }
+  .ctx-k { font-size:9px; color:#666; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:5px; }
+  .ctx-v { font-size:15px; color:#d4d4d4; font-weight:600; }
+  .ctx-status { font-size:11px; font-weight:600; margin:4px 0 8px; }
+  .ctx-file-lab { font-size:9px; color:#666; letter-spacing:0.13em; text-transform:uppercase; margin:4px 0 8px; }
+  .ctx-tiers, .ctx-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .ctx-actions { grid-template-columns:1fr; }
+  .ctx-file { display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left;
+    background:#1f2a1a; color:#8aaa6a; border:0.5px solid #4a6a4a; border-radius:3px; padding:9px 12px; cursor:pointer; }
+  .ctx-file:hover:not(:disabled) { background:#26331f; }
+  .ctx-file:disabled { opacity:0.5; cursor:not-allowed; }
+  .ctx-file b { font-size:11px; letter-spacing:0.06em; color:#a8c888; font-weight:600; }
+  .ctx-file span { font-size:10px; color:#7a7a7a; }
+  .cf-hint { font-size:10px; color:#666; margin-top:10px; line-height:1.5; }
+
   /* Trade panel (public corps) */
   .trade-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
     padding:14px 18px; margin-top:14px; }
@@ -1206,12 +1223,17 @@
         <div id="cp-finance"></div>
 
         <div class="section-heading">
-          <span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">Contracts</span>
+          <span class="roman">V.</span><span class="sans">Corporate</span><span class="serif">Taxes</span>
+        </div>
+        <div id="cp-taxes"></div>
+
+        <div class="section-heading">
+          <span class="roman">VI.</span><span class="sans">Corporate</span><span class="serif">Contracts</span>
         </div>
         <div id="cp-contracts"></div>
 
         <div class="section-heading">
-          <span class="roman">VI.</span><span class="sans">Corporate</span><span class="serif">History</span>
+          <span class="roman">VII.</span><span class="sans">Corporate</span><span class="serif">History</span>
         </div>
         <div id="cp-history"></div>
       </div>
@@ -9019,9 +9041,137 @@ const openBidModal = (contractId, label, yourCost) => {
       fc.innerHTML = `<div class="ch-list">${rows}</div>`;
     };
 
+    // V. Corporate Taxes (20270773). Net-profit basis: this year's net
+    // cash change (corp_revenue_by_year — same source as the Revenue
+    // cards) × the HQ nation's corporate_tax rate. The owner files once
+    // per year at one of four disclosure tiers; sub-100% tiers leave the
+    // remainder undeclared (logged for an FIS audit when the nation has
+    // an agent, else adjudicated by a Balanced roll at filing).
+    const renderTaxes = async () => {
+      const fc = document.getElementById('cp-taxes');
+      if (!fc) return;
+      const shell = (inner) => `<div class="details-card"><div class="lab">CORPORATE TAXES</div>${inner}</div>`;
+      try {
+        const { data: shardRow } = await _supabase
+          .from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
+        const currentTick = Number(shardRow?.current_tick ?? -1);
+        if (currentTick < 0) { fc.innerHTML = shell('<div class="cf-empty">Game state unavailable.</div>'); return; }
+        const year = tickToYear(currentTick);
+
+        const [revRes, natRes, filingRes, agentRes] = await Promise.all([
+          _supabase.rpc('corp_revenue_by_year', { p_corp_id: id, p_current_tick: currentTick }),
+          _supabase.from('nations').select('corporate_tax, corruption').eq('id', c.hq_nation_id).maybeSingle(),
+          _supabase.from('corp_tax_filings')
+            .select('disclosure_pct, amount_paid, amount_evaded, tax_owed, taxable_profit, status')
+            .eq('corp_id', id).eq('year', year).maybeSingle(),
+          _supabase.from('factions').select('id', { count: 'exact', head: true })
+            .eq('faction_type', 'politician').eq('nation_id', c.hq_nation_id)
+            .not('politician_fis_joined_at_tick', 'is', null).is('abandoned_at', null),
+        ]);
+
+        const rate    = Math.max(0, Math.min(100, Number(natRes?.data?.corporate_tax) || 0));
+        const profit  = Math.max(0, Math.floor(Number(revRes?.data?.this_year_delta) || 0));
+        const taxOwed = Math.floor(profit * rate / 100);
+        const filing  = filingRes?.data || null;
+        const hasAgent = (agentRes?.count || 0) > 0;
+        const head = `<div class="lab">CORPORATE TAXES &middot; ${year}</div>`;
+        const card = (inner) => `<div class="details-card">${head}${inner}</div>`;
+
+        if (filing) {
+          const label = filing.status === 'compliant' ? 'Compliant — full disclosure'
+            : filing.status === 'caught' ? 'Audited &amp; penalised'
+            : 'Filed — undisclosed income on the books';
+          const color = filing.status === 'compliant' ? '#9ac89e' : filing.status === 'caught' ? '#e09898' : '#d9c07a';
+          fc.innerHTML = card(`
+            <div class="ctx-grid">
+              <div class="ctx-cell"><div class="ctx-k">Taxable Profit</div><div class="ctx-v">${fmtUsd(filing.taxable_profit)}</div></div>
+              <div class="ctx-cell"><div class="ctx-k">Tax Owed (${rate}%)</div><div class="ctx-v">${fmtUsd(filing.tax_owed)}</div></div>
+              <div class="ctx-cell"><div class="ctx-k">Declared &amp; Paid</div><div class="ctx-v">${fmtUsd(filing.amount_paid)} · ${filing.disclosure_pct}%</div></div>
+            </div>
+            <div class="ctx-status" style="color:${color};">${label}</div>
+            <div class="cf-hint">Already filed for ${year}. The next return opens next year.</div>`);
+          return;
+        }
+
+        if (rate === 0) {
+          fc.innerHTML = card(`<div class="cf-empty">${escapeHtml(c.hq?.name || 'This nation')} levies no corporate tax — nothing to file.</div>`);
+          return;
+        }
+
+        const figures = `
+          <div class="ctx-grid">
+            <div class="ctx-cell"><div class="ctx-k">Taxable Profit · ${year} net</div><div class="ctx-v">${fmtUsd(profit)}</div></div>
+            <div class="ctx-cell"><div class="ctx-k">Rate</div><div class="ctx-v">${rate}%</div></div>
+            <div class="ctx-cell"><div class="ctx-k">Taxes Owed</div><div class="ctx-v">${fmtUsd(taxOwed)}</div></div>
+          </div>`;
+
+        if (!isOwner) {
+          fc.innerHTML = card(`${figures}<div class="cf-hint">Only the controlling owner can file taxes.</div>`);
+          return;
+        }
+
+        if (taxOwed === 0) {
+          fc.innerHTML = card(`${figures}
+            <div class="ctx-actions"><button class="tc-btn ctx-file" data-disclosure="100">FILE — NOTHING OWED</button></div>
+            <div class="cf-hint">No net profit booked this year, so no tax is due. Filing closes the ${year} return.</div>`);
+        } else {
+          const tier = (pct, name) => {
+            const pay = Math.floor(taxOwed * pct / 100);
+            return `<button class="ctx-file" data-disclosure="${pct}"><b>${name}</b><span>${pct}% · pay ${fmtUsd(pay)}</span></button>`;
+          };
+          const auditNote = hasAgent
+            ? `An FIS agent is active in ${escapeHtml(c.hq?.name || 'this nation')} — undeclared income goes on the audit record and may be uncovered later.`
+            : `No FIS agent is active — the books are checked on filing (nation corruption ${Math.max(0, Number(natRes?.data?.corruption) || 0)} eases your odds).`;
+          fc.innerHTML = card(`${figures}
+            <div class="ctx-file-lab">File Taxes</div>
+            <div class="ctx-tiers">
+              ${tier(100, 'Full Disclosure')}
+              ${tier(75, 'Aggressive Positions')}
+              ${tier(50, 'Hidden Income')}
+              ${tier(25, 'Inflated Losses')}
+            </div>
+            <div class="cf-hint">${auditNote}</div>`);
+        }
+
+        fc.onclick = async (ev) => {
+          const btn = ev.target.closest('button.ctx-file');
+          if (!btn || btn.disabled) return;
+          const pct = Number(btn.dataset.disclosure);
+          const owed = Math.floor(taxOwed * pct / 100);
+          if (!confirm(`File ${year} taxes at ${pct}% disclosure?\n\nYou will pay ${fmtUsd(owed)} now from the treasury.`
+            + (pct < 100 ? `\nThe remaining ${fmtUsd(taxOwed - owed)} stays undeclared.` : '')
+            + `\n\nFiling is final for ${year}.`)) return;
+          fc.querySelectorAll('button.ctx-file').forEach(b => { b.disabled = true; });
+          try {
+            const { data, error } = await _supabase.rpc('file_corporate_tax', { p_corp_id: id, p_disclosure_pct: pct });
+            if (error) throw error;
+            if (!data?.success) {
+              const REASON = {
+                not_authorized:          'Only the corporation owner can file taxes.',
+                already_filed_this_year: 'This corporation has already filed this year.',
+                insufficient_treasury:   'The treasury can’t cover the declared amount — pick a lower disclosure tier.',
+                nation_not_found:        'Headquarters nation unavailable.',
+                invalid_disclosure:      'Pick a valid disclosure tier.',
+              };
+              alert(REASON[data?.reason] || ('Could not file taxes: ' + (data?.reason || 'unknown')));
+              fc.querySelectorAll('button.ctx-file').forEach(b => { b.disabled = false; });
+              return;
+            }
+            location.reload();
+          } catch (e) {
+            alert('Could not file taxes: ' + (e?.message || e));
+            fc.querySelectorAll('button.ctx-file').forEach(b => { b.disabled = false; });
+          }
+        };
+      } catch (e) {
+        fc.innerHTML = shell('<div class="cf-empty">Tax data unavailable right now.</div>');
+      }
+    };
+
     await renderProjects();
     renderAssets(); // sync — reads ownedBuildings populated by renderProjects
     await renderFinance();
+    await renderTaxes();
     await renderContracts();
     await renderHistory();
 
