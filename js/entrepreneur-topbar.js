@@ -17,8 +17,7 @@ const ENT_TABS = [
   { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
 ];
 
-// Businessman (alpha) shares this chrome with its own tab set. Null
-// hrefs render as dimmed coming-soon spans until each desk lands.
+// Businessman (alpha) shares this chrome with its own tab set.
 const BIZ_TABS = [
   { id: 'home',         label: 'HOME',         href: 'businessman-home.html' },
   { id: 'career',       label: 'CAREER',       href: 'businessman-career.html' },
@@ -72,7 +71,6 @@ function ensureStyles() {
   .ent-nav a { padding:14px 0; color:#888; text-decoration:none; cursor:pointer; }
   .ent-nav a:not(.active):hover { color:#d4d4d4; }
   .ent-nav a.active { color:#8aaa6a; border-bottom:1px solid #8aaa6a; }
-  .ent-nav span.soon { padding:14px 0; color:#4a4940; cursor:default; }
   .ent-content { padding:28px; }
 
   /* ── Mobile (≤700px): wrap the topbar onto two visual rows
@@ -312,9 +310,8 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
       </div>
     </div>
     <nav class="ent-nav">
-      ${tabs.map(t => t.href
-        ? `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`
-        : `<span class="soon" title="Coming soon">${t.label}</span>`).join('')}
+      ${tabs.map(t =>
+        `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`).join('')}
     </nav>`;
 
   buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && !isHiddenFromSwitcher(x)));
