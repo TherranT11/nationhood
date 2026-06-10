@@ -49,7 +49,7 @@
     background:#10140e; }
   .sc-title { font-family:Georgia,serif; font-size:18px; color:#fff; }
   .sc-title em { font-style:italic; color:#aac88a; }
-  .sc-body { padding:18px 20px; overflow-y:auto; }
+  .sc-body { padding:18px 20px; overflow-y:auto; overflow-x:hidden; }
   .sc-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.14em; color:#888;
     font-weight:700; margin:14px 0 6px; }
   .sc-lab:first-child { margin-top:0; }
@@ -66,7 +66,7 @@
     letter-spacing:0.08em; font-weight:700; background:#0a0a0a; color:#888;
     border:1px solid rgba(255,255,255,0.1); border-radius:4px; cursor:pointer; text-align:center; }
   .sc-type.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
-  .sc-input { width:100%; padding:10px 12px; background:#0a0a0a;
+  .sc-input { width:100%; box-sizing:border-box; padding:10px 12px; background:#0a0a0a;
     border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-size:12.5px;
     font-family:var(--font-ui); }
   .sc-input:focus { outline:none; border-color:#4a6a4a; }
@@ -175,7 +175,7 @@ async function openStartCompany(faction) {
   host.innerHTML = '<div class="sc-file">Loading cities…</div>';
   try {
     const { data, error } = await _supabase.from('cities')
-      .select('id, city_name, growth, jobs, tax_package_discount_charges')
+      .select('id, city_name, jobs')
       .eq('nation_id', faction.nation_id)
       .order('city_type');
     if (error) throw error;
@@ -186,8 +186,9 @@ async function openStartCompany(faction) {
     host.innerHTML = data.map(c => `
       <div class="sc-city" data-city="${esc(c.id)}">
         <span class="nm">${esc(c.city_name)}</span>
-        <span class="st">GROWTH: ${esc(String(c.growth ?? '—'))} &middot; JOBS: ${esc(String(c.jobs ?? '—'))} &middot; TAX PACKAGES: ${esc(String(c.tax_package_discount_charges ?? 0))}</span>
-      </div>`).join('');
+        <span class="st">JOBS: ${esc(String(c.jobs ?? '—'))}</span>
+      </div>`).join('')
+      + '<div class="sc-file" style="margin-top:2px;color:#555;">Jobs represent the amount of those looking for jobs in those cities.</div>';
     host.querySelectorAll('.sc-city').forEach(row => {
       row.addEventListener('click', () => {
         scCityId = row.dataset.city;
