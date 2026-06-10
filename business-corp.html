@@ -78,7 +78,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq, logo_url, employee_count,
+      .select(`id, name, industry, listing, hq_city, logo_url, employee_count,
                nation:nations!hq_nation_id(name),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name)`)
       .eq('id', corpId).maybeSingle();
@@ -103,7 +103,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
 
     const ownerName = [corp.owner?.leader_first_name, corp.owner?.leader_last_name]
       .filter(Boolean).join(' ') || corp.owner?.faction_name || '—';
-    const hqLine  = `${corp.hq || '—'}, ${corp.nation?.name || '—'}`;
+    const hqLine  = `${corp.hq_city || '—'}, ${corp.nation?.name || '—'}`;
     // Type starts Private; Public via IPO; State is a future status.
     const typeLabel = corp.listing === 'public' ? 'Public' : 'Private';
     // {corpname}.nh — lowercase alphanumerics of the corp name.
@@ -112,7 +112,7 @@ import { hfFmtBig, escapeHtml as esc, industryTitleLabel } from './js/utils.js';
     document.title = `${corp.name} | Nationhood`;
     document.getElementById('bc-name').textContent = corp.name;
     document.getElementById('bc-tagline').textContent =
-      `${industryTitleLabel(corp.industry).toUpperCase()} · ${(corp.hq || '—').toUpperCase()}`;
+      `${industryTitleLabel(corp.industry).toUpperCase()} · ${(corp.hq_city || corp.nation?.name || '—').toUpperCase()}`;
 
     const logoEl = document.getElementById('bc-logo');
     if (corp.logo_url) {
