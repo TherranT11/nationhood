@@ -3021,9 +3021,24 @@ function bindRungActions(ctx) {
   // reloads on success so the rung flips to held + the affiliation
   // card lands on politician-home. No modal — academy onboarding
   // is a single stamp, not an exam.
+  //
+  // Pre-RPC confirmation: if the politician already holds a career
+  // career (office / ministry / bar / foreign service), warn them
+  // that the Agent role stacks rather than replaces. The user
+  // affirmatively consents before the double-affiliation lands.
   document.querySelectorAll('[data-action="fis-join-academy"]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (btn.disabled) return;
+      const f = window.__careerCtx?.faction || {};
+      const careers = [];
+      if (f.politician_office)                     careers.push('an elected office');
+      if (f.politician_ministry)                   careers.push('a civil service role');
+      if (f.bar_admitted_nation_id)                careers.push('a bar admission');
+      if (f.politician_foreign_service_nation_id)  careers.push('a Foreign Service posting');
+      if (careers.length > 0) {
+        const msg = `You already hold ${careers.join(' and ')}. Joining the Federal Investigations Service adds an Agent role on top — your existing career stays in place. Continue?`;
+        if (!confirm(msg)) return;
+      }
       btn.disabled = true;
       const prev = btn.textContent;
       btn.textContent = 'JOINING…';

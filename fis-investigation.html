@@ -41,6 +41,10 @@
 </head>
 <body>
 
+<!-- Politician topbar (shared across every politician page). Bootstraps
+     the session + renders the chip + tab nav. -->
+<div id="pol-topbar-container"></div>
+
 <div class="wrap">
   <div class="crumb">
     <a href="politician-home.html">HOME</a>
@@ -51,6 +55,7 @@
 </div>
 
 <script type="module">
+import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 
 function escHtml(s) {
@@ -67,15 +72,25 @@ async function init() {
   const content = document.getElementById('content');
   if (!id) { content.className = 'fail'; content.textContent = 'No investigation id.'; return; }
 
-  const { data: { user } } = await _supabase.auth.getUser();
-  if (!user) { window.location.href = 'login.html'; return; }
+  // bootstrapPolitician redirects to login / first-steps if the user
+  // isn't an authenticated politician. Returns null in that case;
+  // the function navigates so we just bail out.
+  let ctx;
+  try { ctx = await bootstrapPolitician('home'); }
+  catch (err) {
+    content.className = 'fail';
+    content.textContent = 'Failed to load. Please reload the page.';
+    console.warn('[fis-investigation] bootstrap failed:', err?.message || err);
+    return;
+  }
+  if (!ctx) return;
 
-  // fis_investigations has public SELECT to authenticated users
-  // (matches the bar-exam / career-events posture per 20270769).
-  // The corp join surfaces the canonical name; the denormalized
-  // target_corp_name on the row covers the bankruptcy-erased case.
+  // 20270769 fix: entrepreneur_corps.hq was dropped in
+  // sql/migrations/20270142_entrepreneur_corp_hq_nation.sql and
+  // replaced by hq_nation_id (FK → nations.id). Join the nation
+  // through that FK to surface the HQ as "{Nation Name}".
   const { data, error } = await _supabase.from('fis_investigations')
-    .select('id, category, target_corp_id, target_corp_name, status, opened_at_tick, closed_at_tick, agent_faction_id, target_corp:entrepreneur_corps!target_corp_id(name, industry, hq)')
+    .select('id, category, target_corp_id, target_corp_name, status, opened_at_tick, closed_at_tick, agent_faction_id, target_corp:entrepreneur_corps!target_corp_id(name, industry, hq_nation:nations!hq_nation_id(name))')
     .eq('id', id)
     .maybeSingle();
   if (error) { content.className = 'fail'; content.textContent = 'Could not load case: ' + (error.message || 'try again'); return; }
@@ -83,7 +98,7 @@ async function init() {
 
   const targetName = data.target_corp?.name || data.target_corp_name || '—';
   const industry   = (data.target_corp?.industry || '').replace(/_/g, ' ').toUpperCase();
-  const hq         = data.target_corp?.hq || null;
+  const hqNation   = data.target_corp?.hq_nation?.name || null;
 
   content.className = '';
   content.innerHTML = `
@@ -104,7 +119,7 @@ async function init() {
       <div class="card-lab">TARGET</div>
       <div class="card-body">
         <strong>${escHtml(targetName)}</strong>${industry ? ` &middot; ${escHtml(industry)}` : ''}
-        ${hq ? `<br>Headquartered in ${escHtml(hq)}.` : ''}
+        ${hqNation ? `<br>Headquartered in ${escHtml(hqNation)}.` : ''}
       </div>
     </div>
 

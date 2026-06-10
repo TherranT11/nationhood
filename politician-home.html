@@ -3832,7 +3832,8 @@ function getDismissedHearings() {
 // agent can drill in. No dismiss action — the case stays surfaced
 // until closed by the case-resolution flow (out of scope today).
 function renderFisInvestigationCard(inv) {
-  const target = inv.target_corp_name || 'an unknown target';
+  const target   = inv.target_corp_name || 'an unknown target';
+  const category = (inv.category || '').replace(/_/g, ' ').toUpperCase();
   return `
     <a class="offer-card" href="fis-investigation.html?id=${escHtml(inv.investigation_id)}"
        style="text-decoration:none; color:inherit; cursor:pointer;">
@@ -3840,7 +3841,7 @@ function renderFisInvestigationCard(inv) {
       <div class="offer-info">
         <div class="oi-eyebrow">FEDERAL INVESTIGATIONS · ACTIVE CASE</div>
         <div class="oi-headline">Investigation into <strong>${escHtml(target)}</strong></div>
-        <div class="oi-meta"><span class="oi-corp">FINANCIAL CRIMES</span></div>
+        <div class="oi-meta"><span class="oi-corp">${escHtml(category)}</span></div>
       </div>
       <div class="offer-right">
         <span class="offer-accept-btn" style="cursor:pointer;">OPEN &rsaquo;</span>
