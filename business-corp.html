@@ -188,6 +188,9 @@
   .pb-act.bid:hover:not(:disabled) { background:rgba(138,170,106,0.18); }
   .pb-act.mk { border:0.5px solid #4a5a6a; color:#7a9ac8; }
   .pb-act.mk:hover { background:#0a0f14; }
+  .pb-price { width:92px; padding:6px 8px; background:#0a0a0a;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff;
+    font-size:10.5px; font-family:var(--font-mono); }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -1251,7 +1254,8 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
                 const acts = pendingBid.has(r.id)
                   ? '<button type="button" class="pb-act bid" disabled>BID SUBMITTED</button>'
                   : bp
-                    ? `<button type="button" class="pb-act bid" data-req="${esc(r.id)}" data-bp="${esc(bp.id)}" title="Bid with ${esc(bp.name || 'your latest blueprint')}">SUBMIT BID</button>`
+                    ? `<input class="pb-price" type="number" min="1" placeholder="$ Price">
+                       <button type="button" class="pb-act bid" data-req="${esc(r.id)}" data-bp="${esc(bp.id)}" title="Bid with ${esc(bp.name || 'your latest blueprint')}">SUBMIT BID</button>`
                     : `<span class="nob">No available blueprint</span>
                        <button type="button" class="pb-act mk" data-type="${esc(r.building_type)}">CREATE BLUEPRINT</button>`;
                 return `
@@ -1265,13 +1269,16 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
           host.querySelectorAll('.pb-act.bid[data-req]').forEach(btn => {
             btn.addEventListener('click', async () => {
+              const price = Math.floor(Number(btn.previousElementSibling?.value));
+              if (!(price > 0)) { alert('Name your price first.'); return; }
               btn.disabled = true;
               try {
                 const { data, error: sErr } = await _supabase.rpc('submit_public_bid',
-                  { p_request_id: btn.dataset.req, p_blueprint_id: btn.dataset.bp });
+                  { p_request_id: btn.dataset.req, p_blueprint_id: btn.dataset.bp, p_price: price });
                 if (sErr) throw sErr;
                 if (!data?.success) {
                   const REASON = {
+                    invalid_price: 'Name a price above $0.',
                     no_actions_remaining: 'No executive actions remaining this tick.',
                     blueprint_type_mismatch: 'That blueprint doesn’t match the requested building type.',
                     already_bid: 'You already have a bid on this project.',
