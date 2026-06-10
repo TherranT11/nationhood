@@ -29,6 +29,13 @@ All notable changes to Nationhood are recorded here. Format inspired by
   real corporations in their nation; Wealthy Entrepreneurs founded
   and sold 2–4 ventures for $6M–$45M apiece. Existing businessmen
   are backfilled.
+- **Start Company.** The career page's [Start Company] opens the
+  incorporation modal: your nation, a city picker showing each city's
+  GROWTH · JOBS · TAX PACKAGES, corporation type (**Construction** or
+  **Automotive** — a new industry), a name, an optional 2MB logo, and
+  a **$10,000** filing cost from cash on hand. The corp is born
+  private, $0 capital, HQ'd in the chosen city — cheap to start,
+  expensive to run, as the modal warns.
 - **Businessman identity row.** The Home page opens with Current
   Location and Residence ({Capital}, {Nation}), a residence rolled
   once at creation — estates worth $4M–$19M for Wealthy

@@ -17,8 +17,8 @@ const ENT_TABS = [
   { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
 ];
 
-// Businessman (alpha) shares this chrome with its own tab set. Only
-// HOME exists today — null hrefs render as dimmed coming-soon spans.
+// Businessman (alpha) shares this chrome with its own tab set. Null
+// hrefs render as dimmed coming-soon spans until each desk lands.
 const BIZ_TABS = [
   { id: 'home',         label: 'HOME',         href: 'businessman-home.html' },
   { id: 'career',       label: 'CAREER',       href: 'businessman-career.html' },

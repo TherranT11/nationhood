@@ -31,8 +31,11 @@
   .biz-status-line.bad { color:#d9534f; }
 
   .biz-section { max-width:1280px; margin:26px auto 0; }
-  .biz-section .sec-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.18em;
-    color:#666; font-weight:700; margin-bottom:10px; }
+  .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+  .section-heading .sans { font-size:22px; font-weight:500; color:#fff; }
+  .section-heading .serif { font-size:22px; font-family:Georgia, 'Times New Roman', serif;
+    font-style:italic; color:#8aaa6a; }
   .biz-pi-empty { padding:26px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:5px; }
@@ -58,7 +61,11 @@
        mechanics land (job offers, warrants, audits…); until then the
        empty state shows. -->
   <div class="biz-section">
-    <div class="sec-lab">PRESSING ISSUES</div>
+    <div class="section-heading">
+      <span class="roman">I.</span>
+      <span class="sans">Pressing</span>
+      <span class="serif">Issues</span>
+    </div>
     <div id="biz-pressing-issues">
       <div class="biz-pi-empty">No pressing issues right now.</div>
     </div>
@@ -66,9 +73,8 @@
   <div class="biz-empty">
     <div class="eyebrow">BUSINESSMAN · ALPHA</div>
     <h1>The first day of the <em>rest of your life</em></h1>
-    <p>Your career starts here. The Career, Corporations, Market, and Forum
-       desks open soon — for now, get a feel for the city and watch the ticks
-       roll by.</p>
+    <p>Your career starts here — the Career desk is open. Corporations,
+       Market, and Forum follow soon.</p>
   </div>
 </div>
 

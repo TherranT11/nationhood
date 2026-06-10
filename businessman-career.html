@@ -18,8 +18,11 @@
   .biz-btn:disabled { opacity:0.4; cursor:not-allowed; }
 
   .biz-section { margin-bottom:30px; }
-  .biz-section .sec-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.18em;
-    color:#666; font-weight:700; margin-bottom:10px; }
+  .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
+  .section-heading .sans { font-size:22px; font-weight:500; color:#fff; }
+  .section-heading .serif { font-size:22px; font-family:Georgia, 'Times New Roman', serif;
+    font-style:italic; color:#8aaa6a; }
   .biz-soon { padding:26px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:5px; }
@@ -34,6 +37,47 @@
   .hist-sub { font-family:var(--font-mono); font-size:10px; color:#888; margin-top:3px; }
   #loading { font-family:var(--font-mono); font-size:10px; color:#4a4940;
     text-align:center; padding:80px 20px; }
+
+  /* ── Start Company modal ── */
+  #sc-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+    align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  #sc-overlay.open { display:flex; }
+  .sc-modal { width:100%; max-width:560px; background:#0d0d0d;
+    border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
+    max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+  .sc-head { padding:16px 20px 13px; border-bottom:0.5px solid rgba(138,170,106,0.3);
+    background:#10140e; }
+  .sc-title { font-family:Georgia,serif; font-size:18px; color:#fff; }
+  .sc-title em { font-style:italic; color:#aac88a; }
+  .sc-body { padding:18px 20px; overflow-y:auto; }
+  .sc-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.14em; color:#888;
+    font-weight:700; margin:14px 0 6px; }
+  .sc-lab:first-child { margin-top:0; }
+  .sc-static { font-size:13px; color:#fff; }
+  .sc-city { display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    padding:10px 12px; background:#0a0a0a; border:1px solid rgba(255,255,255,0.1);
+    border-radius:4px; cursor:pointer; margin-bottom:6px; }
+  .sc-city:hover { border-color:rgba(138,170,106,0.4); }
+  .sc-city.sel { background:#10140e; border-color:#8aaa6a; }
+  .sc-city .nm { font-size:12.5px; color:#fff; font-weight:600; }
+  .sc-city .st { font-family:var(--font-mono); font-size:9px; color:#888; white-space:nowrap; }
+  .sc-types { display:flex; gap:8px; }
+  .sc-type { flex:1; padding:10px; font-family:var(--font-mono); font-size:10.5px;
+    letter-spacing:0.08em; font-weight:700; background:#0a0a0a; color:#888;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; cursor:pointer; text-align:center; }
+  .sc-type.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
+  .sc-input { width:100%; padding:10px 12px; background:#0a0a0a;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#fff; font-size:12.5px;
+    font-family:var(--font-ui); }
+  .sc-input:focus { outline:none; border-color:#4a6a4a; }
+  .sc-file { font-size:11px; color:#888; font-family:var(--font-mono); }
+  .sc-cost { font-family:var(--font-mono); font-size:11px; color:#8aaa6a; }
+  .sc-note { margin-top:14px; padding:10px 12px; background:#0a0a0a;
+    border-left:2px solid #8aaa6a; border-radius:3px; font-size:11px; color:#888;
+    line-height:1.55; font-style:italic; }
+  .sc-err { color:#d9534f; font-size:10.5px; margin-top:10px; min-height:14px; }
+  .sc-foot { padding:13px 20px; background:#10140e; border-top:0.5px solid rgba(138,170,106,0.25);
+    display:flex; gap:10px; justify-content:flex-end; }
 </style>
 </head>
 <body>
@@ -43,30 +87,207 @@
 <div class="ent-content" id="page-content" style="display:none;">
   <div class="biz-wrap">
     <div class="biz-actions">
-      <button type="button" class="biz-btn" disabled title="Coming soon">APPLY FOR JOB</button>
-      <button type="button" class="biz-btn" disabled title="Coming soon">START COMPANY</button>
+      <button type="button" class="biz-btn" id="start-company-btn">START COMPANY</button>
     </div>
 
     <div class="biz-section">
-      <div class="sec-lab">I. CAREER LADDERS</div>
-      <div class="biz-soon">The ladders open with the first employers — join a corporation and climb.</div>
+      <div class="section-heading">
+        <span class="roman">I.</span>
+        <span class="sans">Available</span>
+        <span class="serif">Roles</span>
+      </div>
+      <div class="biz-soon">No roles on the board yet — the first employers are setting up shop.</div>
     </div>
 
     <div class="biz-section">
-      <div class="sec-lab">II. CAREER HISTORY</div>
+      <div class="section-heading">
+        <span class="roman">II.</span>
+        <span class="sans">Career</span>
+        <span class="serif">History</span>
+      </div>
       <div class="hist-list" id="hist-list"></div>
     </div>
   </div>
 </div>
 
+<div id="sc-overlay">
+  <div class="sc-modal">
+    <div class="sc-head"><div class="sc-title">Start a <em>Corporation</em></div></div>
+    <div class="sc-body">
+      <div class="sc-lab">NATION</div>
+      <div class="sc-static" id="sc-nation">—</div>
+      <div class="sc-lab">CITY · HEADQUARTERS</div>
+      <div id="sc-cities"><div class="sc-file">Loading cities…</div></div>
+      <div class="sc-lab">COST TO START CORPORATION</div>
+      <div class="sc-cost">$10K</div>
+      <div class="sc-lab">TYPE OF CORPORATION</div>
+      <div class="sc-types">
+        <div class="sc-type" data-ind="construction">CONSTRUCTION</div>
+        <div class="sc-type" data-ind="automotive">AUTOMOTIVE</div>
+      </div>
+      <div class="sc-lab">NAME OF CORPORATION</div>
+      <input type="text" class="sc-input" id="sc-name" maxlength="60" placeholder="e.g. Serrano Construcciones">
+      <div class="sc-lab">LOGO</div>
+      <input type="file" class="sc-file" id="sc-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp">
+      <div class="sc-file" style="margin-top:4px;color:#555;">Optional &middot; 2MB max</div>
+      <div class="sc-note">Starting a corporation is inexpensive, but running one can get
+        expensive quickly. Ensure you have a business plan in place!</div>
+      <div class="sc-err" id="sc-err"></div>
+    </div>
+    <div class="sc-foot">
+      <button type="button" class="biz-btn" id="sc-cancel" style="background:transparent;border-color:#3a3a3a;color:#888;">CANCEL</button>
+      <button type="button" class="biz-btn" id="sc-submit" disabled>START CORPORATION</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
+import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { escapeHtml as esc } from './js/utils.js';
+
+// ── Start Company modal state ──
+let scCityId = null;
+let scIndustry = null;
+let scInFlight = false;
+let scFaction = null;
+
+function scUpdateSubmit() {
+  const name = document.getElementById('sc-name').value.trim();
+  document.getElementById('sc-submit').disabled =
+    !(scCityId && scIndustry && name.length >= 2) || scInFlight;
+}
+
+async function openStartCompany(faction) {
+  scFaction = faction;
+  scCityId = null; scIndustry = null;
+  document.getElementById('sc-name').value = '';
+  document.getElementById('sc-logo').value = '';
+  document.getElementById('sc-err').textContent = '';
+  document.getElementById('sc-nation').textContent = faction.nation || '—';
+  document.querySelectorAll('.sc-type').forEach(t => t.classList.remove('sel'));
+  scUpdateSubmit();
+  document.getElementById('sc-overlay').classList.add('open');
+
+  // City list with the founding-relevant stats. Soft-fails to a
+  // readable error inside the modal.
+  const host = document.getElementById('sc-cities');
+  host.innerHTML = '<div class="sc-file">Loading cities…</div>';
+  try {
+    const { data, error } = await _supabase.from('cities')
+      .select('id, city_name, growth, jobs, tax_package_discount_charges')
+      .eq('nation_id', faction.nation_id)
+      .order('city_type');
+    if (error) throw error;
+    if (!data?.length) {
+      host.innerHTML = '<div class="sc-file">No cities found for this nation.</div>';
+      return;
+    }
+    host.innerHTML = data.map(c => `
+      <div class="sc-city" data-city="${esc(c.id)}">
+        <span class="nm">${esc(c.city_name)}</span>
+        <span class="st">GROWTH: ${esc(String(c.growth ?? '—'))} &middot; JOBS: ${esc(String(c.jobs ?? '—'))} &middot; TAX PACKAGES: ${esc(String(c.tax_package_discount_charges ?? 0))}</span>
+      </div>`).join('');
+    host.querySelectorAll('.sc-city').forEach(row => {
+      row.addEventListener('click', () => {
+        scCityId = row.dataset.city;
+        host.querySelectorAll('.sc-city').forEach(r => r.classList.toggle('sel', r === row));
+        scUpdateSubmit();
+      });
+    });
+  } catch (e) {
+    host.innerHTML = `<div class="sc-file">Could not load cities — ${esc(e?.message || 'try again')}.</div>`;
+  }
+}
+
+function closeStartCompany() {
+  if (scInFlight) return;
+  document.getElementById('sc-overlay').classList.remove('open');
+}
+
+async function submitStartCompany() {
+  if (scInFlight) return;
+  const errEl = document.getElementById('sc-err');
+  const btn = document.getElementById('sc-submit');
+  errEl.textContent = '';
+  const name = document.getElementById('sc-name').value.trim();
+  const fileEl = document.getElementById('sc-logo');
+  const file = fileEl.files?.[0] || null;
+  if (file && file.size > 2 * 1024 * 1024) {
+    errEl.textContent = 'Logo is over 2MB — choose a smaller image.';
+    return;
+  }
+  scInFlight = true;
+  btn.disabled = true;
+  btn.textContent = 'FOUNDING…';
+  try {
+    // Optional logo upload first (corp-logos bucket, 20270788), so
+    // the corp row carries the URL from birth.
+    let logoUrl = null;
+    if (file) {
+      const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+      const path = `${scFaction.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await _supabase.storage.from('corp-logos')
+        .upload(path, file, { contentType: file.type || 'image/png' });
+      if (upErr) throw new Error('Logo upload failed: ' + upErr.message);
+      logoUrl = _supabase.storage.from('corp-logos').getPublicUrl(path)?.data?.publicUrl || null;
+    }
+    const { data, error } = await _supabase.rpc('businessman_start_corporation', {
+      p_faction_id: scFaction.id,
+      p_city_id:    scCityId,
+      p_industry:   scIndustry,
+      p_name:       name,
+      p_logo_url:   logoUrl,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        not_authenticated:  'You are not signed in.',
+        invalid_arguments:  'Pick a city first.',
+        invalid_industry:   'Pick a corporation type.',
+        invalid_name:       'Corporation name must be 2–60 characters.',
+        no_businessman:     'No businessman character found.',
+        arrested:           'You are under arrest — your assets are frozen.',
+        invalid_city:       'That city is not in your nation.',
+        name_taken:         'A corporation with that name already exists.',
+        insufficient_funds: 'You need $10,000 on hand to file the incorporation.',
+      };
+      errEl.textContent = REASON[data?.reason] || ('Could not start: ' + (data?.reason || 'unknown'));
+      scInFlight = false;
+      btn.textContent = 'START CORPORATION';
+      scUpdateSubmit();
+      return;
+    }
+    alert(`${data.corp_name} is incorporated in ${data.city}. Make history.`);
+    location.reload();
+  } catch (e) {
+    errEl.textContent = 'Failed: ' + (e?.message || 'unknown error');
+    scInFlight = false;
+    btn.textContent = 'START CORPORATION';
+    scUpdateSubmit();
+  }
+}
 
 (async () => {
   try {
     const ctx = await bootstrapBusinessman('career');
     if (!ctx) return; // redirected (no auth / no businessman faction)
+
+    document.getElementById('start-company-btn')
+      .addEventListener('click', () => openStartCompany(ctx.faction));
+    document.getElementById('sc-cancel').addEventListener('click', closeStartCompany);
+    document.getElementById('sc-overlay').addEventListener('click', (e) => {
+      if (e.target?.id === 'sc-overlay') closeStartCompany();
+    });
+    document.querySelectorAll('.sc-type').forEach(t => {
+      t.addEventListener('click', () => {
+        scIndustry = t.dataset.ind;
+        document.querySelectorAll('.sc-type').forEach(x => x.classList.toggle('sel', x === t));
+        scUpdateSubmit();
+      });
+    });
+    document.getElementById('sc-name').addEventListener('input', scUpdateSubmit);
+    document.getElementById('sc-submit').addEventListener('click', submitStartCompany);
 
     // History was rolled once at creation (20270787) and stored as
     // [{ year, label, sub }] — newest first as generated.
