@@ -147,7 +147,9 @@ export function openInterviewChat({ interviewId, applicantId, heading, canManage
 
   async function send() {
     const body = inputEl.value.trim();
-    if (!body || closed) return;
+    // sendEl.disabled doubles as the in-flight lock — the Enter-key
+    // path lands here too, so this also stops double-fires.
+    if (!body || closed || sendEl.disabled) return;
     sendEl.disabled = true;
     try {
       const { data, error } = await _supabase.rpc('send_interview_message',
@@ -163,7 +165,7 @@ export function openInterviewChat({ interviewId, applicantId, heading, canManage
     } catch (e) {
       alert('Could not send: ' + (e?.message || e));
     } finally {
-      sendEl.disabled = closed || false;
+      sendEl.disabled = closed;
     }
   }
 

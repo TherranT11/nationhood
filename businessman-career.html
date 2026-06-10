@@ -426,9 +426,10 @@ async function submitStartCompany() {
       if (ivErr) throw ivErr;
       if (ivs?.length) {
         const me = displayName(ctx.faction);
+        const ivTitle = iv => `JOB INTERVIEW — ${iv.opening?.title || 'Role'} for ${iv.corp?.name || '—'}`;
         document.getElementById('iv-list').innerHTML = ivs.map(iv => `
           <div class="iv-banner">
-            <span class="t">JOB INTERVIEW — ${esc(iv.opening?.title || 'Role')} for ${esc(iv.corp?.name || '—')}</span>
+            <span class="t">${esc(ivTitle(iv))}</span>
             <button type="button" class="iv-open" data-iv="${esc(iv.id)}">OPEN CHAT</button>
           </div>`).join('');
         document.querySelectorAll('.iv-open').forEach(btn => {
@@ -437,7 +438,7 @@ async function submitStartCompany() {
             if (!iv) return;
             openInterviewChat({
               interviewId: iv.id,
-              heading: `JOB INTERVIEW — ${iv.opening?.title || 'Role'} for ${iv.corp?.name || '—'}`,
+              heading: ivTitle(iv),
               canManage: false,
               myFactionId: ctx.faction.id,
               names: {

@@ -203,8 +203,11 @@ BEGIN
     UPDATE entrepreneur_corps
        SET employee_count = COALESCE(employee_count, 1) + 1
      WHERE id = (v.o_corp).id;
+    -- The role is filled: every candidate's open interview closes,
+    -- not just the winner's — otherwise the losers keep orphaned
+    -- chat banners on a posting that no longer exists.
     UPDATE job_interviews SET status = 'closed'
-     WHERE applicant_id = p_applicant_id AND status = 'open';
+     WHERE opening_id = (v.o_opening).id AND status = 'open';
 
     -- A real player: stamp the employment record and their career
     -- history. Payroll (per-tick wage out of corp treasury) is the
@@ -367,6 +370,49 @@ END $$;
 
 REVOKE EXECUTE ON FUNCTION public.close_job_interview(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.close_job_interview(uuid) TO authenticated;
+
+-- ── withdraw_job_opening — also close its interviews ──────────────
+-- Body byte-faithful to 20270796 except the final UPDATE: a
+-- withdrawn posting closes its open interviews so interviewees
+-- aren't left chatting into a role that no longer exists.
+CREATE OR REPLACE FUNCTION public.withdraw_job_opening(p_opening_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_uid     uuid := auth.uid();
+    v_opening job_openings%ROWTYPE;
+    v_owner   uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+
+    SELECT * INTO v_opening FROM job_openings WHERE id = p_opening_id FOR UPDATE;
+    IF v_opening.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_found');
+    END IF;
+    IF v_opening.status <> 'open' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_open',
+            'status', v_opening.status);
+    END IF;
+
+    SELECT ec.owner_faction_id INTO v_owner
+      FROM entrepreneur_corps ec
+      JOIN factions f ON f.id = ec.owner_faction_id
+     WHERE ec.id = v_opening.corp_id
+       AND (f.id = v_uid OR f.linked_user_id = v_uid)
+       AND f.abandoned_at IS NULL;
+    IF v_owner IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+
+    UPDATE job_openings SET status = 'withdrawn' WHERE id = p_opening_id;
+    UPDATE job_interviews SET status = 'closed'
+     WHERE opening_id = p_opening_id AND status = 'open';
+
+    RETURN jsonb_build_object('success', true);
+END $$;
 
 NOTIFY pgrst, 'reload schema';
 
