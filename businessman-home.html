@@ -9,19 +9,33 @@
   :root { --font-mono: 'JetBrains Mono', monospace; --font-ui: 'IBM Plex Sans', -apple-system, sans-serif; }
   /* Page chrome (topbar/nav/.ent-content) is injected by
      js/entrepreneur-topbar.js — shared with the entrepreneur pages. */
-  .biz-row { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:10px;
-    max-width:1280px; margin:0 auto; }
+  /* All eight identity cards on one row at desktop widths; the
+     minmax(0,1fr) lets cards shrink below their content's natural
+     width instead of forcing a wrap. Narrow screens fall back to a
+     4-up / 2-up grid. */
+  .biz-row { display:grid; grid-template-columns:repeat(8, minmax(0, 1fr)); gap:10px;
+    max-width:1600px; margin:0 auto; }
+  @media (max-width:1100px) { .biz-row { grid-template-columns:repeat(4, minmax(0, 1fr)); } }
+  @media (max-width:560px)  { .biz-row { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
   .biz-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px;
     padding:14px 16px; }
   .biz-card .lab { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.16em;
     color:#666; font-weight:700; margin-bottom:7px; }
-  .biz-card .val { font-size:14px; color:#fff; line-height:1.4; }
+  .biz-card { min-width:0; }
+  .biz-card .val { font-size:13px; color:#fff; line-height:1.4; overflow-wrap:break-word; }
   .biz-card .sub { font-family:var(--font-mono); font-size:10px; color:#888; margin-top:4px; }
   .biz-card .val.money { font-family:var(--font-mono); color:#8aaa6a; }
   .biz-card .val.ok    { color:#8aaa6a; }
   .biz-card .val.bad   { color:#d9534f; }
   .biz-status-line { font-size:11.5px; color:#8aaa6a; line-height:1.6; }
   .biz-status-line.bad { color:#d9534f; }
+
+  .biz-section { max-width:1280px; margin:26px auto 0; }
+  .biz-section .sec-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.18em;
+    color:#666; font-weight:700; margin-bottom:10px; }
+  .biz-pi-empty { padding:26px 16px; text-align:center; color:#555; font-size:11.5px;
+    font-style:italic; background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08);
+    border-radius:5px; }
 
   .biz-empty { max-width: 560px; margin: 48px auto 0; text-align: center; }
   .biz-empty .eyebrow { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em;
@@ -39,6 +53,16 @@
 <div id="loading">LOADING...</div>
 <div class="ent-content" id="page-content" style="display:none;">
   <div class="biz-row" id="biz-row"></div>
+  <!-- Pressing Issues — same surface every faction home carries.
+       Cards render into #biz-pressing-issues as businessman
+       mechanics land (job offers, warrants, audits…); until then the
+       empty state shows. -->
+  <div class="biz-section">
+    <div class="sec-lab">PRESSING ISSUES</div>
+    <div id="biz-pressing-issues">
+      <div class="biz-pi-empty">No pressing issues right now.</div>
+    </div>
+  </div>
   <div class="biz-empty">
     <div class="eyebrow">BUSINESSMAN · ALPHA</div>
     <h1>The first day of the <em>rest of your life</em></h1>
