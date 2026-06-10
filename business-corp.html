@@ -32,6 +32,11 @@
   .ea-card .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em;
     color:#888; font-weight:700; margin-bottom:5px; }
   .ea-card .soon { font-family:Georgia,serif; font-style:italic; font-size:10.5px; color:#4a4940; }
+  .ea-card.live { opacity:1; cursor:pointer; border-color:rgba(138,170,106,0.35); }
+  .ea-card.live:hover { background:#10140e; }
+  .ea-card.live .ic { color:#8aaa6a; }
+  .ea-card.live .nm { color:#aac88a; }
+  .ea-card.live .soon { color:#777; }
 
   /* ── Core Metrics: the three pillars ── */
   .pl-section { margin-top:22px; }
@@ -149,10 +154,10 @@
   .bc-foot .err { color:#d9534f; font-size:10px; font-family:var(--font-mono);
     margin-top:6px; min-height:12px; }
 
-  /* ── Post Job Opening modal ── */
-  #jm-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+  /* ── Post Job Opening + Draft Blueprint modals (shared chrome) ── */
+  #jm-overlay, #db-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
     align-items:center; justify-content:center; padding:20px; z-index:1000; }
-  #jm-overlay.open { display:flex; }
+  #jm-overlay.open, #db-overlay.open { display:flex; }
   .jm-modal { width:100%; max-width:640px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -192,6 +197,13 @@
     letter-spacing:0.08em; font-weight:700; background:#0a0a0a; color:#888;
     border:1px solid rgba(255,255,255,0.1); border-radius:4px; cursor:pointer; text-align:center; }
   .jm-pill.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
+  .jm-pill.locked { opacity:0.35; cursor:not-allowed; }
+  .db-cats { flex-wrap:wrap; }
+  .db-cats .jm-pill { flex:1 1 30%; }
+  .db-mech { font-family:Georgia,serif; font-style:italic; font-size:12px; color:#999;
+    line-height:1.55; }
+  .db-static { font-family:var(--font-mono); font-size:12px; color:#fff; }
+  .db-static .dim { color:#8aaa6a; font-size:10.5px; }
   .jm-foot { padding:13px 20px; background:#10140e; border-top:0.5px solid rgba(138,170,106,0.25);
     display:flex; gap:10px; justify-content:flex-end; }
   .jm-btn { padding:9px 16px; background:rgba(138,170,106,0.08); border:0.5px solid #4a6a4a;
@@ -262,6 +274,35 @@
   </div>
 </div>
 
+<div id="db-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Draft <em>Blueprint</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Spend accumulated Experience Points to design a
+        proprietary structural design template, allocating Experience Points into
+        Speed, Procurement, or Quality.</div>
+      <div class="jm-lab">CATEGORY</div>
+      <div class="jm-pills db-cats" id="db-cats"></div>
+      <div class="jm-lab">BUILD LOCATION</div>
+      <div class="db-static" id="db-location">—</div>
+      <div class="jm-lab">TYPE OF BUILDING</div>
+      <div class="jm-pills" id="db-types"></div>
+      <div class="jm-lab">TYPE</div>
+      <div class="jm-pills db-cats" id="db-tiers"></div>
+      <div class="jm-lab">MATERIALS NEEDED</div>
+      <div class="db-static">1</div>
+      <div class="jm-lab">EQUIPMENT NEEDED</div>
+      <div class="db-static">Light</div>
+      <div class="jm-lab">ASSIGN PROJECT MANAGER</div>
+      <select class="jm-select" id="db-pm"></select>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="db-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="db-confirm" disabled>CONFIRM</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
@@ -281,7 +322,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, logo_url, employee_count, owner_faction_id, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, pillar_speed, pillar_efficiency, pillar_quality,
                nation:nations!hq_nation_id(name, wages, standard_of_living),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
       .eq('id', corpId).maybeSingle();
@@ -740,15 +781,22 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
       });
     }
 
-    // Executive Actions — owner-only surface. Five slots, all coming
-    // soon; the "1 remaining" allowance is the per-tick default and
-    // becomes derived state when the first action lands.
+    // Executive Actions — owner-only surface. Draft Blueprint is the
+    // first live slot; the other four are coming soon. The allowance
+    // pill derives from exec_action_tick (20270800): one action per
+    // tick, stamped by every executive action RPC.
     if (isOwner) {
+      const actionsLeft = currentTick > (corp.exec_action_tick ?? -1) ? 1 : 0;
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
-          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining">1 remaining</span></div>
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
           <div class="ea-grid">
-            ${Array.from({ length: 5 }, () => `
+            <div class="ea-card live" id="ea-draft-blueprint">
+              <div class="ic">📐</div>
+              <div class="nm">DRAFT BLUEPRINT</div>
+              <div class="soon">Design a structural template</div>
+            </div>
+            ${Array.from({ length: 4 }, () => `
               <div class="ea-card" title="Coming soon">
                 <div class="ic">—</div>
                 <div class="nm">ACTION</div>
@@ -756,6 +804,127 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
               </div>`).join('')}
           </div>
         </div>`;
+
+      // ── Draft Blueprint modal ────────────────────────────────────
+      // Residential is the only chartered category; materials /
+      // equipment are the residential baselines shown as static copy
+      // (they live on the blueprint row server-side).
+      const DB_CATS = [
+        ['residential', 'RESIDENTIAL', true],
+        ['tier_i_commercial', 'TIER I COMMERCIAL', false],
+        ['tier_ii_commercial', 'TIER II COMMERCIAL', false],
+        ['tier_iii_commercial', 'TIER III COMMERCIAL', false],
+        ['industrial', 'INDUSTRIAL', false],
+        ['military', 'MILITARY', false],
+      ];
+      const DB_TYPES = [
+        ['single_story_home', 'SINGLE STORY HOME'],
+        ['double_story', 'DOUBLE STORY'],
+        ['multitenant_living', 'MULTITENANT LIVING'],
+      ];
+      const DB_TIERS = [
+        ['low_cost', 'LOW COST'],
+        ['standard', 'STANDARD'],
+        ['high_end', 'HIGH END'],
+        ['luxury', 'LUXURY'],
+        ['ultra_rich', 'ULTRA RICH'],
+      ];
+      let dbType = null, dbTier = null;
+
+      function dbRefreshConfirm() {
+        const pm = document.getElementById('db-pm').value;
+        document.getElementById('db-confirm').disabled = !(dbType && dbTier && pm);
+      }
+
+      function dbPills(hostId, items, onPick) {
+        const host = document.getElementById(hostId);
+        host.innerHTML = items.map(([val, label, open]) => `
+          <div class="jm-pill${open === false ? ' locked' : ''}" data-val="${esc(val)}"
+            ${open === false ? 'title="Coming soon"' : ''}>${esc(label)}</div>`).join('');
+        host.querySelectorAll('.jm-pill:not(.locked)').forEach(p => {
+          p.addEventListener('click', () => {
+            host.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+            onPick(p.dataset.val);
+            dbRefreshConfirm();
+          });
+        });
+      }
+
+      async function openBlueprintModal() {
+        dbType = null; dbTier = null;
+        dbPills('db-cats', DB_CATS, () => {});
+        document.querySelector('#db-cats .jm-pill').classList.add('sel');
+        dbPills('db-types', DB_TYPES, v => { dbType = v; });
+        dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
+        document.getElementById('db-location').textContent = corp.hq_city || '—';
+        document.getElementById('db-overlay').classList.add('open');
+
+        // Infrastructure rating + the PM roster load behind the open.
+        try {
+          const [{ data: city, error: cityErr }, { data: pms, error: pmErr }] = await Promise.all([
+            _supabase.from('cities').select('infrastructure')
+              .eq('nation_id', corp.hq_nation_id).eq('city_name', corp.hq_city).maybeSingle(),
+            _supabase.from('job_applicants')
+              .select('id, name, opening:job_openings!opening_id!inner(title, corp_id)')
+              .eq('status', 'hired').eq('opening.corp_id', corp.id),
+          ]);
+          if (cityErr) throw cityErr;
+          if (pmErr) throw pmErr;
+          if (city) {
+            document.getElementById('db-location').innerHTML =
+              `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/100</span>`;
+          }
+          const sel = document.getElementById('db-pm');
+          sel.innerHTML = pms?.length
+            ? pms.map(p => `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.opening?.title || '—')}</option>`).join('')
+            : '<option value="">No hires yet — post a role first</option>';
+        } catch (e) {
+          console.warn('[business-corp] blueprint modal load failed:', e?.message || e);
+          document.getElementById('db-pm').innerHTML =
+            '<option value="">Could not load your hires — try again</option>';
+        }
+        dbRefreshConfirm();
+      }
+
+      document.getElementById('ea-draft-blueprint').addEventListener('click', openBlueprintModal);
+      document.getElementById('db-pm').addEventListener('change', dbRefreshConfirm);
+      document.getElementById('db-cancel').addEventListener('click', () =>
+        document.getElementById('db-overlay').classList.remove('open'));
+      document.getElementById('db-overlay').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('db-overlay'))
+          document.getElementById('db-overlay').classList.remove('open');
+      });
+
+      document.getElementById('db-confirm').addEventListener('click', async () => {
+        const btn = document.getElementById('db-confirm');
+        btn.disabled = true;
+        try {
+          const { data, error: dErr } = await _supabase.rpc('draft_blueprint', {
+            p_corp_id: corp.id,
+            p_category: 'residential',
+            p_building_type: dbType,
+            p_quality_tier: dbTier,
+            p_pm_applicant_id: document.getElementById('db-pm').value,
+          });
+          if (dErr) throw dErr;
+          if (!data?.success) {
+            const REASON = {
+              no_actions_remaining: 'No executive actions remaining this tick.',
+              pm_not_found: 'That Project Manager no longer works here.',
+              category_not_chartered: 'Only Residential blueprints can be drafted right now.',
+              not_owner: 'Only the owner can draft blueprints.',
+              arrested: 'You are under arrest — your assets are frozen.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          corp.exec_action_tick = currentTick;
+          document.getElementById('ea-remaining').textContent = '0 remaining';
+          document.getElementById('db-overlay').classList.remove('open');
+        } catch (e) {
+          alert('Could not draft: ' + (e?.message || e));
+          dbRefreshConfirm();
+        }
+      });
     }
 
     document.getElementById('loading').style.display = 'none';
