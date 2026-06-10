@@ -162,6 +162,13 @@ All notable changes to Nationhood are recorded here. Format inspired by
 
 ### Fixed
 
+- **Trial inputs no longer "declick" mid-sentence** — the trial
+  modal's 4-second poll rebuilds the panel, which destroyed the
+  focused field: the objection REASON box dropped focus a couple of
+  seconds after clicking in, and a judge's bench-speech draft was
+  wiped outright. All three trial inputs now carry text, focus, and
+  caret position across the poll re-render (the message box already
+  did).
 - **Embassy event variables match forgivingly** — `{Name}` left raw in
   a live dispatch because only the exact `{Name1}` token was replaced.
   Tokens are now case-insensitive and `{Name}` is an alias of

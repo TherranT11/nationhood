@@ -115,9 +115,22 @@ import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js
                 return;
             }
 
-            // Route to last active faction, or default to first owned
+            // Route to the last active faction when one is stored.
+            // Otherwise prefer the first faction with a REAL home page:
+            // legacy corporations (and branch-less military rows)
+            // deliberately route to the neutral chooser, and with no
+            // ORDER BY on the query such a row can sort first and mask
+            // a faction the player actually plays (live repro: a
+            // legacy-row owner's new Businessman was unreachable —
+            // every login landed on faction-select).
             const activeFactionId = sessionStorage.getItem('active_faction_id');
-            const activeFaction = ownedFactions.find(f => f.id === activeFactionId) || ownedFactions[0];
+            const hasHome = (f) => {
+                const url = getFactionDashboardUrl(f);
+                return url && url !== 'faction-select.html';
+            };
+            const activeFaction = ownedFactions.find(f => f.id === activeFactionId)
+                || ownedFactions.find(hasHome)
+                || ownedFactions[0];
 
             // Single-source router (js/game/factions.js): corp →
             // faction-select, party → politics, army → army-dashboard,

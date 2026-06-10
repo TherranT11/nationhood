@@ -5854,12 +5854,21 @@ function renderTrialModal(d) {
   }
 
   // Save the in-flight textarea state so the polling re-render doesn't
-  // wipe what the lawyer is typing.
-  const prevInput = document.getElementById('trial-input');
-  const carryText = prevInput ? prevInput.value : '';
-  const carryFocus = prevInput === document.activeElement;
-  const carrySelStart = prevInput && carryFocus ? prevInput.selectionStart : null;
-  const carrySelEnd   = prevInput && carryFocus ? prevInput.selectionEnd   : null;
+  // wipe what the lawyer is typing. Covers the message box AND the
+  // objection picker's reason field — innerHTML replacement destroys
+  // the focused node mid-keystroke ("declicks" the field) without
+  // this. The reason TEXT already survives via _trialState
+  // .objectionText (input listener + the stash below); focus and
+  // caret position need carrying explicitly.
+  const prevInput  = document.getElementById('trial-input');
+  const prevReason = document.getElementById('trial-obj-reason');
+  const carryText  = prevInput ? prevInput.value : '';
+  if (prevReason) _trialState.objectionText = prevReason.value;
+  const focusedId = prevInput === document.activeElement ? 'trial-input'
+                  : prevReason === document.activeElement ? 'trial-obj-reason'
+                  : null;
+  const carrySelStart = focusedId ? document.activeElement.selectionStart : null;
+  const carrySelEnd   = focusedId ? document.activeElement.selectionEnd   : null;
 
   const caseTag    = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
   const roundLabel = `ROUND ${d.current_round || 1} OF IV`;
@@ -5903,12 +5912,17 @@ function renderTrialModal(d) {
   if (chat) chat.scrollTop = chat.scrollHeight;
 
   // Restore typed text + selection / focus carried over from the
-  // previous render (otherwise the 4s poll wipes the textarea).
+  // previous render (otherwise the 4s poll wipes the textarea and
+  // drops focus mid-sentence). The reason field's text re-renders
+  // from _trialState.objectionText; only focus/caret need restoring.
   const newInput = document.getElementById('trial-input');
   if (newInput && carryText) newInput.value = carryText;
-  if (newInput && carryFocus) {
-    newInput.focus();
-    if (carrySelStart != null) newInput.setSelectionRange(carrySelStart, carrySelEnd);
+  if (focusedId) {
+    const refocus = document.getElementById(focusedId);
+    if (refocus) {
+      refocus.focus();
+      if (carrySelStart != null) refocus.setSelectionRange(carrySelStart, carrySelEnd);
+    }
   }
 
   bindTrialControls(d);
@@ -5919,6 +5933,14 @@ function renderTrialModal(d) {
 // presiding Magistrate. Reuses the trial-modal palette (brass) so
 // the bench surface stays visually uniform with the lawyer view.
 function renderJudgeTrialModal(d) {
+  // Same 4s-poll carry as the lawyer view: innerHTML replacement
+  // destroys the bench-speech input mid-keystroke — without this the
+  // judge's draft is wiped AND the field defocuses every poll.
+  const prevSpeech = document.getElementById('judge-speech-input');
+  const carrySpeech = prevSpeech ? prevSpeech.value : '';
+  const speechFocus = prevSpeech === document.activeElement;
+  const carrySelStart = prevSpeech && speechFocus ? prevSpeech.selectionStart : null;
+  const carrySelEnd   = prevSpeech && speechFocus ? prevSpeech.selectionEnd   : null;
   const caseTag  = `${(d.case_type || '').toUpperCase()} · ${escHtml((d.litigation_type || '').toUpperCase())}`;
   const messages = Array.isArray(d.messages) ? d.messages : [];
   const isSC     = d.status === 'settlement_conference';
@@ -6013,6 +6035,12 @@ function renderJudgeTrialModal(d) {
     ${speechHtml}`;
   const chat = document.getElementById('trial-chat');
   if (chat) chat.scrollTop = chat.scrollHeight;
+  const newSpeech = document.getElementById('judge-speech-input');
+  if (newSpeech && carrySpeech) newSpeech.value = carrySpeech;
+  if (newSpeech && speechFocus) {
+    newSpeech.focus();
+    if (carrySelStart != null) newSpeech.setSelectionRange(carrySelStart, carrySelEnd);
+  }
   bindJudgeControls(d);
   // For civil/commercial trials awaiting verdict, swap the placeholder
   // verdict row with the real one once the server-side preview returns.
