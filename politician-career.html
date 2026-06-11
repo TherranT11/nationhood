@@ -1727,18 +1727,29 @@ const FOREIGN_SERVICE_RUNGS = [
       if ((Number(s.politicianSkill) || 0) < 30) {
         return { label: 'Request Appointment · 30 Experience', kind: 'disabled' };
       }
-      // The vote itself fires from the DCM affiliation card on the
-      // home page — the rung points there rather than duplicating
-      // the chamber flow.
-      return { label: 'Request Appointment', kind: 'primary', href: 'politician-home.html' };
+      if (s.nextAmbassadorRequestTick > s.currentTick) {
+        return { label: `Chamber retry ${tickToDate(s.nextAmbassadorRequestTick)}`, kind: 'disabled' };
+      }
+      // The one entry point for the chamber vote (design ruling) —
+      // the DCM affiliation card carries no duplicate button.
+      return { label: 'Request Appointment', kind: 'primary', action: 'ambassador-request' };
     },
   },
   {
     name: 'Special Envoy / Roving Ambassador',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You are a mobile diplomat assigned to specific crises — peace talks, hostage negotiations.',
-    descIfNot:   ()  => 'A mobile diplomat assigned to specific crises — peace talks, hostage negotiations, mediating between third parties.',
-    actions:     ['Open a Channel', 'Shuttle Diplomacy'],
+    held:        (s) => s?.specialEnvoyAtTick != null,
+    descIfHeld:  ()  => 'You negotiate where the ministry points you — the arrangements you sign are permanent public record.',
+    descIfNot:   ()  => 'The chosen rank — appointed by the Foreign Minister. You negotiate political arrangements nation to nation; the signed accords are your legacy.',
+    actions:     ['Negotiate'],
+    // Appointment (20270870): a player FM picks; with no player FM,
+    // [Seek Appointment] auto-appoints at 55 Experience + a completed
+    // Ambassador term (the server validates the term).
+    actionIfNot: (s) => {
+      if ((Number(s.politicianSkill) || 0) < 55) {
+        return { label: 'Seek Appointment · 55 Experience', kind: 'disabled' };
+      }
+      return { label: 'Seek Appointment', kind: 'primary', action: 'envoy-seek' };
+    },
   },
   {
     name: 'Director of the Diplomatic Corps / Secretary-General',
@@ -2464,6 +2475,8 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // stored server-side for future tenure displays but isn't read
     // by any rung today — surface it here when that lands.
     foreignServiceNationId:   ctx?.faction?.politician_foreign_service_nation_id || null,
+    specialEnvoyAtTick:       ctx?.faction?.politician_special_envoy_at_tick ?? null,
+    nextAmbassadorRequestTick: Number(ctx?.faction?.next_ambassador_request_tick) || 0,
     foreignServiceLastAttemptTick: Number(ctx?.faction?.foreign_service_last_attempt_tick) || 0,
     // Foreign Service tiers 2-4 (20270865/66/69) — drive held() and
     // the promotion buttons on the Consul / DCM / Ambassador rungs.
@@ -3123,6 +3136,73 @@ function bindRungActions(ctx) {
   });
   document.querySelectorAll('[data-action="dcm-post"]').forEach(btn => {
     btn.addEventListener('click', () => openFsPromotionPicker('dcm'));
+  });
+  document.querySelectorAll('[data-action="ambassador-request"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      if (!confirm('Put your name before the legislature? Your party banks its seats; the rest roll the dice. A failed vote means 12 ticks before the ministry floats it again.')) return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const ctx = window.__careerCtx || {};
+        const { data, error } = await _supabase.rpc('politician_request_ambassador_appointment',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          if (data?.reason === 'vote_failed') {
+            alert(`The chamber says no — ${data.yes_seats} for, ${data.no_seats} against. The ministry will float your name again ${tickToDate(Number(data.retry_at_tick))}.`);
+            location.reload();
+            return;
+          }
+          const REASON = {
+            cooldown: 'The chamber recently said no — wait for the ministry to float your name again.',
+            no_postings: 'No ambassadorships are vacant — every live nation is covered.',
+            not_dcm: 'Only a serving DCM stands for appointment.',
+            not_enough_experience: 'The ministry wants 30 Experience first.',
+            arrested: 'You are under arrest.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert(`The chamber confirms, ${data.yes_seats}\u2013${data.no_seats}. You are now the Ambassador of ${data.nation} — proceed to ${data.capital}. The term runs to ${tickToDate(Number(data.term_ends_tick))}.`);
+        location.reload();
+      } catch (err) {
+        alert('Could not request the appointment: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
+  document.querySelectorAll('[data-action="envoy-seek"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      if (!confirm('Seek the Special Envoy appointment? With no player Foreign Minister, the ministry decides on the spot.')) return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const ctx = window.__careerCtx || {};
+        const { data, error } = await _supabase.rpc('politician_seek_envoy_appointment',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            fm_appoints: 'Your nation has a sitting Foreign Minister — envoys are appointed directly. Make your case to them.',
+            no_completed_term: 'The ministry wants a completed Ambassador term on the r\u00e9sum\u00e9 first.',
+            not_enough_experience: 'The ministry wants 55 Experience first.',
+            term_in_progress: 'Finish your Ambassador term first — terms are never cut short.',
+            post_filled: 'Your nation already fields a Special Envoy.',
+            already_envoy: 'You hold the appointment already.',
+            arrested: 'You are under arrest.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert('The ministry stamps it without ceremony: you are the Special Envoy.');
+        location.reload();
+      } catch (err) {
+        alert('Could not seek the appointment: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
   });
 
   // Join the Academy — Federal Investigations Tier 1 (Agent). One-

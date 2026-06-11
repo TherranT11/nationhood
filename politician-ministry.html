@@ -114,6 +114,11 @@
   <div class="mn-head" id="cables-head" style="display:none;"><span class="mn-num">III.</span><span class="lab">Communiqués</span></div>
   <div id="cables-host" class="mn-section-host empty" style="display:none;">No cables received yet.</div>
 
+  <!-- Accords (20270870) — Foreign Affairs only; signed envoy
+       arrangements involving this nation. -->
+  <div class="mn-head" id="accords-head" style="display:none;"><span class="mn-num">III.</span><span class="lab">Accords</span></div>
+  <div id="accords-host" class="mn-section-host empty" style="display:none;">Nothing signed yet.</div>
+
   <!-- IV. Actors -->
   <div class="mn-head"><span class="mn-num">IV.</span><span class="lab">Actors</span></div>
   <div id="actors-host" class="mn-section-host empty">Nothing recorded yet.</div>
@@ -131,7 +136,7 @@
 <script type="module">
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, currentAge, escapeHtml, ministryName, MINISTRY_BLURBS, tickToDate } from './js/utils.js';
+import { officeTitle, currentAge, escapeHtml, ministryName, MINISTRY_BLURBS, tickToDate, ENVOY_ACCORDS } from './js/utils.js';
 
 // Per-ministry page-only chrome — badge glyph + italicized-
 // subordinate title HTML. Display name comes from MINISTRY_NAMES
@@ -224,6 +229,13 @@ async function renderFmStrip(slug, ctx) {
       const f = fmRows[0];
       const nm = f.nickname || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim() || '—';
       text.innerHTML = `<b style="color:#5aafa5;">FOREIGN MINISTER</b> &nbsp; ${escapeHtml(nm)}`;
+      // The sitting FM appoints the Special Envoy (20270870).
+      if (ctx.faction?.politician_foreign_minister_at_tick != null
+          && ctx.faction?.nation_id === ctx.nation.id) {
+        btn.textContent = 'APPOINT SPECIAL ENVOY';
+        btn.style.display = '';
+        btn.addEventListener('click', () => openEnvoyAppointPicker(ctx));
+      }
       return;
     }
     text.innerHTML = `<b style="color:#5aafa5;">FOREIGN MINISTER</b> &nbsp; <span style="color:#c87a7a;">The portfolio is vacant.</span>`;
@@ -263,6 +275,102 @@ async function renderFmStrip(slug, ctx) {
     });
   } catch (err) {
     console.warn('[politician-ministry] fm strip failed:', err?.message || err);
+  }
+}
+
+// The FM's envoy picker (20270870) — eligible: 55 Experience and a
+// completed Ambassador term, this nation, post vacant. The server
+// re-validates everything; this list is the courtesy.
+async function openEnvoyAppointPicker(ctx) {
+  let candidates = [];
+  try {
+    const [{ data: pols, error: pErr }, { data: terms, error: tErr }] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, leader_first_name, leader_last_name, nickname, politician_skill')
+        .eq('faction_type', 'politician')
+        .eq('nation_id', ctx.nation.id)
+        .is('abandoned_at', null)
+        .is('politician_special_envoy_at_tick', null)
+        .gte('politician_skill', 55),
+      _supabase.from('politician_career_events')
+        .select('faction_id')
+        .eq('event_type', 'ambassador_term_ended'),
+    ]);
+    if (pErr) throw pErr;
+    if (tErr) throw tErr;
+    const veterans = new Set((terms || []).map(t => t.faction_id));
+    candidates = (pols || []).filter(p => veterans.has(p.id) && p.id !== ctx.faction?.id);
+  } catch (err) {
+    alert('Could not load candidates: ' + (err?.message || err));
+    return;
+  }
+  if (!candidates.length) {
+    alert('Nobody qualifies — the ministry wants 55 Experience and a completed Ambassador term.');
+    return;
+  }
+  const names = candidates.map((c, i) => {
+    const nm = c.nickname || `${c.leader_first_name || ''} ${c.leader_last_name || ''}`.trim() || 'Unnamed';
+    return `${i + 1}. ${nm} (${Math.floor(Number(c.politician_skill) || 0)} Experience)`;
+  }).join('\n');
+  const pick = window.prompt(`Appoint the Special Envoy — enter a number:\n${names}`);
+  const idx = Math.floor(Number(pick)) - 1;
+  if (!pick || isNaN(idx) || !candidates[idx]) return;
+  try {
+    const { data, error } = await _supabase.rpc('fm_appoint_envoy', {
+      p_faction_id: ctx.faction?.id || null, p_politician_id: candidates[idx].id,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        post_filled: 'Your nation already fields a Special Envoy.',
+        no_completed_term: 'They lack a completed Ambassador term.',
+        not_enough_experience: 'They lack the Experience.',
+        term_in_progress: 'They are mid-term as Ambassador.',
+        not_fm: 'Only the sitting Foreign Minister appoints envoys.',
+      };
+      throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+    }
+    alert('Appointed. The cable goes out under your signature.');
+    location.reload();
+  } catch (err) {
+    alert('Could not appoint: ' + (err?.message || err));
+  }
+}
+
+// Accords (20270870) — signed envoy arrangements involving this
+// nation. The legacy section: title, parties, date, the clauses.
+async function renderAccords(slug, nationId) {
+  if (slug !== 'foreign_affairs' || !nationId) return;
+  const head = document.getElementById('accords-head');
+  const host = document.getElementById('accords-host');
+  head.style.display = '';
+  host.style.display = '';
+  try {
+    const { data, error } = await _supabase.from('envoy_sessions')
+      .select(`title, signed_tick,
+               envoy:factions!envoy_faction_id(leader_first_name, leader_last_name, nickname),
+               articles:envoy_session_articles(kind)`)
+      .eq('status', 'signed')
+      .or(`home_nation_id.eq.${nationId},target_nation_id.eq.${nationId}`)
+      .order('signed_tick', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    if (!data?.length) return; // keep the blank-state message
+    host.classList.remove('empty');
+    host.innerHTML = data.map(a => {
+      const nm = a.envoy?.nickname
+        || `${a.envoy?.leader_first_name || ''} ${a.envoy?.leader_last_name || ''}`.trim() || '—';
+      const chips = (a.articles || []).filter(x => x.kind !== 'text')
+        .map(x => ENVOY_ACCORDS[x.kind]?.label || x.kind).join(' · ');
+      return `
+        <div class="dcq-row">
+          <div class="dcq-date">${escapeHtml(tickToDate(Number(a.signed_tick)))}</div>
+          <div class="dcq-body"><b>${escapeHtml(a.title)}</b>
+            <span class="dcq-from">&mdash; negotiated by ${escapeHtml(nm)}, Special Envoy${chips ? ` &middot; ${escapeHtml(chips)}` : ''}</span></div>
+        </div>`;
+    }).join('');
+  } catch (err) {
+    console.warn('[politician-ministry] accords fetch error:', err?.message || err);
   }
 }
 
@@ -306,6 +414,7 @@ async function renderCables(slug, nationId) {
     renderActors(slug, ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0),
     renderCables(slug, ctx.nation?.id || null),
     renderFmStrip(slug, ctx),
+    renderAccords(slug, ctx.nation?.id || null),
   ]);
 })();
 </script>
