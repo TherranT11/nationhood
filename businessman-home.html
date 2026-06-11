@@ -290,6 +290,13 @@ import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, tickToDate } from './js/utils.js';
 import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 
+// market_entry_cost mirror (20270853): $10M flat to expand, $7M ×
+// the target nation's Standard of Living ÷ 50 for a subsidiary —
+// read by the CCO's pitch preview and the owner's pitch card.
+const marketEntryFee = (kind, sol) => kind === 'subsidiary'
+  ? Math.round(7000000 * Math.max(1, Number(sol) || 50) / 50)
+  : 10000000;
+
 (async () => {
   try {
     const ctx = await bootstrapBusinessman('home');
@@ -537,10 +544,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
         for (const p of (xps || [])) {
           const who = p.proposer?.nickname
             || `${p.proposer?.leader_first_name || ''} ${p.proposer?.leader_last_name || ''}`.trim() || 'Your CCO';
-          // market_entry_cost mirror.
-          const fee = p.kind === 'subsidiary'
-            ? Math.round(7000000 * Math.max(1, Number(p.nation?.standard_of_living) || 50) / 50)
-            : 10000000;
+          const fee = marketEntryFee(p.kind, p.nation?.standard_of_living);
           piCards.push(`
             <div class="biz-proj-card">
               <div class="t">MARKET EXPANSION PITCH — ${esc(p.kind === 'subsidiary' ? `subsidiary “${p.subsidiary_name}”` : 'main brand')} in ${esc(p.nation?.name || '—')}.
@@ -1041,11 +1045,8 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           const name = document.getElementById('ds-name').value.trim();
           document.getElementById('ds-name-wrap').style.display =
             dsKind === 'subsidiary' ? '' : 'none';
-          // market_entry_cost mirror: $10M flat / $7M × SoL ÷ 50.
           document.getElementById('ds-fee').textContent = dsNation && dsKind
-            ? hfFmtBig(dsKind === 'subsidiary'
-                ? Math.round(7000000 * Math.max(1, Number(dsSol[dsNation]) || 50) / 50)
-                : 10000000)
+            ? hfFmtBig(marketEntryFee(dsKind, dsSol[dsNation]))
             : '—';
           document.getElementById('ds-call').disabled = dsInFlight || !dsNation || !dsKind
             || (dsKind === 'subsidiary' && name.length < 2);
