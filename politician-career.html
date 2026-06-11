@@ -3715,7 +3715,7 @@ async function openJmGateNotice(btn) {
     const nationId = ctx.faction?.nation_id || null;
     if (!nationId) { alert('Your politician is not yet seated in a nation.'); return; }
     const { data: governing, error } = await _supabase.from('factions')
-      .select('id, faction_name, party_status, seats')
+      .select('id, faction_name, party_status')
       .eq('nation_id', nationId)
       .eq('faction_type', 'movement_party')
       .is('abandoned_at', null)

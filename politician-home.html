@@ -2333,7 +2333,7 @@ const MAYOR_ACTIONS = [
 const CCP_ACTIONS = [
   { ic: '📜', name: 'PROPOSE ORDINANCE', cost: '-1 Volunteer', desc: 'Open the catalog and propose an ordinance for the council vote — enact a new one or rescind an active one. Resolves in 3 ticks.', action: 'propose-ordinance' },
   { ic: '🏛', name: 'CITY HEARING',      cost: 'no cost',      desc: 'Convene a public hearing. +0.5 Reputation. +0.1 Party Popularity per Volunteer.', action: 'ccp-city-hearing' },
-  { ic: '🛠', name: 'BUILD THE BASE',    cost: 'no cost',      desc: 'Spend the month organising in your district. Roll 1d6: 1-2 → +1 Volunteer; 3-4 → +1 Reputation; 5-6 → +1 Volunteer AND +1 Reputation.', action: 'ccp-build-the-base' },
+  { ic: '🛠', name: 'BUILD THE BASE',    cost: 'no cost',      desc: 'Spend the month organising in your district. Roll 1d6: 1-2 → +0.5 Reputation AND +1 Volunteer; 3-6 → +1 Reputation AND +1 Volunteer.', action: 'ccp-build-the-base' },
 ];
 // LOCAL_GOV bracket effects mirror the RPC bodies in 20270583_
 // consolidate_faction_stats.sql; keep these strings in sync when
@@ -5185,14 +5185,10 @@ function fmtCcpHearingResult(data) {
   return `Held a City Hearing: no Volunteers on the roll, so no popularity bump. +0.5 Reputation (now ${newRepTxt}).`;
 }
 function fmtCcpBuildBaseResult(data) {
-  const roll = data.roll;
-  if (data.bracket === 'both') {
-    return `Built the Base: rolled ${roll}. +1 Volunteer (now ${data.new_volunteers}), +1 Reputation (now ${Number(data.new_reputation).toFixed(1)}).`;
-  }
-  if (data.bracket === 'volunteers') {
-    return `Built the Base: rolled ${roll}. +1 Volunteer (now ${data.new_volunteers}).`;
-  }
-  return `Built the Base: rolled ${roll}. +1 Reputation (now ${Number(data.new_reputation).toFixed(1)}).`;
+  // 20270877: every roll lands +1 Volunteer; the d6 sets the
+  // Reputation slice (1-2 → +0.5, 3-6 → +1).
+  const rep = Number(data.reputation_delta) || 0;
+  return `Built the Base: rolled ${data.roll}. +1 Volunteer (now ${data.new_volunteers}), +${rep} Reputation (now ${Number(data.new_reputation).toFixed(1)}).`;
 }
 // 20270745 — CCM action results.
 function fmtCcmMeetingResult(data) {
