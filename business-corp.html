@@ -183,11 +183,11 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay { position:fixed;
+  #vp-overlay, #am-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -543,6 +543,26 @@
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="vp-cancel">CANCEL</button>
       <button type="button" class="jm-btn" id="vp-confirm" disabled>RUN FACTORIES</button>
+    </div>
+  </div>
+</div>
+
+<div id="am-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Analyze <em>Market</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Process sales data and demand to get visibility into
+        the market. Pick a nation and a vehicle type — the analysis is the day&rsquo;s
+        executive action.</div>
+      <div class="jm-lab">NATION</div>
+      <div class="jm-pills db-cats" id="am-nations"></div>
+      <div class="jm-lab">VEHICLE TYPE</div>
+      <div class="jm-pills db-cats" id="am-types"></div>
+      <div id="am-report"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="am-cancel">CLOSE</button>
+      <button type="button" class="jm-btn" id="am-run" disabled>ANALYZE — SPENDS ACTION</button>
     </div>
   </div>
 </div>
@@ -1567,7 +1587,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">⚙️</div>
               <div class="nm">PRODUCTION RUN</div>
               <div class="soon">Assign an assembly line to a Model</div>
-            </div>` + eaComingSoon(3)
+            </div>
+            <div class="ea-card live" id="ea-analyze-market">
+              <div class="ic">📊</div>
+              <div class="nm">ANALYZE MARKET</div>
+              <div class="soon">Demand intel by nation &amp; type</div>
+            </div>` + eaComingSoon(2)
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
@@ -2402,6 +2427,98 @@ import { CITY_STATS } from './js/game/city-labels.js';
           } catch (e) {
             alert('Could not start the run: ' + (e?.message || e));
             vpRefresh();
+          }
+        });
+
+        // ── Analyze Market (20270836) ─────────────────────────────
+        // Demand intel by nation and vehicle type — the model lives
+        // server-side in analyze_vehicle_market; this just renders
+        // the returned report. The nation pills derive from the same
+        // market-listings round-trip the exchange uses, so the live-
+        // nation list stays single-source.
+        let amNation = null, amType = null, amInFlight = false;
+
+        function amRefresh() {
+          document.getElementById('am-run').disabled = !(amNation && amType) || amInFlight;
+        }
+
+        document.getElementById('ea-analyze-market').addEventListener('click', async () => {
+          amNation = null; amType = null;
+          document.getElementById('am-report').innerHTML = '';
+          const natHost = document.getElementById('am-nations');
+          const typeHost = document.getElementById('am-types');
+          natHost.innerHTML = '<div class="rl-empty">Loading nations…</div>';
+          typeHost.innerHTML = VEHICLE_TYPES.map(t => `
+            <div class="jm-pill" data-val="${esc(t.value)}" title="${esc(t.desc)}">${esc(t.label.toUpperCase())}</div>`).join('');
+          typeHost.querySelectorAll('.jm-pill').forEach(p => {
+            p.addEventListener('click', () => {
+              typeHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+              amType = p.dataset.val;
+              amRefresh();
+            });
+          });
+          amRefresh();
+          document.getElementById('am-overlay').classList.add('open');
+          try {
+            const { data: mkt, error: mErr } = await _supabase.rpc('construction_market_listings');
+            if (mErr) throw mErr;
+            const nations = (mkt?.materials || []).map(r =>
+              ({ id: r.nation_id, name: r.nation }));
+            natHost.innerHTML = nations.map(n => `
+              <div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}</div>`).join('');
+            natHost.querySelectorAll('.jm-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+                amNation = p.dataset.val;
+                amRefresh();
+              });
+            });
+          } catch (e) {
+            natHost.innerHTML = '<div class="rl-empty">Could not load nations — try again shortly.</div>';
+            console.warn('[business-corp] analyze modal load failed:', e?.message || e);
+          }
+        });
+        wireModalClose('am-overlay', 'am-cancel');
+
+        document.getElementById('am-run').addEventListener('click', async () => {
+          if (amInFlight) return;
+          amInFlight = true; amRefresh();
+          try {
+            const { data, error: aErr } = await _supabase.rpc('analyze_vehicle_market', {
+              p_corp_id: corp.id, p_nation_id: amNation, p_vehicle_type: amType,
+            });
+            if (aErr) throw aErr;
+            if (!data?.success) {
+              const REASON = {
+                nation_not_live: 'That nation is not an active market.',
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                not_owner: 'Only the owner runs market analysis.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            const typeLabel = VEHICLE_TYPES.find(t => t.value === data.vehicle_type)?.label || data.vehicle_type;
+            document.getElementById('am-report').innerHTML = `
+              <div class="jm-lab">MONTHLY DEMAND — ${esc(typeLabel.toUpperCase())} IN ${esc(String(data.nation).toUpperCase())}</div>
+              <div class="db-static">${esc(Number(data.monthly_demand).toLocaleString())} vehicles / month <span class="dim">· affluence ${esc(String(data.affluence))}</span></div>
+              <div class="jm-lab">DESIRE BY CLASS</div>
+              <div class="bp-grid" style="grid-template-columns:1.2fr 0.8fr 1fr;">
+                <div class="h">CLASS</div><div class="h">DESIRE</div><div class="h">MONTHLY DEMAND</div>
+                ${(data.classes || []).map(c => `
+                  <div class="c nm">${esc(VEHICLE_CLASSES.find(k => k.value === c.class)?.label || c.class)}</div>
+                  <div class="c">${esc(String(c.desire_pct))}%</div>
+                  <div class="c">${esc(Number(c.monthly_units).toLocaleString())} vehicles</div>`).join('')}
+              </div>
+              <div class="jm-lab">FOR SALE IN NATION — ${esc(typeLabel.toUpperCase())}</div>
+              <div class="db-static">${esc(Number(data.for_sale_units).toLocaleString())} vehicles in corporate inventories</div>`;
+            // The action is spent — reflect it without losing the report.
+            const remEl = document.getElementById('ea-remaining');
+            if (remEl) remEl.textContent = '0 remaining';
+          } catch (e) {
+            alert('Could not analyze: ' + (e?.message || e));
+          } finally {
+            amInFlight = false;
+            amRefresh();
           }
         });
       } // end if (eaAutomotive)
