@@ -309,9 +309,10 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
     let occupationHtml = '<div class="val">Unemployed</div>';
     let salaryYearly = 0;
     let employerName = null;
+    let employer = { data: null };
     let ownedCorps = [];
     try {
-      const [{ data: corps, error: ownErr }, employer] = await Promise.all([
+      const [{ data: corps, error: ownErr }, employerRes] = await Promise.all([
         _supabase.from('entrepreneur_corps')
           .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
@@ -320,7 +321,8 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (ownErr) throw ownErr;
-      if (employer.error) throw employer.error;
+      if (employerRes.error) throw employerRes.error;
+      employer = employerRes;
       const ownerSub = corps?.length
         ? `<div class="sub">Owner of ${esc(corps[0].name)}${corps.length > 1 ? ` +${corps.length - 1} more` : ''}</div>`
         : '';
