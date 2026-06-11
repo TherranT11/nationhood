@@ -1191,16 +1191,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
       });
     }
 
-    // Executive Actions — owner-only surface. Draft Blueprint is the
-    // first live slot; the other four are coming soon. The allowance
-    // pill derives from exec_action_tick (20270800): one action per
-    // tick, stamped by every executive action RPC.
+    // Executive Actions — owner-only surface. The five live cards are
+    // CONSTRUCTION's playbook (every backing RPC gates on the
+    // industry); other industries show five coming-soon slots until
+    // their own actions are designed. The allowance pill derives from
+    // exec_action_tick (20270800): one action per tick.
     if (isOwner) {
+      const eaConstruction = corp.industry === 'construction';
       const actionsLeft = currentTick > (corp.exec_action_tick ?? -1) ? 1 : 0;
-      document.getElementById('bc-ops').innerHTML = `
-        <div class="ea-panel">
-          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
-          <div class="ea-grid">
+      const eaCards = eaConstruction ? `
             <div class="ea-card live" id="ea-draft-blueprint">
               <div class="ic">📐</div>
               <div class="nm">DRAFT BLUEPRINT</div>
@@ -1225,9 +1224,24 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">🏭</div>
               <div class="nm">LOGISTICAL OVERHAUL</div>
               <div class="soon">Permanently upgrade an asset</div>
-            </div>
+            </div>`
+        : Array.from({ length: 5 }, () => `
+            <div class="ea-card" title="Coming soon">
+              <div class="ic">—</div>
+              <div class="nm">ACTION</div>
+              <div class="soon">(Coming Soon)</div>
+            </div>`).join('');
+      document.getElementById('bc-ops').innerHTML = `
+        <div class="ea-panel">
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
+          <div class="ea-grid">${eaCards}
           </div>
         </div>`;
+
+      // Everything below wires the construction actions and their
+      // modals — other industries have nothing to wire. (Block kept
+      // at its original indentation to keep the diff reviewable.)
+      if (eaConstruction) {
 
       // ── Draft Blueprint modal ────────────────────────────────────
       // Residential is the only chartered category; materials /
@@ -1778,6 +1792,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
           dbRefreshConfirm();
         }
       });
+
+      } // end if (eaConstruction)
     }
 
     document.getElementById('loading').style.display = 'none';
