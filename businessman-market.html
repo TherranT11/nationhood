@@ -115,7 +115,10 @@ import { hfFmtBig, escapeHtml as esc, flagUrlFor } from './js/utils.js';
       const { data: mkt, error } = await _supabase.rpc('construction_market_listings');
       if (error) throw error;
       if (!mkt?.success) throw new Error(mkt?.reason || 'unknown');
-      renderListing('mk-rows', [['Construction Materials', mkt.materials]]);
+      renderListing('mk-rows', [
+        ['Construction Materials', mkt.materials],
+        ['Aluminum', mkt.aluminum],
+      ]);
       renderListing('mk-product-rows', [
         ['Construction Equipment', mkt.equipment],
         ['Automotive Electrical Components', mkt.components],

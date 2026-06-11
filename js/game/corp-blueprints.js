@@ -484,6 +484,12 @@ export const AUTOMOTIVE_ASSET_UPGRADE_COSTS = { 2: 10000000, 3: 16000000, 4: 250
 // Assembly lines per plant level — mirror of assembly_lines (20270842).
 export const ASSEMBLY_LINES_BY_TIER = [1, 1, 2, 2, 3, 4];
 
+// Aluminum (20270843) — mirrors of vehicle_aluminum_per_unit and
+// parts_depot_cap; buy_aluminum / start_production_run enforce.
+export const ALUMINUM_PER_VEHICLE = { motorcycle: 0.5 }; // every other type: 1
+export const aluminumPerVehicle = (type) => ALUMINUM_PER_VEHICLE[type] ?? 1;
+export const PARTS_DEPOT_CAPS = [10, 10, 50, 75, 120, 250];
+
 // Display mirrors of the Sales Campaign pricing/appeal helpers
 // (20270839) — vehicle_class_anchor_price and vehicle_appeal are
 // authoritative; these feed the campaign modal's live lines.

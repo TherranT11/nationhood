@@ -530,6 +530,13 @@
       <div class="jm-lab">AMOUNT TO BUILD</div>
       <input type="number" class="fin-amt" id="vp-qty" min="1" max="60" step="1" value="1" style="margin-bottom:0;">
       <div class="db-static dim-line">1 vehicle per tick — the line is assigned for as many ticks as vehicles ordered.</div>
+      <div class="jm-lab">ALUMINUM &middot; ASSIGNED AT START</div>
+      <div class="db-static" id="vp-aluminum">—</div>
+      <div class="jm-pills" style="margin-top:8px;">
+        <input type="number" class="fin-amt" id="vp-buy-qty" min="1" step="1" placeholder="Buy Aluminum…" style="margin:0;flex:1;">
+        <button type="button" class="jm-btn secondary" id="vp-buy" style="flex:0 0 auto;">BUY</button>
+      </div>
+      <div class="db-static dim-line" id="vp-buy-note"></div>
       <div class="jm-lab">TOTAL COST</div>
       <div class="db-static" id="vp-total">—</div>
       <div class="jm-lab">COST PER VEHICLE</div>
@@ -629,7 +636,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, AUTOMOTIVE_ASSETS, AUTOMOTIVE_ASSET_UPGRADE_COSTS, ASSEMBLY_LINES_BY_TIER, vehicleAppeal, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, AUTOMOTIVE_ASSETS, AUTOMOTIVE_ASSET_UPGRADE_COSTS, ASSEMBLY_LINES_BY_TIER, aluminumPerVehicle, PARTS_DEPOT_CAPS, vehicleAppeal, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -644,7 +651,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -2458,19 +2465,28 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // start_production_run charges. One line at Assembly Plant
         // Level I, 1 vehicle per tick.
         let vpModel = null, vpLineFree = false;
-        const vpTreasury = Math.floor(Number(corp.treasury_cash) || 0);
+        let vpTreasury = Math.floor(Number(corp.treasury_cash) || 0);
+        let vpAluminum = Number(corp.aluminum_stock) || 0;
+        let vpAlPrice = null;
 
         function vpRefresh() {
           const qty = Math.floor(Number(document.getElementById('vp-qty').value) || 0);
           const unit = vpModel ? Math.max(1, Number(vpModel.xp_cost) || 1) * 5000 : 0;
-          const valid = vpLineFree && vpModel && qty >= 1 && qty <= 60;
           const total = unit * qty;
+          // Aluminum is assigned in full when the run starts: 0.5 per
+          // motorcycle, 1 per car (vehicle_aluminum_per_unit mirror).
+          const alNeed = vpModel && qty >= 1 ? aluminumPerVehicle(vpModel.vehicle_type) * qty : 0;
+          const alOk = alNeed <= vpAluminum;
+          document.getElementById('vp-aluminum').innerHTML = vpModel && qty >= 1
+            ? `Needs ${esc(String(alNeed))} <span class="${alOk ? 'dim' : 'bad'}">· ${esc(String(vpAluminum))} in the depot (cap ${esc(String(PARTS_DEPOT_CAPS[Math.min(Number(corp.parts_depot_tier) || 1, 5)]))})</span>`
+            : `${esc(String(vpAluminum))} in the depot (cap ${esc(String(PARTS_DEPOT_CAPS[Math.min(Number(corp.parts_depot_tier) || 1, 5)]))})`;
+          const valid = vpLineFree && vpModel && qty >= 1 && qty <= 60;
           document.getElementById('vp-unit').textContent = vpModel ? hfFmtBig(unit) : '—';
           document.getElementById('vp-tick').textContent = vpModel ? hfFmtBig(unit) + ' (1 vehicle per tick)' : '—';
           document.getElementById('vp-total').innerHTML = valid
             ? `${esc(hfFmtBig(total))} <span class="${total <= vpTreasury ? 'dim' : 'bad'}">· ${esc(hfFmtBig(vpTreasury))} in treasury</span>`
             : '—';
-          document.getElementById('vp-confirm').disabled = !(valid && total <= vpTreasury);
+          document.getElementById('vp-confirm').disabled = !(valid && total <= vpTreasury && alOk);
         }
 
         document.getElementById('ea-production-run').addEventListener('click', async () => {
@@ -2484,14 +2500,19 @@ import { CITY_STATS } from './js/game/city-labels.js';
           vpRefresh();
           document.getElementById('vp-overlay').classList.add('open');
           try {
-            const [{ data: runs, error: rErr }, { data: models, error: mErr }] = await Promise.all([
+            const [{ data: runs, error: rErr }, { data: models, error: mErr }, { data: alMkt, error: aErr }] = await Promise.all([
               _supabase.from('vehicle_production_runs')
                 .select('id').eq('corp_id', corp.id).eq('status', 'running'),
               _supabase.from('vehicle_blueprints')
                 .select('id, name, xp_cost, vehicle_type, vehicle_class')
                 .eq('corp_id', corp.id).order('created_at', { ascending: false }),
+              _supabase.rpc('aluminum_market', { p_nation_id: corp.hq_nation_id }),
             ]);
-            if (rErr || mErr) throw (rErr || mErr);
+            if (rErr || mErr || aErr) throw (rErr || mErr || aErr);
+            vpAlPrice = alMkt?.success ? Number(alMkt.cost_per_unit) : null;
+            document.getElementById('vp-buy-note').textContent = vpAlPrice
+              ? `${hfFmtBig(vpAlPrice)} per unit from ${corp.nation?.name || 'home'} · ${Number(alMkt.amount_available).toLocaleString()} available${(Number(corp.parts_depot_tier) || 1) < 3 ? ' · Depot Level III unlocks foreign sourcing' : ''}`
+              : 'Aluminum price unavailable — try again shortly.';
             const lines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
             const busy = (runs || []).length;
             vpLineFree = busy < lines;
@@ -2523,6 +2544,44 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('vp-qty').addEventListener('input', vpRefresh);
         wireModalClose('vp-overlay', 'vp-cancel');
 
+        // Free logistics (design ruling): buying Aluminum into the
+        // depot costs treasury only — no executive action.
+        let vpBuyInFlight = false;
+        document.getElementById('vp-buy').addEventListener('click', async () => {
+          if (vpBuyInFlight) return;
+          const qty = Math.floor(Number(document.getElementById('vp-buy-qty').value) || 0);
+          if (qty < 1) { alert('Enter how much Aluminum to buy.'); return; }
+          vpBuyInFlight = true;
+          const btn = document.getElementById('vp-buy');
+          btn.disabled = true;
+          try {
+            const { data, error: bErr } = await _supabase.rpc('buy_aluminum', {
+              p_corp_id: corp.id, p_nation_id: corp.hq_nation_id, p_quantity: qty,
+            });
+            if (bErr) throw bErr;
+            if (!data?.success) {
+              const REASON = {
+                over_capacity: `The depot caps at ${data?.cap ?? '?'} Aluminum — ${data?.have ?? '?'} already stored.`,
+                not_enough_supply: `Only ${data?.available ?? 0} Aluminum on the market right now.`,
+                depot_too_small: 'Foreign sourcing needs a Part Depot at Level III.',
+                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+                not_owner: 'Only the owner buys materials.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            vpAluminum = Number(data.new_stock) || 0;
+            vpTreasury -= Number(data.cost) || 0;
+            document.getElementById('vp-buy-qty').value = '';
+            vpRefresh();
+          } catch (e) {
+            alert('Could not buy Aluminum: ' + (e?.message || e));
+          } finally {
+            vpBuyInFlight = false;
+            btn.disabled = false;
+          }
+        });
+
         document.getElementById('vp-confirm').addEventListener('click', async () => {
           const btn = document.getElementById('vp-confirm');
           btn.disabled = true;
@@ -2536,6 +2595,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             if (!data?.success) {
               const REASON = {
                 invalid_quantity: 'Order between 1 and 60 vehicles.',
+                not_enough_aluminum: `Not enough Aluminum — ${data?.need ?? '?'} needed, ${data?.have ?? 0} in the depot.`,
                 blueprint_not_found: 'That Model belongs to another corporation.',
                 no_line_available: 'Every assembly line is already running an order.',
                 no_actions_remaining: 'No executive actions remaining this tick.',
