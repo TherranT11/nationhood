@@ -484,7 +484,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, materials_stock, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -581,6 +581,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
         <div class="v">${esc(industryTitleLabel(corp.industry))}</div></div>
       <div class="bc-row"><div class="k">KEY PEOPLE</div>
         <div class="v">${esc(ownerName)} <span class="dim">· Owner</span></div></div>
+      <div class="bc-row"><div class="k">EXPERIENCE</div>
+        <div class="v money">${esc(String(Number(corp.experience) || 0))} <span class="dim">EP</span></div></div>
       <div class="bc-row"><div class="k">REVENUE</div>
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
