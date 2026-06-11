@@ -4000,7 +4000,8 @@ async function renderAmbassadorAffiliation(ctx, host) {
   // Lazy term enforcement from the card: an expired term sweeps on
   // sight and the page re-renders as civilian life.
   if (currentTick >= termEnds) {
-    try { await _supabase.rpc('resolve_due_ambassador_terms'); } catch (e) { /* sweep is best-effort */ }
+    try { await _supabase.rpc('resolve_due_ambassador_terms'); }
+    catch (e) { console.warn('[politician-home] term sweep failed:', e?.message || e); }
     host.innerHTML = `
       <div class="affil var-foreign" style="margin-top:18px;">
         <div class="ah-row">
