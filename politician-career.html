@@ -1066,13 +1066,10 @@ const PARTY_MEMBER_TIER0 = {
   tierNum: 0,
   tierName: 'MEMBERSHIP',
   held:        (s) => !!s.partyId,
-  descIfHeld:  (s) => {
-    const base = `You are a card-carrying member of ${s.partyName}.`;
-    const endTick = termEndTickFor(s);
-    if (!endTick) return base;
-    const remaining = Math.max(0, endTick - s.currentTick);
-    return `${base} Term Ends: ${tickToDate(endTick)} (${remaining} Tick${remaining === 1 ? '' : 's'} Remaining)`;
-  },
+  // Membership has no term — it lasts until the member leaves. The
+  // old Term Ends suffix leaked the holder's OFFICE term onto this
+  // card via termEndTickFor.
+  descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
   descIfNot:   ()  => 'You are not a member of a political party. Membership unlocks both office ladders below.',
   actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
   actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },

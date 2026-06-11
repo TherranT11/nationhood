@@ -404,19 +404,19 @@ export const DATA_TIERS = [
 export const PARTS_TIERS = [
   { tier: 'Level I: Regional B2B Depot',
     desc: 'A large on-site storage warehouse. Your starting status gives you the leverage to sign direct, bulk purchasing contracts with Tier-1 component suppliers, protecting your early production runs from retail markup.',
-    effect: 'Store up to 10 Aluminum.' },
+    effect: 'Store up to 50 each of Aluminum and Electrical Components.' },
   { tier: 'Level II: Just-In-Time Logistics Center',
     desc: 'Implements an active supply tracking network that links directly to component vendors, reducing your inventory storage overhead by matching part arrivals to your assembly schedule.',
-    effect: 'Store up to 50 Aluminum.' },
+    effect: 'Store up to 80 each of Aluminum and Electrical Components.' },
   { tier: 'Level III: Vertical Consolidation Hub',
     desc: 'Direct ownership of sub-assembly stamping and electronics component plants, insulating your company from global parts shortages.',
-    effect: 'Store up to 75 Aluminum · buy from other nations.' },
+    effect: 'Store up to 150 each of Aluminum and Electrical Components · buy from other nations.' },
   { tier: 'Level IV: Strategic Material Terminal',
     desc: 'Direct ownership of raw foundry logistics, battery chemical contracts, and metal processing facilities, locking in permanently lower material costs.',
-    effect: 'Store up to 120 Aluminum.' },
+    effect: 'Store up to 250 each of Aluminum and Electrical Components.' },
   { tier: 'Level V: Global Resource Network',
     desc: 'Strategic international mining stakes, dedicated shipping fleets, and exclusive raw-material trade pipelines that guarantee your manufacturing costs are fundamentally unbeatable.',
-    effect: 'Store up to 250 Aluminum.' },
+    effect: 'Store up to 400 each of Aluminum and Electrical Components.' },
 ];
 
 // The FRANCHISE & COMMERCIAL SUITE ladder — automotive's fifth
@@ -495,7 +495,9 @@ export function componentsPerVehicle(engine, packages) {
   return (COMPONENTS_PER_ENGINE[engine] || 0)
     + (packages || []).reduce((s, p) => s + (COMPONENTS_PER_PACKAGE[p] || 0), 0);
 }
-export const PARTS_DEPOT_CAPS = [10, 10, 50, 75, 120, 250];
+export const PARTS_DEPOT_CAPS = [50, 50, 80, 150, 250, 400];
+// Vehicles per assembly line per tick — vehicle_production_rate mirror.
+export const PRODUCTION_RATE = 50;
 
 // Display mirrors of the Sales Campaign pricing/appeal helpers
 // (20270839) — vehicle_class_anchor_price and vehicle_appeal are
