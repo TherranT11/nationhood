@@ -1609,6 +1609,7 @@ let fmMeetings = [];       // meeting requests on this FM's desk (20270869).
 let fmStatements = [];     // pending statements awaiting this host FM's review (20270869).
 let censurableStatements = []; // own-nation ambassador statements inside the home FM's 12-tick censure window (20270869).
 let fmApplications = [];   // pending FM-portfolio applications where this politician is the HoG (20270868).
+let envoySessions = [];    // open envoy negotiations involving this politician (20270870) — Pressing Issues cards linking to the table.
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
 let consultancyOffers = [];     // pending corp consultancy offers targeting this politician (20270773). Accept pays the fee + Capital kicker; decline refunds the corp's escrow.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
@@ -1855,6 +1856,7 @@ async function init() {
     // Ambassador desk traffic (20270869) — soft-fails keep the page up.
     myMeetings = []; fmMeetings = []; fmStatements = []; censurableStatements = [];
     fmApplications = [];
+    envoySessions = [];
     try {
       if (politician.politician_ambassador_nation_id) {
         const { data: mm, error: mmErr } = await _supabase.from('ambassador_meetings')
@@ -1884,6 +1886,15 @@ async function init() {
         fmMeetings = mtg.data || [];
         fmStatements = stmt.data || [];
         censurableStatements = (cen.data || []).filter(c => c.ambassador_faction_id !== politician.id);
+      }
+      // Open envoy negotiations (20270870) — either chair at the table.
+      {
+        const { data: es, error: esErr } = await _supabase.from('envoy_sessions')
+          .select('id, title, status, envoy_faction_id, counterpart_faction_id')
+          .or(`envoy_faction_id.eq.${politician.id},counterpart_faction_id.eq.${politician.id}`)
+          .in('status', ['proposed', 'active']);
+        if (esErr) throw esErr;
+        envoySessions = es || [];
       }
       // FM-portfolio applications on this HoG's desk (20270868).
       const { data: hogRows, error: hogErr } = await _supabase.from('head_of_government')
@@ -1927,6 +1938,7 @@ async function init() {
     summitInvites = [];
     myMeetings = []; fmMeetings = []; fmStatements = []; censurableStatements = [];
     fmApplications = [];
+    envoySessions = [];
   }
 
   renderHero(ctx.shard);
@@ -3180,6 +3192,11 @@ function renderAffiliation(ctx) {
 async function renderForeignAffiliation(ctx) {
   const host = document.getElementById('foreign-affiliation-host');
   if (!host) return;
+  // Tier 5 (20270870) — the chosen rank — tops the ladder branches.
+  if (ctx?.faction?.politician_special_envoy_at_tick != null) {
+    await renderEnvoyAffiliation(ctx, host);
+    return;
+  }
   // Tier 4 (20270869) — THE BIG ONE — outranks everything; each
   // promotion cleared the rung below, so the branches are exclusive.
   if (ctx?.faction?.politician_ambassador_nation_id) {
@@ -3900,22 +3917,6 @@ async function renderDcmAffiliation(ctx, host) {
             <div class="act-desc">Convene the mission — every officer on the board gets an invite, and each acceptance lands +1 Relations with their posting. Coverage multiplies the lever.</div>
             ${dcmCooling ? coolLine : ''}
           </div>
-          ${(Number(ctx.faction?.politician_skill) || 0) >= 30 ? (() => {
-            const retryAt = Number(ctx.faction?.next_ambassador_request_tick) || 0;
-            const reqCooling = retryAt > currentTick;
-            return `
-          <div class="act-btn${reqCooling ? ' cooldown' : ''}"${reqCooling
-            ? ` aria-disabled="true" title="The chamber said no — the ministry floats your name again ${escAttr(tickToDate(retryAt))}"`
-            : ' data-action="request-appointment"'}>
-            <div class="act-head">
-              <span class="act-ic">🏛️</span>
-              <span class="act-name">REQUEST APPOINTMENT</span>
-              <span class="act-cost">30 exp</span>
-            </div>
-            <div class="act-desc">Put your name before the legislature for an ambassadorship — your party banks its seats, the rest roll the dice. Confirmation means a random posting for a 60-tick term.</div>
-            ${reqCooling ? `<div class="act-cooldown">Retry ${escHtml(tickToDate(retryAt))}</div>` : ''}
-          </div>`;
-          })() : ''}
         </div>
       </div>
     </div>`;
@@ -3952,37 +3953,111 @@ async function renderDcmAffiliation(ctx, host) {
       }
     });
 
-  host.querySelector('.act-btn[data-action="request-appointment"]')
-    ?.addEventListener('click', async (e) => {
-      const tile = e.currentTarget;
-      if (tile.dataset.busy === '1') return;
-      if (!confirm('Put your name before the legislature? A failed vote means 12 ticks before the ministry floats it again.')) return;
-      tile.dataset.busy = '1';
-      try {
-        const { data, error } = await _supabase.rpc('politician_request_ambassador_appointment',
-          { p_faction_id: ctx.faction?.id || null });
-        if (error) throw error;
-        if (!data?.success) {
-          if (data?.reason === 'vote_failed') {
-            alert(`The chamber says no — ${data.yes_seats} for, ${data.no_seats} against. The ministry will float your name again ${tickToDate(Number(data.retry_at_tick))}.`);
-            location.reload();
-            return;
+}
+
+// 20270870 — the Special Envoy card (Foreign Service Tier 5). The
+// chosen rank: [NEGOTIATE] opens a mission against a live nation —
+// the table itself lives on envoy-session.html.
+async function renderEnvoyAffiliation(ctx, host) {
+  let signedCount = 0;
+  try {
+    const { count, error } = await _supabase.from('envoy_sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('envoy_faction_id', ctx.faction.id)
+      .eq('status', 'signed');
+    if (error) throw error;
+    signedCount = count || 0;
+  } catch (err) {
+    console.warn('[politician-home] envoy legacy count failed:', err?.message || err);
+  }
+  const hasOpen = envoySessions.length > 0;
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🕊️</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 5</div>
+          <div class="ah-name">Special Envoy of the Republic</div>
+          <div class="ah-desc">You negotiate where the ministry points you. The arrangements you sign are permanent public record — <strong>${signedCount} signed</strong> so far. This is where the legacy is built.</div>
+        </div>
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">ENVOY ACTIONS</div>
+        <div class="ar-buttons">
+          <div class="act-btn${hasOpen ? ' cooldown' : ''}"${hasOpen
+            ? ' aria-disabled="true" title="A mission is already open — one table at a time"'
+            : ' data-action="envoy-negotiate"'}>
+            <div class="act-head">
+              <span class="act-ic">🕊️</span>
+              <span class="act-name">NEGOTIATE</span>
+              <span class="act-cost">one table</span>
+            </div>
+            <div class="act-desc">${hasOpen
+              ? 'A mission is already open — finish or let it conclude before the next.'
+              : 'Pick a nation and send the mission — it routes to the highest player in their chain: Head of Government, Foreign Minister, or their Ambassador.'}</div>
+            ${hasOpen ? '<div class="act-cooldown">Mission open</div>' : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  host.querySelector('.act-btn[data-action="envoy-negotiate"]')
+    ?.addEventListener('click', () => openEnvoyMissionPicker(ctx));
+}
+
+async function openEnvoyMissionPicker(ctx) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  document.querySelector('#cp-overlay .cp-title').textContent = 'SPECIAL ENVOY MISSION';
+  document.querySelector('#cp-overlay .cp-sub').textContent =
+    'Pick the nation. The mission routes to the highest player in their chain — no player counterpart, no mission.';
+  rows.innerHTML = '<div class="cp-empty">Loading\u2026</div>';
+  document.getElementById('cp-overlay').classList.add('open');
+  try {
+    const { data: mkt, error } = await _supabase.rpc('construction_market_listings');
+    if (error) throw error;
+    const nations = (mkt?.materials || [])
+      .map(r => ({ id: r.nation_id, name: r.nation }))
+      .filter(n => n.id !== ctx.faction?.nation_id);
+    if (!nations.length) {
+      rows.innerHTML = '<div class="cp-empty">No live nations to negotiate with.</div>';
+      return;
+    }
+    rows.innerHTML = nations.map(n => `
+      <div class="cp-row"><span class="nm">${escHtml(n.name)}</span>
+        <button type="button" class="cp-take" data-envoy-target="${escAttr(n.id)}">SEND THE MISSION</button></div>`).join('');
+    rows.querySelectorAll('[data-envoy-target]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error: mErr } = await _supabase.rpc('envoy_start_mission', {
+            p_faction_id: ctx.faction?.id || null, p_nation_id: btn.dataset.envoyTarget,
+          });
+          if (mErr) throw mErr;
+          if (!data?.success) {
+            const REASON = {
+              no_counterpart: 'No player holds their chain — Head of Government, Foreign Minister, or Ambassador. There is nobody to sit across from.',
+              mission_open: 'A mission is already open — one table at a time.',
+              nation_not_live: 'That nation is not an active posting.',
+              invalid_nation: 'You can\u2019t negotiate with your own nation.',
+              not_envoy: 'Only the sitting Special Envoy opens missions.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
           }
-          const REASON = {
-            cooldown: 'The chamber recently said no — wait for the ministry to float your name again.',
-            no_postings: 'No ambassadorships are vacant — every live nation is covered.',
-            not_dcm: 'Only a serving DCM stands for appointment.',
-            not_enough_experience: 'The ministry wants 30 Experience first.',
-          };
-          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          window.location.href = `envoy-session.html?id=${encodeURIComponent(data.session_id)}`;
+        } catch (err) {
+          alert('Could not send the mission: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
         }
-        alert(`The chamber confirms, ${data.yes_seats}\u2013${data.no_seats}. You are now the Ambassador of ${data.nation} — proceed to ${data.capital}. The term runs to ${tickToDate(Number(data.term_ends_tick))}.`);
-        location.reload();
-      } catch (err) {
-        alert('Could not request the appointment: ' + (err?.message || err));
-        tile.dataset.busy = '0';
-      }
+      });
     });
+  } catch (err) {
+    rows.innerHTML = '<div class="cp-empty">Could not load the nations \u2014 try again shortly.</div>';
+    console.warn('[politician-home] envoy picker failed:', err?.message || err);
+  }
 }
 
 // 20270869 — the Ambassador card (Foreign Service Tier 4 — THE BIG
@@ -5256,6 +5331,7 @@ function renderPressingIssues(ctx) {
   fmStatements.forEach(st => blocks.push(renderFmStatementCard(st)));
   censurableStatements.forEach(st => blocks.push(renderCensureCard(st)));
   fmApplications.forEach(a => blocks.push(renderFmApplicationCard(a)));
+  envoySessions.forEach(es => blocks.push(renderEnvoySessionCard(es, ctx)));
   // State Advocate appointment requests routed to this politician
   // (as Minister of the Interior) come first after the campaign —
   // they're cabinet-level decisions and the applicant is waiting.
@@ -5320,6 +5396,29 @@ function renderPressingIssues(ctx) {
 function _facName(f, fallback) {
   return f?.nickname || `${f?.leader_first_name || ''} ${f?.leader_last_name || ''}`.trim() || fallback;
 }
+// ── Envoy negotiation cards (20270870) — both chairs get one ─────────
+function renderEnvoySessionCard(es, ctx) {
+  const mine = es.envoy_faction_id === ctx.faction?.id;
+  const proposedToMe = es.status === 'proposed' && !mine;
+  return `
+    <div class="offer-card">
+      <div class="offer-icon-wrap"><div class="offer-icon">🕊️</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">SPECIAL ENVOY &middot; ${es.status === 'proposed' ? 'MISSION PROPOSED' : 'NEGOTIATION OPEN'}</div>
+        <div class="oi-headline">${escHtml(es.title)}</div>
+        <div class="oi-meta"><span>${proposedToMe
+          ? 'An envoy requests your chair at the table — accept or decline from the session.'
+          : es.status === 'proposed'
+            ? 'Waiting on the counterpart to take their chair.'
+            : 'The table is open — articles, accords, and the room.'}</span></div>
+      </div>
+      <div class="offer-right">
+        <a class="offer-accept-btn" style="text-decoration:none;display:inline-block;"
+           href="envoy-session.html?id=${escAttr(es.id)}">${proposedToMe ? 'ANSWER' : 'OPEN THE TABLE'}</a>
+      </div>
+    </div>`;
+}
+
 function renderFmApplicationCard(a) {
   const who = _facName(a.applicant, 'A politician');
   return `
