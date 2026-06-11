@@ -530,8 +530,8 @@
       <div class="jm-pills db-cats" id="vp-models"></div>
       <div class="db-static dim-line" id="vp-models-desc"></div>
       <div class="jm-lab">AMOUNT TO BUILD</div>
-      <input type="number" class="fin-amt" id="vp-qty" min="1" max="60" step="1" value="1" style="margin-bottom:0;">
-      <div class="db-static dim-line">1 vehicle per tick — the line is assigned for as many ticks as vehicles ordered.</div>
+      <input type="number" class="fin-amt" id="vp-qty" min="1" max="200" step="1" value="1" style="margin-bottom:0;">
+      <div class="db-static dim-line">50 vehicles per tick — the line is assigned for one tick per 50 ordered.</div>
       <div class="jm-lab">ALUMINUM &middot; ASSIGNED AT START</div>
       <div class="db-static" id="vp-aluminum">—</div>
       <div class="jm-pills" style="margin-top:8px;">
@@ -647,7 +647,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate, corpWebsite } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, AUTOMOTIVE_ASSETS, AUTOMOTIVE_ASSET_UPGRADE_COSTS, ASSEMBLY_LINES_BY_TIER, aluminumPerVehicle, componentsPerVehicle, PARTS_DEPOT_CAPS, vehicleAppeal, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, AUTOMOTIVE_ASSETS, AUTOMOTIVE_ASSET_UPGRADE_COSTS, ASSEMBLY_LINES_BY_TIER, aluminumPerVehicle, componentsPerVehicle, PARTS_DEPOT_CAPS, PRODUCTION_RATE, vehicleAppeal, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -1466,7 +1466,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
                   <div class="c nm">Line ${i + 1}</div>
                   <div class="c">${run ? 'Running' : 'Off'}</div>
                   <div class="c">${run ? `${esc(run.blueprint?.name || 'Model')} (${esc(String(run.produced))}/${esc(String(run.quantity))} · done ${esc(tickToDate(run.completes_at_tick))})` : '—'}</div>
-                  <div class="c">${run ? '1 vehicle' : '—'}</div>`;
+                  <div class="c">${run ? `${PRODUCTION_RATE} vehicles` : '—'}</div>`;
               }).join('')}
             </div>`
           : (!projs.length ? '<div class="rl-empty">No active job sites.</div>' : `
@@ -2590,9 +2590,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
           document.getElementById('vp-components').innerHTML = vpModel && qty >= 1
             ? `Needs ${esc(String(ecNeed))} <span class="${ecOk ? 'dim' : 'bad'}">· ${esc(String(vpComponents))} in the depot (cap ${esc(String(depotCap))})</span>`
             : `${esc(String(vpComponents))} in the depot (cap ${esc(String(depotCap))})`;
-          const valid = vpLineFree && vpModel && qty >= 1 && qty <= 60;
+          const valid = vpLineFree && vpModel && qty >= 1 && qty <= 200;
           document.getElementById('vp-unit').textContent = vpModel ? hfFmtBig(unit) : '—';
-          document.getElementById('vp-tick').textContent = vpModel ? hfFmtBig(unit) + ' (1 vehicle per tick)' : '—';
+          document.getElementById('vp-tick').textContent = vpModel ? `${hfFmtBig(unit * Math.min(qty || PRODUCTION_RATE, PRODUCTION_RATE))} (${PRODUCTION_RATE} vehicles per tick)` : '—';
           document.getElementById('vp-total').innerHTML = valid
             ? `${esc(hfFmtBig(total))} <span class="${total <= vpTreasury ? 'dim' : 'bad'}">· ${esc(hfFmtBig(vpTreasury))} in treasury</span>`
             : '—';
@@ -2727,7 +2727,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             if (pErr) throw pErr;
             if (!data?.success) {
               const REASON = {
-                invalid_quantity: 'Order between 1 and 60 vehicles.',
+                invalid_quantity: 'Order between 1 and 200 vehicles.',
                 not_enough_aluminum: `Not enough Aluminum — ${data?.need ?? '?'} needed, ${data?.have ?? 0} in the depot.`,
                 not_enough_components: `Not enough Electrical Components — ${data?.need ?? '?'} needed, ${data?.have ?? 0} in the depot.`,
                 blueprint_not_found: 'That Model belongs to another corporation.',
