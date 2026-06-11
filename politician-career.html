@@ -1292,7 +1292,7 @@ const GOVT_SERVICE_RUNGS = [
       const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
       return `You hold the ${p} portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
     },
-    descIfNot:   ()  => `An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience; on acceptance you're randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.`,
+    descIfNot:   ()  => `An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience; on acceptance you're randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll. Open only to members of a party in the governing coalition — if the government falls, so does the portfolio.`,
     actions:     ['Carry a Bill', 'Answer Questions'],
     // Seek Appointment — Agency Head → Junior Minister. Gates layer
     // up: must be Agency Head (politician_senior_civil_servant_at_
@@ -3049,10 +3049,10 @@ function bindRungActions(ctx) {
 
   // Seek Appointment — Agency Head → Junior Minister (Tier 4,
   // Government Service, 20270669; portfolio randomly assigned at
-  // appoint per 20270677). One-click: the RPC fires immediately,
-  // result modal opens with the outcome.
+  // appoint per 20270677). The click first surfaces the governing-
+  // party notice (20270875); members proceed from inside the modal.
   document.querySelectorAll('[data-action="seek-junior-appointment"]').forEach(btn => {
-    btn.addEventListener('click', () => submitJuniorAppointment(btn));
+    btn.addEventListener('click', () => openJmGateNotice(btn));
   });
 
   // Seek Promotion — Agency Head → Permanent Secretary (Tier 3,
@@ -3693,6 +3693,62 @@ function openResultModal() {
   }, { once: true });
 }
 
+// ─── Junior Minister governing-party gate (20270875) ──────────────
+// Party government: the portfolio is only open to members of a party
+// in the governing coalition, and falls with the government. Clicking
+// [Seek Appointment] first surfaces who governs — read from the
+// active administrations row (pm_party_id + coalition_parties
+// objects, PM party first) — then either offers a proceed button
+// (member) or stops there (outsider). The RPC re-enforces the same
+// gate server-side ('not_governing_party').
+function partyListText(names) {
+  if (names.length <= 1) return names[0] || '';
+  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+}
+
+async function openJmGateNotice(btn) {
+  if (btn?.dataset.busy === '1') return;
+  if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
+  try {
+    const ctx = window.__careerCtx || {};
+    const nationId = ctx.faction?.nation_id || null;
+    if (!nationId) { alert('Your politician is not yet seated in a nation.'); return; }
+    const { data: admin, error } = await _supabase.from('administrations')
+      .select('pm_party_id, pm_party_name, coalition_parties')
+      .eq('nation_id', nationId)
+      .is('ended_at_tick', null)
+      .order('started_at_tick', { ascending: false })
+      .limit(1).maybeSingle();
+    if (error) throw error;
+    const coalition = Array.isArray(admin?.coalition_parties) ? admin.coalition_parties : [];
+    const names = coalition.map(p => p?.party_name).filter(Boolean);
+    if (!names.length && admin?.pm_party_name) names.push(admin.pm_party_name);
+    if (!names.length) { alert('Your nation has no seated government to join.'); return; }
+    const myParty = ctx.party?.id || null;
+    const isMember = !!myParty && (myParty === admin.pm_party_id
+      || coalition.some(p => p?.party_id === myParty));
+    const plural = names.length > 1;
+    const body = document.getElementById('jm-result-body');
+    if (!body) return;
+    openResultModal();
+    body.innerHTML = `
+      <div class="ah-result-card">
+        <div class="ah-result-eyebrow">PARTY GOVERNMENT</div>
+        <div class="ah-result-headline">${plural ? 'The parties in power are' : 'The party in power is'} ${escHtml(partyListText(names))}</div>
+        <div class="ah-result-sub">You must be a member of ${plural ? 'one of these parties' : 'this party'} before seeking to join the government ministry. If they lose power, so do you.</div>
+        ${isMember
+          ? '<button type="button" class="ah-btn" id="jm-gate-proceed" style="margin-top:14px;">SEEK THE PORTFOLIO</button>'
+          : `<div class="ah-result-sub" style="margin-top:10px;color:#c66;">${myParty ? 'Your party sits outside the governing coalition.' : 'You are not a member of any party.'}</div>`}
+      </div>`;
+    document.getElementById('jm-gate-proceed')?.addEventListener('click',
+      (e) => submitJuniorAppointment(e.currentTarget));
+  } catch (e) {
+    alert('Could not read the governing coalition: ' + (e?.message || 'network or server error'));
+  } finally {
+    if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+  }
+}
+
 async function submitJuniorAppointment(btn) {
   if (btn?.dataset.busy === '1') return;
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
@@ -3709,6 +3765,13 @@ async function submitJuniorAppointment(btn) {
         : data?.reason === 'all_portfolios_full'              ? 'Every Junior Minister portfolio in your nation is currently held. Try again once a vacancy opens.'
         : data?.reason === 'on_cooldown'                      ? `Reapplication closed for ${data?.ticks_remaining} more tick${data?.ticks_remaining === 1 ? '' : 's'}.`
         : data?.reason === 'no_head_of_government'            ? 'There is no sitting Prime Minister to review your application.'
+        : data?.reason === 'not_governing_party'              ? (() => {
+            const names = (Array.isArray(data?.governing_parties) ? data.governing_parties : []).filter(Boolean);
+            if (!names.length) return 'Only members of the governing coalition may seek a portfolio.';
+            const plural = names.length > 1;
+            return `The ${plural ? 'parties' : 'party'} in power ${plural ? 'are' : 'is'} ${partyListText(names)}. You must be a member of ${plural ? 'one of these parties' : 'this party'} before seeking to join the government ministry. If they lose power, so do you.`;
+          })()
+        : data?.reason === 'no_government'                    ? 'Your nation has no seated government to join.'
         : data?.reason === 'not_authenticated'                ? 'Sign in to act.'
         : data?.reason === 'no_politician'                    ? 'No politician on this account.'
         : data?.reason === 'no_nation'                        ? 'Your politician is not yet seated in a nation.'

@@ -1418,6 +1418,10 @@ const CAREER_EVENT_TEMPLATES = {
   ambassador_recalled: (name) => `${name} was recalled from their ambassadorship in disgrace.`,
   envoy_appointed: (name) => `${name} was appointed Special Envoy of the Republic.`,
   envoy_arrangement_signed: (name, target) => `${name} signed “${target || 'an arrangement'}”.`,
+  // Junior Minister lifecycle (20270669 appoint / 20270875 strip).
+  // target_name carries the portfolio key ('sports', 'culture', …).
+  appointed_junior_minister: (name, target) => `${name} was appointed Junior Minister of ${target ? target.charAt(0).toUpperCase() + target.slice(1) : 'a portfolio'}.`,
+  junior_minister_lost_power: (name, target) => `${name} lost the ${target ? target.charAt(0).toUpperCase() + target.slice(1) + ' ' : ''}portfolio when their party fell from power.`,
   joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
   left_party:    (name, target) => `${name} has resigned their membership in the ${target || 'their political party'}.`,
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
