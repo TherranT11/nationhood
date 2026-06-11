@@ -32,7 +32,9 @@
     border:0.5px solid #4a6a4a; border-radius:3px; padding:1px 5px; margin-left:4px; }
   .mk-grid .h { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.14em;
     color:#555; font-weight:700; padding-bottom:4px;
-    border-bottom:0.5px solid rgba(255,255,255,0.07); }
+    border-bottom:0.5px solid rgba(255,255,255,0.07); cursor:pointer; user-select:none; }
+  .mk-grid .h:hover { color:#8aaa6a; }
+  .mk-grid .h .arrow { color:#8aaa6a; margin-left:4px; }
   .mk-grid .c { font-size:12.5px; color:#ccc; padding:9px 0; min-width:0;
     overflow-wrap:break-word; }
   .mk-grid .c.nm { color:#fff; font-weight:600; }
@@ -86,30 +88,62 @@ import { hfFmtBig, escapeHtml as esc, flagUrlFor } from './js/utils.js';
     // wears the HOME tag.
     const renderListing = (hostId, groups) => {
       const host = document.getElementById(hostId);
-      // Each good's nations sort home-first; goods stack in the order
-      // given, sharing the one grid.
-      const sorted = groups.flatMap(([name, rows]) => (rows || []).slice()
+      // Default order: each good's nations home-first, goods stacked
+      // as given. Clicking a header sorts the whole grid by that
+      // column (click again to flip); strings ascend first, numbers
+      // descend first.
+      const base = groups.flatMap(([name, rows]) => (rows || []).slice()
         .sort((a, b) =>
           (b.nation_id === ctx.faction.nation_id) - (a.nation_id === ctx.faction.nation_id))
         .map(r => ({ ...r, name })));
-      if (!sorted.length) {
+      if (!base.length) {
         host.innerHTML = '<div class="mk-empty">No markets found.</div>';
         return;
       }
-      host.innerHTML = `
-        <div class="mk-grid">
-          <div class="h">NAME</div><div class="h">NATION</div><div class="h">AMOUNT AVAILABLE</div><div class="h">COST PER UNIT</div>
-          ${sorted.map(r => `
-            <div class="c nm">${esc(r.name)}</div>
-            <div class="c mk-nation">
-              <img src="${esc(r.flag_url || flagUrlFor(r.nation) || '')}" alt="" onerror="this.style.display='none'">
-              ${esc(r.nation)}${r.nation_id === ctx.faction.nation_id ? '<span class="mk-home">HOME</span>' : ''}
-            </div>
-            <div class="c">${esc(Number(r.amount_available).toLocaleString())} units</div>
-            <div class="c money">${esc(hfFmtBig(Number(r.cost_per_unit) || 0))}
-              <span class="sub">base ${esc(hfFmtBig(Number(r.base_cost) || 0))} × ${esc(String(r.scarcity_mult))} scarcity</span>
-            </div>`).join('')}
-        </div>`;
+      const COLS = [
+        { key: 'name', label: 'NAME', num: false },
+        { key: 'nation', label: 'NATION', num: false },
+        { key: 'amount_available', label: 'AMOUNT AVAILABLE', num: true },
+        { key: 'cost_per_unit', label: 'COST PER UNIT', num: true },
+      ];
+      let sortKey = null, sortDir = 1;
+      const draw = () => {
+        let rows = base;
+        if (sortKey) {
+          const col = COLS.find(c => c.key === sortKey);
+          rows = [...base].sort((a, b) => sortDir * (col.num
+            ? (Number(a[sortKey]) || 0) - (Number(b[sortKey]) || 0)
+            : String(a[sortKey] || '').localeCompare(String(b[sortKey] || ''))));
+        }
+        host.innerHTML = `
+          <div class="mk-grid">
+            ${COLS.map(c => `<div class="h" data-sort="${c.key}">${c.label}${
+              sortKey === c.key ? `<span class="arrow">${sortDir === 1 ? '▲' : '▼'}</span>` : ''}</div>`).join('')}
+            ${rows.map(r => `
+              <div class="c nm">${esc(r.name)}</div>
+              <div class="c mk-nation">
+                <img src="${esc(r.flag_url || flagUrlFor(r.nation) || '')}" alt="" onerror="this.style.display='none'">
+                ${esc(r.nation)}${r.nation_id === ctx.faction.nation_id ? '<span class="mk-home">HOME</span>' : ''}
+              </div>
+              <div class="c">${esc(Number(r.amount_available).toLocaleString())} units</div>
+              <div class="c money">${esc(hfFmtBig(Number(r.cost_per_unit) || 0))}
+                <span class="sub">base ${esc(hfFmtBig(Number(r.base_cost) || 0))} × ${esc(String(r.scarcity_mult))} scarcity</span>
+              </div>`).join('')}
+          </div>`;
+        host.querySelectorAll('.h[data-sort]').forEach(h => {
+          h.addEventListener('click', () => {
+            const key = h.dataset.sort;
+            if (sortKey === key) {
+              sortDir = -sortDir;
+            } else {
+              sortKey = key;
+              sortDir = COLS.find(c => c.key === key).num ? -1 : 1;
+            }
+            draw();
+          });
+        });
+      };
+      draw();
     };
     try {
       const { data: mkt, error } = await _supabase.rpc('construction_market_listings');
