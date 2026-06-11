@@ -1601,6 +1601,8 @@ let committeeHearings = [];   // open committee hearings in the viewer's nation 
 let constructionBidRequests = []; // open construction requests in the mayor's city with pending bids (20270807). Surfaces as Pressing Issues cards opening the award modal; lowest bid auto-accepts after 3 ticks.
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
 let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
+let consulateCases = [];   // pending consulate docket cases (20270865) — Pressing Issues cards; handling one stamps the rest.
+let backchannelInbox = []; // burn-after-reading consul messages addressed to this faction (20270865).
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
 let consultancyOffers = [];     // pending corp consultancy offers targeting this politician (20270773). Accept pays the fee + Capital kicker; decline refunds the corp's escrow.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
@@ -1822,6 +1824,28 @@ async function init() {
         .map(r => ({ ...r, bids: (r.bids || []).filter(b => b.status === 'pending') }))
         .filter(r => r.bids.length);
     }
+
+    // Consulate docket (20270865): pending cases are the consul's
+    // Pressing Issues. Backchannels are RLS-scoped to this user;
+    // filter to this faction so each character sees their own.
+    consulateCases = [];
+    if (politician.politician_consul_nation_id) {
+      const { data: ccRows, error: ccErr } = await _supabase.from('consulate_cases')
+        .select('id, kind, title, body, handle_effect, stamp_effect')
+        .eq('consul_faction_id', politician.id).eq('status', 'pending')
+        .order('created_at');
+      if (ccErr) console.error('politician-home: consulate cases fetch failed', ccErr);
+      else consulateCases = ccRows || [];
+    }
+    backchannelInbox = [];
+    {
+      const { data: bcRows, error: bcErr } = await _supabase.from('backchannel_messages')
+        .select('id, sender_name, body, created_at_tick')
+        .eq('to_faction_id', politician.id)
+        .order('created_at');
+      if (bcErr) console.error('politician-home: backchannel fetch failed', bcErr);
+      else backchannelInbox = bcRows || [];
+    }
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1835,6 +1859,8 @@ async function init() {
     committeeHearings = [];
     openOrdinanceProposals = [];
     memberCommittees = [];
+    consulateCases = [];
+    backchannelInbox = [];
   }
 
   renderHero(ctx.shard);
@@ -3088,6 +3114,13 @@ function renderAffiliation(ctx) {
 async function renderForeignAffiliation(ctx) {
   const host = document.getElementById('foreign-affiliation-host');
   if (!host) return;
+  // Tier 2 (20270865): a sitting consul gets the consulate card —
+  // the attaché posting was cleared at promotion, so the branches
+  // are exclusive.
+  if (ctx?.faction?.politician_consul_nation_id) {
+    await renderConsulAffiliation(ctx, host);
+    return;
+  }
   const fsNationId = ctx?.faction?.politician_foreign_service_nation_id || null;
   if (!fsNationId) { host.innerHTML = ''; return; }
 
@@ -3199,7 +3232,21 @@ async function renderForeignAffiliation(ctx) {
       ${contactsCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
     </div>`;
 
-  const actionsHtml = dayToDayTile + cableTile + contactsTile;
+  // Tier 2 promotion (20270865): 12 Experience unlocks the consulate.
+  const skill = Number(ctx.faction?.politician_skill) || 0;
+  const consulPostTile = skill >= 12
+    ? `
+    <div class="act-btn" data-action="take-consul-post">
+      <div class="act-head">
+        <span class="act-ic">🏛️</span>
+        <span class="act-name">TAKE THE CONSUL POST</span>
+        <span class="act-cost">12 exp</span>
+      </div>
+      <div class="act-desc">The ministry has a consulate for you — pick a vacant posting and run your own shop. Your attaché posting ends.</div>
+    </div>`
+    : '';
+
+  const actionsHtml = dayToDayTile + cableTile + contactsTile + consulPostTile;
 
   host.innerHTML = `
     <div class="affil var-foreign" style="margin-top:18px;">
@@ -3281,6 +3328,389 @@ async function renderForeignAffiliation(ctx) {
         tile.dataset.busy = '0';
       }
     });
+
+  host.querySelector('.act-btn[data-action="take-consul-post"]')
+    ?.addEventListener('click', () => openConsulPostModal(ctx));
+}
+
+// 20270865 — the consulate picker. One consul per home→host pair:
+// the live nations load minus home and minus postings your nation
+// already staffs. Same inject-on-demand overlay pattern as the rest.
+function ensureConsulPostModal() {
+  if (document.getElementById('cp-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #cp-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #cp-overlay.open { display:flex; }
+    .cp-modal { width:480px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(90,175,165,0.35); border-radius:6px; padding:20px 22px; }
+    .cp-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#5aafa5; font-weight:700; margin-bottom:10px; }
+    .cp-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    .cp-row { display:flex; align-items:center; justify-content:space-between;
+      padding:10px 12px; border:0.5px solid rgba(255,255,255,0.1); border-radius:4px;
+      margin-bottom:8px; }
+    .cp-row .nm { color:#e8e4da; font-size:12px; font-weight:600; }
+    .cp-take { padding:6px 12px; background:rgba(90,175,165,0.08);
+      border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+      font-family:monospace; font-size:8.5px; letter-spacing:0.1em; font-weight:700;
+      cursor:pointer; }
+    .cp-take:hover:not(:disabled) { background:rgba(90,175,165,0.16); }
+    .cp-take:disabled { opacity:0.4; cursor:not-allowed; }
+    .cp-empty { color:#666; font-size:11px; font-style:italic; text-align:center; padding:14px; }
+    .cp-foot { margin-top:12px; text-align:right; }
+    .cp-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+      cursor:pointer; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'cp-overlay';
+  host.innerHTML = `
+    <div class="cp-modal">
+      <div class="cp-title">TAKE THE CONSUL POST</div>
+      <div class="cp-sub">Pick a vacant consulate. Your attaché posting ends; the embassy
+        record (Reputation, Trust, Leverage) follows you.</div>
+      <div id="cp-rows"><div class="cp-empty">Loading\u2026</div></div>
+      <div class="cp-foot"><button type="button" class="cp-close" id="cp-close">CANCEL</button></div>
+    </div>`;
+  document.body.appendChild(host);
+  document.getElementById('cp-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+async function openConsulPostModal(ctx) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  rows.innerHTML = '<div class="cp-empty">Loading\u2026</div>';
+  document.getElementById('cp-overlay').classList.add('open');
+  try {
+    const [{ data: mkt, error: mErr }, { data: taken, error: tErr }] = await Promise.all([
+      _supabase.rpc('construction_market_listings'),
+      _supabase.from('factions')
+        .select('politician_consul_nation_id')
+        .eq('faction_type', 'politician')
+        .eq('nation_id', ctx.faction?.nation_id)
+        .not('politician_consul_nation_id', 'is', null)
+        .is('abandoned_at', null),
+    ]);
+    if (mErr) throw mErr;
+    if (tErr) throw tErr;
+    const occupied = new Set((taken || []).map(t => t.politician_consul_nation_id));
+    const nations = (mkt?.materials || [])
+      .map(r => ({ id: r.nation_id, name: r.nation }))
+      .filter(n => n.id !== ctx.faction?.nation_id && !occupied.has(n.id));
+    if (!nations.length) {
+      rows.innerHTML = '<div class="cp-empty">Every consulate is staffed \u2014 wait for a vacancy.</div>';
+      return;
+    }
+    rows.innerHTML = nations.map(n => `
+      <div class="cp-row"><span class="nm">${escHtml(n.name)}</span>
+        <button type="button" class="cp-take" data-take-post="${escAttr(n.id)}">TAKE THE POST</button></div>`).join('');
+    rows.querySelectorAll('[data-take-post]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        if (!confirm('Take this consulate? Your attaché posting ends.')) return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error } = await _supabase.rpc('politician_take_consul_post', {
+            p_faction_id: ctx.faction?.id || null, p_nation_id: btn.dataset.takePost,
+          });
+          if (error) throw error;
+          if (!data?.success) {
+            const REASON = {
+              not_attache: 'Only a serving attaché takes a consulate.',
+              not_enough_experience: 'The ministry wants 12 Experience first.',
+              consulate_occupied: 'Someone from your nation already holds that post.',
+              nation_not_live: 'That nation is not an active posting.',
+              invalid_nation: 'You can\u2019t consul your own nation.',
+              arrested: 'You are under arrest.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          alert(`The cable is short: \u201cProceed to ${data.nation}. Congratulations, Consul.\u201d`);
+          location.reload();
+        } catch (err) {
+          alert('Could not take the post: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    rows.innerHTML = '<div class="cp-empty">Could not load the postings \u2014 try again shortly.</div>';
+    console.warn('[politician-home] consul post load failed:', err?.message || err);
+  }
+}
+
+// 20270865 — the consulate card (Foreign Service Tier 2). Replaces
+// the attaché card after promotion; the embassy stat row carries
+// over. RUN THE CONSULATE opens the morning docket — the cases land
+// in Pressing Issues and handling one rubber-stamps the rest.
+async function renderConsulAffiliation(ctx, host) {
+  const hostNationId = ctx.faction.politician_consul_nation_id;
+  let nationName = '\u2014';
+  let capital    = '\u2014';
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('name, capital')
+      .eq('id', hostNationId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      nationName = data.name || '\u2014';
+      capital    = data.capital || '\u2014';
+    }
+  } catch (err) {
+    console.warn('[politician-home] consul nation fetch failed:', err?.message || err);
+  }
+
+  const embBudget = Number(ctx.faction?.embassy_budget     ?? 100);
+  const embRep    = Number(ctx.faction?.embassy_reputation ?? 50);
+  const embTrust  = Number(ctx.faction?.embassy_trust      ?? 50);
+  const embLev    = Number(ctx.faction?.embassy_leverage   ?? 50);
+
+  const hasDocket = consulateCases.length > 0;
+  const docketAttrs = hasDocket
+    ? ' aria-disabled="true" title="The docket is on your desk — handle a case in Pressing Issues"'
+    : ' data-action="consul-run"';
+  const nextNet = Number(ctx.faction?.next_embassy_contacts_tick) || 0;
+  const netCooling = nextNet > currentTick;
+  const netAttrs = netCooling
+    ? ' aria-disabled="true" title="Already worked the rolodex this tick"'
+    : ' data-action="consul-network"';
+  const nextBc = Number(ctx.faction?.next_backchannel_tick) || 0;
+  const bcCooling = nextBc > currentTick;
+  const bcAttrs = bcCooling
+    ? ' aria-disabled="true" title="The channel already carried a message this tick"'
+    : ' data-action="consul-backchannel"';
+
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🏛️</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 2</div>
+          <div class="ah-name">Consul in ${escHtml(nationName)}</div>
+          <div class="ah-desc">You run the consulate in <strong>${escHtml(capital)}</strong>. The morning docket is yours to triage — handle one case properly, rubber-stamp the rest, and live with both.</div>
+        </div>
+      </div>
+      <div class="emb-stats">
+        <div class="emb-stat"><span class="emb-stat-lab">BUDGET</span><span class="emb-stat-val">$${escHtml(embBudget.toLocaleString())}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">REPEATABLE ACTIONS</div>
+        <div class="ar-buttons">
+          <div class="act-btn${hasDocket ? ' cooldown' : ''}"${docketAttrs}>
+            <div class="act-head">
+              <span class="act-ic">🗂️</span>
+              <span class="act-name">RUN THE CONSULATE</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">${hasDocket
+              ? 'The docket is on your desk — handle a case in Pressing Issues.'
+              : 'Open the morning docket — real cross-border business and the usual paperwork, four cases deep. You can do one of them justice.'}</div>
+            ${hasDocket ? '<div class="act-cooldown">Docket pending</div>' : ''}
+          </div>
+          <div class="act-btn${netCooling ? ' cooldown' : ''}"${netAttrs}>
+            <div class="act-head">
+              <span class="act-ic">🤝</span>
+              <span class="act-name">BUILD NETWORK</span>
+              <span class="act-cost">\u22121 relations</span>
+            </div>
+            <div class="act-desc">Spend the nations\u2019 goodwill to build your own standing. +1 Reputation \u00b7 +0.3 Experience.</div>
+            ${netCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+          </div>
+          <div class="act-btn${bcCooling ? ' cooldown' : ''}"${bcAttrs}>
+            <div class="act-head">
+              <span class="act-ic">🔥</span>
+              <span class="act-name">BACKCHANNEL</span>
+              <span class="act-cost">no trace</span>
+            </div>
+            <div class="act-desc">A one-time message to any player in the host or home nation. No audit. No copies. It burns when they read it.</div>
+            ${bcCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  host.querySelector('.act-btn[data-action="consul-run"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('consul_run_consulate',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            docket_pending: 'The docket is already on your desk — handle a case first.',
+            already_ran: 'The consulate already ran today — back next tick.',
+            not_consul: 'Only the sitting consul runs the shop.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not run the consulate: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+
+  host.querySelector('.act-btn[data-action="consul-network"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('consul_build_network',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            cooldown: 'Already worked the rolodex this tick.',
+            not_consul: 'Only the sitting consul builds the network.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert('Dinners, favors, first names. +1 Reputation, +0.3 Experience — the nations\u2019 file gets one notch cooler.');
+        location.reload();
+      } catch (err) {
+        alert('Could not build the network: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+
+  host.querySelector('.act-btn[data-action="consul-backchannel"]')
+    ?.addEventListener('click', () => openBackchannelModal(ctx, hostNationId));
+}
+
+// 20270865 — the backchannel composer. Recipients: any player
+// faction in the host or home nation.
+function ensureBackchannelModal() {
+  if (document.getElementById('bk-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #bk-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #bk-overlay.open { display:flex; }
+    .bk-modal { width:560px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(200,120,120,0.35); border-radius:6px; padding:20px 22px; }
+    .bk-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#c87a7a; font-weight:700; margin-bottom:10px; }
+    .bk-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    #bk-target { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:9px 10px;
+      font-family:inherit; font-size:12px; margin-bottom:10px; }
+    #bk-text { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:10px 12px;
+      font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; min-height:84px; }
+    #bk-text:focus, #bk-target:focus { outline:none; border-color:rgba(200,120,120,0.5); }
+    .bk-count { text-align:right; font-family:monospace; font-size:9px; color:#666; margin-top:5px; }
+    .bk-foot { margin-top:14px; display:flex; justify-content:flex-end; gap:8px; }
+    .bk-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .bk-send { padding:8px 16px; background:rgba(200,120,120,0.08);
+      border:0.5px solid rgba(200,120,120,0.5); border-radius:4px; color:#c87a7a;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .bk-send:hover:not(:disabled) { background:rgba(200,120,120,0.16); }
+    .bk-send:disabled { opacity:0.4; cursor:not-allowed; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'bk-overlay';
+  host.innerHTML = `
+    <div class="bk-modal">
+      <div class="bk-title">BACKCHANNEL</div>
+      <div class="bk-sub">One message, one read, then it burns. They will know it came from you;
+        nobody else ever will.</div>
+      <select id="bk-target"><option value="">Loading\u2026</option></select>
+      <textarea id="bk-text" maxlength="240" rows="4"
+        placeholder="Say it once \u2014 up to 240 characters."></textarea>
+      <div class="bk-count"><span id="bk-count">0</span>/240</div>
+      <div class="bk-foot">
+        <button type="button" class="bk-close" id="bk-close">CANCEL</button>
+        <button type="button" class="bk-send" id="bk-send" disabled>SEND IT</button>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
+  const text = document.getElementById('bk-text');
+  const refresh = () => {
+    document.getElementById('bk-count').textContent = String(text.value.length);
+    document.getElementById('bk-send').disabled =
+      text.value.trim().length < 1 || !document.getElementById('bk-target').value;
+  };
+  text.addEventListener('input', refresh);
+  document.getElementById('bk-target').addEventListener('change', refresh);
+  document.getElementById('bk-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+async function openBackchannelModal(ctx, hostNationId) {
+  ensureBackchannelModal();
+  const target = document.getElementById('bk-target');
+  const text = document.getElementById('bk-text');
+  text.value = '';
+  document.getElementById('bk-count').textContent = '0';
+  target.innerHTML = '<option value="">Loading\u2026</option>';
+  const send = document.getElementById('bk-send');
+  send.disabled = true;
+  const fresh = send.cloneNode(true);
+  send.replaceWith(fresh);
+  document.getElementById('bk-overlay').classList.add('open');
+  try {
+    const { data: facs, error } = await _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, nickname, faction_type, nation:nations!nation_id(name)')
+      .in('nation_id', [ctx.faction?.nation_id, hostNationId].filter(Boolean))
+      .is('abandoned_at', null)
+      .neq('id', ctx.faction?.id);
+    if (error) throw error;
+    if (!facs?.length) {
+      target.innerHTML = '<option value="">No one in range.</option>';
+      return;
+    }
+    target.innerHTML = '<option value="">\u2014 pick a recipient \u2014</option>' + facs.map(f => {
+      const nm = f.nickname || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim() || 'Unnamed';
+      return `<option value="${escAttr(f.id)}">${escHtml(nm)} \u00b7 ${escHtml(f.faction_type)} \u00b7 ${escHtml(f.nation?.name || '\u2014')}</option>`;
+    }).join('');
+  } catch (err) {
+    target.innerHTML = '<option value="">Could not load recipients.</option>';
+    console.warn('[politician-home] backchannel recipients load failed:', err?.message || err);
+  }
+  fresh.addEventListener('click', async () => {
+    fresh.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('consul_backchannel', {
+        p_faction_id: ctx.faction?.id || null,
+        p_target_faction_id: target.value || null,
+        p_text: text.value,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          cooldown: 'The channel already carried a message this tick.',
+          target_out_of_range: 'They\u2019re outside the channel\u2019s reach.',
+          invalid_text: 'Write something \u2014 up to 240 characters.',
+          not_consul: 'Only the sitting consul uses the channel.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      document.getElementById('bk-overlay').classList.remove('open');
+      alert('Sent. It burns when they read it.');
+      location.reload();
+    } catch (err) {
+      alert('Could not send: ' + (err?.message || err));
+      fresh.disabled = false;
+    }
+  });
 }
 
 // 20270860 — the SEND CABLE composer. Same inject-on-demand overlay
@@ -4117,6 +4547,12 @@ function renderPressingIssues(ctx) {
   if (!host) return;
   const blocks = [];
   if (activeRace) blocks.push(renderCampaignCard(ctx));
+  // Burn-after-reading backchannels (20270865) outrank everything —
+  // someone went to the trouble of reaching you off the record.
+  backchannelInbox.forEach(m => blocks.push(renderBackchannelCard(m)));
+  // The consulate docket (20270865): handle ONE properly; the rest
+  // get the rubber stamp the moment you choose.
+  consulateCases.forEach(c => blocks.push(renderConsulateCaseCard(c)));
   // State Advocate appointment requests routed to this politician
   // (as Minister of the Interior) come first after the campaign —
   // they're cabinet-level decisions and the applicant is waiting.
@@ -4171,6 +4607,103 @@ function renderPressingIssues(ctx) {
   bindOrdinanceProposalActions(ctx);
   bindMemberCommitteeActions();
   bindConstructionBidActions();
+  bindBackchannelActions();
+  bindConsulateCaseActions(ctx);
+}
+
+// ── Consulate docket cards (20270865) ────────────────────────────────
+const CONSUL_EFFECT_LABEL = {
+  rep_up: '+1 Reputation', rep_down: '\u22121 Reputation', rep_down2: '\u22122 Reputation',
+  trust_down: '\u22121 Trust', lev_up: '+1 Leverage', xp_up: '+1 Experience',
+  relations_up: '+1 Relations', relations_down: '\u22121 Relations',
+  trade_boost: '+1 Relations \u00b7 sharpens the corp\u2019s next campaign',
+};
+function renderConsulateCaseCard(c) {
+  return `
+    <div class="offer-card" data-consul-case="${escAttr(c.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🗂️</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">THE CONSULATE &middot; MORNING DOCKET</div>
+        <div class="oi-headline">${escHtml(c.title)}</div>
+        <div class="oi-meta">
+          <span>${escHtml(c.body)}</span>
+          <span>Handle: <b>${escHtml(CONSUL_EFFECT_LABEL[c.handle_effect] || c.handle_effect)}</b>
+            &middot; Stamped: ${escHtml(CONSUL_EFFECT_LABEL[c.stamp_effect] || c.stamp_effect)}
+            &middot; handling one case rubber-stamps the rest</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-handle-case="${escAttr(c.id)}">HANDLE</button>
+      </div>
+    </div>`;
+}
+function bindConsulateCaseActions(ctx) {
+  document.querySelectorAll('[data-handle-case]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      if (!confirm('Handle this case properly? Every other pending case gets the rubber stamp.')) return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('consul_handle_case', {
+          p_faction_id: ctx.faction?.id || null, p_case_id: btn.dataset.handleCase,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_consul: 'Only the sitting consul works the docket.',
+            case_not_pending: 'That case was already decided.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not handle: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// ── Backchannel cards (20270865) — burn after reading ────────────────
+function renderBackchannelCard(m) {
+  return `
+    <div class="offer-card" data-backchannel="${escAttr(m.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🔥</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">BACKCHANNEL &middot; OFF THE RECORD</div>
+        <div class="oi-headline" style="overflow-wrap:break-word;">&ldquo;${escHtml(m.body)}&rdquo;</div>
+        <div class="oi-meta"><span>&mdash; ${escHtml(m.sender_name)} &middot; ${escHtml(tickToDate(Number(m.created_at_tick)))} &middot; no copies exist</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-burn="${escAttr(m.id)}">BURN AFTER READING</button>
+      </div>
+    </div>`;
+}
+function bindBackchannelActions() {
+  document.querySelectorAll('[data-burn]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('backchannel_burn',
+          { p_message_id: btn.dataset.burn });
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.reason || 'unknown');
+        btn.closest('[data-backchannel]')?.remove();
+      } catch (err) {
+        alert('Could not burn: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 // ── Construction bid award card + modal (20270807) ──────────────────
