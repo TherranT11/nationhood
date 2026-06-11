@@ -1,43 +1,50 @@
 -- ════════════════════════════════════════════════════════════════════
--- 20270875 — Junior Minister governing-party gate + lose-power strip
+-- 20270876 — Governing-coalition source: movement parties, not the
+-- administrations snapshot
 --
--- 'The parties in power are {Party} and {Party}. You must be a
---  member of one of these parties before seeking to join the
---  government ministry. If they lose power, so do you.'
+-- The Junior Minister party-government notice quoted "Sierramar's
+-- Party of Communist and The Communitarian Voters' Coalition" —
+-- phantom parties living only in Sierramar's administrations
+-- coalition snapshot, while the Active Movements page (factions.
+-- party_status pills) correctly shows PVS Governing / ACD Coalition.
+-- Per user direction: pull from the movement parties, and purge the
+-- phantoms.
 --
--- Two halves, both reading the active administrations row as the
--- one source for who governs (pm_party_id + coalition_parties,
--- an array of {party_id, party_name, seats} objects with the PM
--- party first — written by 20261120 formation finalize, 20270666 /
--- 20270696 election resolver, 20270731 backfill):
+--   1. politician_seek_junior_appointment re-emitted —
+--      • gate + party names now read factions.party_status
+--        ('Governing' / 'Coalition') instead of administrations.
+--        coalition_parties; alignment +5 Governing / +2 Coalition /
+--        0 when no coalition exists.
+--      • nations with no Governing/Coalition party (NPC-run /
+--        semi-presidential) waive the gate — the cabinet roll
+--        decides (no party politics to join).
+--      • the 'no_head_of_government' dead end is gone: with no
+--        seated PM/President the application falls through to the
+--        NPC cabinet roll, nation row replacing the hog row as the
+--        portfolio-pick lock. (This half originally shipped as an
+--        in-place edit to 20270875 after it had already been
+--        applied, so it never reached the database — re-landed
+--        here properly.)
 --
---   1. politician_seek_junior_appointment gains a hard gate —
---      politicians whose party is not in the governing coalition
---      get 'not_governing_party' + the coalition's party names so
---      the client can quote them. Fixes a latent bug while there:
---      the old alignment check did coalition_parties @> to_jsonb(
---      party_id), a bare uuid against an object array, so the +2
---      coalition modifier NEVER fired. With the gate guaranteeing
---      membership the alignment collapses to PM party +5 / else +2
---      and the dead -3 / -5 outsider branches go away.
+--   2. resolve_due_general_elections (7th re-emission, body from
+--      20270875) — after installing the new administration it now
+--      also syncs factions.party_status (Governing / Coalition /
+--      Opposition) so the pills can never drift from the elected
+--      coalition again, then strips Junior Ministers as before.
 --
---   2. resolve_due_general_elections strips the portfolio from any
---      sitting Junior Minister whose party fell out of the NEW
---      coalition the moment a fresh administration is installed
---      ('junior_minister_lost_power' career event records it).
---      Sixth re-emission of the orchestrator (latest body:
---      20270696) — the per-nation-helper refactor stays flagged.
---
--- KNOWN GAP: finalize_formation (20261120) also ends/installs
--- administrations for newly formed nation governments but does not
--- strip Junior Ministers — acceptable today since brand-new nations
--- have no sitting JMs; revisit if formation ever re-runs on a
--- nation with seated players.
+--   3. Data repair — any ACTIVE administrations row whose coalition
+--      references a party that is not a live movement_party of that
+--      nation is rebuilt in place from the live seats walk
+--      (coalition, PM party, PM name, ministries PM row, NPC hog
+--      row if none is active, party_status pills). Kills the
+--      Sierramar phantoms everywhere they render. Phantom party
+--      faction rows matching the two names are soft-abandoned —
+--      no hard DELETE so no FK landmines inside db-push.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
 
--- ── 1. politician_seek_junior_appointment — governing-party gate ──
+-- ── 1. politician_seek_junior_appointment — party_status source ──
 CREATE OR REPLACE FUNCTION public.politician_seek_junior_appointment(
     p_faction_id uuid
 )
@@ -49,7 +56,6 @@ DECLARE
     v_pol       factions%ROWTYPE;
     v_tick      int;
     v_hog       head_of_government%ROWTYPE;
-    v_admin     administrations%ROWTYPE;
     v_is_player_hog boolean;
     v_alignment_mod int;
     v_skill_mod     int;
@@ -65,8 +71,8 @@ DECLARE
     v_breakdown     jsonb;
     v_assigned      text;
     v_vacant_count  int;
-    v_is_governing  boolean;
     v_gov_names     jsonb;
+    v_my_status     text;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -103,30 +109,37 @@ BEGIN
                                   'portfolio', v_pol.politician_junior_portfolio);
     END IF;
 
-    -- ── Governing-party gate (20270875) ──────────────────────────
-    -- The political canopy is party government: only members of a
-    -- party in the governing coalition may seek a portfolio. The
-    -- active administrations row is the one source for who governs
-    -- (pm_party_id + coalition_parties objects, PM party first).
-    SELECT * INTO v_admin FROM administrations
-     WHERE nation_id = v_pol.nation_id
-       AND ended_at_tick IS NULL
-     ORDER BY started_at_tick DESC LIMIT 1;
-    IF v_admin.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'no_government');
-    END IF;
-    v_is_governing := v_pol.politician_party_id IS NOT NULL AND (
-        v_pol.politician_party_id = v_admin.pm_party_id
-        OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements(COALESCE(v_admin.coalition_parties, '[]'::jsonb)) e
-             WHERE (e->>'party_id')::uuid = v_pol.politician_party_id));
-    IF NOT v_is_governing THEN
-        SELECT COALESCE(jsonb_agg(e->>'party_name'),
-                        CASE WHEN v_admin.pm_party_name IS NOT NULL
-                             THEN jsonb_build_array(v_admin.pm_party_name)
-                             ELSE '[]'::jsonb END)
+    -- ── Governing-party gate (20270876) ──────────────────────────
+    -- Source of truth: the movement parties' own status pills —
+    -- factions.party_status 'Governing' / 'Coalition' — exactly what
+    -- the Active Movements page shows. (20270875 read the
+    -- administrations coalition snapshot, which for Sierramar still
+    -- listed phantom formation-era parties.) Nations with no
+    -- Governing/Coalition party (NPC-run / semi-presidential) have
+    -- no coalition to join — gate waived, the cabinet roll decides.
+    SELECT party_status INTO v_my_status
+      FROM factions
+     WHERE id = v_pol.politician_party_id
+       AND nation_id = v_pol.nation_id
+       AND faction_type = 'movement_party'
+       AND abandoned_at IS NULL;
+    IF COALESCE(v_my_status, '') NOT IN ('Governing', 'Coalition')
+       AND EXISTS (
+           SELECT 1 FROM factions
+            WHERE nation_id = v_pol.nation_id
+              AND faction_type = 'movement_party'
+              AND abandoned_at IS NULL
+              AND party_status IN ('Governing', 'Coalition')
+       ) THEN
+        SELECT COALESCE(jsonb_agg(faction_name
+                        ORDER BY (party_status = 'Governing') DESC,
+                                 seats DESC NULLS LAST), '[]'::jsonb)
           INTO v_gov_names
-          FROM jsonb_array_elements(COALESCE(v_admin.coalition_parties, '[]'::jsonb)) e;
+          FROM factions
+         WHERE nation_id = v_pol.nation_id
+           AND faction_type = 'movement_party'
+           AND abandoned_at IS NULL
+           AND party_status IN ('Governing', 'Coalition');
         RETURN jsonb_build_object('success', false, 'reason', 'not_governing_party',
                                   'governing_parties', v_gov_names);
     END IF;
@@ -153,7 +166,12 @@ BEGIN
      ORDER BY appointed_tick DESC LIMIT 1
      FOR UPDATE;
     IF v_hog.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'no_head_of_government');
+        -- No seated PM/President at all (20270876): the cabinet
+        -- machinery decides on its own — fall through to the NPC
+        -- roll. The hog row normally serializes concurrent
+        -- portfolio picks; without one, the nation row takes over
+        -- as the lock.
+        PERFORM 1 FROM nations WHERE id = v_pol.nation_id FOR UPDATE;
     END IF;
 
     SELECT COUNT(*) INTO v_vacant_count
@@ -197,15 +215,15 @@ BEGIN
     v_skill_mod := FLOOR(COALESCE(v_pol.politician_skill, 0) / 5);
     v_rep_mod   := LEAST(10, FLOOR(COALESCE(v_pol.politician_reputation, 0) / 5));
 
-    -- The gate above guarantees coalition membership, so the old
-    -- -3 / -5 outsider branches are unreachable. (They were also
-    -- subtly broken: the @> check compared a bare uuid against the
-    -- coalition's object array, so +2 never fired.) PM's own party
-    -- still gets the warmer reception.
-    IF v_admin.pm_party_id = v_pol.politician_party_id THEN
+    -- Where a coalition exists the gate above guarantees membership.
+    -- The lead party gets the warmer reception; nations without a
+    -- governing coalition have no party politics to read.
+    IF v_my_status = 'Governing' THEN
         v_alignment_mod := 5;
-    ELSE
+    ELSIF v_my_status = 'Coalition' THEN
         v_alignment_mod := 2;
+    ELSE
+        v_alignment_mod := 0;
     END IF;
 
     v_d20  := FLOOR(random() * 20)::int + 1;
@@ -314,7 +332,7 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.politician_seek_junior_appointment(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.politician_seek_junior_appointment(uuid) TO authenticated;
 
--- ── 2. resolve_due_general_elections — lose-power strip ──────────
+-- ── 2. resolve_due_general_elections — party_status sync ─────────
 CREATE OR REPLACE FUNCTION public.resolve_due_general_elections()
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -552,6 +570,22 @@ BEGIN
                 SELECT id, v_tick, 'junior_minister_lost_power', COALESCE(portfolio, '')
                   FROM losers;
 
+                -- Keep the movement-party status pills in lockstep
+                -- with the new administration (20270876) — factions.
+                -- party_status is the user-facing source for who
+                -- governs, and the resolver previously left it stale
+                -- after every election.
+                UPDATE factions f
+                   SET party_status = CASE
+                        WHEN f.id = v_pm_party_id THEN 'Governing'
+                        WHEN EXISTS (
+                            SELECT 1 FROM jsonb_array_elements(v_coalition_array) e
+                             WHERE (e->>'party_id')::uuid = f.id) THEN 'Coalition'
+                        ELSE 'Opposition' END
+                 WHERE f.nation_id = v_nation.id
+                   AND f.faction_type = 'movement_party'
+                   AND f.abandoned_at IS NULL;
+
                 UPDATE ministries SET
                     party_id            = v_pm_party_id,
                     minister_first_name = v_pm_leader_first,
@@ -587,6 +621,145 @@ END;
 $$;
 REVOKE EXECUTE ON FUNCTION public.resolve_due_general_elections() FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.resolve_due_general_elections() TO authenticated;
+
+-- ── 3. Data repair — rebuild stale coalition snapshots ───────────
+DO $do$
+DECLARE
+    v_tick            int;
+    v_nation          RECORD;
+    v_party           RECORD;
+    v_majority        int;
+    v_coalition_array jsonb;
+    v_coalition_seats int;
+    v_pm_party_id     uuid;
+    v_pm_party_name   text;
+    v_pm_leader_first text;
+    v_pm_leader_last  text;
+    v_pm_leader_age   int;
+    v_fixed           int := 0;
+BEGIN
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    -- Lingering phantom party rows (if they exist as factions at
+    -- all — the names may live only in the snapshot). Soft-abandon:
+    -- removes them from every surface without FK risk.
+    UPDATE factions
+       SET abandoned_at = COALESCE(abandoned_at, now())
+     WHERE faction_type = 'movement_party'
+       AND (faction_name ILIKE '%party of communist%'
+            OR faction_name ILIKE '%communitarian voters%');
+
+    FOR v_nation IN
+        SELECT n.id, n.total_seats, a.id AS admin_id
+          FROM nations n
+          JOIN administrations a
+            ON a.nation_id = n.id AND a.ended_at_tick IS NULL
+         WHERE COALESCE(n.government_type, '') NOT ILIKE '%semi-presidential%'
+           AND COALESCE(n.government_type, '') NOT ILIKE '%semi_presidential%'
+           AND EXISTS (
+               SELECT 1 FROM jsonb_array_elements(COALESCE(a.coalition_parties, '[]'::jsonb)) e
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM factions f
+                     WHERE f.id = (e->>'party_id')::uuid
+                       AND f.nation_id = n.id
+                       AND f.faction_type = 'movement_party'
+                       AND f.abandoned_at IS NULL))
+    LOOP
+        -- Live seats walk (same rule as 20270666 / 20270731):
+        -- accumulate parties seats-DESC until floor(total/2)+1.
+        v_majority        := (COALESCE(v_nation.total_seats, 0) / 2) + 1;
+        v_coalition_array := '[]'::jsonb;
+        v_coalition_seats := 0;
+        v_pm_party_id     := NULL;
+        FOR v_party IN
+            SELECT id, faction_name, seats,
+                   leader_first_name, leader_last_name, leader_age
+              FROM factions
+             WHERE nation_id    = v_nation.id
+               AND faction_type = 'movement_party'
+               AND abandoned_at IS NULL
+               AND COALESCE(seats, 0) > 0
+             ORDER BY seats DESC, created_at ASC
+        LOOP
+            v_coalition_array := v_coalition_array || jsonb_build_object(
+                'party_id', v_party.id, 'party_name', v_party.faction_name,
+                'seats', v_party.seats);
+            v_coalition_seats := v_coalition_seats + v_party.seats;
+            IF v_pm_party_id IS NULL THEN
+                v_pm_party_id     := v_party.id;
+                v_pm_party_name   := v_party.faction_name;
+                v_pm_leader_first := v_party.leader_first_name;
+                v_pm_leader_last  := v_party.leader_last_name;
+                v_pm_leader_age   := v_party.leader_age;
+            END IF;
+            EXIT WHEN v_coalition_seats >= v_majority;
+        END LOOP;
+
+        IF v_pm_party_id IS NULL THEN
+            CONTINUE;  -- no live seated parties; nothing to rebuild from
+        END IF;
+
+        -- Repair the record in place — this is fixing a snapshot,
+        -- not ending a government, so started_at/stats stay put.
+        UPDATE administrations
+           SET coalition_parties = v_coalition_array,
+               pm_party_id       = v_pm_party_id,
+               pm_party_name     = v_pm_party_name,
+               prime_minister    = NULLIF(btrim(COALESCE(v_pm_leader_first, '') || ' ' ||
+                                                COALESCE(v_pm_leader_last, '')), ''),
+               admin_name        = COALESCE(v_pm_leader_last, v_pm_party_name) || ' Administration',
+               updated_at        = now()
+         WHERE id = v_nation.admin_id;
+
+        UPDATE ministries SET
+            party_id            = v_pm_party_id,
+            minister_first_name = v_pm_leader_first,
+            minister_last_name  = v_pm_leader_last,
+            minister_age        = v_pm_leader_age,
+            is_active           = true
+         WHERE nation_id    = v_nation.id
+           AND ministry_key = 'prime_minister';
+        IF NOT FOUND THEN
+            INSERT INTO ministries (
+                nation_id, ministry_key, ministry_name,
+                party_id, minister_first_name, minister_last_name,
+                minister_age, is_active
+            ) VALUES (
+                v_nation.id, 'prime_minister', 'Prime Minister',
+                v_pm_party_id, v_pm_leader_first, v_pm_leader_last,
+                v_pm_leader_age, true
+            );
+        END IF;
+
+        -- Seat an NPC PM only where no active hog row exists at all
+        -- (Sierramar's gap) — never displace a sitting one.
+        IF NOT EXISTS (SELECT 1 FROM head_of_government
+                        WHERE nation_id = v_nation.id AND active = true) THEN
+            INSERT INTO head_of_government
+                (nation_id, faction_id, first_name, last_name, age,
+                 appointed_tick, active)
+            VALUES (v_nation.id, v_pm_party_id,
+                    v_pm_leader_first, v_pm_leader_last, v_pm_leader_age,
+                    v_tick, true);
+        END IF;
+
+        UPDATE factions f
+           SET party_status = CASE
+                WHEN f.id = v_pm_party_id THEN 'Governing'
+                WHEN EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(v_coalition_array) e
+                     WHERE (e->>'party_id')::uuid = f.id) THEN 'Coalition'
+                ELSE 'Opposition' END
+         WHERE f.nation_id = v_nation.id
+           AND f.faction_type = 'movement_party'
+           AND f.abandoned_at IS NULL;
+
+        v_fixed := v_fixed + 1;
+    END LOOP;
+
+    RAISE NOTICE '20270876 repair: rebuilt % stale coalition snapshot(s)', v_fixed;
+END $do$;
 
 NOTIFY pgrst, 'reload schema';
 

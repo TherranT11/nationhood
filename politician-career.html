@@ -3693,14 +3693,15 @@ function openResultModal() {
   }, { once: true });
 }
 
-// ─── Junior Minister governing-party gate (20270875) ──────────────
+// ─── Junior Minister governing-party gate (20270876) ──────────────
 // Party government: the portfolio is only open to members of a party
 // in the governing coalition, and falls with the government. Clicking
 // [Seek Appointment] first surfaces who governs — read from the
-// active administrations row (pm_party_id + coalition_parties
-// objects, PM party first) — then either offers a proceed button
-// (member) or stops there (outsider). The RPC re-enforces the same
-// gate server-side ('not_governing_party').
+// movement parties' own status pills (factions.party_status
+// 'Governing' / 'Coalition', the same source the Active Movements
+// page shows) — then either offers a proceed button (member) or
+// stops there (outsider). The RPC re-enforces the same gate
+// server-side ('not_governing_party').
 function partyListText(names) {
   if (names.length <= 1) return names[0] || '';
   return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
@@ -3713,16 +3714,17 @@ async function openJmGateNotice(btn) {
     const ctx = window.__careerCtx || {};
     const nationId = ctx.faction?.nation_id || null;
     if (!nationId) { alert('Your politician is not yet seated in a nation.'); return; }
-    const { data: admin, error } = await _supabase.from('administrations')
-      .select('pm_party_id, pm_party_name, coalition_parties')
+    const { data: governing, error } = await _supabase.from('factions')
+      .select('id, faction_name, party_status, seats')
       .eq('nation_id', nationId)
-      .is('ended_at_tick', null)
-      .order('started_at_tick', { ascending: false })
-      .limit(1).maybeSingle();
+      .eq('faction_type', 'movement_party')
+      .is('abandoned_at', null)
+      .in('party_status', ['Governing', 'Coalition'])
+      .order('seats', { ascending: false });
     if (error) throw error;
-    const coalition = Array.isArray(admin?.coalition_parties) ? admin.coalition_parties : [];
-    const names = coalition.map(p => p?.party_name).filter(Boolean);
-    if (!names.length && admin?.pm_party_name) names.push(admin.pm_party_name);
+    const coalition = (governing || [])
+      .sort((a, b) => (b.party_status === 'Governing') - (a.party_status === 'Governing'));
+    const names = coalition.map(p => p.faction_name).filter(Boolean);
     if (!names.length) {
       // No governing coalition (semi-presidential / NPC-run nation) —
       // no party requirement to surface; the cabinet roll decides.
@@ -3732,8 +3734,7 @@ async function openJmGateNotice(btn) {
       return;
     }
     const myParty = ctx.party?.id || null;
-    const isMember = !!myParty && (myParty === admin.pm_party_id
-      || coalition.some(p => p?.party_id === myParty));
+    const isMember = !!myParty && coalition.some(p => p.id === myParty);
     const plural = names.length > 1;
     const body = document.getElementById('jm-result-body');
     if (!body) return;
