@@ -900,9 +900,8 @@
 
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
-import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -1057,24 +1056,6 @@ const PARTY_OFFICE_RUNGS = [
 
 // Tier 0 — Party Membership. Renders ABOVE the branch into Party Office
 // and Government & State; both ladders' Tier 1 races require being a
-// party member. The rung shape mirrors any LADDERS rung so the same
-// renderRungs() can render it; tierNum is overridden to 0 so the
-// rendered label reads "TIER 0 · MEMBERSHIP" rather than the default
-// index-derived tier.
-const PARTY_MEMBER_TIER0 = {
-  name: 'Party Member',
-  tierNum: 0,
-  tierName: 'MEMBERSHIP',
-  held:        (s) => !!s.partyId,
-  // Membership has no term — it lasts until the member leaves. The
-  // old Term Ends suffix leaked the holder's OFFICE term onto this
-  // card via termEndTickFor.
-  descIfHeld:  (s) => `You are a card-carrying member of ${s.partyName}.`,
-  descIfNot:   ()  => 'You are not a member of a political party. Membership unlocks both office ladders below.',
-  actionIfNot:  { label: 'Join Political Party',  kind: 'primary',   href: 'politician-movements.html?openJoin=1' },
-  actionIfHeld: { label: 'Leave Political Party', kind: 'secondary', action: 'leave-party' },
-};
-
 // Legislature rungs — Committee Member is the entry rung (its right-side
 // [Apply to Committee] is the only live advance action; you climb to Chair
 // from there). Each rung carries inline `actions` (the verbs available to
@@ -2561,9 +2542,12 @@ function render(politician, shard, nation, party) {
   const subtitleTail = party ? ` · member of ${party.faction_name}` : '';
   document.getElementById('cc-subtitle').textContent = `Age ${age} · ${nationName}${subtitleTail}`;
 
-  // Positions held — 1 when an office is held, 0 otherwise.
-  document.getElementById('cc-positions').textContent = office ? '1' : '0';
-  document.getElementById('cc-positions-sub').textContent = office ? officeTitle(office) : '—';
+  // Positions held — an elected office or a Foreign Service posting
+  // both count; foreignServiceTitle (utils) is the rank's one source.
+  const fsTitle = foreignServiceTitle(politician);
+  const roleTitle = office ? officeTitle(office) : fsTitle;
+  document.getElementById('cc-positions').textContent = roleTitle ? '1' : '0';
+  document.getElementById('cc-positions-sub').textContent = roleTitle || '—';
 
   // Affiliations — office · party when office held, else party-only
   // (or None for independents). Same source as politician-home's hero
@@ -2576,8 +2560,8 @@ function render(politician, shard, nation, party) {
   const judTitle  = judicialTitle(politician, nation?.id);
   const barSuffix = judTitle ? ` · ${judTitle} of ${nation?.name || 'this nation'}` : '';
   if (party) {
-    document.getElementById('cc-affiliations').textContent = (office
-      ? `${officeTitle(office)} · ${party.faction_name}`
+    document.getElementById('cc-affiliations').textContent = (roleTitle
+      ? `${roleTitle} · ${party.faction_name}`
       : party.faction_name) + barSuffix;
     document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
   } else if (judTitle) {
@@ -2600,11 +2584,15 @@ function render(politician, shard, nation, party) {
   // (party-member fallback, civil service, judiciary) and we keep
   // the placeholder copy.
   const currentTick = Number(shard?.current_tick) || 0;
-  const endTick = termEndTickFor({
-    office: politician.politician_office,
-    nextGeneralElectionTick: Number(nation?.next_election_tick) || 0,
-    officeWonAtTick: politician.politician_office_won_at_tick,
-  });
+  // An ambassadorship is a real 60-tick term (20270869) — display
+  // mirror of the server rule, same as the home card's TERM ENDS.
+  const endTick = politician.politician_ambassador_at_tick != null
+    ? Number(politician.politician_ambassador_at_tick) + 60
+    : termEndTickFor({
+        office: politician.politician_office,
+        nextGeneralElectionTick: Number(nation?.next_election_tick) || 0,
+        officeWonAtTick: politician.politician_office_won_at_tick,
+      });
   const termEndEl = document.getElementById('cc-term-end');
   const termEndSubEl = document.getElementById('cc-term-end-sub');
   if (endTick != null) {
@@ -2633,11 +2621,10 @@ function chosenCareerLadderId(ctx) {
 
 function renderLadders(state, ctx) {
   const host = document.getElementById('ladders');
-  // 1) Tier 0 — Party Member, always visible above the branch.
-  const tier0Html = `
-    <div class="ladder ladder--tier0">
-      <div class="body">${renderRungs([PARTY_MEMBER_TIER0], state)}</div>
-    </div>`;
+  // Tier 0 (Party Member) was removed from this page entirely
+  // (design call) — membership lives on the movements page and the
+  // home affiliation card; the ladders start at the branch tiers.
+  const tier0Html = '';
   // 2) Branch pair (Party Office | Government & State) and the remaining
   //    stacked ladders below. Run-for-Election entry buttons now sit on
   //    the Member of Parliament / Community Organizer rungs themselves
@@ -2852,20 +2839,6 @@ function bindRungActions(ctx) {
     btn.addEventListener('click', () => {
       const href = btn.dataset.href;
       if (href) window.location.href = href;
-    });
-  });
-  document.querySelectorAll('.rung-btn[data-action="leave-party"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!politicianId) return;
-      if (!confirm(LEAVE_PARTY_CONFIRM)) return;
-      btn.disabled = true; btn.textContent = 'Leaving…';
-      const res = await callPartyAction('leave', politicianId, null);
-      if (!res.ok) {
-        alert('Could not leave: ' + res.reason);
-        btn.disabled = false; btn.textContent = 'Leave Political Party';
-        return;
-      }
-      location.reload();
     });
   });
   // Run for Re-Election — incumbent MP filing (20270766/20270770).
