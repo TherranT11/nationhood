@@ -166,7 +166,8 @@ BEGIN
         jsonb_build_array(jsonb_build_object('ordinal', 1, 'tag', 'operative', 'text', v_desc)),
         'queued', v_tick,
         v_support, v_oppose,
-        jsonb_build_object('pct', p_pct, 'years', p_years, 'sectors', to_jsonb(v_sectors))
+        jsonb_build_object('pct', p_pct, 'years', p_years, 'sectors', to_jsonb(v_sectors),
+                           'proposer_party_id', v_pol.politician_party_id)
     ) RETURNING id INTO v_id;
 
     UPDATE factions SET next_mp_action_tick = v_tick + 1 WHERE id = v_pol.id;
@@ -202,7 +203,7 @@ BEGIN
     END IF;
 
     FOR v_party IN
-        SELECT f.archetype, COALESCE(f.seats, 0) AS seats
+        SELECT f.id, f.archetype, COALESCE(f.seats, 0) AS seats
           FROM factions f
          WHERE f.faction_type = 'movement_party'
            AND f.nation_id    = v_prop.nation_id
@@ -215,6 +216,13 @@ BEGIN
             v_yes_seats := v_yes_seats + v_party.seats;
         ELSIF v_party.archetype = ANY (SELECT jsonb_array_elements_text(COALESCE(v_prop.oppose_archetypes, '[]'::jsonb))) THEN
             v_no_seats := v_no_seats + v_party.seats;
+        ELSIF v_prop.holiday_params IS NOT NULL
+              AND (v_prop.holiday_params->>'proposer_party_id') IS NOT NULL
+              AND v_party.id = (v_prop.holiday_params->>'proposer_party_id')::uuid THEN
+            -- Tax Holiday Act (design ruling): a NEUTRAL party backs
+            -- its own member's bill. An OPPOSING-archetype party does
+            -- not — filing against your caucus is on you.
+            v_yes_seats := v_yes_seats + v_party.seats;
         END IF;
     END LOOP;
 

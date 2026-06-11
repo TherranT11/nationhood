@@ -7075,6 +7075,7 @@ function ensureTaxHolidayModal() {
         <div class="th-pill" data-v="100">100%</div>
       </div>
       <div class="th-math" id="th-math"></div>
+      <div class="th-math" id="th-party" style="color:#9a958a;"></div>
       <div class="th-foot">
         <button type="button" class="th-close" id="th-close">CANCEL</button>
         <button type="button" class="th-go" id="th-go">FILE WITH THE COMMITTEE</button>
@@ -7089,6 +7090,36 @@ function ensureTaxHolidayModal() {
 function openTaxHolidayModal(ctx) {
   ensureTaxHolidayModal();
   const state = { years: 1, sectors: 'all', pct: 50 };
+  // Your party's declared stance — mirror of propose_tax_holiday's
+  // baked lists; a neutral party backs its own member's bill.
+  let partyArchetype = null;
+  const partyLine = () => {
+    const el = document.getElementById('th-party');
+    const pname = ctx.party?.faction_name;
+    if (!pname) { el.textContent = ''; return; }
+    const targeted = state.sectors !== 'all';
+    const SUPPORT = ['Libertarian', 'Traditional Conservative', 'Liberal']
+      .concat(targeted ? ['Nationalist'] : []);
+    const OPPOSE = ['Communist / Leftist', 'Social Democratic', 'Green'];
+    if (!partyArchetype) {
+      el.textContent = `YOUR PARTY: ${pname} — it's your bill; they back it.`;
+    } else if (SUPPORT.includes(partyArchetype)) {
+      el.textContent = `YOUR PARTY: ${pname} (${partyArchetype}) — banks YES. Doctrine and loyalty align.`;
+    } else if (OPPOSE.includes(partyArchetype)) {
+      el.textContent = `YOUR PARTY: ${pname} (${partyArchetype}) — votes NO. You'd be filing against your own caucus.`;
+    } else {
+      el.textContent = `YOUR PARTY: ${pname} (${partyArchetype}) — neutral, but it's your bill: they back it.`;
+    }
+  };
+  if (ctx.party?.id) {
+    _supabase.from('factions').select('archetype').eq('id', ctx.party.id).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { console.warn('[politician-home] party archetype fetch failed:', error.message); return; }
+        partyArchetype = data?.archetype || null;
+        partyLine();
+      })
+      .catch(e => console.warn('[politician-home] party archetype fetch threw:', e?.message || e));
+  }
   const wirePills = (id, key, parse) => {
     const hostEl = document.getElementById(id);
     hostEl.querySelectorAll('.th-pill').forEach(pill => {
@@ -7098,7 +7129,8 @@ function openTaxHolidayModal(ctx) {
         state[key] = parse ? parse(pill.dataset.v) : pill.dataset.v;
         hostEl.querySelectorAll('.th-pill').forEach(x =>
           x.classList.toggle('sel', x === pill));
-        refresh();
+        baseRefresh();
+        partyLine();
       };
     });
   };
@@ -7106,10 +7138,12 @@ function openTaxHolidayModal(ctx) {
   const refresh = () => {
     math.textContent = `${state.pct}% off ${state.sectors === 'all' ? 'every corporation\u2019s' : state.sectors + ' corporations\u2019'} tax filings for ${state.years} year${state.years === 1 ? '' : 's'}, starting the year it passes. ${state.sectors === 'all' ? 'The Nationalist bloc rolls the dice.' : 'Targeted relief \u2014 the Nationalist bloc banks YES.'}`;
   };
+  const baseRefresh = refresh;
+  const refreshAll = () => { baseRefresh(); partyLine(); };
   wirePills('th-years', 'years', v => Number(v));
   wirePills('th-sectors', 'sectors');
   wirePills('th-pct', 'pct', v => Number(v));
-  refresh();
+  refreshAll();
   const go = document.getElementById('th-go');
   const fresh = go.cloneNode(true);
   go.replaceWith(fresh);
