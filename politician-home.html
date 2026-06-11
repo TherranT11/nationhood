@@ -505,6 +505,16 @@
   font-variant-numeric:tabular-nums; text-align:right; }
 @media (max-width: 640px) {
   .mayor-stats { grid-template-columns:1fr; }
+  /* Mobile affiliation header: the tenure pill + resign button are
+     flex-shrink:0, which starved .ah-info into a one-word-per-line
+     column on phones. Let the row wrap — badge + info hold the first
+     line, tenure/resign drop below it at full width. */
+  .ah-row { flex-wrap:wrap; row-gap:10px; }
+  .ah-info { flex:1 1 220px; }
+  .ah-tenure { text-align:left; }
+  /* Action tiles single-file on phones — three-across collapses each
+     tile to an unreadable sliver. */
+  .ar-buttons, .ar-buttons.cols-2 { grid-template-columns:1fr; }
 }
 
 .act-row { padding:14px 20px; }
