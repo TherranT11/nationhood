@@ -33,7 +33,7 @@ COMMENT ON COLUMN public.entrepreneur_corps.bonus_assembly_lines IS
 ALTER TABLE public.construction_project_requests
     ADD COLUMN IF NOT EXISTS corp_escrow bigint;
 COMMENT ON COLUMN public.construction_project_requests.corp_escrow IS
-    'Plant-expansion escrow (20270864): the jobs-priced cost the requester corp paid at pitch acceptance. Pays the winning bid; the surplus refunds at award.';
+    'Plant-expansion escrow (20270864): the jobs-priced cost the requester corp paid at pitch acceptance. Pays the winning bid; the surplus refunds at award. KNOWN ISSUE: a request that never draws a bid holds its escrow indefinitely — no expiry/refund valve yet (flagged follow-up).';
 
 CREATE TABLE IF NOT EXISTS public.plant_expansion_proposals (
     id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
