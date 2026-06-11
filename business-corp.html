@@ -169,10 +169,11 @@
     margin-top:6px; min-height:12px; }
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
-  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay { position:fixed; inset:0;
-    background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center;
-    padding:20px; z-index:1000; }
-  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open { display:flex; }
+  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay { position:fixed;
+    inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
+    justify-content:center; padding:20px; z-index:1000; }
+  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
+  #lo-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -384,6 +385,23 @@
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="pr-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<div id="lo-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Logistical <em>Overhaul</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Process project completion history and capital to
+        permanently upgrade your global Assets, raising the baseline efficiency and stat
+        ceilings of your firm.</div>
+      <div class="jm-lab">SELECT AN ASSET</div>
+      <div id="lo-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="lo-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="lo-confirm" disabled title="Pick an upgradeable asset">CONFIRM</button>
     </div>
   </div>
 </div>
@@ -1200,10 +1218,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">PROCUREMENT RUN</div>
               <div class="soon">Buy materials &amp; equipment</div>
             </div>
-            <div class="ea-card" title="Coming soon">
-              <div class="ic">—</div>
-              <div class="nm">ACTION</div>
-              <div class="soon">(Coming Soon)</div>
+            <div class="ea-card live" id="ea-logistical-overhaul">
+              <div class="ic">🏭</div>
+              <div class="nm">LOGISTICAL OVERHAUL</div>
+              <div class="soon">Permanently upgrade an asset</div>
             </div>
           </div>
         </div>`;
@@ -1618,6 +1636,72 @@ import { CITY_STATS } from './js/game/city-labels.js';
       }
       document.getElementById('ea-procurement-run').addEventListener('click', openProcurementModal);
       wireModalClose('pr-overlay', 'pr-cancel');
+
+      // ── Logistical Overhaul (Executive Action #5 / 20270818) ────
+      // Five assets; only the yard (HEAVY EQUIPMENT) has chartered
+      // higher tiers today. Prices come from YARD_TIERS' upgradeCost
+      // mirror of yard_upgrade_cost — the server recharges from its
+      // own ladder, so a stale display can't change the price.
+      let loAsset = null;
+      function openOverhaulModal() {
+        loAsset = null;
+        document.getElementById('lo-confirm').disabled = true;
+        const tier = Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1);
+        const next = YARD_TIERS[tier + 1] || null;
+        const ASSETS = [
+          ['project_management',   'PROJECT MANAGEMENT',   'The Truck & Clipboard', null],
+          ['heavy_equipment',      'HEAVY EQUIPMENT',      YARD_TIERS[tier].tier, next],
+          ['supply_material',      'SUPPLY & MATERIAL',    'Retail Hardware Store', null],
+          ['system_design',        'SYSTEM DESIGN',        'CAD System & Laptop', null],
+          ['regulatory_compliance','REGULATORY COMPLIANCE','City Permits', null],
+        ];
+        const host = document.getElementById('lo-rows');
+        host.innerHTML = ASSETS.map(([key, label, cur, nxt]) => `
+          <div class="jm-rung${nxt ? '' : ' locked'}" data-asset="${esc(key)}"
+            ${nxt ? '' : 'title="No higher tiers chartered yet"'}>
+            <div class="top">
+              <div class="nm">${esc(label)}</div>
+              ${nxt ? `<div class="staff">${esc(hfFmtBig(nxt.upgradeCost))}</div>` : ''}
+            </div>
+            <div class="ds">${esc(cur)}${nxt ? ` → ${esc(nxt.tier)}` : ' — no higher tiers yet'}</div>
+            ${nxt ? `<div class="resp"><span class="k">UNLOCKS:</span> ${esc(nxt.effect)}</div>` : ''}
+          </div>`).join('');
+        host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
+          row.addEventListener('click', () => {
+            loAsset = row.dataset.asset;
+            host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
+            document.getElementById('lo-confirm').disabled = false;
+          });
+        });
+        document.getElementById('lo-overlay').classList.add('open');
+      }
+      document.getElementById('ea-logistical-overhaul').addEventListener('click', openOverhaulModal);
+      wireModalClose('lo-overlay', 'lo-cancel');
+      document.getElementById('lo-confirm').addEventListener('click', async () => {
+        const btn = document.getElementById('lo-confirm');
+        if (!loAsset || btn.disabled) return;
+        btn.disabled = true;
+        try {
+          const { data, error: loErr } = await _supabase.rpc('logistical_overhaul',
+            { p_corp_id: corp.id, p_asset: loAsset });
+          if (loErr) throw loErr;
+          if (!data?.success) {
+            const REASON = {
+              no_actions_remaining: 'No executive actions remaining this tick.',
+              no_higher_tiers: 'That asset has no higher tiers chartered yet.',
+              max_tier: 'That asset is already at its maximum level.',
+              insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+              not_owner: 'Only the owner can overhaul assets.',
+              arrested: 'You are under arrest — your assets are frozen.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          window.location.reload();
+        } catch (e) {
+          alert('Could not upgrade: ' + (e?.message || e));
+          btn.disabled = false;
+        }
+      });
 
       // ── Advance Build (20270813) ────────────────────────────────
       // No inputs — one confirm with the live cost ($10k × active
