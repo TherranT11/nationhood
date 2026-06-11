@@ -138,7 +138,7 @@ body {
     <div id="opt-businessman" onclick="selectFactionOption('businessman')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Businessman</span>
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA CODE</span>
+        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Join a corporation, work your way up, or start from scratch and make history.</div>
     </div>
@@ -220,10 +220,6 @@ function capCard(id, label) {
 
 let selectedFaction = null;
 
-// Businessman is alpha-gated — a client-side prompt, like the
-// retired politician slot-4 gate was.
-const BUSINESSMAN_ALPHA_CODE = 'Vanderbilt1';
-
 function selectFactionOption(type) {
   selectedFaction = type;
   const optParty = document.getElementById('opt-party');
@@ -283,13 +279,9 @@ function confirmFactionChoice() {
     return;
   }
   if (selectedFaction === 'businessman') {
-    // Alpha gate, then the origin-nation picker → gender + generated
-    // name → create_businessman (20270783) → businessman-home.html.
-    const code = window.prompt('Alpha tester code required to join as a Businessman:');
-    if (code !== BUSINESSMAN_ALPHA_CODE) {
-      if (code != null) window.alert('Invalid alpha code.');
-      return;
-    }
+    // The origin-nation picker → gender + generated name →
+    // create_businessman (20270783) → businessman-home.html. (The
+    // alpha-code gate is retired — businessmen join freely.)
     sessionStorage.setItem('pending_faction_type', 'businessman');
     window.location.href = 'select-nation.html';
     return;
