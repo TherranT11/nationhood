@@ -126,6 +126,12 @@
     color:#555; font-weight:700; }
   .bp-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
   .bp-grid .c.nm { color:#fff; font-weight:600; }
+  .ch-row { display:flex; gap:14px; align-items:baseline; padding:8px 2px;
+    border-bottom:0.5px solid rgba(255,255,255,0.05); }
+  .ch-row:last-child { border-bottom:none; }
+  .ch-date { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; width:92px;
+    flex-shrink:0; }
+  .ch-label { font-size:11.5px; color:#ccc; min-width:0; overflow-wrap:break-word; }
   .ap-btns { display:flex; gap:5px; justify-content:flex-end; }
   .ap-btn { padding:4px 8px; border-radius:3px; font-family:var(--font-mono); font-size:8px;
     letter-spacing:0.08em; font-weight:700; cursor:pointer; background:transparent; }
@@ -298,6 +304,9 @@
       <div class="rl-section" id="bc-roles"></div>
       <div class="rl-section" id="bc-employees"></div>
       <div class="rl-section" id="bc-blueprints"></div>
+      <div class="rl-section" id="bc-projects"></div>
+      <div class="rl-section" id="bc-loans"></div>
+      <div class="rl-section" id="bc-history"></div>
     </div>
     <div class="bc-side">
       <div class="bc-box">
@@ -485,7 +494,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -1075,6 +1084,110 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('fin-rows').innerHTML = `
           <div class="bc-row"><div class="k">FINANCES</div>
             <div class="v"><span class="dim">Could not load — refresh.</span></div></div>`;
+      }
+    })();
+
+    // ── Active Projects / Corporate Loans / Corporate History ─────
+    // Three read-only panels from existing one-source tables: the
+    // building projects (same rows the procurement modal supplies),
+    // central_bank_loans, and a timeline derived from founding,
+    // blueprints, projects, and tax filings — no history table, no
+    // second source.
+    (async () => {
+      try {
+        const [projRes, loanRes, bpRes, allProjRes, taxRes] = await Promise.all([
+          _supabase.from('corp_construction_projects')
+            .select('id, kind, city, price, started_tick, completes_at_tick, materials_supplied, equipment_supplied, blueprint:corp_blueprints!blueprint_id(name, materials_needed)')
+            .eq('corp_id', corp.id).eq('status', 'building').order('started_tick'),
+          _supabase.from('central_bank_loans')
+            .select('outstanding, principal, interest_rate, term_ticks, started_tick, status, nation:nations!nation_id(name)')
+            .eq('borrower_corp_id', corp.id).order('created_at', { ascending: false }),
+          _supabase.from('corp_blueprints')
+            .select('name, created_at_tick').eq('corp_id', corp.id),
+          _supabase.from('corp_construction_projects')
+            .select('kind, city, status, started_tick, completes_at_tick, blueprint:corp_blueprints!blueprint_id(name)')
+            .eq('corp_id', corp.id),
+          _supabase.from('corp_tax_filings')
+            .select('year, amount_paid, status, filed_at_tick').eq('corp_id', corp.id),
+        ]);
+        const firstErr = [projRes, loanRes, bpRes, allProjRes, taxRes].find(r => r.error)?.error;
+        if (firstErr) throw firstErr;
+
+        // Active Projects
+        const projs = projRes.data || [];
+        document.getElementById('bc-projects').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">ACTIVE PROJECTS</span><span class="rule"></span></div>
+            ${!projs.length ? '<div class="rl-empty">No active job sites.</div>' : `
+            <div class="bp-grid" style="grid-template-columns:1.3fr 1fr 1fr 1.1fr;">
+              <div class="h">PROJECT</div><div class="h">CONTRACT</div><div class="h">SUPPLIES</div><div class="h">COMPLETION</div>
+              ${projs.map(p => {
+                const need = Number(p.blueprint?.materials_needed) || 0;
+                const got = Number(p.materials_supplied) || 0;
+                const hasEq = Number(p.equipment_supplied) >= 1;
+                const remaining = Math.max(0, p.completes_at_tick - currentTick);
+                const parked = remaining === 0 && (got < need || !hasEq);
+                return `
+                  <div class="c nm">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</div>
+                  <div class="c">${p.kind === 'self' ? 'Self-build' : `City contract · ${esc(hfFmtBig(Number(p.price) || 0))}`}</div>
+                  <div class="c">Materials ${got}/${need} · Equipment ${hasEq ? '✓' : '—'}</div>
+                  <div class="c">${parked ? 'Awaiting supplies' : `${esc(tickToDate(p.completes_at_tick))} (${remaining} tick${remaining === 1 ? '' : 's'})`}</div>`;
+              }).join('')}
+            </div>`}
+          </div>`;
+
+        // Corporate Loans
+        const loans = loanRes.data || [];
+        document.getElementById('bc-loans').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">CORPORATE LOANS</span><span class="rule"></span></div>
+            ${!loans.length ? '<div class="rl-empty">No loans on the books.</div>' : `
+            <div class="bp-grid" style="grid-template-columns:1.3fr 0.9fr 0.6fr 1fr 0.7fr;">
+              <div class="h">LENDER</div><div class="h">OUTSTANDING</div><div class="h">RATE</div><div class="h">TERM ENDS</div><div class="h">STATUS</div>
+              ${loans.map(l => `
+                <div class="c nm">Central Bank of ${esc(l.nation?.name || '—')}</div>
+                <div class="c">${esc(hfFmtBig(Number(l.outstanding) || 0))} <span style="color:#666">of ${esc(hfFmtBig(Number(l.principal) || 0))}</span></div>
+                <div class="c">${esc(String(l.interest_rate))}%</div>
+                <div class="c">${esc(tickToDate((Number(l.started_tick) || 0) + (Number(l.term_ticks) || 0)))}</div>
+                <div class="c">${esc(l.status)}</div>`).join('')}
+            </div>`}
+          </div>`;
+
+        // Corporate History — newest first, capped at 40 lines.
+        const events = [];
+        if (corp.founded_tick != null) {
+          events.push({ tick: Number(corp.founded_tick), label: `${corp.name} founded in ${corp.hq_city || '—'}.` });
+        }
+        for (const bp of (bpRes.data || [])) {
+          events.push({ tick: bp.created_at_tick, label: `Drafted blueprint “${bp.name || 'Unnamed'}”.` });
+        }
+        for (const p of (allProjRes.data || [])) {
+          const what = `${p.blueprint?.name || 'a project'} in ${p.city}`;
+          events.push({ tick: p.started_tick,
+            label: `${p.kind === 'self' ? 'Broke ground on' : 'Won the city contract for'} ${what}.` });
+          if (p.status === 'completed') {
+            events.push({ tick: p.completes_at_tick, label: `Completed ${what}.` });
+          }
+        }
+        for (const t of (taxRes.data || [])) {
+          events.push({ tick: t.filed_at_tick,
+            label: `Filed FY ${t.year} corporate taxes — paid ${hfFmtBig(Number(t.amount_paid) || 0)}${t.status === 'caught' ? ' (evasion caught)' : ''}.` });
+        }
+        events.sort((a, b) => (b.tick || 0) - (a.tick || 0));
+        document.getElementById('bc-history').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">CORPORATE HISTORY</span><span class="rule"></span></div>
+            ${!events.length ? '<div class="rl-empty">Nothing on the record yet.</div>'
+              : events.slice(0, 40).map(ev => `
+                <div class="ch-row">
+                  <span class="ch-date">${esc(tickToDate(ev.tick || 0))}</span>
+                  <span class="ch-label">${esc(ev.label)}</span>
+                </div>`).join('')}
+          </div>`;
+      } catch (e) {
+        console.warn('[business-corp] south panels load failed:', e?.message || e);
+        ['bc-projects', 'bc-loans', 'bc-history'].forEach(id =>
+          document.getElementById(id).innerHTML = '');
       }
     })();
 
