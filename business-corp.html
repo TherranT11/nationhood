@@ -310,9 +310,9 @@
       <div class="bc-sub" id="bc-tagline">—</div>
       <div id="bc-ops"></div>
       <div class="pl-section" id="bc-pillars"></div>
-      <div class="dp-section" id="bc-departments"></div>
       <div class="rl-section" id="bc-roles"></div>
       <div class="rl-section" id="bc-employees"></div>
+      <div class="dp-section" id="bc-departments"></div>
       <div class="rl-section" id="bc-blueprints"></div>
       <div class="rl-section" id="bc-projects"></div>
       <div class="rl-section" id="bc-loans"></div>
@@ -667,6 +667,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     const isOwner = corp.owner_faction_id === ctx.faction.id;
     const currentTick = Number(ctx.shard?.current_tick) || 0;
+    // Assembly lines at the corp's plant level — the one client
+    // read of the assembly_lines mirror (panel + production modal).
+    const corpAssemblyLines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
 
     // One close idiom for the page's modals (Post Job Opening,
     // Draft Blueprint, Pay Taxes, Submit Public Bid): CANCEL button
@@ -1430,7 +1433,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           // Automotive: running Production Runs are the active work.
           corp.industry === 'automotive'
             ? _supabase.from('vehicle_production_runs')
-                .select('quantity, produced, total_cost, completes_at_tick, blueprint:vehicle_blueprints!blueprint_id(name)')
+                .select('quantity, produced, completes_at_tick, blueprint:vehicle_blueprints!blueprint_id(name)')
                 .eq('corp_id', corp.id).eq('status', 'running').order('created_at')
             : Promise.resolve({ data: [] }),
         ]);
@@ -1443,11 +1446,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // at the plant's level, running runs assigned in order.
         const projs = projRes.data || [];
         const runs = runRes.data || [];
-        const lineCount = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
         const projRows = corp.industry === 'automotive'
           ? `<div class="bp-grid" style="grid-template-columns:1fr 0.9fr 1.3fr 1.1fr;">
               <div class="h">NAME</div><div class="h">STATUS</div><div class="h">MODEL PRODUCING</div><div class="h">PRODUCTION PER MONTH</div>
-              ${Array.from({ length: lineCount }, (_, i) => {
+              ${Array.from({ length: corpAssemblyLines }, (_, i) => {
                 const run = runs[i];
                 return `
                   <div class="c nm">Line ${i + 1}</div>
@@ -2600,7 +2602,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             document.getElementById('vp-buy-note').textContent = vpAlPrice
               ? `${hfFmtBig(vpAlPrice)} per unit from ${corp.nation?.name || 'home'} · ${Number(alMkt.amount_available).toLocaleString()} available${(Number(corp.parts_depot_tier) || 1) < 3 ? ' · Depot Level III unlocks foreign sourcing' : ''}`
               : 'Aluminum price unavailable — try again shortly.';
-            const lines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
+            const lines = corpAssemblyLines;
             const busy = (runs || []).length;
             vpLineFree = busy < lines;
             linesHost.innerHTML = Array.from({ length: lines }, (_, i) => `
