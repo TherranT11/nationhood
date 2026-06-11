@@ -396,6 +396,29 @@ export const DATA_TIERS = [
     effect: 'Select another Nation · Demand for any 4 selected types · shows which Quality sells the best.' },
 ];
 
+// The SUPPLY CHAIN & PART DEPOT ladder — automotive's fourth asset,
+// determining procurement costs. Display copy until Aluminum lands
+// as a market raw material with its procurement flow (the storage
+// caps 10/50/75/120/250 and the Level III foreign-buying gate get
+// enforced server-side then, like the construction depot's).
+export const PARTS_TIERS = [
+  { tier: 'Level I: Regional B2B Depot',
+    desc: 'A large on-site storage warehouse. Your starting status gives you the leverage to sign direct, bulk purchasing contracts with Tier-1 component suppliers, protecting your early production runs from retail markup.',
+    effect: 'Store up to 10 Aluminum.' },
+  { tier: 'Level II: Just-In-Time Logistics Center',
+    desc: 'Implements an active supply tracking network that links directly to component vendors, reducing your inventory storage overhead by matching part arrivals to your assembly schedule.',
+    effect: 'Store up to 50 Aluminum.' },
+  { tier: 'Level III: Vertical Consolidation Hub',
+    desc: 'Direct ownership of sub-assembly stamping and electronics component plants, insulating your company from global parts shortages.',
+    effect: 'Store up to 75 Aluminum · buy from other nations.' },
+  { tier: 'Level IV: Strategic Material Terminal',
+    desc: 'Direct ownership of raw foundry logistics, battery chemical contracts, and metal processing facilities, locking in permanently lower material costs.',
+    effect: 'Store up to 120 Aluminum.' },
+  { tier: 'Level V: Global Resource Network',
+    desc: 'Strategic international mining stakes, dedicated shipping fleets, and exclusive raw-material trade pipelines that guarantee your manufacturing costs are fundamentally unbeatable.',
+    effect: 'Store up to 250 Aluminum.' },
+];
+
 // The ASSEMBLY PLANT ladder — automotive's second asset. Display copy
 // only for now (every automotive corp starts at Level I); tier state
 // moves to a column when its upgrade mechanics land. Industrial
@@ -496,6 +519,7 @@ export const DEPARTMENTS = {
     { dept: 'DESIGN & ENGINEERING', ...STUDIO_TIERS[0] },
     { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] },
     { dept: 'QUALITY & DATA CENTER', ...DATA_TIERS[0] },
-    null, null,
+    { dept: 'SUPPLY CHAIN & PART DEPOT', ...PARTS_TIERS[0] },
+    null,
   ],
 };
