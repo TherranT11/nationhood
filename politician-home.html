@@ -1367,7 +1367,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
@@ -2388,6 +2388,15 @@ const AGENCY_HEAD_ACTIONS = [
   { ic: '📊', name: 'MINISTRY REPORT',   cost: 'no cost', desc: 'Compile your agency’s recent work into a brief for the Minister.' },
   { ic: '✦', name: 'AGENCY INITIATIVE', cost: 'no cost', desc: 'Propose a new programme for your agency to undertake.' },
 ];
+// Permanent Undersecretary (Tier 3, 20270679) placeholder actions.
+// Same pattern as AGENCY_HEAD_ACTIONS — no `action` key on any slot
+// so renderAffiliation paints them greyed and inert until the
+// Tier-3 kit is approved and the RPCs land.
+const PERMANENT_SECRETARY_ACTIONS = [
+  { ic: '🏛', name: 'DIRECT THE PORTFOLIO', cost: 'no cost', desc: 'Push the lever your ministry owns — a roll-gated nudge to the nation stat your portfolio controls.' },
+  { ic: '📋', name: 'PREPARE THE BRIEF',    cost: 'no cost', desc: 'Arm — or quietly hobble — the political layer above you with the quality of their briefing papers.' },
+  { ic: '🤝', name: 'PATRONAGE',            cost: 'no cost', desc: 'A quiet word for a promising bureaucrat in your ministry. The corps remembers its patrons.' },
+];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
 // -1 Reputation, only when no active cases. APPEAL (20270543/45,
@@ -2626,6 +2635,28 @@ const AFFIL_VARIANTS = {
         : `You run an agency within the Ministry of <strong>${escHtml(ministryLbl)}</strong>. Real responsibility on policy detail; you advise upward but cannot decide alone.`;
     },
     actions: AGENCY_HEAD_ACTIONS,
+    // actionsEnabled left undefined → placeholder slots render greyed.
+  },
+  // Permanent Undersecretary (20270679) — Tier 3, top of the career
+  // civil service. politician_permanent_secretary_ministry gates
+  // entry above the Agency Head check in the fallback ladder. (The
+  // career-ladder rung calls the post Permanent Secretary; the
+  // affiliation card carries the formal title per user spec.)
+  permanent_secretary: {
+    variant: 'var-civ',
+    eyebrow: 'CIVIL SERVICE · TIER 3',
+    badge:   '⚒',
+    name:    'Permanent Undersecretary',
+    nameFn:  (ctx) => {
+      const m = ctx.faction?.politician_permanent_secretary_ministry;
+      return `Permanent Undersecretary of ${MAJOR_MINISTRY_LABEL[m] || m || '—'}`;
+    },
+    descFn:  (ctx) => {
+      const m = ctx.faction?.politician_permanent_secretary_ministry;
+      const lbl = MAJOR_MINISTRY_LABEL[m] || m || '—';
+      return `You are the permanent head of the Ministry of <strong>${escHtml(lbl)}</strong>. Ministers come and go on the political tide — the building answers to you.`;
+    },
+    actions: PERMANENT_SECRETARY_ACTIONS,
     // actionsEnabled left undefined → placeholder slots render greyed.
   },
 };
@@ -2955,13 +2986,16 @@ function renderAffiliation(ctx) {
   // affiliation it should remove the Party Member one".
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
+  // Tier 3 outranks both lower civil-service rungs (20270679).
+  const isPermSec = !!ctx.faction?.politician_permanent_secretary_ministry;
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
-    : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
+    : (isPermSec ? AFFIL_VARIANTS.permanent_secretary
+      : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
                               : (barNation ? pickJudicialVariant(ctx.faction)
                                            : ((fsNation || fisAgent) ? null
-                                                       : AFFIL_VARIANTS.party_member))));
+                                                       : AFFIL_VARIANTS.party_member)))));
   if (!variant) {
     // Foreign Service is the only affiliation — the secondary host
     // renderForeignAffiliation paints the only card. Clear the main

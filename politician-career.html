@@ -3843,7 +3843,11 @@ function renderPortfolioRollResult(data) {
   const cooldownLine = cooldown > 0
     ? `<div class="ah-result-cooldown">Reapplication closed for <strong>${cooldown} tick${cooldown === 1 ? '' : 's'}</strong>.</div>`
     : '';
-  // Roll breakdown row — every term, with the d20 highlighted.
+  // Roll breakdown row — every term, with the d20 highlighted, and
+  // the appointment bar at the end so the player can see what a
+  // winning total looks like. 22 mirrors the server's roll table
+  // (politician_seek_junior_appointment, 20270681: >=22 appointed).
+  const JM_APPOINT_AT = 22;
   const fmt = (n) => (n >= 0 ? '+' + n : String(n));
   const terms = [
     `<span class="ah-roll-term"><span class="ah-roll-num">${b.d20}</span><span class="ah-roll-lab">d20</span></span>`,
@@ -3851,13 +3855,18 @@ function renderPortfolioRollResult(data) {
     `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.reputation_mod)}</span><span class="ah-roll-lab">Rep</span></span>`,
     `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.alignment_mod)}</span><span class="ah-roll-lab">Party</span></span>`,
     `<span class="ah-roll-op">=</span><span class="ah-roll-term ah-roll-total"><span class="ah-roll-num">${b.total}</span><span class="ah-roll-lab">total</span></span>`,
+    `<span class="ah-roll-op">vs</span><span class="ah-roll-term"><span class="ah-roll-num">${JM_APPOINT_AT}</span><span class="ah-roll-lab">needed</span></span>`,
   ].join('');
+  const margin = Number(b.total) - JM_APPOINT_AT;
+  const marginLine = status === 'appointed'
+    ? `Cleared the bar by <strong>${margin}</strong>.`
+    : `<strong>${Math.abs(margin)}</strong> short of the <strong>${JM_APPOINT_AT}</strong> the cabinet wanted.`;
   body.innerHTML = `
     <div class="ah-result-card ah-result-card--${status}">
       <div class="ah-result-eyebrow">${eyebrowMap[status] || status?.toUpperCase()}</div>
       <div class="ah-result-headline">${escHtml(headlineMap[status] || 'Decision returned')}</div>
       <div class="ah-roll-line">${terms}</div>
-      <div class="ah-result-sub">${subMap[status] || ''}</div>
+      <div class="ah-result-sub">${marginLine} ${subMap[status] || ''}</div>
       ${cooldownLine}
     </div>`;
 }
