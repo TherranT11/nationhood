@@ -137,7 +137,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, tickToDate } from './js/utils.js';
-import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
+import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
 
 (async () => {
   try {
@@ -339,12 +339,15 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
       document.getElementById('biz-pressing-issues').innerHTML = piCards.join('');
     }
 
-    // Current Role — a salaried job renders the employment card
-    // (Operations actions greyed until their mechanics land); owning
-    // a corporation IS a role too, so owners get an ownership card
-    // per corp pointing at the Executive Actions desk. Only with
-    // neither does the "go apply" empty state stand.
+    // Current Role — a salaried job renders the employment card; the
+    // track derives from which JOB_TRACKS ladder holds the title.
+    // Operations gets its three greyed field actions; Leadership has
+    // none specced yet, so its card is the role brief alone. Owning a
+    // corporation IS a role too, so owners get an ownership card per
+    // corp pointing at the Executive Actions desk. Only with neither
+    // does the "go apply" empty state stand.
     if (f.biz_job_title) {
+      const isLeadership = JOB_TRACKS.leadership.some(r => r.name === f.biz_job_title);
       const ROLE_DESCS = {
         'Project Manager (PM)':
           'You run the job site — schedules, subcontractors, inspections. The owner sets direction; you make the building happen.',
@@ -353,13 +356,17 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
         'Regional Director of Operations':
           'Every project manager in the region answers to you. You set the build tempo, settle disputes, and answer for the margins.',
       };
+      const desc = isLeadership
+        ? JOB_TRACKS.leadership.find(r => r.name === f.biz_job_title).desc
+        : (ROLE_DESCS[f.biz_job_title] || 'You work the Operations track. Do the job well and the ladder is yours to climb.');
       document.getElementById('biz-current-role').innerHTML = `
         <div class="cr-card">
           <div class="cr-head">
-            <div class="cr-tier">EMPLOYMENT &middot; OPERATIONS</div>
+            <div class="cr-tier">EMPLOYMENT &middot; ${isLeadership ? 'LEADERSHIP' : 'OPERATIONS'}</div>
             <div class="cr-title">${esc(f.biz_job_title)} for ${esc(employerName || '—')}</div>
-            <div class="cr-desc">${esc(ROLE_DESCS[f.biz_job_title] || 'You work the Operations track. Do the job well and the ladder is yours to climb.')}</div>
+            <div class="cr-desc">${esc(desc)}</div>
           </div>
+          ${isLeadership ? '' : `
           <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
           <div class="cr-actions">
             <div class="cr-act" title="Coming soon">
@@ -374,7 +381,7 @@ import { CONSTRUCTION_STAGES } from './js/game/corp-blueprints.js';
               <div class="nm">SCHEDULE CREWS</div>
               <div class="ds">Line up the right crews for the next phase so no one stands around on the clock.</div>
             </div>
-          </div>
+          </div>`}
         </div>`;
     } else if (ownedCorps.length) {
       document.getElementById('biz-current-role').innerHTML = ownedCorps.map(c => `

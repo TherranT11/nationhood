@@ -149,6 +149,148 @@ export const DESIGN_TIERS = [
     effect: 'Max Experience rises to 80 · AI-augmented design, organization-wide intelligence, persistent digital twins, real-time feedback.' },
 ];
 
+// The hiring ladders behind [POST JOB OPENING] — title CASEs in
+// post_job_opening (20270830) are authoritative; this is the display
+// copy for the modal's rung cards and the home page's Current Role.
+// Leadership posts top to bottom from day one; Operations rungs 4-6
+// render dimmed until their charters are written.
+export const JOB_TRACKS = {
+  operations: [
+    { rung: 1, name: 'Project Manager (PM)', postable: true,
+      desc: 'You own the execution of a single contract from start to finish. You handle the scheduling, solve logistical bottlenecks on-site, and aggressively push the Advance Build action to deliver the project on time.',
+      resp: 'Required to have an active project.' },
+    { rung: 2, name: 'Senior Project Manager', postable: true,
+      desc: 'You manage multiple simultaneous sub-contracts. You coordinate the allocation of the firm’s shared resources, ensuring that a single rented excavator is seamlessly moved between sites without sitting idle for a single tick.',
+      resp: 'Required to have an active project, but often works quicker.' },
+    { rung: 3, name: 'Regional Director of Operations', postable: true,
+      desc: 'You oversee the entire field portfolio of the firm. You establish construction standard operating procedures, negotiate long-term agreements with specialized labor crews, and manage macro-level capacity bottlenecks.',
+      resp: 'Required to oversee multiple projects.' },
+    { rung: 4, name: 'National Director of Operations', postable: false,
+      desc: 'You run construction at the scale of a country. Regional Directors report to you while you balance the firm’s national pipeline — deciding which cities get crews, which contracts take priority, and which ministries get courted ahead of the next public tender.',
+      resp: 'Oversees every region in a nation; arbitrates crew and capacity disputes between Regional Directors.' },
+    { rung: 5, name: 'Global Director of Operations', postable: false,
+      desc: 'You command operations across borders. You arbitrage labor costs, materials prices, and regulatory friction between nations — and you decide where the firm plants its next depot, office, and flag.',
+      resp: 'Oversees all national operations; required to open and run job sites abroad.' },
+    { rung: 6, name: 'Chief Operating Officer (COO)', postable: false,
+      desc: 'The ultimate operational authority. You sit next to the founder and dictate corporate execution velocity. You decide how to split the firm’s construction capacity across player B2B contracts and high-yield infrastructure builds.',
+      resp: 'Sets the firm’s entire build strategy; answers only to the owner for every site, crew, and contract on Earth.' },
+  ],
+  leadership: [
+    { rung: 1, name: 'Estimator / Business Development Associate', postable: true,
+      desc: 'You’re the entry point to running the business. You assemble bid packages for new contracts — pricing the work, identifying risks, writing the proposal narrative. You also accompany senior staff to client meetings, networking events, and trade shows, learning who the firm needs to know to win work.',
+      resp: 'Required to actively pursue new contracts; supports senior leadership at client-facing events.' },
+    { rung: 2, name: 'Business Development Manager', postable: true,
+      desc: 'You own client relationships. You identify prospective work, qualify opportunities, manage the pursuit process, and bring deals to the firm. Project Managers execute the work you brought in; you’re already chasing the next contract. You know which property developers are planning expansions, which government agencies have unannounced procurement budgets, and which competitors are weakening.',
+      resp: 'Owns the contract pipeline; deals with at least one active prospective client engagement.' },
+    { rung: 3, name: 'Regional General Manager', postable: true,
+      desc: 'You run a regional office as your own small business. You hire and fire local staff, set regional pricing strategy, manage local client relationships, and handle the political relationships that determine which contracts your firm wins. You report to corporate but you’re the firm’s face in your region.',
+      resp: 'Operates a regional office; profit-and-loss accountability for the region.' },
+    { rung: 4, name: 'Vice President of Strategy', postable: true,
+      desc: 'You shape the firm’s strategic direction. You identify new markets to enter, evaluate competitor acquisitions, develop new service offerings, and steer the firm’s capital deployment between competing growth opportunities. You’re in the room when the founders decide which projects to chase and which to walk away from.',
+      resp: 'Sets multi-year strategic plans; required to approve major market entries and significant capital commitments.' },
+    { rung: 5, name: 'President / Chief Operating Officer', postable: true,
+      desc: 'You’re the second-in-command of the corporation. The CEO sets vision; you execute it across every function — coordinating Operations, Finance, Engineering, and Commercial. Your daily work is running the company — managing the executive team, handling the largest client relationships, representing the firm in major industry forums. You’re the heir apparent.',
+      resp: 'Coordinates all corporate functions under the CEO; manages the executive committee.' },
+    { rung: 6, name: 'Chief Executive Officer (CEO)', postable: true,
+      desc: 'The ultimate corporate authority. You set the firm’s vision and answer for every decision — strategic, financial, operational, ethical. You appoint the COO, CFO, and senior executives. You sit at the head of the board. When the firm wins, your name is in the press. When the firm fails, your career is on the line. You hold the chair until you retire, step down, or are removed by the board.',
+      resp: 'Sets corporate vision and strategic direction; ultimate accountability for every major decision.' },
+  ],
+};
+
+// The AUTOMOTIVE design catalog behind Draft Blueprint —
+// vehicle_blueprint_xp_cost (20270831) is the authoritative pricing;
+// these mirror it (base/mult/mod) and carry the pick copy.
+export const VEHICLE_TYPES = [
+  { value: 'coupe', label: 'Coupe', base: 3,
+    desc: 'Two-door, sporty, smaller market. High style; low practicality.' },
+  { value: 'sedan', label: 'Sedan', base: 3,
+    desc: 'Four-door, family/business, large market. Practical workhorse.' },
+  { value: 'pickup', label: 'Pickup', base: 4,
+    desc: 'Truck, utility/work, large in some markets. Tough, expensive, profitable.' },
+  { value: 'motorcycle', label: 'Motorcycle', base: 2,
+    desc: 'Two-wheel, commuter or sport. Cheap to build, low margin per unit but high volume potential.' },
+  { value: 'sports_car', label: 'Sports Car', base: 5,
+    desc: 'Two-door performance, premium market. Low volume, high margin.' },
+];
+
+export const VEHICLE_CLASSES = [
+  { value: 'economy', label: 'Economy', mult: 1.0,
+    desc: 'Sub-$20k equivalent, mass market, basic specs.' },
+  { value: 'mid_range', label: 'Mid-Range', mult: 1.0,
+    desc: 'Standard family/commuter cars.' },
+  { value: 'premium', label: 'Premium', mult: 1.3,
+    desc: 'Honda Accord / Toyota Camry tier.' },
+  { value: 'luxury', label: 'Luxury', mult: 1.5,
+    desc: 'BMW / Mercedes / Lexus tier.' },
+  { value: 'ultra_luxury', label: 'Ultra-Luxury', mult: 2.0,
+    desc: 'Bentley / Rolls-Royce / Maserati tier.' },
+];
+
+export const VEHICLE_ENGINES = [
+  { value: 'basic_3cyl', label: 'Basic 3-Cylinder', mod: 0,
+    desc: 'Small economy cars, cheap, efficient.' },
+  { value: 'basic_4cyl', label: 'Basic 4-Cylinder', mod: 0,
+    desc: 'Standard sedans, balanced.' },
+  { value: 'tuned_4cyl', label: 'Tuned 4-Cylinder', mod: 1,
+    desc: 'Sporty performance, turbocharged.' },
+  { value: 'v6', label: 'V6', mod: 1,
+    desc: 'Mid-range power, family SUVs and pickups.' },
+  { value: 'v8', label: 'V8', mod: 2,
+    desc: 'High power, sports cars and full-size pickups.' },
+  { value: 'v12', label: 'V12', mod: 3,
+    desc: 'Luxury and supercars only, expensive to build.' },
+  { value: 'electric_basic', label: 'Electric Motor (Basic)', mod: 1,
+    desc: 'Entry-level EV.' },
+  { value: 'electric_performance', label: 'Electric Motor (Performance)', mod: 2,
+    desc: 'High-end EV / luxury EV.' },
+  { value: 'hybrid', label: 'Hybrid Powertrain', mod: 1,
+    desc: 'Gas + electric, premium fuel efficiency.' },
+];
+
+// +0.5 XP each. off_road fits pickups only; self_driving fits
+// Premium+ classes only (both enforced server-side too).
+export const VEHICLE_PACKAGES = [
+  { value: 'leather_interior', label: 'Leather Interior Package',
+    desc: 'Premium seats, soft-touch surfaces, ambient lighting.' },
+  { value: 'premium_audio', label: 'Premium Audio Package',
+    desc: 'Branded sound system, enhanced acoustics.' },
+  { value: 'technology', label: 'Technology Package',
+    desc: 'Touchscreen, navigation, smartphone integration.' },
+  { value: 'driver_assist', label: 'Driver Assist Package',
+    desc: 'Lane-keeping, adaptive cruise, blind-spot monitoring.' },
+  { value: 'sport_performance', label: 'Sport Performance Package',
+    desc: 'Sport suspension, performance brakes, sport tuning.' },
+  { value: 'safety', label: 'Safety Package',
+    desc: 'Enhanced airbags, collision avoidance, crash structure.' },
+  { value: 'appearance', label: 'Appearance Package',
+    desc: 'Premium wheels, body kit, custom trim.' },
+  { value: 'cold_weather', label: 'Cold Weather Package',
+    desc: 'Heated seats, heated steering wheel, remote start.' },
+  { value: 'off_road', label: 'Off-Road Package', pickupOnly: true,
+    desc: 'Skid plates, locking differential, raised suspension (Pickup only).' },
+  { value: 'self_driving', label: 'Self-Driving Package', premiumOnly: true,
+    desc: 'Advanced autonomous capability (Premium+ tier only).' },
+];
+
+export const VEHICLE_QUALITY = [
+  { value: 'low', label: 'Low', mod: -1,
+    desc: 'Cheap materials, shorter lifespan, frequent issues.' },
+  { value: 'moderate', label: 'Moderate', mod: 0,
+    desc: 'Typical mass-market quality.' },
+  { value: 'standard', label: 'Standard', mod: 1,
+    desc: 'Solid, reliable build.' },
+  { value: 'exceptional', label: 'Exceptional', mod: 2,
+    desc: 'Premium materials, exceptional longevity, low warranty costs.' },
+];
+
+export function vehicleBlueprintXpCost(type, klass, engine, packageCount, quality) {
+  const base = VEHICLE_TYPES.find(t => t.value === type)?.base ?? 3;
+  const mult = VEHICLE_CLASSES.find(c => c.value === klass)?.mult ?? 1.0;
+  const eMod = VEHICLE_ENGINES.find(e => e.value === engine)?.mod ?? 0;
+  const qMod = VEHICLE_QUALITY.find(q => q.value === quality)?.mod ?? 0;
+  return Math.max(1, Math.ceil(base * mult + eMod + 0.5 * (packageCount || 0) + qMod));
+}
+
 // Display mirror of the per-type material requirements stamped onto
 // blueprints by draft_blueprint (20270814) — the server CASE is
 // authoritative; this feeds the modal's live MATERIALS NEEDED line.
