@@ -3533,7 +3533,7 @@ async function renderConsulAffiliation(ctx, host) {
               <span class="act-name">BACKCHANNEL</span>
               <span class="act-cost">no trace</span>
             </div>
-            <div class="act-desc">A one-time message to any player in the host or home nation. No audit. No copies. It burns when they read it.</div>
+            <div class="act-desc">A one-time message to any player in the host or home nation. It lands in their Pressing Issues — all they can do is close it. No audit, no trace.</div>
             ${bcCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
           </div>
         </div>
@@ -3629,8 +3629,8 @@ function ensureBackchannelModal() {
   host.innerHTML = `
     <div class="bk-modal">
       <div class="bk-title">BACKCHANNEL</div>
-      <div class="bk-sub">One message, one read, then it burns. They will know it came from you;
-        nobody else ever will.</div>
+      <div class="bk-sub">One message. It lands in their Pressing Issues and all they can do
+        is close it &mdash; no reply channel, no record once it&rsquo;s gone.</div>
       <select id="bk-target"><option value="">Loading\u2026</option></select>
       <textarea id="bk-text" maxlength="240" rows="4"
         placeholder="Say it once \u2014 up to 240 characters."></textarea>
@@ -3704,7 +3704,7 @@ async function openBackchannelModal(ctx, hostNationId) {
         throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
       }
       document.getElementById('bk-overlay').classList.remove('open');
-      alert('Sent. It burns when they read it.');
+      alert('Sent. It sits on their desk until they close it.');
       location.reload();
     } catch (err) {
       alert('Could not send: ' + (err?.message || err));
@@ -4678,10 +4678,10 @@ function renderBackchannelCard(m) {
       <div class="offer-info">
         <div class="oi-eyebrow">BACKCHANNEL &middot; OFF THE RECORD</div>
         <div class="oi-headline" style="overflow-wrap:break-word;">&ldquo;${escHtml(m.body)}&rdquo;</div>
-        <div class="oi-meta"><span>&mdash; ${escHtml(m.sender_name)} &middot; ${escHtml(tickToDate(Number(m.created_at_tick)))} &middot; no copies exist</span></div>
+        <div class="oi-meta"><span>&mdash; ${escHtml(m.sender_name)} &middot; ${escHtml(tickToDate(Number(m.created_at_tick)))} &middot; one-time message, no reply channel</span></div>
       </div>
       <div class="offer-right">
-        <button type="button" class="offer-accept-btn" data-burn="${escAttr(m.id)}">BURN AFTER READING</button>
+        <button type="button" class="offer-accept-btn" data-burn="${escAttr(m.id)}">CLOSE</button>
       </div>
     </div>`;
 }
@@ -4698,7 +4698,7 @@ function bindBackchannelActions() {
         if (!data?.success) throw new Error(data?.reason || 'unknown');
         btn.closest('[data-backchannel]')?.remove();
       } catch (err) {
-        alert('Could not burn: ' + (err?.message || err));
+        alert('Could not close: ' + (err?.message || err));
         btn.dataset.busy = '0';
         btn.disabled = false;
       }

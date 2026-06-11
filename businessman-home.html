@@ -609,9 +609,9 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
         piCards.push(`
           <div class="biz-proj-card" data-backchannel="${esc(m.id)}">
             <div class="t">BACKCHANNEL — OFF THE RECORD.
-              <span class="due" style="overflow-wrap:break-word;">&ldquo;${esc(m.body)}&rdquo; — ${esc(m.sender_name)}, ${esc(tickToDate(Number(m.created_at_tick)))} · no copies exist</span></div>
+              <span class="due" style="overflow-wrap:break-word;">&ldquo;${esc(m.body)}&rdquo; — ${esc(m.sender_name)}, ${esc(tickToDate(Number(m.created_at_tick)))} · one-time message, no reply channel</span></div>
             <div class="pi-acts">
-              <button type="button" class="pi-act rej" data-burn="${esc(m.id)}">BURN AFTER READING</button>
+              <button type="button" class="pi-act rej" data-burn="${esc(m.id)}">CLOSE</button>
             </div>
           </div>`);
       }
@@ -664,7 +664,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
             if (!data?.success) throw new Error(data?.reason || 'unknown');
             btn.closest('[data-backchannel]')?.remove();
           } catch (e) {
-            alert('Could not burn: ' + (e?.message || e));
+            alert('Could not close: ' + (e?.message || e));
             btn.dataset.busy = '0';
             btn.disabled = false;
           }
