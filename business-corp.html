@@ -664,7 +664,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -679,7 +679,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
     const currentTick = Number(ctx.shard?.current_tick) || 0;
     // Assembly lines at the corp's plant level — the one client
     // read of the assembly_lines mirror (panel + production modal).
-    const corpAssemblyLines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
+    // Plant tier's count + completed plant expansions (20270864) —
+    // mirror of the server's corp_assembly_lines().
+    const corpAssemblyLines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)]
+      + Math.max(0, Number(corp.bonus_assembly_lines) || 0);
 
     // One close idiom for the page's modals (Post Job Opening,
     // Draft Blueprint, Pay Taxes, Submit Public Bid): CANCEL button
