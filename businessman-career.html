@@ -439,6 +439,14 @@ async function submitStartCompany() {
       if (appsErr) throw appsErr;
       const appliedTo = new Set((myApps || []).map(a => a.opening_id));
 
+      // Owners don't job-hunt (20270849): holding any corporation
+      // disables APPLY everywhere — the server refuses regardless.
+      const { data: ownedAny, error: ownErr } = await _supabase
+        .from('entrepreneur_corps').select('id')
+        .eq('owner_faction_id', ctx.faction.id).limit(1);
+      if (ownErr) throw ownErr;
+      const ownsCorp = !!ownedAny?.length;
+
       // [VIEW] — the employer's profile behind a posting: registry
       // facts, Core Metrics, departments (copy shared with the corp
       // page via corp-blueprints.js), with CLOSE / APPLY beneath.
@@ -457,6 +465,12 @@ async function submitStartCompany() {
         body.innerHTML = '<div class="biz-soon">Loading…</div>';
 
         const refreshApply = () => {
+          if (ownsCorp) {
+            applyBtn.disabled = true;
+            applyBtn.textContent = 'OWNERS DON’T APPLY';
+            applyBtn.title = 'You run a corporation — that is the job.';
+            return;
+          }
           applyBtn.disabled = appliedTo.has(o.id);
           applyBtn.textContent = appliedTo.has(o.id) ? 'APPLIED' : 'APPLY';
         };
@@ -470,6 +484,7 @@ async function submitStartCompany() {
             if (!res?.success) {
               const REASON = {
                 already_applied: 'You already applied to this role.',
+                is_owner: 'You own a corporation — owners don’t apply for jobs.',
                 local_only: 'This posting only accepts local candidates.',
                 own_corp: 'You cannot apply to your own corporation.',
                 not_open: 'This posting is no longer open.',
