@@ -90,6 +90,48 @@
   .cr-act.live:hover { border-color:#8aaa6a; background:#10140e; }
   .cr-act.spent { opacity:0.45; cursor:not-allowed; }
   .cr-note { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; padding:0 18px 14px; }
+
+  /* Design Proposal modal (Product Engineer, 20270847) */
+  #pd-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+    align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  #pd-overlay.open { display:flex; }
+  .pd-modal { width:100%; max-width:620px; background:#0d0d0d;
+    border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
+    max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+  .pd-head { padding:14px 18px 12px; border-bottom:0.5px solid rgba(138,170,106,0.3);
+    font-family:Georgia,serif; font-size:17px; color:#fff; }
+  .pd-head em { color:#aac88a; }
+  .pd-body { padding:16px 18px; overflow-y:auto; }
+  .pd-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.16em; color:#666;
+    font-weight:700; margin:14px 0 6px; }
+  .pd-lab:first-child { margin-top:0; }
+  .pd-pills { display:flex; gap:6px; flex-wrap:wrap; }
+  .pd-pill { flex:1 1 30%; padding:8px; font-family:var(--font-mono); font-size:9.5px;
+    letter-spacing:0.08em; font-weight:700; background:#0a0a0a; color:#888;
+    border:1px solid rgba(255,255,255,0.1); border-radius:4px; text-align:center;
+    cursor:pointer; }
+  .pd-pill:hover:not(.locked) { border-color:rgba(138,170,106,0.4); }
+  .pd-pill.sel { background:#10140e; border-color:#8aaa6a; color:#aac88a; }
+  .pd-pill.locked { opacity:0.35; cursor:not-allowed; }
+  .pd-input { width:100%; box-sizing:border-box; padding:9px 11px; background:#0a0a0a;
+    border:1px solid rgba(255,255,255,0.12); border-radius:4px; color:#fff;
+    font-family:var(--font-mono); font-size:12px; }
+  .pd-static { font-family:var(--font-mono); font-size:11.5px; color:#fff; }
+  .pd-static .dim { color:#8aaa6a; font-size:10px; }
+  .pd-static .bad { color:#c66; }
+  .pd-foot { padding:12px 18px; border-top:0.5px solid rgba(138,170,106,0.3);
+    display:flex; gap:10px; justify-content:flex-end; }
+  .pd-btn { padding:9px 16px; font-family:var(--font-mono); font-size:10px;
+    letter-spacing:0.12em; font-weight:700; border-radius:4px; cursor:pointer;
+    background:rgba(138,170,106,0.12); border:0.5px solid #4a6a4a; color:#aac88a; }
+  .pd-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .pd-btn.secondary { background:transparent; border-color:#3a3a3a; color:#888; }
+  .pi-acts { display:flex; gap:8px; margin-top:10px; }
+  .pi-act { padding:7px 14px; font-family:var(--font-mono); font-size:9px;
+    letter-spacing:0.12em; font-weight:700; border-radius:4px; cursor:pointer;
+    background:rgba(138,170,106,0.12); border:0.5px solid #4a6a4a; color:#aac88a; }
+  .pi-act.rej { background:transparent; border-color:#5a3a3a; color:#c88; }
+  .pi-act:disabled { opacity:0.4; cursor:not-allowed; }
   .cr-act .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.12em; color:#ddd;
     font-weight:700; }
   .cr-act .ds { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
@@ -137,11 +179,37 @@
   </div>
 </div>
 
+<div id="pd-overlay">
+  <div class="pd-modal">
+    <div class="pd-head">Design <em>Proposal</em></div>
+    <div class="pd-body">
+      <div class="pd-lab">MODEL NAME</div>
+      <input type="text" class="pd-input" id="pd-name" maxlength="60" placeholder="e.g. Falcon GT">
+      <div class="pd-lab">VEHICLE TYPE</div>
+      <div class="pd-pills" id="pd-types"></div>
+      <div class="pd-lab">CLASS</div>
+      <div class="pd-pills" id="pd-classes"></div>
+      <div class="pd-lab">ENGINE</div>
+      <div class="pd-pills" id="pd-engines"></div>
+      <div class="pd-lab">PACKAGE ADD-ONS</div>
+      <div class="pd-pills" id="pd-packages"></div>
+      <div class="pd-lab">QUALITY</div>
+      <div class="pd-pills" id="pd-quality"></div>
+      <div class="pd-lab">COST ON ACCEPTANCE</div>
+      <div class="pd-static" id="pd-cost">—</div>
+    </div>
+    <div class="pd-foot">
+      <button type="button" class="pd-btn secondary" id="pd-cancel">CANCEL</button>
+      <button type="button" class="pd-btn" id="pd-submit" disabled>SUBMIT TO THE CEO</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, tickToDate } from './js/utils.js';
-import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
+import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 
 (async () => {
   try {
@@ -192,7 +260,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
           .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
           ? _supabase.from('entrepreneur_corps')
-              .select('name').eq('id', f.biz_employer_corp_id).maybeSingle()
+              .select('name, experience').eq('id', f.biz_employer_corp_id).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (ownErr) throw ownErr;
@@ -339,8 +407,66 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
       console.warn('[businessman-home] projects fetch failed:', e?.message || e);
     }
 
+    // Design proposals (20270847): a Product Engineer's vehicle
+    // pitch waits on the owner's desk with ACCEPT / REJECT.
+    try {
+      if (ownedCorps.length) {
+        const { data: props, error: prErr } = await _supabase.from('vehicle_design_proposals')
+          .select(`id, name, vehicle_type, vehicle_class, engine, packages, quality, xp_cost,
+                   corp:entrepreneur_corps!corp_id(name, experience),
+                   proposer:factions!proposer_faction_id(leader_first_name, leader_last_name, nickname)`)
+          .in('corp_id', ownedCorps.map(c => c.id))
+          .eq('status', 'pending');
+        if (prErr) throw prErr;
+        const lbl = (list, v) => list.find(it => it.value === v)?.label || v;
+        for (const p of (props || [])) {
+          const who = p.proposer?.nickname
+            || `${p.proposer?.leader_first_name || ''} ${p.proposer?.leader_last_name || ''}`.trim() || 'Your engineer';
+          const xp = Number(p.corp?.experience) || 0;
+          piCards.push(`
+            <div class="biz-proj-card">
+              <div class="t">DESIGN PROPOSAL — ${esc(p.name)} for ${esc(p.corp?.name || '—')}.
+                <span class="due">${esc(who)} pitches a ${esc(lbl(VEHICLE_QUALITY, p.quality))}-quality
+                ${esc(lbl(VEHICLE_CLASSES, p.vehicle_class))} ${esc(lbl(VEHICLE_TYPES, p.vehicle_type))},
+                ${esc(lbl(VEHICLE_ENGINES, p.engine))}${(p.packages || []).length ? `, ${(p.packages || []).length} package${(p.packages || []).length === 1 ? '' : 's'}` : ''}
+                · costs ${esc(String(p.xp_cost))} XP on acceptance (${esc(String(xp))} in the Studio)</span></div>
+              <div class="pi-acts">
+                <button type="button" class="pi-act" data-proposal="${esc(p.id)}" data-accept="1">ACCEPT — ${esc(String(p.xp_cost))} XP</button>
+                <button type="button" class="pi-act rej" data-proposal="${esc(p.id)}" data-accept="">REJECT</button>
+              </div>
+            </div>`);
+        }
+      }
+    } catch (e) {
+      console.warn('[businessman-home] proposals fetch failed:', e?.message || e);
+    }
+
     if (piCards.length) {
       document.getElementById('biz-pressing-issues').innerHTML = piCards.join('');
+      document.querySelectorAll('[data-proposal]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const { data, error: rvErr } = await _supabase.rpc('review_design_proposal', {
+              p_proposal_id: btn.dataset.proposal, p_accept: !!btn.dataset.accept,
+            });
+            if (rvErr) throw rvErr;
+            if (!data?.success) {
+              const REASON = {
+                not_pending: 'That proposal was already decided.',
+                not_enough_experience: `Not enough Experience — it costs ${data?.xp_cost ?? '?'} XP and the Studio holds ${data?.experience ?? 0}.`,
+                not_owner: 'Only the owner reviews proposals.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not review: ' + (e?.message || e));
+            btn.disabled = false;
+          }
+        });
+      });
     }
 
     // Current Role — a salaried job renders the employment card; the
@@ -377,6 +503,17 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
               ds: 'Trim the next Production Run&rsquo;s cost by 10% with sharper part sourcing and tighter line scheduling.' },
             { key: 'tune_tooling', nm: 'TUNE THE TOOLING',
               ds: 'Cut the next Production Run&rsquo;s Aluminum draw by 10% (rounded to the half-unit) — scrap less, build the same.' },
+          ],
+        },
+        'Product Engineer': {
+          rpc: 'product_engineer_action', rides: 'it shapes the next Model',
+          actions: [
+            { key: 'design', nm: 'DESIGN', modal: true,
+              ds: 'Draft a full vehicle proposal at 1 XP under the normal design cost — it lands on the CEO&rsquo;s desk to accept or reject.' },
+            { key: 'bench_test_components', nm: 'BENCH TEST THE COMPONENTS',
+              ds: 'Rig-test the parts so the next Model created ships with +0.5 appeal baked in — permanently, every market it ever sells in.' },
+            { key: 'log_test_mileage', nm: 'LOG TEST MILEAGE',
+              ds: 'Feed real test data into the R&amp;D pipeline — +1 Experience now, up to the Design Studio&rsquo;s ceiling.' },
           ],
         },
         'Field Sales Representative / Marketing Analyst': {
@@ -445,6 +582,10 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
         document.querySelectorAll('.cr-act.live[data-kit-action]').forEach(a => {
           a.addEventListener('click', async () => {
             if (!a.classList.contains('live')) return;
+            if (KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal) {
+              openDesignProposal();
+              return;
+            }
             try {
               const { data, error: kErr } = await _supabase.rpc(KIT.rpc,
                 { p_action: a.dataset.kitAction });
@@ -456,6 +597,9 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
                   campaign_already_primed: 'The next campaign already carries that charge.',
                   not_production_engineer: 'This kit belongs to the rung-1 Production Engineer.',
                   not_sales_rep: 'This kit belongs to the rung-1 Field Sales Representative.',
+                  not_product_engineer: 'This kit belongs to the rung-1 Product Engineer.',
+                  bench_already_charged: 'The bench is already charged — it rides the next Model created.',
+                  experience_at_cap: 'The Studio is at its Experience ceiling — spend some or upgrade it.',
                   not_employed: 'You are not on a payroll.',
                   arrested: 'You are under arrest.',
                 };
@@ -467,6 +611,115 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
               alert('Could not act: ' + (e?.message || e));
             }
           });
+        });
+
+        // ── the DESIGN proposal picker (20270847) ──────────────────
+        // The same catalog and gates as the owner's Draft Blueprint;
+        // the cost line shows the engineer's −1 XP price, charged to
+        // the corp only when the CEO accepts.
+        let pdType = null, pdClass = null, pdEngine = null, pdQuality = null, pdInFlight = false;
+        const pdPackages = new Set();
+        const corpXp = Number(employer?.data?.experience) || 0;
+
+        function pdRefresh() {
+          const name = document.getElementById('pd-name').value.trim();
+          const complete = pdType && pdClass && pdEngine && pdQuality;
+          const costEl = document.getElementById('pd-cost');
+          if (complete) {
+            const cost = Math.max(1, vehicleBlueprintXpCost(pdType, pdClass, pdEngine, pdPackages.size, pdQuality) - 1);
+            costEl.innerHTML = `${cost} XP <span class="dim">(your −1 XP craft applied)</span> <span class="${cost <= corpXp ? 'dim' : 'bad'}">· ${corpXp} XP in the Studio</span>`;
+          } else {
+            costEl.textContent = '—';
+          }
+          document.getElementById('pd-submit').disabled =
+            !(name.length >= 2 && complete) || pdInFlight;
+        }
+
+        function pdPills(hostId, items, onPick) {
+          const host = document.getElementById(hostId);
+          host.innerHTML = items.map(it => `
+            <div class="pd-pill" data-val="${esc(it.value)}" title="${esc(it.desc)}">${esc(it.label.toUpperCase())}</div>`).join('');
+          host.querySelectorAll('.pd-pill').forEach(p => {
+            p.addEventListener('click', () => {
+              host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+              onPick(p.dataset.val);
+              pdRefresh();
+            });
+          });
+        }
+
+        function pdRenderPackages() {
+          const host = document.getElementById('pd-packages');
+          host.innerHTML = VEHICLE_PACKAGES.map(pk => {
+            const locked = (pk.pickupOnly && pdType !== 'pickup')
+              || (pk.premiumOnly && !['premium', 'luxury', 'ultra_luxury'].includes(pdClass));
+            if (locked) pdPackages.delete(pk.value);
+            return `<div class="pd-pill${locked ? ' locked' : ''}${pdPackages.has(pk.value) ? ' sel' : ''}"
+              data-val="${esc(pk.value)}" title="${esc(pk.desc)}">${esc(pk.label.toUpperCase())}</div>`;
+          }).join('');
+          host.querySelectorAll('.pd-pill:not(.locked)').forEach(p => {
+            p.addEventListener('click', () => {
+              const v = p.dataset.val;
+              pdPackages.has(v) ? pdPackages.delete(v) : pdPackages.add(v);
+              p.classList.toggle('sel', pdPackages.has(v));
+              pdRefresh();
+            });
+          });
+        }
+
+        function openDesignProposal() {
+          pdType = null; pdClass = null; pdEngine = null; pdQuality = null;
+          pdPackages.clear();
+          document.getElementById('pd-name').value = '';
+          pdPills('pd-types', VEHICLE_TYPES, v => { pdType = v; pdRenderPackages(); });
+          pdPills('pd-classes', VEHICLE_CLASSES, v => { pdClass = v; pdRenderPackages(); });
+          pdPills('pd-engines', VEHICLE_ENGINES, v => { pdEngine = v; });
+          pdPills('pd-quality', VEHICLE_QUALITY, v => { pdQuality = v; });
+          pdRenderPackages();
+          pdRefresh();
+          document.getElementById('pd-overlay').classList.add('open');
+        }
+        document.getElementById('pd-name').addEventListener('input', pdRefresh);
+        document.getElementById('pd-cancel').addEventListener('click', () =>
+          document.getElementById('pd-overlay').classList.remove('open'));
+        document.getElementById('pd-overlay').addEventListener('click', (e) => {
+          if (e.target?.id === 'pd-overlay') document.getElementById('pd-overlay').classList.remove('open');
+        });
+
+        document.getElementById('pd-submit').addEventListener('click', async () => {
+          if (pdInFlight) return;
+          pdInFlight = true; pdRefresh();
+          try {
+            const { data, error: pErr } = await _supabase.rpc('propose_vehicle_design', {
+              p_name: document.getElementById('pd-name').value.trim(),
+              p_vehicle_type: pdType,
+              p_vehicle_class: pdClass,
+              p_engine: pdEngine,
+              p_packages: [...pdPackages],
+              p_quality: pdQuality,
+            });
+            if (pErr) throw pErr;
+            if (!data?.success) {
+              const REASON = {
+                invalid_name: 'Model names run 2–60 characters.',
+                proposal_pending: 'Your last proposal is still on the CEO’s desk.',
+                no_actions_remaining: 'You already acted this tick.',
+                off_road_pickup_only: 'The Off-Road Package only fits Pickups.',
+                self_driving_premium_only: 'The Self-Driving Package needs a Premium-or-better class.',
+                v12_restricted: 'The V12 fits Luxury classes and Sports Cars only.',
+                not_product_engineer: 'This kit belongs to the rung-1 Product Engineer.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            document.getElementById('pd-overlay').classList.remove('open');
+            peSetSpent();
+            peNote.textContent = `${data.name} (${data.xp_cost} XP) is on the CEO’s desk. Back next tick.`;
+          } catch (e) {
+            alert('Could not submit: ' + (e?.message || e));
+          } finally {
+            pdInFlight = false;
+            pdRefresh();
+          }
         });
       }
     } else if (ownedCorps.length) {
