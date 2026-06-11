@@ -375,7 +375,7 @@ export async function bootstrapEntrepreneur(activeTab) {
           .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
           .eq('faction_type', 'entrepreneur')
           .is('abandoned_at', null)
-          .limit(1).maybeSingle(),
+          .order('created_at'),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
       .select(SWITCHER_FACTION_COLS)
@@ -383,7 +383,13 @@ export async function bootstrapEntrepreneur(activeTab) {
   ]);
 
   if (facRes.error) throw facRes.error;
-  const faction = facRes.data;
+  // The switcher's pick wins across multiple entrepreneurs; the
+  // inspector override stays a single row.
+  const entCandidates = overrideId
+    ? (facRes.data ? [facRes.data] : [])
+    : (facRes.data || []);
+  const entActiveId = sessionStorage.getItem('active_faction_id');
+  const faction = entCandidates.find(f => f.id === entActiveId) || entCandidates[0] || null;
   if (!faction && !overrideId) { window.location.href = 'faction-select.html'; return null; }
   if (!faction) console.warn('[entrepreneur-topbar] inspector faction not found:', overrideId);
   if (shardRes.error) console.warn('[entrepreneur-topbar] shard load failed:', shardRes.error.message);
@@ -414,7 +420,7 @@ export async function bootstrapBusinessman(activeTab) {
       .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`)
       .eq('faction_type', 'businessman')
       .is('abandoned_at', null)
-      .limit(1).maybeSingle(),
+      .order('created_at'),
     _supabase.from('shard').select('current_date, current_tick, next_tick_at').eq('name', 'Alpha Shard').maybeSingle(),
     _supabase.from('factions')
       .select(SWITCHER_FACTION_COLS)
@@ -422,7 +428,12 @@ export async function bootstrapBusinessman(activeTab) {
   ]);
 
   if (facRes.error) throw facRes.error;
-  const faction = facRes.data;
+  // The switcher's pick wins when the account holds several
+  // businessmen (max 3 per type since 20270xxx); oldest is the
+  // fallback so single-character accounts behave as before.
+  const bizCandidates = facRes.data || [];
+  const bizActiveId = sessionStorage.getItem('active_faction_id');
+  const faction = bizCandidates.find(f => f.id === bizActiveId) || bizCandidates[0] || null;
   if (!faction) { window.location.href = 'faction-select.html'; return null; }
   if (shardRes.error) console.warn('[entrepreneur-topbar] shard load failed:', shardRes.error.message);
   if (allFacRes.error) console.warn('[entrepreneur-topbar] factions load failed:', allFacRes.error.message);

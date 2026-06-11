@@ -2907,7 +2907,15 @@ function renderAffiliation(ctx) {
   const office     = ctx.faction?.politician_office       || null;
   const ministry   = ctx.faction?.politician_ministry     || null;
   const barNation  = ctx.faction?.bar_admitted_nation_id  || null;
-  const fsNation   = ctx.faction?.politician_foreign_service_nation_id || null;
+  // Any Foreign Service posting, tier 1 through 5 — the higher tiers
+  // clear the attaché column on promotion (20270865/66/69/70), so the
+  // party-member suppression must read the whole ladder.
+  const fsNation   = ctx.faction?.politician_foreign_service_nation_id
+    || ctx.faction?.politician_consul_nation_id
+    || ctx.faction?.politician_dcm_region
+    || ctx.faction?.politician_ambassador_nation_id
+    || (ctx.faction?.politician_special_envoy_at_tick != null ? 'envoy' : null)
+    || null;
   const fisAgent   = ctx.faction?.politician_fis_joined_at_tick != null;
   // Variant fallback ladder: elected office → civil-servant (ministry
   // set, no office) → judicial (bar-admitted, no ministry/office;
