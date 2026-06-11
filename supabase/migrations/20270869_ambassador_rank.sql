@@ -470,6 +470,56 @@ END $$;
 
 GRANT EXECUTE ON FUNCTION public.resolve_due_ambassador_confirmations() TO authenticated;
 
+-- ── politician_ambassador_resign — hand back the credentials ──────
+-- No claw-back: the next posting means winning the chamber again,
+-- which is its own barrier (the FS-resign convention, 20270771).
+CREATE OR REPLACE FUNCTION public.politician_ambassador_resign(p_faction_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_uid    uuid := auth.uid();
+    v_pol    factions%ROWTYPE;
+    v_tick   int;
+    v_nation text;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+    SELECT * INTO v_pol FROM factions
+     WHERE id = p_faction_id
+       AND (id = v_uid OR linked_user_id = v_uid)
+       AND faction_type = 'politician'
+       AND abandoned_at IS NULL
+     FOR UPDATE;
+    IF v_pol.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_politician');
+    END IF;
+    IF v_pol.politician_ambassador_nation_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_ambassador');
+    END IF;
+
+    SELECT name INTO v_nation FROM nations
+     WHERE id = v_pol.politician_ambassador_nation_id;
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    UPDATE factions
+       SET politician_ambassador_nation_id = NULL,
+           politician_ambassador_at_tick   = NULL,
+           politician_ambassador_strikes   = 0
+     WHERE id = v_pol.id;
+
+    INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
+    VALUES (v_pol.id, v_tick, 'ambassador_resigned', COALESCE(v_nation, ''),
+            jsonb_build_object('nation', v_nation));
+
+    RETURN jsonb_build_object('success', true, 'resigned_from', v_nation);
+END $$;
+
+REVOKE EXECUTE ON FUNCTION public.politician_ambassador_resign(uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.politician_ambassador_resign(uuid) TO authenticated;
+
 -- ── ambassador_request_meeting ────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.ambassador_request_meeting(p_faction_id uuid)
 RETURNS jsonb
