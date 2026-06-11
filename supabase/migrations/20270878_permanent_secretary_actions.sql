@@ -44,7 +44,7 @@ ALTER TABLE public.factions
     ADD COLUMN IF NOT EXISTS pending_brief_mod int;
 
 COMMENT ON COLUMN public.factions.pending_brief_mod IS
-    'Pending briefing-paper modifier (+2 thorough / -2 thin) written by a Permanent Undersecretary via ps_prepare_brief. Consumed (read + cleared) by _consume_brief_mod() inside the holder''s next ministerial d20 — politician_seek_fm_post today. NULL = no pending brief. 20270878.';
+    'Pending briefing-paper modifier (+2 thorough / -2 thin) written by a Permanent Undersecretary via ps_prepare_brief. Consumed (read + cleared) by _consume_brief_mod() inside the holder''s next ministerial d20 — politician_seek_fm_post today. NULL = no pending brief. KNOWN LIMITATION: the column is client-readable like the rest of factions (a column-level SELECT revoke would break select * for every caller), so a minister inspecting the API can see a brief is pending and its sign — but never its author; only a CAUGHT thin brief discloses who wrote it. 20270878.';
 
 REVOKE UPDATE (pending_brief_mod) ON public.factions
     FROM PUBLIC, anon, authenticated;
