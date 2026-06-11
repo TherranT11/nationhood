@@ -18,7 +18,6 @@ import {
     isHiddenFromSwitcher,
     addCharacterSlot,
     activateAddCharacter,
-    activatePoliticianSlot,
 } from './game/factions.js';
 import { escapeHtml as escHtml, flagUrlFor } from './utils.js';
 
