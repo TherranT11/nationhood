@@ -549,10 +549,10 @@
     <div class="jm-head"><div class="jm-title">Analyze <em>Market</em></div></div>
     <div class="jm-body">
       <div class="db-mech">The Mechanic: Process sales data and demand to get visibility into
-        the market. Pick a nation and a vehicle type — the analysis is the day&rsquo;s
-        executive action.</div>
+        the market. Pick a vehicle type — the analysis covers your home nation (foreign
+        intel comes later) and is the day&rsquo;s executive action.</div>
       <div class="jm-lab">NATION</div>
-      <div class="jm-pills db-cats" id="am-nations"></div>
+      <div class="db-static" id="am-nation">—</div>
       <div class="jm-lab">VEHICLE TYPE</div>
       <div class="jm-pills db-cats" id="am-types"></div>
       <div id="am-report"></div>
@@ -2438,24 +2438,22 @@ import { CITY_STATS } from './js/game/city-labels.js';
           }
         });
 
-        // ── Analyze Market (20270836) ─────────────────────────────
-        // Demand intel by nation and vehicle type — the model lives
-        // server-side in analyze_vehicle_market; this just renders
-        // the returned report. The nation pills derive from the same
-        // market-listings round-trip the exchange uses, so the live-
-        // nation list stays single-source.
-        let amNation = null, amType = null, amInFlight = false;
+        // ── Analyze Market (20270838) ─────────────────────────────
+        // Demand intel by vehicle type, home nation only when this
+        // action starts — the model lives server-side in
+        // analyze_vehicle_market; this just renders the report.
+        let amType = null, amInFlight = false;
 
         function amRefresh() {
-          document.getElementById('am-run').disabled = !(amNation && amType) || amInFlight;
+          document.getElementById('am-run').disabled = !amType || amInFlight;
         }
 
-        document.getElementById('ea-analyze-market').addEventListener('click', async () => {
-          amNation = null; amType = null;
+        document.getElementById('ea-analyze-market').addEventListener('click', () => {
+          amType = null;
           document.getElementById('am-report').innerHTML = '';
-          const natHost = document.getElementById('am-nations');
+          document.getElementById('am-nation').textContent =
+            `${corp.nation?.name || '—'} (home)`;
           const typeHost = document.getElementById('am-types');
-          natHost.innerHTML = '<div class="rl-empty">Loading nations…</div>';
           typeHost.innerHTML = VEHICLE_TYPES.map(t => `
             <div class="jm-pill" data-val="${esc(t.value)}" title="${esc(t.desc)}">${esc(t.label.toUpperCase())}</div>`).join('');
           typeHost.querySelectorAll('.jm-pill').forEach(p => {
@@ -2467,24 +2465,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
           });
           amRefresh();
           document.getElementById('am-overlay').classList.add('open');
-          try {
-            const { data: mkt, error: mErr } = await _supabase.rpc('construction_market_listings');
-            if (mErr) throw mErr;
-            const nations = (mkt?.materials || []).map(r =>
-              ({ id: r.nation_id, name: r.nation }));
-            natHost.innerHTML = nations.map(n => `
-              <div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}</div>`).join('');
-            natHost.querySelectorAll('.jm-pill').forEach(p => {
-              p.addEventListener('click', () => {
-                natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
-                amNation = p.dataset.val;
-                amRefresh();
-              });
-            });
-          } catch (e) {
-            natHost.innerHTML = '<div class="rl-empty">Could not load nations — try again shortly.</div>';
-            console.warn('[business-corp] analyze modal load failed:', e?.message || e);
-          }
         });
         wireModalClose('am-overlay', 'am-cancel');
 
@@ -2493,12 +2473,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
           amInFlight = true; amRefresh();
           try {
             const { data, error: aErr } = await _supabase.rpc('analyze_vehicle_market', {
-              p_corp_id: corp.id, p_nation_id: amNation, p_vehicle_type: amType,
+              p_corp_id: corp.id, p_vehicle_type: amType,
             });
             if (aErr) throw aErr;
             if (!data?.success) {
               const REASON = {
-                nation_not_live: 'That nation is not an active market.',
+                nation_not_live: 'Your home nation is not an active market.',
                 no_actions_remaining: 'No executive actions remaining this tick.',
                 not_owner: 'Only the owner runs market analysis.',
                 arrested: 'You are under arrest — your assets are frozen.',
