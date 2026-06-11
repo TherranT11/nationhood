@@ -183,11 +183,11 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay { position:fixed;
+  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -607,6 +607,22 @@
     <div class="jm-foot" id="sl-foot">
       <button type="button" class="jm-btn secondary" id="sl-cancel">CANCEL</button>
       <button type="button" class="jm-btn" id="sl-confirm" disabled>CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<div id="dt-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Issue a <em>Directive</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech" id="dt-mech"></div>
+      <div class="jm-lab">PICK THE TASK</div>
+      <div id="dt-rows"></div>
+      <div class="jm-lab">OVERTIME</div>
+      <div class="db-static" id="dt-fee">—</div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="dt-cancel">CANCEL</button>
     </div>
   </div>
 </div>
@@ -1056,6 +1072,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
               .order('created_at', { ascending: false });
         if (bpErr) throw bpErr;
 
+        // The visiting CCO can direct the commercial floor.
+        const viewerIsCco = ctx.faction?.biz_employer_corp_id === corp.id
+          && ctx.faction?.biz_job_title === 'Chief Commercial Officer (CCO)';
         let rowsHtml = '<div class="rl-empty">No hires yet.</div>';
         if (emps?.length) {
           const { data: cityRows, error: cityErr } = await _supabase.from('cities')
@@ -1089,19 +1108,29 @@ import { CITY_STATS } from './js/game/city-labels.js';
           rowsHtml = `
             <div class="pe-grid${isOwner ? ' manage' : ''}">
               <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">REPORTS TO</div><div class="h">CURRENT PROJECT</div>${isOwner ? '<div class="h"></div>' : ''}
-              ${emps.map(e => `
+              ${emps.map(e => {
+                // Directives (20270858): NPCs in a kit-bearing track
+                // take orders — the Owner directs anyone, the corp's
+                // CCO directs the commercial floor.
+                const canDirect = !e.applicant_faction_id
+                  && ['manufacturing', 'commercial', 'product'].includes(e.opening?.track)
+                  && (isOwner || (viewerIsCco && e.opening?.track === 'commercial'));
+                return `
                 <div class="c">${applicantNameHtml(e)}</div>
                 <div class="c">${esc(e.opening?.title || '—')}</div>
                 <div class="c">${esc(e.city + (nationByCity[e.city] ? ', ' + nationByCity[e.city] : ''))}</div>
                 <div class="c money">${esc(hfFmtBig(Number(e.opening?.salary_yearly) || 0))}/yr</div>
                 <div class="c">${esc(reportsTo(e))}</div>
-                <div class="c">${esc(projByPm[e.id] || '—')}</div>
+                <div class="c">${canDirect
+                  ? `<button type="button" class="ap-btn hr" data-direct="${esc(e.id)}" data-track="${esc(e.opening?.track)}" data-name="${esc(e.name)}" data-salary="${esc(String(Number(e.opening?.salary_yearly) || 0))}">DIRECT</button>`
+                  : esc(projByPm[e.id] || '—')}</div>
                 ${isOwner ? `<div class="ap-btns">
                   ${(Number(e.opening?.rung) || 1) < ((JOB_TRACKS[e.opening?.track] || []).filter(r => r.postable).length || 3)
                     ? `<button type="button" class="ap-btn hr" data-promote="${esc(e.id)}">PROMOTE</button>`
                     : ''}
                   <button type="button" class="ap-btn rej" data-fire="${esc(e.id)}" data-name="${esc(e.name)}">FIRE</button>
-                </div>` : ''}`).join('')}
+                </div>` : ''}`;
+              }).join('')}
             </div>`;
         }
         host.innerHTML = `
@@ -1134,6 +1163,75 @@ import { CITY_STATS } from './js/game/city-labels.js';
             }
           });
         });
+        // [DIRECT] — the NPC performs their track's rung-1 kit
+        // action; the charge fills the same slots the player kits
+        // fill, at 10% of their monthly salary in overtime.
+        const DIRECTIVE_ACTIONS = {
+          manufacturing: [
+            ['optimize_line', 'OPTIMIZE THE LINE', '+10% output on the next Production Run'],
+            ['lean_procurement', 'LEAN PROCUREMENT', '−10% cost on the next Production Run'],
+            ['tune_tooling', 'TUNE THE TOOLING', '−10% Aluminum on the next Production Run'],
+          ],
+          commercial: [
+            ['drum_up_buyers', 'DRUM UP BUYERS', '+10% units on the next Sales Campaign'],
+            ['sharpen_pitch', 'SHARPEN THE PITCH', '+0.5 appeal on the next Sales Campaign'],
+            ['sweeten_financing', 'SWEETEN THE FINANCING', 'the next campaign reads your price 10% lower'],
+          ],
+          product: [
+            ['bench_test_components', 'BENCH TEST THE COMPONENTS', '+0.5 appeal baked into the next Model created'],
+            ['log_test_mileage', 'LOG TEST MILEAGE', '+1 Experience now, up to the Studio ceiling'],
+          ],
+        };
+        const DIRECT_REASON = {
+          already_directed: 'They already took a directive this tick.',
+          no_directive_kit: 'No kit exists for that track yet.',
+          not_npc: 'Players take their own actions.',
+          not_authorized: 'The CCO directs the commercial floor; the owner directs anyone.',
+          line_already_tuned: 'Every line already carries that charge.',
+          campaign_already_primed: 'The next campaign already carries that charge.',
+          bench_already_charged: 'The bench is already charged.',
+          experience_at_cap: 'The Studio is at its Experience ceiling.',
+          insufficient_treasury: 'The treasury can’t cover the overtime.',
+          arrested: 'You are under arrest — your assets are frozen.',
+        };
+        let dtInFlight = false;
+        host.querySelectorAll('[data-direct]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const fee = Math.round((Number(btn.dataset.salary) || 0) / 12 * 0.10);
+            document.getElementById('dt-mech').textContent =
+              `${btn.dataset.name} awaits instructions. One directive per employee per tick.`;
+            document.getElementById('dt-fee').textContent =
+              `${hfFmtBig(fee)} — 10% of their monthly salary, from the treasury.`;
+            const rows = document.getElementById('dt-rows');
+            rows.innerHTML = (DIRECTIVE_ACTIONS[btn.dataset.track] || []).map(([key, nm, ds]) => `
+              <div class="jm-rung" data-dt-action="${esc(key)}">
+                <div class="top"><div><div class="nm">${esc(nm)}</div></div></div>
+                <div class="ds">${esc(ds)}</div>
+              </div>`).join('');
+            rows.querySelectorAll('[data-dt-action]').forEach(row => {
+              row.addEventListener('click', async () => {
+                if (dtInFlight) return;
+                dtInFlight = true;
+                try {
+                  const { data, error: dErr } = await _supabase.rpc('direct_employee',
+                    { p_applicant_id: btn.dataset.direct, p_action: row.dataset.dtAction });
+                  if (dErr) throw dErr;
+                  if (!data?.success) throw new Error(DIRECT_REASON[data?.reason] || data?.reason || 'unknown');
+                  document.getElementById('dt-overlay').classList.remove('open');
+                  alert(`${data.employee} gets to work — charge queued (${data.pending}/${data.cap}), ${hfFmtBig(Number(data.fee) || 0)} overtime paid.`);
+                  window.location.reload();
+                } catch (e) {
+                  alert('Could not direct: ' + (e?.message || e));
+                } finally {
+                  dtInFlight = false;
+                }
+              });
+            });
+            document.getElementById('dt-overlay').classList.add('open');
+          });
+        });
+        wireModalClose('dt-overlay', 'dt-cancel');
+
         host.querySelectorAll('[data-fire]').forEach(btn => {
           btn.addEventListener('click', async () => {
             if (!confirm(`Fire ${btn.dataset.name}? Their team leaves with them.`)) return;
