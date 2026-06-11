@@ -283,6 +283,30 @@ export const VEHICLE_QUALITY = [
     desc: 'Premium materials, exceptional longevity, low warranty costs.' },
 ];
 
+// The DESIGN & ENGINEERING STUDIO ladder — automotive's first asset.
+// Level I is live: draft_vehicle_blueprint (20270832) grants +1
+// Experience per new Model up to the ceiling of 20, and automotive
+// corps are founded with 5 XP. Higher levels are display copy until
+// the studio's upgrade mechanics land (tier state moves to a column
+// then); the grants/ceilings here mirror the server constants.
+export const STUDIO_TIERS = [
+  { tier: 'Level I: The Drafting & Prototyping Center',
+    desc: 'Built on day one using your initial capital. This is a dedicated office building housing a small team of engineers using professional CAD suites, complete with an attached physical prototyping workshop and basic component testing rigs.',
+    effect: '+1 Experience every time you create a new Model · Experience ceiling: 20.' },
+  { tier: 'Level II: Advanced Powertrain Lab',
+    desc: 'Adds engine dynamometers, advanced emissions-testing bays, and environmental chambers to refine motor, transmission, or battery reliability.',
+    effect: '+2 Experience every time you create a new Model · Experience ceiling: 20.' },
+  { tier: 'Level III: Virtual Simulation Mainframe',
+    desc: 'Integrates high-performance computing clusters. Allows you to run digital crash tests and aerodynamic simulations, drastically speeding up blueprint creation.',
+    effect: '+3 Experience every time you create a new Model · Experience ceiling: 20.' },
+  { tier: 'Level IV: Aerodynamic Wind Tunnel Complex',
+    desc: 'A massive, state-of-the-art physical wind tunnel facility to perfect drag coefficients and thermal management for high-tier chassis.',
+    effect: 'New Experience ceiling: 40 · Requires a Tier I Industrial facility.' },
+  { tier: 'Level V: The Global Skunkworks Tower',
+    desc: 'An elite, multi-disciplinary research campus pushing the absolute ceiling of autonomous systems, next-generation solid-state batteries, and composite materials.',
+    effect: 'New Experience ceiling: 60 · Requires a Tier III Commercial building.' },
+];
+
 // The ASSEMBLY PLANT ladder — automotive's second asset. Display copy
 // only for now (every automotive corp starts at Level I); tier state
 // moves to a column when its upgrade mechanics land. Industrial
@@ -365,5 +389,9 @@ export const DEPARTMENTS = {
     { dept: 'SYSTEM DESIGN', ...DESIGN_TIERS[0] },
     { dept: 'REGULATORY COMPLIANCE', ...REG_TIERS[0] },
   ],
-  automotive: [null, { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] }, null, null, null],
+  automotive: [
+    { dept: 'DESIGN & ENGINEERING', ...STUDIO_TIERS[0] },
+    { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] },
+    null, null, null,
+  ],
 };
