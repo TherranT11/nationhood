@@ -162,10 +162,6 @@
 <div id="loading">LOADING...</div>
 <div class="ent-content" id="page-content" style="display:none;">
   <div class="biz-wrap">
-    <div class="biz-actions">
-      <button type="button" class="biz-btn" id="start-company-btn">START COMPANY</button>
-    </div>
-
     <div class="biz-section">
       <div class="section-heading">
         <span class="roman">I.</span>
@@ -402,8 +398,12 @@ async function submitStartCompany() {
     const ctx = await bootstrapBusinessman('career');
     if (!ctx) return; // redirected (no auth / no businessman faction)
 
-    document.getElementById('start-company-btn')
-      .addEventListener('click', () => openStartCompany(ctx.faction));
+    // The visible button moved to the Corporations Directory; the
+    // founding flow stays here as the one source — ?found=1 (the
+    // directory's deep-link) opens it on arrival.
+    if (new URLSearchParams(location.search).get('found') === '1') {
+      openStartCompany(ctx.faction);
+    }
     document.getElementById('sc-cancel').addEventListener('click', closeStartCompany);
     document.getElementById('sc-overlay').addEventListener('click', (e) => {
       if (e.target?.id === 'sc-overlay') closeStartCompany();
