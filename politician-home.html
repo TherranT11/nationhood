@@ -1604,6 +1604,11 @@ let memberCommittees = [];      // committees the viewer is seated on, plus pend
 let consulateCases = [];   // pending consulate docket cases (20270865) — Pressing Issues cards; handling one stamps the rest.
 let backchannelInbox = []; // burn-after-reading consul messages addressed to this faction (20270865).
 let summitInvites = [];    // pending Regional Summit invites for this officer (20270867).
+let myMeetings = [];       // the ambassador's own meeting requests (20270869) — requested/accepted cards.
+let fmMeetings = [];       // meeting requests on this FM's desk (20270869).
+let fmStatements = [];     // pending statements awaiting this host FM's review (20270869).
+let censurableStatements = []; // own-nation ambassador statements inside the home FM's 12-tick censure window (20270869).
+let fmApplications = [];   // pending FM-portfolio applications where this politician is the HoG (20270868).
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
 let consultancyOffers = [];     // pending corp consultancy offers targeting this politician (20270773). Accept pays the fee + Capital kicker; decline refunds the corp's escrow.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
@@ -1847,6 +1852,54 @@ async function init() {
       if (siErr) console.error('politician-home: summit invites fetch failed', siErr);
       else summitInvites = siRows || [];
     }
+    // Ambassador desk traffic (20270869) — soft-fails keep the page up.
+    myMeetings = []; fmMeetings = []; fmStatements = []; censurableStatements = [];
+    fmApplications = [];
+    try {
+      if (politician.politician_ambassador_nation_id) {
+        const { data: mm, error: mmErr } = await _supabase.from('ambassador_meetings')
+          .select('id, status, host:nations!host_nation_id(name), fm:factions!fm_faction_id(leader_first_name, leader_last_name, nickname)')
+          .eq('ambassador_faction_id', politician.id)
+          .in('status', ['requested', 'accepted']);
+        if (mmErr) throw mmErr;
+        myMeetings = mm || [];
+      }
+      if (politician.politician_foreign_minister_at_tick != null) {
+        const tick = Number(ctx.shard?.current_tick) || 0;
+        const [mtg, stmt, cen] = await Promise.all([
+          _supabase.from('ambassador_meetings')
+            .select('id, status, ambassador:factions!ambassador_faction_id(leader_first_name, leader_last_name, nickname, nation:nations!nation_id(name))')
+            .eq('fm_faction_id', politician.id).eq('status', 'requested'),
+          _supabase.from('ambassador_statements')
+            .select('id, body, ambassador:factions!ambassador_faction_id(leader_first_name, leader_last_name, nickname, nation:nations!nation_id(name))')
+            .eq('host_nation_id', politician.nation_id).eq('status', 'pending'),
+          _supabase.from('ambassador_statements')
+            .select('id, body, created_at_tick, ambassador_faction_id, host:nations!host_nation_id(name), ambassador:factions!ambassador_faction_id(leader_first_name, leader_last_name, nickname)')
+            .eq('home_nation_id', politician.nation_id).eq('censured', false)
+            .gt('created_at_tick', tick - 12),
+        ]);
+        if (mtg.error) throw mtg.error;
+        if (stmt.error) throw stmt.error;
+        if (cen.error) throw cen.error;
+        fmMeetings = mtg.data || [];
+        fmStatements = stmt.data || [];
+        censurableStatements = (cen.data || []).filter(c => c.ambassador_faction_id !== politician.id);
+      }
+      // FM-portfolio applications on this HoG's desk (20270868).
+      const { data: hogRows, error: hogErr } = await _supabase.from('head_of_government')
+        .select('nation_id').eq('candidate_id', politician.id);
+      if (hogErr) throw hogErr;
+      if (hogRows?.length) {
+        const { data: apps, error: appErr } = await _supabase.from('politician_fm_applications')
+          .select('id, applicant:factions!applicant_faction_id(leader_first_name, leader_last_name, nickname)')
+          .in('target_nation_id', hogRows.map(h => h.nation_id))
+          .eq('status', 'pending');
+        if (appErr) throw appErr;
+        fmApplications = apps || [];
+      }
+    } catch (e) {
+      console.error('politician-home: ambassador desk fetch failed', e);
+    }
     backchannelInbox = [];
     {
       const { data: bcRows, error: bcErr } = await _supabase.from('backchannel_messages')
@@ -1872,6 +1925,8 @@ async function init() {
     consulateCases = [];
     backchannelInbox = [];
     summitInvites = [];
+    myMeetings = []; fmMeetings = []; fmStatements = []; censurableStatements = [];
+    fmApplications = [];
   }
 
   renderHero(ctx.shard);
@@ -3125,6 +3180,12 @@ function renderAffiliation(ctx) {
 async function renderForeignAffiliation(ctx) {
   const host = document.getElementById('foreign-affiliation-host');
   if (!host) return;
+  // Tier 4 (20270869) — THE BIG ONE — outranks everything; each
+  // promotion cleared the rung below, so the branches are exclusive.
+  if (ctx?.faction?.politician_ambassador_nation_id) {
+    await renderAmbassadorAffiliation(ctx, host);
+    return;
+  }
   // Tier 3 (20270866) outranks everything — the consul posting was
   // cleared at promotion, so the three branches are exclusive.
   if (ctx?.faction?.politician_dcm_region) {
@@ -3843,6 +3904,22 @@ async function renderDcmAffiliation(ctx, host) {
             <div class="act-desc">Convene the mission — every officer on the board gets an invite, and each acceptance lands +1 Relations with their posting. Coverage multiplies the lever.</div>
             ${dcmCooling ? coolLine : ''}
           </div>
+          ${(Number(ctx.faction?.politician_skill) || 0) >= 30 ? (() => {
+            const retryAt = Number(ctx.faction?.next_ambassador_request_tick) || 0;
+            const reqCooling = retryAt > currentTick;
+            return `
+          <div class="act-btn${reqCooling ? ' cooldown' : ''}"${reqCooling
+            ? ` aria-disabled="true" title="The chamber said no — the ministry floats your name again ${escAttr(tickToDate(retryAt))}"`
+            : ' data-action="request-appointment"'}>
+            <div class="act-head">
+              <span class="act-ic">🏛️</span>
+              <span class="act-name">REQUEST APPOINTMENT</span>
+              <span class="act-cost">30 exp</span>
+            </div>
+            <div class="act-desc">Put your name before the legislature for an ambassadorship — your party banks its seats, the rest roll the dice. Confirmation means a random posting for a 60-tick term.</div>
+            ${reqCooling ? `<div class="act-cooldown">Retry ${escHtml(tickToDate(retryAt))}</div>` : ''}
+          </div>`;
+          })() : ''}
         </div>
       </div>
     </div>`;
@@ -3878,6 +3955,260 @@ async function renderDcmAffiliation(ctx, host) {
         tile.dataset.busy = '0';
       }
     });
+
+  host.querySelector('.act-btn[data-action="request-appointment"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      if (!confirm('Put your name before the legislature? A failed vote means 12 ticks before the ministry floats it again.')) return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('politician_request_ambassador_appointment',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          if (data?.reason === 'vote_failed') {
+            alert(`The chamber says no — ${data.yes_seats} for, ${data.no_seats} against. The ministry will float your name again ${tickToDate(Number(data.retry_at_tick))}.`);
+            location.reload();
+            return;
+          }
+          const REASON = {
+            cooldown: 'The chamber recently said no — wait for the ministry to float your name again.',
+            no_postings: 'No ambassadorships are vacant — every live nation is covered.',
+            not_dcm: 'Only a serving DCM stands for appointment.',
+            not_enough_experience: 'The ministry wants 30 Experience first.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert(`The chamber confirms, ${data.yes_seats}\u2013${data.no_seats}. You are now the Ambassador of ${data.nation} — proceed to ${data.capital}. The term runs to ${tickToDate(Number(data.term_ends_tick))}.`);
+        location.reload();
+      } catch (err) {
+        alert('Could not request the appointment: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+}
+
+// 20270869 — the Ambassador card (Foreign Service Tier 4 — THE BIG
+// ONE). The affiliation announces the posting and the location moves
+// to the host capital; MEETING needs a sitting player FM, ISSUE
+// STATEMENT runs 240 characters past two foreign ministries.
+async function renderAmbassadorAffiliation(ctx, host) {
+  const hostNationId = ctx.faction.politician_ambassador_nation_id;
+  const postedAt = Number(ctx.faction.politician_ambassador_at_tick) || 0;
+  const termEnds = postedAt + 60;
+  // Lazy term enforcement from the card: an expired term sweeps on
+  // sight and the page re-renders as civilian life.
+  if (currentTick >= termEnds) {
+    try { await _supabase.rpc('resolve_due_ambassador_terms'); } catch (e) { /* sweep is best-effort */ }
+    host.innerHTML = `
+      <div class="affil var-foreign" style="margin-top:18px;">
+        <div class="ah-row">
+          <div class="ah-badge">🎖️</div>
+          <div class="ah-info">
+            <div class="ah-eyebrow">FOREIGN SERVICE · TIER 4</div>
+            <div class="ah-name">The term is complete.</div>
+            <div class="ah-desc">Sixty ticks of representing the nation — the ministry logs the tour with honors. Refresh to continue.</div>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  let nationName = '\u2014';
+  let capital = '\u2014';
+  let hasFm = false;
+  try {
+    const [{ data: nat, error: nErr }, { data: fmRows, error: fErr }] = await Promise.all([
+      _supabase.from('nations').select('name, capital').eq('id', hostNationId).maybeSingle(),
+      _supabase.from('factions').select('id')
+        .eq('nation_id', hostNationId)
+        .not('politician_foreign_minister_at_tick', 'is', null)
+        .is('abandoned_at', null).limit(1),
+    ]);
+    if (nErr) throw nErr;
+    if (fErr) throw fErr;
+    if (nat) { nationName = nat.name || '\u2014'; capital = nat.capital || '\u2014'; }
+    hasFm = !!fmRows?.length;
+  } catch (err) {
+    console.warn('[politician-home] ambassador card fetch failed:', err?.message || err);
+  }
+
+  const embRep   = Number(ctx.faction?.embassy_reputation ?? 50);
+  const embTrust = Number(ctx.faction?.embassy_trust      ?? 50);
+  const embLev   = Number(ctx.faction?.embassy_leverage   ?? 50);
+  const strikes  = Number(ctx.faction?.politician_ambassador_strikes) || 0;
+  const nextAct  = Number(ctx.faction?.next_ambassador_action_tick) || 0;
+  const acting   = nextAct > currentTick;
+  const actAttrs = acting ? ' aria-disabled="true" title="One move per tick — back next tick"' : '';
+  const meetingOpen = myMeetings.length > 0;
+
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🎖️</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 4</div>
+          <div class="ah-name">You are now the Ambassador of ${escHtml(nationName)}</div>
+          <div class="ah-desc">Your location moves to <strong>${escHtml(capital)}</strong>. You speak for your nation now — every word carries two flags. <strong>Term ends ${escHtml(tickToDate(termEnds))}.</strong>${strikes > 0 ? ' <span style="color:#c87a7a;">One censure on record — the next recalls you.</span>' : ''}</div>
+        </div>
+      </div>
+      <div class="emb-stats">
+        <div class="emb-stat"><span class="emb-stat-lab">REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">STRIKES</span><span class="emb-stat-val">${strikes}<span class="emb-stat-max">/2</span></span></div>
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">AMBASSADORIAL ACTIONS · ONE MOVE PER TICK</div>
+        <div class="ar-buttons">
+          <div class="act-btn${(acting || !hasFm || meetingOpen) ? ' cooldown' : ''}"${(acting || !hasFm || meetingOpen)
+            ? ` aria-disabled="true" title="${!hasFm ? `No sitting Foreign Minister in ${escAttr(nationName)}` : meetingOpen ? 'A meeting is already on the books' : 'One move per tick'}"`
+            : ' data-action="amb-meeting"'}>
+            <div class="act-head">
+              <span class="act-ic">🤝</span>
+              <span class="act-name">MEETING</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">${!hasFm
+              ? `No sitting Foreign Minister in ${escHtml(nationName)} — there is nobody to meet.`
+              : 'Request a meeting with the Foreign Minister. Acceptance opens negotiations over Messages.'}</div>
+            ${meetingOpen ? '<div class="act-cooldown">Meeting on the books</div>' : (acting ? '<div class="act-cooldown">Ready next tick</div>' : '')}
+          </div>
+          <div class="act-btn${acting ? ' cooldown' : ''}"${acting ? actAttrs : ' data-action="amb-statement"'}>
+            <div class="act-head">
+              <span class="act-ic">📜</span>
+              <span class="act-name">ISSUE STATEMENT</span>
+              <span class="act-cost">two flags</span>
+            </div>
+            <div class="act-desc">A public statement, 240 characters. The host FM&rsquo;s approval grants standing — and your own ministry reads every word. Two censures recall you.</div>
+            ${acting ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  host.querySelector('.act-btn[data-action="amb-meeting"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('ambassador_request_meeting',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            cooldown: 'One move per tick — the desk is spent.',
+            no_foreign_minister: 'No sitting Foreign Minister to meet.',
+            meeting_open: 'A meeting is already on the books.',
+            not_ambassador: 'The term has ended.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert('The request goes over — it sits on the Foreign Minister\u2019s desk now.');
+        location.reload();
+      } catch (err) {
+        alert('Could not request the meeting: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+
+  host.querySelector('.act-btn[data-action="amb-statement"]')
+    ?.addEventListener('click', () => openStatementModal(ctx));
+}
+
+// 20270869 — the statement composer. Same chrome as the cable.
+function ensureStatementModal() {
+  if (document.getElementById('st-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #st-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #st-overlay.open { display:flex; }
+    .st-modal { width:560px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(200,166,78,0.35); border-radius:6px; padding:20px 22px; }
+    .st-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#c8a26e; font-weight:700; margin-bottom:10px; }
+    .st-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    #st-text { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:10px 12px;
+      font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; min-height:84px; }
+    #st-text:focus { outline:none; border-color:rgba(200,166,78,0.5); }
+    .st-count { text-align:right; font-family:monospace; font-size:9px; color:#666; margin-top:5px; }
+    .st-foot { margin-top:14px; display:flex; justify-content:flex-end; gap:8px; }
+    .st-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .st-send { padding:8px 16px; background:rgba(200,166,78,0.08);
+      border:0.5px solid rgba(200,166,78,0.5); border-radius:4px; color:#c8a26e;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .st-send:hover:not(:disabled) { background:rgba(200,166,78,0.16); }
+    .st-send:disabled { opacity:0.4; cursor:not-allowed; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'st-overlay';
+  host.innerHTML = `
+    <div class="st-modal">
+      <div class="st-title">ISSUE STATEMENT</div>
+      <div class="st-sub">Public, on the record, and read in two capitals. The host
+        Foreign Ministry weighs it for standing; your own ministry holds the censure pen.</div>
+      <textarea id="st-text" maxlength="240" rows="4"
+        placeholder="Choose every word \u2014 up to 240 characters."></textarea>
+      <div class="st-count"><span id="st-count">0</span>/240</div>
+      <div class="st-foot">
+        <button type="button" class="st-close" id="st-close">CANCEL</button>
+        <button type="button" class="st-send" id="st-send" disabled>ISSUE IT</button>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
+  const text = document.getElementById('st-text');
+  text.addEventListener('input', () => {
+    document.getElementById('st-count').textContent = String(text.value.length);
+    document.getElementById('st-send').disabled = text.value.trim().length < 1;
+  });
+  document.getElementById('st-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+function openStatementModal(ctx) {
+  ensureStatementModal();
+  const text = document.getElementById('st-text');
+  const send = document.getElementById('st-send');
+  text.value = '';
+  document.getElementById('st-count').textContent = '0';
+  send.disabled = true;
+  const fresh = send.cloneNode(true);
+  send.replaceWith(fresh);
+  fresh.addEventListener('click', async () => {
+    fresh.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('ambassador_issue_statement', {
+        p_faction_id: ctx.faction?.id || null, p_text: text.value,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          cooldown: 'One move per tick — the desk is spent.',
+          invalid_text: 'Write something — up to 240 characters.',
+          not_ambassador: 'The term has ended.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      document.getElementById('st-overlay').classList.remove('open');
+      alert(data.path === 'player_fm'
+        ? 'Issued — it sits with the host Foreign Minister for review.'
+        : data.status === 'approved'
+          ? 'Issued — the host ministry approves. Your standing rises.'
+          : 'Issued — the host ministry declines to endorse it.');
+      location.reload();
+    } catch (err) {
+      alert('Could not issue: ' + (err?.message || err));
+      fresh.disabled = false;
+    }
+  });
+  document.getElementById('st-overlay').classList.add('open');
 }
 
 // 20270867 — the DCM's officer picker, shared by REVIEW (grade) and
@@ -4923,6 +5254,11 @@ function renderPressingIssues(ctx) {
   // get the rubber stamp the moment you choose.
   consulateCases.forEach(c => blocks.push(renderConsulateCaseCard(c)));
   summitInvites.forEach(i => blocks.push(renderSummitInviteCard(i)));
+  myMeetings.forEach(m => blocks.push(renderMyMeetingCard(m)));
+  fmMeetings.forEach(m => blocks.push(renderFmMeetingCard(m)));
+  fmStatements.forEach(st => blocks.push(renderFmStatementCard(st)));
+  censurableStatements.forEach(st => blocks.push(renderCensureCard(st)));
+  fmApplications.forEach(a => blocks.push(renderFmApplicationCard(a)));
   // State Advocate appointment requests routed to this politician
   // (as Minister of the Interior) come first after the campaign —
   // they're cabinet-level decisions and the applicant is waiting.
@@ -4980,6 +5316,165 @@ function renderPressingIssues(ctx) {
   bindBackchannelActions();
   bindConsulateCaseActions(ctx);
   bindSummitInviteActions(ctx);
+  bindAmbassadorDeskActions(ctx);
+}
+
+// ── Ambassador desk cards (20270869) ─────────────────────────────────
+function _facName(f, fallback) {
+  return f?.nickname || `${f?.leader_first_name || ''} ${f?.leader_last_name || ''}`.trim() || fallback;
+}
+function renderFmApplicationCard(a) {
+  const who = _facName(a.applicant, 'A politician');
+  return `
+    <div class="offer-card" data-fm-app-card="${escAttr(a.id)}">
+      <div class="offer-icon-wrap"><div class="offer-icon">📋</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">CHANCELLERY &middot; CABINET APPOINTMENT</div>
+        <div class="oi-headline">${escHtml(who)} seeks the Foreign Ministry.</div>
+        <div class="oi-meta"><span>The portfolio carries the meeting diary, statement reviews, and the censure pen.</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-fm-app="${escAttr(a.id)}" data-accept="1">APPOINT</button>
+        <button type="button" class="offer-accept-btn" data-fm-app="${escAttr(a.id)}" data-accept="" style="opacity:0.7;">DECLINE</button>
+      </div>
+    </div>`;
+}
+function renderMyMeetingCard(m) {
+  const fm = _facName(m.fm, 'the Foreign Minister');
+  return `
+    <div class="offer-card">
+      <div class="offer-icon-wrap"><div class="offer-icon">🤝</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">THE EMBASSY &middot; MEETING ${m.status === 'accepted' ? 'ACCEPTED' : 'REQUESTED'}</div>
+        <div class="oi-headline">${m.status === 'accepted'
+          ? `${escHtml(fm)} will see you.`
+          : `Waiting on ${escHtml(fm)}&rsquo;s diary.`}</div>
+        <div class="oi-meta"><span>${m.status === 'accepted'
+          ? 'The room is booked — open negotiations when ready.'
+          : `The request sits with ${escHtml(m.host?.name || 'the host')}&rsquo;s Foreign Ministry.`}</span></div>
+      </div>
+      ${m.status === 'accepted' ? `<div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-negotiate="1">NEGOTIATIONS</button>
+      </div>` : ''}
+    </div>`;
+}
+function renderFmMeetingCard(m) {
+  const amb = _facName(m.ambassador, 'The ambassador');
+  return `
+    <div class="offer-card" data-fm-meeting="${escAttr(m.id)}">
+      <div class="offer-icon-wrap"><div class="offer-icon">🤝</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">FOREIGN MINISTRY &middot; MEETING REQUEST</div>
+        <div class="oi-headline">${escHtml(amb)} of ${escHtml(m.ambassador?.nation?.name || '—')} requests a meeting.</div>
+        <div class="oi-meta"><span>Accepting opens negotiations — the conversation runs over Messages.</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-fm-meet="${escAttr(m.id)}" data-accept="1">ACCEPT</button>
+        <button type="button" class="offer-accept-btn" data-fm-meet="${escAttr(m.id)}" data-accept="" style="opacity:0.7;">DECLINE</button>
+      </div>
+    </div>`;
+}
+function renderFmStatementCard(st) {
+  const amb = _facName(st.ambassador, 'The ambassador');
+  return `
+    <div class="offer-card" data-fm-statement="${escAttr(st.id)}">
+      <div class="offer-icon-wrap"><div class="offer-icon">📜</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">FOREIGN MINISTRY &middot; STATEMENT FOR REVIEW</div>
+        <div class="oi-headline" style="overflow-wrap:break-word;">&ldquo;${escHtml(st.body)}&rdquo;</div>
+        <div class="oi-meta"><span>&mdash; ${escHtml(amb)}, Ambassador of ${escHtml(st.ambassador?.nation?.name || '—')} &middot; approval grants them standing (+2 Reputation, +1 Relations)</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-fm-stmt="${escAttr(st.id)}" data-accept="1">APPROVE</button>
+        <button type="button" class="offer-accept-btn" data-fm-stmt="${escAttr(st.id)}" data-accept="" style="opacity:0.7;">REJECT</button>
+      </div>
+    </div>`;
+}
+function renderCensureCard(st) {
+  const amb = _facName(st.ambassador, 'Your ambassador');
+  return `
+    <div class="offer-card" data-censure-card="${escAttr(st.id)}">
+      <div class="offer-icon-wrap"><div class="offer-icon">⚠️</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">FOREIGN MINISTRY &middot; AMBASSADOR ON THE WIRE</div>
+        <div class="oi-headline" style="overflow-wrap:break-word;">&ldquo;${escHtml(st.body)}&rdquo;</div>
+        <div class="oi-meta"><span>&mdash; ${escHtml(amb)}, your ambassador in ${escHtml(st.host?.name || '—')} &middot; censure window closes ${escHtml(tickToDate(Number(st.created_at_tick) + 12))} &middot; two strikes recall them</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-censure="${escAttr(st.id)}" style="border-color:rgba(200,120,120,0.5);color:#c87a7a;">CENSURE</button>
+      </div>
+    </div>`;
+}
+function bindAmbassadorDeskActions(ctx) {
+  document.querySelectorAll('[data-negotiate]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // The talk runs over the existing DM system — open the panel.
+      document.getElementById('msg-bubble')?.click();
+    });
+  });
+  const wire = (selector, fn, argName, reasonMap) => {
+    document.querySelectorAll(selector).forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const args = { p_faction_id: ctx.faction?.id || null };
+          args[argName] = btn.dataset.fmMeet || btn.dataset.fmStmt || btn.dataset.censure;
+          if ('accept' in btn.dataset) args.p_accept = !!btn.dataset.accept;
+          const { data, error } = await _supabase.rpc(fn, args);
+          if (error) throw error;
+          if (!data?.success) throw new Error(reasonMap[data?.reason] || data?.reason || 'unknown');
+          location.reload();
+        } catch (err) {
+          alert('Could not decide: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  };
+  document.querySelectorAll('[data-fm-app]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('politician_decide_fm_application', {
+          p_faction_id: ctx.faction?.id || null,
+          p_application_id: btn.dataset.fmApp,
+          p_accept: !!btn.dataset.accept,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_pending: 'That application was already decided.',
+            not_hog: 'Only the Head of Government appoints ministers.',
+            post_filled: 'Someone already holds the portfolio.',
+            applicant_gone: 'The applicant is no longer available.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not decide: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
+  wire('[data-fm-meet]', 'fm_decide_meeting', 'p_meeting_id', {
+    not_requested: 'That request was already decided.',
+  });
+  wire('[data-fm-stmt]', 'fm_decide_statement', 'p_statement_id', {
+    not_pending: 'That statement was already decided.',
+    not_fm: 'Only the sitting Foreign Minister reviews statements.',
+  });
+  wire('[data-censure]', 'home_fm_censure', 'p_statement_id', {
+    already_censured: 'That statement already carries a censure.',
+    window_closed: 'The censure window has closed.',
+    not_fm: 'Only the sitting Foreign Minister censures.',
+  });
 }
 
 // ── Regional Summit invites (20270867) ──────────────────────────────
