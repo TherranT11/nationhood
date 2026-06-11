@@ -337,6 +337,7 @@
           <input type="number" min="1" id="fin-invest-amt" class="fin-amt" placeholder="Amount ($)">
           <button type="button" class="bc-btn" id="fin-invest">INVEST</button>
           <button type="button" class="bc-btn" id="fin-paytaxes" style="margin-top:8px;">PAY TAXES</button>
+          <button type="button" class="bc-btn" id="fin-bankrupt" style="margin-top:8px;border-color:#5a3a3a;color:#c88;background:rgba(217,83,79,0.06);">DECLARE BANKRUPTCY</button>
           <div class="err" id="fin-err"></div>
         </div>
       </div>
@@ -1169,27 +1170,29 @@ import { CITY_STATS } from './js/game/city-labels.js';
           });
         });
 
-        // ── Blueprints — the corp's design library ────────────────
+        // ── Blueprints / Models — the corp's design library ───────
         // Construction lists corp_blueprints; automotive lists its
-        // vehicle designs (20270831) with the class/type/engine line.
+        // MODELS (20270848 spec: Name · Type · Class · Quality ·
+        // Inventory · [Retire]).
         let bpRows = '<div class="rl-empty">No blueprints drafted yet — design one from Executive Actions.</div>';
         if (corp.industry === 'automotive') {
+          bpRows = '<div class="rl-empty">No Models designed yet — design one from Executive Actions.</div>';
           const { data: vbps, error: vErr } = await _supabase.from('vehicle_blueprints')
-            .select('name, vehicle_type, vehicle_class, engine, quality, units_in_stock, created_at_tick')
+            .select('id, name, vehicle_type, vehicle_class, quality, units_in_stock')
             .eq('corp_id', corp.id)
             .order('created_at', { ascending: false });
           if (vErr) throw vErr;
           const lbl = (list, v) => list.find(it => it.value === v)?.label || v;
           if (vbps?.length) {
-            bpRows = `<div class="bp-grid" style="grid-template-columns:1.4fr 1.1fr 1fr 0.8fr 0.7fr 0.9fr;">
-                  <div class="h">NAME</div><div class="h">VEHICLE</div><div class="h">ENGINE</div><div class="h">QUALITY</div><div class="h">IN STOCK</div><div class="h">DRAFTED</div>
+            bpRows = `<div class="bp-grid" style="grid-template-columns:1.4fr 1fr 1fr 0.9fr 0.8fr${isOwner ? ' auto' : ''};">
+                  <div class="h">NAME</div><div class="h">TYPE</div><div class="h">CLASS</div><div class="h">QUALITY</div><div class="h">INVENTORY</div>${isOwner ? '<div class="h"></div>' : ''}
                   ${vbps.map(bp => `
                     <div class="c nm">${esc(bp.name)}</div>
-                    <div class="c">${esc(lbl(VEHICLE_CLASSES, bp.vehicle_class) + ' ' + lbl(VEHICLE_TYPES, bp.vehicle_type))}</div>
-                    <div class="c">${esc(lbl(VEHICLE_ENGINES, bp.engine))}</div>
+                    <div class="c">${esc(lbl(VEHICLE_TYPES, bp.vehicle_type))}</div>
+                    <div class="c">${esc(lbl(VEHICLE_CLASSES, bp.vehicle_class))}</div>
                     <div class="c">${esc(lbl(VEHICLE_QUALITY, bp.quality))}</div>
                     <div class="c">${esc(String(Number(bp.units_in_stock) || 0))}</div>
-                    <div class="c">${esc(tickToDate(bp.created_at_tick))}</div>`).join('')}
+                    ${isOwner ? `<div class="ap-btns"><button type="button" class="ap-btn rej" data-retire="${esc(bp.id)}" data-name="${esc(bp.name)}" data-stock="${esc(String(Number(bp.units_in_stock) || 0))}">RETIRE</button></div>` : ''}`).join('')}
                 </div>`;
           }
         } else if (bps?.length) {
@@ -1205,9 +1208,35 @@ import { CITY_STATS } from './js/game/city-labels.js';
         }
         document.getElementById('bc-blueprints').innerHTML = `
           <div class="rl-panel">
-            <div class="ea-head"><span class="rule"></span><span class="t">BLUEPRINTS</span><span class="rule"></span></div>
+            <div class="ea-head"><span class="rule"></span><span class="t">${corp.industry === 'automotive' ? 'MODELS' : 'BLUEPRINTS'}</span><span class="rule"></span></div>
             ${bpRows}
           </div>`;
+
+        // [RETIRE] — removes the Model; refused while a line runs it,
+        // and any remaining inventory (home + shipped) is scrapped.
+        document.querySelectorAll('[data-retire]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm(`Retire ${btn.dataset.name}?\n\nThe design is removed and its remaining inventory is scrapped — ${btn.dataset.stock} at HQ plus anything shipped abroad.`)) return;
+            btn.disabled = true;
+            try {
+              const { data, error: rtErr } = await _supabase.rpc('retire_vehicle_model',
+                { p_corp_id: corp.id, p_blueprint_id: btn.dataset.retire });
+              if (rtErr) throw rtErr;
+              if (!data?.success) {
+                const REASON = {
+                  in_production: 'An assembly line is still running this Model — let the run finish first.',
+                  not_owner: 'Only the owner retires Models.',
+                  arrested: 'You are under arrest — your assets are frozen.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              window.location.reload();
+            } catch (e) {
+              alert('Could not retire: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
 
         // ── Finances box (right column) ──────────────────────────
         // Reads the same sources everything else does: treasury_cash,
@@ -1281,6 +1310,34 @@ import { CITY_STATS } from './js/game/city-labels.js';
               window.location.reload();
             } catch (e) {
               finErr.textContent = 'Invest failed: ' + (e?.message || e);
+              btn.disabled = false;
+            }
+          });
+
+          // Declare Bankruptcy (20270848) — the voluntary wind-down:
+          // no debt allowed, everyone is fired, the treasury returns
+          // to the owner, and the corporation is deleted.
+          document.getElementById('fin-bankrupt').addEventListener('click', async () => {
+            const btn = document.getElementById('fin-bankrupt');
+            finErr.textContent = '';
+            if (!confirm(`Close ${corp.name} for good?\n\nEvery employee is fired, the remaining treasury returns to you, and the corporation is deleted. This cannot be undone.`)) return;
+            btn.disabled = true;
+            try {
+              const { data, error: cbErr } = await _supabase.rpc('close_businessman_corporation',
+                { p_corp_id: corp.id });
+              if (cbErr) throw cbErr;
+              if (!data?.success) {
+                const REASON = {
+                  has_debt: `The corporation still owes ${hfFmtBig(data?.outstanding ?? 0)} — settle its debts first.`,
+                  not_owner: 'Only the owner can close the corporation.',
+                  arrested: 'You are under arrest — your assets are frozen.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              alert(`${data.name} is closed. ${hfFmtBig(Number(data.returned) || 0)} returned to you; ${data.fired} employee(s) released.`);
+              window.location.href = 'businessman-home.html';
+            } catch (e) {
+              finErr.textContent = 'Could not close: ' + (e?.message || e);
               btn.disabled = false;
             }
           });
@@ -1380,23 +1437,25 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const firstErr = [projRes, loanRes, bpRes, allProjRes, taxRes, runRes].find(r => r.error)?.error;
         if (firstErr) throw firstErr;
 
-        // Active Projects — construction job sites, or the automotive
-        // corp's running Production Runs (1 vehicle per tick).
+        // Active Projects — construction job sites; automotive shows
+        // its ASSEMBLY LINES instead (20270848 spec: Name · Status ·
+        // Model Producing · Production Per Month), one row per line
+        // at the plant's level, running runs assigned in order.
         const projs = projRes.data || [];
         const runs = runRes.data || [];
+        const lineCount = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
         const projRows = corp.industry === 'automotive'
-          ? (!runs.length ? '<div class="rl-empty">No assembly lines running.</div>' : `
-            <div class="bp-grid" style="grid-template-columns:1.3fr 1fr 1fr 1.1fr;">
-              <div class="h">ORDER</div><div class="h">COST</div><div class="h">PROGRESS</div><div class="h">COMPLETION</div>
-              ${runs.map(r => {
-                const remaining = Math.max(0, r.completes_at_tick - currentTick);
+          ? `<div class="bp-grid" style="grid-template-columns:1fr 0.9fr 1.3fr 1.1fr;">
+              <div class="h">NAME</div><div class="h">STATUS</div><div class="h">MODEL PRODUCING</div><div class="h">PRODUCTION PER MONTH</div>
+              ${Array.from({ length: lineCount }, (_, i) => {
+                const run = runs[i];
                 return `
-                  <div class="c nm">${esc(r.blueprint?.name || 'Model')} × ${esc(String(r.quantity))}</div>
-                  <div class="c">${esc(hfFmtBig(Number(r.total_cost) || 0))}</div>
-                  <div class="c">${esc(String(r.produced))}/${esc(String(r.quantity))} built</div>
-                  <div class="c">${esc(tickToDate(r.completes_at_tick))} (${remaining} tick${remaining === 1 ? '' : 's'})</div>`;
+                  <div class="c nm">Line ${i + 1}</div>
+                  <div class="c">${run ? 'Running' : 'Off'}</div>
+                  <div class="c">${run ? `${esc(run.blueprint?.name || 'Model')} (${esc(String(run.produced))}/${esc(String(run.quantity))} · done ${esc(tickToDate(run.completes_at_tick))})` : '—'}</div>
+                  <div class="c">${run ? '1 vehicle' : '—'}</div>`;
               }).join('')}
-            </div>`)
+            </div>`
           : (!projs.length ? '<div class="rl-empty">No active job sites.</div>' : `
             <div class="bp-grid" style="grid-template-columns:1.3fr 1fr 1fr 1.1fr;">
               <div class="h">PROJECT</div><div class="h">CONTRACT</div><div class="h">SUPPLIES</div><div class="h">COMPLETION</div>
@@ -1415,7 +1474,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             </div>`);
         document.getElementById('bc-projects').innerHTML = `
           <div class="rl-panel">
-            <div class="ea-head"><span class="rule"></span><span class="t">ACTIVE PROJECTS</span><span class="rule"></span></div>
+            <div class="ea-head"><span class="rule"></span><span class="t">${corp.industry === 'automotive' ? 'ASSEMBLY LINES' : 'ACTIVE PROJECTS'}</span><span class="rule"></span></div>
             ${projRows}
           </div>`;
 
