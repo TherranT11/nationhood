@@ -484,10 +484,17 @@ export const AUTOMOTIVE_ASSET_UPGRADE_COSTS = { 2: 10000000, 3: 16000000, 4: 250
 // Assembly lines per plant level — mirror of assembly_lines (20270842).
 export const ASSEMBLY_LINES_BY_TIER = [1, 1, 2, 2, 3, 4];
 
-// Aluminum (20270843) — mirrors of vehicle_aluminum_per_unit and
-// parts_depot_cap; buy_aluminum / start_production_run enforce.
-export const ALUMINUM_PER_VEHICLE = { motorcycle: 0.5 }; // every other type: 1
+// Production materials (20270843/51) — mirrors of
+// vehicle_aluminum_per_unit, vehicle_components_per_unit, and
+// parts_depot_cap; the buy RPCs and start_production_run enforce.
+export const ALUMINUM_PER_VEHICLE = { motorcycle: 0.5, pickup: 2 }; // every other type: 1
 export const aluminumPerVehicle = (type) => ALUMINUM_PER_VEHICLE[type] ?? 1;
+export const COMPONENTS_PER_ENGINE = { hybrid: 1, electric_basic: 2, electric_performance: 3 };
+export const COMPONENTS_PER_PACKAGE = { technology: 1, self_driving: 1 };
+export function componentsPerVehicle(engine, packages) {
+  return (COMPONENTS_PER_ENGINE[engine] || 0)
+    + (packages || []).reduce((s, p) => s + (COMPONENTS_PER_PACKAGE[p] || 0), 0);
+}
 export const PARTS_DEPOT_CAPS = [10, 10, 50, 75, 120, 250];
 
 // Display mirrors of the Sales Campaign pricing/appeal helpers

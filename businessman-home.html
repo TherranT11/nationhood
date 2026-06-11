@@ -309,9 +309,10 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
     let occupationHtml = '<div class="val">Unemployed</div>';
     let salaryYearly = 0;
     let employerName = null;
+    let employer = { data: null };
     let ownedCorps = [];
     try {
-      const [{ data: corps, error: ownErr }, employer] = await Promise.all([
+      const [{ data: corps, error: ownErr }, employerRes] = await Promise.all([
         _supabase.from('entrepreneur_corps')
           .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
@@ -320,7 +321,8 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (ownErr) throw ownErr;
-      if (employer.error) throw employer.error;
+      if (employerRes.error) throw employerRes.error;
+      employer = employerRes;
       const ownerSub = corps?.length
         ? `<div class="sub">Owner of ${esc(corps[0].name)}${corps.length > 1 ? ` +${corps.length - 1} more` : ''}</div>`
         : '';
@@ -573,7 +575,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           ],
         },
         'Chief Commercial Officer (CCO)': {
-          rpc: null, rides: 'it rides the next campaign',
+          rpc: null, // every action is a modal — the generic rpc path never fires
           actions: [
             { key: 'campaign', nm: 'RUN A CAMPAIGN', modal: 'campaign',
               ds: 'Fire a full Sales Campaign on your own authority — nation, Model, price — without touching the owner&rsquo;s executive action.' },
@@ -896,7 +898,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             const [nations, { data: pres, error: pErr }] = await Promise.all([
               ccoNations(),
               _supabase.from('corp_market_presence')
-                .select('nation_id, kind').eq('corp_id', employerId),
+                .select('nation_id').eq('corp_id', employerId),
             ]);
             if (pErr) throw pErr;
             ccPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
@@ -917,12 +919,18 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             console.warn('[businessman-home] cco campaign load failed:', e?.message || e);
           }
         }
+        // Shared close wiring for the desk's three modals.
+        function ccoWireClose(overlayId, cancelId) {
+          const close = () => document.getElementById(overlayId).classList.remove('open');
+          document.getElementById(cancelId).addEventListener('click', close);
+          document.getElementById(overlayId).addEventListener('click', (e) => {
+            if (e.target?.id === overlayId) close();
+          });
+        }
+        ccoWireClose('cc-overlay', 'cc-cancel');
+        ccoWireClose('ds-overlay', 'ds-cancel');
+        ccoWireClose('fc-overlay', 'fc-cancel');
         document.getElementById('cc-price').addEventListener('input', ccRefresh);
-        document.getElementById('cc-cancel').addEventListener('click', () =>
-          document.getElementById('cc-overlay').classList.remove('open'));
-        document.getElementById('cc-overlay').addEventListener('click', (e) => {
-          if (e.target?.id === 'cc-overlay') document.getElementById('cc-overlay').classList.remove('open');
-        });
         document.getElementById('cc-run').addEventListener('click', async () => {
           if (ccInFlight) return;
           ccInFlight = true; ccRefresh();
@@ -966,11 +974,6 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             host.innerHTML = '<div class="pd-static" style="color:#888;">Could not load nations — try again shortly.</div>';
           }
         }
-        document.getElementById('ds-cancel').addEventListener('click', () =>
-          document.getElementById('ds-overlay').classList.remove('open'));
-        document.getElementById('ds-overlay').addEventListener('click', (e) => {
-          if (e.target?.id === 'ds-overlay') document.getElementById('ds-overlay').classList.remove('open');
-        });
         document.getElementById('ds-call').addEventListener('click', async () => {
           if (dsInFlight || !dsNation) return;
           dsInFlight = true;
@@ -1032,11 +1035,6 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           }
         }
         document.getElementById('fc-qty').addEventListener('input', fcRefresh);
-        document.getElementById('fc-cancel').addEventListener('click', () =>
-          document.getElementById('fc-overlay').classList.remove('open'));
-        document.getElementById('fc-overlay').addEventListener('click', (e) => {
-          if (e.target?.id === 'fc-overlay') document.getElementById('fc-overlay').classList.remove('open');
-        });
         document.getElementById('fc-sign').addEventListener('click', async () => {
           if (fcInFlight) return;
           fcInFlight = true; fcRefresh();
