@@ -466,6 +466,24 @@ export const ASSEMBLY_TIERS = [
     effect: '4 Assembly Lines — 2 Superior · 2 Automated · Requires a Tier III Industrial building.' },
 ];
 
+// The five automotive assets behind the department cards' [UPGRADE]
+// buttons (20270842) — upgrade_automotive_asset and the per-level
+// SQL helpers are authoritative; tier state lives on the
+// entrepreneur_corps columns named here. Prices align with
+// construction's yard_upgrade_cost by Roman numeral (Level I is the
+// founding state).
+export const AUTOMOTIVE_ASSETS = {
+  design_studio: { col: 'design_studio_tier', dept: 'DESIGN & ENGINEERING', ladder: STUDIO_TIERS },
+  assembly:      { col: 'assembly_tier',      dept: 'ASSEMBLY PLANT', ladder: ASSEMBLY_TIERS },
+  data_center:   { col: 'data_center_tier',   dept: 'QUALITY & DATA CENTER', ladder: DATA_TIERS },
+  parts_depot:   { col: 'parts_depot_tier',   dept: 'SUPPLY CHAIN & PART DEPOT', ladder: PARTS_TIERS },
+  franchise:     { col: 'franchise_tier',     dept: 'FRANCHISE & COMMERCIAL SUITE', ladder: FRANCHISE_TIERS },
+};
+export const AUTOMOTIVE_ASSET_UPGRADE_COSTS = { 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
+
+// Assembly lines per plant level — mirror of assembly_lines (20270842).
+export const ASSEMBLY_LINES_BY_TIER = [1, 1, 2, 2, 3, 4];
+
 // Display mirrors of the Sales Campaign pricing/appeal helpers
 // (20270839) — vehicle_class_anchor_price and vehicle_appeal are
 // authoritative; these feed the campaign modal's live lines.
