@@ -419,6 +419,29 @@ export const PARTS_TIERS = [
     effect: 'Store up to 250 Aluminum.' },
 ];
 
+// The FRANCHISE & COMMERCIAL SUITE ladder — automotive's fifth
+// asset, powering Supply Agreements. Level I is live: home-nation
+// Sales Campaigns get +1 Demand (run_sales_campaign, 20270841).
+// The deeper home bonuses and the Subsidiary-brand demand (III+)
+// arrive with the tier column and its upgrade mechanics.
+export const FRANCHISE_TIERS = [
+  { tier: 'Level I: Flagship Showroom Network',
+    desc: 'A small, corporate-owned network of modern dealerships situated in major metropolitan hubs to market your initial vehicle lineup directly to player-buyers and early consumer markets.',
+    effect: '+1 Demand for all vehicles in your nation.' },
+  { tier: 'Level II: Provincial Franchise Network',
+    desc: 'Establishes corporate franchise frameworks, allowing independent NPC dealerships to distribute and service your vehicles across the entire state or province.',
+    effect: '+2 Demand for all vehicles in your nation.' },
+  { tier: 'Level III: National Fleet Logistics Office',
+    desc: 'Unlocks dedicated commercial B2B sales infrastructure, allowing you to bid on and automatically fulfill massive vehicle transport contracts for shipping or rental corporations.',
+    effect: '+3 Demand for all vehicles in your nation · +1 Demand for Subsidiary brands.' },
+  { tier: 'Level IV: Continental Financing Corporation',
+    desc: 'Mass-market retail presence backed by an in-house consumer auto financing and leasing division, multiplying your retail sales volume.',
+    effect: '+4 Demand for all vehicles in your nation · +2 Demand for Subsidiary brands.' },
+  { tier: 'Level V: Sovereign Trade Matrix',
+    desc: 'Direct integration with international trade ministries, allowing you to establish nationwide consumer markets across multiple continents, secure massive state subsidies, and completely bypass import tariffs.',
+    effect: '+3 Demand for Subsidiary brands.' },
+];
+
 // The ASSEMBLY PLANT ladder — automotive's second asset. Display copy
 // only for now (every automotive corp starts at Level I); tier state
 // moves to a column when its upgrade mechanics land. Industrial
@@ -520,6 +543,6 @@ export const DEPARTMENTS = {
     { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] },
     { dept: 'QUALITY & DATA CENTER', ...DATA_TIERS[0] },
     { dept: 'SUPPLY CHAIN & PART DEPOT', ...PARTS_TIERS[0] },
-    null,
+    { dept: 'FRANCHISE & COMMERCIAL SUITE', ...FRANCHISE_TIERS[0] },
   ],
 };
