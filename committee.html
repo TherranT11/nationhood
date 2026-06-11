@@ -765,6 +765,40 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       }
       return;
     }
+    // 20270862 — fast-track: with 3+ YES on a VOTE motion, any
+    // member sends the bill to the floor immediately.
+    const mtf = e.target.closest('[data-move-to-floor]');
+    if (mtf) {
+      e.preventDefault();
+      if (mtf.dataset.busy === '1') return;
+      if (!confirm('Move this bill to the floor now? The motion resolves immediately.')) return;
+      mtf.dataset.busy = '1';
+      mtf.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('committee_move_to_floor', {
+          p_faction_id: viewerPolId, p_committee_id: committeeId,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_member:        'Only committee members can move the bill to the floor.',
+            no_open_motion:    'No motion is currently up for a vote.',
+            not_a_vote_motion: 'Only a Vote motion sends the bill to the floor.',
+            not_enough_yes:    'The motion needs 3 YES votes first.',
+          };
+          alert(REASON[data?.reason] || ('Could not move to floor: ' + (data?.reason || 'unknown')));
+          mtf.dataset.busy = '0';
+          mtf.disabled = false;
+          return;
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not move to floor: ' + (err?.message || 'unknown error'));
+        mtf.dataset.busy = '0';
+        mtf.disabled = false;
+      }
+      return;
+    }
     // 20270772 — cast YES / NO on the committee's open motion.
     const motVote = e.target.closest('[data-motion-vote]');
     if (motVote) {
@@ -1074,7 +1108,7 @@ function renderMonthlyAgenda(activeHearing, currentTick, isChair,
     return activeMotion
       ? renderMotionVote(activeAgendaProposal, activeMotion, motionVotes || [],
                          members || [], viewerPolId, canVoteMotion, myMotionVote,
-                         motionOpen, currentTick)
+                         motionOpen, currentTick, onCommittee)
       : renderMotionLauncher(activeAgendaProposal, passedMotions || [], onCommittee,
                              activeAgendaSetAtTick, currentTick);
   }
@@ -1374,7 +1408,7 @@ function renderMotionLauncher(proposal, passedMotions, onCommittee, setAtTick, c
 // Motion ballot (20270772) — a motion is open; the five members vote
 // YES/NO over a 3-tick window. Majority of votes cast carries, the
 // chair breaks ties, and not voting is an abstention.
-function renderMotionVote(proposal, motion, votes, members, viewerPolId, canVote, myVote, motionOpen, currentTick) {
+function renderMotionVote(proposal, motion, votes, members, viewerPolId, canVote, myVote, motionOpen, currentTick, onCommittee) {
   const p = proposal || {};
   const voteByMember = new Map((votes || []).map(v => [v.member_id, v.vote]));
   const yes = (votes || []).filter(v => v.vote === 'yes').length;
@@ -1408,6 +1442,15 @@ function renderMotionVote(proposal, motion, votes, members, viewerPolId, canVote
             ? '<div class="av-mine">Voting has closed — the result resolves shortly.</div>'
             : '<div class="av-mine">Members only.</div>';
 
+  // 20270862 — three YES votes of five seats is an unbeatable
+  // majority on a VOTE motion: any member can fast-track the bill
+  // to the floor instead of waiting out the window.
+  const moveToFloor = motion.motion === 'vote' && yes >= 3 && onCommittee
+    ? `<div class="av-actions">
+         <button type="button" class="mo-btn mo-btn--yes" data-move-to-floor="1"><span class="mo-btn-lab">&#9733; MOVE TO FLOOR &middot; ${yes} YES</span></button>
+       </div>`
+    : '';
+
   return `<div class="av-card">
     <div class="mo-banner mo-banner--${motion.motion}">MOTION TO ${MOTION_LABEL[motion.motion]} &middot; ${escHtml(MOTION_DESC[motion.motion])}</div>
     ${motionBillHead(p)}
@@ -1417,6 +1460,7 @@ function renderMotionVote(proposal, motion, votes, members, viewerPolId, canVote
       <div class="av-tally-row"><span class="av-tally-lab">No</span><span class="av-tally-val">${no}</span></div>
     </div>
     <div class="av-members">${memberPills}</div>
+    ${moveToFloor}
     ${buttons}
   </div>`;
 }
