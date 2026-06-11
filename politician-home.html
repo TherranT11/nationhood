@@ -1601,6 +1601,9 @@ let committeeHearings = [];   // open committee hearings in the viewer's nation 
 let constructionBidRequests = []; // open construction requests in the mayor's city with pending bids (20270807). Surfaces as Pressing Issues cards opening the award modal; lowest bid auto-accepts after 3 ticks.
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
 let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
+let consulateCases = [];   // pending consulate docket cases (20270865) — Pressing Issues cards; handling one stamps the rest.
+let backchannelInbox = []; // burn-after-reading consul messages addressed to this faction (20270865).
+let summitInvites = [];    // pending Regional Summit invites for this officer (20270867).
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
 let consultancyOffers = [];     // pending corp consultancy offers targeting this politician (20270773). Accept pays the fee + Capital kicker; decline refunds the corp's escrow.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
@@ -1822,6 +1825,37 @@ async function init() {
         .map(r => ({ ...r, bids: (r.bids || []).filter(b => b.status === 'pending') }))
         .filter(r => r.bids.length);
     }
+
+    // Consulate docket (20270865): pending cases are the consul's
+    // Pressing Issues. Backchannels are RLS-scoped to this user;
+    // filter to this faction so each character sees their own.
+    consulateCases = [];
+    if (politician.politician_consul_nation_id) {
+      const { data: ccRows, error: ccErr } = await _supabase.from('consulate_cases')
+        .select('id, kind, title, body, handle_effect, stamp_effect')
+        .eq('consul_faction_id', politician.id).eq('status', 'pending')
+        .order('created_at');
+      if (ccErr) console.error('politician-home: consulate cases fetch failed', ccErr);
+      else consulateCases = ccRows || [];
+    }
+    summitInvites = [];
+    {
+      const { data: siRows, error: siErr } = await _supabase.from('summit_invites')
+        .select('id, nation_id, summit:regional_summits!summit_id(region)')
+        .eq('officer_faction_id', politician.id)
+        .eq('status', 'pending');
+      if (siErr) console.error('politician-home: summit invites fetch failed', siErr);
+      else summitInvites = siRows || [];
+    }
+    backchannelInbox = [];
+    {
+      const { data: bcRows, error: bcErr } = await _supabase.from('backchannel_messages')
+        .select('id, sender_name, body, created_at_tick')
+        .eq('to_faction_id', politician.id)
+        .order('created_at');
+      if (bcErr) console.error('politician-home: backchannel fetch failed', bcErr);
+      else backchannelInbox = bcRows || [];
+    }
   } catch (err) {
     console.error('politician-home: event_log / career-events / active_election fetch failed', err);
     allEvents  = [];
@@ -1835,6 +1869,9 @@ async function init() {
     committeeHearings = [];
     openOrdinanceProposals = [];
     memberCommittees = [];
+    consulateCases = [];
+    backchannelInbox = [];
+    summitInvites = [];
   }
 
   renderHero(ctx.shard);
@@ -3088,6 +3125,19 @@ function renderAffiliation(ctx) {
 async function renderForeignAffiliation(ctx) {
   const host = document.getElementById('foreign-affiliation-host');
   if (!host) return;
+  // Tier 3 (20270866) outranks everything — the consul posting was
+  // cleared at promotion, so the three branches are exclusive.
+  if (ctx?.faction?.politician_dcm_region) {
+    await renderDcmAffiliation(ctx, host);
+    return;
+  }
+  // Tier 2 (20270865): a sitting consul gets the consulate card —
+  // the attaché posting was cleared at promotion, so the branches
+  // are exclusive.
+  if (ctx?.faction?.politician_consul_nation_id) {
+    await renderConsulAffiliation(ctx, host);
+    return;
+  }
   const fsNationId = ctx?.faction?.politician_foreign_service_nation_id || null;
   if (!fsNationId) { host.innerHTML = ''; return; }
 
@@ -3167,6 +3217,7 @@ async function renderForeignAffiliation(ctx) {
   } catch (err) {
     console.warn('[politician-home] cable check failed:', err?.message || err);
   }
+  const attacheAsk = await fetchDcmAsk(ctx.faction?.id);
   const cableAttrs = cableSent
     ? ' aria-disabled="true" title="The cable already went out this tick"'
     : ' data-action="embassy-send-cable"';
@@ -3199,7 +3250,21 @@ async function renderForeignAffiliation(ctx) {
       ${contactsCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
     </div>`;
 
-  const actionsHtml = dayToDayTile + cableTile + contactsTile;
+  // Tier 2 promotion (20270865): 12 Experience unlocks the consulate.
+  const skill = Number(ctx.faction?.politician_skill) || 0;
+  const consulPostTile = skill >= 12
+    ? `
+    <div class="act-btn" data-action="take-consul-post">
+      <div class="act-head">
+        <span class="act-ic">🏛️</span>
+        <span class="act-name">TAKE THE CONSUL POST</span>
+        <span class="act-cost">12 exp</span>
+      </div>
+      <div class="act-desc">The ministry has a consulate for you — pick a vacant posting and run your own shop. Your attaché posting ends.</div>
+    </div>`
+    : '';
+
+  const actionsHtml = dayToDayTile + cableTile + contactsTile + consulPostTile;
 
   host.innerHTML = `
     <div class="affil var-foreign" style="margin-top:18px;">
@@ -3221,6 +3286,7 @@ async function renderForeignAffiliation(ctx) {
         <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
         <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
       </div>
+      ${attacheAsk ? `<div class="dcm-ask"><b>THE DCM ASKS:</b> ${escHtml(DCM_ASK_LABEL[attacheAsk] || attacheAsk)} Comply for +0.3 Experience each.</div>` : ''}
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
         <div class="ar-buttons">${actionsHtml}</div>
@@ -3281,6 +3347,739 @@ async function renderForeignAffiliation(ctx) {
         tile.dataset.busy = '0';
       }
     });
+
+  host.querySelector('.act-btn[data-action="take-consul-post"]')
+    ?.addEventListener('click', () => openConsulPostModal(ctx));
+}
+
+// 20270865 — the consulate picker. One consul per home→host pair:
+// the live nations load minus home and minus postings your nation
+// already staffs. Same inject-on-demand overlay pattern as the rest.
+function ensureConsulPostModal() {
+  if (document.getElementById('cp-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #cp-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #cp-overlay.open { display:flex; }
+    .cp-modal { width:480px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(90,175,165,0.35); border-radius:6px; padding:20px 22px; }
+    .cp-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#5aafa5; font-weight:700; margin-bottom:10px; }
+    .cp-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    .cp-row { display:flex; align-items:center; justify-content:space-between;
+      padding:10px 12px; border:0.5px solid rgba(255,255,255,0.1); border-radius:4px;
+      margin-bottom:8px; }
+    .cp-row .nm { color:#e8e4da; font-size:12px; font-weight:600; }
+    .cp-take { padding:6px 12px; background:rgba(90,175,165,0.08);
+      border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+      font-family:monospace; font-size:8.5px; letter-spacing:0.1em; font-weight:700;
+      cursor:pointer; }
+    .cp-take:hover:not(:disabled) { background:rgba(90,175,165,0.16); }
+    .cp-take:disabled { opacity:0.4; cursor:not-allowed; }
+    .cp-empty { color:#666; font-size:11px; font-style:italic; text-align:center; padding:14px; }
+    .cp-foot { margin-top:12px; text-align:right; }
+    .cp-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+      cursor:pointer; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'cp-overlay';
+  host.innerHTML = `
+    <div class="cp-modal">
+      <div class="cp-title">TAKE THE CONSUL POST</div>
+      <div class="cp-sub">Pick a vacant consulate. Your attaché posting ends; the embassy
+        record (Reputation, Trust, Leverage) follows you.</div>
+      <div id="cp-rows"><div class="cp-empty">Loading\u2026</div></div>
+      <div class="cp-foot"><button type="button" class="cp-close" id="cp-close">CANCEL</button></div>
+    </div>`;
+  document.body.appendChild(host);
+  document.getElementById('cp-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+async function openConsulPostModal(ctx) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  rows.innerHTML = '<div class="cp-empty">Loading\u2026</div>';
+  document.getElementById('cp-overlay').classList.add('open');
+  try {
+    const [{ data: mkt, error: mErr }, { data: taken, error: tErr }] = await Promise.all([
+      _supabase.rpc('construction_market_listings'),
+      _supabase.from('factions')
+        .select('politician_consul_nation_id')
+        .eq('faction_type', 'politician')
+        .eq('nation_id', ctx.faction?.nation_id)
+        .not('politician_consul_nation_id', 'is', null)
+        .is('abandoned_at', null),
+    ]);
+    if (mErr) throw mErr;
+    if (tErr) throw tErr;
+    const occupied = new Set((taken || []).map(t => t.politician_consul_nation_id));
+    const nations = (mkt?.materials || [])
+      .map(r => ({ id: r.nation_id, name: r.nation }))
+      .filter(n => n.id !== ctx.faction?.nation_id && !occupied.has(n.id));
+    if (!nations.length) {
+      rows.innerHTML = '<div class="cp-empty">Every consulate is staffed \u2014 wait for a vacancy.</div>';
+      return;
+    }
+    rows.innerHTML = nations.map(n => `
+      <div class="cp-row"><span class="nm">${escHtml(n.name)}</span>
+        <button type="button" class="cp-take" data-take-post="${escAttr(n.id)}">TAKE THE POST</button></div>`).join('');
+    rows.querySelectorAll('[data-take-post]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        if (!confirm('Take this consulate? Your attaché posting ends.')) return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error } = await _supabase.rpc('politician_take_consul_post', {
+            p_faction_id: ctx.faction?.id || null, p_nation_id: btn.dataset.takePost,
+          });
+          if (error) throw error;
+          if (!data?.success) {
+            const REASON = {
+              not_attache: 'Only a serving attaché takes a consulate.',
+              not_enough_experience: 'The ministry wants 12 Experience first.',
+              consulate_occupied: 'Someone from your nation already holds that post.',
+              nation_not_live: 'That nation is not an active posting.',
+              invalid_nation: 'You can\u2019t consul your own nation.',
+              arrested: 'You are under arrest.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          alert(`The cable is short: \u201cProceed to ${data.nation}. Congratulations, Consul.\u201d`);
+          location.reload();
+        } catch (err) {
+          alert('Could not take the post: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    rows.innerHTML = '<div class="cp-empty">Could not load the postings \u2014 try again shortly.</div>';
+    console.warn('[politician-home] consul post load failed:', err?.message || err);
+  }
+}
+
+// 20270867 — the DCM's standing ask, bannered on the officer's own
+// card. One pending ask per officer; compliance pays both sides.
+const DCM_ASK_LABEL = {
+  work_the_docket: 'Work the docket — run the consulate and handle a case properly.',
+  build_standing: 'Build standing — get out there and work your contacts.',
+};
+async function fetchDcmAsk(factionId) {
+  try {
+    const { data, error } = await _supabase.from('dcm_priorities')
+      .select('kind')
+      .eq('officer_faction_id', factionId)
+      .eq('status', 'pending')
+      .limit(1);
+    if (error) throw error;
+    return data?.[0]?.kind || null;
+  } catch (err) {
+    console.warn('[politician-home] dcm ask fetch failed:', err?.message || err);
+    return null;
+  }
+}
+
+// 20270865 — the consulate card (Foreign Service Tier 2). Replaces
+// the attaché card after promotion; the embassy stat row carries
+// over. RUN THE CONSULATE opens the morning docket — the cases land
+// in Pressing Issues and handling one rubber-stamps the rest.
+async function renderConsulAffiliation(ctx, host) {
+  const hostNationId = ctx.faction.politician_consul_nation_id;
+  let nationName = '\u2014';
+  let capital    = '\u2014';
+  try {
+    const { data, error } = await _supabase.from('nations')
+      .select('name, capital')
+      .eq('id', hostNationId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      nationName = data.name || '\u2014';
+      capital    = data.capital || '\u2014';
+    }
+  } catch (err) {
+    console.warn('[politician-home] consul nation fetch failed:', err?.message || err);
+  }
+
+  const embBudget = Number(ctx.faction?.embassy_budget     ?? 100);
+  const embRep    = Number(ctx.faction?.embassy_reputation ?? 50);
+  const embTrust  = Number(ctx.faction?.embassy_trust      ?? 50);
+  const embLev    = Number(ctx.faction?.embassy_leverage   ?? 50);
+
+  const dcmAsk = await fetchDcmAsk(ctx.faction.id);
+  const hasDocket = consulateCases.length > 0;
+  const docketAttrs = hasDocket
+    ? ' aria-disabled="true" title="The docket is on your desk — handle a case in Pressing Issues"'
+    : ' data-action="consul-run"';
+  const nextNet = Number(ctx.faction?.next_embassy_contacts_tick) || 0;
+  const netCooling = nextNet > currentTick;
+  const netAttrs = netCooling
+    ? ' aria-disabled="true" title="Already worked the rolodex this tick"'
+    : ' data-action="consul-network"';
+  const nextBc = Number(ctx.faction?.next_backchannel_tick) || 0;
+  const bcCooling = nextBc > currentTick;
+  const bcAttrs = bcCooling
+    ? ' aria-disabled="true" title="The channel already carried a message this tick"'
+    : ' data-action="consul-backchannel"';
+
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🏛️</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 2</div>
+          <div class="ah-name">Consul in ${escHtml(nationName)}</div>
+          <div class="ah-desc">You run the consulate in <strong>${escHtml(capital)}</strong>. The morning docket is yours to triage — handle one case properly, rubber-stamp the rest, and live with both.</div>
+        </div>
+      </div>
+      <div class="emb-stats">
+        <div class="emb-stat"><span class="emb-stat-lab">BUDGET</span><span class="emb-stat-val">$${escHtml(embBudget.toLocaleString())}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
+      </div>
+      ${dcmAsk ? `<div class="dcm-ask"><b>THE DCM ASKS:</b> ${escHtml(DCM_ASK_LABEL[dcmAsk] || dcmAsk)} Comply for +0.3 Experience each.</div>` : ''}
+      <div class="act-row">
+        <div class="ar-lab">REPEATABLE ACTIONS</div>
+        <div class="ar-buttons">
+          <div class="act-btn${hasDocket ? ' cooldown' : ''}"${docketAttrs}>
+            <div class="act-head">
+              <span class="act-ic">🗂️</span>
+              <span class="act-name">RUN THE CONSULATE</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">${hasDocket
+              ? 'The docket is on your desk — handle a case in Pressing Issues.'
+              : 'Open the morning docket — real cross-border business and the usual paperwork, four cases deep. You can do one of them justice.'}</div>
+            ${hasDocket ? '<div class="act-cooldown">Docket pending</div>' : ''}
+          </div>
+          <div class="act-btn${netCooling ? ' cooldown' : ''}"${netAttrs}>
+            <div class="act-head">
+              <span class="act-ic">🤝</span>
+              <span class="act-name">BUILD NETWORK</span>
+              <span class="act-cost">\u22121 relations</span>
+            </div>
+            <div class="act-desc">Spend the nations\u2019 goodwill to build your own standing. +1 Reputation \u00b7 +0.3 Experience.</div>
+            ${netCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+          </div>
+          <div class="act-btn${bcCooling ? ' cooldown' : ''}"${bcAttrs}>
+            <div class="act-head">
+              <span class="act-ic">🔥</span>
+              <span class="act-name">BACKCHANNEL</span>
+              <span class="act-cost">no trace</span>
+            </div>
+            <div class="act-desc">A one-time message to any player in the host or home nation. It lands in their Pressing Issues — all they can do is close it. No audit, no trace.</div>
+            ${bcCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+          </div>
+          ${(Number(ctx.faction?.politician_skill) || 0) >= 20 ? `
+          <div class="act-btn" data-action="take-dcm-post">
+            <div class="act-head">
+              <span class="act-ic">🌐</span>
+              <span class="act-name">TAKE THE DCM POST</span>
+              <span class="act-cost">20 exp</span>
+            </div>
+            <div class="act-desc">The ministry has a region for you — Deputy Chief of Mission, every officer your nation fields there reporting to you. Your consulate vacates.</div>
+          </div>` : ''}
+        </div>
+      </div>
+    </div>`;
+
+  host.querySelector('.act-btn[data-action="consul-run"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('consul_run_consulate',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            docket_pending: 'The docket is already on your desk — handle a case first.',
+            already_ran: 'The consulate already ran today — back next tick.',
+            not_consul: 'Only the sitting consul runs the shop.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not run the consulate: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+
+  host.querySelector('.act-btn[data-action="consul-network"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('consul_build_network',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            cooldown: 'Already worked the rolodex this tick.',
+            not_consul: 'Only the sitting consul builds the network.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert('Dinners, favors, first names. +1 Reputation, +0.3 Experience — the nations\u2019 file gets one notch cooler.');
+        location.reload();
+      } catch (err) {
+        alert('Could not build the network: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+
+  host.querySelector('.act-btn[data-action="consul-backchannel"]')
+    ?.addEventListener('click', () => openBackchannelModal(ctx, hostNationId));
+
+  host.querySelector('.act-btn[data-action="take-dcm-post"]')
+    ?.addEventListener('click', () => openDcmPostModal(ctx));
+}
+
+// 20270866 — the seven regions (nations.continent values). One
+// client source; politician_take_dcm_post validates the same list.
+const DCM_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
+
+// The region picker — vacant regions only (one DCM per home nation
+// per region). Reuses the consulate picker's chrome wholesale.
+async function openDcmPostModal(ctx) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  rows.innerHTML = '<div class="cp-empty">Loading\u2026</div>';
+  document.querySelector('#cp-overlay .cp-title').textContent = 'TAKE THE DCM POST';
+  document.querySelector('#cp-overlay .cp-sub').textContent =
+    'Pick a vacant region. Your consulate vacates; the embassy record follows you.';
+  document.getElementById('cp-overlay').classList.add('open');
+  try {
+    const { data: taken, error } = await _supabase.from('factions')
+      .select('politician_dcm_region')
+      .eq('faction_type', 'politician')
+      .eq('nation_id', ctx.faction?.nation_id)
+      .not('politician_dcm_region', 'is', null)
+      .is('abandoned_at', null);
+    if (error) throw error;
+    const occupied = new Set((taken || []).map(t => t.politician_dcm_region));
+    const regions = DCM_REGIONS.filter(r => !occupied.has(r));
+    if (!regions.length) {
+      rows.innerHTML = '<div class="cp-empty">Every region is staffed \u2014 wait for a vacancy.</div>';
+      return;
+    }
+    rows.innerHTML = regions.map(r => `
+      <div class="cp-row"><span class="nm">${escHtml(r)}</span>
+        <button type="button" class="cp-take" data-take-region="${escAttr(r)}">TAKE THE POST</button></div>`).join('');
+    rows.querySelectorAll('[data-take-region]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        if (!confirm('Take this region? Your consulate vacates.')) return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error: tErr } = await _supabase.rpc('politician_take_dcm_post', {
+            p_faction_id: ctx.faction?.id || null, p_region: btn.dataset.takeRegion,
+          });
+          if (tErr) throw tErr;
+          if (!data?.success) {
+            const REASON = {
+              not_consul: 'Only a serving consul rises to DCM.',
+              not_enough_experience: 'The ministry wants 20 Experience first.',
+              region_occupied: 'Someone from your nation already runs that region.',
+              invalid_region: 'That is not a region the ministry recognizes.',
+              arrested: 'You are under arrest.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          alert(`The cable is shorter every rank: \u201c${data.region} is yours.\u201d`);
+          location.reload();
+        } catch (err) {
+          alert('Could not take the post: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    rows.innerHTML = '<div class="cp-empty">Could not load the regions \u2014 try again shortly.</div>';
+    console.warn('[politician-home] dcm post load failed:', err?.message || err);
+  }
+}
+
+// 20270866 — the DCM card (Foreign Service Tier 3). The stat row
+// inverts to aggregates computed from subordinates, and the STATION
+// BOARD lists the region's nations with who serves where. V1 ships
+// the board only — regional actions are a later dispatch.
+async function renderDcmAffiliation(ctx, host) {
+  const region = ctx.faction.politician_dcm_region;
+  const homeId = ctx.faction?.nation_id;
+  let nations = [];
+  let officers = [];
+  let relRows = [];
+  try {
+    const { data: natRows, error: nErr } = await _supabase.from('nations')
+      .select('id, name')
+      .eq('continent', region)
+      .order('name');
+    if (nErr) throw nErr;
+    nations = natRows || [];
+    if (nations.length) {
+      const ids = nations.map(n => n.id);
+      const idList = ids.join(',');
+      const [offRes, relRes] = await Promise.all([
+        _supabase.from('factions')
+          .select('id, leader_first_name, leader_last_name, nickname, embassy_reputation, politician_consul_nation_id, politician_foreign_service_nation_id')
+          .eq('faction_type', 'politician')
+          .eq('nation_id', homeId)
+          .is('abandoned_at', null)
+          .or(`politician_consul_nation_id.in.(${idList}),politician_foreign_service_nation_id.in.(${idList})`),
+        _supabase.from('diplomatic_relations')
+          .select('nation_a_id, nation_b_id, relation_score')
+          .or(`nation_a_id.eq.${homeId},nation_b_id.eq.${homeId}`),
+      ]);
+      if (offRes.error) throw offRes.error;
+      if (relRes.error) throw relRes.error;
+      officers = offRes.data || [];
+      relRows = relRes.data || [];
+    }
+  } catch (err) {
+    console.warn('[politician-home] dcm board fetch failed:', err?.message || err);
+  }
+
+  // Aggregates — computed from the same rows the board renders.
+  const officerAt = (nid) => officers.filter(o =>
+    o.politician_consul_nation_id === nid || o.politician_foreign_service_nation_id === nid);
+  const staffed = nations.filter(n => n.id !== homeId && officerAt(n.id).length).length;
+  const postable = nations.filter(n => n.id !== homeId).length;
+  const strength = officers.length
+    ? Math.round(officers.reduce((s, o) => s + (Number(o.embassy_reputation) || 50), 0) / officers.length)
+    : null;
+  const relFor = (nid) => {
+    const r = relRows.find(x =>
+      (x.nation_a_id === homeId && x.nation_b_id === nid) ||
+      (x.nation_b_id === homeId && x.nation_a_id === nid));
+    return r ? (Number(r.relation_score) || 0) : 0;
+  };
+  const regionNations = nations.filter(n => n.id !== homeId);
+  const standing = regionNations.length
+    ? Math.round(regionNations.reduce((s, n) => s + relFor(n.id), 0) / regionNations.length)
+    : 0;
+  const embRep = Number(ctx.faction?.embassy_reputation ?? 50);
+  const nextDcm = Number(ctx.faction?.next_dcm_action_tick) || 0;
+  const dcmCooling = nextDcm > currentTick;
+  const dcmCoolAttrs = ' aria-disabled="true" title="One move per tick — back next tick"';
+  const coolLine = '<div class="act-cooldown">Ready next tick</div>';
+
+  const boardRows = regionNations.length ? regionNations.map(n => {
+    const here = officerAt(n.id);
+    if (!here.length) {
+      return `<div class="sb-row"><span class="nm">${escHtml(n.name)}</span>
+        <span class="vac">\u2014 VACANT \u2014</span><span></span><span></span></div>`;
+    }
+    return here.map(o => {
+      const nm = o.nickname || `${o.leader_first_name || ''} ${o.leader_last_name || ''}`.trim() || 'Unnamed';
+      const rank = o.politician_consul_nation_id === n.id ? 'Consul' : 'Attach\u00e9';
+      return `<div class="sb-row"><span class="nm">${escHtml(n.name)}</span>
+        <span>${escHtml(nm)}</span><span>${rank}</span>
+        <span class="rep">${escHtml(String(Math.round(Number(o.embassy_reputation) || 50)))}/100</span></div>`;
+    }).join('');
+  }).join('') : '<div class="sb-row"><span class="vac">No nations charted in this region yet.</span><span></span><span></span><span></span></div>';
+
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🌐</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 3</div>
+          <div class="ah-name">Deputy Chief of Mission — ${escHtml(region)}</div>
+          <div class="ah-desc">Every officer your nation fields in <strong>${escHtml(region)}</strong> answers to you. Their wins are your wins. Their messes arrive by pouch.</div>
+        </div>
+      </div>
+      <div class="emb-stats">
+        <div class="emb-stat"><span class="emb-stat-lab">COVERAGE</span><span class="emb-stat-val">${staffed}<span class="emb-stat-max">/${postable} stations</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">MISSION STRENGTH</span><span class="emb-stat-val">${strength === null ? '\u2014' : escHtml(String(strength))}${strength === null ? '' : '<span class="emb-stat-max">/100</span>'}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">REGIONAL STANDING</span><span class="emb-stat-val">${standing > 0 ? '+' : ''}${escHtml(String(standing))}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">YOUR REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
+      </div>
+      <div class="sb-lab">THE STATION BOARD</div>
+      <div class="sb-board">
+        <div class="sb-head"><span>NATION</span><span>OFFICER</span><span>RANK</span><span>REP</span></div>
+        ${boardRows}
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">REGIONAL ACTIONS · ONE MOVE PER TICK</div>
+        <div class="ar-buttons">
+          <div class="act-btn${dcmCooling ? ' cooldown' : ''}"${dcmCooling ? dcmCoolAttrs : ' data-action="dcm-review"'}>
+            <div class="act-head">
+              <span class="act-ic">🔍</span>
+              <span class="act-name">REVIEW THE STATIONS</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">Inspect one officer's record and grade it — commend (+1) or reprimand (−1) to their Reputation. +0.3 Experience to you.</div>
+            ${dcmCooling ? coolLine : ''}
+          </div>
+          <div class="act-btn${dcmCooling ? ' cooldown' : ''}"${dcmCooling ? dcmCoolAttrs : ' data-action="dcm-priority"'}>
+            <div class="act-head">
+              <span class="act-ic">📌</span>
+              <span class="act-name">SET A PRIORITY</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">Flag one station with a standing ask — it banners on the officer's card, and compliance pays +0.3 Experience to you both. A new ask supersedes the old.</div>
+            ${dcmCooling ? coolLine : ''}
+          </div>
+          <div class="act-btn${dcmCooling ? ' cooldown' : ''}"${dcmCooling ? dcmCoolAttrs : ' data-action="dcm-summit"'}>
+            <div class="act-head">
+              <span class="act-ic">🌐</span>
+              <span class="act-name">REGIONAL SUMMIT</span>
+              <span class="act-cost">−$20</span>
+            </div>
+            <div class="act-desc">Convene the mission — every officer on the board gets an invite, and each acceptance lands +1 Relations with their posting. Coverage multiplies the lever.</div>
+            ${dcmCooling ? coolLine : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  host.querySelector('.act-btn[data-action="dcm-review"]')
+    ?.addEventListener('click', () => openDcmOfficerModal(ctx, 'review', regionNations, officers));
+  host.querySelector('.act-btn[data-action="dcm-priority"]')
+    ?.addEventListener('click', () => openDcmOfficerModal(ctx, 'priority', regionNations, officers));
+  host.querySelector('.act-btn[data-action="dcm-summit"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      if (!confirm(`Convene the regional summit? $20 from the budget; every officer on the board is invited.`)) return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('dcm_call_summit',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            cooldown: 'One move per tick — the desk is spent.',
+            summit_open: 'A summit is already convened — the invites are still out.',
+            insufficient_budget: 'The budget can\u2019t cover the venue ($20).',
+            no_officers: 'Nobody to invite — staff the board first.',
+            not_dcm: 'Only the sitting DCM convenes the region.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert(`The invitations go out — ${data.invited} officer${data.invited === 1 ? '' : 's'} summoned.`);
+        location.reload();
+      } catch (err) {
+        alert('Could not convene: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+}
+
+// 20270867 — the DCM's officer picker, shared by REVIEW (grade) and
+// SET A PRIORITY (standing ask). Reuses the consulate picker chrome.
+async function openDcmOfficerModal(ctx, mode, regionNations, officers) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  document.querySelector('#cp-overlay .cp-title').textContent =
+    mode === 'review' ? 'REVIEW THE STATIONS' : 'SET A PRIORITY';
+  document.querySelector('#cp-overlay .cp-sub').textContent =
+    mode === 'review'
+      ? 'Grade one officer: commend (+1 Reputation) or reprimand (−1). +0.3 Experience to you.'
+      : 'Flag one station with a standing ask — compliance pays +0.3 Experience to you both.';
+  document.getElementById('cp-overlay').classList.add('open');
+  if (!officers.length) {
+    rows.innerHTML = '<div class="cp-empty">Nobody serves the region yet — the board is all vacancies.</div>';
+    return;
+  }
+  const nationName = (nid) => regionNations.find(n => n.id === nid)?.name || '\u2014';
+  rows.innerHTML = officers.map(o => {
+    const nm = o.nickname || `${o.leader_first_name || ''} ${o.leader_last_name || ''}`.trim() || 'Unnamed';
+    const station = o.politician_consul_nation_id || o.politician_foreign_service_nation_id;
+    const rank = o.politician_consul_nation_id ? 'Consul' : 'Attach\u00e9';
+    const btns = mode === 'review'
+      ? `<button type="button" class="cp-take" data-dcm-grade="commend" data-officer="${escAttr(o.id)}">COMMEND</button>
+         <button type="button" class="cp-take" style="border-color:rgba(200,120,120,0.5);color:#c87a7a;" data-dcm-grade="reprimand" data-officer="${escAttr(o.id)}">REPRIMAND</button>`
+      : `${rank === 'Consul' ? `<button type="button" class="cp-take" data-dcm-ask="work_the_docket" data-officer="${escAttr(o.id)}">WORK THE DOCKET</button>` : ''}
+         <button type="button" class="cp-take" data-dcm-ask="build_standing" data-officer="${escAttr(o.id)}">BUILD STANDING</button>`;
+    return `<div class="cp-row"><span class="nm">${escHtml(nm)} \u00b7 ${rank}, ${escHtml(nationName(station))} \u00b7 ${escHtml(String(Math.round(Number(o.embassy_reputation) || 50)))}/100</span>
+      <span style="display:flex;gap:6px;">${btns}</span></div>`;
+  }).join('');
+  const fire = async (rpcArgs, confirmText) => {
+    if (!confirm(confirmText)) return false;
+    const { data, error } = await _supabase.rpc(rpcArgs.fn, rpcArgs.args);
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        cooldown: 'One move per tick — the desk is spent.',
+        not_your_officer: 'They don\u2019t serve your region.',
+        wrong_rank: 'Only a consul can work a docket.',
+        not_dcm: 'Only the sitting DCM manages the board.',
+      };
+      throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+    }
+    return true;
+  };
+  rows.querySelectorAll('[data-dcm-grade]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1'; btn.disabled = true;
+      try {
+        const ok = await fire({ fn: 'dcm_review_station', args: {
+          p_faction_id: ctx.faction?.id || null, p_officer_id: btn.dataset.officer,
+          p_grade: btn.dataset.dcmGrade } },
+          btn.dataset.dcmGrade === 'commend'
+            ? 'Commend this officer? +1 to their Reputation.'
+            : 'Reprimand this officer? −1 to their Reputation.');
+        if (ok) location.reload(); else { btn.dataset.busy = '0'; btn.disabled = false; }
+      } catch (err) {
+        alert('Could not grade: ' + (err?.message || err));
+        btn.dataset.busy = '0'; btn.disabled = false;
+      }
+    });
+  });
+  rows.querySelectorAll('[data-dcm-ask]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1'; btn.disabled = true;
+      try {
+        const ok = await fire({ fn: 'dcm_set_priority', args: {
+          p_faction_id: ctx.faction?.id || null, p_officer_id: btn.dataset.officer,
+          p_kind: btn.dataset.dcmAsk } },
+          'Flag this station? Any previous ask is superseded.');
+        if (ok) location.reload(); else { btn.dataset.busy = '0'; btn.disabled = false; }
+      } catch (err) {
+        alert('Could not set the priority: ' + (err?.message || err));
+        btn.dataset.busy = '0'; btn.disabled = false;
+      }
+    });
+  });
+}
+
+// 20270865 — the backchannel composer. Recipients: any player
+// faction in the host or home nation.
+function ensureBackchannelModal() {
+  if (document.getElementById('bk-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #bk-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #bk-overlay.open { display:flex; }
+    .bk-modal { width:560px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(200,120,120,0.35); border-radius:6px; padding:20px 22px; }
+    .bk-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#c87a7a; font-weight:700; margin-bottom:10px; }
+    .bk-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    #bk-target { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:9px 10px;
+      font-family:inherit; font-size:12px; margin-bottom:10px; }
+    #bk-text { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:10px 12px;
+      font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; min-height:84px; }
+    #bk-text:focus, #bk-target:focus { outline:none; border-color:rgba(200,120,120,0.5); }
+    .bk-count { text-align:right; font-family:monospace; font-size:9px; color:#666; margin-top:5px; }
+    .bk-foot { margin-top:14px; display:flex; justify-content:flex-end; gap:8px; }
+    .bk-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .bk-send { padding:8px 16px; background:rgba(200,120,120,0.08);
+      border:0.5px solid rgba(200,120,120,0.5); border-radius:4px; color:#c87a7a;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .bk-send:hover:not(:disabled) { background:rgba(200,120,120,0.16); }
+    .bk-send:disabled { opacity:0.4; cursor:not-allowed; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'bk-overlay';
+  host.innerHTML = `
+    <div class="bk-modal">
+      <div class="bk-title">BACKCHANNEL</div>
+      <div class="bk-sub">One message. It lands in their Pressing Issues and all they can do
+        is close it &mdash; no reply channel, no record once it&rsquo;s gone.</div>
+      <select id="bk-target"><option value="">Loading\u2026</option></select>
+      <textarea id="bk-text" maxlength="240" rows="4"
+        placeholder="Say it once \u2014 up to 240 characters."></textarea>
+      <div class="bk-count"><span id="bk-count">0</span>/240</div>
+      <div class="bk-foot">
+        <button type="button" class="bk-close" id="bk-close">CANCEL</button>
+        <button type="button" class="bk-send" id="bk-send" disabled>SEND IT</button>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
+  const text = document.getElementById('bk-text');
+  const refresh = () => {
+    document.getElementById('bk-count').textContent = String(text.value.length);
+    document.getElementById('bk-send').disabled =
+      text.value.trim().length < 1 || !document.getElementById('bk-target').value;
+  };
+  text.addEventListener('input', refresh);
+  document.getElementById('bk-target').addEventListener('change', refresh);
+  document.getElementById('bk-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+async function openBackchannelModal(ctx, hostNationId) {
+  ensureBackchannelModal();
+  const target = document.getElementById('bk-target');
+  const text = document.getElementById('bk-text');
+  text.value = '';
+  document.getElementById('bk-count').textContent = '0';
+  target.innerHTML = '<option value="">Loading\u2026</option>';
+  const send = document.getElementById('bk-send');
+  send.disabled = true;
+  const fresh = send.cloneNode(true);
+  send.replaceWith(fresh);
+  document.getElementById('bk-overlay').classList.add('open');
+  try {
+    const { data: facs, error } = await _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, nickname, faction_type, nation:nations!nation_id(name)')
+      .in('nation_id', [ctx.faction?.nation_id, hostNationId].filter(Boolean))
+      .in('faction_type', ['politician', 'businessman', 'entrepreneur'])
+      .is('abandoned_at', null)
+      .neq('id', ctx.faction?.id);
+    if (error) throw error;
+    if (!facs?.length) {
+      target.innerHTML = '<option value="">No one in range.</option>';
+      return;
+    }
+    target.innerHTML = '<option value="">\u2014 pick a recipient \u2014</option>' + facs.map(f => {
+      const nm = f.nickname || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim() || 'Unnamed';
+      return `<option value="${escAttr(f.id)}">${escHtml(nm)} \u00b7 ${escHtml(f.faction_type)} \u00b7 ${escHtml(f.nation?.name || '\u2014')}</option>`;
+    }).join('');
+  } catch (err) {
+    target.innerHTML = '<option value="">Could not load recipients.</option>';
+    console.warn('[politician-home] backchannel recipients load failed:', err?.message || err);
+  }
+  fresh.addEventListener('click', async () => {
+    fresh.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('consul_backchannel', {
+        p_faction_id: ctx.faction?.id || null,
+        p_target_faction_id: target.value || null,
+        p_text: text.value,
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          cooldown: 'The channel already carried a message this tick.',
+          target_out_of_range: 'They\u2019re outside the channel\u2019s reach.',
+          invalid_text: 'Write something \u2014 up to 240 characters.',
+          not_consul: 'Only the sitting consul uses the channel.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      document.getElementById('bk-overlay').classList.remove('open');
+      alert('Sent. It sits on their desk until they close it.');
+      location.reload();
+    } catch (err) {
+      alert('Could not send: ' + (err?.message || err));
+      fresh.disabled = false;
+    }
+  });
 }
 
 // 20270860 — the SEND CABLE composer. Same inject-on-demand overlay
@@ -4117,6 +4916,13 @@ function renderPressingIssues(ctx) {
   if (!host) return;
   const blocks = [];
   if (activeRace) blocks.push(renderCampaignCard(ctx));
+  // Burn-after-reading backchannels (20270865) outrank everything —
+  // someone went to the trouble of reaching you off the record.
+  backchannelInbox.forEach(m => blocks.push(renderBackchannelCard(m)));
+  // The consulate docket (20270865): handle ONE properly; the rest
+  // get the rubber stamp the moment you choose.
+  consulateCases.forEach(c => blocks.push(renderConsulateCaseCard(c)));
+  summitInvites.forEach(i => blocks.push(renderSummitInviteCard(i)));
   // State Advocate appointment requests routed to this politician
   // (as Minister of the Interior) come first after the campaign —
   // they're cabinet-level decisions and the applicant is waiting.
@@ -4171,6 +4977,149 @@ function renderPressingIssues(ctx) {
   bindOrdinanceProposalActions(ctx);
   bindMemberCommitteeActions();
   bindConstructionBidActions();
+  bindBackchannelActions();
+  bindConsulateCaseActions(ctx);
+  bindSummitInviteActions(ctx);
+}
+
+// ── Regional Summit invites (20270867) ──────────────────────────────
+function renderSummitInviteCard(i) {
+  return `
+    <div class="offer-card" data-summit-invite="${escAttr(i.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🌐</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">FOREIGN SERVICE &middot; REGIONAL SUMMIT</div>
+        <div class="oi-headline">The DCM convenes the ${escHtml(i.summit?.region || 'regional')} mission.</div>
+        <div class="oi-meta"><span>Your attendance carries weight &mdash; accepting lands <b>+1 Relations</b> between your nation and your posting.</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-summit-decide="${escAttr(i.id)}" data-accept="1">ACCEPT</button>
+        <button type="button" class="offer-accept-btn" data-summit-decide="${escAttr(i.id)}" data-accept="" style="opacity:0.7;">REJECT</button>
+      </div>
+    </div>`;
+}
+function bindSummitInviteActions(ctx) {
+  document.querySelectorAll('[data-summit-decide]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('summit_invite_decide', {
+          p_faction_id: ctx.faction?.id || null,
+          p_invite_id: btn.dataset.summitDecide,
+          p_accept: !!btn.dataset.accept,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = { invite_not_pending: 'That invite was already decided.' };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        btn.closest('[data-summit-invite]')?.remove();
+      } catch (err) {
+        alert('Could not decide: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// ── Consulate docket cards (20270865) ────────────────────────────────
+const CONSUL_EFFECT_LABEL = {
+  rep_up: '+1 Reputation', rep_down: '\u22121 Reputation', rep_down2: '\u22122 Reputation',
+  trust_down: '\u22121 Trust', lev_up: '+1 Leverage', xp_up: '+1 Experience',
+  relations_up: '+1 Relations', relations_down: '\u22121 Relations',
+  trade_boost: '+1 Relations \u00b7 sharpens the corp\u2019s next campaign',
+};
+function renderConsulateCaseCard(c) {
+  return `
+    <div class="offer-card" data-consul-case="${escAttr(c.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🗂️</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">THE CONSULATE &middot; MORNING DOCKET</div>
+        <div class="oi-headline">${escHtml(c.title)}</div>
+        <div class="oi-meta">
+          <span>${escHtml(c.body)}</span>
+          <span>Handle: <b>${escHtml(CONSUL_EFFECT_LABEL[c.handle_effect] || c.handle_effect)}</b>
+            &middot; Stamped: ${escHtml(CONSUL_EFFECT_LABEL[c.stamp_effect] || c.stamp_effect)}
+            &middot; handling one case rubber-stamps the rest</span>
+        </div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-handle-case="${escAttr(c.id)}">HANDLE</button>
+      </div>
+    </div>`;
+}
+function bindConsulateCaseActions(ctx) {
+  document.querySelectorAll('[data-handle-case]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      if (!confirm('Handle this case properly? Every other pending case gets the rubber stamp.')) return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('consul_handle_case', {
+          p_faction_id: ctx.faction?.id || null, p_case_id: btn.dataset.handleCase,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_consul: 'Only the sitting consul works the docket.',
+            case_not_pending: 'That case was already decided.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not handle: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// ── Backchannel cards (20270865) — burn after reading ────────────────
+function renderBackchannelCard(m) {
+  return `
+    <div class="offer-card" data-backchannel="${escAttr(m.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🔥</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">BACKCHANNEL &middot; OFF THE RECORD</div>
+        <div class="oi-headline" style="overflow-wrap:break-word;">&ldquo;${escHtml(m.body)}&rdquo;</div>
+        <div class="oi-meta"><span>&mdash; ${escHtml(m.sender_name)} &middot; ${escHtml(tickToDate(Number(m.created_at_tick)))} &middot; one-time message, no reply channel</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-burn="${escAttr(m.id)}">CLOSE</button>
+      </div>
+    </div>`;
+}
+function bindBackchannelActions() {
+  document.querySelectorAll('[data-burn]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('backchannel_burn',
+          { p_message_id: btn.dataset.burn });
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.reason || 'unknown');
+        btn.closest('[data-backchannel]')?.remove();
+      } catch (err) {
+        alert('Could not close: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 // ── Construction bid award card + modal (20270807) ──────────────────
@@ -7553,6 +8502,25 @@ init().catch(err => {
   .emb-stat-val { font-family:monospace; font-size:13px; color:#fff; }
   .emb-stat-max { font-size:9px; color:#666; }
   @media (max-width:560px) { .emb-stats { grid-template-columns:repeat(2, 1fr); } }
+
+  /* The DCM's Station Board (20270866) — the region roster. */
+  .sb-board { margin-top:14px; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; overflow:hidden; }
+  .sb-head { display:grid; grid-template-columns:1.1fr 1.4fr 0.8fr 0.6fr; gap:0 12px;
+    padding:8px 12px; font-family:monospace; font-size:8px; letter-spacing:0.14em;
+    color:#666; font-weight:700; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+  .sb-row { display:grid; grid-template-columns:1.1fr 1.4fr 0.8fr 0.6fr; gap:0 12px;
+    padding:9px 12px; font-size:11.5px; color:#cfcabf;
+    border-bottom:0.5px solid rgba(255,255,255,0.05); }
+  .sb-row:last-child { border-bottom:none; }
+  .sb-row .nm { color:#fff; font-weight:600; }
+  .sb-row .vac { color:#c87a7a; font-family:monospace; font-size:10px; letter-spacing:0.1em; }
+  .sb-row .rep { font-family:monospace; color:#5aafa5; }
+  .sb-lab { font-family:monospace; font-size:9px; letter-spacing:0.16em; color:#888;
+    font-weight:700; margin:14px 0 0; }
+  .dcm-ask { margin-top:12px; padding:9px 12px; background:rgba(200,166,78,0.07);
+    border:0.5px solid rgba(200,166,78,0.35); border-radius:4px; font-size:11px;
+    color:#c8a26e; }
+  .dcm-ask b { letter-spacing:0.08em; font-family:monospace; font-size:9px; }
 
   #embassyEventModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
                        align-items:center; justify-content:center; padding:20px; z-index:1000; }

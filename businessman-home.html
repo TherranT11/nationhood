@@ -595,6 +595,30 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
       console.warn('[businessman-home] expansion pitches fetch failed:', e?.message || e);
     }
 
+    // Backchannels (20270865): a consul reached this character off
+    // the record. The card burns on read.
+    let bcInbox = [];
+    try {
+      const { data: bcRows, error: bcErr } = await _supabase.from('backchannel_messages')
+        .select('id, sender_name, body, created_at_tick')
+        .eq('to_faction_id', f.id)
+        .order('created_at');
+      if (bcErr) throw bcErr;
+      bcInbox = bcRows || [];
+      for (const m of bcInbox) {
+        piCards.push(`
+          <div class="biz-proj-card" data-backchannel="${esc(m.id)}">
+            <div class="t">BACKCHANNEL — OFF THE RECORD.
+              <span class="due" style="overflow-wrap:break-word;">&ldquo;${esc(m.body)}&rdquo; — ${esc(m.sender_name)}, ${esc(tickToDate(Number(m.created_at_tick)))} · one-time message, no reply channel</span></div>
+            <div class="pi-acts">
+              <button type="button" class="pi-act rej" data-burn="${esc(m.id)}">CLOSE</button>
+            </div>
+          </div>`);
+      }
+    } catch (e) {
+      console.warn('[businessman-home] backchannel fetch failed:', e?.message || e);
+    }
+
     // Plant expansion pitches (20270864): the CMO's new-plant ask.
     try {
       if (ownedCorps.length) {
@@ -628,6 +652,24 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
 
     if (piCards.length) {
       document.getElementById('biz-pressing-issues').innerHTML = piCards.join('');
+      document.querySelectorAll('[data-burn]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (btn.dataset.busy === '1') return;
+          btn.dataset.busy = '1';
+          btn.disabled = true;
+          try {
+            const { data, error: bErr } = await _supabase.rpc('backchannel_burn',
+              { p_message_id: btn.dataset.burn });
+            if (bErr) throw bErr;
+            if (!data?.success) throw new Error(data?.reason || 'unknown');
+            btn.closest('[data-backchannel]')?.remove();
+          } catch (e) {
+            alert('Could not close: ' + (e?.message || e));
+            btn.dataset.busy = '0';
+            btn.disabled = false;
+          }
+        });
+      });
       document.querySelectorAll('[data-plantxp]').forEach(btn => {
         btn.addEventListener('click', async () => {
           btn.disabled = true;
