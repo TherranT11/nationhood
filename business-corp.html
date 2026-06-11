@@ -46,6 +46,12 @@
   @media (max-width:860px) { .pl-grid { grid-template-columns:1fr; } }
   .pl-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
     padding:16px; display:flex; flex-direction:column; min-width:0; }
+  .pl-up { margin-top:12px; padding:7px 10px; background:rgba(138,170,106,0.08);
+    border:0.5px solid #4a6a4a; border-radius:4px; color:#8aaa6a;
+    font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.12em; font-weight:700;
+    cursor:pointer; }
+  .pl-up:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .pl-up:disabled { opacity:0.4; cursor:not-allowed; }
   .pl-name { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em; color:#aac88a;
     font-weight:700; }
   .pl-kind { font-family:Georgia,serif; font-style:italic; font-size:11px; color:#666;
@@ -605,19 +611,53 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // career page's role-view modal via corp-blueprints.js.
     const pillars = PILLARS[corp.industry];
     if (pillars) {
+      // [UPGRADE] — the Experience spend (20270829): +1 to a pillar
+      // for current level × 10 EP. Owner-only; EP is the constraint
+      // (no executive action spent).
+      const PILLAR_KEYS = { pillar_speed: 'speed', pillar_efficiency: 'efficiency', pillar_quality: 'quality' };
       document.getElementById('bc-pillars').innerHTML = `
         <div class="pl-panel">
           <div class="ea-head"><span class="rule"></span><span class="t">CORE METRICS</span><span class="rule"></span></div>
           <div class="pl-grid">
-            ${pillars.map(p => `
+            ${pillars.map(p => {
+              const lvl = Number(corp[p.col]) || 1;
+              const cost = lvl * 10;
+              const canAfford = (Number(corp.experience) || 0) >= cost;
+              return `
               <div class="pl-card">
                 <div class="pl-name">${esc(p.name)}</div>
                 <div class="pl-kind">${esc(p.kind)}</div>
-                <div class="pl-val">${esc(String(corp[p.col] ?? 1))}</div>
+                <div class="pl-val">${esc(String(lvl))}</div>
                 <div class="pl-desc">${esc(p.desc)}</div>
-              </div>`).join('')}
+                ${isOwner ? `<button type="button" class="pl-up" data-pillar="${esc(PILLAR_KEYS[p.col])}"
+                    ${canAfford ? '' : 'disabled'} title="${canAfford ? '' : `Needs ${cost} EP — you have ${Number(corp.experience) || 0}`}">
+                    UPGRADE — ${cost} EP</button>` : ''}
+              </div>`;
+            }).join('')}
           </div>
         </div>`;
+      document.querySelectorAll('.pl-up').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const { data, error: upErr } = await _supabase.rpc('upgrade_pillar',
+              { p_corp_id: corp.id, p_pillar: btn.dataset.pillar });
+            if (upErr) throw upErr;
+            if (!data?.success) {
+              const REASON = {
+                insufficient_experience: `Not enough Experience — ${data?.need ?? '?'} EP needed, ${data?.have ?? 0} on hand.`,
+                not_owner: 'Only the owner can upgrade the pillars.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not upgrade: ' + (e?.message || e));
+            btn.disabled = false;
+          }
+        });
+      });
     }
 
     // Departments — five per-industry tier containers (copy shared
@@ -1482,8 +1522,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const mEff   = Number(corp.pillar_efficiency) || 1;
         const mQual  = Number(corp.pillar_quality) || 1;
         document.getElementById('db-metrics').innerHTML = `
-          <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed} tick${mSpeed === 1 ? '' : 's'} off the build time</span></div>
-          <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff * 3}% material costs</span></div>
+          <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed}% build time</span></div>
+          <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff}% on materials &amp; equipment purchases</span></div>
           <div class="db-metric"><span class="nm">ENGINEERING QUALITY</span><span class="vl">${mQual}</span><span class="fx">+${(mQual * 0.1).toFixed(1)} Appeal when built in a city</span></div>`;
         // Arriving from the bid board's [CREATE BLUEPRINT]: the
         // request's building type picks its category too.
@@ -1776,7 +1816,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             </div>`;
 
           const matTier = Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1);
-          warn.textContent = `${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
+          const effPct = Math.min(99, Math.max(0, Number(corp.pillar_efficiency) || 1));
+          warn.textContent = `Procurement Efficiency −${effPct}% on every purchase. ${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
             + (tier >= 1 ? ` Yard: ${units.length}/${YARD_TIERS[tier].equipmentCap} units (${totalUses} uses left).` : '')
             + (matTier >= 1 ? ` Depot: ${corp.materials_stock || 0}/${SUPPLY_TIERS[matTier].storageCap} materials.` : '');
           const eqBuyable = tier >= 1
