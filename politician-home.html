@@ -1421,8 +1421,8 @@ const CAREER_EVENT_TEMPLATES = {
   envoy_arrangement_signed: (name, target) => `${name} signed “${target || 'an arrangement'}”.`,
   // Junior Minister lifecycle (20270669 appoint / 20270875 strip).
   // target_name carries the portfolio key ('sports', 'culture', …).
-  appointed_junior_minister: (name, target) => `${name} was appointed Junior Minister of ${target ? target.charAt(0).toUpperCase() + target.slice(1) : 'a portfolio'}.`,
-  junior_minister_lost_power: (name, target) => `${name} lost the ${target ? target.charAt(0).toUpperCase() + target.slice(1) + ' ' : ''}portfolio when their party fell from power.`,
+  appointed_junior_minister: (name, target) => `${name} was appointed Junior Minister of ${target ? portfolioLabel(target) : 'a portfolio'}.`,
+  junior_minister_lost_power: (name, target) => `${name} lost the ${target ? portfolioLabel(target) + ' ' : ''}portfolio when their party fell from power.`,
   // Permanent Undersecretary kit (20270878). Both land on the
   // TARGET's timeline; target_name on the sabotage row carries the
   // Undersecretary's name.
@@ -2394,6 +2394,12 @@ const AGENCY_HEAD_ACTIONS = [
   { ic: '📊', name: 'MINISTRY REPORT',   cost: 'no cost', desc: 'Compile your agency’s recent work into a brief for the Minister.' },
   { ic: '✦', name: 'AGENCY INITIATIVE', cost: 'no cost', desc: 'Propose a new programme for your agency to undertake.' },
 ];
+// Junior Minister (Tier 4) placeholder actions — same greyed-slot
+// pattern as AGENCY_HEAD_ACTIONS; mirror the career rung's chips.
+const JUNIOR_MINISTER_ACTIONS = [
+  { ic: '📜', name: 'CARRY A BILL',      cost: 'no cost', desc: 'Pilot a piece of government legislation through the chamber.' },
+  { ic: '🎙', name: 'ANSWER QUESTIONS', cost: 'no cost', desc: 'Stand at the dispatch box and answer for your portfolio.' },
+];
 // Permanent Undersecretary kit (Tier 3, 20270878). All three share
 // next_civil_service_action_tick — one move per tick.
 const PERMANENT_SECRETARY_ACTIONS = [
@@ -2664,7 +2670,31 @@ const AFFIL_VARIANTS = {
     actionsEnabled: true,
     cooldownColumn: 'next_civil_service_action_tick',
   },
+  // Junior Minister (Tier 4, 20270669/20270677). politician_junior_
+  // portfolio gates entry ABOVE the Permanent Secretary check — the
+  // appointed canopy outranks the career civil service. Actions are
+  // placeholders until the JM kit lands. Falls with the government:
+  // the election resolver strips the portfolio when the holder's
+  // party leaves the coalition (20270875).
+  junior_minister: {
+    variant: 'var-civ',
+    eyebrow: 'POLITICAL APPOINTMENT · TIER 4',
+    badge:   '🏵',
+    name:    'Junior Minister',
+    nameFn:  (ctx) => `Junior Minister for ${portfolioLabel(ctx.faction?.politician_junior_portfolio)}`,
+    descFn:  (ctx) => `You hold the <strong>${escHtml(portfolioLabel(ctx.faction?.politician_junior_portfolio))}</strong> portfolio — sub-Cabinet rank. You carry the brief, answer for the Minister when absent, and pilot legislation through the chamber. If the government falls, so does the portfolio.`,
+    actions: JUNIOR_MINISTER_ACTIONS,
+    // actionsEnabled left undefined → placeholder slots render greyed.
+  },
 };
+
+// One source for rendering a Junior Minister portfolio key
+// ('sports', 'culture', …) as its display label. Used by the
+// junior_minister variant, the career-event templates and the
+// Undersecretary brief picker.
+function portfolioLabel(key) {
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : '—';
+}
 
 // ─── Permanent Undersecretary kit (20270878) ────────────────────────
 // Three pickers, all reusing the cp-overlay chrome (same pattern as
@@ -2770,7 +2800,7 @@ async function openPrepareBriefModal(ctx) {
     rows.innerHTML = ministers.map(p => {
       const nm = `${p.leader_first_name || ''} ${p.leader_last_name || ''}`.trim() || 'Unnamed';
       const role = p.politician_junior_portfolio
-        ? `Junior Minister of ${p.politician_junior_portfolio.charAt(0).toUpperCase() + p.politician_junior_portfolio.slice(1)}`
+        ? `Junior Minister of ${portfolioLabel(p.politician_junior_portfolio)}`
         : 'Foreign Minister';
       return `
       <div class="cp-row"><span class="nm">${escHtml(nm)} · ${escHtml(role)}</span>
@@ -3188,16 +3218,19 @@ function renderAffiliation(ctx) {
   // affiliation it should remove the Party Member one".
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
-  // Tier 3 outranks both lower civil-service rungs (20270679).
+  // Tier 4 Junior Minister outranks the whole career civil service;
+  // Tier 3 outranks both lower rungs (20270679).
+  const isJM = !!ctx.faction?.politician_junior_portfolio;
   const isPermSec = !!ctx.faction?.politician_permanent_secretary_ministry;
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
-    : (isPermSec ? AFFIL_VARIANTS.permanent_secretary
+    : (isJM ? AFFIL_VARIANTS.junior_minister
+      : (isPermSec ? AFFIL_VARIANTS.permanent_secretary
       : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
                               : (barNation ? pickJudicialVariant(ctx.faction)
                                            : ((fsNation || fisAgent) ? null
-                                                       : AFFIL_VARIANTS.party_member)))));
+                                                       : AFFIL_VARIANTS.party_member))))));
   if (!variant) {
     // Foreign Service is the only affiliation — the secondary host
     // renderForeignAffiliation paints the only card. Clear the main
@@ -3381,7 +3414,7 @@ function renderAffiliation(ctx) {
   let resignCfg = null;
   if (office) {
     resignCfg = { kind: 'office', label: 'RESIGN' };
-  } else if (isPermSec || isSeniorCS || ministry) {
+  } else if (isJM || isPermSec || isSeniorCS || ministry) {
     resignCfg = { kind: 'rpc', label: 'RESIGN', rpc: 'politician_resign_from_civil_service',
       args: { p_faction_id: ctx.faction?.id || null },
       confirm: 'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.' };
