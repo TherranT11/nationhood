@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Negotiation | Nationhood</title>
+<style>
+.content { max-width:900px; margin:18px auto; padding:0 20px 60px; }
+
+.es-head { background:#0d0d0d; border:0.5px solid rgba(90,175,165,0.3); border-left:3px solid #5aafa5;
+  border-radius:7px; padding:18px 22px; }
+.es-eyebrow { font-size:9px; letter-spacing:0.16em; color:#5aafa5; font-weight:600; margin-bottom:5px; }
+.es-title { font-size:20px; font-weight:600; color:#fff; line-height:1.25; }
+.es-sub { color:#9a958a; font-size:11.5px; margin-top:8px; line-height:1.5; }
+.es-status { display:inline-block; margin-top:10px; padding:3px 10px; border-radius:3px;
+  font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; }
+.es-status.active   { background:rgba(90,175,165,0.1);  border:0.5px solid rgba(90,175,165,0.5);  color:#5aafa5; }
+.es-status.proposed { background:rgba(200,166,78,0.1);  border:0.5px solid rgba(200,166,78,0.5);  color:#c8a26e; }
+.es-status.signed   { background:rgba(138,170,106,0.1); border:0.5px solid rgba(138,170,106,0.5); color:#aac88a; }
+.es-status.declined { background:rgba(200,120,120,0.1); border:0.5px solid rgba(200,120,120,0.5); color:#c87a7a; }
+
+.es-lab { font-family:monospace; font-size:9px; letter-spacing:0.16em; color:#888;
+  font-weight:700; margin:22px 0 8px; }
+
+.es-article { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px;
+  padding:12px 16px; margin-bottom:8px; display:flex; gap:12px; align-items:flex-start; }
+.es-article .ord { font-family:Georgia, serif; font-style:italic; color:#5aafa5; flex-shrink:0; }
+.es-article .bd { flex:1; color:#cfcabf; font-size:12px; line-height:1.6; overflow-wrap:break-word; }
+.es-article .bd b { color:#aac88a; }
+.es-article .bd .fx { display:block; font-family:monospace; font-size:9px; color:#888; margin-top:4px; }
+.es-article .rm { background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+  border-radius:3px; font-family:monospace; font-size:8px; letter-spacing:0.1em; padding:3px 8px;
+  cursor:pointer; flex-shrink:0; }
+.es-empty { padding:20px; text-align:center; color:#555; font-size:11px; font-style:italic;
+  background:#0a0a0a; border:0.5px dashed rgba(255,255,255,0.08); border-radius:5px; }
+
+.es-compose { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+.es-compose textarea { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+  border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:10px 12px;
+  font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; min-height:64px; }
+.es-compose textarea:focus { outline:none; border-color:rgba(90,175,165,0.5); }
+.es-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.es-btn { padding:8px 14px; background:rgba(90,175,165,0.08);
+  border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+  font-family:monospace; font-size:9px; letter-spacing:0.1em; font-weight:700; cursor:pointer; }
+.es-btn:hover:not(:disabled) { background:rgba(90,175,165,0.16); }
+.es-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.es-btn.gold { background:rgba(200,166,78,0.08); border-color:rgba(200,166,78,0.5); color:#c8a26e; }
+.es-btn.gold:hover:not(:disabled) { background:rgba(200,166,78,0.16); }
+
+.es-agree { margin-top:14px; background:#0d0d0d; border:0.5px solid rgba(200,166,78,0.3);
+  border-radius:6px; padding:14px 16px; display:flex; align-items:center;
+  justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.es-agree .st { color:#cfcabf; font-size:11.5px; }
+.es-agree .st b { color:#c8a26e; }
+
+.es-chat { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:6px;
+  overflow:hidden; }
+.es-chat-feed { max-height:320px; overflow-y:auto; padding:12px 16px; }
+.es-msg { margin-bottom:10px; }
+.es-msg .who { font-family:monospace; font-size:9px; color:#5aafa5; letter-spacing:0.08em; }
+.es-msg .txt { color:#cfcabf; font-size:12px; line-height:1.5; overflow-wrap:break-word; }
+.es-chat-input { display:flex; gap:8px; padding:10px 12px; border-top:0.5px solid rgba(255,255,255,0.07); }
+.es-chat-input input { flex:1; background:#0a0a0a; color:#e8e4da;
+  border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:9px 11px;
+  font-family:inherit; font-size:12px; }
+.es-chat-input input:focus { outline:none; border-color:rgba(90,175,165,0.5); }
+
+#loading { font-family:monospace; font-size:10px; color:#4a4940; text-align:center; padding:80px 20px; }
+</style>
+</head>
+<body>
+
+<div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
+<div id="loading">LOADING...</div>
+<div class="content" id="content" style="display:none;"></div>
+
+<script type="module">
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml as esc, tickToDate, ENVOY_ACCORDS as ACCORDS } from './js/utils.js';
+
+const REASON = {
+  not_active: 'The session is not open.',
+  not_proposed: 'The mission was already answered.',
+  invalid_text: 'Write something within the limit.',
+  accord_already_on_table: 'That accord is already on the table.',
+  empty_arrangement: 'Put at least one article on the table first.',
+  not_yours: 'Only the writer withdraws an article.',
+};
+
+let ctx, session, articles = [], chat = [], inFlight = false;
+const sessionId = new URLSearchParams(location.search).get('id');
+
+async function load() {
+  const [sRes, aRes, cRes] = await Promise.all([
+    _supabase.from('envoy_sessions')
+      .select(`*, envoy:factions!envoy_faction_id(leader_first_name, leader_last_name, nickname),
+               counterpart:factions!counterpart_faction_id(leader_first_name, leader_last_name, nickname)`)
+      .eq('id', sessionId).maybeSingle(),
+    _supabase.from('envoy_session_articles')
+      .select('*').eq('session_id', sessionId).order('ordinal'),
+    _supabase.from('envoy_session_chat')
+      .select('*').eq('session_id', sessionId).order('created_at'),
+  ]);
+  if (sRes.error) throw sRes.error;
+  if (aRes.error) throw aRes.error;
+  if (cRes.error) throw cRes.error;
+  session = sRes.data;
+  articles = aRes.data || [];
+  chat = cRes.data || [];
+}
+
+const nameOf = (f, fb) => f?.nickname
+  || `${f?.leader_first_name || ''} ${f?.leader_last_name || ''}`.trim() || fb;
+
+async function rpc(fn, args, okMsg) {
+  if (inFlight) return false;
+  inFlight = true;
+  try {
+    const { data, error } = await _supabase.rpc(fn, { p_faction_id: ctx.faction?.id || null, p_session_id: sessionId, ...args });
+    if (error) throw error;
+    if (!data?.success) throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+    if (okMsg) alert(typeof okMsg === 'function' ? okMsg(data) : okMsg);
+    await load();
+    render();
+    return true;
+  } catch (e) {
+    alert('Could not do that: ' + (e?.message || e));
+    return false;
+  } finally {
+    inFlight = false;
+  }
+}
+
+function render() {
+  const host = document.getElementById('content');
+  if (!session) {
+    host.innerHTML = '<div class="es-empty">This negotiation does not exist.</div>';
+    return;
+  }
+  const me = ctx.faction?.id;
+  const isParty = me === session.envoy_faction_id || me === session.counterpart_faction_id;
+  const active = session.status === 'active';
+  const myAgreed = me === session.envoy_faction_id ? session.envoy_agreed : session.counterpart_agreed;
+  const theirAgreed = me === session.envoy_faction_id ? session.counterpart_agreed : session.envoy_agreed;
+  const onTable = new Set(articles.filter(a => a.kind !== 'text').map(a => a.kind));
+
+  host.innerHTML = `
+    <div class="es-head">
+      <div class="es-eyebrow">FOREIGN SERVICE · SPECIAL ENVOY MISSION</div>
+      <div class="es-title">${esc(session.title)}</div>
+      <div class="es-sub">${esc(nameOf(session.envoy, 'The Envoy'))} (Special Envoy)
+        &amp; ${esc(nameOf(session.counterpart, 'the counterpart'))}
+        &middot; opened ${esc(tickToDate(Number(session.created_at_tick)))}${session.signed_tick != null
+          ? ` &middot; signed ${esc(tickToDate(Number(session.signed_tick)))}` : ''}</div>
+      <span class="es-status ${esc(session.status)}">${esc(session.status.toUpperCase())}</span>
+    </div>
+
+    <div class="es-lab">THE ARTICLES</div>
+    ${articles.length ? articles.map(a => `
+      <div class="es-article">
+        <span class="ord">Art. ${esc(String(a.ordinal))}.</span>
+        <span class="bd">${a.kind === 'text'
+          ? esc(a.body)
+          : `<b>${esc(ACCORDS[a.kind]?.label || a.kind)}</b><span class="fx">${esc(ACCORDS[a.kind]?.fx || '')}</span>`}</span>
+        ${active && isParty && a.added_by_faction_id === me
+          ? `<button type="button" class="rm" data-rm="${esc(a.id)}">WITHDRAW</button>` : ''}
+      </div>`).join('')
+      : '<div class="es-empty">Nothing on the table yet.</div>'}
+
+    ${active && isParty ? `
+    <div class="es-compose">
+      <textarea id="es-art-text" maxlength="600" placeholder="Draft an article — up to 600 characters."></textarea>
+      <div class="es-row">
+        <button type="button" class="es-btn" id="es-add-text">ADD ARTICLE</button>
+        ${Object.entries(ACCORDS).map(([k, a]) => `
+          <button type="button" class="es-btn gold" data-accord="${esc(k)}" ${onTable.has(k) ? 'disabled title="Already on the table"' : ''}>+ ${esc(a.label.toUpperCase())}</button>`).join('')}
+      </div>
+    </div>
+    <div class="es-agree">
+      <span class="st">${myAgreed
+        ? 'You have <b>agreed</b> to the text as it stands.'
+        : 'Your signature is <b>not</b> on the current text.'}
+        ${theirAgreed ? 'The other party has <b>agreed</b>.' : 'The other party has not agreed.'}
+        Any change to the articles resets both signatures.</span>
+      <button type="button" class="es-btn gold" id="es-agree" ${myAgreed ? 'disabled title="Waiting on the other party"' : ''}>AGREE TO THE TEXT</button>
+    </div>` : ''}
+
+    ${session.status === 'signed' ? `
+    <div class="es-agree"><span class="st"><b>Signed.</b> The arrangement is a permanent public record —
+      its standing effects are live, and both names are on it.</span></div>` : ''}
+    ${session.status === 'proposed' && isParty && me === session.counterpart_faction_id ? `
+    <div class="es-agree">
+      <span class="st">The envoy requests this mission. Accepting opens the table.</span>
+      <span class="es-row">
+        <button type="button" class="es-btn" id="es-accept">ACCEPT MISSION</button>
+        <button type="button" class="es-btn" id="es-decline" style="opacity:0.7;">DECLINE</button>
+      </span>
+    </div>` : ''}
+
+    <div class="es-lab">THE ROOM</div>
+    <div class="es-chat">
+      <div class="es-chat-feed" id="es-feed">
+        ${chat.length ? chat.map(m => `
+          <div class="es-msg">
+            <div class="who">${esc(m.sender_name)} &middot; ${esc(tickToDate(Number(m.created_at_tick)))}</div>
+            <div class="txt">${esc(m.body)}</div>
+          </div>`).join('')
+          : '<div class="es-empty" style="border:none;">Silence, so far.</div>'}
+      </div>
+      ${active && isParty ? `
+      <div class="es-chat-input">
+        <input type="text" id="es-chat-text" maxlength="500" placeholder="Say it across the table…">
+        <button type="button" class="es-btn" id="es-chat-send">SEND</button>
+      </div>` : ''}
+    </div>`;
+
+  const feed = document.getElementById('es-feed');
+  if (feed) feed.scrollTop = feed.scrollHeight;
+
+  document.getElementById('es-add-text')?.addEventListener('click', () => {
+    const t = document.getElementById('es-art-text');
+    if (!t.value.trim()) return;
+    rpc('envoy_session_add_article', { p_kind: 'text', p_body: t.value });
+  });
+  host.querySelectorAll('[data-accord]').forEach(btn => {
+    btn.addEventListener('click', () =>
+      rpc('envoy_session_add_article', { p_kind: btn.dataset.accord, p_body: null }));
+  });
+  host.querySelectorAll('[data-rm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Withdraw this article? Both signatures reset.')) return;
+      rpc('envoy_session_remove_article', { p_article_id: btn.dataset.rm });
+    });
+  });
+  document.getElementById('es-agree')?.addEventListener('click', () =>
+    rpc('envoy_session_agree', {}, (d) => d.signed
+      ? `Signed. "${session.title}" enters the record.`
+      : 'Your signature is on the text — waiting on the other party.'));
+  document.getElementById('es-accept')?.addEventListener('click', () =>
+    rpc('envoy_mission_decide', { p_accept: true }));
+  document.getElementById('es-decline')?.addEventListener('click', () =>
+    rpc('envoy_mission_decide', { p_accept: false }));
+  const send = document.getElementById('es-chat-send');
+  const sendChat = () => {
+    const t = document.getElementById('es-chat-text');
+    if (!t.value.trim()) return;
+    rpc('envoy_session_post_chat', { p_text: t.value });
+  };
+  send?.addEventListener('click', sendChat);
+  document.getElementById('es-chat-text')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendChat();
+  });
+}
+
+(async () => {
+  try {
+    ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation');
+    if (!ctx) return;
+    if (!sessionId) {
+      document.getElementById('loading').textContent = 'NO SESSION SPECIFIED';
+      return;
+    }
+    await load();
+    render();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch (err) {
+    console.error('envoy-session: load failed', err);
+    document.getElementById('loading').textContent = 'FAILED TO LOAD — PLEASE REFRESH';
+  }
+})();
+</script>
+</body>
+</html>

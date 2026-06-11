@@ -528,6 +528,24 @@ export function judicialTitle(politician, nationId) {
 // politician_take_dcm_post (20270866); the server list is authoritative.
 export const FS_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
 
+// The three standard envoy accords (20270870) — display mirror of the
+// server CHECK in envoy_session_add_article; effects applied
+// server-side on signing (has_accord is the authority).
+export const ENVOY_ACCORDS = {
+  friendship_accord: {
+    label: 'Friendship Accord',
+    fx: '+5 Relations between the nations, on signing.',
+  },
+  trade_understanding: {
+    label: 'Trade Understanding',
+    fx: '−10% market entry fees between the nations, standing.',
+  },
+  consular_convention: {
+    label: 'Consular Convention',
+    fx: 'Citizen-in-a-cell cases between the nations handle at double effect, standing.',
+  },
+};
+
 // ===== GAME DATE =====
 
 export const MONTHS = [
