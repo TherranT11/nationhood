@@ -1197,8 +1197,8 @@ const GOVT_SERVICE_RUNGS = [
       // Gate: must have no current affiliation. The Sit the Exam button
       // disables otherwise so the modal doesn't fire only to be rejected
       // server-side; the RPC checks the same gates as a defence in depth.
-      if (s.partyId) return { label: 'Sit the Exam', kind: 'disabled' };
-      if (s.office)  return { label: 'Sit the Exam', kind: 'disabled' };
+      if (s.partyId) return { label: 'Cannot sit if an active member of a party', kind: 'disabled' };
+      if (s.office)  return { label: 'Cannot sit while holding office', kind: 'disabled' };
       if (s.civilServiceCooldownUntilTick && s.civilServiceCooldownUntilTick > s.currentTick) {
         const ticks = s.civilServiceCooldownUntilTick - s.currentTick;
         return { label: `Re-apply in ${ticks} tick${ticks === 1 ? '' : 's'}`, kind: 'disabled' };
@@ -1255,9 +1255,9 @@ const GOVT_SERVICE_RUNGS = [
     held:         (s) => !!s.permanentSecretaryMinistry,
     descIfHeld:   (s) => {
       const m = MAJOR_MINISTRY_LABEL[s.permanentSecretaryMinistry] || s.permanentSecretaryMinistry || 'a major ministry';
-      return `You run the Ministry of <strong>${escHtml(m)}</strong> day-to-day. Permanent across political changes — Ministers come and go, you stay.`;
+      return `You run the Ministry of ${m} day-to-day. Permanent across political changes — Ministers come and go, you stay.`;
     },
-    descIfNot:    ()  => `Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: <strong>${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience</strong>, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. Auto-assigned to the major-ministry equivalent of your civil-service track — <strong>Interior · Defense · Economic Development · Foreign Affairs and Trade</strong>.`,
+    descIfNot:    ()  => `Top of the permanent civil service — head of one of the 4 major ministries. Apolitical career promotion: ${CIVIL_SERVICE_THRESHOLDS.permanentSecretary} Experience, currently an Agency Head, and the corresponding major-ministry slot in your nation must not already be held by another player. Auto-assigned to the major-ministry equivalent of your civil-service track — Interior · Defense · Economic Development · Foreign Affairs and Trade.`,
     actions:      ['Approve Policy', 'Implement Reform'],
     actionIfNot:  (s) => {
       if (s.seniorCivilServantAtTick == null) {
@@ -1290,9 +1290,9 @@ const GOVT_SERVICE_RUNGS = [
     held:        (s) => !!s.juniorPortfolio,
     descIfHeld:  (s) => {
       const p = JUNIOR_PORTFOLIO_LABEL[s.juniorPortfolio] || s.juniorPortfolio || 'a portfolio';
-      return `You hold the <strong>${escHtml(p)}</strong> portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
+      return `You hold the ${p} portfolio. Sub-Cabinet rank — you carry the brief, answer for the Minister when absent, and pilot legislation through the chamber.`;
     },
-    descIfNot:   ()  => `An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach <strong>${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience</strong>; on acceptance you're randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.`,
+    descIfNot:   ()  => `An Agency Head promoted into the political canopy. Five portfolios are on offer: Sports, Culture, Communications, Tourism, Housing. Apply once you reach ${CIVIL_SERVICE_THRESHOLDS.juniorMinister} Experience; on acceptance you're randomly assigned from whichever portfolios are vacant. The Prime Minister reviews if a player holds the chair, otherwise the cabinet decides on the spot with a stat-modified roll.`,
     actions:     ['Carry a Bill', 'Answer Questions'],
     // Seek Appointment — Agency Head → Junior Minister. Gates layer
     // up: must be Agency Head (politician_senior_civil_servant_at_
@@ -3697,7 +3697,8 @@ async function submitJuniorAppointment(btn) {
   if (btn?.dataset.busy === '1') return;
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
   try {
-    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment');
+    const { data, error } = await _supabase.rpc('politician_seek_junior_appointment',
+      { p_faction_id: window.__careerCtx?.faction?.id || null });
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
@@ -3803,7 +3804,8 @@ async function submitPermanentSecretary(btn) {
   if (btn?.dataset.busy === '1') return;
   if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
   try {
-    const { data, error } = await _supabase.rpc('politician_seek_permanent_secretary');
+    const { data, error } = await _supabase.rpc('politician_seek_permanent_secretary',
+      { p_faction_id: window.__careerCtx?.faction?.id || null });
     if (error) throw error;
     if (!data?.success) {
       const have = data?.have != null ? fmtStat(data.have) : '?';
