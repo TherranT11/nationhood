@@ -3181,18 +3181,25 @@ async function renderForeignAffiliation(ctx) {
       ${cableSent ? '<div class="act-cooldown">Ready next tick</div>' : ''}
     </div>`;
 
-  const placeholderActions = [
-    { ic: '🤝', name: 'BUILD LOCAL CONTACTS',          cost: 'no cost', desc: 'Cultivate sources inside the host nation — ministers, journalists, opposition figures.' },
-  ];
-  const actionsHtml = dayToDayTile + cableTile + placeholderActions.map(a => `
-    <div class="act-btn disabled" aria-disabled="true" title="Action mechanics coming soon">
+  // Build Local Contacts (20270861): −$2 budget, −1 reputation,
+  // +0.3 Experience, +0.3 Influence — one-tick lock of its own.
+  const nextContactsTick = Number(ctx.faction?.next_embassy_contacts_tick) || 0;
+  const contactsCooling  = nextContactsTick > currentTick;
+  const contactsAttrs = contactsCooling
+    ? ' aria-disabled="true" title="Already worked the room this tick"'
+    : ' data-action="embassy-build-contacts"';
+  const contactsTile = `
+    <div class="act-btn${contactsCooling ? ' cooldown' : ''}"${contactsAttrs}>
       <div class="act-head">
-        <span class="act-ic">${a.ic}</span>
-        <span class="act-name">${escHtml(a.name)}</span>
-        <span class="act-cost">${escHtml(a.cost)}</span>
+        <span class="act-ic">🤝</span>
+        <span class="act-name">BUILD LOCAL CONTACTS</span>
+        <span class="act-cost">−$2 · −1 rep</span>
       </div>
-      <div class="act-desc">${escHtml(a.desc)}</div>
-    </div>`).join('');
+      <div class="act-desc">Cultivate sources inside the host nation — ministers, journalists, opposition figures. +0.3 Experience · +0.3 Influence.</div>
+      ${contactsCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+    </div>`;
+
+  const actionsHtml = dayToDayTile + cableTile + contactsTile;
 
   host.innerHTML = `
     <div class="affil var-foreign" style="margin-top:18px;">
@@ -3248,6 +3255,32 @@ async function renderForeignAffiliation(ctx) {
 
   host.querySelector('.act-btn[data-action="embassy-send-cable"]')
     ?.addEventListener('click', () => openCableModal(ctx));
+
+  host.querySelector('.act-btn[data-action="embassy-build-contacts"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('politician_build_contacts',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            cooldown: 'Already worked the room this tick.',
+            insufficient_budget: 'The embassy budget can’t cover the rounds ($2).',
+            not_attache: 'Only a serving attaché builds contacts.',
+            arrested: 'You are under arrest — the rolodex is sealed.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert('You work the receptions and the back rooms. +0.3 Experience, +0.3 Influence — the Ministry notes the expenses.');
+        location.reload();
+      } catch (err) {
+        alert('Could not build contacts: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
 }
 
 // 20270860 — the SEND CABLE composer. Same inject-on-demand overlay
