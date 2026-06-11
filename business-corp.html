@@ -484,7 +484,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_stock, equipment_stock, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_stock, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -1550,21 +1550,23 @@ import { CITY_STATS } from './js/game/city-labels.js';
         projHost.innerHTML = '<div class="rl-empty">Loading…</div>';
         const warn = document.getElementById('pr-warn');
         warn.style.display = 'block';
-        warn.textContent = `${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
-          + (tier >= 1 ? ` Yard: ${corp.materials_stock || 0}/10 materials · ${corp.equipment_stock || 0}/5 equipment.` : '');
         document.getElementById('pr-overlay').classList.add('open');
 
         try {
-          const [mats, equip, projsRes] = await Promise.all([
+          const [mats, equip, projsRes, unitsRes] = await Promise.all([
             _supabase.rpc('construction_materials_market', { p_nation_id: corp.hq_nation_id }),
             _supabase.rpc('construction_equipment_market', { p_nation_id: corp.hq_nation_id }),
             _supabase.from('corp_construction_projects')
-              .select('id, city, materials_supplied, blueprint:corp_blueprints!blueprint_id(name, materials_needed)')
+              .select('id, city, materials_supplied, equipment_supplied, blueprint:corp_blueprints!blueprint_id(name, materials_needed)')
               .eq('corp_id', corp.id).eq('status', 'building').order('created_at'),
+            _supabase.from('corp_equipment')
+              .select('uses_left').eq('corp_id', corp.id),
           ]);
-          if (mats.error || equip.error || projsRes.error)
-            throw (mats.error || equip.error || projsRes.error);
+          if (mats.error || equip.error || projsRes.error || unitsRes.error)
+            throw (mats.error || equip.error || projsRes.error || unitsRes.error);
           const projs = projsRes.data || [];
+          const units = unitsRes.data || [];
+          const totalUses = units.reduce((s, u) => s + (Number(u.uses_left) || 0), 0);
 
           const row = (good, name, mkt, buyable, lockNote) => !mkt?.success ? '' : `
             <div class="pr-row">
@@ -1575,35 +1577,44 @@ import { CITY_STATS } from './js/game/city-labels.js';
               </div>
               <div class="pr-buy">
                 ${buyable
-                  ? `<input class="pb-price" type="number" min="1" placeholder="Qty" data-qty="${good}">
-                     ${good === 'materials' && tier === 0 ? `
+                  ? `${good === 'equipment' && tier === 0 ? '' : `<input class="pb-price" type="number" min="1" placeholder="Qty" data-qty="${good}">`}
+                     ${good === 'materials' || tier === 0 ? `
                        <select class="jm-select" style="width:auto;padding:6px 8px;font-size:9.5px;" data-proj="${good}">
-                         ${projs.map(p => `<option value="${esc(p.id)}">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</option>`).join('')}
+                         ${projs.filter(p => good === 'materials' || !p.equipment_supplied)
+                           .map(p => `<option value="${esc(p.id)}">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</option>`).join('')}
                        </select>` : ''}
                      <button type="button" class="pb-act bid" data-buy="${good}">BUY</button>`
                   : `<span class="nob">${esc(lockNote)}</span>`}
               </div>
             </div>`;
 
-          const matsBuyable = tier >= 1 || projs.length > 0;
+          warn.textContent = `${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
+            + (tier >= 1 ? ` Yard: ${units.length}/${YARD_TIERS[tier].equipmentCap} units (${totalUses} uses left).` : '');
+          const eqBuyable = tier >= 1
+            ? true
+            : projs.some(p => !p.equipment_supplied);
           host.innerHTML =
-            row('materials', 'Construction Materials', mats.data, matsBuyable,
-                'No active project — Level 0 buys must fulfill one.')
-            + row('equipment', 'Construction Equipment', equip.data, tier >= 2,
-                'Upgrade your yard to Level II for equipment storage.')
+            row('materials', 'Construction Materials', mats.data, projs.length > 0,
+                'No active project — material buys must fulfill one.')
+            + row('equipment', 'Construction Equipment', equip.data, eqBuyable,
+                tier >= 1 ? 'Yard full.' : 'No active project needs equipment.')
             || '<div class="rl-empty">Could not load the exchange.</div>';
 
           projHost.innerHTML = projs.length ? projs.map(p => {
             const need = Number(p.blueprint?.materials_needed) || 0;
             const got  = Number(p.materials_supplied) || 0;
             const remaining = Math.max(0, need - got);
+            const hasEq = Number(p.equipment_supplied) >= 1;
             return `
             <div class="pr-row" style="grid-template-columns:1.4fr 1fr 1fr;">
               <div class="nm">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</div>
-              <div class="c">Materials ${got}/${need}${remaining === 0 ? ' ✓' : ''}</div>
+              <div class="c">Materials ${got}/${need}${remaining === 0 ? ' ✓' : ''} · Equipment ${hasEq ? '✓' : '—'}</div>
               <div class="pr-buy">
-                ${tier >= 1 && remaining > 0 && (corp.materials_stock || 0) > 0
+                ${remaining > 0 && (corp.materials_stock || 0) > 0
                   ? `<button type="button" class="pb-act bid" data-supply="${esc(p.id)}" data-rem="${remaining}">SUPPLY FROM YARD</button>`
+                  : ''}
+                ${!hasEq && units.length > 0
+                  ? `<button type="button" class="pb-act bid" data-commit="${esc(p.id)}">COMMIT EQUIPMENT</button>`
                   : ''}
               </div>
             </div>`;
@@ -1612,7 +1623,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
           host.querySelectorAll('[data-buy]').forEach(btn => {
             btn.addEventListener('click', async () => {
               const good = btn.dataset.buy;
-              const qty = Math.floor(Number(host.querySelector(`[data-qty="${good}"]`)?.value));
+              const qty = (good === 'equipment' && tier === 0)
+                ? 1
+                : Math.floor(Number(host.querySelector(`[data-qty="${good}"]`)?.value));
               if (!(qty > 0)) { alert('Enter a quantity.'); return; }
               const projSel = host.querySelector(`[data-proj="${good}"]`);
               btn.disabled = true;
@@ -1627,6 +1640,21 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 window.location.reload();
               } catch (e) {
                 alert('Could not buy: ' + (e?.message || e));
+                btn.disabled = false;
+              }
+            });
+          });
+          projHost.querySelectorAll('[data-commit]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              btn.disabled = true;
+              try {
+                const { data, error: cErr } = await _supabase.rpc('commit_equipment_to_project',
+                  { p_project_id: btn.dataset.commit });
+                if (cErr) throw cErr;
+                if (!data?.success) throw new Error(PR_REASON[data?.reason] || data?.reason || 'unknown');
+                window.location.reload();
+              } catch (e) {
+                alert('Could not commit: ' + (e?.message || e));
                 btn.disabled = false;
               }
             });
