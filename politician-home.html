@@ -1374,6 +1374,7 @@ import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { COMMITTEES } from './js/committees.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
+import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
 // Dispatch bucket categories for the World Events panel.
@@ -3369,17 +3370,33 @@ function renderAffiliation(ctx) {
     </div>`;
   }).join('');
 
-  // Resign affordance — only rendered when the politician actually
-  // holds an office (no point on the Party Member fallback variant).
-  // RPC: politician_resign_office (-2 politician_influence, -2 party
-  // popularity, clears the office, logs a resigned_office career row).
-  const resignHtml = office
-    ? `<div style="padding:6px 20px 12px; text-align:right;">
-         <button class="resign-btn" data-resign-office
-                 style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
-                        font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
-                        cursor:pointer; font-family:inherit;">RESIGN</button>
-       </div>`
+  // Resign affordance — top right of the container, every role
+  // (user spec). Family routing:
+  //   elected office → politician_resign_office (handleResignOffice)
+  //   civil service  → politician_resign_from_civil_service (−2 Rep)
+  //   judicial bench → politician_resign_from_bench (−2 Rep)
+  //   party member   → politician_leave_party via callPartyAction
+  // FS / FIS / ambassador cards carry their own buttons in the
+  // secondary host renderers.
+  let resignCfg = null;
+  if (office) {
+    resignCfg = { kind: 'office', label: 'RESIGN' };
+  } else if (isPermSec || isSeniorCS || ministry) {
+    resignCfg = { kind: 'rpc', label: 'RESIGN', rpc: 'politician_resign_from_civil_service',
+      args: { p_faction_id: ctx.faction?.id || null },
+      confirm: 'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.' };
+  } else if (barNation) {
+    resignCfg = { kind: 'rpc', label: 'RESIGN', rpc: 'politician_resign_from_bench',
+      args: { p_faction_id: ctx.faction?.id || null },
+      confirm: 'Resign from the bench? You will lose 2 Reputation and forfeit every judicial rung — Advocate through Appellate Justice. You can re-take the bar later.' };
+  } else if (ctx.party?.id) {
+    resignCfg = { kind: 'leave-party', label: 'LEAVE PARTY' };
+  }
+  const resignHtml = resignCfg
+    ? `<button class="resign-btn" data-affil-resign
+               style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+                      font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
+                      cursor:pointer; font-family:inherit; flex-shrink:0; align-self:flex-start;">${resignCfg.label}</button>`
     : '';
 
   host.innerHTML = `
@@ -3392,12 +3409,12 @@ function renderAffiliation(ctx) {
           <div class="ah-desc">${descHtml}</div>
         </div>
         ${tenureHtml}
+        ${resignHtml}
       </div>
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
         <div class="ar-buttons${colsClass}">${actionsHtml}</div>
       </div>
-      ${resignHtml}
     </div>`;
 
   // Wire enabled (non-cooldown, non-disabled) buttons to their RPCs.
@@ -3452,8 +3469,72 @@ function renderAffiliation(ctx) {
       }
     });
   });
-  const resignBtn = host.querySelector('[data-resign-office]');
-  if (resignBtn) resignBtn.addEventListener('click', () => handleResignOffice(resignBtn, variant.name));
+  const resignBtn = host.querySelector('[data-affil-resign]');
+  if (resignBtn) resignBtn.addEventListener('click', async () => {
+    if (resignCfg.kind === 'office') { handleResignOffice(resignBtn, variant.name); return; }
+    if (resignBtn.dataset.busy === '1') return;
+    if (resignCfg.kind === 'leave-party') {
+      if (!confirm(LEAVE_PARTY_CONFIRM)) return;
+      resignBtn.dataset.busy = '1';
+      resignBtn.disabled = true;
+      const res = await callPartyAction('leave', ctx.faction?.id || null, null);
+      if (!res.ok) {
+        alert('Could not leave the party: ' + (res.reason || 'unknown'));
+        resignBtn.dataset.busy = '0';
+        resignBtn.disabled = false;
+        return;
+      }
+      location.reload();
+      return;
+    }
+    if (!confirm(resignCfg.confirm)) return;
+    resignBtn.dataset.busy = '1';
+    resignBtn.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc(resignCfg.rpc, resignCfg.args);
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.reason || 'unknown');
+      location.reload();
+    } catch (e) {
+      alert('Could not resign: ' + (e?.message || 'network or server error'));
+      resignBtn.dataset.busy = '0';
+      resignBtn.disabled = false;
+    }
+  });
+}
+
+// Shared Foreign Service resign affordance (20270879) — one button +
+// one binder for the attaché / consul / DCM / envoy cards.
+// politician_foreign_service_resign clears the WHOLE ladder (Tier 1
+// through Special Envoy); re-entry means re-passing the FS exam.
+// The ambassador card keeps its dedicated politician_ambassador_resign.
+const FS_RESIGN_BTN_HTML = `
+        <button class="resign-btn" data-fs-resign
+                style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+                       font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
+                       cursor:pointer; font-family:inherit; flex-shrink:0;">RESIGN</button>`;
+
+function bindFsResign(host, ctx, confirmMsg) {
+  host.querySelector('[data-fs-resign]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn.dataset.busy === '1') return;
+    if (!confirm(confirmMsg)) return;
+    btn.dataset.busy = '1';
+    try {
+      const { data, error } = await _supabase.rpc('politician_foreign_service_resign',
+        { p_faction_id: ctx.faction?.id || null });
+      if (error) throw error;
+      if (!data?.success) {
+        alert('Could not resign: ' + (data?.reason || 'unknown'));
+        btn.dataset.busy = '0';
+        return;
+      }
+      location.reload();
+    } catch (err) {
+      alert('Failed: ' + (err?.message || err));
+      btn.dataset.busy = '0';
+    }
+  });
 }
 
 // 20270759 — Foreign Service Tier 1 (Attaché) affiliation card.
@@ -3628,10 +3709,7 @@ async function renderForeignAffiliation(ctx) {
           <div class="ah-name">Foreign Attaché in ${escHtml(nationName)}</div>
           <div class="ah-desc">Stationed at the embassy in <strong>${escHtml(capital)}</strong>. You file reports, cultivate contacts, and learn the trade — the Foreign Ministry expects discretion.</div>
         </div>
-        <button class="resign-btn" data-fs-resign
-                style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
-                       font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
-                       cursor:pointer; font-family:inherit; flex-shrink:0;">RESIGN</button>
+        ${FS_RESIGN_BTN_HTML}
       </div>
       <div class="emb-stats">
         <div class="emb-stat"><span class="emb-stat-lab">EMBASSY BUDGET</span><span class="emb-stat-val">$${escHtml(embBudget.toLocaleString())}</span></div>
@@ -3646,28 +3724,8 @@ async function renderForeignAffiliation(ctx) {
       </div>
     </div>`;
 
-  // Resign the posting (20270771). No stat claw-back — re-entry
-  // means re-passing the FS exam, which is its own barrier.
-  host.querySelector('[data-fs-resign]')?.addEventListener('click', async (e) => {
-    const btn = e.currentTarget;
-    if (btn.dataset.busy === '1') return;
-    if (!confirm(`Resign your posting in ${nationName}? Re-joining the Foreign Service requires passing the exam again.`)) return;
-    btn.dataset.busy = '1';
-    try {
-      const { data, error } = await _supabase.rpc('politician_foreign_service_resign',
-        { p_faction_id: ctx.faction?.id || null });
-      if (error) throw error;
-      if (!data?.success) {
-        alert('Could not resign: ' + (data?.reason || 'unknown'));
-        btn.dataset.busy = '0';
-        return;
-      }
-      location.reload();
-    } catch (err) {
-      alert('Failed: ' + (err?.message || err));
-      btn.dataset.busy = '0';
-    }
-  });
+  bindFsResign(host, ctx,
+    `Resign your posting in ${nationName}? Re-joining the Foreign Service requires passing the exam again.`);
 
   host.querySelector('.act-btn[data-action="embassy-day-to-day"]')
     ?.addEventListener('click', () => openEmbassyEventModal());
@@ -3891,6 +3949,7 @@ async function renderConsulAffiliation(ctx, host) {
           <div class="ah-name">Consul in ${escHtml(nationName)}</div>
           <div class="ah-desc">You run the consulate in <strong>${escHtml(capital)}</strong>. The morning docket is yours to triage — handle one case properly, rubber-stamp the rest, and live with both.</div>
         </div>
+        ${FS_RESIGN_BTN_HTML}
       </div>
       <div class="emb-stats">
         <div class="emb-stat"><span class="emb-stat-lab">BUDGET</span><span class="emb-stat-val">$${escHtml(embBudget.toLocaleString())}</span></div>
@@ -3997,6 +4056,9 @@ async function renderConsulAffiliation(ctx, host) {
 
   host.querySelector('.act-btn[data-action="take-dcm-post"]')
     ?.addEventListener('click', () => openDcmPostModal(ctx));
+
+  bindFsResign(host, ctx,
+    `Resign from the Foreign Service? Your consulate in ${nationName} vacates, and re-joining means passing the exam again.`);
 }
 
 // The region picker — vacant regions only (one DCM per home nation
@@ -4150,6 +4212,7 @@ async function renderDcmAffiliation(ctx, host) {
           <div class="ah-name">Deputy Chief of Mission — ${escHtml(region)}</div>
           <div class="ah-desc">Every officer your nation fields in <strong>${escHtml(region)}</strong> answers to you. Their wins are your wins. Their messes arrive by pouch.</div>
         </div>
+        ${FS_RESIGN_BTN_HTML}
       </div>
       <div class="emb-stats">
         <div class="emb-stat"><span class="emb-stat-lab">COVERAGE</span><span class="emb-stat-val">${staffed}<span class="emb-stat-max">/${postable} stations</span></span></div>
@@ -4195,6 +4258,9 @@ async function renderDcmAffiliation(ctx, host) {
         </div>
       </div>
     </div>`;
+
+  bindFsResign(host, ctx,
+    `Resign from the Foreign Service? ${region} loses its Deputy Chief of Mission, and re-joining means passing the exam again.`);
 
   host.querySelector('.act-btn[data-action="dcm-review"]')
     ?.addEventListener('click', () => openDcmOfficerModal(ctx, 'review', regionNations, officers));
@@ -4255,6 +4321,7 @@ async function renderEnvoyAffiliation(ctx, host) {
           <div class="ah-name">Special Envoy of the Republic</div>
           <div class="ah-desc">You negotiate where the ministry points you. The arrangements you sign are permanent public record — <strong>${signedCount} signed</strong> so far. This is where the legacy is built.</div>
         </div>
+        ${FS_RESIGN_BTN_HTML}
       </div>
       <div class="act-row">
         <div class="ar-lab">ENVOY ACTIONS</div>
@@ -4278,6 +4345,9 @@ async function renderEnvoyAffiliation(ctx, host) {
 
   host.querySelector('.act-btn[data-action="envoy-negotiate"]')
     ?.addEventListener('click', () => openEnvoyMissionPicker(ctx));
+
+  bindFsResign(host, ctx,
+    'Resign as Special Envoy? You leave the Foreign Service entirely — signed arrangements stand, and re-joining means passing the exam again.');
 }
 
 async function openEnvoyMissionPicker(ctx) {
