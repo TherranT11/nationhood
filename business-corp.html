@@ -183,11 +183,11 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay, #am-overlay, #sl-overlay { position:fixed;
+  #vp-overlay, #am-overlay, #sl-overlay, #em-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #em-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -589,6 +589,37 @@
     <div class="jm-foot" id="sl-foot">
       <button type="button" class="jm-btn secondary" id="sl-cancel">CANCEL</button>
       <button type="button" class="jm-btn" id="sl-confirm" disabled>CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<div id="em-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Expand <em>Market</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Enter a foreign market. Expand under your own name
+        ($10M flat) or open a named Subsidiary ($7M scaled by that nation&rsquo;s Standard of
+        Living) whose local badge earns +1 appeal on every campaign there. Ship vehicles from
+        HQ inventory and set their standing prices — selling abroad requires the presence, and
+        campaigns there sell only what you&rsquo;ve shipped. Re-running on a market you&rsquo;re
+        already in ships more for free.</div>
+      <div class="jm-lab">NATION</div>
+      <div class="jm-pills db-cats" id="em-nations"></div>
+      <div class="jm-lab">PRESENCE</div>
+      <div class="jm-pills" id="em-kinds"></div>
+      <div class="db-static dim-line" id="em-kind-note"></div>
+      <div id="em-name-wrap" style="display:none;">
+        <div class="jm-lab">SUBSIDIARY NAME</div>
+        <input type="text" class="fin-amt" id="em-name" maxlength="60" placeholder="e.g. Velora del Norte" style="margin-bottom:0;">
+      </div>
+      <div class="jm-lab">SHIPMENTS &middot; FROM HQ INVENTORY</div>
+      <div id="em-ships"></div>
+      <div class="jm-lab">COST</div>
+      <div class="db-static" id="em-cost">—</div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="em-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="em-confirm" disabled>CONFIRM</button>
     </div>
   </div>
 </div>
@@ -1634,7 +1665,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">📣</div>
               <div class="nm">SALES CAMPAIGN</div>
               <div class="soon">Price a Model and sell into a nation</div>
-            </div>` + eaComingSoon(1)
+            </div>
+            <div class="ea-card live" id="ea-expand-market">
+              <div class="ic">🌍</div>
+              <div class="nm">EXPAND MARKET</div>
+              <div class="soon">Enter a nation or open a subsidiary</div>
+            </div>`
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
@@ -2544,12 +2580,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
           }
         });
 
-        // ── Sales Campaign (20270839) ─────────────────────────────
+        // ── Sales Campaign (20270839/40) ──────────────────────────
         // The resolution model lives server-side in run_sales_campaign;
         // this renders the picks and the live cost/profit/competition
         // lines (anchor prices + appeal mirrored from corp-blueprints).
+        // Home campaigns sell HQ inventory; foreign ones need an
+        // Expand Market presence and sell the stock shipped there.
         let slNation = null, slModel = null, slInFlight = false;
-        let slModels = [];
+        let slModels = [], slHqModels = [], slPresence = {}, slNations = [];
 
         function slShowProfit() {
           const price = Math.floor(Number(document.getElementById('sl-price').value) || 0);
@@ -2571,29 +2609,110 @@ import { CITY_STATS } from './js/game/city-labels.js';
           if (!slNation || !slModel) { compEl.textContent = '—'; return; }
           compEl.textContent = 'Scouting the market…';
           try {
-            const { data: rivals, error: rErr } = await _supabase.from('entrepreneur_corps')
-              .select('id').eq('hq_nation_id', slNation).eq('industry', 'automotive').neq('id', corp.id);
-            if (rErr) throw rErr;
-            let comps = [];
-            if (rivals?.length) {
-              const { data: cbs, error: cErr } = await _supabase.from('vehicle_blueprints')
-                .select('engine, quality, packages, units_in_stock')
-                .in('corp_id', rivals.map(r => r.id))
+            // Rivals with stock IN the nation: locals' HQ inventory
+            // plus shipped imports — the same set the server splits
+            // demand against.
+            const [{ data: locals, error: lErr }, { data: imports, error: iErr }] = await Promise.all([
+              _supabase.from('vehicle_blueprints')
+                .select('id, engine, quality, packages, units_in_stock, corp:entrepreneur_corps!corp_id!inner(hq_nation_id)')
+                .eq('corp.hq_nation_id', slNation)
                 .eq('vehicle_type', slModel.vehicle_type)
-                .gt('units_in_stock', 0);
-              if (cErr) throw cErr;
-              comps = cbs || [];
+                .neq('corp_id', corp.id)
+                .gt('units_in_stock', 0),
+              _supabase.from('vehicle_market_stock')
+                .select('blueprint_id, units, blueprint:vehicle_blueprints!blueprint_id!inner(engine, quality, packages, vehicle_type, corp_id)')
+                .eq('nation_id', slNation)
+                .eq('blueprint.vehicle_type', slModel.vehicle_type)
+                .neq('blueprint.corp_id', corp.id)
+                .gt('units', 0),
+            ]);
+            if (lErr || iErr) throw (lErr || iErr);
+            const seen = new Set();
+            let theirs = 0, count = 0;
+            for (const c of (locals || [])) {
+              seen.add(c.id); count++;
+              theirs += vehicleAppeal(c.engine, c.quality, (c.packages || []).length);
             }
-            const yours = vehicleAppeal(slModel.engine, slModel.quality, (slModel.packages || []).length);
-            const theirs = comps.reduce((s, c) =>
-              s + vehicleAppeal(c.engine, c.quality, (c.packages || []).length), 0);
-            compEl.textContent = comps.length
-              ? `${comps.length} rival Model${comps.length === 1 ? '' : 's'} of this type on the market — combined appeal ${theirs.toFixed(1)} vs your ${yours.toFixed(1)}.`
-              : `No rival Models of this type on the market — the demand is all yours (appeal ${yours.toFixed(1)}).`;
+            for (const s of (imports || [])) {
+              if (seen.has(s.blueprint_id)) continue;
+              count++;
+              theirs += vehicleAppeal(s.blueprint.engine, s.blueprint.quality, (s.blueprint.packages || []).length);
+            }
+            const badge = slNation !== corp.hq_nation_id && slPresence[slNation]?.kind === 'subsidiary' ? 1 : 0;
+            const yours = vehicleAppeal(slModel.engine, slModel.quality, (slModel.packages || []).length) + badge;
+            compEl.textContent = count
+              ? `${count} rival Model${count === 1 ? '' : 's'} of this type on the market — combined appeal ${theirs.toFixed(1)} vs your ${yours.toFixed(1)}${badge ? ' (subsidiary badge +1)' : ''}.`
+              : `No rival Models of this type on the market — the demand is all yours (appeal ${yours.toFixed(1)}${badge ? ', subsidiary badge +1' : ''}).`;
           } catch (e) {
             compEl.textContent = 'Could not scout the competition.';
             console.warn('[business-corp] campaign competition load failed:', e?.message || e);
           }
+        }
+
+        function slRenderModels() {
+          const modHost = document.getElementById('sl-models');
+          slModel = null;
+          document.getElementById('sl-stock').textContent = '—';
+          if (!slModels.length) {
+            modHost.innerHTML = slNation && slNation !== corp.hq_nation_id && !slPresence[slNation]
+              ? '<div class="rl-empty">Not in this market — run EXPAND MARKET first.</div>'
+              : '<div class="rl-empty">No vehicles in stock here — run the factories (or ship some in).</div>';
+            slShowProfit();
+            return;
+          }
+          modHost.innerHTML = slModels.map(m => `
+            <div class="jm-pill" data-val="${esc(m.id)}" title="${esc(m.stock)} in stock">${esc(m.label.toUpperCase())}</div>`).join('');
+          modHost.querySelectorAll('.jm-pill').forEach(p => {
+            p.addEventListener('click', () => {
+              modHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+              slModel = slModels.find(m => m.id === p.dataset.val) || null;
+              document.getElementById('sl-stock').textContent =
+                `${Number(slModel?.stock) || 0} × ${slModel?.label || ''} available here`;
+              if (slModel?.list_price && !document.getElementById('sl-price').value) {
+                document.getElementById('sl-price').value = slModel.list_price;
+              }
+              slShowCompetition();
+              slShowProfit();
+            });
+          });
+          slShowProfit();
+        }
+
+        async function slPickNation() {
+          if (slNation === corp.hq_nation_id) {
+            slModels = slHqModels;
+            slRenderModels();
+            return;
+          }
+          if (!slPresence[slNation]) {
+            slModels = [];
+            slRenderModels();
+            return;
+          }
+          const modHost = document.getElementById('sl-models');
+          modHost.innerHTML = '<div class="rl-empty">Checking the local lots…</div>';
+          try {
+            const { data: rows, error: sErr } = await _supabase.from('vehicle_market_stock')
+              .select('blueprint_id, units, local_name, list_price, blueprint:vehicle_blueprints!blueprint_id(name, vehicle_type, vehicle_class, engine, quality, packages, xp_cost)')
+              .eq('corp_id', corp.id).eq('nation_id', slNation).gt('units', 0);
+            if (sErr) throw sErr;
+            slModels = (rows || []).map(r => ({
+              id: r.blueprint_id,
+              label: r.local_name || r.blueprint?.name || 'Model',
+              stock: r.units,
+              list_price: r.list_price,
+              vehicle_class: r.blueprint?.vehicle_class,
+              vehicle_type: r.blueprint?.vehicle_type,
+              engine: r.blueprint?.engine,
+              quality: r.blueprint?.quality,
+              packages: r.blueprint?.packages,
+              xp_cost: r.blueprint?.xp_cost,
+            }));
+          } catch (e) {
+            slModels = [];
+            console.warn('[business-corp] campaign stock load failed:', e?.message || e);
+          }
+          slRenderModels();
         }
 
         document.getElementById('ea-sales-campaign').addEventListener('click', async () => {
@@ -2605,39 +2724,33 @@ import { CITY_STATS } from './js/game/city-labels.js';
           const natHost = document.getElementById('sl-nations');
           const modHost = document.getElementById('sl-models');
           natHost.innerHTML = '<div class="rl-empty">Loading…</div>';
-          modHost.innerHTML = '<div class="rl-empty">Loading…</div>';
+          modHost.innerHTML = '<div class="rl-empty">Pick a nation first.</div>';
           document.getElementById('sl-overlay').classList.add('open');
           try {
-            const [{ data: mkt, error: mErr }, { data: models, error: bErr }] = await Promise.all([
+            const [{ data: mkt, error: mErr }, { data: models, error: bErr }, { data: pres, error: pErr }] = await Promise.all([
               _supabase.rpc('construction_market_listings'),
               _supabase.from('vehicle_blueprints')
                 .select('id, name, vehicle_type, vehicle_class, engine, quality, packages, xp_cost, units_in_stock')
                 .eq('corp_id', corp.id).gt('units_in_stock', 0)
                 .order('created_at', { ascending: false }),
+              _supabase.from('corp_market_presence')
+                .select('nation_id, kind, subsidiary_name').eq('corp_id', corp.id),
             ]);
-            if (mErr || bErr) throw (mErr || bErr);
-            slModels = models || [];
-            natHost.innerHTML = (mkt?.materials || []).map(r => `
-              <div class="jm-pill" data-val="${esc(r.nation_id)}">${esc(String(r.nation).toUpperCase())}</div>`).join('');
+            if (mErr || bErr || pErr) throw (mErr || bErr || pErr);
+            slHqModels = (models || []).map(m => ({ ...m, label: m.name, stock: m.units_in_stock }));
+            slPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
+            slNations = (mkt?.materials || []).map(r => ({ id: r.nation_id, name: r.nation }));
+            natHost.innerHTML = slNations.map(n => {
+              const tag = n.id === corp.hq_nation_id ? ' · HOME'
+                : slPresence[n.id] ? ' ✓' : '';
+              return `<div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${tag}</div>`;
+            }).join('');
             natHost.querySelectorAll('.jm-pill').forEach(p => {
               p.addEventListener('click', () => {
                 natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
                 slNation = p.dataset.val;
-                slShowCompetition();
-                slShowProfit();
-              });
-            });
-            modHost.innerHTML = slModels.length ? slModels.map(m => `
-              <div class="jm-pill" data-val="${esc(m.id)}" title="${esc(m.units_in_stock)} in stock">${esc(m.name.toUpperCase())}</div>`).join('')
-              : '<div class="rl-empty">No vehicles in stock — run the factories first.</div>';
-            modHost.querySelectorAll('.jm-pill').forEach(p => {
-              p.addEventListener('click', () => {
-                modHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
-                slModel = slModels.find(m => m.id === p.dataset.val) || null;
-                document.getElementById('sl-stock').textContent =
-                  `${Number(slModel?.units_in_stock) || 0} × ${slModel?.name || ''} in inventory`;
-                slShowCompetition();
-                slShowProfit();
+                document.getElementById('sl-comp').textContent = '—';
+                slPickNation();
               });
             });
           } catch (e) {
@@ -2663,7 +2776,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             if (!data?.success) {
               const REASON = {
                 invalid_price: 'Set a price of at least $1.',
-                no_stock: 'No vehicles of that Model in inventory.',
+                no_stock: 'No vehicles of that Model available in this nation.',
+                not_in_market: 'No presence there — run EXPAND MARKET first.',
                 blueprint_not_found: 'That Model belongs to another corporation.',
                 nation_not_live: 'That nation is not an active market.',
                 no_actions_remaining: 'No executive actions remaining this tick.',
@@ -2685,6 +2799,175 @@ import { CITY_STATS } from './js/game/city-labels.js';
             alert('Could not run the campaign: ' + (e?.message || e));
             slInFlight = false;
             slShowProfit();
+          }
+        });
+
+        // ── Expand Market (20270840) ──────────────────────────────
+        // Enter a foreign nation: $10M flat under your own name, or
+        // a named Subsidiary at $7M × that nation's SoL / 50 (+1
+        // appeal badge). Ship units from HQ and set standing prices;
+        // re-runs on an owned market ship free.
+        let emNation = null, emKind = null, emInFlight = false;
+        let emNationsInfo = {}, emPresence = {}, emModels = [];
+
+        function emShowCost() {
+          const costEl = document.getElementById('em-cost');
+          const noteEl = document.getElementById('em-kind-note');
+          const nameWrap = document.getElementById('em-name-wrap');
+          const owned = emNation && emPresence[emNation];
+          nameWrap.style.display = (!owned && emKind === 'subsidiary') ? '' : 'none';
+          if (!emNation) { costEl.textContent = '—'; noteEl.textContent = ''; emRefresh(); return; }
+          if (owned) {
+            noteEl.textContent = owned.kind === 'subsidiary'
+              ? `Already operating here as ${owned.subsidiary_name || 'a subsidiary'} — shipments and price updates are free.`
+              : 'Already expanded here — shipments and price updates are free.';
+            costEl.textContent = 'No fee — the action ships and re-prices.';
+          } else if (emKind) {
+            const sol = Math.max(1, Number(emNationsInfo[emNation]?.standard_of_living) || 50);
+            const fee = emKind === 'subsidiary' ? Math.round(7000000 * sol / 50) : 10000000;
+            noteEl.textContent = emKind === 'subsidiary'
+              ? `A named local entity — local Model names and a +1 appeal badge on every campaign here. $7M × Standard of Living ${sol} / 50.`
+              : 'Distribution under your own name — $10M flat.';
+            costEl.textContent = `${hfFmtBig(fee)} from the treasury`;
+          } else {
+            noteEl.textContent = '';
+            costEl.textContent = 'Pick Expand or Subsidiary.';
+          }
+          emRefresh();
+        }
+
+        function emRefresh() {
+          const owned = emNation && emPresence[emNation];
+          const name = document.getElementById('em-name').value.trim();
+          document.getElementById('em-confirm').disabled = emInFlight || !emNation
+            || (!owned && !emKind)
+            || (!owned && emKind === 'subsidiary' && name.length < 2);
+        }
+
+        function emRenderShips() {
+          const host = document.getElementById('em-ships');
+          const owned = emNation && emPresence[emNation];
+          const sub = owned ? owned.kind === 'subsidiary' : emKind === 'subsidiary';
+          if (!emModels.length) {
+            host.innerHTML = '<div class="rl-empty">No Models designed yet — draft a blueprint first.</div>';
+            return;
+          }
+          host.innerHTML = `
+            <div class="bp-grid" style="grid-template-columns:1.2fr 0.6fr 0.7fr${sub ? ' 1fr' : ''} 0.9fr;">
+              <div class="h">MODEL</div><div class="h">HQ STOCK</div><div class="h">SHIP</div>${sub ? '<div class="h">LOCAL NAME</div>' : ''}<div class="h">LIST PRICE</div>
+              ${emModels.map(m => `
+                <div class="c nm">${esc(m.name)}</div>
+                <div class="c">${esc(String(Number(m.units_in_stock) || 0))}</div>
+                <div class="c"><input type="number" class="fin-amt em-ship" data-bp="${esc(m.id)}" min="0" max="${esc(String(Number(m.units_in_stock) || 0))}" placeholder="0" style="margin:0;padding:5px 8px;"></div>
+                ${sub ? `<div class="c"><input type="text" class="fin-amt em-local" data-bp="${esc(m.id)}" maxlength="60" placeholder="${esc(m.name)}" style="margin:0;padding:5px 8px;"></div>` : ''}
+                <div class="c"><input type="number" class="fin-amt em-price" data-bp="${esc(m.id)}" min="1" step="500" placeholder="${esc(String(VEHICLE_CLASS_ANCHORS[m.vehicle_class] || 35000))}" style="margin:0;padding:5px 8px;"></div>`).join('')}
+            </div>`;
+        }
+
+        document.getElementById('ea-expand-market').addEventListener('click', async () => {
+          emNation = null; emKind = null;
+          document.getElementById('em-name').value = '';
+          document.getElementById('em-ships').innerHTML = '';
+          document.getElementById('em-kinds').innerHTML = '';
+          emShowCost();
+          const natHost = document.getElementById('em-nations');
+          natHost.innerHTML = '<div class="rl-empty">Loading…</div>';
+          document.getElementById('em-overlay').classList.add('open');
+          try {
+            const { data: mkt, error: mErr } = await _supabase.rpc('construction_market_listings');
+            if (mErr) throw mErr;
+            const ids = (mkt?.materials || []).map(r => r.nation_id).filter(id => id !== corp.hq_nation_id);
+            const [{ data: nats, error: nErr }, { data: pres, error: pErr }, { data: models, error: bErr }] = await Promise.all([
+              _supabase.from('nations').select('id, name, standard_of_living').in('id', ids),
+              _supabase.from('corp_market_presence')
+                .select('nation_id, kind, subsidiary_name').eq('corp_id', corp.id),
+              _supabase.from('vehicle_blueprints')
+                .select('id, name, vehicle_class, units_in_stock')
+                .eq('corp_id', corp.id).order('created_at', { ascending: false }),
+            ]);
+            if (nErr || pErr || bErr) throw (nErr || pErr || bErr);
+            emNationsInfo = Object.fromEntries((nats || []).map(n => [n.id, n]));
+            emPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
+            emModels = models || [];
+            natHost.innerHTML = (nats || []).map(n => `
+              <div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${emPresence[n.id] ? ' ✓' : ''}</div>`).join('');
+            natHost.querySelectorAll('.jm-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+                emNation = p.dataset.val;
+                const owned = emPresence[emNation];
+                const kindsHost = document.getElementById('em-kinds');
+                if (owned) {
+                  emKind = owned.kind;
+                  kindsHost.innerHTML = `<div class="jm-pill sel">${owned.kind === 'subsidiary' ? 'SUBSIDIARY' : 'EXPANDED'} — ESTABLISHED</div>`;
+                } else {
+                  emKind = null;
+                  kindsHost.innerHTML = `
+                    <div class="jm-pill" data-kind="expansion">EXPAND — $10M</div>
+                    <div class="jm-pill" data-kind="subsidiary">OPEN SUBSIDIARY</div>`;
+                  kindsHost.querySelectorAll('.jm-pill[data-kind]').forEach(k => {
+                    k.addEventListener('click', () => {
+                      kindsHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === k));
+                      emKind = k.dataset.kind;
+                      emShowCost();
+                      emRenderShips();
+                    });
+                  });
+                }
+                emShowCost();
+                emRenderShips();
+              });
+            });
+          } catch (e) {
+            natHost.innerHTML = '<div class="rl-empty">Could not load the market — try again shortly.</div>';
+            console.warn('[business-corp] expand modal load failed:', e?.message || e);
+          }
+        });
+        document.getElementById('em-name').addEventListener('input', emRefresh);
+        wireModalClose('em-overlay', 'em-cancel');
+
+        document.getElementById('em-confirm').addEventListener('click', async () => {
+          if (emInFlight) return;
+          emInFlight = true; emRefresh();
+          const btn = document.getElementById('em-confirm');
+          btn.disabled = true;
+          try {
+            const ships = [...document.querySelectorAll('.em-ship')].map(inp => {
+              const bp = inp.dataset.bp;
+              const units = Math.floor(Number(inp.value) || 0);
+              const local = document.querySelector(`.em-local[data-bp="${bp}"]`)?.value.trim() || null;
+              const priceRaw = document.querySelector(`.em-price[data-bp="${bp}"]`)?.value;
+              const price = priceRaw ? Math.floor(Number(priceRaw) || 0) : null;
+              return { blueprint_id: bp, units, local_name: local || null, list_price: price || null };
+            }).filter(s => s.units > 0 || s.local_name || s.list_price);
+            const { data, error: eErr } = await _supabase.rpc('expand_market', {
+              p_corp_id: corp.id,
+              p_nation_id: emNation,
+              p_kind: emKind || 'expansion',
+              p_subsidiary_name: document.getElementById('em-name').value.trim() || null,
+              p_shipments: ships,
+            });
+            if (eErr) throw eErr;
+            if (!data?.success) {
+              const REASON = {
+                invalid_kind: 'Pick Expand or Subsidiary.',
+                invalid_name: 'Subsidiary names run 2–60 characters.',
+                home_nation: 'You already operate at home — pick a foreign nation.',
+                nation_not_live: 'That nation is not an active market.',
+                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+                ship_exceeds_stock: `Not enough HQ stock of ${data?.model || 'that Model'} — ${data?.have ?? 0} on hand.`,
+                blueprint_not_found: 'That Model belongs to another corporation.',
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                not_owner: 'Only the owner expands the market.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not expand: ' + (e?.message || e));
+            emInFlight = false;
+            emRefresh();
           }
         });
       } // end if (eaAutomotive)
