@@ -51,6 +51,15 @@
 .mn-section-host { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:7px; overflow:hidden; }
 .mn-section-host.empty { padding:24px 22px; color:#666; font-size:11px; font-style:italic; text-align:center; }
 
+/* Communiqué rows — the attaché cables (20270860). */
+.dcq-row { padding:13px 18px; border-bottom:0.5px solid rgba(255,255,255,0.05); }
+.dcq-row:last-child { border-bottom:none; }
+.dcq-date { font-family:monospace; font-size:9px; letter-spacing:0.1em; color:#666;
+  margin-bottom:5px; }
+.dcq-body { color:#cfcabf; font-size:11.5px; line-height:1.6; overflow-wrap:break-word; }
+.dcq-body b { color:#5aafa5; font-weight:600; }
+.dcq-from { color:#9a958a; }
+
 @media (max-width:700px) {
   .mof-card { flex-direction:column; }
   .mof-stats { width:100%; justify-content:space-between; gap:14px; padding-top:8px;
@@ -85,20 +94,25 @@
     </div>
   </div>
 
-  <!-- I. Assignments -->
-  <div class="mn-head"><span class="mn-num">I.</span><span class="lab">Assignments</span></div>
+  <!-- II. Assignments -->
+  <div class="mn-head"><span class="mn-num">II.</span><span class="lab">Assignments</span></div>
   <div class="mn-card">Nothing recorded yet.</div>
 
-  <!-- II. Actors -->
-  <div class="mn-head"><span class="mn-num">II.</span><span class="lab">Actors</span></div>
+  <!-- III. Communiqués — Foreign Affairs only; attaché cables
+       (diplomatic_cables, 20270860) land here. -->
+  <div class="mn-head" id="cables-head" style="display:none;"><span class="mn-num">III.</span><span class="lab">Communiqués</span></div>
+  <div id="cables-host" class="mn-section-host empty" style="display:none;">No cables received yet.</div>
+
+  <!-- IV. Actors -->
+  <div class="mn-head"><span class="mn-num">IV.</span><span class="lab">Actors</span></div>
   <div id="actors-host" class="mn-section-host empty">Nothing recorded yet.</div>
 
-  <!-- III. Agencies -->
-  <div class="mn-head"><span class="mn-num">III.</span><span class="lab">Agencies</span></div>
+  <!-- V. Agencies -->
+  <div class="mn-head"><span class="mn-num">V.</span><span class="lab">Agencies</span></div>
   <div class="mn-card">Nothing recorded yet.</div>
 
-  <!-- IV. Assets -->
-  <div class="mn-head"><span class="mn-num">IV.</span><span class="lab">Assets</span></div>
+  <!-- VI. Assets -->
+  <div class="mn-head"><span class="mn-num">VI.</span><span class="lab">Assets</span></div>
   <div class="mn-card">Nothing recorded yet.</div>
 
 </div>
@@ -106,7 +120,7 @@
 <script type="module">
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, currentAge, escapeHtml, ministryName, MINISTRY_BLURBS } from './js/utils.js';
+import { officeTitle, currentAge, escapeHtml, ministryName, MINISTRY_BLURBS, tickToDate } from './js/utils.js';
 
 // Per-ministry page-only chrome — badge glyph + italicized-
 // subordinate title HTML. Display name comes from MINISTRY_NAMES
@@ -178,6 +192,34 @@ async function renderActors(slug, nationId, currentTick) {
     </table>`;
 }
 
+async function renderCables(slug, nationId) {
+  // Attaché dispatches (diplomatic_cables, 20270860) — Foreign
+  // Affairs receives them; other ministries keep the section hidden.
+  if (slug !== 'foreign_affairs' || !nationId) return;
+  document.getElementById('cables-head').style.display = '';
+  const host = document.getElementById('cables-host');
+  host.style.display = '';
+  const { data, error } = await _supabase.from('diplomatic_cables')
+    .select('body, sender_name, host_city, host_nation, sent_at_tick')
+    .eq('nation_id', nationId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) {
+    console.warn('[politician-ministry] cables fetch error:', error.message);
+    return;
+  }
+  if (!data?.length) return; // keep the blank-state message
+  host.classList.remove('empty');
+  host.innerHTML = data.map(c => `
+    <div class="dcq-row">
+      <div class="dcq-date">${escapeHtml(tickToDate(Number(c.sent_at_tick)))}</div>
+      <div class="dcq-body"><b>Diplomatic Communique</b>
+        &ldquo;${escapeHtml(c.body)}&rdquo;
+        <span class="dcq-from">&mdash; ${escapeHtml(c.sender_name)}, Attach&eacute; in
+        ${escapeHtml(c.host_city || '—')}, ${escapeHtml(c.host_nation || '—')}.</span></div>
+    </div>`).join('');
+}
+
 (async () => {
   let ctx;
   try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
@@ -186,7 +228,10 @@ async function renderActors(slug, nationId, currentTick) {
   const slug = resolveMinistrySlug();
   paintHeader(slug);
   document.getElementById('content').style.display = 'block';
-  await renderActors(slug, ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0);
+  await Promise.all([
+    renderActors(slug, ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0),
+    renderCables(slug, ctx.nation?.id || null),
+  ]);
 })();
 </script>
 

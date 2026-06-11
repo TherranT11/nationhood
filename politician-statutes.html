@@ -109,6 +109,14 @@
 .pnl-body { padding:20px 28px; display:flex; flex-direction:column; gap:18px; }
 
 .pnl-fg { display:flex; flex-direction:column; gap:7px; }
+/* Advanced Options — collapsible tuck for the optional extras. */
+.pnl-adv { border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:10px 12px; }
+.pnl-adv-sum { font-size:8.5px; letter-spacing:0.16em; color:var(--leg); font-weight:700;
+  cursor:pointer; user-select:none; list-style:none; }
+.pnl-adv-sum::-webkit-details-marker { display:none; }
+.pnl-adv-sum::before { content:'▸'; margin-right:7px; }
+.pnl-adv[open] .pnl-adv-sum::before { content:'▾'; }
+.pnl-adv[open] .pnl-adv-sum { margin-bottom:10px; }
 .pnl-fg-lab { font-size:8.5px; letter-spacing:0.16em; color:var(--leg); font-weight:700; }
 .pnl-fg-lab .req { color:var(--red); margin-left:3px; }
 .pnl-fg-hint { font-size:9px; color:var(--faint); font-style:italic; line-height:1.5; margin-top:-2px; }
@@ -361,21 +369,24 @@
         </div>
       </div>
 
-      <div class="pnl-fg">
-        <div class="pnl-fg-lab">STAKEHOLDERS</div>
-        <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing (e.g. "Tenants' Union Rep," "Small Business Owner"). Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
-        <div class="pnl-stakeholders" id="pnl-stakeholders"></div>
-      </div>
+      <details class="pnl-adv">
+        <summary class="pnl-adv-sum">ADVANCED OPTIONS</summary>
+        <div class="pnl-fg">
+          <div class="pnl-fg-lab">STAKEHOLDERS</div>
+          <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing (e.g. "Tenants' Union Rep," "Small Business Owner"). Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
+          <div class="pnl-stakeholders" id="pnl-stakeholders"></div>
+        </div>
+      </details>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity.</div>
+        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity. <strong>Pick the same number of Supporting and Opposing archetypes.</strong></div>
         <div class="pnl-arch-grid" id="pnl-support-arch"></div>
       </div>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting.</div>
+        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting; <strong>must match the Supporting count.</strong></div>
         <div class="pnl-arch-grid" id="pnl-oppose-arch"></div>
       </div>
 
@@ -439,21 +450,24 @@
         <div class="pnl-comm-grid" id="aml-comm-grid"></div>
       </div>
 
-      <div class="pnl-fg">
-        <div class="pnl-fg-lab">STAKEHOLDERS</div>
-        <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing. Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
-        <div class="pnl-stakeholders" id="aml-stakeholders"></div>
-      </div>
+      <details class="pnl-adv">
+        <summary class="pnl-adv-sum">ADVANCED OPTIONS</summary>
+        <div class="pnl-fg">
+          <div class="pnl-fg-lab">STAKEHOLDERS</div>
+          <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing. Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
+          <div class="pnl-stakeholders" id="aml-stakeholders"></div>
+        </div>
+      </details>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>.</div>
+        <div class="pnl-fg-hint">Optional. Archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>. <strong>Pick the same number of Supporting and Opposing archetypes.</strong></div>
         <div class="pnl-arch-grid" id="aml-support-arch"></div>
       </div>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting.</div>
+        <div class="pnl-fg-hint">Optional. Archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting; <strong>must match the Supporting count.</strong></div>
         <div class="pnl-arch-grid" id="aml-oppose-arch"></div>
       </div>
 
@@ -1060,6 +1074,9 @@ function validateArchetypes(support, oppose) {
   for (const name of support) {
     if (oppose.includes(name)) return { ok: false };
   }
+  // Balance (20270862): every Supporting archetype needs an Opposing
+  // one — equal counts, both-empty fine.
+  if (support.length !== oppose.length) return { ok: false, why: 'unbalanced' };
   return {
     ok: true,
     support: support.length ? support.slice() : null,
@@ -1079,7 +1096,7 @@ const REASON_HUMAN = {
   empty_article:        'Every article needs some text.',
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
   invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
-  invalid_archetype_positions: 'Archetype list invalid — no archetype may appear on both sides.',
+  invalid_archetype_positions: 'Archetype lists invalid — Supporting and Opposing must be the same size, with no archetype on both sides.',
   cooldown:             'You\'ve already used your MP action this tick.',
 };
 
@@ -1109,7 +1126,9 @@ async function submit() {
   }
   const archCheck = validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes);
   if (!archCheck.ok) {
-    err.textContent = REASON_HUMAN.invalid_archetype_positions;
+    err.textContent = archCheck.why === 'unbalanced'
+      ? 'Balance the stances — every Supporting archetype needs one Opposing (and they can\u2019t be the same).'
+      : REASON_HUMAN.invalid_archetype_positions;
     err.classList.add('show');
     return;
   }
@@ -1191,7 +1210,7 @@ const AMEND_REASON_HUMAN = {
   invalid_committee:        'Pick a committee to refer the amendment to.',
   committee_not_found:      'That committee could not be found — try a different one.',
   invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
-  invalid_archetype_positions: 'Archetype list invalid — no archetype may appear on both sides.',
+  invalid_archetype_positions: 'Archetype lists invalid — Supporting and Opposing must be the same size, with no archetype on both sides.',
 };
 
 async function openAmendModal() {
@@ -1372,7 +1391,9 @@ async function submitAmendment() {
   }
   const archCheck = validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes);
   if (!archCheck.ok) {
-    err.textContent = AMEND_REASON_HUMAN.invalid_archetype_positions;
+    err.textContent = archCheck.why === 'unbalanced'
+      ? 'Balance the stances — every Supporting archetype needs one Opposing (and they can\u2019t be the same).'
+      : AMEND_REASON_HUMAN.invalid_archetype_positions;
     err.classList.add('show');
     return;
   }

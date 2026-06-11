@@ -476,6 +476,7 @@
       <div class="db-static">Light</div>
     </div>
     <div class="jm-foot">
+      <span class="db-static dim-line" id="db-foot-cost" style="margin-right:auto;align-self:center;"></span>
       <button type="button" class="jm-btn secondary" id="db-cancel">CANCEL</button>
       <button type="button" class="jm-btn" id="db-confirm" disabled>CONFIRM</button>
     </div>
@@ -663,7 +664,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -678,7 +679,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
     const currentTick = Number(ctx.shard?.current_tick) || 0;
     // Assembly lines at the corp's plant level — the one client
     // read of the assembly_lines mirror (panel + production modal).
-    const corpAssemblyLines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)];
+    // Plant tier's count + completed plant expansions (20270864) —
+    // mirror of the server's corp_assembly_lines().
+    const corpAssemblyLines = ASSEMBLY_LINES_BY_TIER[Math.min(Number(corp.assembly_tier) || 1, 5)]
+      + Math.max(0, Number(corp.bonus_assembly_lines) || 0);
 
     // One close idiom for the page's modals (Post Job Opening,
     // Draft Blueprint, Pay Taxes, Submit Public Bid): CANCEL button
@@ -1072,9 +1076,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
               .order('created_at', { ascending: false });
         if (bpErr) throw bpErr;
 
-        // The visiting CCO can direct the commercial floor.
-        const viewerIsCco = ctx.faction?.biz_employer_corp_id === corp.id
-          && ctx.faction?.biz_job_title === 'Chief Commercial Officer (CCO)';
         let rowsHtml = '<div class="rl-empty">No hires yet.</div>';
         if (emps?.length) {
           const { data: cityRows, error: cityErr } = await _supabase.from('cities')
@@ -1090,31 +1091,39 @@ import { CITY_STATS } from './js/game/city-labels.js';
             projByPm[bp.pm_applicant_id] ||= bp.name
               || `${BUILDING_TYPE_LABELS[bp.building_type] || bp.building_type} (${QUALITY_TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
           }
-          // Reports To — the chain of command (display only): rungs
-          // 1-3 report to the nearest same-track hire at rung 4+,
-          // rung 4 to 5+, rung 5 to 6; anyone with no superior on
-          // staff reports straight to the Owner.
+          // Reports To — the chain of command: rungs 1-3 report to
+          // the nearest same-track hire at rung 4+, rung 4 to 5+,
+          // rung 5 to 6; anyone with no superior on staff reports
+          // straight to the Owner. Since 20270859 this chain also
+          // decides who holds the directive pen, so supOf mirrors
+          // direct_employee exactly (tie-break: hire order).
           const ownerLabel = `${[corp.owner?.leader_first_name, corp.owner?.leader_last_name].filter(Boolean).join(' ') || 'The Owner'} (Owner)`;
-          const reportsTo = (e) => {
+          const supOf = (e) => {
             const rung = Number(e.opening?.rung) || 1;
-            if (rung >= 6) return ownerLabel;
+            if (rung >= 6) return null; // the Owner
             const floor = rung <= 3 ? 4 : rung + 1;
-            const sup = emps
+            return emps
               .filter(x => x !== e && x.opening?.track === e.opening?.track
                         && (Number(x.opening?.rung) || 0) >= floor)
-              .sort((a, b) => (Number(a.opening?.rung) || 0) - (Number(b.opening?.rung) || 0))[0];
+              .sort((a, b) => (Number(a.opening?.rung) || 0) - (Number(b.opening?.rung) || 0))[0]
+              || null;
+          };
+          const reportsTo = (e) => {
+            const sup = supOf(e);
             return sup ? `${sup.name} (${sup.opening?.title || '—'})` : ownerLabel;
           };
           rowsHtml = `
             <div class="pe-grid${isOwner ? ' manage' : ''}">
-              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">REPORTS TO</div><div class="h">CURRENT PROJECT</div>${isOwner ? '<div class="h"></div>' : ''}
+              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">REPORTS TO</div><div class="h">${corp.industry === 'automotive' ? 'DIRECT REPORT' : 'CURRENT PROJECT'}</div>${isOwner ? '<div class="h"></div>' : ''}
               ${emps.map(e => {
-                // Directives (20270858): NPCs in a kit-bearing track
-                // take orders — the Owner directs anyone, the corp's
-                // CCO directs the commercial floor.
+                // Directives (20270859): the chain of command holds
+                // the pen — an NPC in a kit-bearing track takes
+                // orders from whoever they report to: their player
+                // superior, or the Owner when the chain tops out.
+                const sup = supOf(e);
                 const canDirect = !e.applicant_faction_id
                   && ['manufacturing', 'commercial', 'product'].includes(e.opening?.track)
-                  && (isOwner || (viewerIsCco && e.opening?.track === 'commercial'));
+                  && (sup ? sup.applicant_faction_id === ctx.faction?.id : isOwner);
                 return `
                 <div class="c">${applicantNameHtml(e)}</div>
                 <div class="c">${esc(e.opening?.title || '—')}</div>
@@ -1184,9 +1193,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         };
         const DIRECT_REASON = {
           already_directed: 'They already took a directive this tick.',
+          directive_limit: 'You have already issued three directives this tick.',
           no_directive_kit: 'No kit exists for that track yet.',
           not_npc: 'Players take their own actions.',
-          not_authorized: 'The CCO directs the commercial floor; the owner directs anyone.',
+          not_authorized: 'They don’t report to you — only their direct superior issues directives.',
           line_already_tuned: 'Every line already carries that charge.',
           campaign_already_primed: 'The next campaign already carries that charge.',
           bench_already_charged: 'The bench is already charged.',
@@ -1199,7 +1209,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           btn.addEventListener('click', () => {
             const fee = Math.round((Number(btn.dataset.salary) || 0) / 12 * 0.10);
             document.getElementById('dt-mech').textContent =
-              `${btn.dataset.name} awaits instructions. One directive per employee per tick.`;
+              `${btn.dataset.name} awaits instructions. One directive per employee per tick — you may issue three.`;
             document.getElementById('dt-fee').textContent =
               `${hfFmtBig(fee)} — 10% of their monthly salary, from the treasury.`;
             const rows = document.getElementById('dt-rows');
@@ -1901,15 +1911,32 @@ import { CITY_STATS } from './js/game/city-labels.js';
         [v, l.toUpperCase() + (TIER_CITY_EFFECTS[v] ? ' · ' + TIER_CITY_EFFECTS[v] : '')]);
       let dbCat = 'residential', dbType = null, dbTier = null;
 
+      // Estimated Cost (footer) — what the inputs run at today's HQ
+      // prices: materials × the live Materials price plus one
+      // Equipment unit, after the corp's Procurement Efficiency.
+      let dbMatPrice = null, dbEqPrice = null, dbPricesLoaded = false;
+      function dbUpdateCost() {
+        const el = document.getElementById('db-foot-cost');
+        if (!dbType) { el.textContent = ''; return; }
+        if (!dbPricesLoaded) { el.textContent = 'Estimated Cost: …'; return; }
+        if (dbMatPrice == null || dbEqPrice == null) { el.textContent = ''; return; }
+        const effPct = Math.min(99, Math.max(0, Number(corp.pillar_efficiency) || 1));
+        const need = BUILDING_MATERIALS_NEEDED[dbType] ?? 1;
+        const cost = Math.round((need * dbMatPrice + dbEqPrice) * (1 - effPct / 100));
+        el.textContent = `Estimated Cost: ${hfFmtBig(cost)} · ${need} materials + 1 equipment at HQ prices (−${effPct}% efficiency applied)`;
+      }
+
       function renderTypePills(presetType) {
         dbType = null;
         document.getElementById('db-materials').textContent = '—';
+        dbUpdateCost();
         dbPills('db-types',
           CATEGORY_TYPES[dbCat].map(v => [v, BUILDING_TYPE_LABELS[v].toUpperCase()]),
           v => {
             dbType = v;
             document.getElementById('db-materials').textContent =
               String(BUILDING_MATERIALS_NEEDED[v] ?? 1);
+            dbUpdateCost();
           });
         if (presetType && CATEGORY_TYPES[dbCat].includes(presetType)) {
           document.querySelector(`#db-types .jm-pill[data-val="${presetType}"]`)?.click();
@@ -1959,11 +1986,22 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('db-location').textContent = corp.hq_city || '—';
         document.getElementById('db-overlay').classList.add('open');
 
-        // Infrastructure rating loads behind the open.
+        // Infrastructure rating and the HQ exchange prices (for the
+        // Estimated Cost footer) load behind the open.
         try {
-          const { data: city, error: cityErr } = await _supabase.from('cities')
-            .select('infrastructure')
-            .eq('nation_id', corp.hq_nation_id).eq('city_name', corp.hq_city).maybeSingle();
+          const [{ data: city, error: cityErr }, mats, equip] = await Promise.all([
+            _supabase.from('cities')
+              .select('infrastructure')
+              .eq('nation_id', corp.hq_nation_id).eq('city_name', corp.hq_city).maybeSingle(),
+            _supabase.rpc('construction_materials_market', { p_nation_id: corp.hq_nation_id }),
+            _supabase.rpc('construction_equipment_market', { p_nation_id: corp.hq_nation_id }),
+          ]);
+          // Prices land first so a cities-fetch failure can't strand
+          // the footer on its loading ellipsis.
+          dbMatPrice = mats.data?.success ? Number(mats.data.cost_per_unit) || 0 : null;
+          dbEqPrice  = equip.data?.success ? Number(equip.data.cost_per_unit) || 0 : null;
+          dbPricesLoaded = true;
+          dbUpdateCost();
           if (cityErr) throw cityErr;
           if (city) {
             document.getElementById('db-location').innerHTML =
