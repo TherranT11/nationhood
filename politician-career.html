@@ -3723,7 +3723,14 @@ async function openJmGateNotice(btn) {
     const coalition = Array.isArray(admin?.coalition_parties) ? admin.coalition_parties : [];
     const names = coalition.map(p => p?.party_name).filter(Boolean);
     if (!names.length && admin?.pm_party_name) names.push(admin.pm_party_name);
-    if (!names.length) { alert('Your nation has no seated government to join.'); return; }
+    if (!names.length) {
+      // No governing coalition (semi-presidential / NPC-run nation) —
+      // no party requirement to surface; the cabinet roll decides.
+      // Release the busy lock first or the submit guard bails.
+      if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+      await submitJuniorAppointment(btn);
+      return;
+    }
     const myParty = ctx.party?.id || null;
     const isMember = !!myParty && (myParty === admin.pm_party_id
       || coalition.some(p => p?.party_id === myParty));
@@ -3764,14 +3771,12 @@ async function submitJuniorAppointment(btn) {
         : data?.reason === 'pending_application_exists'       ? 'You already have an application pending review.'
         : data?.reason === 'all_portfolios_full'              ? 'Every Junior Minister portfolio in your nation is currently held. Try again once a vacancy opens.'
         : data?.reason === 'on_cooldown'                      ? `Reapplication closed for ${data?.ticks_remaining} more tick${data?.ticks_remaining === 1 ? '' : 's'}.`
-        : data?.reason === 'no_head_of_government'            ? 'There is no sitting Prime Minister to review your application.'
         : data?.reason === 'not_governing_party'              ? (() => {
             const names = (Array.isArray(data?.governing_parties) ? data.governing_parties : []).filter(Boolean);
             if (!names.length) return 'Only members of the governing coalition may seek a portfolio.';
             const plural = names.length > 1;
             return `The ${plural ? 'parties' : 'party'} in power ${plural ? 'are' : 'is'} ${partyListText(names)}. You must be a member of ${plural ? 'one of these parties' : 'this party'} before seeking to join the government ministry. If they lose power, so do you.`;
           })()
-        : data?.reason === 'no_government'                    ? 'Your nation has no seated government to join.'
         : data?.reason === 'not_authenticated'                ? 'Sign in to act.'
         : data?.reason === 'no_politician'                    ? 'No politician on this account.'
         : data?.reason === 'no_nation'                        ? 'Your politician is not yet seated in a nation.'

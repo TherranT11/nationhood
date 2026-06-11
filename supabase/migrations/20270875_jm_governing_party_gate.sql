@@ -14,12 +14,19 @@
 --   1. politician_seek_junior_appointment gains a hard gate —
 --      politicians whose party is not in the governing coalition
 --      get 'not_governing_party' + the coalition's party names so
---      the client can quote them. Fixes a latent bug while there:
---      the old alignment check did coalition_parties @> to_jsonb(
+--      the client can quote them. Nations with no active
+--      administration (semi-presidential / NPC-run) have no
+--      coalition to join, so the gate doesn't apply there. The
+--      old 'no_head_of_government' dead-end is gone too: with no
+--      seated PM/President the application falls through to the
+--      NPC cabinet roll (nation row replaces the hog row as the
+--      portfolio-pick lock). Fixes a latent bug while there: the
+--      old alignment check did coalition_parties @> to_jsonb(
 --      party_id), a bare uuid against an object array, so the +2
 --      coalition modifier NEVER fired. With the gate guaranteeing
---      membership the alignment collapses to PM party +5 / else +2
---      and the dead -3 / -5 outsider branches go away.
+--      membership the alignment collapses to PM party +5 /
+--      coalition +2 / no-admin 0, and the dead -3 / -5 outsider
+--      branches go away.
 --
 --   2. resolve_due_general_elections strips the portfolio from any
 --      sitting Junior Minister whose party fell out of the NEW
@@ -108,27 +115,29 @@ BEGIN
     -- party in the governing coalition may seek a portfolio. The
     -- active administrations row is the one source for who governs
     -- (pm_party_id + coalition_parties objects, PM party first).
+    -- Nations WITHOUT an active administration (semi-presidential /
+    -- NPC-run governments never get one) have no coalition to join —
+    -- the gate doesn't apply and the cabinet roll below decides.
     SELECT * INTO v_admin FROM administrations
      WHERE nation_id = v_pol.nation_id
        AND ended_at_tick IS NULL
      ORDER BY started_at_tick DESC LIMIT 1;
-    IF v_admin.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'no_government');
-    END IF;
-    v_is_governing := v_pol.politician_party_id IS NOT NULL AND (
-        v_pol.politician_party_id = v_admin.pm_party_id
-        OR EXISTS (
-            SELECT 1 FROM jsonb_array_elements(COALESCE(v_admin.coalition_parties, '[]'::jsonb)) e
-             WHERE (e->>'party_id')::uuid = v_pol.politician_party_id));
-    IF NOT v_is_governing THEN
-        SELECT COALESCE(jsonb_agg(e->>'party_name'),
-                        CASE WHEN v_admin.pm_party_name IS NOT NULL
-                             THEN jsonb_build_array(v_admin.pm_party_name)
-                             ELSE '[]'::jsonb END)
-          INTO v_gov_names
-          FROM jsonb_array_elements(COALESCE(v_admin.coalition_parties, '[]'::jsonb)) e;
-        RETURN jsonb_build_object('success', false, 'reason', 'not_governing_party',
-                                  'governing_parties', v_gov_names);
+    IF v_admin.id IS NOT NULL THEN
+        v_is_governing := v_pol.politician_party_id IS NOT NULL AND (
+            v_pol.politician_party_id = v_admin.pm_party_id
+            OR EXISTS (
+                SELECT 1 FROM jsonb_array_elements(COALESCE(v_admin.coalition_parties, '[]'::jsonb)) e
+                 WHERE (e->>'party_id')::uuid = v_pol.politician_party_id));
+        IF NOT v_is_governing THEN
+            SELECT COALESCE(jsonb_agg(e->>'party_name'),
+                            CASE WHEN v_admin.pm_party_name IS NOT NULL
+                                 THEN jsonb_build_array(v_admin.pm_party_name)
+                                 ELSE '[]'::jsonb END)
+              INTO v_gov_names
+              FROM jsonb_array_elements(COALESCE(v_admin.coalition_parties, '[]'::jsonb)) e;
+            RETURN jsonb_build_object('success', false, 'reason', 'not_governing_party',
+                                      'governing_parties', v_gov_names);
+        END IF;
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
@@ -153,7 +162,12 @@ BEGIN
      ORDER BY appointed_tick DESC LIMIT 1
      FOR UPDATE;
     IF v_hog.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'no_head_of_government');
+        -- No seated PM/President at all (20270875): the cabinet
+        -- machinery decides on its own — fall through to the NPC
+        -- roll. The hog row normally serializes concurrent
+        -- portfolio picks; without one, the nation row takes over
+        -- as the lock.
+        PERFORM 1 FROM nations WHERE id = v_pol.nation_id FOR UPDATE;
     END IF;
 
     SELECT COUNT(*) INTO v_vacant_count
@@ -197,12 +211,15 @@ BEGIN
     v_skill_mod := FLOOR(COALESCE(v_pol.politician_skill, 0) / 5);
     v_rep_mod   := LEAST(10, FLOOR(COALESCE(v_pol.politician_reputation, 0) / 5));
 
-    -- The gate above guarantees coalition membership, so the old
-    -- -3 / -5 outsider branches are unreachable. (They were also
-    -- subtly broken: the @> check compared a bare uuid against the
-    -- coalition's object array, so +2 never fired.) PM's own party
-    -- still gets the warmer reception.
-    IF v_admin.pm_party_id = v_pol.politician_party_id THEN
+    -- Where a coalition exists the gate above guarantees membership,
+    -- so the old -3 / -5 outsider branches are unreachable. (They
+    -- were also subtly broken: the @> check compared a bare uuid
+    -- against the coalition's object array, so +2 never fired.)
+    -- PM's own party still gets the warmer reception; no-admin
+    -- nations have no coalition politics to read.
+    IF v_admin.id IS NULL THEN
+        v_alignment_mod := 0;
+    ELSIF v_admin.pm_party_id = v_pol.politician_party_id THEN
         v_alignment_mod := 5;
     ELSE
         v_alignment_mod := 2;
