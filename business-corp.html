@@ -46,7 +46,7 @@
   @media (max-width:860px) { .pl-grid { grid-template-columns:1fr; } }
   .pl-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
     padding:16px; display:flex; flex-direction:column; min-width:0; }
-  .pl-up { margin-top:12px; padding:7px 10px; background:rgba(138,170,106,0.08);
+  .pl-up { margin-top:auto; padding:7px 10px; background:rgba(138,170,106,0.08);
     border:0.5px solid #4a6a4a; border-radius:4px; color:#8aaa6a;
     font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.12em; font-weight:700;
     cursor:pointer; }
@@ -58,7 +58,7 @@
     margin:2px 0 10px; }
   .pl-val { font-family:var(--font-mono); font-size:30px; color:#fff; line-height:1;
     margin-bottom:10px; }
-  .pl-desc { font-size:11px; color:#888; line-height:1.55; }
+  .pl-desc { font-size:11px; color:#888; line-height:1.55; margin-bottom:12px; }
 
   /* ── Departments (per-industry tier containers) ──
      Horizontal bars, same wide shape as the Executive Actions panel:
@@ -429,7 +429,7 @@
       <div class="jm-tracks">
         <div class="jm-track sel" data-track="operations">OPERATIONS</div>
         <div class="jm-track locked" title="Coming soon">FINANCE</div>
-        <div class="jm-track locked" title="Coming soon">LEADERSHIP</div>
+        <div class="jm-track" data-track="leadership">LEADERSHIP</div>
       </div>
       <div id="jm-rungs"></div>
       <div class="jm-lab">EXPECTED SALARY</div>
@@ -485,7 +485,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -1232,30 +1232,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
     })();
 
     // ── Post Job Opening modal ─────────────────────────────────────
-    // The Operations ladder, six rungs. Rungs with full charters are
-    // postable; the ones still being designed render dimmed with
-    // their placeholders. On-staff counts default to 0 — there is no
-    // per-rung staff yet; hiring will count real rows here.
-    const OPS_LADDER = [
-      { rung: 1, name: 'Project Manager (PM)', postable: true,
-        desc: 'You own the execution of a single contract from start to finish. You handle the scheduling, solve logistical bottlenecks on-site, and aggressively push the Advance Build action to deliver the project on time.',
-        resp: 'Required to have an active project.' },
-      { rung: 2, name: 'Senior Project Manager', postable: true,
-        desc: 'You manage multiple simultaneous sub-contracts. You coordinate the allocation of the firm\u2019s shared resources, ensuring that a single rented excavator is seamlessly moved between sites without sitting idle for a single tick.',
-        resp: 'Required to have an active project, but often works quicker.' },
-      { rung: 3, name: 'Regional Director of Operations', postable: true,
-        desc: 'You oversee the entire field portfolio of the firm. You establish construction standard operating procedures, negotiate long-term agreements with specialized labor crews, and manage macro-level capacity bottlenecks.',
-        resp: 'Required to oversee multiple projects.' },
-      { rung: 4, name: 'National Director of Operations', postable: false,
-        desc: 'You run construction at the scale of a country. Regional Directors report to you while you balance the firm\u2019s national pipeline \u2014 deciding which cities get crews, which contracts take priority, and which ministries get courted ahead of the next public tender.',
-        resp: 'Oversees every region in a nation; arbitrates crew and capacity disputes between Regional Directors.' },
-      { rung: 5, name: 'Global Director of Operations', postable: false,
-        desc: 'You command operations across borders. You arbitrage labor costs, materials prices, and regulatory friction between nations \u2014 and you decide where the firm plants its next depot, office, and flag.',
-        resp: 'Oversees all national operations; required to open and run job sites abroad.' },
-      { rung: 6, name: 'Chief Operating Officer (COO)', postable: false,
-        desc: 'The ultimate operational authority. You sit next to the founder and dictate corporate execution velocity. You decide how to split the firm\u2019s construction capacity across player B2B contracts and high-yield infrastructure builds.',
-        resp: 'Sets the firm\u2019s entire build strategy; answers only to the owner for every site, crew, and contract on Earth.' },
-    ];
+    // The hiring ladders (JOB_TRACKS, shared via corp-blueprints.js):
+    // Leadership posts all six rungs from day one; Operations rungs
+    // still being chartered render dimmed. On-staff counts default to
+    // 0 — there is no per-rung staff yet; hiring will count real rows
+    // here.
+    let jmTrack = 'operations';
     let jmRung = null;
 
     function jmRenderSalary(expectedYearly) {
@@ -1275,17 +1257,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
       }).join('');
     }
 
-    function openJobModal() {
+    function jmRenderRungs(expectedYearly) {
       jmRung = null;
-      // Expected salary = wages × standard_of_living × 30 — the
-      // original × 100 anchor cut by 70% to fit small-economy nations
-      // like Sierramar. Must match post_job_opening's server band.
-      // Stats ride the corp query's nation embed — no extra fetch.
-      const w   = Math.max(1, Number(corp.nation?.wages) || 50);
-      const sol = Math.max(1, Number(corp.nation?.standard_of_living) || 50);
-      const expectedYearly = Math.round(w * sol * 30);
       const host = document.getElementById('jm-rungs');
-      host.innerHTML = OPS_LADDER.map(r => `
+      host.innerHTML = JOB_TRACKS[jmTrack].map(r => `
         <div class="jm-rung${r.postable ? '' : ' locked'}" data-rung="${r.rung}" ${r.postable ? '' : 'title="Being chartered"'}>
           <div class="top">
             <div>
@@ -1311,6 +1286,28 @@ import { CITY_STATS } from './js/game/city-labels.js';
       const postBtn = document.getElementById('jm-post');
       postBtn.disabled = true;
       postBtn.title = 'Select a rung first';
+    }
+
+    function openJobModal() {
+      // Expected salary = wages × standard_of_living × 30 — the
+      // original × 100 anchor cut by 70% to fit small-economy nations
+      // like Sierramar. Must match post_job_opening's server band.
+      // Stats ride the corp query's nation embed — no extra fetch.
+      const w   = Math.max(1, Number(corp.nation?.wages) || 50);
+      const sol = Math.max(1, Number(corp.nation?.standard_of_living) || 50);
+      const expectedYearly = Math.round(w * sol * 30);
+      jmTrack = 'operations';
+      document.querySelectorAll('.jm-track[data-track]').forEach(t => {
+        t.classList.toggle('sel', t.dataset.track === jmTrack);
+        t.onclick = () => {
+          if (t.dataset.track === jmTrack) return;
+          jmTrack = t.dataset.track;
+          document.querySelectorAll('.jm-track[data-track]').forEach(x =>
+            x.classList.toggle('sel', x === t));
+          jmRenderRungs(expectedYearly);
+        };
+      });
+      jmRenderRungs(expectedYearly);
       document.getElementById('jm-overlay').classList.add('open');
     }
 
@@ -1332,7 +1329,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           const salary = Number(document.getElementById('jm-offer').value) || 0;
           const reach = document.querySelector('.jm-pill.sel')?.dataset.reach || 'local';
           const { data, error: pErr } = await _supabase.rpc('post_job_opening', {
-            p_corp_id: corp.id, p_track: 'operations', p_rung: jmRung,
+            p_corp_id: corp.id, p_track: jmTrack, p_rung: jmRung,
             p_salary_yearly: salary, p_reach: reach,
           });
           if (pErr) throw pErr;

@@ -149,6 +149,54 @@ export const DESIGN_TIERS = [
     effect: 'Max Experience rises to 80 · AI-augmented design, organization-wide intelligence, persistent digital twins, real-time feedback.' },
 ];
 
+// The hiring ladders behind [POST JOB OPENING] — title CASEs in
+// post_job_opening (20270830) are authoritative; this is the display
+// copy for the modal's rung cards and the home page's Current Role.
+// Leadership posts top to bottom from day one; Operations rungs 4-6
+// render dimmed until their charters are written.
+export const JOB_TRACKS = {
+  operations: [
+    { rung: 1, name: 'Project Manager (PM)', postable: true,
+      desc: 'You own the execution of a single contract from start to finish. You handle the scheduling, solve logistical bottlenecks on-site, and aggressively push the Advance Build action to deliver the project on time.',
+      resp: 'Required to have an active project.' },
+    { rung: 2, name: 'Senior Project Manager', postable: true,
+      desc: 'You manage multiple simultaneous sub-contracts. You coordinate the allocation of the firm’s shared resources, ensuring that a single rented excavator is seamlessly moved between sites without sitting idle for a single tick.',
+      resp: 'Required to have an active project, but often works quicker.' },
+    { rung: 3, name: 'Regional Director of Operations', postable: true,
+      desc: 'You oversee the entire field portfolio of the firm. You establish construction standard operating procedures, negotiate long-term agreements with specialized labor crews, and manage macro-level capacity bottlenecks.',
+      resp: 'Required to oversee multiple projects.' },
+    { rung: 4, name: 'National Director of Operations', postable: false,
+      desc: 'You run construction at the scale of a country. Regional Directors report to you while you balance the firm’s national pipeline — deciding which cities get crews, which contracts take priority, and which ministries get courted ahead of the next public tender.',
+      resp: 'Oversees every region in a nation; arbitrates crew and capacity disputes between Regional Directors.' },
+    { rung: 5, name: 'Global Director of Operations', postable: false,
+      desc: 'You command operations across borders. You arbitrage labor costs, materials prices, and regulatory friction between nations — and you decide where the firm plants its next depot, office, and flag.',
+      resp: 'Oversees all national operations; required to open and run job sites abroad.' },
+    { rung: 6, name: 'Chief Operating Officer (COO)', postable: false,
+      desc: 'The ultimate operational authority. You sit next to the founder and dictate corporate execution velocity. You decide how to split the firm’s construction capacity across player B2B contracts and high-yield infrastructure builds.',
+      resp: 'Sets the firm’s entire build strategy; answers only to the owner for every site, crew, and contract on Earth.' },
+  ],
+  leadership: [
+    { rung: 1, name: 'Estimator / Business Development Associate', postable: true,
+      desc: 'You’re the entry point to running the business. You assemble bid packages for new contracts — pricing the work, identifying risks, writing the proposal narrative. You also accompany senior staff to client meetings, networking events, and trade shows, learning who the firm needs to know to win work.',
+      resp: 'Required to actively pursue new contracts; supports senior leadership at client-facing events.' },
+    { rung: 2, name: 'Business Development Manager', postable: true,
+      desc: 'You own client relationships. You identify prospective work, qualify opportunities, manage the pursuit process, and bring deals to the firm. Project Managers execute the work you brought in; you’re already chasing the next contract. You know which property developers are planning expansions, which government agencies have unannounced procurement budgets, and which competitors are weakening.',
+      resp: 'Owns the contract pipeline; deals with at least one active prospective client engagement.' },
+    { rung: 3, name: 'Regional General Manager', postable: true,
+      desc: 'You run a regional office as your own small business. You hire and fire local staff, set regional pricing strategy, manage local client relationships, and handle the political relationships that determine which contracts your firm wins. You report to corporate but you’re the firm’s face in your region.',
+      resp: 'Operates a regional office; profit-and-loss accountability for the region.' },
+    { rung: 4, name: 'Vice President of Strategy', postable: true,
+      desc: 'You shape the firm’s strategic direction. You identify new markets to enter, evaluate competitor acquisitions, develop new service offerings, and steer the firm’s capital deployment between competing growth opportunities. You’re in the room when the founders decide which projects to chase and which to walk away from.',
+      resp: 'Sets multi-year strategic plans; required to approve major market entries and significant capital commitments.' },
+    { rung: 5, name: 'President / Chief Operating Officer', postable: true,
+      desc: 'You’re the second-in-command of the corporation. The CEO sets vision; you execute it across every function — coordinating Operations, Finance, Engineering, and Commercial. Your daily work is running the company — managing the executive team, handling the largest client relationships, representing the firm in major industry forums. You’re the heir apparent.',
+      resp: 'Coordinates all corporate functions under the CEO; manages the executive committee.' },
+    { rung: 6, name: 'Chief Executive Officer (CEO)', postable: true,
+      desc: 'The ultimate corporate authority. You set the firm’s vision and answer for every decision — strategic, financial, operational, ethical. You appoint the COO, CFO, and senior executives. You sit at the head of the board. When the firm wins, your name is in the press. When the firm fails, your career is on the line. You hold the chair until you retire, step down, or are removed by the board.',
+      resp: 'Sets corporate vision and strategic direction; ultimate accountability for every major decision.' },
+  ],
+};
+
 // Display mirror of the per-type material requirements stamped onto
 // blueprints by draft_blueprint (20270814) — the server CASE is
 // authoritative; this feeds the modal's live MATERIALS NEEDED line.
