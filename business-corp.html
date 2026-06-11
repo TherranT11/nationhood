@@ -1340,9 +1340,27 @@ import { CITY_STATS } from './js/game/city-labels.js';
           ? (Number(corp.payroll_ytd) || 0) : 0;
         const revenueMonth = Number(corp.last_revenue_tick) === currentTick
           ? (Number(corp.last_tick_revenue) || 0) : 0;
-        // Display mirror of file_corporate_tax (20270872): the 0-10
-        // Corporate Taxation policy scale pays ×5 as a real percent.
-        const taxRate = Math.max(0, Math.min(100, (Number(corp.nation?.corporate_tax) || 0) * 5));
+        // Display mirror of file_corporate_tax (20270872/73): the 0-10
+        // Corporate Taxation policy scale pays ×5 as a real percent,
+        // and an active Tax Holiday Act discounts covered filings.
+        let taxRate = Math.max(0, Math.min(100, (Number(corp.nation?.corporate_tax) || 0) * 5));
+        let holidayNote = '';
+        try {
+          const year = 2000 + Math.floor(currentTick / 12);
+          const { data: hols, error: hErr } = await _supabase.from('corporate_tax_holidays')
+            .select('pct, years, sectors, start_year')
+            .eq('nation_id', corp.hq_nation_id);
+          if (hErr) throw hErr;
+          const live = (hols || []).find(h => year >= h.start_year
+            && year < h.start_year + h.years
+            && (!h.sectors || h.sectors.includes(corp.industry)));
+          if (live) {
+            taxRate = Math.floor(taxRate * (100 - live.pct) / 100);
+            holidayNote = ` · TAX HOLIDAY −${live.pct}% through ${live.start_year + live.years - 1}`;
+          }
+        } catch (e) {
+          console.warn('[business-corp] holiday fetch failed:', e?.message || e);
+        }
         const taxesOwed = Math.floor(Math.max(0, revenueYtd) * taxRate / 100);
 
         let lastPaid = 'Never';
@@ -1369,7 +1387,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           <div class="bc-row"><div class="k">PAYROLL COSTS THIS YEAR</div>
             <div class="v money">${esc(hfFmtBig(payrollYear))}</div></div>
           <div class="bc-row"><div class="k">CORPORATE TAX RATE</div>
-            <div class="v">${esc(String(taxRate))}%</div></div>
+            <div class="v">${esc(String(taxRate))}%${holidayNote ? `<span class="sub">${esc(holidayNote)}</span>` : ''}</div></div>
           <div class="bc-row"><div class="k">TAXES OWED</div>
             <div class="v money">${esc(hfFmtBig(taxesOwed))} <span class="dim">(if filed today)</span></div></div>
           <div class="bc-row"><div class="k">TAXES LAST PAID ON</div>
