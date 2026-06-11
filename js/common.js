@@ -10,7 +10,7 @@
 import { _supabase, handleLogout, IS_WORK_ENV } from './supabase-client.js';
 import { recordFingerprint, checkBanStatus, enforceBan } from './fingerprint.js';
 import { hasActiveGovernment } from './game/government-structure.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, addCharacterSlot, activateAddCharacter } from './game/factions.js';
 import { escapeHtml, flagUrlFor } from './utils.js';
 
 // ===== QUERY CACHE =====
@@ -899,29 +899,20 @@ export function updateTopBarInfo(faction, shard, nation) {
                 <span class="faction-dropdown__name">Join a Military Faction</span>
             </div>`;
         }
-        // "Become an Entrepreneur" option if none exists
-        const hasEntrepreneur = _userFactions.some(f => f.faction_type === 'entrepreneur');
-        if (!hasEntrepreneur) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','entrepreneur'); window.location.href='faction-select.html'">
-                <span class="faction-dropdown__type" style="color:var(--purple,#8b5cf6)">+</span>
-                <span class="faction-dropdown__name">Become an Entrepreneur</span>
-            </div>`;
-        }
-        // Politician slot row — label rule, cap, and Patreon11 gate
-        // all live in js/game/factions.js. Null when the user has hit
-        // the cap. Wired via addEventListener below (the inline-onclick
-        // rows above predate this surface; their gates are too simple
-        // to be worth converting in this pass).
-        const polSlot = nextPoliticianSlot(_userFactions);
-        if (polSlot) {
+        // "Become an Entrepreneur" REMOVED with the entrepreneur
+        // sunset — [Add Character] below covers every creatable path.
+        // [Add Character] — the 5-character / 3-per-type rules live
+        // in js/game/factions.js; faction-select greys capped types.
+        const addSlot = addCharacterSlot(_userFactions);
+        if (addSlot) {
             html += `<div class="faction-dropdown__item faction-dropdown__item--create" data-join-politician>
                 <span class="faction-dropdown__type" style="color:var(--teal,#5aafa5)">+</span>
-                <span class="faction-dropdown__name">${polSlot.label}</span>
+                <span class="faction-dropdown__name">${addSlot.label}</span>
             </div>`;
         }
         dropdown.innerHTML = html;
         dropdown.querySelectorAll('[data-join-politician]').forEach(el => {
-            el.addEventListener('click', () => activatePoliticianSlot(polSlot));
+            el.addEventListener('click', () => activateAddCharacter());
         });
     }
 

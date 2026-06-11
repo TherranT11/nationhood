@@ -270,41 +270,49 @@ export const ENT_STAT_DISPLAY = Object.freeze([
 ]);
 
 /**
- * Single source of truth for the "Join as Politician #N" entries that
- * surface in every faction-switcher dropdown (common / entrepreneur /
- * politician / military topbars).
+ * Single source of truth for the character-slot rules surfaced in
+ * every faction-switcher dropdown (common / entrepreneur / politician
+ * / military topbars) and enforced by faction-select.html:
  *
- * Cap: 4 politicians per user. Slot 1 keeps the historical "Join
- * Project Neptune" label; slots 2-3 read "Join as Politician #N";
- * slot 4 carries the "(alpha code)" tag and is gated client-side on
- * the literal Patreon11 string. Same-nation duplicates are caught
- * downstream by idx_factions_one_politician_per_user_per_nation
- * (20270374); first-steps.html surfaces the 23505 with a friendly
- * "You already hold a politician in this nation."
+ *   · 5 characters per account, across the three player paths
+ *     (politician / entrepreneur / businessman; abandoned ones free
+ *     their slot)
+ *   · no more than 3 of any one type
+ *
+ * Under the total cap the dropdowns show one [Add Character] entry
+ * routing to faction-select, where the per-type caps grey the cards.
+ * (This replaces the old per-slot "Join as Politician #N" entries and
+ * their Patreon11 slot-4 gate.)
  */
-export const POLITICIAN_SLOT_MAX = 4;
-const POLITICIAN_SLOT_4_ALPHA_CODE = 'Patreon11';
+export const CHARACTER_TOTAL_MAX = 5;
+export const CHARACTER_TYPE_MAX = 3;
+export const PLAYER_CHARACTER_TYPES = Object.freeze(['politician', 'entrepreneur', 'businessman']);
+
+export function countPlayerCharacters(allFactions) {
+    const counts = { total: 0 };
+    for (const f of (allFactions || [])) {
+        if (!f || f.abandoned_at || !PLAYER_CHARACTER_TYPES.includes(f.faction_type)) continue;
+        counts.total += 1;
+        counts[f.faction_type] = (counts[f.faction_type] || 0) + 1;
+    }
+    return counts;
+}
 
 /**
- * Compute the next politician slot to surface in a switcher, or null
- * if the user has hit the cap. Callers pass whatever faction list
- * they have — the helper just counts. Active-vs-abandoned filtering
- * (or not) is the caller's choice and matches each topbar's existing
- * pattern.
+ * The dropdown's [Add Character] entry, or null at the 5-character
+ * cap. Callers pass their full faction list (active filtering happens
+ * here).
  */
-export function nextPoliticianSlot(allFactions) {
-    const count = (allFactions || []).filter(f => f?.faction_type === 'politician').length;
-    if (count >= POLITICIAN_SLOT_MAX) return null;
-    const slot = count + 1;
-    return {
-        slot,
-        label: slot === 1
-            ? 'Join Project Neptune'
-            : slot === POLITICIAN_SLOT_MAX
-                ? `Join as Politician #${slot} (alpha code)`
-                : `Join as Politician #${slot}`,
-        requiresAlphaCode: slot === POLITICIAN_SLOT_MAX,
-    };
+export function addCharacterSlot(allFactions) {
+    return countPlayerCharacters(allFactions).total >= CHARACTER_TOTAL_MAX
+        ? null
+        : { label: 'Add Character' };
+}
+
+export function activateAddCharacter() {
+    sessionStorage.removeItem('pending_faction_type');
+    sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
+    window.location.href = 'faction-select.html';
 }
 
 /**
@@ -313,15 +321,3 @@ export function nextPoliticianSlot(allFactions) {
  * navigates to first-steps.html. Aborts silently if the user
  * cancels or types the wrong code.
  */
-export function activatePoliticianSlot(slotInfo) {
-    if (!slotInfo) return;
-    if (slotInfo.requiresAlphaCode) {
-        const code = window.prompt('Alpha tester code required to claim slot #4:');
-        if (code !== POLITICIAN_SLOT_4_ALPHA_CODE) {
-            if (code != null) window.alert('Invalid alpha code.');
-            return;
-        }
-    }
-    sessionStorage.setItem('neptune_return_url', window.location.pathname + window.location.search);
-    window.location.href = 'first-steps.html';
-}

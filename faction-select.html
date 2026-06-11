@@ -148,7 +148,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
+import { isFactionInactive, getFactionDashboardUrl, countPlayerCharacters, CHARACTER_TOTAL_MAX, CHARACTER_TYPE_MAX } from './js/game/factions.js';
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -176,6 +176,46 @@ async function init() {
   // No nation selected (or wrong flow) — show faction type chooser
   document.getElementById('loading').style.display = 'none';
   document.getElementById('faction-chooser').style.display = 'flex';
+
+  // Character-slot rules (js/game/factions.js): 5 per account, max 3
+  // of a type. Capped types grey out; at the total cap the chooser
+  // closes entirely.
+  try {
+    const { data: facs, error: facErr } = await _supabase
+      .from('factions').select('faction_type, abandoned_at')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+    if (facErr) throw facErr;
+    const counts = countPlayerCharacters(facs);
+    if (counts.total >= CHARACTER_TOTAL_MAX) {
+      document.querySelector('#faction-chooser .subtitle').textContent =
+        `Your account holds the maximum of ${CHARACTER_TOTAL_MAX} characters.`;
+      for (const id of ['opt-politician', 'opt-businessman', 'btn-confirm-faction']) {
+        capCard(id, 'CHARACTER LIMIT REACHED');
+      }
+      return;
+    }
+    if ((counts.politician || 0) >= CHARACTER_TYPE_MAX) {
+      capCard('opt-politician', `LIMIT ${CHARACTER_TYPE_MAX} OF A TYPE`);
+    }
+    if ((counts.businessman || 0) >= CHARACTER_TYPE_MAX) {
+      capCard('opt-businessman', `LIMIT ${CHARACTER_TYPE_MAX} OF A TYPE`);
+    }
+  } catch (e) {
+    console.warn('faction-select: slot check failed (caps not applied):', e?.message || e);
+  }
+}
+
+function capCard(id, label) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.opacity = '0.4';
+  el.style.pointerEvents = 'none';
+  el.title = label;
+  const tag = el.querySelector('span');
+  if (tag && id !== 'btn-confirm-faction') {
+    tag.insertAdjacentHTML('afterend',
+      `<span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--red,#c66);border:1px solid var(--red,#5a3a3a);padding:1px 6px;letter-spacing:0.06em;">${label}</span>`);
+  }
 }
 
 let selectedFaction = null;

@@ -16,7 +16,8 @@ import {
     getBranchDisplayLabel,
     getPoliticianRoleLabel,
     isHiddenFromSwitcher,
-    nextPoliticianSlot,
+    addCharacterSlot,
+    activateAddCharacter,
     activatePoliticianSlot,
 } from './game/factions.js';
 import { escapeHtml as escHtml, flagUrlFor } from './utils.js';
@@ -209,20 +210,14 @@ export function renderMilitaryTopBar(container, opts = {}) {
     // Players going forward create only Politicians and Entrepreneurs;
     // existing parties keep operating but no new ones are accepted.
     // Founding a legacy corporation is retired (corp-cull Phase 1). No entry.
-    const hasEntrepreneur = (allUserFactions || []).some(f => f.faction_type === 'entrepreneur');
-    if (!hasEntrepreneur) {
-        dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="become-entrepreneur">
-            <span class="mil-dd-type" style="color:var(--purple,#8b5cf6)">+</span>
-            <span class="mil-dd-name">Become an Entrepreneur</span>
-        </div>`;
-    }
-    // Politician slot row — label rule, cap, and Patreon11 gate all
-    // live in js/game/factions.js. Null when the user has hit the cap.
-    const polSlot = nextPoliticianSlot(allUserFactions);
-    if (polSlot) {
+    // "Become an Entrepreneur" REMOVED with the entrepreneur sunset —
+    // [Add Character] covers every creatable path. The 5-character /
+    // 3-per-type rules live in js/game/factions.js.
+    const addSlot = addCharacterSlot(allUserFactions);
+    if (addSlot) {
         dropdownHtml += `<div class="mil-dd-item mil-dd-item--create" data-action="join-politician">
             <span class="mil-dd-type" style="color:var(--teal,#5aafa5)">+</span>
-            <span class="mil-dd-name">${escHtml(polSlot.label)}</span>
+            <span class="mil-dd-name">${escHtml(addSlot.label)}</span>
         </div>`;
     }
 
@@ -294,13 +289,8 @@ export function renderMilitaryTopBar(container, opts = {}) {
             // 'found-party' branch REMOVED in Sunset Phase 1 (20270612).
             // The render above no longer emits the item, so the click
             // routing has nothing to dispatch.
-            if (item.dataset.action === 'become-entrepreneur') {
-                sessionStorage.setItem('pending_faction_type', 'entrepreneur');
-                window.location.href = 'faction-select.html';
-                return;
-            }
             if (item.dataset.action === 'join-politician') {
-                activatePoliticianSlot(polSlot);
+                activateAddCharacter();
                 return;
             }
             const fid = item.dataset.factionId;

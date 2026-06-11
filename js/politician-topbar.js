@@ -5,7 +5,7 @@
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
 import { displayName, currentAge, flagUrlFor } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getPoliticianRoleLabel, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getPoliticianRoleLabel, addCharacterSlot, activateAddCharacter } from './game/factions.js';
 import { bootstrapBusinessman } from './entrepreneur-topbar.js';
 
 const POL_TABS = [
@@ -148,15 +148,14 @@ function buildSwitcher(facs) {
       <span class="pol-dd-name">${esc(name)}</span>
     </div>`;
   });
-  // Politician slot row — label rule, cap, and Patreon11 gate all
-  // live in js/game/factions.js. Null when the user has hit the cap.
-  // A user viewing the politician topbar always holds at least one
-  // politician, so polSlot here will be at minimum slot #2.
-  const polSlot = nextPoliticianSlot(list);
-  if (polSlot) {
+  // [Add Character] — the 5-character / 3-per-type rules live in
+  // js/game/factions.js; faction-select greys the capped types. Null
+  // at the total cap.
+  const addSlot = addCharacterSlot(list);
+  if (addSlot) {
     items.push(`<div class="pol-dd-item create" data-join-politician>
       <span class="pol-dd-badge">+</span>
-      <span class="pol-dd-name">${esc(polSlot.label)}</span>
+      <span class="pol-dd-name">${esc(addSlot.label)}</span>
     </div>`);
   }
   if (!items.length) {
@@ -173,7 +172,7 @@ function buildSwitcher(facs) {
     });
   });
   dd.querySelectorAll('.pol-dd-item[data-join-politician]').forEach(el => {
-    el.addEventListener('click', () => activatePoliticianSlot(polSlot));
+    el.addEventListener('click', () => activateAddCharacter());
   });
 }
 
@@ -331,8 +330,7 @@ export async function bootstrapPolitician(activeTab) {
 
   // Include the active politician in the switcher list (matches the
   // entrepreneur / military / common topbars). Filtering them out
-  // caused nextPoliticianSlot to undercount by 1, so a user with two
-  // politicians saw "Join as Politician #2" instead of "#3".
+  // made the slot helper undercount by 1.
   const allUserFactions = factions;
 
   const container = document.getElementById('pol-topbar-container');
