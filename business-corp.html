@@ -430,11 +430,8 @@
   <div class="jm-modal">
     <div class="jm-head"><div class="jm-title">Post a <em>Job Opening</em></div></div>
     <div class="jm-body">
-      <div class="jm-tracks">
-        <div class="jm-track sel" data-track="operations">OPERATIONS</div>
-        <div class="jm-track locked" title="Coming soon">FINANCE</div>
-        <div class="jm-track" data-track="leadership">LEADERSHIP</div>
-      </div>
+      <div class="jm-tracks" id="jm-tracks"></div>
+      <div class="db-static dim-line" id="jm-track-note" style="margin:-8px 0 12px;"></div>
       <div id="jm-rungs"></div>
       <div class="jm-lab">EXPECTED SALARY</div>
       <div class="jm-expected" id="jm-expected">—</div>
@@ -572,7 +569,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -783,10 +780,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     // Roles — the corp's job board. Openings will list here and on the
-    // career page's Available Roles. The posting button (owner-only,
-    // construction corps for now — its ladder is the only one
-    // chartered) opens the Post Job Opening modal.
-    const canPost = isOwner && corp.industry === 'construction';
+    // career page's Available Roles. The posting button (owner-only)
+    // opens the Post Job Opening modal; each chartered industry hires
+    // from its own tracks (INDUSTRY_JOB_TRACKS).
+    const canPost = isOwner && !!INDUSTRY_JOB_TRACKS[corp.industry];
     document.getElementById('bc-roles').innerHTML = `
       <div class="rl-panel">
         <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span>${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}</div>
@@ -1394,6 +1391,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     function jmRenderRungs(expectedYearly) {
       jmRung = null;
+      // The track's career blurb + defining tension, when it has one
+      // (the automotive careers do; construction tracks don't).
+      const info = (INDUSTRY_JOB_TRACKS[corp.industry] || []).find(t => t.key === jmTrack);
+      document.getElementById('jm-track-note').textContent =
+        [info?.blurb, info?.tension].filter(Boolean).join(' ');
       const host = document.getElementById('jm-rungs');
       host.innerHTML = JOB_TRACKS[jmTrack].map(r => `
         <div class="jm-rung${r.postable ? '' : ' locked'}" data-rung="${r.rung}" ${r.postable ? '' : 'title="Being chartered"'}>
@@ -1405,7 +1407,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <span class="staff">ON STAFF: 0</span>
           </div>
           <div class="ds">${esc(r.desc)}</div>
-          <div class="resp"><span class="k">RESPONSIBILITIES:</span> ${esc(r.resp)}</div>
+          ${r.resp ? `<div class="resp"><span class="k">RESPONSIBILITIES:</span> ${esc(r.resp)}</div>` : ''}
         </div>`).join('');
       host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
         row.addEventListener('click', () => {
@@ -1431,13 +1433,19 @@ import { CITY_STATS } from './js/game/city-labels.js';
       const w   = Math.max(1, Number(corp.nation?.wages) || 50);
       const sol = Math.max(1, Number(corp.nation?.standard_of_living) || 50);
       const expectedYearly = Math.round(w * sol * 30);
-      jmTrack = 'operations';
-      document.querySelectorAll('.jm-track[data-track]').forEach(t => {
-        t.classList.toggle('sel', t.dataset.track === jmTrack);
+      // The industry's tracks (INDUSTRY_JOB_TRACKS) — first live one
+      // opens selected; locked pills (construction's FINANCE) dim.
+      const tracks = INDUSTRY_JOB_TRACKS[corp.industry] || [];
+      jmTrack = tracks.find(t => !t.locked)?.key || 'operations';
+      const trHost = document.getElementById('jm-tracks');
+      trHost.innerHTML = tracks.map(t => `
+        <div class="jm-track${t.locked ? ' locked' : ''}${t.key === jmTrack ? ' sel' : ''}"
+          ${t.locked ? 'title="Coming soon"' : `data-track="${esc(t.key)}"`}>${esc(t.label)}</div>`).join('');
+      trHost.querySelectorAll('.jm-track[data-track]').forEach(t => {
         t.onclick = () => {
           if (t.dataset.track === jmTrack) return;
           jmTrack = t.dataset.track;
-          document.querySelectorAll('.jm-track[data-track]').forEach(x =>
+          trHost.querySelectorAll('.jm-track').forEach(x =>
             x.classList.toggle('sel', x === t));
           jmRenderRungs(expectedYearly);
         };
