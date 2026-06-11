@@ -86,6 +86,10 @@
   .cr-actions { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; padding:10px 18px 16px; }
   .cr-act { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
     padding:11px 13px; opacity:0.45; cursor:not-allowed; }
+  .cr-act.live { opacity:1; cursor:pointer; border-color:rgba(138,170,106,0.35); }
+  .cr-act.live:hover { border-color:#8aaa6a; background:#10140e; }
+  .cr-act.spent { opacity:0.45; cursor:not-allowed; }
+  .cr-note { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; padding:0 18px 14px; }
   .cr-act .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.12em; color:#ddd;
     font-weight:700; }
   .cr-act .ds { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
@@ -361,6 +365,33 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
       const desc = isOps
         ? (ROLE_DESCS[f.biz_job_title] || 'You work the Operations track. Do the job well and the ladder is yours to climb.')
         : (JOB_TRACKS[trackKey].find(r => r.name === f.biz_job_title)?.desc || '');
+      // The rung-1 employee kits — server RPCs enforce eligibility,
+      // the per-tick allowance, and the charge caps (20270845/46).
+      const KITS = {
+        'Production Engineer': {
+          rpc: 'production_engineer_action', rides: 'it rides the next Production Run',
+          actions: [
+            { key: 'optimize_line', nm: 'OPTIMIZE THE LINE',
+              ds: 'Prime the next Production Run for +10% output — the bonus vehicles roll off at completion, free of ticks, dollars, and Aluminum.' },
+            { key: 'lean_procurement', nm: 'LEAN PROCUREMENT',
+              ds: 'Trim the next Production Run&rsquo;s cost by 10% with sharper part sourcing and tighter line scheduling.' },
+            { key: 'tune_tooling', nm: 'TUNE THE TOOLING',
+              ds: 'Cut the next Production Run&rsquo;s Aluminum draw by 10% (rounded to the half-unit) — scrap less, build the same.' },
+          ],
+        },
+        'Field Sales Representative / Marketing Analyst': {
+          rpc: 'sales_rep_action', rides: 'it rides the next Sales Campaign',
+          actions: [
+            { key: 'drum_up_buyers', nm: 'DRUM UP BUYERS',
+              ds: 'Grind the phones and work the floor — the next Sales Campaign sells +10% more vehicles (at least one extra).' },
+            { key: 'sharpen_pitch', nm: 'SHARPEN THE PITCH',
+              ds: 'Polish the message for +0.5 appeal in the next campaign — the tool that claws share back when rivals crowd the market.' },
+            { key: 'sweeten_financing', nm: 'SWEETEN THE FINANCING',
+              ds: 'Structure the deal so the next campaign&rsquo;s demand math reads your price 10% lower than the full sticker buyers actually pay.' },
+          ],
+        },
+      };
+      const KIT = KITS[f.biz_job_title];
       document.getElementById('biz-current-role').innerHTML = `
         <div class="cr-card">
           <div class="cr-head">
@@ -368,7 +399,16 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
             <div class="cr-title">${esc(f.biz_job_title)} for ${esc(employerName || '—')}</div>
             <div class="cr-desc">${esc(desc)}</div>
           </div>
-          ${!isOps ? '' : `
+          ${KIT ? `
+          <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
+          <div class="cr-actions">
+            ${KIT.actions.map(a => `
+            <div class="cr-act live" data-kit-action="${a.key}">
+              <div class="nm">${a.nm}</div>
+              <div class="ds">${a.ds}</div>
+            </div>`).join('')}
+          </div>
+          <div class="cr-note" id="pe-note"></div>` : !isOps ? '' : `
           <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
           <div class="cr-actions">
             <div class="cr-act" title="Coming soon">
@@ -385,6 +425,50 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
             </div>
           </div>`}
         </div>`;
+
+      // The employee kits (20270845/46): one action per tick (the
+      // server enforces the allowance and the per-type charge caps);
+      // this just renders the buttons and reflects the spend.
+      if (KIT) {
+        const currentTick = Number(ctx.shard?.current_tick) || 0;
+        const peNote = document.getElementById('pe-note');
+        const peSetSpent = () => {
+          document.querySelectorAll('[data-kit-action]').forEach(a => {
+            a.classList.remove('live'); a.classList.add('spent');
+            a.title = 'Action spent — back next tick.';
+          });
+          peNote.textContent = 'Action spent — back on the floor next tick.';
+        };
+        if (f.biz_action_tick != null && Number(f.biz_action_tick) >= currentTick) {
+          peSetSpent();
+        }
+        document.querySelectorAll('.cr-act.live[data-kit-action]').forEach(a => {
+          a.addEventListener('click', async () => {
+            if (!a.classList.contains('live')) return;
+            try {
+              const { data, error: kErr } = await _supabase.rpc(KIT.rpc,
+                { p_action: a.dataset.kitAction });
+              if (kErr) throw kErr;
+              if (!data?.success) {
+                const REASON = {
+                  no_actions_remaining: 'You already acted this tick.',
+                  line_already_tuned: `Every line already carries that charge (${data?.pending ?? '?'}/${data?.cap ?? '?'}).`,
+                  campaign_already_primed: 'The next campaign already carries that charge.',
+                  not_production_engineer: 'This kit belongs to the rung-1 Production Engineer.',
+                  not_sales_rep: 'This kit belongs to the rung-1 Field Sales Representative.',
+                  not_employed: 'You are not on a payroll.',
+                  arrested: 'You are under arrest.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              peSetSpent();
+              peNote.textContent = `Charge queued (${data.pending}/${data.cap}) — ${KIT.rides}. Back next tick.`;
+            } catch (e) {
+              alert('Could not act: ' + (e?.message || e));
+            }
+          });
+        });
+      }
     } else if (ownedCorps.length) {
       document.getElementById('biz-current-role').innerHTML = ownedCorps.map(c => `
         <div class="cr-card" style="margin-bottom:10px;">

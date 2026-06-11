@@ -537,6 +537,7 @@
         <button type="button" class="jm-btn secondary" id="vp-buy" style="flex:0 0 auto;">BUY</button>
       </div>
       <div class="db-static dim-line" id="vp-buy-note"></div>
+      <div class="db-static dim-line" id="vp-buffs"></div>
       <div class="jm-lab">TOTAL COST</div>
       <div class="db-static" id="vp-total">—</div>
       <div class="jm-lab">COST PER VEHICLE</div>
@@ -592,6 +593,7 @@
       <div class="db-static dim-line" id="sl-anchor"></div>
       <div class="jm-lab">UNIT COST · PROFIT PER VEHICLE</div>
       <div class="db-static" id="sl-profit">—</div>
+      <div class="db-static dim-line" id="sl-buffs"></div>
     </div>
     <div class="jm-foot" id="sl-foot">
       <button type="button" class="jm-btn secondary" id="sl-cancel">CANCEL</button>
@@ -651,7 +653,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -2345,6 +2347,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
       // only and Self-Driving fits Premium+ classes only, so those
       // pills lock and shed when the picks change.
       if (eaAutomotive) {
+        // The live market nations, one fetch shape for every modal —
+        // construction_market_listings already loops the canonical
+        // nation list server-side.
+        async function fetchLiveNations() {
+          const { data: mkt, error } = await _supabase.rpc('construction_market_listings');
+          if (error) throw error;
+          return (mkt?.materials || []).map(r => ({ id: r.nation_id, name: r.nation }));
+        }
+
         let avType = null, avClass = null, avEngine = null, avQuality = null;
         const avPackages = new Set();
         const corpXp = Number(corp.experience) || 0;
@@ -2467,7 +2478,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
         let vpModel = null, vpLineFree = false;
         let vpTreasury = Math.floor(Number(corp.treasury_cash) || 0);
         let vpAluminum = Number(corp.aluminum_stock) || 0;
-        let vpAlPrice = null;
 
         function vpRefresh() {
           const qty = Math.floor(Number(document.getElementById('vp-qty').value) || 0);
@@ -2492,6 +2502,18 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('ea-production-run').addEventListener('click', async () => {
           vpModel = null;
           document.getElementById('vp-qty').value = '1';
+          document.getElementById('vp-buy-qty').value = '';
+          document.getElementById('vp-buy-note').textContent = '';
+          // The Production Engineer's queued charges — applied (and
+          // consumed, one of each) when the next run starts.
+          const buffs = [
+            (Number(corp.prod_buff_output) || 0) && '+10% output',
+            (Number(corp.prod_buff_cost) || 0) && '−10% cost',
+            (Number(corp.prod_buff_aluminum) || 0) && '−10% Aluminum',
+          ].filter(Boolean);
+          document.getElementById('vp-buffs').textContent = buffs.length
+            ? `Engineer charges queued for the next run: ${buffs.join(' · ')}.`
+            : '';
           const linesHost = document.getElementById('vp-lines');
           const modelsHost = document.getElementById('vp-models');
           linesHost.innerHTML = '<div class="rl-empty">Checking the floor…</div>';
@@ -2504,12 +2526,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               _supabase.from('vehicle_production_runs')
                 .select('id').eq('corp_id', corp.id).eq('status', 'running'),
               _supabase.from('vehicle_blueprints')
-                .select('id, name, xp_cost, vehicle_type, vehicle_class')
+                .select('id, name, xp_cost, vehicle_type')
                 .eq('corp_id', corp.id).order('created_at', { ascending: false }),
               _supabase.rpc('aluminum_market', { p_nation_id: corp.hq_nation_id }),
             ]);
             if (rErr || mErr || aErr) throw (rErr || mErr || aErr);
-            vpAlPrice = alMkt?.success ? Number(alMkt.cost_per_unit) : null;
+            const vpAlPrice = alMkt?.success ? Number(alMkt.cost_per_unit) : null;
             document.getElementById('vp-buy-note').textContent = vpAlPrice
               ? `${hfFmtBig(vpAlPrice)} per unit from ${corp.nation?.name || 'home'} · ${Number(alMkt.amount_available).toLocaleString()} available${(Number(corp.parts_depot_tier) || 1) < 3 ? ' · Depot Level III unlocks foreign sourcing' : ''}`
               : 'Aluminum price unavailable — try again shortly.';
@@ -2633,11 +2655,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
           if ((Number(corp.data_center_tier) || 1) >= 3) {
             natEl.innerHTML = '<div class="jm-pills db-cats" id="am-nation-pills"></div>';
             try {
-              const { data: mkt, error: mErr } = await _supabase.rpc('construction_market_listings');
-              if (mErr) throw mErr;
+              const nations = await fetchLiveNations();
               const host = document.getElementById('am-nation-pills');
-              host.innerHTML = (mkt?.materials || []).map(r => `
-                <div class="jm-pill${r.nation_id === corp.hq_nation_id ? ' sel' : ''}" data-val="${esc(r.nation_id)}">${esc(String(r.nation).toUpperCase())}${r.nation_id === corp.hq_nation_id ? ' · HOME' : ''}</div>`).join('');
+              host.innerHTML = nations.map(n => `
+                <div class="jm-pill${n.id === corp.hq_nation_id ? ' sel' : ''}" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${n.id === corp.hq_nation_id ? ' · HOME' : ''}</div>`).join('');
               host.querySelectorAll('.jm-pill').forEach(p => {
                 p.addEventListener('click', () => {
                   host.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
@@ -2716,7 +2737,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // Home campaigns sell HQ inventory; foreign ones need an
         // Expand Market presence and sell the stock shipped there.
         let slNation = null, slModel = null, slInFlight = false;
-        let slModels = [], slHqModels = [], slPresence = {}, slNations = [];
+        let slModels = [], slHqModels = [], slPresence = {};
 
         function slShowProfit() {
           const price = Math.floor(Number(document.getElementById('sl-price').value) || 0);
@@ -2847,6 +2868,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('ea-sales-campaign').addEventListener('click', async () => {
           slNation = null; slModel = null;
           document.getElementById('sl-price').value = '';
+          // The Sales Rep's queued charges — applied (and consumed,
+          // one of each) by the next campaign.
+          const slQueued = [
+            (Number(corp.sales_buff_units) || 0) && '+10% units',
+            (Number(corp.sales_buff_appeal) || 0) && '+0.5 appeal',
+            (Number(corp.sales_buff_price) || 0) && 'financing (price reads −10%)',
+          ].filter(Boolean);
+          document.getElementById('sl-buffs').textContent = slQueued.length
+            ? `Sales Rep charges queued for this campaign: ${slQueued.join(' · ')}.`
+            : '';
           document.getElementById('sl-stock').textContent = '—';
           document.getElementById('sl-comp').textContent = '—';
           slShowProfit();
@@ -2856,8 +2887,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
           modHost.innerHTML = '<div class="rl-empty">Pick a nation first.</div>';
           document.getElementById('sl-overlay').classList.add('open');
           try {
-            const [{ data: mkt, error: mErr }, { data: models, error: bErr }, { data: pres, error: pErr }] = await Promise.all([
-              _supabase.rpc('construction_market_listings'),
+            const [nations, { data: models, error: bErr }, { data: pres, error: pErr }] = await Promise.all([
+              fetchLiveNations(),
               _supabase.from('vehicle_blueprints')
                 .select('id, name, vehicle_type, vehicle_class, engine, quality, packages, xp_cost, units_in_stock')
                 .eq('corp_id', corp.id).gt('units_in_stock', 0)
@@ -2865,11 +2896,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
               _supabase.from('corp_market_presence')
                 .select('nation_id, kind, subsidiary_name').eq('corp_id', corp.id),
             ]);
-            if (mErr || bErr || pErr) throw (mErr || bErr || pErr);
+            if (bErr || pErr) throw (bErr || pErr);
             slHqModels = (models || []).map(m => ({ ...m, label: m.name, stock: m.units_in_stock }));
             slPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
-            slNations = (mkt?.materials || []).map(r => ({ id: r.nation_id, name: r.nation }));
-            natHost.innerHTML = slNations.map(n => {
+            natHost.innerHTML = nations.map(n => {
               const tag = n.id === corp.hq_nation_id ? ' · HOME'
                 : slPresence[n.id] ? ' ✓' : '';
               return `<div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${tag}</div>`;
@@ -2924,6 +2954,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
             document.getElementById('sl-foot').innerHTML =
               '<button type="button" class="jm-btn" id="sl-done">CLOSE</button>';
             document.getElementById('sl-done').addEventListener('click', () => window.location.reload());
+            // The result replaced the campaign form, so a backdrop
+            // close must reload too — reopening the gutted modal
+            // would find none of its inputs.
+            document.getElementById('sl-overlay').addEventListener('click', (e) => {
+              if (e.target?.id === 'sl-overlay') window.location.reload();
+            });
           } catch (e) {
             alert('Could not run the campaign: ' + (e?.message || e));
             slInFlight = false;
@@ -3003,9 +3039,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           natHost.innerHTML = '<div class="rl-empty">Loading…</div>';
           document.getElementById('em-overlay').classList.add('open');
           try {
-            const { data: mkt, error: mErr } = await _supabase.rpc('construction_market_listings');
-            if (mErr) throw mErr;
-            const ids = (mkt?.materials || []).map(r => r.nation_id).filter(id => id !== corp.hq_nation_id);
+            const ids = (await fetchLiveNations()).map(n => n.id).filter(id => id !== corp.hq_nation_id);
             const [{ data: nats, error: nErr }, { data: pres, error: pErr }, { data: models, error: bErr }] = await Promise.all([
               _supabase.from('nations').select('id, name, standard_of_living').in('id', ids),
               _supabase.from('corp_market_presence')
