@@ -92,10 +92,10 @@
   .cr-note { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; padding:0 18px 14px; }
 
   /* Design Proposal modal (Product Engineer, 20270847) */
-  #pd-overlay, #cc-overlay, #ds-overlay, #fc-overlay { position:fixed; inset:0;
+  #pd-overlay, #cc-overlay, #ds-overlay, #fc-overlay, #sv-overlay { position:fixed; inset:0;
     background:rgba(0,0,0,0.78); display:none;
     align-items:center; justify-content:center; padding:20px; z-index:1000; }
-  #pd-overlay.open, #cc-overlay.open, #ds-overlay.open, #fc-overlay.open { display:flex; }
+  #pd-overlay.open, #cc-overlay.open, #ds-overlay.open, #fc-overlay.open, #sv-overlay.open { display:flex; }
   .pd-modal { width:100%; max-width:620px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -264,6 +264,22 @@
     <div class="pd-foot">
       <button type="button" class="pd-btn secondary" id="fc-cancel">CANCEL</button>
       <button type="button" class="pd-btn" id="fc-sign" disabled>SIGN THE CONTRACT</button>
+    </div>
+  </div>
+</div>
+
+<div id="sv-overlay">
+  <div class="pd-modal">
+    <div class="pd-head">Ship <em>Vehicles</em></div>
+    <div class="pd-body">
+      <div class="pd-lab">DESTINATION &middot; MARKETS THE CORP OPERATES IN</div>
+      <div class="pd-pills" id="sv-nations"></div>
+      <div class="pd-lab">SHIPMENTS &middot; FROM HQ INVENTORY</div>
+      <div id="sv-rows"><div class="pd-static" style="color:#888;">Pick a destination first.</div></div>
+    </div>
+    <div class="pd-foot">
+      <button type="button" class="pd-btn secondary" id="sv-cancel">CANCEL</button>
+      <button type="button" class="pd-btn" id="sv-send" disabled>SHIP</button>
     </div>
   </div>
 </div>
@@ -650,6 +666,8 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
               ds: 'Pitch a market entry — pick the nation and the shape (main brand or named subsidiary). The CEO accepts or rejects it from Pressing Issues; the corp pays the entry fee on acceptance.' },
             { key: 'fleet', nm: 'FLEET CONTRACT', modal: 'fleet',
               ds: 'Sell up to 30 units of one Model to fleet buyers at 70% of its class anchor — instant cash, no demand roll.' },
+            { key: 'ship', nm: 'SHIP VEHICLES', modal: 'ship',
+              ds: 'Move HQ inventory into a market the corporation operates in — set standing list prices, and local Model names for subsidiaries.' },
           ],
         },
         'Field Sales Representative / Marketing Analyst': {
@@ -723,7 +741,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             const modal = KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal;
             if (modal) {
               ({ design: openDesignProposal, campaign: openCcoCampaign,
-                 expand: openCcoExpand, fleet: openCcoFleet })[modal]?.();
+                 expand: openCcoExpand, fleet: openCcoFleet, ship: openCcoShip })[modal]?.();
               return;
             }
             kitInFlight = true;
@@ -1166,6 +1184,105 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             alert('Could not sign the contract: ' + (e?.message || e));
           } finally {
             fcInFlight = false; fcRefresh();
+          }
+        });
+
+        // SHIP VEHICLES — HQ stock into a presence market (20270855).
+        let svNation = null, svSub = false, svModels = [], svInFlight = false;
+        function svRefresh() {
+          const any = [...document.querySelectorAll('.sv-units')].some(i => Math.floor(Number(i.value) || 0) > 0)
+            || [...document.querySelectorAll('.sv-local, .sv-price')].some(i => i.value.trim());
+          document.getElementById('sv-send').disabled = svInFlight || !svNation || !any;
+        }
+        function svRenderRows() {
+          const host = document.getElementById('sv-rows');
+          if (!svNation) {
+            host.innerHTML = '<div class="pd-static" style="color:#888;">Pick a destination first.</div>';
+            svRefresh();
+            return;
+          }
+          if (!svModels.length) {
+            host.innerHTML = '<div class="pd-static" style="color:#888;">No Models designed yet.</div>';
+            svRefresh();
+            return;
+          }
+          host.innerHTML = svModels.map(m => `
+            <div style="display:grid;grid-template-columns:1.2fr 0.5fr 0.7fr${svSub ? ' 1fr' : ''} 0.9fr;gap:6px;align-items:center;margin-bottom:6px;">
+              <span class="pd-static">${esc(m.name)}</span>
+              <span class="pd-static" style="color:#888;">${esc(String(Number(m.units_in_stock) || 0))} HQ</span>
+              <input type="number" class="pd-input sv-units" data-bp="${esc(m.id)}" min="0" max="${esc(String(Number(m.units_in_stock) || 0))}" placeholder="Ship">
+              ${svSub ? `<input type="text" class="pd-input sv-local" data-bp="${esc(m.id)}" maxlength="60" placeholder="Local name">` : ''}
+              <input type="number" class="pd-input sv-price" data-bp="${esc(m.id)}" min="1" step="500" placeholder="List $">
+            </div>`).join('');
+          host.querySelectorAll('input').forEach(i => i.addEventListener('input', svRefresh));
+          svRefresh();
+        }
+        async function openCcoShip() {
+          svNation = null; svModels = [];
+          svRenderRows();
+          const host = document.getElementById('sv-nations');
+          host.innerHTML = '<div class="pd-static" style="color:#888;">Loading…</div>';
+          document.getElementById('sv-overlay').classList.add('open');
+          try {
+            const [nations, { data: pres, error: pErr }, { data: models, error: mErr }] = await Promise.all([
+              ccoNations(),
+              _supabase.from('corp_market_presence')
+                .select('nation_id, kind').eq('corp_id', employerId),
+              _supabase.from('vehicle_blueprints')
+                .select('id, name, units_in_stock').eq('corp_id', employerId)
+                .order('created_at', { ascending: false }),
+            ]);
+            if (pErr || mErr) throw (pErr || mErr);
+            svModels = models || [];
+            const byNation = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
+            const dests = nations.filter(n => byNation[n.id]);
+            host.innerHTML = dests.length ? dests.map(n => `
+              <div class="pd-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${byNation[n.id].kind === 'subsidiary' ? ' · SUB' : ''}</div>`).join('')
+              : '<div class="pd-static" style="color:#888;">No foreign markets yet — pitch an expansion first.</div>';
+            host.querySelectorAll('.pd-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+                svNation = p.dataset.val;
+                svSub = byNation[svNation]?.kind === 'subsidiary';
+                svRenderRows();
+              });
+            });
+          } catch (e) {
+            host.innerHTML = '<div class="pd-static" style="color:#888;">Could not load the markets — try again shortly.</div>';
+          }
+        }
+        ccoWireClose('sv-overlay', 'sv-cancel');
+        document.getElementById('sv-send').addEventListener('click', async () => {
+          if (svInFlight || !svNation) return;
+          svInFlight = true; svRefresh();
+          try {
+            const ships = [...document.querySelectorAll('.sv-units')].map(inp => {
+              const bp = inp.dataset.bp;
+              const units = Math.floor(Number(inp.value) || 0);
+              const local = document.querySelector(`.sv-local[data-bp="${bp}"]`)?.value.trim() || null;
+              const priceRaw = document.querySelector(`.sv-price[data-bp="${bp}"]`)?.value;
+              const price = priceRaw ? Math.floor(Number(priceRaw) || 0) : null;
+              return { blueprint_id: bp, units, local_name: local || null, list_price: price || null };
+            }).filter(s => s.units > 0 || s.local_name || s.list_price);
+            const { data, error } = await _supabase.rpc('cco_ship_vehicles', {
+              p_nation_id: svNation, p_shipments: ships,
+            });
+            if (error) throw error;
+            if (!data?.success) {
+              const REASON = {
+                ...CCO_REASON,
+                home_nation: 'HQ stock already lives at home — pick a foreign market.',
+                ship_exceeds_stock: `Not enough HQ stock of ${data?.model || 'that Model'} — ${data?.have ?? 0} on hand.`,
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            document.getElementById('sv-overlay').classList.remove('open');
+            peSetSpent();
+            peNote.textContent = `Shipped ${data.shipped} vehicle(s) to ${data.nation}. Back next tick.`;
+          } catch (e) {
+            alert('Could not ship: ' + (e?.message || e));
+          } finally {
+            svInFlight = false; svRefresh();
           }
         });
       }

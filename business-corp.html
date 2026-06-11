@@ -183,11 +183,11 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay, #am-overlay, #sl-overlay, #em-overlay { position:fixed;
+  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #em-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -611,33 +611,18 @@
   </div>
 </div>
 
-<div id="em-overlay">
+<div id="ao-overlay">
   <div class="jm-modal">
-    <div class="jm-head"><div class="jm-title">Expand <em>Market</em></div></div>
+    <div class="jm-head"><div class="jm-title">Logistical <em>Overhaul</em></div></div>
     <div class="jm-body">
-      <div class="db-mech">The Mechanic: Enter a foreign market. Expand under your own name
-        ($10M flat) or open a named Subsidiary ($7M scaled by that nation&rsquo;s Standard of
-        Living) whose local badge earns +1 appeal on every campaign there. Ship vehicles from
-        HQ inventory and set their standing prices — selling abroad requires the presence, and
-        campaigns there sell only what you&rsquo;ve shipped. Re-running on a market you&rsquo;re
-        already in ships more for free.</div>
-      <div class="jm-lab">NATION</div>
-      <div class="jm-pills db-cats" id="em-nations"></div>
-      <div class="jm-lab">PRESENCE</div>
-      <div class="jm-pills" id="em-kinds"></div>
-      <div class="db-static dim-line" id="em-kind-note"></div>
-      <div id="em-name-wrap" style="display:none;">
-        <div class="jm-lab">SUBSIDIARY NAME</div>
-        <input type="text" class="fin-amt" id="em-name" maxlength="60" placeholder="e.g. Velora del Norte" style="margin-bottom:0;">
-      </div>
-      <div class="jm-lab">SHIPMENTS &middot; FROM HQ INVENTORY</div>
-      <div id="em-ships"></div>
-      <div class="jm-lab">COST</div>
-      <div class="db-static" id="em-cost">—</div>
+      <div class="db-mech">The Mechanic: Invest accumulated capital to permanently upgrade one
+        of the corporation&rsquo;s five assets — the construction price ladder, by level.</div>
+      <div class="jm-lab">SELECT AN ASSET</div>
+      <div id="ao-rows"></div>
     </div>
     <div class="jm-foot">
-      <button type="button" class="jm-btn secondary" id="em-cancel">CANCEL</button>
-      <button type="button" class="jm-btn" id="em-confirm" disabled>CONFIRM</button>
+      <button type="button" class="jm-btn secondary" id="ao-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="ao-confirm" disabled title="Pick an upgradeable asset">CONFIRM</button>
     </div>
   </div>
 </div>
@@ -845,17 +830,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
         d?.dept === 'SUPPLY & MATERIAL'      ? { ...d, ...supt } :
         d?.dept === 'REGULATORY COMPLIANCE'  ? { ...d, ...regt } :
         d?.dept === 'SYSTEM DESIGN'          ? { ...d, ...dsgt } : d);
-      // Automotive cards read the corp's live asset tiers (20270842)
-      // and grow the owner's [UPGRADE — $X] button, priced on the
-      // shared yard ladder by Roman numeral.
+      // Automotive cards read the corp's live asset tiers (20270842);
+      // upgrades live on the LOGISTICAL OVERHAUL card (20270855).
       const autoByDept = Object.fromEntries(
         Object.entries(AUTOMOTIVE_ASSETS).map(([key, a]) => [a.dept, { key, ...a }]));
       depts = depts.map(d => {
         const a = d && autoByDept[d.dept];
         if (!a) return d;
         const tier = Math.min(Math.max(Number(corp[a.col]) || 1, 1), a.ladder.length);
-        return { ...d, ...a.ladder[tier - 1], _assetKey: a.key, _tier: tier,
-                 _next: a.ladder[tier] || null };
+        return { ...d, ...a.ladder[tier - 1] };
       });
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
@@ -866,40 +849,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
               </div>
               <div class="dp-desc">${esc(d.desc)}</div>
               <div class="dp-effect">${esc(d.effect)}</div>
-              ${isOwner && d._assetKey && d._next ? `
-              <button type="button" class="pl-up" data-asset="${esc(d._assetKey)}"
-                data-next="${esc(d._next.tier)}"
-                title="${esc(d._next.effect)}">
-                UPGRADE — ${esc(hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[d._tier + 1] || 0))}</button>` : ''}
             </div>`
           : `<div class="dp-card empty" title="Coming soon">
               <div class="soon">(To be chartered)</div>
             </div>`).join('') + '</div>';
 
-      document.querySelectorAll('#bc-departments [data-asset]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (!confirm(`Upgrade to ${btn.dataset.next} for ${btn.textContent.split('— ')[1]}?\n${btn.title}`)) return;
-          btn.disabled = true;
-          try {
-            const { data, error: uErr } = await _supabase.rpc('upgrade_automotive_asset',
-              { p_corp_id: corp.id, p_asset: btn.dataset.asset });
-            if (uErr) throw uErr;
-            if (!data?.success) {
-              const REASON = {
-                max_tier: 'Already at the top of the ladder.',
-                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
-                not_owner: 'Only the owner upgrades assets.',
-                arrested: 'You are under arrest — your assets are frozen.',
-              };
-              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
-            }
-            window.location.reload();
-          } catch (e) {
-            alert('Could not upgrade: ' + (e?.message || e));
-            btn.disabled = false;
-          }
-        });
-      });
     }
 
     // Roles — the corp's job board. Openings will list here and on the
@@ -1793,10 +1747,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">SALES CAMPAIGN</div>
               <div class="soon">Price a Model and sell into a nation</div>
             </div>
-            <div class="ea-card live" id="ea-expand-market">
-              <div class="ic">🌍</div>
-              <div class="nm">EXPAND MARKET</div>
-              <div class="soon">Enter a nation or open a subsidiary</div>
+            <div class="ea-card live" id="ea-auto-overhaul">
+              <div class="ic">🏭</div>
+              <div class="nm">LOGISTICAL OVERHAUL</div>
+              <div class="soon">Permanently upgrade an asset</div>
             </div>`
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
@@ -3081,172 +3035,78 @@ import { CITY_STATS } from './js/game/city-labels.js';
           }
         });
 
-        // ── Expand Market (20270840) ──────────────────────────────
-        // Enter a foreign nation: $10M flat under your own name, or
-        // a named Subsidiary at $7M × that nation's SoL / 50 (+1
-        // appeal badge). Ship units from HQ and set standing prices;
-        // re-runs on an owned market ship free.
-        let emNation = null, emKind = null, emInFlight = false;
-        let emNationsInfo = {}, emPresence = {}, emModels = [];
-
-        function emShowCost() {
-          const costEl = document.getElementById('em-cost');
-          const noteEl = document.getElementById('em-kind-note');
-          const nameWrap = document.getElementById('em-name-wrap');
-          const owned = emNation && emPresence[emNation];
-          nameWrap.style.display = (!owned && emKind === 'subsidiary') ? '' : 'none';
-          if (!emNation) { costEl.textContent = '—'; noteEl.textContent = ''; emRefresh(); return; }
-          if (owned) {
-            noteEl.textContent = owned.kind === 'subsidiary'
-              ? `Already operating here as ${owned.subsidiary_name || 'a subsidiary'} — shipments and price updates are free.`
-              : 'Already expanded here — shipments and price updates are free.';
-            costEl.textContent = 'No fee — the action ships and re-prices.';
-          } else if (emKind) {
-            const sol = Math.max(1, Number(emNationsInfo[emNation]?.standard_of_living) || 50);
-            const fee = emKind === 'subsidiary' ? Math.round(7000000 * sol / 50) : 10000000;
-            noteEl.textContent = emKind === 'subsidiary'
-              ? `A named local entity — local Model names and a +1 appeal badge on every campaign here. $7M × Standard of Living ${sol} / 50.`
-              : 'Distribution under your own name — $10M flat.';
-            costEl.textContent = `${hfFmtBig(fee)} from the treasury`;
-          } else {
-            noteEl.textContent = '';
-            costEl.textContent = 'Pick Expand or Subsidiary.';
-          }
-          emRefresh();
-        }
-
-        function emRefresh() {
-          const owned = emNation && emPresence[emNation];
-          const name = document.getElementById('em-name').value.trim();
-          document.getElementById('em-confirm').disabled = emInFlight || !emNation
-            || (!owned && !emKind)
-            || (!owned && emKind === 'subsidiary' && name.length < 2);
-        }
-
-        function emRenderShips() {
-          const host = document.getElementById('em-ships');
-          const owned = emNation && emPresence[emNation];
-          const sub = owned ? owned.kind === 'subsidiary' : emKind === 'subsidiary';
-          if (!emModels.length) {
-            host.innerHTML = '<div class="rl-empty">No Models designed yet — draft a blueprint first.</div>';
-            return;
-          }
-          host.innerHTML = `
-            <div class="bp-grid" style="grid-template-columns:1.2fr 0.6fr 0.7fr${sub ? ' 1fr' : ''} 0.9fr;">
-              <div class="h">MODEL</div><div class="h">HQ STOCK</div><div class="h">SHIP</div>${sub ? '<div class="h">LOCAL NAME</div>' : ''}<div class="h">LIST PRICE</div>
-              ${emModels.map(m => `
-                <div class="c nm">${esc(m.name)}</div>
-                <div class="c">${esc(String(Number(m.units_in_stock) || 0))}</div>
-                <div class="c"><input type="number" class="fin-amt em-ship" data-bp="${esc(m.id)}" min="0" max="${esc(String(Number(m.units_in_stock) || 0))}" placeholder="0" style="margin:0;padding:5px 8px;"></div>
-                ${sub ? `<div class="c"><input type="text" class="fin-amt em-local" data-bp="${esc(m.id)}" maxlength="60" placeholder="${esc(m.name)}" style="margin:0;padding:5px 8px;"></div>` : ''}
-                <div class="c"><input type="number" class="fin-amt em-price" data-bp="${esc(m.id)}" min="1" step="500" placeholder="${esc(String(VEHICLE_CLASS_ANCHORS[m.vehicle_class] || 35000))}" style="margin:0;padding:5px 8px;"></div>`).join('')}
-            </div>`;
-        }
-
-        document.getElementById('ea-expand-market').addEventListener('click', async () => {
-          emNation = null; emKind = null;
-          document.getElementById('em-name').value = '';
-          document.getElementById('em-ships').innerHTML = '';
-          document.getElementById('em-kinds').innerHTML = '';
-          emShowCost();
-          const natHost = document.getElementById('em-nations');
-          natHost.innerHTML = '<div class="rl-empty">Loading…</div>';
-          document.getElementById('em-overlay').classList.add('open');
-          try {
-            const ids = (await fetchLiveNations()).map(n => n.id).filter(id => id !== corp.hq_nation_id);
-            const [{ data: nats, error: nErr }, { data: pres, error: pErr }, { data: models, error: bErr }] = await Promise.all([
-              _supabase.from('nations').select('id, name, standard_of_living').in('id', ids),
-              _supabase.from('corp_market_presence')
-                .select('nation_id, kind, subsidiary_name').eq('corp_id', corp.id),
-              _supabase.from('vehicle_blueprints')
-                .select('id, name, vehicle_class, units_in_stock')
-                .eq('corp_id', corp.id).order('created_at', { ascending: false }),
-            ]);
-            if (nErr || pErr || bErr) throw (nErr || pErr || bErr);
-            emNationsInfo = Object.fromEntries((nats || []).map(n => [n.id, n]));
-            emPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
-            emModels = models || [];
-            natHost.innerHTML = (nats || []).map(n => `
-              <div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${emPresence[n.id] ? ' ✓' : ''}</div>`).join('');
-            natHost.querySelectorAll('.jm-pill').forEach(p => {
-              p.addEventListener('click', () => {
-                natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
-                emNation = p.dataset.val;
-                const owned = emPresence[emNation];
-                const kindsHost = document.getElementById('em-kinds');
-                if (owned) {
-                  emKind = owned.kind;
-                  kindsHost.innerHTML = `<div class="jm-pill sel">${owned.kind === 'subsidiary' ? 'SUBSIDIARY' : 'EXPANDED'} — ESTABLISHED</div>`;
-                } else {
-                  emKind = null;
-                  kindsHost.innerHTML = `
-                    <div class="jm-pill" data-kind="expansion">EXPAND — $10M</div>
-                    <div class="jm-pill" data-kind="subsidiary">OPEN SUBSIDIARY</div>`;
-                  kindsHost.querySelectorAll('.jm-pill[data-kind]').forEach(k => {
-                    k.addEventListener('click', () => {
-                      kindsHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === k));
-                      emKind = k.dataset.kind;
-                      emShowCost();
-                      emRenderShips();
-                    });
-                  });
-                }
-                emShowCost();
-                emRenderShips();
-              });
+        // ── Logistical Overhaul (20270855) ────────────────────────
+        // The five asset ladders, upgraded a level at a time on the
+        // construction price ladder; the purchase is the day's
+        // executive action. Market entry is the CCO's pitch now;
+        // shipping abroad is the CCO's desk.
+        let aoAsset = null;
+        document.getElementById('ea-auto-overhaul').addEventListener('click', () => {
+          aoAsset = null;
+          const host = document.getElementById('ao-rows');
+          host.innerHTML = Object.entries(AUTOMOTIVE_ASSETS).map(([key, a]) => {
+            const tier = Math.min(Math.max(Number(corp[a.col]) || 1, 1), a.ladder.length);
+            const next = a.ladder[tier];
+            return `
+              <div class="jm-rung${next ? '' : ' locked'}" data-asset="${esc(key)}"
+                ${next ? '' : 'title="Already at the top of the ladder"'}>
+                <div class="top">
+                  <div>
+                    <div class="rung-no">${esc(a.dept)}</div>
+                    <div class="nm">${esc(a.ladder[tier - 1].tier)}</div>
+                  </div>
+                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0))}` : 'MAX LEVEL'}</span>
+                </div>
+                ${next ? `<div class="ds">${esc(next.tier)} — ${esc(next.effect)}</div>` : ''}
+              </div>`;
+          }).join('');
+          host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
+            row.addEventListener('click', () => {
+              aoAsset = row.dataset.asset;
+              host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
+              const tier = Math.min(Math.max(Number(corp[AUTOMOTIVE_ASSETS[aoAsset].col]) || 1, 1), 5);
+              const btn = document.getElementById('ao-confirm');
+              btn.disabled = false;
+              btn.textContent = `CONFIRM — ${hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0)}`;
+              btn.title = '';
             });
-          } catch (e) {
-            natHost.innerHTML = '<div class="rl-empty">Could not load the market — try again shortly.</div>';
-            console.warn('[business-corp] expand modal load failed:', e?.message || e);
-          }
+          });
+          const btn = document.getElementById('ao-confirm');
+          btn.disabled = true;
+          btn.textContent = 'CONFIRM';
+          btn.title = 'Pick an upgradeable asset';
+          document.getElementById('ao-overlay').classList.add('open');
         });
-        document.getElementById('em-name').addEventListener('input', emRefresh);
-        wireModalClose('em-overlay', 'em-cancel');
+        wireModalClose('ao-overlay', 'ao-cancel');
 
-        document.getElementById('em-confirm').addEventListener('click', async () => {
-          if (emInFlight) return;
-          emInFlight = true; emRefresh();
-          const btn = document.getElementById('em-confirm');
+        let aoInFlight = false;
+        document.getElementById('ao-confirm').addEventListener('click', async () => {
+          if (aoInFlight || !aoAsset) return;
+          aoInFlight = true;
+          const btn = document.getElementById('ao-confirm');
           btn.disabled = true;
           try {
-            const ships = [...document.querySelectorAll('.em-ship')].map(inp => {
-              const bp = inp.dataset.bp;
-              const units = Math.floor(Number(inp.value) || 0);
-              const local = document.querySelector(`.em-local[data-bp="${bp}"]`)?.value.trim() || null;
-              const priceRaw = document.querySelector(`.em-price[data-bp="${bp}"]`)?.value;
-              const price = priceRaw ? Math.floor(Number(priceRaw) || 0) : null;
-              return { blueprint_id: bp, units, local_name: local || null, list_price: price || null };
-            }).filter(s => s.units > 0 || s.local_name || s.list_price);
-            const { data, error: eErr } = await _supabase.rpc('expand_market', {
-              p_corp_id: corp.id,
-              p_nation_id: emNation,
-              p_kind: emKind || 'expansion',
-              p_subsidiary_name: document.getElementById('em-name').value.trim() || null,
-              p_shipments: ships,
-            });
-            if (eErr) throw eErr;
+            const { data, error: uErr } = await _supabase.rpc('upgrade_automotive_asset',
+              { p_corp_id: corp.id, p_asset: aoAsset });
+            if (uErr) throw uErr;
             if (!data?.success) {
               const REASON = {
-                invalid_kind: 'Pick Expand or Subsidiary.',
-                invalid_name: 'Subsidiary names run 2–60 characters.',
-                home_nation: 'You already operate at home — pick a foreign nation.',
-                nation_not_live: 'That nation is not an active market.',
-                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
-                ship_exceeds_stock: `Not enough HQ stock of ${data?.model || 'that Model'} — ${data?.have ?? 0} on hand.`,
-                blueprint_not_found: 'That Model belongs to another corporation.',
+                max_tier: 'Already at the top of the ladder.',
                 no_actions_remaining: 'No executive actions remaining this tick.',
-                not_owner: 'Only the owner expands the market.',
+                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+                not_owner: 'Only the owner upgrades assets.',
                 arrested: 'You are under arrest — your assets are frozen.',
               };
               throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
             }
             window.location.reload();
           } catch (e) {
-            alert('Could not expand: ' + (e?.message || e));
-            emInFlight = false;
-            emRefresh();
+            alert('Could not upgrade: ' + (e?.message || e));
+            aoInFlight = false;
+            btn.disabled = false;
           }
         });
+
       } // end if (eaAutomotive)
     }
 
