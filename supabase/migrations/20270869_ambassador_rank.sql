@@ -6,7 +6,11 @@
 -- seats as YES; every other party rolls 1D2 and its whole bloc
 -- follows the die. More YES seats than NO appoints (a tie fails);
 -- failure stamps a 12-tick re-request cooldown. Vacancy is checked
--- BEFORE the vote so a confirmation is never wasted.
+-- BEFORE the vote so a confirmation is never wasted. Either way the
+-- chamber's verdict is AUTO-GENERATED as a bills row — 'Appointment
+-- of {Politician} as Ambassador of {Nation}', bill_type
+-- ambassador_confirmation, landed terminal (passed/failed) with the
+-- seat tally, so it renders in the legislature's recent results.
 --
 -- Appointment: a RANDOM vacant live nation (market_nation_names),
 -- home excluded, one ambassador per home→host pair (partial unique
@@ -184,6 +188,7 @@ DECLARE
     v_yes    int := 0;
     v_no     int := 0;
     v_target nations%ROWTYPE;
+    v_name   text;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -252,9 +257,19 @@ BEGIN
         END IF;
     END LOOP;
 
+    v_name := COALESCE(NULLIF(TRIM(COALESCE(v_pol.leader_first_name, '') || ' '
+                    || COALESCE(v_pol.leader_last_name, '')), ''), 'The Nominee');
+
     IF v_yes + v_no > 0 AND v_yes <= v_no THEN
         -- The chamber says no (a tie fails). 12 ticks before the
-        -- ministry will float the name again.
+        -- ministry will float the name again. The verdict enters the
+        -- chamber record either way.
+        INSERT INTO bills (nation_id, proposed_by, proposed_tick, bill_name, bill_type,
+                           status, voting_ends_tick, passed_tick, votes_for, votes_against, preamble)
+        VALUES (v_pol.nation_id, v_pol.id, v_tick,
+                format('Appointment of %s as Ambassador of %s', v_name, v_target.name),
+                'ambassador_confirmation', 'failed', v_tick, v_tick, v_yes, v_no,
+                format('The Foreign Ministry put %s before the chamber for the embassy in %s. The chamber declined, %s seats to %s.', v_name, v_target.name, v_no, v_yes));
         UPDATE factions SET next_ambassador_request_tick = v_tick + 12
          WHERE id = v_pol.id;
         INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
@@ -275,6 +290,13 @@ BEGIN
     EXCEPTION WHEN unique_violation THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_postings');
     END;
+
+    INSERT INTO bills (nation_id, proposed_by, proposed_tick, bill_name, bill_type,
+                       status, voting_ends_tick, passed_tick, votes_for, votes_against, preamble)
+    VALUES (v_pol.nation_id, v_pol.id, v_tick,
+            format('Appointment of %s as Ambassador of %s', v_name, v_target.name),
+            'ambassador_confirmation', 'passed', v_tick, v_tick, v_yes, v_no,
+            format('The chamber confirms %s as Ambassador to %s, %s seats to %s. The term runs sixty ticks.', v_name, v_target.name, v_yes, v_no));
 
     INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
     VALUES (v_pol.id, v_tick, 'ambassador_appointed', COALESCE(v_target.name, ''),

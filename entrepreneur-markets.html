@@ -13,7 +13,15 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background:#050505; color:#d4d4d4; font-family:-apple-system,system-ui,sans-serif; min-height:100vh; }
 
-  .mkt .hero { margin-bottom: 22px; }
+  .mkt .hero { margin-bottom: 22px; position: relative; }
+  /* Start Company (20270835 flow) — businessmen only; deliberately a
+     size up from the standard button per design call. */
+  #mk-start-company { display:none; position:absolute; top:4px; right:0;
+    padding:13px 26px; background:#10140e; color:#aac88a;
+    border:1px solid rgba(138,170,106,0.55); border-radius:5px;
+    font-family:var(--font-mono); font-size:12px; letter-spacing:0.14em;
+    font-weight:700; cursor:pointer; }
+  #mk-start-company:hover { background:#162012; border-color:#8aaa6a; }
   .mkt .eyebrow { color:#8aaa6a; font-size:10px; letter-spacing:0.15em; margin-bottom:8px; }
   .mkt .title { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
   .mkt .title .sans { font-size:32px; font-weight:500; color:#fff; line-height:1; }
@@ -237,6 +245,7 @@
 <div class="ent-content">
   <div class="mkt">
     <div class="hero">
+      <button type="button" id="mk-start-company">START COMPANY</button>
       <div class="eyebrow">— CORPORATE REGISTRY —</div>
       <div class="title"><span class="sans">Corporations</span><span class="serif">Directory</span></div>
       <div class="meta-row">
@@ -402,6 +411,16 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     const ctx = await bootstrapSharedViewer('markets', 'corporations');
     if (!ctx) return;
     const entId = ctx.faction?.id || null;
+    // Start Company moved here from the career page (design call) —
+    // the founding flow itself stays on businessman-career.html, the
+    // button deep-links to it (?found=1 auto-opens the modal).
+    if (ctx.viewerType === 'businessman') {
+      const scBtn = document.getElementById('mk-start-company');
+      scBtn.style.display = 'inline-block';
+      scBtn.addEventListener('click', () => {
+        window.location.href = 'businessman-career.html?found=1';
+      });
+    }
 
     // All corps (entrepreneur_corps RLS = SELECT true) + ALL holdings
     // (corp_shareholdings RLS = SELECT true — public market data, the
