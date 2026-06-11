@@ -122,9 +122,9 @@
     color:#555; font-weight:700; }
   .ap-grid .c, .pe-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
   .ap-grid .c .tag, .pe-grid .c .tag { font-family:var(--font-mono); font-size:8.5px; color:#8aaa6a; }
-  .pe-grid { display:grid; grid-template-columns:1.3fr 1.1fr 1.1fr 0.8fr 1.2fr;
+  .pe-grid { display:grid; grid-template-columns:1.3fr 1.1fr 1fr 0.7fr 1fr 1fr;
     gap:6px 12px; align-items:center; padding:4px 2px; }
-  .pe-grid.manage { grid-template-columns:1.3fr 1.1fr 1.1fr 0.8fr 1fr auto; }
+  .pe-grid.manage { grid-template-columns:1.3fr 1.1fr 1fr 0.7fr 0.9fr 1fr auto; }
   .pe-grid .c.money { font-family:var(--font-mono); color:#8aaa6a; }
   .bp-grid { display:grid; grid-template-columns:1.4fr 0.9fr 1.1fr 0.9fr 0.9fr;
     gap:6px 12px; align-items:center; padding:4px 2px; }
@@ -1071,14 +1071,30 @@ import { CITY_STATS } from './js/game/city-labels.js';
             projByPm[bp.pm_applicant_id] ||= bp.name
               || `${BUILDING_TYPE_LABELS[bp.building_type] || bp.building_type} (${QUALITY_TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
           }
+          // Reports To — the chain of command (display only): rungs
+          // 1-3 report to the nearest same-track hire at rung 4+,
+          // rung 4 to 5+, rung 5 to 6; anyone with no superior on
+          // staff reports straight to the Owner.
+          const ownerLabel = `${[corp.owner?.leader_first_name, corp.owner?.leader_last_name].filter(Boolean).join(' ') || 'The Owner'} (Owner)`;
+          const reportsTo = (e) => {
+            const rung = Number(e.opening?.rung) || 1;
+            if (rung >= 6) return ownerLabel;
+            const floor = rung <= 3 ? 4 : rung + 1;
+            const sup = emps
+              .filter(x => x !== e && x.opening?.track === e.opening?.track
+                        && (Number(x.opening?.rung) || 0) >= floor)
+              .sort((a, b) => (Number(a.opening?.rung) || 0) - (Number(b.opening?.rung) || 0))[0];
+            return sup ? `${sup.name} (${sup.opening?.title || '—'})` : ownerLabel;
+          };
           rowsHtml = `
             <div class="pe-grid${isOwner ? ' manage' : ''}">
-              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">CURRENT PROJECT</div>${isOwner ? '<div class="h"></div>' : ''}
+              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">REPORTS TO</div><div class="h">CURRENT PROJECT</div>${isOwner ? '<div class="h"></div>' : ''}
               ${emps.map(e => `
                 <div class="c">${applicantNameHtml(e)}</div>
                 <div class="c">${esc(e.opening?.title || '—')}</div>
                 <div class="c">${esc(e.city + (nationByCity[e.city] ? ', ' + nationByCity[e.city] : ''))}</div>
                 <div class="c money">${esc(hfFmtBig(Number(e.opening?.salary_yearly) || 0))}/yr</div>
+                <div class="c">${esc(reportsTo(e))}</div>
                 <div class="c">${esc(projByPm[e.id] || '—')}</div>
                 ${isOwner ? `<div class="ap-btns">
                   ${(Number(e.opening?.rung) || 1) < ((JOB_TRACKS[e.opening?.track] || []).filter(r => r.postable).length || 3)
