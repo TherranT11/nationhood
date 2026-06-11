@@ -283,6 +283,30 @@ export const VEHICLE_QUALITY = [
     desc: 'Premium materials, exceptional longevity, low warranty costs.' },
 ];
 
+// The ASSEMBLY PLANT ladder — automotive's second asset. Display copy
+// only for now (every automotive corp starts at Level I); tier state
+// moves to a column when its upgrade mechanics land. Industrial
+// buildings (the construction blueprint category still being
+// chartered) gate Levels II-V; line counts and the Superior 1.2× /
+// Automated 1.3× efficiencies will drive vehicle production.
+export const ASSEMBLY_TIERS = [
+  { tier: 'Level I: Low-Volume Batch Workshop',
+    desc: 'A professional, modern warehouse utilizing manual overhead cranes, stationary hoist bays, and a basic moving conveyor loop. Assembly is largely done by technicians using pneumatic tools. Slow, but highly flexible for initial vehicle runs.',
+    effect: '1 Assembly Line.' },
+  { tier: 'Level II: Semi-Automated Assembly Line',
+    desc: 'Integrates early-stage robotics for chassis welding and heavy lifting, standardizing the pace of the conveyor line and increasing your volume capacity.',
+    effect: '2 Assembly Lines · Requires a Tier I Industrial building.' },
+  { tier: 'Level III: Modern Flexible Manufacturing Facility',
+    desc: 'Features high-speed robotic stamping presses and automated paint lines. Allows multiple tooled production lines to share the same physical building footprint.',
+    effect: '2 Assembly Lines — 1 Superior at 1.2× efficiency · Requires 2 Tier I Industrial buildings.' },
+  { tier: 'Level IV: High-Volume Gigafactory',
+    desc: 'A sprawling, heavily automated marvel with synchronized battery/engine marriage stations, structural casting machines, and massive daily output capabilities.',
+    effect: '3 Assembly Lines — 1 Superior · 1 Automated at 1.3× efficiency · Requires a Tier II Industrial building.' },
+  { tier: 'Level V: The Lights-Out Mega-Complex',
+    desc: 'A fully autonomous, AI-orchestrated manufacturing ecosystem. Operates with near-zero variable labor overhead, self-corrects manufacturing defects in real-time, and scales production volume instantly.',
+    effect: '4 Assembly Lines — 2 Superior · 2 Automated · Requires a Tier III Industrial building.' },
+];
+
 export function vehicleBlueprintXpCost(type, klass, engine, packageCount, quality) {
   const base = VEHICLE_TYPES.find(t => t.value === type)?.base ?? 3;
   const mult = VEHICLE_CLASSES.find(c => c.value === klass)?.mult ?? 1.0;
@@ -341,5 +365,5 @@ export const DEPARTMENTS = {
     { dept: 'SYSTEM DESIGN', ...DESIGN_TIERS[0] },
     { dept: 'REGULATORY COMPLIANCE', ...REG_TIERS[0] },
   ],
-  automotive: [null, null, null, null, null],
+  automotive: [null, { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] }, null, null, null],
 };
