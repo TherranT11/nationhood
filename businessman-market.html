@@ -84,19 +84,23 @@ import { hfFmtBig, escapeHtml as esc, flagUrlFor } from './js/utils.js';
     // per-nation price functions server-side, so these numbers are
     // exactly what the buy RPC charges. Home nation sorts first and
     // wears the HOME tag.
-    const renderListing = (hostId, name, rows) => {
+    const renderListing = (hostId, groups) => {
       const host = document.getElementById(hostId);
-      if (!rows?.length) {
+      // Each good's nations sort home-first; goods stack in the order
+      // given, sharing the one grid.
+      const sorted = groups.flatMap(([name, rows]) => (rows || []).slice()
+        .sort((a, b) =>
+          (b.nation_id === ctx.faction.nation_id) - (a.nation_id === ctx.faction.nation_id))
+        .map(r => ({ ...r, name })));
+      if (!sorted.length) {
         host.innerHTML = '<div class="mk-empty">No markets found.</div>';
         return;
       }
-      const sorted = rows.slice().sort((a, b) =>
-        (b.nation_id === ctx.faction.nation_id) - (a.nation_id === ctx.faction.nation_id));
       host.innerHTML = `
         <div class="mk-grid">
           <div class="h">NAME</div><div class="h">NATION</div><div class="h">AMOUNT AVAILABLE</div><div class="h">COST PER UNIT</div>
           ${sorted.map(r => `
-            <div class="c nm">${esc(name)}</div>
+            <div class="c nm">${esc(r.name)}</div>
             <div class="c mk-nation">
               <img src="${esc(r.flag_url || flagUrlFor(r.nation) || '')}" alt="" onerror="this.style.display='none'">
               ${esc(r.nation)}${r.nation_id === ctx.faction.nation_id ? '<span class="mk-home">HOME</span>' : ''}
@@ -111,8 +115,11 @@ import { hfFmtBig, escapeHtml as esc, flagUrlFor } from './js/utils.js';
       const { data: mkt, error } = await _supabase.rpc('construction_market_listings');
       if (error) throw error;
       if (!mkt?.success) throw new Error(mkt?.reason || 'unknown');
-      renderListing('mk-rows', 'Construction Materials', mkt.materials);
-      renderListing('mk-product-rows', 'Construction Equipment', mkt.equipment);
+      renderListing('mk-rows', [['Construction Materials', mkt.materials]]);
+      renderListing('mk-product-rows', [
+        ['Construction Equipment', mkt.equipment],
+        ['Automotive Electrical Components', mkt.components],
+      ]);
     } catch (e) {
       console.warn('[businessman-market] listings fetch failed:', e?.message || e);
       const msg = '<div class="mk-empty">Could not load the exchange — try again shortly.</div>';
