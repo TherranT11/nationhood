@@ -105,6 +105,7 @@ export const BUILDING_MATERIALS_NEEDED = {
   single_story_home: 1,
   double_story: 2,
   multitenant_living: 7,
+  infrastructure_tier_i: 10,
 };
 
 // Display mirror of the quality-tier city effects applied by

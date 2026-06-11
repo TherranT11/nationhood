@@ -515,6 +515,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // employee roster's CURRENT PROJECT, and the bid board all read
     // these (matching the CHECK constraints in 20270800).
     const BUILDING_TYPE_LABELS = {
+      infrastructure_tier_i: 'Infrastructure Tier I',
       single_story_home: 'Single Story Home',
       double_story: 'Double Story',
       multitenant_living: 'Multitenant Living',
@@ -1298,23 +1299,42 @@ import { CITY_STATS } from './js/game/city-labels.js';
       if (eaConstruction) {
 
       // ── Draft Blueprint modal ────────────────────────────────────
-      // Residential is the only chartered category; materials /
-      // equipment are the residential baselines shown as static copy
-      // (they live on the blueprint row server-side).
+      // Residential and Infrastructure are chartered; the type pills
+      // re-render per category (pairing enforced server-side too).
       const DB_CATS = [
         ['residential', 'RESIDENTIAL', true],
+        ['infrastructure', 'INFRASTRUCTURE', true],
         ['tier_i_commercial', 'TIER I COMMERCIAL', false],
         ['tier_ii_commercial', 'TIER II COMMERCIAL', false],
         ['tier_iii_commercial', 'TIER III COMMERCIAL', false],
         ['industrial', 'INDUSTRIAL', false],
         ['military', 'MILITARY', false],
       ];
-      const DB_TYPES = Object.entries(BUILDING_TYPE_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
+      const CATEGORY_TYPES = {
+        residential: ['single_story_home', 'double_story', 'multitenant_living'],
+        infrastructure: ['infrastructure_tier_i'],
+      };
       // Tier pills carry their city effect ("LUXURY · −0.3 Affordability
       // · +0.1 Appeal") so the trade-off is visible at pick time.
       const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) =>
         [v, l.toUpperCase() + (TIER_CITY_EFFECTS[v] ? ' · ' + TIER_CITY_EFFECTS[v] : '')]);
-      let dbType = null, dbTier = null;
+      let dbCat = 'residential', dbType = null, dbTier = null;
+
+      function renderTypePills(presetType) {
+        dbType = null;
+        document.getElementById('db-materials').textContent = '—';
+        dbPills('db-types',
+          CATEGORY_TYPES[dbCat].map(v => [v, BUILDING_TYPE_LABELS[v].toUpperCase()]),
+          v => {
+            dbType = v;
+            document.getElementById('db-materials').textContent =
+              String(BUILDING_MATERIALS_NEEDED[v] ?? 1);
+          });
+        if (presetType && CATEGORY_TYPES[dbCat].includes(presetType)) {
+          document.querySelector(`#db-types .jm-pill[data-val="${presetType}"]`)?.click();
+        }
+        dbRefreshConfirm();
+      }
 
       function dbRefreshConfirm() {
         const name = document.getElementById('db-name').value.trim();
@@ -1348,20 +1368,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
           <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed} tick${mSpeed === 1 ? '' : 's'} off the build time</span></div>
           <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff * 3}% material costs</span></div>
           <div class="db-metric"><span class="nm">ENGINEERING QUALITY</span><span class="vl">${mQual}</span><span class="fx">+${(mQual * 0.1).toFixed(1)} Appeal when built in a city</span></div>`;
-        dbPills('db-cats', DB_CATS, () => {});
-        document.querySelector('#db-cats .jm-pill').classList.add('sel');
-        dbPills('db-types', DB_TYPES, v => {
-          dbType = v;
-          document.getElementById('db-materials').textContent =
-            String(BUILDING_MATERIALS_NEEDED[v] ?? 1);
-        });
-        document.getElementById('db-materials').textContent = '—';
-        dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
         // Arriving from the bid board's [CREATE BLUEPRINT]: the
-        // request's building type comes preselected.
-        if (presetType) {
-          document.querySelector(`#db-types .jm-pill[data-val="${presetType}"]`)?.click();
-        }
+        // request's building type picks its category too.
+        dbCat = presetType === 'infrastructure_tier_i' ? 'infrastructure' : 'residential';
+        dbPills('db-cats', DB_CATS, v => { dbCat = v; renderTypePills(); });
+        document.querySelector(`#db-cats .jm-pill[data-val="${dbCat}"]`)?.classList.add('sel');
+        renderTypePills(presetType);
+        dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
         document.getElementById('db-location').textContent = corp.hq_city || '—';
         document.getElementById('db-overlay').classList.add('open');
 
@@ -1855,7 +1868,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         try {
           const { data, error: dErr } = await _supabase.rpc('draft_blueprint', {
             p_corp_id: corp.id,
-            p_category: 'residential',
+            p_category: dbCat,
             p_building_type: dbType,
             p_quality_tier: dbTier,
             p_name: document.getElementById('db-name').value.trim(),
