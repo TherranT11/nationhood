@@ -1981,6 +1981,9 @@ async function init() {
   _supabase.rpc('resolve_due_city_ordinance_proposals')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_city_ordinance_proposals:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
+  _supabase.rpc('resolve_due_ambassador_confirmations')
+    .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_ambassador_confirmations:', error.message); })
+    .catch(err => console.warn('[politician-home] resolve_due_ambassador_confirmations threw:', err?.message || err));
   // 20270769: expose ctx to FIS modal handlers (which fire much
   // later from button clicks and can't close over ctx directly).
   // Mirrors the __careerCtx pattern on politician-career.html.
