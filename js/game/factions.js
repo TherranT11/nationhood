@@ -283,6 +283,12 @@ export const ENT_STAT_DISPLAY = Object.freeze([
  * routing to faction-select, where the per-type caps grey the cards.
  * (This replaces the old per-slot "Join as Politician #N" entries and
  * their Patreon11 slot-4 gate.)
+ *
+ * Known asymmetry: the topbars pass their switcher lists (inactive /
+ * hidden factions filtered out), so a banned character doesn't count
+ * here — but faction-select counts every non-abandoned character. A
+ * user in that edge sees the [Add Character] door and the chooser
+ * refuses: fails closed at the authoritative gate.
  */
 export const CHARACTER_TOTAL_MAX = 5;
 export const CHARACTER_TYPE_MAX = 3;

@@ -569,6 +569,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
       if (KIT) {
         const currentTick = Number(ctx.shard?.current_tick) || 0;
         const peNote = document.getElementById('pe-note');
+        let kitInFlight = false;
         const peSetSpent = () => {
           document.querySelectorAll('[data-kit-action]').forEach(a => {
             a.classList.remove('live'); a.classList.add('spent');
@@ -581,11 +582,12 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
         }
         document.querySelectorAll('.cr-act.live[data-kit-action]').forEach(a => {
           a.addEventListener('click', async () => {
-            if (!a.classList.contains('live')) return;
+            if (!a.classList.contains('live') || kitInFlight) return;
             if (KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal) {
               openDesignProposal();
               return;
             }
+            kitInFlight = true;
             try {
               const { data, error: kErr } = await _supabase.rpc(KIT.rpc,
                 { p_action: a.dataset.kitAction });
@@ -609,6 +611,8 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
               peNote.textContent = `Charge queued (${data.pending}/${data.cap}) — ${KIT.rides}. Back next tick.`;
             } catch (e) {
               alert('Could not act: ' + (e?.message || e));
+            } finally {
+              kitInFlight = false;
             }
           });
         });
