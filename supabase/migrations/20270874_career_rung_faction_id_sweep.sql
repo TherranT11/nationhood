@@ -193,7 +193,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'no_nation');
     END IF;
 
-    -- Threshold bumped from 20 to 28 in this migration (20270681).
+    -- Threshold bumped from 20 to 28 in 20270681.
     IF COALESCE(v_pol.politician_skill, 0) < 28 THEN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_skill',
                                   'have', COALESCE(v_pol.politician_skill, 0), 'need', 28);
