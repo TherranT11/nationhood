@@ -3114,6 +3114,12 @@ function renderAffiliation(ctx) {
 async function renderForeignAffiliation(ctx) {
   const host = document.getElementById('foreign-affiliation-host');
   if (!host) return;
+  // Tier 3 (20270866) outranks everything — the consul posting was
+  // cleared at promotion, so the three branches are exclusive.
+  if (ctx?.faction?.politician_dcm_region) {
+    await renderDcmAffiliation(ctx, host);
+    return;
+  }
   // Tier 2 (20270865): a sitting consul gets the consulate card —
   // the attaché posting was cleared at promotion, so the branches
   // are exclusive.
@@ -3536,6 +3542,15 @@ async function renderConsulAffiliation(ctx, host) {
             <div class="act-desc">A one-time message to any player in the host or home nation. It lands in their Pressing Issues — all they can do is close it. No audit, no trace.</div>
             ${bcCooling ? '<div class="act-cooldown">Ready next tick</div>' : ''}
           </div>
+          ${(Number(ctx.faction?.politician_skill) || 0) >= 20 ? `
+          <div class="act-btn" data-action="take-dcm-post">
+            <div class="act-head">
+              <span class="act-ic">🌐</span>
+              <span class="act-name">TAKE THE DCM POST</span>
+              <span class="act-cost">20 exp</span>
+            </div>
+            <div class="act-desc">The ministry has a region for you — Deputy Chief of Mission, every officer your nation fields there reporting to you. Your consulate vacates.</div>
+          </div>` : ''}
         </div>
       </div>
     </div>`;
@@ -3590,6 +3605,178 @@ async function renderConsulAffiliation(ctx, host) {
 
   host.querySelector('.act-btn[data-action="consul-backchannel"]')
     ?.addEventListener('click', () => openBackchannelModal(ctx, hostNationId));
+
+  host.querySelector('.act-btn[data-action="take-dcm-post"]')
+    ?.addEventListener('click', () => openDcmPostModal(ctx));
+}
+
+// 20270866 — the seven regions (nations.continent values). One
+// client source; politician_take_dcm_post validates the same list.
+const DCM_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
+
+// The region picker — vacant regions only (one DCM per home nation
+// per region). Reuses the consulate picker's chrome wholesale.
+async function openDcmPostModal(ctx) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  rows.innerHTML = '<div class="cp-empty">Loading\u2026</div>';
+  document.querySelector('#cp-overlay .cp-title').textContent = 'TAKE THE DCM POST';
+  document.querySelector('#cp-overlay .cp-sub').textContent =
+    'Pick a vacant region. Your consulate vacates; the embassy record follows you.';
+  document.getElementById('cp-overlay').classList.add('open');
+  try {
+    const { data: taken, error } = await _supabase.from('factions')
+      .select('politician_dcm_region')
+      .eq('faction_type', 'politician')
+      .eq('nation_id', ctx.faction?.nation_id)
+      .not('politician_dcm_region', 'is', null)
+      .is('abandoned_at', null);
+    if (error) throw error;
+    const occupied = new Set((taken || []).map(t => t.politician_dcm_region));
+    const regions = DCM_REGIONS.filter(r => !occupied.has(r));
+    if (!regions.length) {
+      rows.innerHTML = '<div class="cp-empty">Every region is staffed \u2014 wait for a vacancy.</div>';
+      return;
+    }
+    rows.innerHTML = regions.map(r => `
+      <div class="cp-row"><span class="nm">${escHtml(r)}</span>
+        <button type="button" class="cp-take" data-take-region="${escAttr(r)}">TAKE THE POST</button></div>`).join('');
+    rows.querySelectorAll('[data-take-region]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        if (!confirm('Take this region? Your consulate vacates.')) return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error: tErr } = await _supabase.rpc('politician_take_dcm_post', {
+            p_faction_id: ctx.faction?.id || null, p_region: btn.dataset.takeRegion,
+          });
+          if (tErr) throw tErr;
+          if (!data?.success) {
+            const REASON = {
+              not_consul: 'Only a serving consul rises to DCM.',
+              not_enough_experience: 'The ministry wants 20 Experience first.',
+              region_occupied: 'Someone from your nation already runs that region.',
+              invalid_region: 'That is not a region the ministry recognizes.',
+              arrested: 'You are under arrest.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          alert(`The cable is shorter every rank: \u201c${data.region} is yours.\u201d`);
+          location.reload();
+        } catch (err) {
+          alert('Could not take the post: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    rows.innerHTML = '<div class="cp-empty">Could not load the regions \u2014 try again shortly.</div>';
+    console.warn('[politician-home] dcm post load failed:', err?.message || err);
+  }
+}
+
+// 20270866 — the DCM card (Foreign Service Tier 3). The stat row
+// inverts to aggregates computed from subordinates, and the STATION
+// BOARD lists the region's nations with who serves where. V1 ships
+// the board only — regional actions are a later dispatch.
+async function renderDcmAffiliation(ctx, host) {
+  const region = ctx.faction.politician_dcm_region;
+  const homeId = ctx.faction?.nation_id;
+  let nations = [];
+  let officers = [];
+  let relRows = [];
+  try {
+    const { data: natRows, error: nErr } = await _supabase.from('nations')
+      .select('id, name')
+      .eq('continent', region)
+      .order('name');
+    if (nErr) throw nErr;
+    nations = natRows || [];
+    if (nations.length) {
+      const ids = nations.map(n => n.id);
+      const idList = ids.join(',');
+      const [offRes, relRes] = await Promise.all([
+        _supabase.from('factions')
+          .select('id, leader_first_name, leader_last_name, nickname, embassy_reputation, politician_consul_nation_id, politician_foreign_service_nation_id')
+          .eq('faction_type', 'politician')
+          .eq('nation_id', homeId)
+          .is('abandoned_at', null)
+          .or(`politician_consul_nation_id.in.(${idList}),politician_foreign_service_nation_id.in.(${idList})`),
+        _supabase.from('diplomatic_relations')
+          .select('nation_a_id, nation_b_id, relation_score')
+          .or(`nation_a_id.eq.${homeId},nation_b_id.eq.${homeId}`),
+      ]);
+      if (offRes.error) throw offRes.error;
+      if (relRes.error) throw relRes.error;
+      officers = offRes.data || [];
+      relRows = relRes.data || [];
+    }
+  } catch (err) {
+    console.warn('[politician-home] dcm board fetch failed:', err?.message || err);
+  }
+
+  // Aggregates — computed from the same rows the board renders.
+  const officerAt = (nid) => officers.filter(o =>
+    o.politician_consul_nation_id === nid || o.politician_foreign_service_nation_id === nid);
+  const staffed = nations.filter(n => n.id !== homeId && officerAt(n.id).length).length;
+  const postable = nations.filter(n => n.id !== homeId).length;
+  const strength = officers.length
+    ? Math.round(officers.reduce((s, o) => s + (Number(o.embassy_reputation) || 50), 0) / officers.length)
+    : null;
+  const relFor = (nid) => {
+    const r = relRows.find(x =>
+      (x.nation_a_id === homeId && x.nation_b_id === nid) ||
+      (x.nation_b_id === homeId && x.nation_a_id === nid));
+    return r ? (Number(r.relation_score) || 0) : 0;
+  };
+  const regionNations = nations.filter(n => n.id !== homeId);
+  const standing = regionNations.length
+    ? Math.round(regionNations.reduce((s, n) => s + relFor(n.id), 0) / regionNations.length)
+    : 0;
+  const embRep = Number(ctx.faction?.embassy_reputation ?? 50);
+
+  const boardRows = regionNations.length ? regionNations.map(n => {
+    const here = officerAt(n.id);
+    if (!here.length) {
+      return `<div class="sb-row"><span class="nm">${escHtml(n.name)}</span>
+        <span class="vac">\u2014 VACANT \u2014</span><span></span><span></span></div>`;
+    }
+    return here.map(o => {
+      const nm = o.nickname || `${o.leader_first_name || ''} ${o.leader_last_name || ''}`.trim() || 'Unnamed';
+      const rank = o.politician_consul_nation_id === n.id ? 'Consul' : 'Attach\u00e9';
+      return `<div class="sb-row"><span class="nm">${escHtml(n.name)}</span>
+        <span>${escHtml(nm)}</span><span>${rank}</span>
+        <span class="rep">${escHtml(String(Math.round(Number(o.embassy_reputation) || 50)))}/100</span></div>`;
+    }).join('');
+  }).join('') : '<div class="sb-row"><span class="vac">No nations charted in this region yet.</span><span></span><span></span><span></span></div>';
+
+  host.innerHTML = `
+    <div class="affil var-foreign" style="margin-top:18px;">
+      <div class="ah-row">
+        <div class="ah-badge">🌐</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">FOREIGN SERVICE · TIER 3</div>
+          <div class="ah-name">Deputy Chief of Mission — ${escHtml(region)}</div>
+          <div class="ah-desc">Every officer your nation fields in <strong>${escHtml(region)}</strong> answers to you. Their wins are your wins. Their messes arrive by pouch.</div>
+        </div>
+      </div>
+      <div class="emb-stats">
+        <div class="emb-stat"><span class="emb-stat-lab">COVERAGE</span><span class="emb-stat-val">${staffed}<span class="emb-stat-max">/${postable} stations</span></span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">MISSION STRENGTH</span><span class="emb-stat-val">${strength === null ? '\u2014' : escHtml(String(strength))}${strength === null ? '' : '<span class="emb-stat-max">/100</span>'}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">REGIONAL STANDING</span><span class="emb-stat-val">${standing > 0 ? '+' : ''}${escHtml(String(standing))}</span></div>
+        <div class="emb-stat"><span class="emb-stat-lab">YOUR REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
+      </div>
+      <div class="sb-lab">THE STATION BOARD</div>
+      <div class="sb-board">
+        <div class="sb-head"><span>NATION</span><span>OFFICER</span><span>RANK</span><span>REP</span></div>
+        ${boardRows}
+      </div>
+      <div class="act-row">
+        <div class="ar-lab">REGIONAL ACTIONS · A LATER DISPATCH</div>
+      </div>
+    </div>`;
 }
 
 // 20270865 — the backchannel composer. Recipients: any player
@@ -8087,6 +8274,21 @@ init().catch(err => {
   .emb-stat-val { font-family:monospace; font-size:13px; color:#fff; }
   .emb-stat-max { font-size:9px; color:#666; }
   @media (max-width:560px) { .emb-stats { grid-template-columns:repeat(2, 1fr); } }
+
+  /* The DCM's Station Board (20270866) — the region roster. */
+  .sb-board { margin-top:14px; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; overflow:hidden; }
+  .sb-head { display:grid; grid-template-columns:1.1fr 1.4fr 0.8fr 0.6fr; gap:0 12px;
+    padding:8px 12px; font-family:monospace; font-size:8px; letter-spacing:0.14em;
+    color:#666; font-weight:700; border-bottom:0.5px solid rgba(255,255,255,0.07); }
+  .sb-row { display:grid; grid-template-columns:1.1fr 1.4fr 0.8fr 0.6fr; gap:0 12px;
+    padding:9px 12px; font-size:11.5px; color:#cfcabf;
+    border-bottom:0.5px solid rgba(255,255,255,0.05); }
+  .sb-row:last-child { border-bottom:none; }
+  .sb-row .nm { color:#fff; font-weight:600; }
+  .sb-row .vac { color:#c87a7a; font-family:monospace; font-size:10px; letter-spacing:0.1em; }
+  .sb-row .rep { font-family:monospace; color:#5aafa5; }
+  .sb-lab { font-family:monospace; font-size:9px; letter-spacing:0.16em; color:#888;
+    font-weight:700; margin:14px 0 0; }
 
   #embassyEventModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
                        align-items:center; justify-content:center; padding:20px; z-index:1000; }
