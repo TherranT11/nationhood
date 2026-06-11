@@ -182,11 +182,11 @@
     margin-top:6px; min-height:12px; }
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
-  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay { position:fixed;
+  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -494,19 +494,19 @@
       <input type="text" class="fin-amt" id="av-name" maxlength="60" placeholder="e.g. Falcon GT" style="margin-bottom:0;">
       <div class="jm-lab">VEHICLE TYPE</div>
       <div class="jm-pills db-cats" id="av-types"></div>
-      <div class="db-static dim-line" id="av-types-desc">Pick a vehicle type.</div>
+      <div class="db-static dim-line" id="av-types-desc"></div>
       <div class="jm-lab">CLASS</div>
       <div class="jm-pills db-cats" id="av-classes"></div>
-      <div class="db-static dim-line" id="av-classes-desc">Pick a market class.</div>
+      <div class="db-static dim-line" id="av-classes-desc"></div>
       <div class="jm-lab">ENGINE</div>
       <div class="jm-pills db-cats" id="av-engines"></div>
-      <div class="db-static dim-line" id="av-engines-desc">Pick an engine.</div>
+      <div class="db-static dim-line" id="av-engines-desc"></div>
       <div class="jm-lab">PACKAGE ADD-ONS &middot; +0.5 XP EACH</div>
       <div class="jm-pills db-cats" id="av-packages"></div>
-      <div class="db-static dim-line" id="av-packages-desc">Optional — pick any.</div>
+      <div class="db-static dim-line" id="av-packages-desc"></div>
       <div class="jm-lab">QUALITY</div>
       <div class="jm-pills db-cats" id="av-quality"></div>
-      <div class="db-static dim-line" id="av-quality-desc">Pick a build quality.</div>
+      <div class="db-static dim-line" id="av-quality-desc"></div>
       <div class="jm-lab">DESIGN COST</div>
       <div class="db-static" id="av-cost">—</div>
     </div>
@@ -583,7 +583,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
       return _supabase.from('job_applicants')
         .select(`id, name, city, applicant_faction_id,
                  applicant:factions!applicant_faction_id(nickname),
-                 opening:job_openings!opening_id!inner(title, salary_yearly, rung, corp_id)`)
+                 opening:job_openings!opening_id!inner(title, salary_yearly, rung, track, corp_id)`)
         .eq('status', 'hired').eq('opening.corp_id', corp.id)
         .order('created_at');
     }
@@ -922,11 +922,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
         // Blueprints load regardless of hires — they feed both the
         // BLUEPRINTS panel and (for legacy PM-assigned rows) the
-        // roster's CURRENT PROJECT column.
-        const { data: bps, error: bpErr } = await _supabase.from('corp_blueprints')
-          .select('pm_applicant_id, building_type, quality_tier, name, category, city, created_at_tick')
-          .eq('corp_id', corp.id)
-          .order('created_at', { ascending: false });
+        // roster's CURRENT PROJECT column. Automotive corps keep
+        // their designs in vehicle_blueprints instead (20270831).
+        const { data: bps, error: bpErr } = corp.industry === 'automotive'
+          ? { data: [] }
+          : await _supabase.from('corp_blueprints')
+              .select('pm_applicant_id, building_type, quality_tier, name, category, city, created_at_tick')
+              .eq('corp_id', corp.id)
+              .order('created_at', { ascending: false });
         if (bpErr) throw bpErr;
 
         let rowsHtml = '<div class="rl-empty">No hires yet.</div>';
@@ -954,7 +957,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 <div class="c money">${esc(hfFmtBig(Number(e.opening?.salary_yearly) || 0))}/yr</div>
                 <div class="c">${esc(projByPm[e.id] || '—')}</div>
                 ${isOwner ? `<div class="ap-btns">
-                  ${(Number(e.opening?.rung) || 1) < 3
+                  ${(Number(e.opening?.rung) || 1) < ((JOB_TRACKS[e.opening?.track] || []).filter(r => r.postable).length || 3)
                     ? `<button type="button" class="ap-btn hr" data-promote="${esc(e.id)}">PROMOTE</button>`
                     : ''}
                   <button type="button" class="ap-btn rej" data-fire="${esc(e.id)}" data-name="${esc(e.name)}">FIRE</button>
@@ -2136,14 +2139,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const avPackages = new Set();
         const corpXp = Number(corp.experience) || 0;
 
-        function avPills(hostId, items, onPick, lockedFn) {
+        function avPills(hostId, items, onPick, placeholder) {
           const host = document.getElementById(hostId);
-          host.innerHTML = items.map(it => {
-            const locked = lockedFn?.(it) || false;
-            return `<div class="jm-pill${locked ? ' locked' : ''}" data-val="${esc(it.value)}"
-              title="${esc(it.desc)}">${esc(it.label.toUpperCase())}</div>`;
-          }).join('');
-          host.querySelectorAll('.jm-pill:not(.locked)').forEach(p => {
+          document.getElementById(hostId + '-desc').textContent = placeholder;
+          host.innerHTML = items.map(it => `
+            <div class="jm-pill" data-val="${esc(it.value)}" title="${esc(it.desc)}">${esc(it.label.toUpperCase())}</div>`).join('');
+          host.querySelectorAll('.jm-pill').forEach(p => {
             p.addEventListener('click', () => {
               host.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
               document.getElementById(hostId + '-desc').textContent =
@@ -2156,6 +2157,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
         // Packages multi-select: clicking toggles; the fitment-gated
         // two render locked (and drop) when the picks don't fit.
+        const avPkgLine = () => {
+          document.getElementById('av-packages-desc').textContent = avPackages.size
+            ? `${avPackages.size} selected — +${(avPackages.size * 0.5).toFixed(1)} XP`
+            : 'Optional — pick any.';
+        };
         function avRenderPackages() {
           const host = document.getElementById('av-packages');
           host.innerHTML = VEHICLE_PACKAGES.map(pk => {
@@ -2165,15 +2171,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
             return `<div class="jm-pill${locked ? ' locked' : ''}${avPackages.has(pk.value) ? ' sel' : ''}"
               data-val="${esc(pk.value)}" title="${esc(pk.desc)}">${esc(pk.label.toUpperCase())}</div>`;
           }).join('');
-          document.getElementById('av-packages-desc').textContent =
-            avPackages.size ? `${avPackages.size} selected — +${(avPackages.size * 0.5).toFixed(1)} XP` : 'Optional — pick any.';
+          avPkgLine();
           host.querySelectorAll('.jm-pill:not(.locked)').forEach(p => {
             p.addEventListener('click', () => {
               const v = p.dataset.val;
               avPackages.has(v) ? avPackages.delete(v) : avPackages.add(v);
               p.classList.toggle('sel', avPackages.has(v));
-              document.getElementById('av-packages-desc').textContent =
-                avPackages.size ? `${avPackages.size} selected — +${(avPackages.size * 0.5).toFixed(1)} XP` : 'Optional — pick any.';
+              avPkgLine();
               avRefresh();
             });
           });
@@ -2199,14 +2203,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
           avType = null; avClass = null; avEngine = null; avQuality = null;
           avPackages.clear();
           document.getElementById('av-name').value = '';
-          avPills('av-types', VEHICLE_TYPES, v => { avType = v; avRenderPackages(); });
-          avPills('av-classes', VEHICLE_CLASSES, v => { avClass = v; avRenderPackages(); });
-          avPills('av-engines', VEHICLE_ENGINES, v => { avEngine = v; });
-          avPills('av-quality', VEHICLE_QUALITY, v => { avQuality = v; });
+          avPills('av-types', VEHICLE_TYPES, v => { avType = v; avRenderPackages(); }, 'Pick a vehicle type.');
+          avPills('av-classes', VEHICLE_CLASSES, v => { avClass = v; avRenderPackages(); }, 'Pick a market class.');
+          avPills('av-engines', VEHICLE_ENGINES, v => { avEngine = v; }, 'Pick an engine.');
+          avPills('av-quality', VEHICLE_QUALITY, v => { avQuality = v; }, 'Pick a build quality.');
           avRenderPackages();
-          ['av-types-desc', 'av-classes-desc', 'av-engines-desc', 'av-quality-desc'].forEach((id, i) =>
-            document.getElementById(id).textContent =
-              ['Pick a vehicle type.', 'Pick a market class.', 'Pick an engine.', 'Pick a build quality.'][i]);
           avRefresh();
           document.getElementById('av-overlay').classList.add('open');
         });
