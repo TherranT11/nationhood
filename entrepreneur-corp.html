@@ -7233,7 +7233,7 @@ function initials(s, n) {
       if (!nationId) return [];
       if (citiesByNation.has(nationId)) return citiesByNation.get(nationId);
       const { data, error } = await _supabase.from('cities')
-        .select('id, city_name, jobs, tax_package_discount_charges')
+        .select('id, city_name, unemployment, tax_package_discount_charges')
         .eq('nation_id', nationId)
         .order('city_name');
       if (error) console.warn('[entrepreneur-corp] cities fetch error:', error.message);
@@ -7306,7 +7306,7 @@ function initials(s, n) {
           cityEl.innerHTML = '<option value="">No cities in this nation</option>';
         } else {
           cityEl.innerHTML = cities.map(c => {
-            const jobs = Number(c.jobs) || 0;
+            const jobs = Number(c.unemployment) || 0;
             const jobsPct = jobs * 3;
             const taxOn   = (Number(c.tax_package_discount_charges) || 0) > 0;
             // Tax discount stacks multiplicatively with Jobs: jobs-disc
@@ -7317,7 +7317,7 @@ function initials(s, n) {
             const disc = combinedPct > 0
               ? ` · −${combinedPct}%${taxOn ? ' (incl. tax pkg)' : ''}`
               : '';
-            return `<option value="${c.id}">${escapeHtml(c.city_name || '—')} (Jobs: ${jobs}${disc})</option>`;
+            return `<option value="${c.id}">${escapeHtml(c.city_name || '—')} (Unemployment: ${jobs}${disc})</option>`;
           }).join('');
         }
         upd();
@@ -7353,7 +7353,7 @@ function initials(s, n) {
         // Mirror of the server math in request_building_construction —
         // round at each step to match the bigint cast on the server.
         const city = curCity();
-        const jobs = Number(city?.jobs) || 0;
+        const jobs = Number(city?.unemployment) || 0;
         const jobsPct = jobs * 3;
         const taxOn   = (Number(city?.tax_package_discount_charges) || 0) > 0;
         const afterJobs = Math.round(baseCost * (1 - jobs * 0.03));

@@ -1120,11 +1120,12 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
         // PROPOSE PLANT EXPANSION (20270864) — city pick, jobs-priced
         // quote (mirror of plant_expansion_cost: $25M − 3% per Job),
         // pitch to the CEO's Pressing Issues.
-        const plantExpansionCost = (jobs) => Math.round(25000000 * (1 - (Number(jobs) || 0) * 0.03));
+        // 20270881: idle labor is cheap labor — discount reads Unemployment.
+        const plantExpansionCost = (unemployment) => Math.round(25000000 * (1 - (Number(unemployment) || 0) * 0.03));
         let pxCity = null, pxInFlight = false;
         function pxRefresh() {
           document.getElementById('px-cost').textContent = pxCity
-            ? `Quote ${hfFmtBig(plantExpansionCost(pxCity.jobs))} \u00b7 ${pxCity.city_name} runs ${pxCity.jobs} Jobs`
+            ? `Quote ${hfFmtBig(plantExpansionCost(pxCity.unemployment))} \u00b7 ${pxCity.city_name} runs ${pxCity.unemployment} Unemployment`
             : '\u2014';
           document.getElementById('px-pitch').disabled = pxInFlight || !pxCity;
         }
@@ -1136,7 +1137,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
           document.getElementById('px-overlay').classList.add('open');
           try {
             const { data: cities, error } = await _supabase.from('cities')
-              .select('id, city_name, jobs, nation:nations!nation_id(name)')
+              .select('id, city_name, unemployment, nation:nations!nation_id(name)')
               .order('city_name');
             if (error) throw error;
             if (!cities?.length) {
@@ -1144,7 +1145,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
               return;
             }
             host.innerHTML = cities.map(c =>
-              `<div class="pd-pill" data-val="${esc(c.id)}">${esc(c.city_name.toUpperCase())} \u00b7 ${esc(c.nation?.name || '\u2014')} \u00b7 ${esc(String(c.jobs ?? '?'))} JOBS</div>`).join('');
+              `<div class="pd-pill" data-val="${esc(c.id)}">${esc(c.city_name.toUpperCase())} \u00b7 ${esc(c.nation?.name || '\u2014')} \u00b7 ${esc(String(c.unemployment ?? '?'))} UNEMPLOYMENT</div>`).join('');
             host.querySelectorAll('.pd-pill').forEach(pill => {
               pill.addEventListener('click', () => {
                 host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === pill));

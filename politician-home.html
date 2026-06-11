@@ -1713,7 +1713,7 @@ async function init() {
     //           CCM by office can't hold the CCP seat).
     const cityFetch = politician.politician_office === 'mayor'
       ? _supabase.from('cities')
-          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, mayor_term_end_tick, tax_package_discount_charges')
+          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, unemployment, services, affordability, mayor_term_end_tick, tax_package_discount_charges')
           .eq('nation_id', politician.nation_id)
           .eq('mayor_first_name', politician.leader_first_name)
           .eq('mayor_last_name',  politician.leader_last_name)
@@ -1721,7 +1721,7 @@ async function init() {
           .maybeSingle()
       : politician.politician_office === 'city_council_president'
         ? _supabase.from('cities')
-            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council, tax_package_discount_charges')
+            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, unemployment, services, affordability, council, tax_package_discount_charges')
             .eq('nation_id', politician.nation_id)
             .filter('council->0->>holder_faction_id', 'eq', politician.id)
             .maybeSingle()
@@ -1732,7 +1732,7 @@ async function init() {
           // .or() across the three member seat indices — same
           // shape as the CCP filter (which targets index 0).
           ? _supabase.from('cities')
-              .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council, tax_package_discount_charges')
+              .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, unemployment, services, affordability, council, tax_package_discount_charges')
               .eq('nation_id', politician.nation_id)
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
@@ -3183,7 +3183,7 @@ async function enactTaxPackage(ctx, tier, btn) {
         on_cooldown:          'You’ve already used your action this tick.',
         package_active:       'A tax package is still active here. Wait until its charges are spent.',
         insufficient_growth:  'City Growth is too low to enact this tier.',
-        insufficient_jobs:    'City Jobs is too low to enact this tier.',
+        unemployment_too_high: 'Unemployment would climb past the ceiling — the city can\u2019t absorb this tier.',
       };
       alert(REASON[data?.reason] || ('Could not enact: ' + (data?.reason || 'unknown')));
       btn.disabled = false;
