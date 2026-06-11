@@ -537,6 +537,7 @@
         <button type="button" class="jm-btn secondary" id="vp-buy" style="flex:0 0 auto;">BUY</button>
       </div>
       <div class="db-static dim-line" id="vp-buy-note"></div>
+      <div class="db-static dim-line" id="vp-buffs"></div>
       <div class="jm-lab">TOTAL COST</div>
       <div class="db-static" id="vp-total">—</div>
       <div class="jm-lab">COST PER VEHICLE</div>
@@ -651,7 +652,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -2502,6 +2503,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
           document.getElementById('vp-qty').value = '1';
           document.getElementById('vp-buy-qty').value = '';
           document.getElementById('vp-buy-note').textContent = '';
+          // The Production Engineer's queued charges — applied (and
+          // consumed, one of each) when the next run starts.
+          const buffs = [
+            (Number(corp.prod_buff_output) || 0) && '+10% output',
+            (Number(corp.prod_buff_cost) || 0) && '−10% cost',
+            (Number(corp.prod_buff_aluminum) || 0) && '−10% Aluminum',
+          ].filter(Boolean);
+          document.getElementById('vp-buffs').textContent = buffs.length
+            ? `Engineer charges queued for the next run: ${buffs.join(' · ')}.`
+            : '';
           const linesHost = document.getElementById('vp-lines');
           const modelsHost = document.getElementById('vp-models');
           linesHost.innerHTML = '<div class="rl-empty">Checking the floor…</div>';

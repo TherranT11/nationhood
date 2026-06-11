@@ -86,6 +86,10 @@
   .cr-actions { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; padding:10px 18px 16px; }
   .cr-act { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px;
     padding:11px 13px; opacity:0.45; cursor:not-allowed; }
+  .cr-act.live { opacity:1; cursor:pointer; border-color:rgba(138,170,106,0.35); }
+  .cr-act.live:hover { border-color:#8aaa6a; background:#10140e; }
+  .cr-act.spent { opacity:0.45; cursor:not-allowed; }
+  .cr-note { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; padding:0 18px 14px; }
   .cr-act .nm { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.12em; color:#ddd;
     font-weight:700; }
   .cr-act .ds { font-size:10.5px; color:#888; margin-top:5px; line-height:1.5; }
@@ -368,7 +372,23 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
             <div class="cr-title">${esc(f.biz_job_title)} for ${esc(employerName || '—')}</div>
             <div class="cr-desc">${esc(desc)}</div>
           </div>
-          ${!isOps ? '' : `
+          ${f.biz_job_title === 'Production Engineer' ? `
+          <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
+          <div class="cr-actions">
+            <div class="cr-act live" data-pe="optimize_line">
+              <div class="nm">OPTIMIZE THE LINE</div>
+              <div class="ds">Prime the next Production Run for +10% output — the bonus vehicles roll off at completion, free of ticks, dollars, and Aluminum.</div>
+            </div>
+            <div class="cr-act live" data-pe="lean_procurement">
+              <div class="nm">LEAN PROCUREMENT</div>
+              <div class="ds">Trim the next Production Run&rsquo;s cost by 10% with sharper part sourcing and tighter line scheduling.</div>
+            </div>
+            <div class="cr-act live" data-pe="tune_tooling">
+              <div class="nm">TUNE THE TOOLING</div>
+              <div class="ds">Cut the next Production Run&rsquo;s Aluminum draw by 10% (rounded to the half-unit) — scrap less, build the same.</div>
+            </div>
+          </div>
+          <div class="cr-note" id="pe-note"></div>` : !isOps ? '' : `
           <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
           <div class="cr-actions">
             <div class="cr-act" title="Coming soon">
@@ -385,6 +405,48 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
             </div>
           </div>`}
         </div>`;
+
+      // The Production Engineer's kit (20270845): one action per
+      // tick, max one pending charge of each type per assembly line
+      // — the server enforces both; this just reflects the spend.
+      if (f.biz_job_title === 'Production Engineer') {
+        const currentTick = Number(ctx.shard?.current_tick) || 0;
+        const peNote = document.getElementById('pe-note');
+        const peSetSpent = () => {
+          document.querySelectorAll('[data-pe]').forEach(a => {
+            a.classList.remove('live'); a.classList.add('spent');
+            a.title = 'Action spent — back next tick.';
+          });
+          peNote.textContent = 'Action spent — the line is primed. Back on the floor next tick.';
+        };
+        if (f.biz_action_tick != null && Number(f.biz_action_tick) >= currentTick) {
+          peSetSpent();
+        }
+        document.querySelectorAll('.cr-act.live[data-pe]').forEach(a => {
+          a.addEventListener('click', async () => {
+            if (!a.classList.contains('live')) return;
+            try {
+              const { data, error: peErr } = await _supabase.rpc('production_engineer_action',
+                { p_action: a.dataset.pe });
+              if (peErr) throw peErr;
+              if (!data?.success) {
+                const REASON = {
+                  no_actions_remaining: 'You already acted this tick.',
+                  line_already_tuned: `Every line already carries that charge (${data?.pending ?? '?'}/${data?.cap ?? '?'}).`,
+                  not_production_engineer: 'This kit belongs to the rung-1 Production Engineer.',
+                  not_employed: 'You are not on a payroll.',
+                  arrested: 'You are under arrest.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              peSetSpent();
+              peNote.textContent = `Charge queued (${data.pending}/${data.cap}) — it rides the next Production Run. Back next tick.`;
+            } catch (e) {
+              alert('Could not act: ' + (e?.message || e));
+            }
+          });
+        });
+      }
     } else if (ownedCorps.length) {
       document.getElementById('biz-current-role').innerHTML = ownedCorps.map(c => `
         <div class="cr-card" style="margin-bottom:10px;">
