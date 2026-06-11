@@ -169,10 +169,11 @@
     margin-top:6px; min-height:12px; }
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
-  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay { position:fixed; inset:0;
-    background:rgba(0,0,0,0.78); display:none; align-items:center; justify-content:center;
-    padding:20px; z-index:1000; }
-  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open { display:flex; }
+  #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay { position:fixed;
+    inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
+    justify-content:center; padding:20px; z-index:1000; }
+  #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
+  #lo-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -388,6 +389,23 @@
   </div>
 </div>
 
+<div id="lo-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Logistical <em>Overhaul</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Process project completion history and capital to
+        permanently upgrade your global Assets, raising the baseline efficiency and stat
+        ceilings of your firm.</div>
+      <div class="jm-lab">SELECT AN ASSET</div>
+      <div id="lo-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="lo-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="lo-confirm" disabled title="Pick an upgradeable asset">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
 <div id="jm-overlay">
   <div class="jm-modal">
     <div class="jm-head"><div class="jm-title">Post a <em>Job Opening</em></div></div>
@@ -451,7 +469,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -466,7 +484,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, materials_stock, equipment_stock, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_stock, equipment_stock, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -595,11 +613,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // mechanics land (tier state moves to columns then).
     let depts = DEPARTMENTS[corp.industry];
     if (depts) {
-      // HEAVY EQUIPMENT renders the corp's actual yard tier
-      // (supply_tier → YARD_TIERS); the other slots stay on their
-      // entry-tier display copy until they grow columns too.
+      // HEAVY EQUIPMENT and PROJECT MANAGEMENT render the corp's
+      // actual tiers (supply_tier / pm_tier); the other slots stay on
+      // their entry-tier display copy until they grow columns too.
       const yard = YARD_TIERS[Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1)];
-      depts = depts.map(d => d?.dept === 'HEAVY EQUIPMENT' ? { ...d, ...yard } : d);
+      const pmt  = PM_TIERS[Math.min(Number(corp.pm_tier) || 0, PM_TIERS.length - 1)];
+      depts = depts.map(d =>
+        d?.dept === 'HEAVY EQUIPMENT'     ? { ...d, ...yard } :
+        d?.dept === 'PROJECT MANAGEMENT'  ? { ...d, ...pmt }  : d);
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
           ? `<div class="dp-card">
@@ -1170,16 +1191,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
       });
     }
 
-    // Executive Actions — owner-only surface. Draft Blueprint is the
-    // first live slot; the other four are coming soon. The allowance
-    // pill derives from exec_action_tick (20270800): one action per
-    // tick, stamped by every executive action RPC.
+    // Executive Actions — owner-only surface. The five live cards are
+    // CONSTRUCTION's playbook (every backing RPC gates on the
+    // industry); other industries show five coming-soon slots until
+    // their own actions are designed. The allowance pill derives from
+    // exec_action_tick (20270800): one action per tick.
     if (isOwner) {
+      const eaConstruction = corp.industry === 'construction';
       const actionsLeft = currentTick > (corp.exec_action_tick ?? -1) ? 1 : 0;
-      document.getElementById('bc-ops').innerHTML = `
-        <div class="ea-panel">
-          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
-          <div class="ea-grid">
+      const eaCards = eaConstruction ? `
             <div class="ea-card live" id="ea-draft-blueprint">
               <div class="ic">📐</div>
               <div class="nm">DRAFT BLUEPRINT</div>
@@ -1200,13 +1220,28 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">PROCUREMENT RUN</div>
               <div class="soon">Buy materials &amp; equipment</div>
             </div>
+            <div class="ea-card live" id="ea-logistical-overhaul">
+              <div class="ic">🏭</div>
+              <div class="nm">LOGISTICAL OVERHAUL</div>
+              <div class="soon">Permanently upgrade an asset</div>
+            </div>`
+        : Array.from({ length: 5 }, () => `
             <div class="ea-card" title="Coming soon">
               <div class="ic">—</div>
               <div class="nm">ACTION</div>
               <div class="soon">(Coming Soon)</div>
-            </div>
+            </div>`).join('');
+      document.getElementById('bc-ops').innerHTML = `
+        <div class="ea-panel">
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
+          <div class="ea-grid">${eaCards}
           </div>
         </div>`;
+
+      // Everything below wires the construction actions and their
+      // modals — other industries have nothing to wire. (Block kept
+      // at its original indentation to keep the diff reviewable.)
+      if (eaConstruction) {
 
       // ── Draft Blueprint modal ────────────────────────────────────
       // Residential is the only chartered category; materials /
@@ -1369,6 +1404,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
                   const REASON = {
                     invalid_price: 'Name a price above $0.',
                     no_actions_remaining: 'No executive actions remaining this tick.',
+                    international_locked: 'International bids need a Level III Regional PMO Division.',
                     blueprint_type_mismatch: 'That blueprint doesn’t match the requested building type.',
                     already_bid: 'You already have a bid on this project.',
                     request_not_open: 'This project is no longer taking bids.',
@@ -1461,6 +1497,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           if (!data?.success) {
             const REASON = {
               no_actions_remaining: 'No executive actions remaining this tick.',
+              project_cap_reached: 'You’re at your Max Active Projects — upgrade Project Management.',
               blueprint_not_found: 'That blueprint isn’t this corporation’s.',
               pm_not_found: 'That Project Manager no longer works here.',
               category_not_chartered: 'Only Residential projects can start right now.',
@@ -1619,6 +1656,75 @@ import { CITY_STATS } from './js/game/city-labels.js';
       document.getElementById('ea-procurement-run').addEventListener('click', openProcurementModal);
       wireModalClose('pr-overlay', 'pr-cancel');
 
+      // ── Logistical Overhaul (Executive Action #5 / 20270818) ────
+      // Five assets; only the yard (HEAVY EQUIPMENT) has chartered
+      // higher tiers today. Prices come from YARD_TIERS' upgradeCost
+      // mirror of yard_upgrade_cost — the server recharges from its
+      // own ladder, so a stale display can't change the price.
+      let loAsset = null;
+      function openOverhaulModal() {
+        loAsset = null;
+        document.getElementById('lo-confirm').disabled = true;
+        const tier = Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1);
+        const next = YARD_TIERS[tier + 1] || null;
+        const pmTier = Math.min(Number(corp.pm_tier) || 0, PM_TIERS.length - 1);
+        const pmNext = PM_TIERS[pmTier + 1] || null;
+        const ASSETS = [
+          ['project_management',   'PROJECT MANAGEMENT',   PM_TIERS[pmTier].tier, pmNext],
+          ['heavy_equipment',      'HEAVY EQUIPMENT',      YARD_TIERS[tier].tier, next],
+          ['supply_material',      'SUPPLY & MATERIAL',    'Retail Hardware Store', null],
+          ['system_design',        'SYSTEM DESIGN',        'CAD System & Laptop', null],
+          ['regulatory_compliance','REGULATORY COMPLIANCE','City Permits', null],
+        ];
+        const host = document.getElementById('lo-rows');
+        host.innerHTML = ASSETS.map(([key, label, cur, nxt]) => `
+          <div class="jm-rung${nxt ? '' : ' locked'}" data-asset="${esc(key)}"
+            ${nxt ? '' : 'title="No higher tiers chartered yet"'}>
+            <div class="top">
+              <div class="nm">${esc(label)}</div>
+              ${nxt ? `<div class="staff">${esc(hfFmtBig(nxt.upgradeCost))}</div>` : ''}
+            </div>
+            <div class="ds">${esc(cur)}${nxt ? ` → ${esc(nxt.tier)}` : ' — no higher tiers yet'}</div>
+            ${nxt ? `<div class="resp"><span class="k">UNLOCKS:</span> ${esc(nxt.effect)}${nxt.requirement ? ` · <span class="k">REQUIRES:</span> ${esc(nxt.requirement)}` : ''}</div>` : ''}
+          </div>`).join('');
+        host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
+          row.addEventListener('click', () => {
+            loAsset = row.dataset.asset;
+            host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
+            document.getElementById('lo-confirm').disabled = false;
+          });
+        });
+        document.getElementById('lo-overlay').classList.add('open');
+      }
+      document.getElementById('ea-logistical-overhaul').addEventListener('click', openOverhaulModal);
+      wireModalClose('lo-overlay', 'lo-cancel');
+      document.getElementById('lo-confirm').addEventListener('click', async () => {
+        const btn = document.getElementById('lo-confirm');
+        if (!loAsset || btn.disabled) return;
+        btn.disabled = true;
+        try {
+          const { data, error: loErr } = await _supabase.rpc('logistical_overhaul',
+            { p_corp_id: corp.id, p_asset: loAsset });
+          if (loErr) throw loErr;
+          if (!data?.success) {
+            const REASON = {
+              no_actions_remaining: 'No executive actions remaining this tick.',
+              no_higher_tiers: 'That asset has no higher tiers chartered yet.',
+              requires_building: 'You don’t own the commercial building this level requires.',
+              max_tier: 'That asset is already at its maximum level.',
+              insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+              not_owner: 'Only the owner can overhaul assets.',
+              arrested: 'You are under arrest — your assets are frozen.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          window.location.reload();
+        } catch (e) {
+          alert('Could not upgrade: ' + (e?.message || e));
+          btn.disabled = false;
+        }
+      });
+
       // ── Advance Build (20270813) ────────────────────────────────
       // No inputs — one confirm with the live cost ($10k × active
       // sites), then the RPC pushes every building project 1 tick
@@ -1686,6 +1792,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
           dbRefreshConfirm();
         }
       });
+
+      } // end if (eaConstruction)
     }
 
     document.getElementById('loading').style.display = 'none';

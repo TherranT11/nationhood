@@ -15,20 +15,61 @@ export const PILLARS = {
   ],
 };
 
-// The yard ladder — supply_tier (20270816/17) rendered as the HEAVY
-// EQUIPMENT department's tier. Caps/sourcing are enforced
-// server-side (yard_storage_caps + buy_construction_goods); this is
-// the display copy.
+// The yard ladder — supply_tier (20270816/17), upgraded a level at a
+// time by Logistical Overhaul (20270818). Rendered as the HEAVY
+// EQUIPMENT department's tier. Caps / sourcing / discount are
+// enforced server-side (yard_storage_caps + buy_construction_goods);
+// upgradeCost mirrors yard_upgrade_cost for the modal's price tags.
 export const YARD_TIERS = [
-  { tier: 'Level 0: Commercial Rental Yard',
+  { tier: 'Level 0: Commercial Rental Yard', upgradeCost: null,
     desc: 'Your physical yard is completely empty. You own zero iron. Every time you secure a contract, you must lease skid-steers or excavators at a high per-turn premium.',
     effect: 'Buy materials only to fulfill an active project, from your nation. No storage.' },
-  { tier: 'Level I: Local Maintenance Yard',
+  { tier: 'Level I: Local Maintenance Yard', upgradeCost: 7000000,
     desc: 'A small gravel yard with a chain-link fence. You own a single used flatbed truck and a handful of commercial power tools, keeping basic maintenance in-house.',
     effect: 'Store up to 10 Construction Materials · home-nation purchases only.' },
-  { tier: 'Level II: District Equipment Depot',
+  { tier: 'Level II: District Equipment Depot', upgradeCost: 10000000,
     desc: 'A paved garage facility housing a modest inventory of company-owned light machinery (backhoes, small dump trucks, mini-excavators).',
     effect: 'Store 10 Materials (buy from any nation) · 5 Equipment (home nation only).' },
+  { tier: 'Level III: Regional Machinery Hub', upgradeCost: 16000000,
+    desc: 'A major regional depot featuring heavy capital iron (tower cranes, large bulldozers, concrete transit mixers) owned outright by the firm.',
+    effect: 'Store 10 Materials + 10 Equipment · both purchasable from any nation.' },
+  { tier: 'Level IV: National Fleet Logistics Depot', upgradeCost: 25000000,
+    desc: 'Sprawling industrial storage hubs housing specialized tunneling shields, heavy earthmovers, and automated grading machinery fleets.',
+    effect: 'Store 10 Materials + 10 Equipment, any nation · list units for sale to other construction corps.' },
+  { tier: 'Level V: Automated Global Asset Fleet', upgradeCost: 40000000,
+    desc: 'A massive network of global machinery depots featuring proprietary, automated heavy equipment and AI-driven logistical tracking systems.',
+    effect: 'Store 20 Materials + 20 Equipment, any nation · corp-to-corp sales · −10% on all purchases.' },
+];
+
+// The PROJECT MANAGEMENT ladder — pm_tier (20270820), upgraded by
+// Logistical Overhaul on the same price ladder as the yard. Caps and
+// the international gate are enforced server-side
+// (pm_max_active_projects + the start/bid/award RPCs); building
+// requirements check completed commercial self-builds.
+export const PM_TIERS = [
+  { tier: 'Level 0: The Truck & Clipboard', upgradeCost: null, requirement: null,
+    desc: 'You handle all local permitting, contract estimates, and safety compliance yourself out of the cab of your truck. Administrative bottlenecks limit you to chasing one tiny contract at a time.',
+    effect: 'Max Number of Active Projects: 1' },
+  { tier: 'Level I: Rented Office Suite', upgradeCost: 7000000,
+    requirement: 'Own a Commercial I grade building',
+    desc: 'A small commercial office space with a hired part-time secretary and a digital bidding software license to track regional projects.',
+    effect: 'Max Number of Active Projects: 2' },
+  { tier: 'Level II: Municipal Contracting Office', upgradeCost: 10000000,
+    requirement: 'Own a Commercial II grade building',
+    desc: 'A dedicated local office with full-time cost estimators and a dedicated compliance officer to handle city and county zoning laws.',
+    effect: 'Max Number of Active Projects: 3' },
+  { tier: 'Level III: Regional PMO Division', upgradeCost: 16000000,
+    requirement: 'Own a Commercial III grade building',
+    desc: 'A comprehensive project management office managing regional contract compliance, regulatory legal teams, and multi-site coordination.',
+    effect: 'Max Number of Active Projects: 4 · can bid on international projects' },
+  { tier: 'Level IV: National Compliance & Legal Bureau', upgradeCost: 25000000,
+    requirement: 'Own a Commercial I grade building in at least 2 nations',
+    desc: 'A corporate department capable of navigating complex national environmental impacts, sovereign regulations, and massive corporate bids.',
+    effect: 'Max Number of Active Projects: 5' },
+  { tier: 'Level V: Global Regulatory Affairs Directorate', upgradeCost: 40000000,
+    requirement: 'Own a Commercial I grade building in at least 3 nations',
+    desc: 'An elite corporate administrative network that can handle thousands of global infrastructure bids and easily clear geopolitical regulatory hurdles simultaneously.',
+    effect: 'Max Number of Active Projects: Unlimited' },
 ];
 
 // Display mirror of the per-type material requirements stamped onto
@@ -74,9 +115,7 @@ export const CONSTRUCTION_STAGES = [
 
 export const DEPARTMENTS = {
   construction: [
-    { dept: 'PROJECT MANAGEMENT', tier: 'The Truck & Clipboard',
-      desc: 'You handle all local permitting, contract estimates, and safety compliance yourself out of the cab of your truck. Administrative bottlenecks limit you to chasing one tiny contract at a time.',
-      effect: 'Number of Active Projects: 1' },
+    { dept: 'PROJECT MANAGEMENT', ...PM_TIERS[0] },
     { dept: 'HEAVY EQUIPMENT', ...YARD_TIERS[0] },
     { dept: 'SUPPLY & MATERIAL', tier: 'Retail Hardware Store',
       desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
