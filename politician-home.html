@@ -1365,7 +1365,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
@@ -3707,10 +3707,6 @@ async function renderConsulAffiliation(ctx, host) {
     ?.addEventListener('click', () => openDcmPostModal(ctx));
 }
 
-// 20270866 — the seven regions (nations.continent values). One
-// client source; politician_take_dcm_post validates the same list.
-const DCM_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
-
 // The region picker — vacant regions only (one DCM per home nation
 // per region). Reuses the consulate picker's chrome wholesale.
 async function openDcmPostModal(ctx) {
@@ -3730,7 +3726,7 @@ async function openDcmPostModal(ctx) {
       .is('abandoned_at', null);
     if (error) throw error;
     const occupied = new Set((taken || []).map(t => t.politician_dcm_region));
-    const regions = DCM_REGIONS.filter(r => !occupied.has(r));
+    const regions = FS_REGIONS.filter(r => !occupied.has(r));
     if (!regions.length) {
       rows.innerHTML = '<div class="cp-empty">Every region is staffed \u2014 wait for a vacancy.</div>';
       return;

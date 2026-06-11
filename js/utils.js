@@ -523,6 +523,11 @@ export function judicialTitle(politician, nationId) {
     return 'Advocate';
 }
 
+// The seven Foreign Service regions — the game's continents
+// (nations.continent values). Display mirror of the server CHECK in
+// politician_take_dcm_post (20270866); the server list is authoritative.
+export const FS_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
+
 // ===== GAME DATE =====
 
 export const MONTHS = [

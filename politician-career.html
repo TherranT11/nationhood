@@ -902,7 +902,7 @@
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -1650,14 +1650,14 @@ const JUDICIARY_RUNGS = [
   },
 ];
 
-// Foreign Service rungs — the diplomatic arc. Tier 1 is the entry
-// (right-side [Join the Service]; greyed-out today, will wire when
-// the recruiting flow lands). Apex Tier 6 carries the signature
-// action 'Mediate a Press Claim' — flagged with signature:true so
-// renderRungs paints the chip in steel-blue to mark it as the
-// ladder's distinguishing power. Same held-always-false posture as
-// every other rung above Tier 0 today; office-tracking schema lights
-// the climb when it lands.
+// Foreign Service rungs — the diplomatic arc, live end to end
+// through Tier 4 (20270759/65/66/69): exam → Attaché → Consul (12
+// Experience) → DCM (20) → Ambassador (30, the legislature votes).
+// held() reads the real posting columns; the right-side buttons run
+// the same RPCs the home-page cards use. Tiers 5-6 remain authored
+// placeholders — Apex carries the signature 'Mediate a Press Claim'
+// chip (signature:true paints it steel-blue) for when that arc
+// lands.
 const FOREIGN_SERVICE_RUNGS = [
   {
     name: 'Foreign Service Officer / Attaché',
@@ -4125,8 +4125,6 @@ function ensureFsPromotionPicker() {
   host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
 }
 
-const FSP_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
-
 async function openFsPromotionPicker(mode) {
   ensureFsPromotionPicker();
   const ctx = window.__careerCtx || {};
@@ -4166,7 +4164,7 @@ async function openFsPromotionPicker(mode) {
         .is('abandoned_at', null);
       if (error) throw error;
       const occupied = new Set((taken || []).map(t => t.politician_dcm_region));
-      options = FSP_REGIONS.filter(r => !occupied.has(r)).map(r => ({ value: r, name: r }));
+      options = FS_REGIONS.filter(r => !occupied.has(r)).map(r => ({ value: r, name: r }));
     }
     if (!options.length) {
       rows.innerHTML = `<div class="fsp-empty">Every ${mode === 'consul' ? 'consulate' : 'region'} is staffed \u2014 wait for a vacancy.</div>`;
