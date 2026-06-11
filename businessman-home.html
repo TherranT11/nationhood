@@ -92,10 +92,10 @@
   .cr-note { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; padding:0 18px 14px; }
 
   /* Design Proposal modal (Product Engineer, 20270847) */
-  #pd-overlay, #cc-overlay, #ds-overlay, #fc-overlay, #sv-overlay { position:fixed; inset:0;
+  #pd-overlay, #cc-overlay, #ds-overlay, #fc-overlay, #sv-overlay, #ml-overlay { position:fixed; inset:0;
     background:rgba(0,0,0,0.78); display:none;
     align-items:center; justify-content:center; padding:20px; z-index:1000; }
-  #pd-overlay.open, #cc-overlay.open, #ds-overlay.open, #fc-overlay.open, #sv-overlay.open { display:flex; }
+  #pd-overlay.open, #cc-overlay.open, #ds-overlay.open, #fc-overlay.open, #sv-overlay.open, #ml-overlay.open { display:flex; }
   .pd-modal { width:100%; max-width:620px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -226,6 +226,24 @@
   </div>
 </div>
 
+<div id="ml-overlay">
+  <div class="pd-modal">
+    <div class="pd-head">Run the <em>Line</em></div>
+    <div class="pd-body">
+      <div class="pd-lab">MODEL</div>
+      <div class="pd-pills" id="ml-models"></div>
+      <div class="pd-lab">AMOUNT TO BUILD</div>
+      <input type="number" class="pd-input" id="ml-qty" min="1" max="200" step="1" value="1">
+      <div class="pd-static" id="ml-cost" style="margin-top:8px;">&mdash;</div>
+      <div class="pd-static" style="margin-top:6px;color:#888;font-size:10px;">50 vehicles per tick &mdash; the line is assigned one tick per 50 ordered. Treasury pays; the depot supplies the Aluminum and Components up front. Pending charges (yours and the engineers&rsquo;) ride this run.</div>
+    </div>
+    <div class="pd-foot">
+      <button type="button" class="pd-btn secondary" id="ml-cancel">CANCEL</button>
+      <button type="button" class="pd-btn" id="ml-run" disabled>START RUN</button>
+    </div>
+  </div>
+</div>
+
 <div id="ds-overlay">
   <div class="pd-modal">
     <div class="pd-head">Expand <em>Market</em></div>
@@ -288,7 +306,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, tickToDate } from './js/utils.js';
-import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
+import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, vehicleBlueprintXpCost, aluminumPerVehicle, componentsPerVehicle } from './js/game/corp-blueprints.js';
 
 // market_entry_cost mirror (20270853): $10M flat to expand, $7M ×
 // the target nation's Standard of Living ÷ 50 for a subsidiary —
@@ -347,7 +365,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
           .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
           ? _supabase.from('entrepreneur_corps')
-              .select('name, experience, hq_nation_id').eq('id', f.biz_employer_corp_id).maybeSingle()
+              .select('name, experience, hq_nation_id, aluminum_stock, components_stock').eq('id', f.biz_employer_corp_id).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (ownErr) throw ownErr;
@@ -661,6 +679,15 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
               ds: 'Feed real test data into the R&amp;D pipeline — +1 Experience now, up to the Design Studio&rsquo;s ceiling.' },
           ],
         },
+        'Chief Manufacturing Officer (CMO)': {
+          rpc: 'cmo_action', rides: 'it rides the next Production Run',
+          actions: [
+            { key: 'run_line', nm: 'RUN THE LINE', modal: 'runline',
+              ds: 'Start a full Production Run on your own authority — line, Model, amount — without touching the owner&rsquo;s executive action.' },
+            { key: 'second_shift', nm: 'SECOND SHIFT',
+              ds: 'Put the plant on overtime — the next Production Run builds +25% more vehicles for +25% cost, stacking with the engineers&rsquo; tuning.' },
+          ],
+        },
         'Chief Commercial Officer (CCO)': {
           rpc: null, // every action is a modal — the generic rpc path never fires
           actions: [
@@ -745,7 +772,8 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
             const modal = KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal;
             if (modal) {
               ({ design: openDesignProposal, campaign: openCcoCampaign,
-                 expand: openCcoExpand, fleet: openCcoFleet, ship: openCcoShip })[modal]?.();
+                 expand: openCcoExpand, fleet: openCcoFleet, ship: openCcoShip,
+                 runline: openCmoRunLine })[modal]?.();
               return;
             }
             kitInFlight = true;
@@ -763,6 +791,8 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
                   not_product_engineer: 'This kit belongs to the rung-1 Product Engineer.',
                   bench_already_charged: 'The bench is already charged — it rides the next Model created.',
                   experience_at_cap: 'The Studio is at its Experience ceiling — spend some or upgrade it.',
+                  not_cmo: 'This desk belongs to the Chief Manufacturing Officer.',
+                  shift_already_scheduled: 'The plant is already on overtime — it rides the next run.',
                   not_employed: 'You are not on a payroll.',
                   arrested: 'You are under arrest.',
                 };
@@ -884,6 +914,90 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
           } finally {
             pdInFlight = false;
             pdRefresh();
+          }
+        });
+
+        // ── the CMO's desk (20270863) ──────────────────────────────
+        // RUN THE LINE fires the shared _start_production_run core on
+        // the chief's own allowance; SECOND SHIFT rides the generic
+        // kit path (cmo_action). Costs mirror the owner's modal: unit
+        // = max(1, XP) × $5k, Aluminum and Components by catalog.
+        const CMO_REASON = {
+          not_cmo: 'This desk belongs to the Chief Manufacturing Officer.',
+          no_actions_remaining: 'You already acted this tick.',
+          no_line_available: 'Every assembly line is already running.',
+          invalid_quantity: 'Order between 1 and 200 vehicles.',
+          insufficient_treasury: 'The treasury can\u2019t cover the run.',
+          not_enough_aluminum: 'Not enough Aluminum in the depot.',
+          not_enough_components: 'Not enough Electrical Components in the depot.',
+          blueprint_not_found: 'That Model belongs to another corporation.',
+          industry_not_chartered: 'Not an automotive corporation.',
+        };
+        let mlModel = null, mlInFlight = false;
+        function mlRefresh() {
+          const qty = Math.floor(Number(document.getElementById('ml-qty').value) || 0);
+          const ok = !!mlModel && qty >= 1 && qty <= 200;
+          const cost = document.getElementById('ml-cost');
+          if (ok) {
+            const unit = Math.max(1, Number(mlModel.xp_cost) || 1) * 5000;
+            const alu = aluminumPerVehicle(mlModel.vehicle_type) * qty;
+            const comp = componentsPerVehicle(mlModel.engine, mlModel.packages) * qty;
+            cost.textContent = `Total ${hfFmtBig(unit * qty)} \u00b7 Aluminum ${alu} of ${Number(employer?.data?.aluminum_stock) || 0} \u00b7 Components ${comp} of ${Number(employer?.data?.components_stock) || 0} in the depot`;
+          } else {
+            cost.textContent = '\u2014';
+          }
+          document.getElementById('ml-run').disabled = mlInFlight || !ok;
+        }
+        async function openCmoRunLine() {
+          mlModel = null;
+          document.getElementById('ml-qty').value = '1';
+          const host = document.getElementById('ml-models');
+          host.innerHTML = '<div class="pd-static" style="color:#888;">Loading\u2026</div>';
+          mlRefresh();
+          document.getElementById('ml-overlay').classList.add('open');
+          try {
+            const { data: bps, error } = await _supabase.from('vehicle_blueprints')
+              .select('id, name, xp_cost, vehicle_type, engine, packages')
+              .eq('corp_id', f.biz_employer_corp_id)
+              .order('created_at', { ascending: false });
+            if (error) throw error;
+            if (!bps?.length) {
+              host.innerHTML = '<div class="pd-static" style="color:#888;">No Models drafted yet \u2014 the owner designs them first.</div>';
+              return;
+            }
+            host.innerHTML = bps.map(b =>
+              `<div class="pd-pill" data-val="${esc(b.id)}">${esc(b.name.toUpperCase())}</div>`).join('');
+            host.querySelectorAll('.pd-pill').forEach(pill => {
+              pill.addEventListener('click', () => {
+                host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === pill));
+                mlModel = bps.find(b => b.id === pill.dataset.val) || null;
+                mlRefresh();
+              });
+            });
+          } catch (e) {
+            host.innerHTML = '<div class="pd-static" style="color:#888;">Could not load the Models \u2014 try again shortly.</div>';
+            console.warn('[businessman-home] cmo models load failed:', e?.message || e);
+          }
+        }
+        ccoWireClose('ml-overlay', 'ml-cancel');
+        document.getElementById('ml-qty').addEventListener('input', mlRefresh);
+        document.getElementById('ml-run').addEventListener('click', async () => {
+          if (mlInFlight) return;
+          mlInFlight = true; mlRefresh();
+          try {
+            const { data, error } = await _supabase.rpc('cmo_start_production_run', {
+              p_blueprint_id: mlModel?.id,
+              p_quantity: Math.floor(Number(document.getElementById('ml-qty').value) || 0),
+            });
+            if (error) throw error;
+            if (!data?.success) throw new Error(CMO_REASON[data?.reason] || data?.reason || 'unknown');
+            document.getElementById('ml-overlay').classList.remove('open');
+            peSetSpent();
+            peNote.textContent = `The line spins up \u2014 ${Number(data.quantity).toLocaleString()} vehicles for ${hfFmtBig(Number(data.total_cost) || 0)}${Number(data.bonus_units) ? ` (+${data.bonus_units} bonus)` : ''}, done ${tickToDate(Number(data.completes_at_tick))}. Back next tick.`;
+          } catch (e) {
+            alert('Could not start the run: ' + (e?.message || e));
+          } finally {
+            mlInFlight = false; mlRefresh();
           }
         });
 
