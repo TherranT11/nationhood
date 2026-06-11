@@ -197,6 +197,100 @@ export const JOB_TRACKS = {
   ],
 };
 
+// The AUTOMOTIVE design catalog behind Draft Blueprint —
+// vehicle_blueprint_xp_cost (20270831) is the authoritative pricing;
+// these mirror it (base/mult/mod) and carry the pick copy.
+export const VEHICLE_TYPES = [
+  { value: 'coupe', label: 'Coupe', base: 3,
+    desc: 'Two-door, sporty, smaller market. High style; low practicality.' },
+  { value: 'sedan', label: 'Sedan', base: 3,
+    desc: 'Four-door, family/business, large market. Practical workhorse.' },
+  { value: 'pickup', label: 'Pickup', base: 4,
+    desc: 'Truck, utility/work, large in some markets. Tough, expensive, profitable.' },
+  { value: 'motorcycle', label: 'Motorcycle', base: 2,
+    desc: 'Two-wheel, commuter or sport. Cheap to build, low margin per unit but high volume potential.' },
+  { value: 'sports_car', label: 'Sports Car', base: 5,
+    desc: 'Two-door performance, premium market. Low volume, high margin.' },
+];
+
+export const VEHICLE_CLASSES = [
+  { value: 'economy', label: 'Economy', mult: 1.0,
+    desc: 'Sub-$20k equivalent, mass market, basic specs.' },
+  { value: 'mid_range', label: 'Mid-Range', mult: 1.0,
+    desc: 'Standard family/commuter cars.' },
+  { value: 'premium', label: 'Premium', mult: 1.3,
+    desc: 'Honda Accord / Toyota Camry tier.' },
+  { value: 'luxury', label: 'Luxury', mult: 1.5,
+    desc: 'BMW / Mercedes / Lexus tier.' },
+  { value: 'ultra_luxury', label: 'Ultra-Luxury', mult: 2.0,
+    desc: 'Bentley / Rolls-Royce / Maserati tier.' },
+];
+
+export const VEHICLE_ENGINES = [
+  { value: 'basic_3cyl', label: 'Basic 3-Cylinder', mod: 0,
+    desc: 'Small economy cars, cheap, efficient.' },
+  { value: 'basic_4cyl', label: 'Basic 4-Cylinder', mod: 0,
+    desc: 'Standard sedans, balanced.' },
+  { value: 'tuned_4cyl', label: 'Tuned 4-Cylinder', mod: 1,
+    desc: 'Sporty performance, turbocharged.' },
+  { value: 'v6', label: 'V6', mod: 1,
+    desc: 'Mid-range power, family SUVs and pickups.' },
+  { value: 'v8', label: 'V8', mod: 2,
+    desc: 'High power, sports cars and full-size pickups.' },
+  { value: 'v12', label: 'V12', mod: 3,
+    desc: 'Luxury and supercars only, expensive to build.' },
+  { value: 'electric_basic', label: 'Electric Motor (Basic)', mod: 1,
+    desc: 'Entry-level EV.' },
+  { value: 'electric_performance', label: 'Electric Motor (Performance)', mod: 2,
+    desc: 'High-end EV / luxury EV.' },
+  { value: 'hybrid', label: 'Hybrid Powertrain', mod: 1,
+    desc: 'Gas + electric, premium fuel efficiency.' },
+];
+
+// +0.5 XP each. off_road fits pickups only; self_driving fits
+// Premium+ classes only (both enforced server-side too).
+export const VEHICLE_PACKAGES = [
+  { value: 'leather_interior', label: 'Leather Interior Package',
+    desc: 'Premium seats, soft-touch surfaces, ambient lighting.' },
+  { value: 'premium_audio', label: 'Premium Audio Package',
+    desc: 'Branded sound system, enhanced acoustics.' },
+  { value: 'technology', label: 'Technology Package',
+    desc: 'Touchscreen, navigation, smartphone integration.' },
+  { value: 'driver_assist', label: 'Driver Assist Package',
+    desc: 'Lane-keeping, adaptive cruise, blind-spot monitoring.' },
+  { value: 'sport_performance', label: 'Sport Performance Package',
+    desc: 'Sport suspension, performance brakes, sport tuning.' },
+  { value: 'safety', label: 'Safety Package',
+    desc: 'Enhanced airbags, collision avoidance, crash structure.' },
+  { value: 'appearance', label: 'Appearance Package',
+    desc: 'Premium wheels, body kit, custom trim.' },
+  { value: 'cold_weather', label: 'Cold Weather Package',
+    desc: 'Heated seats, heated steering wheel, remote start.' },
+  { value: 'off_road', label: 'Off-Road Package', pickupOnly: true,
+    desc: 'Skid plates, locking differential, raised suspension (Pickup only).' },
+  { value: 'self_driving', label: 'Self-Driving Package', premiumOnly: true,
+    desc: 'Advanced autonomous capability (Premium+ tier only).' },
+];
+
+export const VEHICLE_QUALITY = [
+  { value: 'low', label: 'Low', mod: -1,
+    desc: 'Cheap materials, shorter lifespan, frequent issues.' },
+  { value: 'moderate', label: 'Moderate', mod: 0,
+    desc: 'Typical mass-market quality.' },
+  { value: 'standard', label: 'Standard', mod: 1,
+    desc: 'Solid, reliable build.' },
+  { value: 'exceptional', label: 'Exceptional', mod: 2,
+    desc: 'Premium materials, exceptional longevity, low warranty costs.' },
+];
+
+export function vehicleBlueprintXpCost(type, klass, engine, packageCount, quality) {
+  const base = VEHICLE_TYPES.find(t => t.value === type)?.base ?? 3;
+  const mult = VEHICLE_CLASSES.find(c => c.value === klass)?.mult ?? 1.0;
+  const eMod = VEHICLE_ENGINES.find(e => e.value === engine)?.mod ?? 0;
+  const qMod = VEHICLE_QUALITY.find(q => q.value === quality)?.mod ?? 0;
+  return Math.max(1, Math.ceil(base * mult + eMod + 0.5 * (packageCount || 0) + qMod));
+}
+
 // Display mirror of the per-type material requirements stamped onto
 // blueprints by draft_blueprint (20270814) — the server CASE is
 // authoritative; this feeds the modal's live MATERIALS NEEDED line.

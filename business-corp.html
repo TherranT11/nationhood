@@ -271,6 +271,9 @@
     line-height:1.55; }
   .db-static { font-family:var(--font-mono); font-size:12px; color:#fff; }
   .db-static .dim { color:#8aaa6a; font-size:10.5px; }
+  .db-static.dim-line { font-family:Georgia,serif; font-style:italic; font-size:11px;
+    color:#888; margin-top:4px; }
+  .db-static .bad { color:#c66; }
   .db-metric { display:flex; align-items:baseline; gap:10px; padding:7px 11px; background:#0a0a0a;
     border:1px solid rgba(255,255,255,0.08); border-radius:4px; margin-bottom:6px; }
   .db-metric .nm { font-family:var(--font-mono); font-size:9px; letter-spacing:0.12em;
@@ -480,12 +483,46 @@
   </div>
 </div>
 
+<div id="av-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Draft <em>Blueprint</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: Spend accumulated Experience to design a new vehicle
+        platform, chassis, engine block, or battery pack, allocating Design Points across your
+        core vehicle attributes.</div>
+      <div class="jm-lab">BLUEPRINT NAME</div>
+      <input type="text" class="fin-amt" id="av-name" maxlength="60" placeholder="e.g. Falcon GT" style="margin-bottom:0;">
+      <div class="jm-lab">VEHICLE TYPE</div>
+      <div class="jm-pills db-cats" id="av-types"></div>
+      <div class="db-static dim-line" id="av-types-desc">Pick a vehicle type.</div>
+      <div class="jm-lab">CLASS</div>
+      <div class="jm-pills db-cats" id="av-classes"></div>
+      <div class="db-static dim-line" id="av-classes-desc">Pick a market class.</div>
+      <div class="jm-lab">ENGINE</div>
+      <div class="jm-pills db-cats" id="av-engines"></div>
+      <div class="db-static dim-line" id="av-engines-desc">Pick an engine.</div>
+      <div class="jm-lab">PACKAGE ADD-ONS &middot; +0.5 XP EACH</div>
+      <div class="jm-pills db-cats" id="av-packages"></div>
+      <div class="db-static dim-line" id="av-packages-desc">Optional — pick any.</div>
+      <div class="jm-lab">QUALITY</div>
+      <div class="jm-pills db-cats" id="av-quality"></div>
+      <div class="db-static dim-line" id="av-quality-desc">Pick a build quality.</div>
+      <div class="jm-lab">DESIGN COST</div>
+      <div class="db-static" id="av-cost">—</div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="av-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="av-confirm" disabled>CONFIRM</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -972,12 +1009,29 @@ import { CITY_STATS } from './js/game/city-labels.js';
         });
 
         // ── Blueprints — the corp's design library ────────────────
-        document.getElementById('bc-blueprints').innerHTML = `
-          <div class="rl-panel">
-            <div class="ea-head"><span class="rule"></span><span class="t">BLUEPRINTS</span><span class="rule"></span></div>
-            ${!bps?.length
-              ? '<div class="rl-empty">No blueprints drafted yet — design one from Executive Actions.</div>'
-              : `<div class="bp-grid">
+        // Construction lists corp_blueprints; automotive lists its
+        // vehicle designs (20270831) with the class/type/engine line.
+        let bpRows = '<div class="rl-empty">No blueprints drafted yet — design one from Executive Actions.</div>';
+        if (corp.industry === 'automotive') {
+          const { data: vbps, error: vErr } = await _supabase.from('vehicle_blueprints')
+            .select('name, vehicle_type, vehicle_class, engine, quality, created_at_tick')
+            .eq('corp_id', corp.id)
+            .order('created_at', { ascending: false });
+          if (vErr) throw vErr;
+          const lbl = (list, v) => list.find(it => it.value === v)?.label || v;
+          if (vbps?.length) {
+            bpRows = `<div class="bp-grid">
+                  <div class="h">NAME</div><div class="h">VEHICLE</div><div class="h">ENGINE</div><div class="h">QUALITY</div><div class="h">DRAFTED</div>
+                  ${vbps.map(bp => `
+                    <div class="c nm">${esc(bp.name)}</div>
+                    <div class="c">${esc(lbl(VEHICLE_CLASSES, bp.vehicle_class) + ' ' + lbl(VEHICLE_TYPES, bp.vehicle_type))}</div>
+                    <div class="c">${esc(lbl(VEHICLE_ENGINES, bp.engine))}</div>
+                    <div class="c">${esc(lbl(VEHICLE_QUALITY, bp.quality))}</div>
+                    <div class="c">${esc(tickToDate(bp.created_at_tick))}</div>`).join('')}
+                </div>`;
+          }
+        } else if (bps?.length) {
+          bpRows = `<div class="bp-grid">
                   <div class="h">NAME</div><div class="h">CATEGORY</div><div class="h">TYPE OF BUILDING</div><div class="h">TYPE</div><div class="h">DRAFTED</div>
                   ${bps.map(bp => `
                     <div class="c nm">${esc(bp.name || '—')}</div>
@@ -985,7 +1039,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
                     <div class="c">${esc(BUILDING_TYPE_LABELS[bp.building_type] || bp.building_type)}</div>
                     <div class="c">${esc(QUALITY_TIER_LABELS[bp.quality_tier] || bp.quality_tier)}</div>
                     <div class="c">${esc(tickToDate(bp.created_at_tick))}</div>`).join('')}
-                </div>`}
+                </div>`;
+        }
+        document.getElementById('bc-blueprints').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">BLUEPRINTS</span><span class="rule"></span></div>
+            ${bpRows}
           </div>`;
 
         // ── Finances box (right column) ──────────────────────────
@@ -1401,13 +1460,21 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     // Executive Actions — owner-only surface. The five live cards are
-    // CONSTRUCTION's playbook (every backing RPC gates on the
-    // industry); other industries show five coming-soon slots until
-    // their own actions are designed. The allowance pill derives from
+    // CONSTRUCTION's playbook; AUTOMOTIVE has its first (Draft
+    // Blueprint, 20270831) with four still being designed; other
+    // industries show five coming-soon slots. Every backing RPC gates
+    // on the industry. The allowance pill derives from
     // exec_action_tick (20270800): one action per tick.
     if (isOwner) {
       const eaConstruction = corp.industry === 'construction';
+      const eaAutomotive = corp.industry === 'automotive';
       const actionsLeft = currentTick > (corp.exec_action_tick ?? -1) ? 1 : 0;
+      const eaComingSoon = n => Array.from({ length: n }, () => `
+            <div class="ea-card" title="Coming soon">
+              <div class="ic">—</div>
+              <div class="nm">ACTION</div>
+              <div class="soon">(Coming Soon)</div>
+            </div>`).join('');
       const eaCards = eaConstruction ? `
             <div class="ea-card live" id="ea-draft-blueprint">
               <div class="ic">📐</div>
@@ -1434,12 +1501,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">LOGISTICAL OVERHAUL</div>
               <div class="soon">Permanently upgrade an asset</div>
             </div>`
-        : Array.from({ length: 5 }, () => `
-            <div class="ea-card" title="Coming soon">
-              <div class="ic">—</div>
-              <div class="nm">ACTION</div>
-              <div class="soon">(Coming Soon)</div>
-            </div>`).join('');
+        : eaAutomotive ? `
+            <div class="ea-card live" id="ea-draft-vehicle">
+              <div class="ic">🚗</div>
+              <div class="nm">DRAFT BLUEPRINT</div>
+              <div class="soon">Design a vehicle platform</div>
+            </div>` + eaComingSoon(4)
+        : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
           <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
@@ -2056,6 +2124,131 @@ import { CITY_STATS } from './js/game/city-labels.js';
       });
 
       } // end if (eaConstruction)
+
+      // ── Draft Vehicle Blueprint (automotive, 20270831) ──────────
+      // Five picks — type, class, engine, packages, quality — priced
+      // live by vehicleBlueprintXpCost (display mirror of the server
+      // helper) against the corp's Experience. Off-Road fits pickups
+      // only and Self-Driving fits Premium+ classes only, so those
+      // pills lock and shed when the picks change.
+      if (eaAutomotive) {
+        let avType = null, avClass = null, avEngine = null, avQuality = null;
+        const avPackages = new Set();
+        const corpXp = Number(corp.experience) || 0;
+
+        function avPills(hostId, items, onPick, lockedFn) {
+          const host = document.getElementById(hostId);
+          host.innerHTML = items.map(it => {
+            const locked = lockedFn?.(it) || false;
+            return `<div class="jm-pill${locked ? ' locked' : ''}" data-val="${esc(it.value)}"
+              title="${esc(it.desc)}">${esc(it.label.toUpperCase())}</div>`;
+          }).join('');
+          host.querySelectorAll('.jm-pill:not(.locked)').forEach(p => {
+            p.addEventListener('click', () => {
+              host.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+              document.getElementById(hostId + '-desc').textContent =
+                items.find(it => it.value === p.dataset.val)?.desc || '';
+              onPick(p.dataset.val);
+              avRefresh();
+            });
+          });
+        }
+
+        // Packages multi-select: clicking toggles; the fitment-gated
+        // two render locked (and drop) when the picks don't fit.
+        function avRenderPackages() {
+          const host = document.getElementById('av-packages');
+          host.innerHTML = VEHICLE_PACKAGES.map(pk => {
+            const locked = (pk.pickupOnly && avType !== 'pickup')
+              || (pk.premiumOnly && !['premium', 'luxury', 'ultra_luxury'].includes(avClass));
+            if (locked) avPackages.delete(pk.value);
+            return `<div class="jm-pill${locked ? ' locked' : ''}${avPackages.has(pk.value) ? ' sel' : ''}"
+              data-val="${esc(pk.value)}" title="${esc(pk.desc)}">${esc(pk.label.toUpperCase())}</div>`;
+          }).join('');
+          document.getElementById('av-packages-desc').textContent =
+            avPackages.size ? `${avPackages.size} selected — +${(avPackages.size * 0.5).toFixed(1)} XP` : 'Optional — pick any.';
+          host.querySelectorAll('.jm-pill:not(.locked)').forEach(p => {
+            p.addEventListener('click', () => {
+              const v = p.dataset.val;
+              avPackages.has(v) ? avPackages.delete(v) : avPackages.add(v);
+              p.classList.toggle('sel', avPackages.has(v));
+              document.getElementById('av-packages-desc').textContent =
+                avPackages.size ? `${avPackages.size} selected — +${(avPackages.size * 0.5).toFixed(1)} XP` : 'Optional — pick any.';
+              avRefresh();
+            });
+          });
+        }
+
+        function avRefresh() {
+          const name = document.getElementById('av-name').value.trim();
+          const complete = avType && avClass && avEngine && avQuality;
+          const costEl = document.getElementById('av-cost');
+          let affordable = false;
+          if (complete) {
+            const cost = vehicleBlueprintXpCost(avType, avClass, avEngine, avPackages.size, avQuality);
+            affordable = cost <= corpXp;
+            costEl.innerHTML = `${cost} XP <span class="${affordable ? 'dim' : 'bad'}">· ${corpXp} XP available</span>`;
+          } else {
+            costEl.textContent = '—';
+          }
+          document.getElementById('av-confirm').disabled =
+            !(name.length >= 2 && complete && affordable);
+        }
+
+        document.getElementById('ea-draft-vehicle').addEventListener('click', () => {
+          avType = null; avClass = null; avEngine = null; avQuality = null;
+          avPackages.clear();
+          document.getElementById('av-name').value = '';
+          avPills('av-types', VEHICLE_TYPES, v => { avType = v; avRenderPackages(); });
+          avPills('av-classes', VEHICLE_CLASSES, v => { avClass = v; avRenderPackages(); });
+          avPills('av-engines', VEHICLE_ENGINES, v => { avEngine = v; });
+          avPills('av-quality', VEHICLE_QUALITY, v => { avQuality = v; });
+          avRenderPackages();
+          ['av-types-desc', 'av-classes-desc', 'av-engines-desc', 'av-quality-desc'].forEach((id, i) =>
+            document.getElementById(id).textContent =
+              ['Pick a vehicle type.', 'Pick a market class.', 'Pick an engine.', 'Pick a build quality.'][i]);
+          avRefresh();
+          document.getElementById('av-overlay').classList.add('open');
+        });
+        document.getElementById('av-name').addEventListener('input', avRefresh);
+        wireModalClose('av-overlay', 'av-cancel');
+
+        document.getElementById('av-confirm').addEventListener('click', async () => {
+          const btn = document.getElementById('av-confirm');
+          btn.disabled = true;
+          try {
+            const { data, error: dErr } = await _supabase.rpc('draft_vehicle_blueprint', {
+              p_corp_id: corp.id,
+              p_name: document.getElementById('av-name').value.trim(),
+              p_vehicle_type: avType,
+              p_vehicle_class: avClass,
+              p_engine: avEngine,
+              p_packages: [...avPackages],
+              p_quality: avQuality,
+            });
+            if (dErr) throw dErr;
+            if (!data?.success) {
+              const REASON = {
+                invalid_name: 'Blueprint names run 2–60 characters.',
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                not_enough_experience: `Not enough Experience — this design costs ${data?.xp_cost ?? '?'} XP.`,
+                off_road_pickup_only: 'The Off-Road Package only fits Pickups.',
+                self_driving_premium_only: 'The Self-Driving Package needs a Premium-or-better class.',
+                v12_restricted: 'The V12 fits Luxury classes and Sports Cars only.',
+                not_owner: 'Only the owner can draft blueprints.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            // Reload: the BLUEPRINTS panel and the allowance pill both
+            // pick up the new state.
+            window.location.reload();
+          } catch (e) {
+            alert('Could not draft: ' + (e?.message || e));
+            avRefresh();
+          }
+        });
+      } // end if (eaAutomotive)
     }
 
     document.getElementById('loading').style.display = 'none';
