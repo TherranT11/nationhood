@@ -150,10 +150,12 @@ export const DESIGN_TIERS = [
 ];
 
 // The hiring ladders behind [POST JOB OPENING] — title CASEs in
-// post_job_opening (20270830) are authoritative; this is the display
+// post_job_opening (20270837) are authoritative; this is the display
 // copy for the modal's rung cards and the home page's Current Role.
-// Leadership posts top to bottom from day one; Operations rungs 4-6
-// render dimmed until their charters are written.
+// Construction hires Operations (rungs 4-6 dimmed until chartered)
+// and Leadership; automotive hires its three careers (20270837) top
+// to bottom from day one. INDUSTRY_JOB_TRACKS below pairs tracks
+// with industries for the modal's pills.
 export const JOB_TRACKS = {
   operations: [
     { rung: 1, name: 'Project Manager (PM)', postable: true,
@@ -194,6 +196,69 @@ export const JOB_TRACKS = {
     { rung: 6, name: 'Chief Executive Officer (CEO)', postable: true,
       desc: 'The ultimate corporate authority. You set the firm’s vision and answer for every decision — strategic, financial, operational, ethical. You appoint the COO, CFO, and senior executives. You sit at the head of the board. When the firm wins, your name is in the press. When the firm fails, your career is on the line. You hold the chair until you retire, step down, or are removed by the board.',
       resp: 'Sets corporate vision and strategic direction; ultimate accountability for every major decision.' },
+  ],
+  manufacturing: [
+    { rung: 1, name: 'Production Engineer', postable: true,
+      desc: 'Junior plant engineer; you optimize specific lines or troubleshoot quality issues.' },
+    { rung: 2, name: 'Production Manager', postable: true,
+      desc: 'You manage a shift or a specific production area; responsible for daily output targets.' },
+    { rung: 3, name: 'Plant Manager', postable: true,
+      desc: 'You run an entire factory; thousands of workers report to you.' },
+    { rung: 4, name: 'Director of Manufacturing', postable: true,
+      desc: 'You oversee multiple plants or a major manufacturing function.' },
+    { rung: 5, name: 'VP of Manufacturing', postable: true,
+      desc: 'You oversee the corporation’s entire manufacturing operation globally.' },
+    { rung: 6, name: 'Chief Manufacturing Officer (CMO)', postable: true,
+      desc: 'Terminal position. C-suite. You’re responsible for everything the corporation builds, physically.' },
+  ],
+  product: [
+    { rung: 1, name: 'Product Engineer', postable: true,
+      desc: 'Junior engineer working on specific components of a vehicle program.' },
+    { rung: 2, name: 'Engineering Manager', postable: true,
+      desc: 'You lead a sub-team within a vehicle program.' },
+    { rung: 3, name: 'Vehicle Program Manager', postable: true,
+      desc: 'You’re responsible for an entire vehicle program from concept to launch.' },
+    { rung: 4, name: 'Director of Product Development', postable: true,
+      desc: 'You oversee multiple vehicle programs.' },
+    { rung: 5, name: 'VP of Product Planning / VP of Engineering', postable: true,
+      desc: 'You set product strategy for a brand or segment.' },
+    { rung: 6, name: 'Chief Product Officer (CPO)', postable: true,
+      desc: 'Terminal position. C-suite. You’re responsible for what the corporation makes.' },
+  ],
+  commercial: [
+    { rung: 1, name: 'Field Sales Representative / Marketing Analyst', postable: true,
+      desc: 'Junior role in the customer-facing side of the business.' },
+    { rung: 2, name: 'District Sales Manager / Marketing Manager', postable: true,
+      desc: 'You manage relationships with multiple dealerships or run a major marketing campaign.' },
+    { rung: 3, name: 'Regional Sales Director / Director of Marketing', postable: true,
+      desc: 'You oversee sales for a major region or run all marketing for a brand.' },
+    { rung: 4, name: 'VP of Sales / VP of Marketing', postable: true,
+      desc: 'You oversee national operations.' },
+    { rung: 5, name: 'Senior VP of Commercial Operations', postable: true,
+      desc: 'You oversee all customer-facing functions for the corporation.' },
+    { rung: 6, name: 'Chief Commercial Officer (CCO)', postable: true,
+      desc: 'Terminal position. C-suite. You’re responsible for everything the company does to get its cars into customers’ hands.' },
+  ],
+};
+
+// Which tracks each industry hires from, with the posting modal's
+// pill labels, the track's career blurb, and its defining tension.
+export const INDUSTRY_JOB_TRACKS = {
+  construction: [
+    { key: 'operations', label: 'OPERATIONS' },
+    { key: 'finance', label: 'FINANCE', locked: true },
+    { key: 'leadership', label: 'LEADERSHIP' },
+  ],
+  automotive: [
+    { key: 'manufacturing', label: 'MANUFACTURING',
+      blurb: 'The gritty industrial track. You start in plant operations and rise to chief manufacturing officer.',
+      tension: 'The defining tension: every plant decision is permanent and political. You can’t easily close a plant; you can’t easily open one. Decisions you make today shape the company for decades.' },
+    { key: 'product', label: 'PRODUCT',
+      blurb: 'The engineering-strategic track. You start in vehicle engineering and rise to chief product officer.',
+      tension: 'The defining tension: vehicle programs are 4-7 year commitments. You make decisions today that determine the company’s future a decade out. Bad calls on EV timing, missed market segments, over-investment in dying technologies — these errors compound silently and reveal themselves catastrophically.' },
+    { key: 'commercial', label: 'COMMERCIAL',
+      blurb: 'The sales-marketing-distribution track. You start in dealer relations or marketing and rise to chief commercial officer.',
+      tension: 'The defining tension: the customer relationship is mediated through independent dealer franchisees, not employees. Your career rises on building dealer relationships, but dealers can also destroy you. Managing 4,000 small business owners who all have lawyers is its own special skill.' },
   ],
 };
 

@@ -341,13 +341,15 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
 
     // Current Role — a salaried job renders the employment card; the
     // track derives from which JOB_TRACKS ladder holds the title.
-    // Operations gets its three greyed field actions; Leadership has
-    // none specced yet, so its card is the role brief alone. Owning a
-    // corporation IS a role too, so owners get an ownership card per
-    // corp pointing at the Executive Actions desk. Only with neither
-    // does the "go apply" empty state stand.
+    // Operations gets its three greyed field actions; the other
+    // tracks have none specced yet, so their card is the role brief
+    // alone. Owning a corporation IS a role too, so owners get an
+    // ownership card per corp pointing at the Executive Actions desk.
+    // Only with neither does the "go apply" empty state stand.
     if (f.biz_job_title) {
-      const isLeadership = JOB_TRACKS.leadership.some(r => r.name === f.biz_job_title);
+      const trackKey = Object.keys(JOB_TRACKS)
+        .find(k => JOB_TRACKS[k].some(r => r.name === f.biz_job_title)) || 'operations';
+      const isOps = trackKey === 'operations';
       const ROLE_DESCS = {
         'Project Manager (PM)':
           'You run the job site — schedules, subcontractors, inspections. The owner sets direction; you make the building happen.',
@@ -356,17 +358,17 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS } from './js/game/corp-blueprints.js';
         'Regional Director of Operations':
           'Every project manager in the region answers to you. You set the build tempo, settle disputes, and answer for the margins.',
       };
-      const desc = isLeadership
-        ? JOB_TRACKS.leadership.find(r => r.name === f.biz_job_title).desc
-        : (ROLE_DESCS[f.biz_job_title] || 'You work the Operations track. Do the job well and the ladder is yours to climb.');
+      const desc = isOps
+        ? (ROLE_DESCS[f.biz_job_title] || 'You work the Operations track. Do the job well and the ladder is yours to climb.')
+        : (JOB_TRACKS[trackKey].find(r => r.name === f.biz_job_title)?.desc || '');
       document.getElementById('biz-current-role').innerHTML = `
         <div class="cr-card">
           <div class="cr-head">
-            <div class="cr-tier">EMPLOYMENT &middot; ${isLeadership ? 'LEADERSHIP' : 'OPERATIONS'}</div>
+            <div class="cr-tier">EMPLOYMENT &middot; ${esc(trackKey.toUpperCase().replace(/_/g, ' '))}</div>
             <div class="cr-title">${esc(f.biz_job_title)} for ${esc(employerName || '—')}</div>
             <div class="cr-desc">${esc(desc)}</div>
           </div>
-          ${isLeadership ? '' : `
+          ${!isOps ? '' : `
           <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
           <div class="cr-actions">
             <div class="cr-act" title="Coming soon">
