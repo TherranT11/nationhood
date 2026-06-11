@@ -1603,6 +1603,7 @@ let openOrdinanceProposals = []; // in-flight city ordinance proposals where the
 let memberCommittees = [];      // committees the viewer is seated on, plus pending agenda counts (20270754). Surfaces as Pressing Issues cards with [VIEW COMMITTEE].
 let consulateCases = [];   // pending consulate docket cases (20270865) — Pressing Issues cards; handling one stamps the rest.
 let backchannelInbox = []; // burn-after-reading consul messages addressed to this faction (20270865).
+let summitInvites = [];    // pending Regional Summit invites for this officer (20270867).
 let fisInvestigations = [];     // active FIS investigations opened by this agent (20270769). One Pressing Issues card per case, linking to fis-investigation.html?id=...
 let consultancyOffers = [];     // pending corp consultancy offers targeting this politician (20270773). Accept pays the fee + Capital kicker; decline refunds the corp's escrow.
 // Nation chat state. nationChatId is the group_chats.id for this nation's
@@ -1837,6 +1838,15 @@ async function init() {
       if (ccErr) console.error('politician-home: consulate cases fetch failed', ccErr);
       else consulateCases = ccRows || [];
     }
+    summitInvites = [];
+    {
+      const { data: siRows, error: siErr } = await _supabase.from('summit_invites')
+        .select('id, nation_id, summit:regional_summits!summit_id(region)')
+        .eq('officer_faction_id', politician.id)
+        .eq('status', 'pending');
+      if (siErr) console.error('politician-home: summit invites fetch failed', siErr);
+      else summitInvites = siRows || [];
+    }
     backchannelInbox = [];
     {
       const { data: bcRows, error: bcErr } = await _supabase.from('backchannel_messages')
@@ -1861,6 +1871,7 @@ async function init() {
     memberCommittees = [];
     consulateCases = [];
     backchannelInbox = [];
+    summitInvites = [];
   }
 
   renderHero(ctx.shard);
@@ -3206,6 +3217,7 @@ async function renderForeignAffiliation(ctx) {
   } catch (err) {
     console.warn('[politician-home] cable check failed:', err?.message || err);
   }
+  const attacheAsk = await fetchDcmAsk(ctx.faction?.id);
   const cableAttrs = cableSent
     ? ' aria-disabled="true" title="The cable already went out this tick"'
     : ' data-action="embassy-send-cable"';
@@ -3274,6 +3286,7 @@ async function renderForeignAffiliation(ctx) {
         <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
         <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
       </div>
+      ${attacheAsk ? `<div class="dcm-ask"><b>THE DCM ASKS:</b> ${escHtml(DCM_ASK_LABEL[attacheAsk] || attacheAsk)} Comply for +0.3 Experience each.</div>` : ''}
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS · PICK ONE EACH TICK</div>
         <div class="ar-buttons">${actionsHtml}</div>
@@ -3452,6 +3465,27 @@ async function openConsulPostModal(ctx) {
   }
 }
 
+// 20270867 — the DCM's standing ask, bannered on the officer's own
+// card. One pending ask per officer; compliance pays both sides.
+const DCM_ASK_LABEL = {
+  work_the_docket: 'Work the docket — run the consulate and handle a case properly.',
+  build_standing: 'Build standing — get out there and work your contacts.',
+};
+async function fetchDcmAsk(factionId) {
+  try {
+    const { data, error } = await _supabase.from('dcm_priorities')
+      .select('kind')
+      .eq('officer_faction_id', factionId)
+      .eq('status', 'pending')
+      .limit(1);
+    if (error) throw error;
+    return data?.[0]?.kind || null;
+  } catch (err) {
+    console.warn('[politician-home] dcm ask fetch failed:', err?.message || err);
+    return null;
+  }
+}
+
 // 20270865 — the consulate card (Foreign Service Tier 2). Replaces
 // the attaché card after promotion; the embassy stat row carries
 // over. RUN THE CONSULATE opens the morning docket — the cases land
@@ -3479,6 +3513,7 @@ async function renderConsulAffiliation(ctx, host) {
   const embTrust  = Number(ctx.faction?.embassy_trust      ?? 50);
   const embLev    = Number(ctx.faction?.embassy_leverage   ?? 50);
 
+  const dcmAsk = await fetchDcmAsk(ctx.faction.id);
   const hasDocket = consulateCases.length > 0;
   const docketAttrs = hasDocket
     ? ' aria-disabled="true" title="The docket is on your desk — handle a case in Pressing Issues"'
@@ -3510,6 +3545,7 @@ async function renderConsulAffiliation(ctx, host) {
         <div class="emb-stat"><span class="emb-stat-lab">TRUST</span><span class="emb-stat-val">${escHtml(String(embTrust))}<span class="emb-stat-max">/100</span></span></div>
         <div class="emb-stat"><span class="emb-stat-lab">LEVERAGE</span><span class="emb-stat-val">${escHtml(String(embLev))}<span class="emb-stat-max">/100</span></span></div>
       </div>
+      ${dcmAsk ? `<div class="dcm-ask"><b>THE DCM ASKS:</b> ${escHtml(DCM_ASK_LABEL[dcmAsk] || dcmAsk)} Comply for +0.3 Experience each.</div>` : ''}
       <div class="act-row">
         <div class="ar-lab">REPEATABLE ACTIONS</div>
         <div class="ar-buttons">
@@ -3736,6 +3772,10 @@ async function renderDcmAffiliation(ctx, host) {
     ? Math.round(regionNations.reduce((s, n) => s + relFor(n.id), 0) / regionNations.length)
     : 0;
   const embRep = Number(ctx.faction?.embassy_reputation ?? 50);
+  const nextDcm = Number(ctx.faction?.next_dcm_action_tick) || 0;
+  const dcmCooling = nextDcm > currentTick;
+  const dcmCoolAttrs = ' aria-disabled="true" title="One move per tick — back next tick"';
+  const coolLine = '<div class="act-cooldown">Ready next tick</div>';
 
   const boardRows = regionNations.length ? regionNations.map(n => {
     const here = officerAt(n.id);
@@ -3774,9 +3814,149 @@ async function renderDcmAffiliation(ctx, host) {
         ${boardRows}
       </div>
       <div class="act-row">
-        <div class="ar-lab">REGIONAL ACTIONS · A LATER DISPATCH</div>
+        <div class="ar-lab">REGIONAL ACTIONS · ONE MOVE PER TICK</div>
+        <div class="ar-buttons">
+          <div class="act-btn${dcmCooling ? ' cooldown' : ''}"${dcmCooling ? dcmCoolAttrs : ' data-action="dcm-review"'}>
+            <div class="act-head">
+              <span class="act-ic">🔍</span>
+              <span class="act-name">REVIEW THE STATIONS</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">Inspect one officer's record and grade it — commend (+1) or reprimand (−1) to their Reputation. +0.3 Experience to you.</div>
+            ${dcmCooling ? coolLine : ''}
+          </div>
+          <div class="act-btn${dcmCooling ? ' cooldown' : ''}"${dcmCooling ? dcmCoolAttrs : ' data-action="dcm-priority"'}>
+            <div class="act-head">
+              <span class="act-ic">📌</span>
+              <span class="act-name">SET A PRIORITY</span>
+              <span class="act-cost">no cost</span>
+            </div>
+            <div class="act-desc">Flag one station with a standing ask — it banners on the officer's card, and compliance pays +0.3 Experience to you both. A new ask supersedes the old.</div>
+            ${dcmCooling ? coolLine : ''}
+          </div>
+          <div class="act-btn${dcmCooling ? ' cooldown' : ''}"${dcmCooling ? dcmCoolAttrs : ' data-action="dcm-summit"'}>
+            <div class="act-head">
+              <span class="act-ic">🌐</span>
+              <span class="act-name">REGIONAL SUMMIT</span>
+              <span class="act-cost">−$20</span>
+            </div>
+            <div class="act-desc">Convene the mission — every officer on the board gets an invite, and each acceptance lands +1 Relations with their posting. Coverage multiplies the lever.</div>
+            ${dcmCooling ? coolLine : ''}
+          </div>
+        </div>
       </div>
     </div>`;
+
+  host.querySelector('.act-btn[data-action="dcm-review"]')
+    ?.addEventListener('click', () => openDcmOfficerModal(ctx, 'review', regionNations, officers));
+  host.querySelector('.act-btn[data-action="dcm-priority"]')
+    ?.addEventListener('click', () => openDcmOfficerModal(ctx, 'priority', regionNations, officers));
+  host.querySelector('.act-btn[data-action="dcm-summit"]')
+    ?.addEventListener('click', async (e) => {
+      const tile = e.currentTarget;
+      if (tile.dataset.busy === '1') return;
+      if (!confirm(`Convene the regional summit? $20 from the budget; every officer on the board is invited.`)) return;
+      tile.dataset.busy = '1';
+      try {
+        const { data, error } = await _supabase.rpc('dcm_call_summit',
+          { p_faction_id: ctx.faction?.id || null });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            cooldown: 'One move per tick — the desk is spent.',
+            summit_open: 'A summit is already convened — the invites are still out.',
+            insufficient_budget: 'The budget can\u2019t cover the venue ($20).',
+            no_officers: 'Nobody to invite — staff the board first.',
+            not_dcm: 'Only the sitting DCM convenes the region.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert(`The invitations go out — ${data.invited} officer${data.invited === 1 ? '' : 's'} summoned.`);
+        location.reload();
+      } catch (err) {
+        alert('Could not convene: ' + (err?.message || err));
+        tile.dataset.busy = '0';
+      }
+    });
+}
+
+// 20270867 — the DCM's officer picker, shared by REVIEW (grade) and
+// SET A PRIORITY (standing ask). Reuses the consulate picker chrome.
+async function openDcmOfficerModal(ctx, mode, regionNations, officers) {
+  ensureConsulPostModal();
+  const rows = document.getElementById('cp-rows');
+  document.querySelector('#cp-overlay .cp-title').textContent =
+    mode === 'review' ? 'REVIEW THE STATIONS' : 'SET A PRIORITY';
+  document.querySelector('#cp-overlay .cp-sub').textContent =
+    mode === 'review'
+      ? 'Grade one officer: commend (+1 Reputation) or reprimand (−1). +0.3 Experience to you.'
+      : 'Flag one station with a standing ask — compliance pays +0.3 Experience to you both.';
+  document.getElementById('cp-overlay').classList.add('open');
+  if (!officers.length) {
+    rows.innerHTML = '<div class="cp-empty">Nobody serves the region yet — the board is all vacancies.</div>';
+    return;
+  }
+  const nationName = (nid) => regionNations.find(n => n.id === nid)?.name || '\u2014';
+  rows.innerHTML = officers.map(o => {
+    const nm = o.nickname || `${o.leader_first_name || ''} ${o.leader_last_name || ''}`.trim() || 'Unnamed';
+    const station = o.politician_consul_nation_id || o.politician_foreign_service_nation_id;
+    const rank = o.politician_consul_nation_id ? 'Consul' : 'Attach\u00e9';
+    const btns = mode === 'review'
+      ? `<button type="button" class="cp-take" data-dcm-grade="commend" data-officer="${escAttr(o.id)}">COMMEND</button>
+         <button type="button" class="cp-take" style="border-color:rgba(200,120,120,0.5);color:#c87a7a;" data-dcm-grade="reprimand" data-officer="${escAttr(o.id)}">REPRIMAND</button>`
+      : `${rank === 'Consul' ? `<button type="button" class="cp-take" data-dcm-ask="work_the_docket" data-officer="${escAttr(o.id)}">WORK THE DOCKET</button>` : ''}
+         <button type="button" class="cp-take" data-dcm-ask="build_standing" data-officer="${escAttr(o.id)}">BUILD STANDING</button>`;
+    return `<div class="cp-row"><span class="nm">${escHtml(nm)} \u00b7 ${rank}, ${escHtml(nationName(station))} \u00b7 ${escHtml(String(Math.round(Number(o.embassy_reputation) || 50)))}/100</span>
+      <span style="display:flex;gap:6px;">${btns}</span></div>`;
+  }).join('');
+  const fire = async (rpcArgs, confirmText) => {
+    if (!confirm(confirmText)) return false;
+    const { data, error } = await _supabase.rpc(rpcArgs.fn, rpcArgs.args);
+    if (error) throw error;
+    if (!data?.success) {
+      const REASON = {
+        cooldown: 'One move per tick — the desk is spent.',
+        not_your_officer: 'They don\u2019t serve your region.',
+        not_dcm: 'Only the sitting DCM manages the board.',
+      };
+      throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+    }
+    return true;
+  };
+  rows.querySelectorAll('[data-dcm-grade]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1'; btn.disabled = true;
+      try {
+        const ok = await fire({ fn: 'dcm_review_station', args: {
+          p_faction_id: ctx.faction?.id || null, p_officer_id: btn.dataset.officer,
+          p_grade: btn.dataset.dcmGrade } },
+          btn.dataset.dcmGrade === 'commend'
+            ? 'Commend this officer? +1 to their Reputation.'
+            : 'Reprimand this officer? −1 to their Reputation.');
+        if (ok) location.reload(); else { btn.dataset.busy = '0'; btn.disabled = false; }
+      } catch (err) {
+        alert('Could not grade: ' + (err?.message || err));
+        btn.dataset.busy = '0'; btn.disabled = false;
+      }
+    });
+  });
+  rows.querySelectorAll('[data-dcm-ask]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1'; btn.disabled = true;
+      try {
+        const ok = await fire({ fn: 'dcm_set_priority', args: {
+          p_faction_id: ctx.faction?.id || null, p_officer_id: btn.dataset.officer,
+          p_kind: btn.dataset.dcmAsk } },
+          'Flag this station? Any previous ask is superseded.');
+        if (ok) location.reload(); else { btn.dataset.busy = '0'; btn.disabled = false; }
+      } catch (err) {
+        alert('Could not set the priority: ' + (err?.message || err));
+        btn.dataset.busy = '0'; btn.disabled = false;
+      }
+    });
+  });
 }
 
 // 20270865 — the backchannel composer. Recipients: any player
@@ -4741,6 +4921,7 @@ function renderPressingIssues(ctx) {
   // The consulate docket (20270865): handle ONE properly; the rest
   // get the rubber stamp the moment you choose.
   consulateCases.forEach(c => blocks.push(renderConsulateCaseCard(c)));
+  summitInvites.forEach(i => blocks.push(renderSummitInviteCard(i)));
   // State Advocate appointment requests routed to this politician
   // (as Minister of the Interior) come first after the campaign —
   // they're cabinet-level decisions and the applicant is waiting.
@@ -4797,6 +4978,52 @@ function renderPressingIssues(ctx) {
   bindConstructionBidActions();
   bindBackchannelActions();
   bindConsulateCaseActions(ctx);
+  bindSummitInviteActions(ctx);
+}
+
+// ── Regional Summit invites (20270867) ──────────────────────────────
+function renderSummitInviteCard(i) {
+  return `
+    <div class="offer-card" data-summit-invite="${escAttr(i.id)}">
+      <div class="offer-icon-wrap">
+        <div class="offer-icon">🌐</div>
+      </div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">FOREIGN SERVICE &middot; REGIONAL SUMMIT</div>
+        <div class="oi-headline">The DCM convenes the ${escHtml(i.summit?.region || 'regional')} mission.</div>
+        <div class="oi-meta"><span>Your attendance carries weight &mdash; accepting lands <b>+1 Relations</b> between your nation and your posting.</span></div>
+      </div>
+      <div class="offer-right">
+        <button type="button" class="offer-accept-btn" data-summit-decide="${escAttr(i.id)}" data-accept="1">ACCEPT</button>
+        <button type="button" class="offer-accept-btn" data-summit-decide="${escAttr(i.id)}" data-accept="" style="opacity:0.7;">REJECT</button>
+      </div>
+    </div>`;
+}
+function bindSummitInviteActions(ctx) {
+  document.querySelectorAll('[data-summit-decide]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('summit_invite_decide', {
+          p_faction_id: ctx.faction?.id || null,
+          p_invite_id: btn.dataset.summitDecide,
+          p_accept: !!btn.dataset.accept,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = { invite_not_pending: 'That invite was already decided.' };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        btn.closest('[data-summit-invite]')?.remove();
+      } catch (err) {
+        alert('Could not decide: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
 }
 
 // ── Consulate docket cards (20270865) ────────────────────────────────
@@ -8289,6 +8516,10 @@ init().catch(err => {
   .sb-row .rep { font-family:monospace; color:#5aafa5; }
   .sb-lab { font-family:monospace; font-size:9px; letter-spacing:0.16em; color:#888;
     font-weight:700; margin:14px 0 0; }
+  .dcm-ask { margin-top:12px; padding:9px 12px; background:rgba(200,166,78,0.07);
+    border:0.5px solid rgba(200,166,78,0.35); border-radius:4px; font-size:11px;
+    color:#c8a26e; }
+  .dcm-ask b { letter-spacing:0.08em; font-family:monospace; font-size:9px; }
 
   #embassyEventModal { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
                        align-items:center; justify-content:center; padding:20px; z-index:1000; }
