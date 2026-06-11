@@ -37,7 +37,13 @@ ALTER TABLE public.factions
     ADD COLUMN IF NOT EXISTS next_backchannel_tick       int;
 
 COMMENT ON COLUMN public.factions.politician_consul_nation_id IS
-    'The consulate this politician runs (20270865). One consul per home→host pair, enforced at take-post time.';
+    'The consulate this politician runs (20270865). One consul per home→host pair — the partial unique index below is the structural backstop; abandoning the faction vacates the post.';
+
+-- Two attachés racing for the same vacancy: the EXISTS check alone
+-- can't see an uncommitted rival, so the pair rule lives in an index.
+CREATE UNIQUE INDEX IF NOT EXISTS factions_one_consul_per_pair
+    ON public.factions (nation_id, politician_consul_nation_id)
+    WHERE politician_consul_nation_id IS NOT NULL AND abandoned_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.consulate_cases (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,7 +97,10 @@ CREATE POLICY backchannel_recipient_select ON public.backchannel_messages
 -- ── _bump_relation_score — the one hand on the gauge ──────────────
 -- diplomatic_relations rows are keyed (nation_a_id < nation_b_id);
 -- the score clamps −100..100. UPDATE-then-INSERT (the legacy table
--- carries no unique constraint we can ON CONFLICT against).
+-- carries no unique constraint we can ON CONFLICT against). KNOWN
+-- EDGE: two consuls on the same pair racing the very first bump can
+-- mint a duplicate pair row — readers take the first match, so the
+-- effect is a lost point, not corruption.
 CREATE OR REPLACE FUNCTION public._bump_relation_score(
     p_nation_x uuid, p_nation_y uuid, p_delta numeric
 ) RETURNS void
@@ -239,12 +248,17 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    UPDATE factions
-       SET politician_consul_nation_id          = p_nation_id,
-           politician_consul_at_tick            = v_tick,
-           politician_foreign_service_nation_id = NULL,
-           politician_foreign_service_at_tick   = NULL
-     WHERE id = v_pol.id;
+    BEGIN
+        UPDATE factions
+           SET politician_consul_nation_id          = p_nation_id,
+               politician_consul_at_tick            = v_tick,
+               politician_foreign_service_nation_id = NULL,
+               politician_foreign_service_at_tick   = NULL
+         WHERE id = v_pol.id;
+    EXCEPTION WHEN unique_violation THEN
+        -- Lost the race for the vacancy.
+        RETURN jsonb_build_object('success', false, 'reason', 'consulate_occupied');
+    END;
 
     INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
     VALUES (v_pol.id, v_tick, 'consul_posted', COALESCE(v_nation.name, ''),
@@ -535,6 +549,7 @@ BEGIN
      WHERE id = p_target_faction_id
        AND abandoned_at IS NULL
        AND id <> v_fac.id
+       AND faction_type IN ('politician', 'businessman', 'entrepreneur')
        AND nation_id IN (v_fac.nation_id, v_fac.politician_consul_nation_id);
     IF v_target.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'target_out_of_range');

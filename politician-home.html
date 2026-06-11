@@ -3670,6 +3670,7 @@ async function openBackchannelModal(ctx, hostNationId) {
     const { data: facs, error } = await _supabase.from('factions')
       .select('id, leader_first_name, leader_last_name, nickname, faction_type, nation:nations!nation_id(name)')
       .in('nation_id', [ctx.faction?.nation_id, hostNationId].filter(Boolean))
+      .in('faction_type', ['politician', 'businessman', 'entrepreneur'])
       .is('abandoned_at', null)
       .neq('id', ctx.faction?.id);
     if (error) throw error;
