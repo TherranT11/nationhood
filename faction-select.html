@@ -129,13 +129,12 @@ body {
       </div>
       <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Run for office, climb the ladder, lead a party, draft laws — shape the nation from within its institutions.</div>
     </div>
-    <div id="opt-entrepreneur" onclick="selectFactionOption('entrepreneur')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--purple,#8b5cf6)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.06em;">Entrepreneur</span>
-        <span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--amber);background:var(--amber-faint);border:1px solid var(--amber-border);padding:1px 6px;letter-spacing:0.06em;">ALPHA</span>
-      </div>
-      <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;">Invest in corporations, be a CEO, join a board of directors, merge, acquire and do hostile takeovers.</div>
-    </div>
+    <!-- Entrepreneur option REMOVED from the chooser — the
+         Businessman path supersedes it for new players; existing
+         entrepreneur factions keep operating. Hidden stub kept (the
+         opt-party pattern above) so selectFactionOption()'s reset
+         loop doesn't null-deref. -->
+    <div id="opt-entrepreneur" style="display:none;"></div>
     <div id="opt-businessman" onclick="selectFactionOption('businessman')" style="background:var(--bg-2);border:1px solid var(--border-0);padding:20px;margin-bottom:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;" onmouseover="this.style.borderColor='var(--green-border)'" onmouseout="if(!this.classList.contains('fs-selected'))this.style.borderColor='var(--border-0)'">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.06em;">Businessman</span>
@@ -149,7 +148,7 @@ body {
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
+import { isFactionInactive, getFactionDashboardUrl, countPlayerCharacters, CHARACTER_TOTAL_MAX, CHARACTER_TYPE_MAX } from './js/game/factions.js';
 
 async function init() {
   const { data: { user } } = await _supabase.auth.getUser();
@@ -177,12 +176,52 @@ async function init() {
   // No nation selected (or wrong flow) — show faction type chooser
   document.getElementById('loading').style.display = 'none';
   document.getElementById('faction-chooser').style.display = 'flex';
+
+  // Character-slot rules (js/game/factions.js): 5 per account, max 3
+  // of a type. Capped types grey out; at the total cap the chooser
+  // closes entirely.
+  try {
+    const { data: facs, error: facErr } = await _supabase
+      .from('factions').select('faction_type, abandoned_at')
+      .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`);
+    if (facErr) throw facErr;
+    const counts = countPlayerCharacters(facs);
+    if (counts.total >= CHARACTER_TOTAL_MAX) {
+      document.querySelector('#faction-chooser .subtitle').textContent =
+        `Your account holds the maximum of ${CHARACTER_TOTAL_MAX} characters.`;
+      for (const id of ['opt-politician', 'opt-businessman', 'btn-confirm-faction']) {
+        capCard(id, 'CHARACTER LIMIT REACHED');
+      }
+      return;
+    }
+    if ((counts.politician || 0) >= CHARACTER_TYPE_MAX) {
+      capCard('opt-politician', `LIMIT ${CHARACTER_TYPE_MAX} OF A TYPE`);
+    }
+    if ((counts.businessman || 0) >= CHARACTER_TYPE_MAX) {
+      capCard('opt-businessman', `LIMIT ${CHARACTER_TYPE_MAX} OF A TYPE`);
+    }
+  } catch (e) {
+    console.warn('faction-select: slot check failed (caps not applied):', e?.message || e);
+  }
+}
+
+function capCard(id, label) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.opacity = '0.4';
+  el.style.pointerEvents = 'none';
+  el.title = label;
+  const tag = el.querySelector('span');
+  if (tag && id !== 'btn-confirm-faction') {
+    tag.insertAdjacentHTML('afterend',
+      `<span style="font-family:var(--font-mono);font-size:8px;font-weight:600;color:var(--red,#c66);border:1px solid var(--red,#5a3a3a);padding:1px 6px;letter-spacing:0.06em;">${label}</span>`);
+  }
 }
 
 let selectedFaction = null;
 
-// Businessman is alpha-gated — same client-side prompt pattern as
-// politician slot #4 (js/game/factions.js, Patreon11).
+// Businessman is alpha-gated — a client-side prompt, like the
+// retired politician slot-4 gate was.
 const BUSINESSMAN_ALPHA_CODE = 'Vanderbilt1';
 
 function selectFactionOption(type) {

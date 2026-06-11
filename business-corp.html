@@ -653,7 +653,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -2430,6 +2430,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
           avPills('av-quality', VEHICLE_QUALITY, v => { avQuality = v; }, 'Pick a build quality.');
           avRenderPackages();
           avRefresh();
+          // The Product Engineer's bench charge (20270847) bakes
+          // +0.5 appeal into the next Model created.
+          if ((Number(corp.design_buff_appeal) || 0) > 0) {
+            document.getElementById('av-cost').insertAdjacentHTML('afterend',
+              '<div class="db-static dim-line">Bench charge queued: this Model ships with +0.5 appeal baked in.</div>');
+          }
           document.getElementById('av-overlay').classList.add('open');
         });
         document.getElementById('av-name').addEventListener('input', avRefresh);
@@ -2764,13 +2770,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
             // demand against.
             const [{ data: locals, error: lErr }, { data: imports, error: iErr }] = await Promise.all([
               _supabase.from('vehicle_blueprints')
-                .select('id, engine, quality, packages, units_in_stock, corp:entrepreneur_corps!corp_id!inner(hq_nation_id)')
+                .select('id, engine, quality, packages, appeal_bonus, units_in_stock, corp:entrepreneur_corps!corp_id!inner(hq_nation_id)')
                 .eq('corp.hq_nation_id', slNation)
                 .eq('vehicle_type', slModel.vehicle_type)
                 .neq('corp_id', corp.id)
                 .gt('units_in_stock', 0),
               _supabase.from('vehicle_market_stock')
-                .select('blueprint_id, units, blueprint:vehicle_blueprints!blueprint_id!inner(engine, quality, packages, vehicle_type, corp_id)')
+                .select('blueprint_id, units, blueprint:vehicle_blueprints!blueprint_id!inner(engine, quality, packages, appeal_bonus, vehicle_type, corp_id)')
                 .eq('nation_id', slNation)
                 .eq('blueprint.vehicle_type', slModel.vehicle_type)
                 .neq('blueprint.corp_id', corp.id)
@@ -2781,15 +2787,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
             let theirs = 0, count = 0;
             for (const c of (locals || [])) {
               seen.add(c.id); count++;
-              theirs += vehicleAppeal(c.engine, c.quality, (c.packages || []).length);
+              theirs += vehicleAppeal(c.engine, c.quality, (c.packages || []).length) + (Number(c.appeal_bonus) || 0);
             }
             for (const s of (imports || [])) {
               if (seen.has(s.blueprint_id)) continue;
               count++;
-              theirs += vehicleAppeal(s.blueprint.engine, s.blueprint.quality, (s.blueprint.packages || []).length);
+              theirs += vehicleAppeal(s.blueprint.engine, s.blueprint.quality, (s.blueprint.packages || []).length) + (Number(s.blueprint.appeal_bonus) || 0);
             }
             const badge = slNation !== corp.hq_nation_id && slPresence[slNation]?.kind === 'subsidiary' ? 1 : 0;
-            const yours = vehicleAppeal(slModel.engine, slModel.quality, (slModel.packages || []).length) + badge;
+            const yours = vehicleAppeal(slModel.engine, slModel.quality, (slModel.packages || []).length)
+              + (Number(slModel.appeal_bonus) || 0) + badge;
             compEl.textContent = count
               ? `${count} rival Model${count === 1 ? '' : 's'} of this type on the market — combined appeal ${theirs.toFixed(1)} vs your ${yours.toFixed(1)}${badge ? ' (subsidiary badge +1)' : ''}.`
               : `No rival Models of this type on the market — the demand is all yours (appeal ${yours.toFixed(1)}${badge ? ', subsidiary badge +1' : ''}).`;
@@ -2843,7 +2850,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           modHost.innerHTML = '<div class="rl-empty">Checking the local lots…</div>';
           try {
             const { data: rows, error: sErr } = await _supabase.from('vehicle_market_stock')
-              .select('blueprint_id, units, local_name, list_price, blueprint:vehicle_blueprints!blueprint_id(name, vehicle_type, vehicle_class, engine, quality, packages, xp_cost)')
+              .select('blueprint_id, units, local_name, list_price, blueprint:vehicle_blueprints!blueprint_id(name, vehicle_type, vehicle_class, engine, quality, packages, appeal_bonus, xp_cost)')
               .eq('corp_id', corp.id).eq('nation_id', slNation).gt('units', 0);
             if (sErr) throw sErr;
             slModels = (rows || []).map(r => ({
@@ -2856,6 +2863,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               engine: r.blueprint?.engine,
               quality: r.blueprint?.quality,
               packages: r.blueprint?.packages,
+              appeal_bonus: r.blueprint?.appeal_bonus,
               xp_cost: r.blueprint?.xp_cost,
             }));
           } catch (e) {
@@ -2890,7 +2898,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             const [nations, { data: models, error: bErr }, { data: pres, error: pErr }] = await Promise.all([
               fetchLiveNations(),
               _supabase.from('vehicle_blueprints')
-                .select('id, name, vehicle_type, vehicle_class, engine, quality, packages, xp_cost, units_in_stock')
+                .select('id, name, vehicle_type, vehicle_class, engine, quality, packages, appeal_bonus, xp_cost, units_in_stock')
                 .eq('corp_id', corp.id).gt('units_in_stock', 0)
                 .order('created_at', { ascending: false }),
               _supabase.from('corp_market_presence')

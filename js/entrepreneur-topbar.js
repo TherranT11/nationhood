@@ -7,7 +7,7 @@
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
 import { hfFmtBig, currentAge, flagUrlFor } from './utils.js';
-import { getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, nextPoliticianSlot, activatePoliticianSlot } from './game/factions.js';
+import { getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, addCharacterSlot, activateAddCharacter } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
@@ -188,10 +188,10 @@ function buildSwitcher(facs) {
       window.location.href = c.url;
     });
   }
-  // Politician slot row — label rule, cap, and Patreon11 gate all
-  // live in js/game/factions.js. Null when the user has hit the cap.
-  const polSlot = nextPoliticianSlot(facs);
-  if (polSlot) addRow('create', null, '+', polSlot.label, () => activatePoliticianSlot(polSlot));
+  // [Add Character] — the 5-character / 3-per-type rules live in
+  // js/game/factions.js; faction-select greys the capped types.
+  const addSlot = addCharacterSlot(facs);
+  if (addSlot) addRow('create', null, '+', addSlot.label, () => activateAddCharacter());
   pill.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('open'); });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#ent-pill') && !e.target.closest('#ent-dd')) dd.classList.remove('open');
