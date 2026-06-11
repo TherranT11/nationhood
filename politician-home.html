@@ -1422,6 +1422,11 @@ const CAREER_EVENT_TEMPLATES = {
   // target_name carries the portfolio key ('sports', 'culture', …).
   appointed_junior_minister: (name, target) => `${name} was appointed Junior Minister of ${target ? target.charAt(0).toUpperCase() + target.slice(1) : 'a portfolio'}.`,
   junior_minister_lost_power: (name, target) => `${name} lost the ${target ? target.charAt(0).toUpperCase() + target.slice(1) + ' ' : ''}portfolio when their party fell from power.`,
+  // Permanent Undersecretary kit (20270878). Both land on the
+  // TARGET's timeline; target_name on the sabotage row carries the
+  // Undersecretary's name.
+  noticed_by_undersecretary: (name) => `${name} was noticed by the Permanent Undersecretary.`,
+  brief_sabotage_caught: (name, target) => `${name} discovered ${target || 'the Permanent Undersecretary'} had cooked their briefing papers.`,
   joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
   left_party:    (name, target) => `${name} has resigned their membership in the ${target || 'their political party'}.`,
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
@@ -2388,14 +2393,12 @@ const AGENCY_HEAD_ACTIONS = [
   { ic: '📊', name: 'MINISTRY REPORT',   cost: 'no cost', desc: 'Compile your agency’s recent work into a brief for the Minister.' },
   { ic: '✦', name: 'AGENCY INITIATIVE', cost: 'no cost', desc: 'Propose a new programme for your agency to undertake.' },
 ];
-// Permanent Undersecretary (Tier 3, 20270679) placeholder actions.
-// Same pattern as AGENCY_HEAD_ACTIONS — no `action` key on any slot
-// so renderAffiliation paints them greyed and inert until the
-// Tier-3 kit is approved and the RPCs land.
+// Permanent Undersecretary kit (Tier 3, 20270878). All three share
+// next_civil_service_action_tick — one move per tick.
 const PERMANENT_SECRETARY_ACTIONS = [
-  { ic: '🏛', name: 'DIRECT THE PORTFOLIO', cost: 'no cost', desc: 'Push the lever your ministry owns — a roll-gated nudge to the nation stat your portfolio controls.' },
-  { ic: '📋', name: 'PREPARE THE BRIEF',    cost: 'no cost', desc: 'Arm — or quietly hobble — the political layer above you with the quality of their briefing papers.' },
-  { ic: '🤝', name: 'PATRONAGE',            cost: 'no cost', desc: 'A quiet word for a promising bureaucrat in your ministry. The corps remembers its patrons.' },
+  { ic: '🏛', name: 'DIRECT THE PORTFOLIO', cost: 'no cost', desc: 'Push the lever your ministry owns. Roll d20 + Experience/5 vs 18: success moves the nation stat 0.5 the right way; a natural 1 backfires in the press (−1 Reputation).', action: 'ps-direct-portfolio' },
+  { ic: '📋', name: 'PREPARE THE BRIEF',    cost: 'no cost', desc: 'Write a sitting minister’s papers. Thorough: +2 to their next d20, +0.5 Influence to you. Thin: −2 to their next d20 — caught on a 1-5 and it’s −2 Reputation with your name on it.', action: 'ps-prepare-brief' },
+  { ic: '🤝', name: 'PATRONAGE',            cost: 'no cost', desc: 'A quiet word for a Civil Servant or Agency Head in your ministry: +1 Experience to them, +0.3 Influence to you. The corps remembers its patrons.', action: 'ps-patronage' },
 ];
 // Advocate's three actions. TRY A CASE draws from the court_case_drafts
 // pool. STATUTE BOOKS (20270577) is the safe-grind slot: +2 Skill,
@@ -2657,9 +2660,207 @@ const AFFIL_VARIANTS = {
       return `You are the permanent head of the Ministry of <strong>${escHtml(lbl)}</strong>. Ministers come and go on the political tide — the building answers to you.`;
     },
     actions: PERMANENT_SECRETARY_ACTIONS,
-    // actionsEnabled left undefined → placeholder slots render greyed.
+    actionsEnabled: true,
+    cooldownColumn: 'next_civil_service_action_tick',
   },
 };
+
+// ─── Permanent Undersecretary kit (20270878) ────────────────────────
+// Three pickers, all reusing the cp-overlay chrome (same pattern as
+// the DCM post picker retitling the consul modal). One move per tick
+// via next_civil_service_action_tick — the RPCs enforce it; the card
+// chrome shows the shared cooldown.
+const PS_LEVERS = {
+  interior:                  [{ key: 'crime', label: 'Crime', dir: 'down' }, { key: 'unrest', label: 'Unrest', dir: 'down' }],
+  defense:                   [{ key: 'state_apparatus', label: 'State Apparatus', dir: 'up' }],
+  economic_development:      [{ key: 'industry', label: 'Industry', dir: 'up' }],
+  foreign_affairs_and_trade: [{ key: 'global_image', label: 'Global Image', dir: 'up' }],
+};
+// Civil-service slugs that report to each major desk — the client
+// mirror of _major_ministry_of_politician for the patronage list.
+const PS_TRACK_SLUGS = {
+  interior:                  ['interior'],
+  defense:                   ['defense'],
+  economic_development:      ['economic_development'],
+  foreign_affairs_and_trade: ['foreign_affairs'],
+};
+
+function psOpenOverlay(title, sub) {
+  ensureConsulPostModal();
+  document.querySelector('#cp-overlay .cp-title').textContent = title;
+  document.querySelector('#cp-overlay .cp-sub').textContent = sub;
+  const rows = document.getElementById('cp-rows');
+  rows.innerHTML = '<div class="cp-empty">Loading…</div>';
+  document.getElementById('cp-overlay').classList.add('open');
+  return rows;
+}
+
+const PS_REASONS = {
+  on_cooldown:              'One move per tick — the ministry is already in motion.',
+  not_permanent_secretary:  'Only the Permanent Undersecretary wields this.',
+  invalid_lever:            'That lever isn’t on your desk.',
+  target_not_found:         'They’re not in your nation’s service.',
+  not_a_minister:           'Briefs go to sitting ministers only.',
+  not_civil_servant:        'Patronage flows down the civil-service ladder only.',
+  target_outranks_patronage:'They run their own ministry — no need for your patronage.',
+  wrong_ministry:           'They serve a different ministry.',
+  cannot_target_self:       'Not on yourself.',
+};
+
+function openDirectPortfolioModal(ctx) {
+  const desk = ctx.faction?.politician_permanent_secretary_ministry;
+  const levers = PS_LEVERS[desk] || [];
+  const rows = psOpenOverlay('DIRECT THE PORTFOLIO',
+    'Pick the lever. d20 + Experience/5 vs 18 — success moves the stat 0.5 the right way; a natural 1 backfires in the press (−1 Reputation).');
+  if (!levers.length) {
+    rows.innerHTML = '<div class="cp-empty">No lever mapped to your desk.</div>';
+    return;
+  }
+  rows.innerHTML = levers.map(l => `
+    <div class="cp-row"><span class="nm">${escHtml(l.label)} ${l.dir === 'down' ? '↓' : '↑'}</span>
+      <button type="button" class="cp-take" data-ps-lever="${escAttr(l.key)}">PUSH THE LEVER</button></div>`).join('');
+  rows.querySelectorAll('[data-ps-lever]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('ps_direct_portfolio', {
+          p_faction_id: ctx.faction?.id || null, p_lever: btn.dataset.psLever });
+        if (error) throw error;
+        if (!data?.success) throw new Error(PS_REASONS[data?.reason] || data?.reason || 'unknown');
+        const lbl = (levers.find(l => l.key === data.lever) || {}).label || data.lever;
+        if (data.outcome === 'moved') {
+          alert(`Rolled ${data.d20} (total ${data.total}) — the programme lands. ${lbl} is now ${Number(data.new_value).toFixed(1)}.`);
+        } else if (data.outcome === 'backfired') {
+          alert(`Natural 1 — the programme collapses in the press. −1 Reputation.`);
+        } else {
+          alert(`Rolled ${data.d20} (total ${data.total}, needed 18) — no traction this month.`);
+        }
+        location.reload();
+      } catch (e) {
+        alert('Direct the Portfolio failed: ' + (e?.message || 'network or server error'));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function openPrepareBriefModal(ctx) {
+  const desk = ctx.faction?.politician_permanent_secretary_ministry;
+  const rows = psOpenOverlay('PREPARE THE BRIEF',
+    'Thorough: +2 to their next d20, +0.5 Influence to you. Thin: −2 to their next d20 — caught on a 1-5 and it’s −2 Reputation with your name attached.');
+  try {
+    const { data: pols, error } = await _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, politician_junior_portfolio, politician_foreign_minister_at_tick')
+      .eq('faction_type', 'politician')
+      .eq('nation_id', ctx.faction?.nation_id)
+      .is('abandoned_at', null)
+      .or('politician_junior_portfolio.not.is.null,politician_foreign_minister_at_tick.not.is.null');
+    if (error) throw error;
+    const ministers = (pols || []).filter(p => p.id !== ctx.faction?.id
+      && (p.politician_junior_portfolio != null
+          || (p.politician_foreign_minister_at_tick != null && desk === 'foreign_affairs_and_trade')));
+    if (!ministers.length) {
+      rows.innerHTML = '<div class="cp-empty">No sitting minister takes your briefs — the canopy is empty.</div>';
+      return;
+    }
+    rows.innerHTML = ministers.map(p => {
+      const nm = `${p.leader_first_name || ''} ${p.leader_last_name || ''}`.trim() || 'Unnamed';
+      const role = p.politician_junior_portfolio
+        ? `Junior Minister of ${p.politician_junior_portfolio.charAt(0).toUpperCase() + p.politician_junior_portfolio.slice(1)}`
+        : 'Foreign Minister';
+      return `
+      <div class="cp-row"><span class="nm">${escHtml(nm)} · ${escHtml(role)}</span>
+        <span>
+          <button type="button" class="cp-take" data-ps-brief="${escAttr(p.id)}" data-kind="thorough">THOROUGH</button>
+          <button type="button" class="cp-take" data-ps-brief="${escAttr(p.id)}" data-kind="thin" style="border-color:rgba(200,120,120,0.5); color:#c87a7a;">THIN</button>
+        </span></div>`;
+    }).join('');
+    rows.querySelectorAll('[data-ps-brief]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        if (btn.dataset.kind === 'thin'
+            && !confirm('Slip them a thin brief? If the leak is traced (1-5 on a d20) it’s −2 Reputation and they learn it was you.')) return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error } = await _supabase.rpc('ps_prepare_brief', {
+            p_faction_id: ctx.faction?.id || null,
+            p_target_faction_id: btn.dataset.psBrief,
+            p_kind: btn.dataset.kind });
+          if (error) throw error;
+          if (!data?.success) throw new Error(PS_REASONS[data?.reason] || data?.reason || 'unknown');
+          if (data.kind === 'thorough') {
+            alert('The red box goes up immaculate. +2 on their next roll; +0.5 Influence.');
+          } else if (data.caught) {
+            alert(`The thin brief lands (−2 on their next roll) — but the leak traces back to you. −2 Reputation, and they know.`);
+          } else {
+            alert('The thin brief lands — −2 on their next roll, and nobody saw your hand.');
+          }
+          location.reload();
+        } catch (e) {
+          alert('Prepare the Brief failed: ' + (e?.message || 'network or server error'));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (e) {
+    rows.innerHTML = `<div class="cp-empty">Could not load the ministers — ${escHtml(e?.message || 'error')}.</div>`;
+  }
+}
+
+async function openPatronageModal(ctx) {
+  const desk = ctx.faction?.politician_permanent_secretary_ministry;
+  const rows = psOpenOverlay('PATRONAGE',
+    'A quiet word for a bureaucrat in your ministry: +1 Experience to them, +0.3 Influence to you.');
+  try {
+    const { data: pols, error } = await _supabase.from('factions')
+      .select('id, leader_first_name, leader_last_name, politician_ministry, politician_senior_civil_servant_at_tick, politician_permanent_secretary_ministry')
+      .eq('faction_type', 'politician')
+      .eq('nation_id', ctx.faction?.nation_id)
+      .is('abandoned_at', null)
+      .in('politician_ministry', PS_TRACK_SLUGS[desk] || []);
+    if (error) throw error;
+    const corps = (pols || []).filter(p => p.id !== ctx.faction?.id
+      && p.politician_permanent_secretary_ministry == null);
+    if (!corps.length) {
+      rows.innerHTML = '<div class="cp-empty">No player bureaucrats serve your ministry yet.</div>';
+      return;
+    }
+    rows.innerHTML = corps.map(p => {
+      const nm = `${p.leader_first_name || ''} ${p.leader_last_name || ''}`.trim() || 'Unnamed';
+      const rank = p.politician_senior_civil_servant_at_tick != null ? 'Agency Head' : 'Civil Servant';
+      return `
+      <div class="cp-row"><span class="nm">${escHtml(nm)} · ${escHtml(rank)}</span>
+        <button type="button" class="cp-take" data-ps-notice="${escAttr(p.id)}">NOTICE THEM</button></div>`;
+    }).join('');
+    rows.querySelectorAll('[data-ps-notice]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error } = await _supabase.rpc('ps_patronage', {
+            p_faction_id: ctx.faction?.id || null,
+            p_target_faction_id: btn.dataset.psNotice });
+          if (error) throw error;
+          if (!data?.success) throw new Error(PS_REASONS[data?.reason] || data?.reason || 'unknown');
+          alert(`Word travels down the corridor. They gain +1 Experience; you bank +0.3 Influence.`);
+          location.reload();
+        } catch (e) {
+          alert('Patronage failed: ' + (e?.message || 'network or server error'));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (e) {
+    rows.innerHTML = `<div class="cp-empty">Could not load the corps — ${escHtml(e?.message || 'error')}.</div>`;
+  }
+}
 
 // 20270737 — Mayor card body: italic city description + 10-stat
 // strip (budget + the 9 banded stats from CITY_STATS). Stats are
@@ -3215,6 +3416,12 @@ function renderAffiliation(ctx) {
         // is dense (per-agency accordions across the ministry) and
         // reads better outside the role card's footprint.
         window.location.href = 'auditministry.html';
+      } else if (btn.dataset.action === 'ps-direct-portfolio') {
+        openDirectPortfolioModal(ctx);
+      } else if (btn.dataset.action === 'ps-prepare-brief') {
+        openPrepareBriefModal(ctx);
+      } else if (btn.dataset.action === 'ps-patronage') {
+        openPatronageModal(ctx);
       } else if (btn.dataset.action === 'propose-ordinance') {
         // 20270747: CCP/CCM Propose tile. Opens the catalog picker
         // modal scoped to the office-holder's city. handleMpAction
