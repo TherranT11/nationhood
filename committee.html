@@ -88,68 +88,27 @@
   .input-disabled a { color:var(--comm); text-decoration:none; }
   .input-disabled a:hover { color:var(--comm-bright); }
 
-  /* Phase A.1 (20270662) — Report Vote panel. Lives between the
-     testimony record and the committee actions grid; only renders
-     when a bill is sitting in awaiting_report_vote status. */
-  .rv { padding:16px 20px; border-top:0.5px solid var(--line); }
-  .rv-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
-  .rv-lab { font-size:9px; letter-spacing:0.16em; color:var(--comm-bright); font-weight:700; }
-  .rv-status { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600; }
-  .rv-bill { background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px;
-    padding:12px 14px; margin-bottom:10px; }
-  .rv-meta { display:flex; gap:10px; align-items:center; margin-bottom:6px; }
-  .rv-cat { font-size:8.5px; letter-spacing:0.14em; color:var(--comm); font-weight:700; }
-  .rv-section { font-size:9px; color:var(--faint); letter-spacing:0.08em; text-transform:uppercase; }
-  .rv-title { font-size:13px; color:#dadada; font-weight:500; line-height:1.4; margin-bottom:5px; }
-  .rv-sub { font-size:9.5px; color:var(--faint); }
-  .rv-sub b { color:#bbb; font-weight:600; }
-  .rv-tally { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
-  .rv-tally-row { background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px;
-    padding:10px 12px; display:flex; align-items:center; justify-content:space-between; }
-  .rv-tally-row.rv-tally-report { border-left:2px solid #2f6e3a; }
-  .rv-tally-row.rv-tally-table  { border-left:2px solid #6e2f2f; }
-  .rv-tally-lab { font-size:9px; letter-spacing:0.12em; color:var(--faint); text-transform:uppercase; }
-  .rv-tally-val { font-size:14px; color:#dadada; font-family:monospace; font-weight:600; }
-  .rv-arch { display:flex; flex-wrap:wrap; gap:5px 10px; margin-bottom:10px;
-    padding:8px 10px; background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px; }
-  .rv-arch-row { display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
-  .rv-arch-lab { font-size:8.5px; letter-spacing:0.13em; color:var(--faint); font-weight:700;
+  /* Committee motion UI (20270772) — launcher buttons + YES/NO ballot.
+     Brass/deep vocabulary matches the agenda card below. */
+  .mo-launch { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .mo-btn { background:#0a0807; border:0.5px solid #2a2218; border-radius:5px;
+    padding:11px 13px; text-align:left; display:flex; flex-direction:column; gap:4px;
+    cursor:pointer; transition:all 0.15s; font-family:inherit; }
+  .mo-btn:hover:not(:disabled) { background:#13100b; border-color:#5a4630; }
+  .mo-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .mo-btn-lab { font-size:11px; font-weight:700; letter-spacing:0.1em; color:#dcb88a; }
+  .mo-btn-desc { font-size:9px; color:#888; line-height:1.4; }
+  .mo-btn--vote .mo-btn-lab  { color:#9ac99a; }
+  .mo-btn--table .mo-btn-lab { color:#c8a06e; }
+  .mo-btn--yes, .mo-btn--no { flex:1; flex-direction:row; align-items:center; justify-content:center; }
+  .mo-btn--yes .mo-btn-lab { color:#9ac99a; }
+  .mo-btn--no .mo-btn-lab  { color:#c87a7a; }
+  .mo-hint { color:#9a8e7a; font-style:italic; }
+  .mo-banner { font-size:9px; letter-spacing:0.12em; font-weight:700; color:#161208;
+    background:#dcb88a; padding:5px 10px; border-radius:3px; margin-bottom:10px;
     text-transform:uppercase; }
-  .rv-arch-lab.support { color:#7fb98a; }
-  .rv-arch-lab.oppose  { color:#c87a7a; }
-  .rv-arch-chip { font-size:9px; padding:2px 7px; border-radius:3px;
-    background:#0d0d0d; border:0.5px solid var(--line); color:#bbb; font-weight:600;
-    letter-spacing:0.01em; }
-  .rv-arch-chip.support { color:#7fb98a; border-color:#2f6e3a; }
-  .rv-arch-chip.oppose  { color:#c87a7a; border-color:#6e2f2f; }
-  .rv-arch-chip.mine    { background:#191512; }
-  .rv-arch-warn { font-size:9.5px; color:#d4b87a; margin-bottom:8px; font-style:italic; }
-  .rv-cast { display:flex; gap:8px; align-items:center; }
-  .rv-cast-spec { color:var(--faint); font-size:10px; font-style:italic; }
-  .rv-vote-btn { flex:1; padding:11px 14px; background:#0a0a0a; border:0.5px solid var(--line);
-    border-radius:5px; color:#bbb; font-size:11px; letter-spacing:0.08em; font-weight:600;
-    cursor:pointer; transition:all 0.15s; }
-  .rv-vote-btn:hover:not(:disabled) { background:#101010; }
-  .rv-vote-btn:disabled { opacity:0.5; cursor:not-allowed; }
-  .rv-vote-report { border-color:#2f6e3a; color:#7fb98a; }
-  .rv-vote-report:hover:not(:disabled) { background:rgba(47,110,58,0.08); }
-  .rv-vote-table  { border-color:#6e2f2f; color:#b97f7f; }
-  .rv-vote-table:hover:not(:disabled)  { background:rgba(110,47,47,0.08); }
-
-  .actions { padding:16px 20px; }
-  .ac-lab { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600;
-    margin-bottom:10px; }
-  .ac-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; }
-  .act-btn { background:#0a0a0a; border:0.5px solid var(--line); border-radius:5px;
-    padding:13px 14px; text-align:left; display:flex; flex-direction:column; gap:5px;
-    transition:all 0.15s; cursor:not-allowed; opacity:0.5; }
-  .act-btn.enabled { cursor:pointer; opacity:1; }
-  .act-btn.enabled:hover { background:#101010; border-color:var(--comm-dim); }
-  .act-btn.enabled:hover .act-name { color:var(--comm-bright); }
-  .act-head { display:flex; align-items:center; gap:8px; }
-  .act-ic { font-size:13px; color:var(--comm-bright); flex-shrink:0; }
-  .act-name { font-size:11px; font-weight:600; color:#fff; letter-spacing:0.04em; flex:1; }
-  .act-desc { font-size:9.5px; color:var(--mut); line-height:1.5; }
+  .mo-banner--vote  { background:#9ac99a; }
+  .mo-banner--table { background:#c8a06e; }
 
   .activities { padding:16px 20px; border-top:0.5px solid var(--line); background:#0a0a0a; }
   .av-lab { font-size:8.5px; letter-spacing:0.14em; color:var(--faint); font-weight:600;
@@ -220,18 +179,9 @@
     font-weight:700; padding:2px 8px; border-radius:2px; flex-shrink:0;
     border:0.5px solid transparent; }
   .av-pill--pending { color:#5a5a5a; background:#0d0a08; border-color:#222; }
-  .av-pill--hear  { color:#a3b07e; background:rgba(163,176,126,0.10); border-color:#3a4a30; }
-  .av-pill--vote  { color:#9ac99a; background:rgba(154,201,154,0.10); border-color:#3a5a3a; }
-  .av-pill--amend { color:#dcb88a; background:rgba(220,184,138,0.10); border-color:#5a4630; }
+  .av-pill--yes { color:#9ac99a; background:rgba(154,201,154,0.10); border-color:#3a5a3a; }
+  .av-pill--no  { color:#c87a7a; background:rgba(200,122,122,0.10); border-color:#5a3a3a; }
   .av-actions { display:flex; gap:8px; flex-wrap:wrap; }
-  .av-btn { padding:7px 14px; font-size:9px; letter-spacing:0.13em; font-weight:700;
-    border-radius:3px; background:transparent; cursor:pointer; font-family:inherit;
-    border:0.5px solid #444; color:#bbb; }
-  .av-btn--hear  { border-color:#3a4a30; color:#a3b07e; }
-  .av-btn--vote  { border-color:#3a5a3a; color:#9ac99a; }
-  .av-btn--amend { border-color:#5a4630; color:#dcb88a; }
-  .av-btn:hover { background:#13100b; color:#fff; }
-  .av-btn:disabled { opacity:0.5; cursor:not-allowed; }
   .av-mine { font-family:monospace; font-size:10px; letter-spacing:0.04em;
     color:#888; font-style:italic; padding:6px 8px; background:#0a0807;
     border:0.5px solid rgba(255,255,255,0.04); border-radius:3px; }
@@ -338,10 +288,6 @@
   .hc-send:disabled { opacity:0.4; cursor:not-allowed; }
   .hc-err { display:none; color:var(--red, #c87a7a); font-size:10px; }
   .hc-err.show { display:block; }
-
-  /* Hold-a-Hearing button (chair-only enable) — same act-btn shape
-     used elsewhere but slot-aware. */
-  .act-btn.act-hold { /* uses inherited .act-btn styles + .enabled */ }
 
   /* ───────────── Witness testimony modal ─────────────
      Smaller sibling of the Propose New Law modal. Persona dropdown +
@@ -529,25 +475,40 @@ async function init() {
     .order('created_at', { ascending: false });
   if (propErr) console.warn('committee: proposals fetch failed', propErr);
 
-  // Active agenda proposal + vote tally (20270752). Only fetched when
-  // the committee row carries an active_proposal_id.
+  // Active proposal + its motions (20270772). A committee works ONE
+  // active proposal at a time (committees.active_proposal_id). Members
+  // move motions on it; we pull the open motion + its votes for the
+  // ballot, plus the passed motions so the launcher can disable the
+  // once-per-bill Hearing / Amend buttons.
   let activeAgendaProposal = null;
-  let agendaVotes = [];
+  let activeMotion = null;
+  let motionVotes = [];
+  let passedMotions = [];
   if (activeAgendaId) {
-    const [propRes, voteRes] = await Promise.all([
+    const [propRes, motRes] = await Promise.all([
       _supabase.from('committee_proposals')
         .select('id, category, section, articles, bill_name, support_archetypes, oppose_archetypes, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
         .eq('id', activeAgendaId)
         .maybeSingle(),
-      _supabase.from('committee_agenda_votes')
-        .select('member_id, voter_faction_id, vote, is_npc, voted_at_tick')
+      _supabase.from('committee_motions')
+        .select('id, motion, status, opened_at_tick, closes_at_tick, yes_count, no_count')
         .eq('committee_id', committeeId)
         .eq('proposal_id', activeAgendaId),
     ]);
-    if (propRes.error) console.warn('committee: active agenda fetch failed', propRes.error);
-    if (voteRes.error) console.warn('committee: agenda votes fetch failed', voteRes.error);
+    if (propRes.error) console.warn('committee: active proposal fetch failed', propRes.error);
+    if (motRes.error)  console.warn('committee: motions fetch failed', motRes.error);
     activeAgendaProposal = propRes.data || null;
-    agendaVotes = voteRes.data || [];
+    const motions = motRes.data || [];
+    activeMotion  = motions.find(m => m.status === 'open') || null;
+    passedMotions = motions.filter(m => m.status === 'passed');
+    if (activeMotion) {
+      const { data: mv, error: mvErr } = await _supabase
+        .from('committee_motion_votes')
+        .select('member_id, voter_faction_id, vote, is_npc')
+        .eq('motion_id', activeMotion.id);
+      if (mvErr) console.warn('committee: motion votes fetch failed', mvErr);
+      motionVotes = mv || [];
+    }
   }
 
   // 20270728: policy-change proposals share the queue. Pulled from a
@@ -568,28 +529,6 @@ async function init() {
   ].sort((a, b) =>
     String(b.created_at || '').localeCompare(String(a.created_at || ''))
   );
-
-  // Phase A.1 (20270662) — bill currently in the Report Vote phase.
-  // committee_hold_hearing flips status to in_hearing; close flips
-  // to awaiting_report_vote. The bill stays in that state until the
-  // committee resolves it via mp_vote_on_report.
-  const { data: reportBills, error: rbErr } = await _supabase
-    .from('committee_proposals')
-    .select('id, category, section, articles, bill_name, proposed_at_tick, support_archetypes, oppose_archetypes, author:factions!author_faction_id(leader_first_name, leader_last_name, nickname)')
-    .eq('committee_id', committeeId)
-    .eq('status', 'awaiting_report_vote')
-    .limit(1);
-  if (rbErr) console.warn('committee: report-vote bill fetch failed', rbErr);
-  const reportBill = (reportBills || [])[0] || null;
-  let reportVotes = [];
-  if (reportBill) {
-    const { data: rv, error: rvErr } = await _supabase
-      .from('bill_report_votes')
-      .select('voter_faction_id, vote, voted_at_tick')
-      .eq('proposal_id', reportBill.id);
-    if (rvErr) console.warn('committee: report-vote tally fetch failed', rvErr);
-    reportVotes = rv || [];
-  }
 
   // Active hearing for this committee (status='open'), if any. Joined
   // to the proposal so we can render the bill card on Monthly Agenda
@@ -634,7 +573,7 @@ async function init() {
   }
 
   renderCrumb(ctx, meta);
-  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick, chatMessages);
+  renderCommittee(ctx, meta, members || [], committeeId, proposals || [], activeHearing, personas, testimonies, ctxShardTick(ctx), activeAgendaProposal, activeMotion, motionVotes, passedMotions, activeAgendaSetAtTick, chatMessages);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -662,7 +601,7 @@ function ctxShardTick(ctx) {
   return Number(ctx?.shard?.current_tick) || 0;
 }
 
-function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, reportBill, reportVotes, activeAgendaProposal, agendaVotes, activeAgendaSetAtTick, chatMessages) {
+function renderCommittee(ctx, meta, members, committeeId, proposals, activeHearing, personas, testimonies, currentTick, activeAgendaProposal, activeMotion, motionVotes, passedMotions, activeAgendaSetAtTick, chatMessages) {
   const viewerPolId = ctx.faction?.id || null;
   const isMP = ctx.faction?.politician_office === 'member_of_parliament';
   const onCommittee = members.some(m => m.politician_faction_id && m.politician_faction_id === viewerPolId);
@@ -679,8 +618,13 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     && !activeAgendaProposal
     && !activeHearing
     && (lastSetTick < currentTick);
-  const myAgendaVote = agendaVotes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
-  const canVoteAgenda = !!activeAgendaProposal && onCommittee && !myAgendaVote;
+  // 20270772 — viewer's stake in the open motion (if one is live).
+  const motionOpen = !!activeMotion && currentTick <= Number(activeMotion.closes_at_tick);
+  const myMotionVote = activeMotion ? (motionVotes.find(v => v.voter_faction_id === viewerPolId)?.vote || null) : null;
+  const canVoteMotion = !!activeMotion && onCommittee && !myMotionVote && motionOpen;
+  // The active bill is still status='queued' while it sits on the
+  // agenda, so drop it from the queued list to avoid showing it twice.
+  const queuedProposals = (proposals || []).filter(p => p.id !== activeAgendaProposal?.id);
 
   document.getElementById('comm-host').innerHTML = `
     <div class="ch-row">
@@ -703,9 +647,9 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
     <div class="agenda">
       <div class="ag-head">
         <span class="ag-lab">MONTHLY AGENDA</span>
-        <span class="ag-status${activeHearing ? ' ag-status--hearing' : ''}">${activeHearing ? 'HEARING IN SESSION' : (activeAgendaProposal ? 'AGENDA VOTE IN PROGRESS' : 'NO ACTIVE WORK')}</span>
+        <span class="ag-status${activeHearing ? ' ag-status--hearing' : ''}">${activeHearing ? 'HEARING IN SESSION' : (activeMotion ? `${MOTION_LABEL[activeMotion.motion] || 'MOTION'} ON THE FLOOR` : (activeAgendaProposal ? 'ON THE AGENDA' : 'NO ACTIVE WORK'))}</span>
       </div>
-      ${renderMonthlyAgenda(activeHearing, currentTick, isChair, activeAgendaProposal, agendaVotes, members, viewerPolId, canVoteAgenda, myAgendaVote, activeAgendaSetAtTick)}
+      ${renderMonthlyAgenda(activeHearing, currentTick, isChair, activeAgendaProposal, activeMotion, motionVotes, passedMotions, members, viewerPolId, canVoteMotion, myMotionVote, motionOpen, onCommittee, activeAgendaSetAtTick)}
     </div>
 
     <div class="testimony">
@@ -720,28 +664,14 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       </div>
     </div>
 
-    ${reportBill ? `
-    <div class="rv">
-      <div class="rv-head">
-        <span class="rv-lab">REPORT VOTE</span>
-        <span class="rv-status">AWAITING COMMITTEE DECISION</span>
-      </div>
-      ${renderReportVotePanel(reportBill, reportVotes || [], members, viewerPolId, onCommittee)}
-    </div>` : ''}
-
-    <div class="actions">
-      <div class="ac-lab">COMMITTEE ACTIONS${onCommittee ? '' : ' &middot; MEMBERS ONLY'}</div>
-      <div class="ac-grid">${renderActions(onCommittee, isChair, !!activeHearing, (proposals || []).length > 0, !!activeAgendaProposal)}</div>
-    </div>
-
     <div class="activities">
       <div class="av-lab">LIST OF ACTIVITIES &middot; PAST THIRTY TICKS</div>
       <div class="av-empty">No activities recorded.</div>
     </div>
 
     <div class="upcoming">
-      <div class="up-lab">UPCOMING AGENDA${canSetAgenda && (proposals || []).filter(p => p._kind !== 'policy_change').length ? '<span class="up-hint"> &middot; click an item to bring it to the Monthly Agenda</span>' : ''}</div>
-      ${renderProposals(proposals || [], canSetAgenda)}
+      <div class="up-lab">UPCOMING AGENDA${canSetAgenda && queuedProposals.filter(p => p._kind !== 'policy_change').length ? '<span class="up-hint"> &middot; click an item to bring it to the Monthly Agenda</span>' : ''}</div>
+      ${renderProposals(queuedProposals, canSetAgenda)}
     </div>`;
 
   // Delegated click handler.
@@ -797,60 +727,75 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       }
       return;
     }
-    // 20270752 — agenda action vote (HEAR / VOTE / AMEND) cast by a
-    // committee member while a proposal is on the floor for an
-    // action-vote.
-    const agVote = e.target.closest('[data-agenda-vote]');
-    if (agVote) {
+    // 20270772 — move a motion (Hearing / Vote / Amend / Table) on the
+    // committee's active bill. Opens a 3-tick YES/NO committee ballot.
+    const openMot = e.target.closest('[data-open-motion]');
+    if (openMot) {
       e.preventDefault();
-      if (agVote.dataset.busy === '1') return;
-      const vote = agVote.dataset.agendaVote;
-      agVote.dataset.busy = '1';
-      agVote.disabled = true;
+      if (openMot.dataset.busy === '1') return;
+      const motion = openMot.dataset.openMotion;
+      if (!confirm(`Move to ${MOTION_LABEL[motion] || motion.toUpperCase()} this bill? This opens a 3-tick committee vote.`)) return;
+      openMot.dataset.busy = '1';
+      document.querySelectorAll('[data-open-motion]').forEach(b => { b.disabled = true; });
       try {
-        const { data, error } = await _supabase.rpc('committee_cast_agenda_vote', {
+        const { data, error } = await _supabase.rpc('committee_open_motion', {
+          p_faction_id: viewerPolId, p_committee_id: committeeId, p_motion: motion,
+        });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_member:           'Only committee members can move a motion.',
+            no_active_agenda:     'Set a proposal on the agenda first.',
+            motion_already_open:  'A motion is already up for a vote.',
+            hearing_in_progress:  'A hearing is in session — wait for it to close.',
+            proposal_busy:        'This bill isn’t ready for a new motion yet.',
+            hearing_already_held: 'This bill has already had its hearing.',
+            amend_already_held:   'This bill has already been sent to amendment.',
+          };
+          alert(REASON[data?.reason] || ('Could not move the motion: ' + (data?.reason || 'unknown')));
+          openMot.dataset.busy = '0';
+          document.querySelectorAll('[data-open-motion]').forEach(b => { b.disabled = false; });
+          return;
+        }
+        location.reload();
+      } catch (err) {
+        alert('Could not move the motion: ' + (err?.message || 'unknown error'));
+        openMot.dataset.busy = '0';
+        document.querySelectorAll('[data-open-motion]').forEach(b => { b.disabled = false; });
+      }
+      return;
+    }
+    // 20270772 — cast YES / NO on the committee's open motion.
+    const motVote = e.target.closest('[data-motion-vote]');
+    if (motVote) {
+      e.preventDefault();
+      if (motVote.dataset.busy === '1') return;
+      const vote = motVote.dataset.motionVote;
+      if (!confirm(`Vote ${vote.toUpperCase()} on this motion? Your vote is final.`)) return;
+      motVote.dataset.busy = '1';
+      document.querySelectorAll('[data-motion-vote]').forEach(b => { b.disabled = true; });
+      try {
+        const { data, error } = await _supabase.rpc('committee_cast_motion_vote', {
           p_faction_id: viewerPolId, p_committee_id: committeeId, p_vote: vote,
         });
         if (error) throw error;
         if (!data?.success) {
           const REASON = {
-            not_authenticated: 'Sign in first.',
-            not_member:        'Only committee members can vote.',
-            no_active_agenda:  'No agenda item is currently up for a vote.',
-            already_voted:     'You’ve already cast your vote on this item.',
-            invalid_vote:      'Pick hear, vote, or amend.',
+            not_member:     'Only committee members can vote.',
+            no_open_motion: 'No motion is currently up for a vote.',
+            voting_closed:  'Voting on this motion has closed.',
+            already_voted:  'You’ve already cast your vote on this motion.',
           };
           alert(REASON[data?.reason] || ('Could not vote: ' + (data?.reason || 'unknown')));
-          agVote.dataset.busy = '0'; agVote.disabled = false;
+          motVote.dataset.busy = '0';
+          document.querySelectorAll('[data-motion-vote]').forEach(b => { b.disabled = false; });
           return;
         }
         location.reload();
       } catch (err) {
         alert('Could not vote: ' + (err?.message || 'unknown error'));
-        agVote.dataset.busy = '0'; agVote.disabled = false;
-      }
-      return;
-    }
-    const hold = e.target.closest('[data-act="hold"].enabled');
-    if (hold) {
-      e.preventDefault();
-      if (hold.dataset.busy === '1') return;
-      const next = (proposals || [])[0];
-      if (!next) { alert('No queued proposals to hear.'); return; }
-      hold.dataset.busy = '1';
-      hold.disabled = true;
-      try {
-        const { data, error } = await _supabase.rpc('committee_hold_hearing', {
-          p_committee_id: committeeId, p_proposal_id: next.id, p_faction_id: viewerPolId,
-        });
-        if (error) throw error;
-        if (!data?.success) { alert('Could not open hearing: ' + (data?.reason || 'unknown')); return; }
-        location.reload();
-      } catch (err) {
-        alert('Could not open hearing: ' + (err?.message || 'unknown error'));
-      } finally {
-        hold.dataset.busy = '0';
-        hold.disabled = false;
+        motVote.dataset.busy = '0';
+        document.querySelectorAll('[data-motion-vote]').forEach(b => { b.disabled = false; });
       }
       return;
     }
@@ -872,32 +817,6 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
       } finally {
         close.dataset.busy = '0';
         close.disabled = false;
-      }
-      return;
-    }
-    // Phase A.1 (20270662) — committee Report / Table vote.
-    const rvBtn = e.target.closest('.rv-vote-btn');
-    if (rvBtn) {
-      e.preventDefault();
-      if (rvBtn.dataset.busy === '1') return;
-      const propId = rvBtn.dataset.proposal;
-      const vote   = rvBtn.dataset.vote;
-      if (!propId || !vote) return;
-      if (!confirm(`Cast your vote to ${vote.toUpperCase()} this bill? Your vote is final.`)) return;
-      rvBtn.dataset.busy = '1';
-      document.querySelectorAll('.rv-vote-btn').forEach(b => { b.disabled = true; });
-      try {
-        const { data, error } = await _supabase.rpc('mp_vote_on_report', {
-          p_faction_id: viewerPolId, p_proposal_id: propId, p_vote: vote,
-        });
-        if (error) throw error;
-        if (!data?.success) { alert('Could not cast vote: ' + (data?.reason || 'unknown')); return; }
-        location.reload();
-      } catch (err) {
-        alert('Could not cast vote: ' + (err?.message || 'unknown error'));
-      } finally {
-        document.querySelectorAll('.rv-vote-btn').forEach(b => { b.disabled = false; });
-        rvBtn.dataset.busy = '0';
       }
       return;
     }
@@ -924,10 +843,6 @@ function renderCommittee(ctx, meta, members, committeeId, proposals, activeHeari
         acc.disabled = false;
       }
       return;
-    }
-    const stubAct = e.target.closest('.act-btn.enabled[data-act-stub]');
-    if (stubAct) {
-      alert('This committee action is not yet wired up.');
     }
   });
 
@@ -1135,182 +1050,33 @@ function renderInputBanner(isMP, onCommittee, activeHearing, alreadyTestified, c
   return `<div class="input-disabled"><strong>Observer access.</strong> &middot; Members of Parliament may apply for committee membership.</div>`;
 }
 
-function renderActions(onCommittee, isChair, hasOpenHearing, hasQueued, hasActiveAgenda) {
-  // [Hold a Hearing] is CHAIR-ONLY per the 20270499 RPC gate. We
-  // mirror the gate client-side: enabled iff chair AND no hearing
-  // currently open AND at least one queued proposal exists AND
-  // there's no active Set-the-Agenda vote in progress (20270752 —
-  // the chair would otherwise race the committee's vote).
-  // Tooltip explains the disable.
-  const holdDisabledReason = !onCommittee
-    ? 'Members only'
-    : !isChair
-      ? 'Committee chair only'
-      : hasOpenHearing
-        ? 'A hearing is already in session'
-        : hasActiveAgenda
-          ? 'An agenda vote is in progress'
-          : !hasQueued
-            ? 'No queued proposals'
-            : '';
-  const holdEnabled = holdDisabledReason === '';
+// 20270772 — display label + one-line description per motion. Shared
+// by the status chip, the launcher buttons, and the confirm dialogs.
+const MOTION_LABEL = { hearing: 'HEARING', vote: 'VOTE', amend: 'AMEND', table: 'TABLE' };
+const MOTION_DESC = {
+  hearing: 'Pull the bill into a 3-tick testimony hearing. Once per bill.',
+  vote:    'Send the bill to the chamber floor for the final vote.',
+  amend:   'Send the bill back for amendment. Once per bill.',
+  table:   'Set the bill aside — it returns to the agenda queue.',
+};
 
-  const actions = [
-    { act: 'hold',  ic: '☞', name: 'HOLD A HEARING',
-      desc: 'Bring the top queued proposal onto the monthly agenda — opens a 3-tick testimony window for witnesses.',
-      enabled: holdEnabled,
-      title: holdDisabledReason || '',
-      stub: false },
-    { ic: '☇', name: 'VOTE ON APPROPRIATIONS', desc: 'Approve, modify, or deny funding for ministries and programs in the committee’s remit.',
-      enabled: onCommittee, title: onCommittee ? '' : 'Members only', stub: true },
-    { ic: '✎', name: 'AMEND A PROPOSAL',      desc: 'Modify a bill clause-by-clause before it goes to the chamber floor.',
-      enabled: onCommittee, title: onCommittee ? '' : 'Members only', stub: true },
-  ];
-  return actions.map(a => `
-    <button class="act-btn${a.enabled ? ' enabled' : ''}" type="button"${a.enabled ? '' : ' disabled'}${a.title ? ` title="${escHtml(a.title)}"` : ''}${a.act ? ` data-act="${a.act}"` : ''}${a.stub && a.enabled ? ' data-act-stub' : ''}>
-      <div class="act-head">
-        <span class="act-ic">${a.ic}</span>
-        <span class="act-name">${escHtml(a.name)}</span>
-      </div>
-      <div class="act-desc">${escHtml(a.desc)}</div>
-    </button>`).join('');
-}
-
-// Report Vote panel — shown when a bill has finished hearing and is
-// awaiting the committee's Report / Table decision (Phase A.1,
-// 20270662). Members get clickable [Report] / [Table] buttons until
-// they've voted; everyone sees the live tally. First side to a
-// majority resolves the bill server-side; this view will refresh on
-// next load.
-function renderReportVotePanel(bill, votes, members, viewerPolId, onCommittee) {
-  if (!bill) return '';
-  const firstArticle = Array.isArray(bill.articles) && bill.articles.length ? bill.articles[0] : null;
-  const a = bill.author || {};
-  const sponsor = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
-  const title = bill.bill_name
-    ? truncate(bill.bill_name, 80)
-    : (firstArticle?.text ? truncate(firstArticle.text, 80) : (bill.section || 'Proposal'));
-
-  // Author-declared archetype positions (20270686). Optional — empty
-  // arrays when the proposer left both lists blank.
-  const supportList = Array.isArray(bill.support_archetypes) ? bill.support_archetypes : [];
-  const opposeList  = Array.isArray(bill.oppose_archetypes)  ? bill.oppose_archetypes  : [];
-
-  // ONE-SOURCE NOTE: this party-bloc tally mirrors mp_vote_on_report
-  // (20270686). Both must agree — when you edit the SQL, edit here
-  // too. The shape: per distinct party on the committee, resolve to
-  // a side via (a) first player vote then (b) archetype match
-  // against support/oppose, else abstain. Tally + denominator both
-  // include any party that lands on a side.
-  const partyOfFaction = new Map(
-    members
-      .filter(m => m.politician_faction_id)
-      .map(m => [m.politician_faction_id, m.party_id])
-  );
-  const seatsByParty   = new Map();
-  const archByParty    = new Map();
-  for (const m of members) {
-    if (!m.party_id) continue;
-    seatsByParty.set(m.party_id, (seatsByParty.get(m.party_id) || 0) + 1);
-    if (m.party?.archetype) archByParty.set(m.party_id, m.party.archetype);
-  }
-  // First player vote per party (stable by voted_at_tick, then index).
-  const sortedVotes = [...votes].sort((a, b) =>
-    (a.voted_at_tick ?? 0) - (b.voted_at_tick ?? 0)
-  );
-  const firstVoteByParty = new Map();
-  for (const v of sortedVotes) {
-    const partyId = partyOfFaction.get(v.voter_faction_id);
-    if (!partyId) continue;
-    if (!firstVoteByParty.has(partyId)) firstVoteByParty.set(partyId, v.vote);
-  }
-  const archPosition = arch => arch && supportList.includes(arch) ? 'report'
-                             : arch && opposeList.includes(arch)  ? 'table'
-                             : null;
-  let reportCount = 0;
-  let tableCount  = 0;
-  let memberCount = 0;
-  for (const [partyId, seats] of seatsByParty) {
-    const side = firstVoteByParty.get(partyId) || archPosition(archByParty.get(partyId));
-    if (!side) continue;
-    if (side === 'report') reportCount += seats;
-    else                   tableCount  += seats;
-    memberCount += seats;
-  }
-  const threshold = Math.floor(memberCount / 2) + 1;
-  const myVote    = votes.find(v => v.voter_faction_id === viewerPolId)?.vote || null;
-  const canVote   = onCommittee && !myVote;
-
-  const myMember = members.find(m => m.politician_faction_id === viewerPolId) || null;
-  const myArch   = myMember?.party?.archetype || null;
-  const myPosition = archPosition(myArch);
-  const archChips = (list, kind) => list.map(name =>
-    `<span class="rv-arch-chip ${kind}${name === myArch ? ' mine' : ''}">${escHtml(name)}</span>`
-  ).join('');
-  const archBlock = (supportList.length || opposeList.length) ? `
-    <div class="rv-arch">
-      ${supportList.length ? `<div class="rv-arch-row"><span class="rv-arch-lab support">Listed Support</span>${archChips(supportList, 'support')}</div>` : ''}
-      ${opposeList.length  ? `<div class="rv-arch-row"><span class="rv-arch-lab oppose">Listed Oppose</span>${archChips(opposeList, 'oppose')}</div>` : ''}
-    </div>` : '';
-  // Warning shown only when the viewer is voting AND their party
-  // archetype is listed on a side. If they vote against, they'll pay
-  // -1 Party Popularity (mp_vote_on_report enforces it).
-  const archWarn = (canVote && myPosition) ? `
-    <div class="rv-arch-warn">Your party (${escHtml(myArch)}) is listed as
-      ${myPosition === 'report' ? '<strong>Supporting</strong>' : '<strong>Opposing</strong>'}.
-      Voting ${myPosition === 'report' ? '<strong>Table</strong>' : '<strong>Report</strong>'}
-      costs <strong>−1 Party Popularity</strong>.</div>` : '';
-
-  const buttons = onCommittee
-    ? (myVote
-        ? `<div class="rv-cast">Your vote: <strong>${escHtml(myVote.toUpperCase())}</strong> &middot; final</div>`
-        : `<div class="rv-cast">
-             <button class="rv-vote-btn rv-vote-report" type="button" data-proposal="${escHtml(bill.id)}" data-vote="report">Vote: REPORT</button>
-             <button class="rv-vote-btn rv-vote-table"  type="button" data-proposal="${escHtml(bill.id)}" data-vote="table">Vote: TABLE</button>
-           </div>`)
-    : `<div class="rv-cast rv-cast-spec">Members only</div>`;
-
-  return `
-    <div class="rv-bill">
-      <div class="rv-meta">
-        <span class="rv-cat">${escHtml((bill.category || '').toUpperCase())}</span>
-        <span class="rv-section">${escHtml(bill.section || '')}</span>
-      </div>
-      <div class="rv-title">${escHtml(title)}</div>
-      <div class="rv-sub">Sponsor <b>${escHtml(sponsor)}</b> &middot; ${memberCount} votable seat${memberCount === 1 ? '' : 's'} of ${members.length} &middot; needs ${threshold} to resolve</div>
-    </div>
-    ${archBlock}
-    <div class="rv-tally">
-      <div class="rv-tally-row rv-tally-report">
-        <span class="rv-tally-lab">Report to floor</span>
-        <span class="rv-tally-val">${reportCount} / ${threshold}</span>
-      </div>
-      <div class="rv-tally-row rv-tally-table">
-        <span class="rv-tally-lab">Table in committee</span>
-        <span class="rv-tally-val">${tableCount} / ${threshold}</span>
-      </div>
-    </div>
-    ${archWarn}
-    ${buttons}
-  `;
-}
-
-// Monthly Agenda — the bill currently in hearing. Empty state when
-// no open hearing exists. Chair gets a [Close Hearing] button on the
-// agenda card; everyone sees the ticks-remaining countdown.
-//
-// 20270752: when committees.active_proposal_id is set but no hearing
-// is open, the committee is in the 5-member action-vote phase. The
-// agenda card paints the proposal + per-member ballot + tally + the
-// viewer's HEAR / VOTE / AMEND buttons in place of the hearing
-// countdown.
+// Monthly Agenda — what the committee is working right now.
+//   • A hearing is open → testimony countdown card (chair gets Close).
+//   • A motion is open → the YES/NO ballot card (renderMotionVote).
+//   • A bill is on the agenda, idle → the motion launcher (renderMotionLauncher).
+//   • Nothing active → empty state.
 function renderMonthlyAgenda(activeHearing, currentTick, isChair,
-                              activeAgendaProposal, agendaVotes, members,
-                              viewerPolId, canVoteAgenda, myAgendaVote, activeAgendaSetAtTick) {
+                              activeAgendaProposal, activeMotion, motionVotes,
+                              passedMotions, members, viewerPolId,
+                              canVoteMotion, myMotionVote, motionOpen, onCommittee,
+                              activeAgendaSetAtTick) {
   if (activeAgendaProposal && !activeHearing) {
-    return renderAgendaVotePanel(activeAgendaProposal, agendaVotes || [],
-                                 members || [], viewerPolId, canVoteAgenda, myAgendaVote,
-                                 activeAgendaSetAtTick, currentTick);
+    return activeMotion
+      ? renderMotionVote(activeAgendaProposal, activeMotion, motionVotes || [],
+                         members || [], viewerPolId, canVoteMotion, myMotionVote,
+                         motionOpen, currentTick)
+      : renderMotionLauncher(activeAgendaProposal, passedMotions || [], onCommittee,
+                             activeAgendaSetAtTick, currentTick);
   }
   if (!activeHearing) return '<div class="ag-empty">No current work item.</div>';
   const p = activeHearing.proposal || {};
@@ -1557,25 +1323,63 @@ function renderProposals(proposals, canSetAgenda) {
   }).join('');
 }
 
-// Set-the-Agenda vote panel (20270752). Shown in the Monthly Agenda
-// slot when committees.active_proposal_id is set and no hearing is
-// open. Three sub-bars (Hear / Vote / Amend) show the live tally;
-// each member's vote pill paints their cast or "—". When the viewer
-// can vote (committee member, hasn't voted yet), HEAR / VOTE / AMEND
-// buttons sit at the bottom and call committee_cast_agenda_vote.
-function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, myVote, setAtTick, currentTick) {
-  const p = proposal || {};
+// 20270772 — shared bill header for the motion launcher + ballot.
+function motionBillHead(p) {
   const firstArticle = Array.isArray(p.articles) && p.articles.length ? p.articles[0] : null;
   const snippet = firstArticle?.text
     ? escHtml(firstArticle.text.length > 200 ? firstArticle.text.slice(0, 197).trim() + '…' : firstArticle.text)
     : '';
   const a = p.author || {};
   const authorName = [a.leader_first_name, a.leader_last_name].filter(Boolean).join(' ') || 'Unknown';
+  return `
+    <div class="av-head">
+      <span class="av-cat">${escHtml((p.category || '').toUpperCase())}</span>
+      <span class="av-section">${escHtml(p.section || p.bill_name || 'Proposal')}</span>
+    </div>
+    ${snippet ? `<div class="av-snippet">${snippet}</div>` : ''}
+    <div class="av-sub">Sponsor <b>${escHtml(authorName)}</b></div>`;
+}
 
+// Motion launcher (20270772) — a bill sits idle on the agenda; a member
+// moves one of the four motions, each of which opens a 3-tick YES/NO
+// committee ballot. Hearing and Amend grey out once carried out once.
+function renderMotionLauncher(proposal, passedMotions, onCommittee, setAtTick, currentTick) {
+  const p = proposal || {};
+  const used = new Set((passedMotions || []).map(m => m.motion));
+  const setNote = setAtTick
+    ? ` &middot; on the agenda since tick ${setAtTick}${currentTick && currentTick >= setAtTick ? ` (${currentTick - setAtTick} tick${currentTick - setAtTick === 1 ? '' : 's'} ago)` : ''}`
+    : '';
+
+  const order = ['hearing', 'vote', 'amend', 'table'];
+  const launcher = onCommittee
+    ? `<div class="mo-launch">
+         ${order.map(m => {
+           const disabled = (m === 'hearing' && used.has('hearing')) || (m === 'amend' && used.has('amend'));
+           const note = disabled ? (m === 'hearing' ? 'Already heard' : 'Already amended') : MOTION_DESC[m];
+           return `<button type="button" class="mo-btn mo-btn--${m}"${disabled ? ' disabled' : ` data-open-motion="${m}"`}>
+             <span class="mo-btn-lab">${MOTION_LABEL[m]}</span>
+             <span class="mo-btn-desc">${escHtml(note)}</span>
+           </button>`;
+         }).join('')}
+       </div>`
+    : '<div class="av-mine">Members only — a committee member must move a motion.</div>';
+
+  return `<div class="av-card">
+    ${motionBillHead(p)}
+    <div class="av-sub mo-hint">Move a motion to act on this bill${setNote}. Each motion opens a 3-tick committee vote.</div>
+    ${launcher}
+  </div>`;
+}
+
+// Motion ballot (20270772) — a motion is open; the five members vote
+// YES/NO over a 3-tick window. Majority of votes cast carries, the
+// chair breaks ties, and not voting is an abstention.
+function renderMotionVote(proposal, motion, votes, members, viewerPolId, canVote, myVote, motionOpen, currentTick) {
+  const p = proposal || {};
   const voteByMember = new Map((votes || []).map(v => [v.member_id, v.vote]));
-  const hear  = (votes || []).filter(v => v.vote === 'hear').length;
-  const vote  = (votes || []).filter(v => v.vote === 'vote').length;
-  const amend = (votes || []).filter(v => v.vote === 'amend').length;
+  const yes = (votes || []).filter(v => v.vote === 'yes').length;
+  const no  = (votes || []).filter(v => v.vote === 'no').length;
+  const ticksLeft = Math.max(0, Number(motion.closes_at_tick) - Number(currentTick));
 
   const memberPills = (members || []).map(m => {
     const v = voteByMember.get(m.id) || null;
@@ -1585,7 +1389,7 @@ function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, m
           ? `${m.politician.leader_first_name || ''} ${m.politician.leader_last_name || ''}`.trim()
           : 'Player')
       : `${m.npc_first_name || ''} ${m.npc_last_name || ''}`.trim() || 'Vacant';
-    const label = v ? v.toUpperCase() : '—';
+    const label = v ? v.toUpperCase() : (m.role === 'chair' ? '— TIEBREAK' : '—');
     return `<div class="av-row">
       <span class="av-role">${escHtml((m.role || '').replace('_', ' ').toUpperCase())}</span>
       <span class="av-name">${escHtml(name)}</span>
@@ -1595,25 +1399,22 @@ function renderAgendaVotePanel(proposal, votes, members, viewerPolId, canVote, m
 
   const buttons = canVote
     ? `<div class="av-actions">
-         <button type="button" class="av-btn av-btn--hear" data-agenda-vote="hear">&#9776; HEAR</button>
-         <button type="button" class="av-btn av-btn--vote" data-agenda-vote="vote">&#10003; VOTE</button>
-         <button type="button" class="av-btn av-btn--amend" data-agenda-vote="amend">&#9998; AMEND</button>
+         <button type="button" class="mo-btn mo-btn--yes" data-motion-vote="yes"><span class="mo-btn-lab">&#10003; YES</span></button>
+         <button type="button" class="mo-btn mo-btn--no"  data-motion-vote="no"><span class="mo-btn-lab">&#10007; NO</span></button>
        </div>`
-    : (myVote
-        ? `<div class="av-mine">You voted <b>${escHtml(myVote.toUpperCase())}</b>. Waiting on the rest of the committee.</div>`
-        : '');
+    : myVote
+        ? `<div class="av-mine">You voted <b>${escHtml(myVote.toUpperCase())}</b>. ${motionOpen ? 'Waiting on the rest of the committee.' : 'Resolving…'}</div>`
+        : !motionOpen
+            ? '<div class="av-mine">Voting has closed — the result resolves shortly.</div>'
+            : '<div class="av-mine">Members only.</div>';
 
   return `<div class="av-card">
-    <div class="av-head">
-      <span class="av-cat">${escHtml((p.category || '').toUpperCase())}</span>
-      <span class="av-section">${escHtml(p.section || p.bill_name || 'Proposal')}</span>
-    </div>
-    ${snippet ? `<div class="av-snippet">${snippet}</div>` : ''}
-    <div class="av-sub">Sponsor <b>${escHtml(authorName)}</b> &middot; needs 3 of 5 to carry out${setAtTick ? ` &middot; agenda set tick ${setAtTick}${currentTick && currentTick >= setAtTick ? ` (${currentTick - setAtTick} tick${currentTick - setAtTick === 1 ? '' : 's'} ago)` : ''}` : ''}</div>
+    <div class="mo-banner mo-banner--${motion.motion}">MOTION TO ${MOTION_LABEL[motion.motion]} &middot; ${escHtml(MOTION_DESC[motion.motion])}</div>
+    ${motionBillHead(p)}
+    <div class="av-sub">Majority of votes cast carries &middot; abstain by not voting &middot; chair breaks ties &middot; ${ticksLeft > 0 ? `<b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'} left (closes tick <b>${escHtml(String(motion.closes_at_tick))}</b>)` : 'voting closed'}</div>
     <div class="av-tally">
-      <div class="av-tally-row"><span class="av-tally-lab">Hold a Hearing</span><span class="av-tally-val">${hear} / 3</span></div>
-      <div class="av-tally-row"><span class="av-tally-lab">Vote on Floor</span><span class="av-tally-val">${vote} / 3</span></div>
-      <div class="av-tally-row"><span class="av-tally-lab">Amend</span><span class="av-tally-val">${amend} / 3</span></div>
+      <div class="av-tally-row"><span class="av-tally-lab">Yes</span><span class="av-tally-val">${yes}</span></div>
+      <div class="av-tally-row"><span class="av-tally-lab">No</span><span class="av-tally-val">${no}</span></div>
     </div>
     <div class="av-members">${memberPills}</div>
     ${buttons}
