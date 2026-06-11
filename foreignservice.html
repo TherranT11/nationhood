@@ -100,6 +100,7 @@
     <div class="legend-chip">Embassy Reputation <span>(0–100)</span></div>
     <div class="legend-chip">Embassy Trust <span>(0–100)</span></div>
     <div class="legend-chip">Embassy Leverage <span>(0–100)</span></div>
+    <div class="legend-chip">Attaché Reputation <span>(0–100 · the politician&rsquo;s own Reputation)</span></div>
   </div>
 
   <div class="status" id="status"></div>
@@ -152,6 +153,7 @@ const STATS = [
   { key: 'reputation', label: 'Embassy Reputation' },
   { key: 'trust',      label: 'Embassy Trust' },
   { key: 'leverage',   label: 'Embassy Leverage' },
+  { key: 'attache_reputation', label: 'Attaché Reputation' },
 ];
 const STAT_LABEL = Object.fromEntries(STATS.map(s => [s.key, s.label]));
 const DECISION_KEYS = ['A', 'B', 'C'];
