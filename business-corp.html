@@ -637,7 +637,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
+import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate, corpWebsite } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
 import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, AUTOMOTIVE_ASSETS, AUTOMOTIVE_ASSET_UPGRADE_COSTS, ASSEMBLY_LINES_BY_TIER, aluminumPerVehicle, PARTS_DEPOT_CAPS, vehicleAppeal, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
@@ -654,7 +654,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, summit_nation_id, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -727,7 +727,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // Type starts Private; Public via IPO; State is a future status.
     const typeLabel = corp.listing === 'public' ? 'Public' : 'Private';
     // {corpname}.nh — lowercase alphanumerics of the corp name.
-    const site = (corp.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '') + '.nh';
+    const site = corpWebsite(corp.name);
 
     document.title = `${corp.name} | Nationhood`;
     document.getElementById('bc-name').textContent = corp.name;
@@ -2469,16 +2469,20 @@ import { CITY_STATS } from './js/game/city-labels.js';
           const name = document.getElementById('av-name').value.trim();
           const complete = avType && avClass && avEngine && avQuality;
           const costEl = document.getElementById('av-cost');
+          const btn = document.getElementById('av-confirm');
           let affordable = false;
           if (complete) {
             const cost = vehicleBlueprintXpCost(avType, avClass, avEngine, avPackages.size, avQuality);
             affordable = cost <= corpXp;
             costEl.innerHTML = `${cost} XP <span class="${affordable ? 'dim' : 'bad'}">· ${corpXp} XP available</span>`;
+            // The cost rides the footer too, so it reads without
+            // scrolling back up the picker.
+            btn.textContent = `CONFIRM — ${cost} XP`;
           } else {
             costEl.textContent = '—';
+            btn.textContent = 'CONFIRM';
           }
-          document.getElementById('av-confirm').disabled =
-            !(name.length >= 2 && complete && affordable);
+          btn.disabled = !(name.length >= 2 && complete && affordable);
         }
 
         document.getElementById('ea-draft-vehicle').addEventListener('click', () => {
@@ -2968,6 +2972,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
             if (bErr || pErr) throw (bErr || pErr);
             slHqModels = (models || []).map(m => ({ ...m, label: m.name, stock: m.units_in_stock }));
             slPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
+            // The CCO's pending Dealer Summit (20270850), if any.
+            if (corp.summit_nation_id) {
+              const sn = nations.find(n => n.id === corp.summit_nation_id);
+              const el = document.getElementById('sl-buffs');
+              el.textContent = `${el.textContent ? el.textContent + ' ' : ''}Dealer Summit pending in ${sn?.name || 'a nation'} — +1.5 appeal on the next campaign there.`;
+            }
             natHost.innerHTML = nations.map(n => {
               const tag = n.id === corp.hq_nation_id ? ' · HOME'
                 : slPresence[n.id] ? ' ✓' : '';

@@ -236,7 +236,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
-import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo, displayName, industryTitleLabel } from './js/utils.js';
+import { escapeHtml as esc, fmtBig, hfFmtBig, postedMonthsAgo, displayName, industryTitleLabel, corpWebsite } from './js/utils.js';
 import { cityDisplayData } from './js/game/city-labels.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
 import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
@@ -516,7 +516,7 @@ async function submitStartCompany() {
           if (!corp) throw new Error('corporation not found');
           const revenueYtd = rev.data?.success ? (Number(rev.data.this_year_delta) || 0) : 0;
           const typeLabel = corp.listing === 'public' ? 'Public' : 'Private';
-          const site = (corp.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '') + '.nh';
+          const site = corpWebsite(corp.name);
           const logoHtml = corp.logo_url
             ? `<img src="${esc(corp.logo_url)}" alt="${esc(corp.name)} logo">`
             : `<span class="ini">${esc((corp.name || '?').slice(0, 2).toUpperCase())}</span>`;
@@ -644,10 +644,14 @@ async function submitStartCompany() {
       console.warn('businessman-career: interviews load failed', e?.message || e);
     }
 
-    // History was rolled once at creation (20270787) and stored as
-    // [{ year, label, sub }] — newest first as generated.
-    const hist = Array.isArray(ctx.faction?.biz_career_history)
-      ? ctx.faction.biz_career_history : [];
+    // History was rolled at creation and APPENDED to by hires,
+    // promotions, and firings — render newest on top (year desc;
+    // later-appended entries win ties).
+    const hist = (Array.isArray(ctx.faction?.biz_career_history)
+      ? ctx.faction.biz_career_history : [])
+      .map((h, i) => [h, i])
+      .sort((a, b) => ((b[0]?.year || 0) - (a[0]?.year || 0)) || (b[1] - a[1]))
+      .map(([h]) => h);
     const listEl = document.getElementById('hist-list');
     listEl.innerHTML = hist.length
       ? hist.map(h => `
