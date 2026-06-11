@@ -92,9 +92,10 @@
   .cr-note { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; padding:0 18px 14px; }
 
   /* Design Proposal modal (Product Engineer, 20270847) */
-  #pd-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+  #pd-overlay, #cc-overlay, #ds-overlay, #fc-overlay { position:fixed; inset:0;
+    background:rgba(0,0,0,0.78); display:none;
     align-items:center; justify-content:center; padding:20px; z-index:1000; }
-  #pd-overlay.open { display:flex; }
+  #pd-overlay.open, #cc-overlay.open, #ds-overlay.open, #fc-overlay.open { display:flex; }
   .pd-modal { width:100%; max-width:620px; background:#0d0d0d;
     border:0.5px solid rgba(138,170,106,0.45); border-radius:8px;
     max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -205,11 +206,66 @@
   </div>
 </div>
 
+<div id="cc-overlay">
+  <div class="pd-modal">
+    <div class="pd-head">Run a <em>Campaign</em></div>
+    <div class="pd-body">
+      <div class="pd-lab">NATION</div>
+      <div class="pd-pills" id="cc-nations"></div>
+      <div class="pd-lab">VEHICLE</div>
+      <div class="pd-pills" id="cc-models"></div>
+      <div class="pd-static" id="cc-stock" style="margin-top:8px;">—</div>
+      <div class="pd-lab">YOUR PRICE PER VEHICLE</div>
+      <input type="number" class="pd-input" id="cc-price" min="1" step="500" placeholder="$">
+      <div class="pd-static" id="cc-anchor" style="margin-top:6px;color:#888;font-size:10px;"></div>
+    </div>
+    <div class="pd-foot">
+      <button type="button" class="pd-btn secondary" id="cc-cancel">CANCEL</button>
+      <button type="button" class="pd-btn" id="cc-run" disabled>RUN CAMPAIGN</button>
+    </div>
+  </div>
+</div>
+
+<div id="ds-overlay">
+  <div class="pd-modal">
+    <div class="pd-head">Dealer <em>Summit</em></div>
+    <div class="pd-body">
+      <div class="pd-lab">NATION</div>
+      <div class="pd-pills" id="ds-nations"></div>
+      <div class="pd-static" style="margin-top:10px;color:#888;font-size:10.5px;">The next Sales
+        Campaign in the chosen nation gets +1.5 appeal, then the charge clears. One summit
+        pending at a time.</div>
+    </div>
+    <div class="pd-foot">
+      <button type="button" class="pd-btn secondary" id="ds-cancel">CANCEL</button>
+      <button type="button" class="pd-btn" id="ds-call" disabled>CALL THE SUMMIT</button>
+    </div>
+  </div>
+</div>
+
+<div id="fc-overlay">
+  <div class="pd-modal">
+    <div class="pd-head">Fleet <em>Contract</em></div>
+    <div class="pd-body">
+      <div class="pd-lab">VEHICLE</div>
+      <div class="pd-pills" id="fc-models"></div>
+      <div class="pd-lab">UNITS &middot; UP TO 30</div>
+      <input type="number" class="pd-input" id="fc-qty" min="1" max="30" step="1" placeholder="0">
+      <div class="pd-lab">PAYOUT &middot; 70% OF THE CLASS ANCHOR</div>
+      <div class="pd-static" id="fc-pay">—</div>
+    </div>
+    <div class="pd-foot">
+      <button type="button" class="pd-btn secondary" id="fc-cancel">CANCEL</button>
+      <button type="button" class="pd-btn" id="fc-sign" disabled>SIGN THE CONTRACT</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, tickToDate } from './js/utils.js';
-import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
+import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 
 (async () => {
   try {
@@ -260,7 +316,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
           ? _supabase.from('entrepreneur_corps')
-              .select('name, experience').eq('id', f.biz_employer_corp_id).maybeSingle()
+              .select('name, experience, hq_nation_id').eq('id', f.biz_employer_corp_id).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
       ]);
       if (ownErr) throw ownErr;
@@ -508,12 +564,23 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
         'Product Engineer': {
           rpc: 'product_engineer_action', rides: 'it shapes the next Model',
           actions: [
-            { key: 'design', nm: 'DESIGN', modal: true,
+            { key: 'design', nm: 'DESIGN', modal: 'design',
               ds: 'Draft a full vehicle proposal at 1 XP under the normal design cost — it lands on the CEO&rsquo;s desk to accept or reject.' },
             { key: 'bench_test_components', nm: 'BENCH TEST THE COMPONENTS',
               ds: 'Rig-test the parts so the next Model created ships with +0.5 appeal baked in — permanently, every market it ever sells in.' },
             { key: 'log_test_mileage', nm: 'LOG TEST MILEAGE',
               ds: 'Feed real test data into the R&amp;D pipeline — +1 Experience now, up to the Design Studio&rsquo;s ceiling.' },
+          ],
+        },
+        'Chief Commercial Officer (CCO)': {
+          rpc: null, rides: 'it rides the next campaign',
+          actions: [
+            { key: 'campaign', nm: 'RUN A CAMPAIGN', modal: 'campaign',
+              ds: 'Fire a full Sales Campaign on your own authority — nation, Model, price — without touching the owner&rsquo;s executive action.' },
+            { key: 'summit', nm: 'DEALER SUMMIT', modal: 'summit',
+              ds: 'Call the network in one nation: the next Sales Campaign there gets +1.5 appeal — the franchisees show up when the chief calls.' },
+            { key: 'fleet', nm: 'FLEET CONTRACT', modal: 'fleet',
+              ds: 'Sell up to 30 units of one Model to fleet buyers at 70% of its class anchor — instant cash, no demand roll.' },
           ],
         },
         'Field Sales Representative / Marketing Analyst': {
@@ -535,6 +602,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             <div class="cr-tier">EMPLOYMENT &middot; ${esc(trackKey.toUpperCase().replace(/_/g, ' '))}</div>
             <div class="cr-title">${esc(f.biz_job_title)} for ${esc(employerName || '—')}</div>
             <div class="cr-desc">${esc(desc)}</div>
+            <div style="margin-top:10px;"><a class="cr-go" href="business-corp.html?id=${encodeURIComponent(f.biz_employer_corp_id || '')}">GO TO CORP &rarr;</a></div>
           </div>
           ${KIT ? `
           <div class="cr-actions-label">REPEATABLE ACTIONS &middot; PICK ONE EACH TICK</div>
@@ -583,8 +651,10 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
         document.querySelectorAll('.cr-act.live[data-kit-action]').forEach(a => {
           a.addEventListener('click', async () => {
             if (!a.classList.contains('live') || kitInFlight) return;
-            if (KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal) {
-              openDesignProposal();
+            const modal = KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal;
+            if (modal) {
+              ({ design: openDesignProposal, campaign: openCcoCampaign,
+                 summit: openCcoSummit, fleet: openCcoFleet })[modal]?.();
               return;
             }
             kitInFlight = true;
@@ -723,6 +793,268 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           } finally {
             pdInFlight = false;
             pdRefresh();
+          }
+        });
+
+        // ── the CCO's desk (20270850) ──────────────────────────────
+        // Three modal actions on the chief's own authority: run a
+        // campaign (the resolution engine is shared with the owner's
+        // — _resolve_sales_campaign), call a Dealer Summit, sign a
+        // Fleet Contract. All spend the shared daily action.
+        const employerId = f.biz_employer_corp_id;
+        const CCO_REASON = {
+          not_cco: 'This desk belongs to the Chief Commercial Officer.',
+          no_actions_remaining: 'You already acted this tick.',
+          not_in_market: 'No presence there — the owner expands the market first.',
+          nation_not_live: 'That nation is not an active market.',
+          no_stock: 'Not enough vehicles in inventory.',
+          invalid_price: 'Set a price of at least $1.',
+          invalid_quantity: 'Order between 1 and 30 units.',
+          summit_already_called: 'A summit is already pending — it clears when a campaign runs there.',
+          blueprint_not_found: 'That Model belongs to another corporation.',
+        };
+
+        async function ccoNations() {
+          const { data: mkt, error } = await _supabase.rpc('construction_market_listings');
+          if (error) throw error;
+          return (mkt?.materials || []).map(r => ({ id: r.nation_id, name: r.nation }));
+        }
+
+        // RUN A CAMPAIGN — nation pick, then the lot for that market.
+        let ccNation = null, ccModel = null, ccModels = [], ccPresence = {}, ccInFlight = false;
+
+        function ccRefresh() {
+          const price = Math.floor(Number(document.getElementById('cc-price').value) || 0);
+          document.getElementById('cc-anchor').textContent = ccModel
+            ? `Fair price for this class: ${hfFmtBig(VEHICLE_CLASS_ANCHORS[ccModel.vehicle_class] || 35000)} — undercut it to sell more.` : '';
+          document.getElementById('cc-run').disabled =
+            !(ccNation && ccModel && price >= 1) || ccInFlight;
+        }
+
+        function ccRenderModels() {
+          const host = document.getElementById('cc-models');
+          ccModel = null;
+          document.getElementById('cc-stock').textContent = '—';
+          if (!ccModels.length) {
+            host.innerHTML = `<div class="pd-static" style="color:#888;">${
+              ccNation && ccNation !== employer?.data?.hq_nation_id && !ccPresence[ccNation]
+                ? 'Not in this market — the owner expands first.'
+                : 'No vehicles in stock here.'}</div>`;
+            ccRefresh();
+            return;
+          }
+          host.innerHTML = ccModels.map(m => `
+            <div class="pd-pill" data-val="${esc(m.id)}" title="${esc(m.stock)} in stock">${esc(m.label.toUpperCase())}</div>`).join('');
+          host.querySelectorAll('.pd-pill').forEach(p => {
+            p.addEventListener('click', () => {
+              host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+              ccModel = ccModels.find(m => m.id === p.dataset.val) || null;
+              document.getElementById('cc-stock').textContent =
+                `${Number(ccModel?.stock) || 0} × ${ccModel?.label || ''} available here`;
+              if (ccModel?.list_price && !document.getElementById('cc-price').value) {
+                document.getElementById('cc-price').value = ccModel.list_price;
+              }
+              ccRefresh();
+            });
+          });
+          ccRefresh();
+        }
+
+        async function ccPickNation() {
+          const home = ccNation === employer?.data?.hq_nation_id;
+          if (home) {
+            const { data: models, error } = await _supabase.from('vehicle_blueprints')
+              .select('id, name, vehicle_class, units_in_stock')
+              .eq('corp_id', employerId).gt('units_in_stock', 0);
+            if (error) throw error;
+            ccModels = (models || []).map(m => ({ ...m, label: m.name, stock: m.units_in_stock }));
+          } else if (!ccPresence[ccNation]) {
+            ccModels = [];
+          } else {
+            const { data: rows, error } = await _supabase.from('vehicle_market_stock')
+              .select('blueprint_id, units, local_name, list_price, blueprint:vehicle_blueprints!blueprint_id(name, vehicle_class)')
+              .eq('corp_id', employerId).eq('nation_id', ccNation).gt('units', 0);
+            if (error) throw error;
+            ccModels = (rows || []).map(r => ({
+              id: r.blueprint_id, label: r.local_name || r.blueprint?.name || 'Model',
+              stock: r.units, list_price: r.list_price, vehicle_class: r.blueprint?.vehicle_class,
+            }));
+          }
+          ccRenderModels();
+        }
+
+        async function openCcoCampaign() {
+          ccNation = null; ccModel = null; ccModels = [];
+          document.getElementById('cc-price').value = '';
+          document.getElementById('cc-models').innerHTML = '';
+          document.getElementById('cc-stock').textContent = '—';
+          ccRefresh();
+          const natHost = document.getElementById('cc-nations');
+          natHost.innerHTML = '<div class="pd-static" style="color:#888;">Loading…</div>';
+          document.getElementById('cc-overlay').classList.add('open');
+          try {
+            const [nations, { data: pres, error: pErr }] = await Promise.all([
+              ccoNations(),
+              _supabase.from('corp_market_presence')
+                .select('nation_id, kind').eq('corp_id', employerId),
+            ]);
+            if (pErr) throw pErr;
+            ccPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
+            natHost.innerHTML = nations.map(n => {
+              const tag = n.id === employer?.data?.hq_nation_id ? ' · HOME'
+                : ccPresence[n.id] ? ' ✓' : '';
+              return `<div class="pd-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}${tag}</div>`;
+            }).join('');
+            natHost.querySelectorAll('.pd-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                natHost.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+                ccNation = p.dataset.val;
+                ccPickNation().catch(e => console.warn('[businessman-home] cco lot load failed:', e?.message || e));
+              });
+            });
+          } catch (e) {
+            natHost.innerHTML = '<div class="pd-static" style="color:#888;">Could not load the market — try again shortly.</div>';
+            console.warn('[businessman-home] cco campaign load failed:', e?.message || e);
+          }
+        }
+        document.getElementById('cc-price').addEventListener('input', ccRefresh);
+        document.getElementById('cc-cancel').addEventListener('click', () =>
+          document.getElementById('cc-overlay').classList.remove('open'));
+        document.getElementById('cc-overlay').addEventListener('click', (e) => {
+          if (e.target?.id === 'cc-overlay') document.getElementById('cc-overlay').classList.remove('open');
+        });
+        document.getElementById('cc-run').addEventListener('click', async () => {
+          if (ccInFlight) return;
+          ccInFlight = true; ccRefresh();
+          try {
+            const { data, error } = await _supabase.rpc('cco_run_campaign', {
+              p_nation_id: ccNation, p_blueprint_id: ccModel?.id,
+              p_price: Math.floor(Number(document.getElementById('cc-price').value) || 0),
+            });
+            if (error) throw error;
+            if (!data?.success) throw new Error(CCO_REASON[data?.reason] || data?.reason || 'unknown');
+            document.getElementById('cc-overlay').classList.remove('open');
+            peSetSpent();
+            peNote.textContent = `You sold ${Number(data.sold).toLocaleString()} of ${data.name} for ${hfFmtBig(Number(data.revenue) || 0)} in ${data.nation}. Back next tick.`;
+          } catch (e) {
+            alert('Could not run the campaign: ' + (e?.message || e));
+          } finally {
+            ccInFlight = false; ccRefresh();
+          }
+        });
+
+        // DEALER SUMMIT
+        let dsNation = null, dsInFlight = false;
+        async function openCcoSummit() {
+          dsNation = null;
+          document.getElementById('ds-call').disabled = true;
+          const host = document.getElementById('ds-nations');
+          host.innerHTML = '<div class="pd-static" style="color:#888;">Loading…</div>';
+          document.getElementById('ds-overlay').classList.add('open');
+          try {
+            const nations = await ccoNations();
+            host.innerHTML = nations.map(n => `
+              <div class="pd-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}</div>`).join('');
+            host.querySelectorAll('.pd-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+                dsNation = p.dataset.val;
+                document.getElementById('ds-call').disabled = dsInFlight;
+              });
+            });
+          } catch (e) {
+            host.innerHTML = '<div class="pd-static" style="color:#888;">Could not load nations — try again shortly.</div>';
+          }
+        }
+        document.getElementById('ds-cancel').addEventListener('click', () =>
+          document.getElementById('ds-overlay').classList.remove('open'));
+        document.getElementById('ds-overlay').addEventListener('click', (e) => {
+          if (e.target?.id === 'ds-overlay') document.getElementById('ds-overlay').classList.remove('open');
+        });
+        document.getElementById('ds-call').addEventListener('click', async () => {
+          if (dsInFlight || !dsNation) return;
+          dsInFlight = true;
+          document.getElementById('ds-call').disabled = true;
+          try {
+            const { data, error } = await _supabase.rpc('cco_dealer_summit', { p_nation_id: dsNation });
+            if (error) throw error;
+            if (!data?.success) throw new Error(CCO_REASON[data?.reason] || data?.reason || 'unknown');
+            document.getElementById('ds-overlay').classList.remove('open');
+            peSetSpent();
+            peNote.textContent = `The network convenes in ${data.nation} — +1.5 appeal on the next campaign there. Back next tick.`;
+          } catch (e) {
+            alert('Could not call the summit: ' + (e?.message || e));
+          } finally {
+            dsInFlight = false;
+          }
+        });
+
+        // FLEET CONTRACT
+        let fcModel = null, fcModels = [], fcInFlight = false;
+        function fcRefresh() {
+          const qty = Math.floor(Number(document.getElementById('fc-qty').value) || 0);
+          const payEl = document.getElementById('fc-pay');
+          if (fcModel && qty >= 1) {
+            const unit = Math.round((VEHICLE_CLASS_ANCHORS[fcModel.vehicle_class] || 35000) * 0.70);
+            const capped = Math.min(qty, 30, Number(fcModel.units_in_stock) || 0);
+            payEl.innerHTML = `${esc(hfFmtBig(unit))} per unit × ${capped} = <span class="dim">${esc(hfFmtBig(unit * capped))}</span>${qty > capped ? ` <span class="bad">(capped at ${capped})</span>` : ''}`;
+          } else {
+            payEl.textContent = '—';
+          }
+          document.getElementById('fc-sign').disabled =
+            !(fcModel && qty >= 1 && qty <= 30 && qty <= (Number(fcModel?.units_in_stock) || 0)) || fcInFlight;
+        }
+        async function openCcoFleet() {
+          fcModel = null;
+          document.getElementById('fc-qty').value = '';
+          fcRefresh();
+          const host = document.getElementById('fc-models');
+          host.innerHTML = '<div class="pd-static" style="color:#888;">Loading…</div>';
+          document.getElementById('fc-overlay').classList.add('open');
+          try {
+            const { data: models, error } = await _supabase.from('vehicle_blueprints')
+              .select('id, name, vehicle_class, units_in_stock')
+              .eq('corp_id', employerId).gt('units_in_stock', 0);
+            if (error) throw error;
+            fcModels = models || [];
+            host.innerHTML = fcModels.length ? fcModels.map(m => `
+              <div class="pd-pill" data-val="${esc(m.id)}" title="${esc(m.units_in_stock)} in stock">${esc(m.name.toUpperCase())}</div>`).join('')
+              : '<div class="pd-static" style="color:#888;">No vehicles in HQ inventory.</div>';
+            host.querySelectorAll('.pd-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+                fcModel = fcModels.find(m => m.id === p.dataset.val) || null;
+                fcRefresh();
+              });
+            });
+          } catch (e) {
+            host.innerHTML = '<div class="pd-static" style="color:#888;">Could not load the inventory — try again shortly.</div>';
+          }
+        }
+        document.getElementById('fc-qty').addEventListener('input', fcRefresh);
+        document.getElementById('fc-cancel').addEventListener('click', () =>
+          document.getElementById('fc-overlay').classList.remove('open'));
+        document.getElementById('fc-overlay').addEventListener('click', (e) => {
+          if (e.target?.id === 'fc-overlay') document.getElementById('fc-overlay').classList.remove('open');
+        });
+        document.getElementById('fc-sign').addEventListener('click', async () => {
+          if (fcInFlight) return;
+          fcInFlight = true; fcRefresh();
+          try {
+            const { data, error } = await _supabase.rpc('cco_fleet_contract', {
+              p_blueprint_id: fcModel?.id,
+              p_quantity: Math.floor(Number(document.getElementById('fc-qty').value) || 0),
+            });
+            if (error) throw error;
+            if (!data?.success) throw new Error(CCO_REASON[data?.reason]
+              || (data?.reason === 'no_stock' ? `Only ${data?.have ?? 0} in inventory.` : data?.reason) || 'unknown');
+            document.getElementById('fc-overlay').classList.remove('open');
+            peSetSpent();
+            peNote.textContent = `Fleet contract signed: ${data.sold} × ${data.name} at ${hfFmtBig(Number(data.unit) || 0)} — ${hfFmtBig(Number(data.revenue) || 0)} to the treasury. Back next tick.`;
+          } catch (e) {
+            alert('Could not sign the contract: ' + (e?.message || e));
+          } finally {
+            fcInFlight = false; fcRefresh();
           }
         });
       }

@@ -259,6 +259,17 @@ const INDUSTRY_LABELS = {
  * underscore→space transform so new industries aren't completely broken
  * before they get added to INDUSTRY_LABELS.
  */
+/**
+ * The corp registry's auto-generated website: lowercase alphanumerics
+ * of the name + '.nh'. Accented letters fold to their base (Ríos →
+ * rios) instead of vanishing. One source — the corp page and the
+ * career role-view both read it.
+ */
+export function corpWebsite(name) {
+    return (name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '') + '.nh';
+}
+
 export function industryLabel(s) {
     if (!s) return '—';
     const name = INDUSTRY_LABELS[s];
