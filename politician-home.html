@@ -7222,7 +7222,14 @@ function showFilePaperworkResult(resp) {
   }
 }
 
-init();
+// Umbrella: any unhandled rejection after bootstrap used to leave
+// the LOADING screen up forever with only a console error — surface
+// the failure state instead.
+init().catch(err => {
+  console.error('politician-home: init failed', err);
+  const el = document.getElementById('loading');
+  if (el && el.style.display !== 'none') el.textContent = 'FAILED TO LOAD — PLEASE REFRESH';
+});
 </script>
 
 <!-- Trial modal (Phase 2 shell). Opened from a "TRIAL IN SESSION"
