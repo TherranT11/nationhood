@@ -94,6 +94,17 @@
     </div>
   </div>
 
+  <!-- The Minister (20270868) — Foreign Affairs only. -->
+  <div id="fm-strip" style="display:none; margin-top:14px; padding:13px 18px; background:#0d0d0d;
+       border:0.5px solid rgba(90,175,165,0.25); border-radius:7px;
+       align-items:center; justify-content:space-between; gap:12px;">
+    <div style="font-size:11.5px; color:#cfcabf;" id="fm-strip-text">—</div>
+    <button type="button" id="fm-seek" style="display:none; padding:7px 13px; background:rgba(90,175,165,0.08);
+        border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+        font-family:monospace; font-size:8.5px; letter-spacing:0.1em; font-weight:700;
+        cursor:pointer;">SEEK THE PORTFOLIO</button>
+  </div>
+
   <!-- II. Assignments -->
   <div class="mn-head"><span class="mn-num">II.</span><span class="lab">Assignments</span></div>
   <div class="mn-card">Nothing recorded yet.</div>
@@ -192,6 +203,69 @@ async function renderActors(slug, nationId, currentTick) {
     </table>`;
 }
 
+// The Foreign Minister strip (20270868) — who holds the portfolio,
+// or the [SEEK] button when it's vacant and the viewer is a
+// politician of this nation. The HoG (player or NPC roll) decides.
+async function renderFmStrip(slug, ctx) {
+  if (slug !== 'foreign_affairs' || !ctx?.nation?.id) return;
+  const strip = document.getElementById('fm-strip');
+  const text = document.getElementById('fm-strip-text');
+  const btn = document.getElementById('fm-seek');
+  try {
+    const { data: fmRows, error } = await _supabase.from('factions')
+      .select('leader_first_name, leader_last_name, nickname')
+      .eq('nation_id', ctx.nation.id)
+      .not('politician_foreign_minister_at_tick', 'is', null)
+      .is('abandoned_at', null)
+      .limit(1);
+    if (error) throw error;
+    strip.style.display = 'flex';
+    if (fmRows?.length) {
+      const f = fmRows[0];
+      const nm = f.nickname || `${f.leader_first_name || ''} ${f.leader_last_name || ''}`.trim() || '—';
+      text.innerHTML = `<b style="color:#5aafa5;">FOREIGN MINISTER</b> &nbsp; ${escapeHtml(nm)}`;
+      return;
+    }
+    text.innerHTML = `<b style="color:#5aafa5;">FOREIGN MINISTER</b> &nbsp; <span style="color:#c87a7a;">The portfolio is vacant.</span>`;
+    const isLocalPolitician = ctx.faction?.faction_type === 'politician'
+      && ctx.faction?.nation_id === ctx.nation.id;
+    if (!isLocalPolitician) return;
+    btn.style.display = '';
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.busy === '1') return;
+      if (!confirm('Seek the Foreign Minister portfolio? The Head of Government decides — or the chancellery rolls.')) return;
+      btn.dataset.busy = '1';
+      btn.disabled = true;
+      try {
+        const { data, error: sErr } = await _supabase.rpc('politician_seek_fm_post',
+          { p_faction_id: ctx.faction?.id || null });
+        if (sErr) throw sErr;
+        if (!data?.success) {
+          const REASON = {
+            post_filled: 'Someone holds the portfolio already.',
+            application_pending: 'Your application is already on the desk.',
+            already_fm: 'You hold the portfolio already.',
+            arrested: 'You are under arrest.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        alert(data.status === 'pending_review'
+          ? 'The application sits with the Head of Government.'
+          : data.status === 'approved'
+            ? 'The chancellery confirms — the portfolio is yours.'
+            : 'The chancellery passes you over. Build the r\u00e9sum\u00e9 and try again.');
+        location.reload();
+      } catch (err) {
+        alert('Could not apply: ' + (err?.message || err));
+        btn.dataset.busy = '0';
+        btn.disabled = false;
+      }
+    });
+  } catch (err) {
+    console.warn('[politician-ministry] fm strip failed:', err?.message || err);
+  }
+}
+
 async function renderCables(slug, nationId) {
   // Attaché dispatches (diplomatic_cables, 20270860) — Foreign
   // Affairs receives them; other ministries keep the section hidden.
@@ -231,6 +305,7 @@ async function renderCables(slug, nationId) {
   await Promise.all([
     renderActors(slug, ctx.nation?.id || null, Number(ctx.shard?.current_tick) || 0),
     renderCables(slug, ctx.nation?.id || null),
+    renderFmStrip(slug, ctx),
   ]);
 })();
 </script>
