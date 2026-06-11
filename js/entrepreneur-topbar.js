@@ -352,7 +352,7 @@ async function getAdminFactionOverride() {
 // Column list for the faction-switcher dropdown — shared by both
 // bootstraps so the role-label fields can't drift between them.
 const SWITCHER_FACTION_COLS =
-  'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick';
+  'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_foreign_service_nation_id, politician_consul_nation_id, politician_dcm_region, politician_ambassador_nation_id, politician_special_envoy_at_tick';
 
 const ENT_FACTION_COLS =
   'id, faction_type, faction_name, leader_first_name, leader_last_name, leader_age, founded_tick, nation, nation_id, biz_residence_name, biz_residence_worth, biz_career_history, biz_home_city, ent_origin_nation, ' +
