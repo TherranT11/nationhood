@@ -1680,24 +1680,58 @@ const FOREIGN_SERVICE_RUNGS = [
   },
   {
     name: 'Consul / Cultural Attaché',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You run a consulate or hold a specialised role abroad — commercial, cultural, military.',
-    descIfNot:   ()  => 'Run a consulate or hold a specialised role abroad — commercial, cultural, military. You represent your nation in a defined sphere.',
-    actions:     ['Issue Visas', 'Host a Reception'],
+    held:        (s) => !!s?.consulNationId,
+    descIfHeld:  ()  => 'You run a consulate abroad — the morning docket is yours to triage.',
+    descIfNot:   ()  => 'Run a consulate abroad. The morning docket is yours to triage — handle one case properly, rubber-stamp the rest, and live with both.',
+    actions:     ['Run the Consulate', 'Build Network', 'Backchannel'],
+    // Promotion gate (20270865): a serving Attaché with 12 Experience
+    // picks a vacant consulate. Server re-validates everything.
+    actionIfNot: (s) => {
+      if (!s.foreignServiceNationId) {
+        return { label: 'Requires a serving Attaché', kind: 'disabled' };
+      }
+      if ((Number(s.politicianSkill) || 0) < 12) {
+        return { label: 'Take the Post · 12 Experience', kind: 'disabled' };
+      }
+      return { label: 'Take the Post', kind: 'primary', action: 'consul-post' };
+    },
   },
   {
     name: 'Deputy Chief of Mission',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You are the second-in-command of an embassy, running the day-to-day.',
-    descIfNot:   ()  => 'Second-in-command of an embassy. You run the day-to-day while the Ambassador handles ceremony — real working diplomacy.',
-    actions:     ['Conduct Negotiations', 'Send Sensitive Cable'],
+    held:        (s) => !!s?.dcmRegion,
+    descIfHeld:  ()  => 'You run a region — every officer your nation fields there answers to you.',
+    descIfNot:   ()  => 'Run a region. Every officer your nation fields there reports to you — the Station Board, the grades, the asks, the summits.',
+    actions:     ['Review the Stations', 'Set a Priority', 'Regional Summit'],
+    // Promotion gate (20270866): a serving Consul with 20 Experience
+    // picks a vacant region.
+    actionIfNot: (s) => {
+      if (!s.consulNationId) {
+        return { label: 'Requires a serving Consul', kind: 'disabled' };
+      }
+      if ((Number(s.politicianSkill) || 0) < 20) {
+        return { label: 'Join as DCM · 20 Experience', kind: 'disabled' };
+      }
+      return { label: 'Join as DCM', kind: 'primary', action: 'dcm-post' };
+    },
   },
   {
     name: 'Ambassador',
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You are your nation’s official representative to a foreign capital.',
-    descIfNot:   ()  => 'Your nation’s official representative to a foreign capital. You speak for your country in another country.',
-    actions:     ['Present Credentials', 'Lodge a Protest'],
+    held:        (s) => !!s?.ambassadorNationId,
+    descIfHeld:  ()  => 'You are your nation’s official representative to a foreign capital — a 60-tick term, two flags on every word.',
+    descIfNot:   ()  => 'Your nation’s official representative to a foreign capital. A DCM with 30 Experience puts their name before the legislature — confirmation means a 60-tick term.',
+    actions:     ['Meeting', 'Issue Statement'],
+    actionIfNot: (s) => {
+      if (!s.dcmRegion) {
+        return { label: 'Requires a serving DCM', kind: 'disabled' };
+      }
+      if ((Number(s.politicianSkill) || 0) < 30) {
+        return { label: 'Request Appointment · 30 Experience', kind: 'disabled' };
+      }
+      // The vote itself fires from the DCM affiliation card on the
+      // home page — the rung points there rather than duplicating
+      // the chamber flow.
+      return { label: 'Request Appointment', kind: 'primary', href: 'politician-home.html' };
+    },
   },
   {
     name: 'Special Envoy / Roving Ambassador',
@@ -2431,6 +2465,11 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // by any rung today — surface it here when that lands.
     foreignServiceNationId:   ctx?.faction?.politician_foreign_service_nation_id || null,
     foreignServiceLastAttemptTick: Number(ctx?.faction?.foreign_service_last_attempt_tick) || 0,
+    // Foreign Service tiers 2-4 (20270865/66/69) — drive held() and
+    // the promotion buttons on the Consul / DCM / Ambassador rungs.
+    consulNationId:           ctx?.faction?.politician_consul_nation_id || null,
+    dcmRegion:                ctx?.faction?.politician_dcm_region || null,
+    ambassadorNationId:       ctx?.faction?.politician_ambassador_nation_id || null,
     // Federal Investigations Tier 1 (20270769). fisJoinedAtTick set
     // means the politician has passed academy onboarding and is a
     // probationary Agent — drives held() on the FIS Agent rung and
@@ -3074,6 +3113,16 @@ function bindRungActions(ctx) {
   });
   document.querySelectorAll('#fsModal [data-fs-close]').forEach(btn => {
     btn.addEventListener('click', () => closeForeignServiceModal());
+  });
+
+  // Foreign Service promotions (20270865/66) — Take the Post / Join
+  // as DCM. A compact shared picker; the server re-validates the
+  // experience gates, vacancy, and race conditions.
+  document.querySelectorAll('[data-action="consul-post"]').forEach(btn => {
+    btn.addEventListener('click', () => openFsPromotionPicker('consul'));
+  });
+  document.querySelectorAll('[data-action="dcm-post"]').forEach(btn => {
+    btn.addEventListener('click', () => openFsPromotionPicker('dcm'));
   });
 
   // Join the Academy — Federal Investigations Tier 1 (Agent). One-
@@ -4028,6 +4077,148 @@ const _fsState = {
   currentIdx: 0,
   inFlight:   false,
 };
+
+// 20270865/66 — the promotion picker, shared by Take the Post
+// (vacant consulates) and Join as DCM (vacant regions). Inject-on-
+// demand overlay, the politician-home picker's chrome.
+function ensureFsPromotionPicker() {
+  if (document.getElementById('fsp-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #fsp-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #fsp-overlay.open { display:flex; }
+    .fsp-modal { width:480px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(90,175,165,0.35); border-radius:6px; padding:20px 22px; }
+    .fsp-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#5aafa5; font-weight:700; margin-bottom:10px; }
+    .fsp-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    .fsp-row { display:flex; align-items:center; justify-content:space-between;
+      padding:10px 12px; border:0.5px solid rgba(255,255,255,0.1); border-radius:4px;
+      margin-bottom:8px; }
+    .fsp-row .nm { color:#e8e4da; font-size:12px; font-weight:600; }
+    .fsp-take { padding:6px 12px; background:rgba(90,175,165,0.08);
+      border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+      font-family:monospace; font-size:8.5px; letter-spacing:0.1em; font-weight:700;
+      cursor:pointer; }
+    .fsp-take:hover:not(:disabled) { background:rgba(90,175,165,0.16); }
+    .fsp-take:disabled { opacity:0.4; cursor:not-allowed; }
+    .fsp-empty { color:#666; font-size:11px; font-style:italic; text-align:center; padding:14px; }
+    .fsp-foot { margin-top:12px; text-align:right; }
+    .fsp-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+      cursor:pointer; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'fsp-overlay';
+  host.innerHTML = `
+    <div class="fsp-modal">
+      <div class="fsp-title" id="fsp-title">PROMOTION</div>
+      <div class="fsp-sub" id="fsp-sub"></div>
+      <div id="fsp-rows"><div class="fsp-empty">Loading\u2026</div></div>
+      <div class="fsp-foot"><button type="button" class="fsp-close" id="fsp-close">CANCEL</button></div>
+    </div>`;
+  document.body.appendChild(host);
+  document.getElementById('fsp-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+const FSP_REGIONS = ['Crucera', 'Meridian', 'Al-Makir', 'Faresia', 'Vesperia', 'Nexir', 'Serranthia'];
+
+async function openFsPromotionPicker(mode) {
+  ensureFsPromotionPicker();
+  const ctx = window.__careerCtx || {};
+  const rows = document.getElementById('fsp-rows');
+  document.getElementById('fsp-title').textContent =
+    mode === 'consul' ? 'TAKE THE CONSUL POST' : 'JOIN AS DCM';
+  document.getElementById('fsp-sub').textContent =
+    mode === 'consul'
+      ? 'Pick a vacant consulate. Your attach\u00e9 posting ends; the embassy record follows you.'
+      : 'Pick a vacant region. Your consulate vacates; every officer your nation fields there reports to you.';
+  rows.innerHTML = '<div class="fsp-empty">Loading\u2026</div>';
+  document.getElementById('fsp-overlay').classList.add('open');
+  try {
+    let options = [];
+    if (mode === 'consul') {
+      const [{ data: mkt, error: mErr }, { data: taken, error: tErr }] = await Promise.all([
+        _supabase.rpc('construction_market_listings'),
+        _supabase.from('factions')
+          .select('politician_consul_nation_id')
+          .eq('faction_type', 'politician')
+          .eq('nation_id', ctx.faction?.nation_id)
+          .not('politician_consul_nation_id', 'is', null)
+          .is('abandoned_at', null),
+      ]);
+      if (mErr) throw mErr;
+      if (tErr) throw tErr;
+      const occupied = new Set((taken || []).map(t => t.politician_consul_nation_id));
+      options = (mkt?.materials || [])
+        .map(r => ({ value: r.nation_id, name: r.nation }))
+        .filter(n => n.value !== ctx.faction?.nation_id && !occupied.has(n.value));
+    } else {
+      const { data: taken, error } = await _supabase.from('factions')
+        .select('politician_dcm_region')
+        .eq('faction_type', 'politician')
+        .eq('nation_id', ctx.faction?.nation_id)
+        .not('politician_dcm_region', 'is', null)
+        .is('abandoned_at', null);
+      if (error) throw error;
+      const occupied = new Set((taken || []).map(t => t.politician_dcm_region));
+      options = FSP_REGIONS.filter(r => !occupied.has(r)).map(r => ({ value: r, name: r }));
+    }
+    if (!options.length) {
+      rows.innerHTML = `<div class="fsp-empty">Every ${mode === 'consul' ? 'consulate' : 'region'} is staffed \u2014 wait for a vacancy.</div>`;
+      return;
+    }
+    rows.innerHTML = options.map(o => `
+      <div class="fsp-row"><span class="nm">${escHtml(o.name)}</span>
+        <button type="button" class="fsp-take" data-fsp-take="${escHtml(o.value)}">TAKE THE POST</button></div>`).join('');
+    rows.querySelectorAll('[data-fsp-take]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (btn.dataset.busy === '1') return;
+        if (!confirm(mode === 'consul'
+          ? 'Take this consulate? Your attach\u00e9 posting ends.'
+          : 'Take this region? Your consulate vacates.')) return;
+        btn.dataset.busy = '1';
+        btn.disabled = true;
+        try {
+          const { data, error } = mode === 'consul'
+            ? await _supabase.rpc('politician_take_consul_post',
+                { p_faction_id: ctx.faction?.id || null, p_nation_id: btn.dataset.fspTake })
+            : await _supabase.rpc('politician_take_dcm_post',
+                { p_faction_id: ctx.faction?.id || null, p_region: btn.dataset.fspTake });
+          if (error) throw error;
+          if (!data?.success) {
+            const REASON = {
+              not_attache: 'Only a serving attach\u00e9 takes a consulate.',
+              not_consul: 'Only a serving consul rises to DCM.',
+              not_enough_experience: 'The ministry wants more Experience first.',
+              consulate_occupied: 'Someone from your nation already holds that post.',
+              region_occupied: 'Someone from your nation already runs that region.',
+              nation_not_live: 'That nation is not an active posting.',
+              invalid_nation: 'You can\u2019t consul your own nation.',
+              arrested: 'You are under arrest.',
+            };
+            throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+          }
+          alert(mode === 'consul'
+            ? `The cable is short: \u201cProceed to ${data.nation}. Congratulations, Consul.\u201d`
+            : `The cable is shorter every rank: \u201c${data.region} is yours.\u201d`);
+          location.reload();
+        } catch (err) {
+          alert('Could not take the post: ' + (err?.message || err));
+          btn.dataset.busy = '0';
+          btn.disabled = false;
+        }
+      });
+    });
+  } catch (err) {
+    rows.innerHTML = '<div class="fsp-empty">Could not load the postings \u2014 try again shortly.</div>';
+    console.warn('[politician-career] promotion picker failed:', err?.message || err);
+  }
+}
 
 function openForeignServiceModal() {
   const overlay = document.getElementById('fsModal');
