@@ -196,7 +196,7 @@
       <div class="sc-lab">CITY · HEADQUARTERS</div>
       <div id="sc-cities"><div class="sc-file">Loading cities…</div></div>
       <div class="sc-lab">COST TO START CORPORATION</div>
-      <div class="sc-cost">$10K</div>
+      <div class="sc-cost" id="sc-cost">Select a type below</div>
       <div class="sc-lab">TYPE OF CORPORATION</div>
       <div class="sc-types">
         <div class="sc-type" data-ind="construction">CONSTRUCTION</div>
@@ -207,8 +207,9 @@
       <div class="sc-lab">LOGO</div>
       <input type="file" class="sc-file" id="sc-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp">
       <div class="sc-file" style="margin-top:4px;color:#555;">Optional &middot; 2MB max</div>
-      <div class="sc-note">Starting a corporation is inexpensive, but running one can get
-        expensive quickly. Ensure you have a business plan in place!</div>
+      <div class="sc-note">Founding capital scales with the nation&rsquo;s Standard of Living
+        &mdash; and running a corporation only gets more expensive from there. Ensure you have
+        a business plan in place!</div>
       <div class="sc-err" id="sc-err"></div>
     </div>
     <div class="sc-foot">
@@ -245,6 +246,18 @@ let scCityId = null;
 let scIndustry = null;
 let scInFlight = false;
 let scFaction = null;
+let scSol = 50;
+
+// Founding capital (20270835): base by industry × the nation's
+// Standard of Living / 50 — the same formula
+// businessman_start_corporation charges.
+const SC_BASE_COST = { construction: 10000000, automotive: 35000000 };
+
+function scShowCost() {
+  document.getElementById('sc-cost').textContent = scIndustry
+    ? `${hfFmtBig(Math.round(SC_BASE_COST[scIndustry] * scSol / 50))} (Standard of Living ${scSol})`
+    : 'Select a type below';
+}
 
 function scUpdateSubmit() {
   const name = document.getElementById('sc-name').value.trim();
@@ -260,6 +273,7 @@ async function openStartCompany(faction) {
   document.getElementById('sc-err').textContent = '';
   document.getElementById('sc-nation').textContent = faction.nation || '—';
   document.querySelectorAll('.sc-type').forEach(t => t.classList.remove('sel'));
+  scShowCost();
   scUpdateSubmit();
   document.getElementById('sc-overlay').classList.add('open');
 
@@ -273,7 +287,7 @@ async function openStartCompany(faction) {
         .select('id, city_name, city_type, jobs, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype)')
         .eq('nation_id', faction.nation_id)
         .order('city_type'),
-      _supabase.from('nations').select('population').eq('id', faction.nation_id).maybeSingle(),
+      _supabase.from('nations').select('population, standard_of_living').eq('id', faction.nation_id).maybeSingle(),
     ]);
     if (cityRes.error) throw cityRes.error;
     const data = cityRes.data;
@@ -282,6 +296,8 @@ async function openStartCompany(faction) {
       return;
     }
     const natPop = Number(natRes.data?.population) || 0;
+    scSol = Math.max(1, Number(natRes.data?.standard_of_living) || 50);
+    scShowCost();
     host.innerHTML = data.map(c => {
       // cityDisplayData (20270713) is the single source for the
       // population math and the mayor's party/archetype resolution —
@@ -363,7 +379,7 @@ async function submitStartCompany() {
         arrested:           'You are under arrest — your assets are frozen.',
         invalid_city:       'That city is not in your nation.',
         name_taken:         'A corporation with that name already exists.',
-        insufficient_funds: 'You need $10,000 on hand to file the incorporation.',
+        insufficient_funds: `You need ${hfFmtBig(data?.cost ?? 0)} on hand — you have ${hfFmtBig(data?.funds ?? 0)}.`,
       };
       errEl.textContent = REASON[data?.reason] || ('Could not start: ' + (data?.reason || 'unknown'));
       scInFlight = false;
@@ -396,6 +412,7 @@ async function submitStartCompany() {
       t.addEventListener('click', () => {
         scIndustry = t.dataset.ind;
         document.querySelectorAll('.sc-type').forEach(x => x.classList.toggle('sel', x === t));
+        scShowCost();
         scUpdateSubmit();
       });
     });
