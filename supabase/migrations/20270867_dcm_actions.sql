@@ -215,6 +215,13 @@ BEGIN
     IF _dcm_officer_station(v_fac.nation_id, v_fac.politician_dcm_region, p_officer_id) IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_your_officer');
     END IF;
+    -- Only a consul can work a docket — an attaché given this ask
+    -- could never fulfill it and it would dangle until superseded.
+    IF p_kind = 'work_the_docket' AND NOT EXISTS (
+        SELECT 1 FROM factions
+         WHERE id = p_officer_id AND politician_consul_nation_id IS NOT NULL) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'wrong_rank');
+    END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);

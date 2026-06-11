@@ -3917,6 +3917,7 @@ async function openDcmOfficerModal(ctx, mode, regionNations, officers) {
       const REASON = {
         cooldown: 'One move per tick — the desk is spent.',
         not_your_officer: 'They don\u2019t serve your region.',
+        wrong_rank: 'Only a consul can work a docket.',
         not_dcm: 'Only the sitting DCM manages the board.',
       };
       throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
