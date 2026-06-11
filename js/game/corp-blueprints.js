@@ -61,7 +61,7 @@ export const PM_TIERS = [
   { tier: 'Level III: Regional PMO Division', upgradeCost: 16000000,
     requirement: 'Own a Commercial III grade building',
     desc: 'A comprehensive project management office managing regional contract compliance, regulatory legal teams, and multi-site coordination.',
-    effect: 'Max Number of Active Projects: 4 · international bidding · +2 Experience per finished project' },
+    effect: 'Max Number of Active Projects: 4 · +2 Experience per finished project' },
   { tier: 'Level IV: National Compliance & Legal Bureau', upgradeCost: 25000000,
     requirement: 'Own a Commercial I grade building in at least 2 nations',
     desc: 'A corporate department capable of navigating complex national environmental impacts, sovereign regulations, and massive corporate bids.',
@@ -96,6 +96,31 @@ export const SUPPLY_TIERS = [
   { tier: 'Level V: Sovereign Resource & Materials Conglomerate', upgradeCost: 40000000, storageCap: 170,
     desc: 'A fully integrated global supply network with strategic ownership of extraction nodes and steel mills, guaranteeing the lowest material overhead on the server.',
     effect: 'Store 170 Materials · buy abroad · sell nationally and on the world market (marketplace coming).' },
+];
+
+// The REGULATORY COMPLIANCE ladder — reg_tier (20270826), upgraded
+// by Logistical Overhaul on the same price ladder as the yard. The
+// authorization map and the foreign gate are enforced server-side
+// (reg_min_tier + the bid/start RPCs).
+export const REG_TIERS = [
+  { tier: 'Tier 0: City Permits', upgradeCost: null,
+    desc: 'Your licensing stops at the city clerk’s counter. You’re cleared for small-scale municipal work — anything bigger needs certifications you don’t hold yet.',
+    effect: 'Can build Residential, Tier I Commercial, Tier I Infrastructure.' },
+  { tier: 'Tier I: Provincial Contractor License', upgradeCost: 7000000,
+    desc: 'You’ve passed the provincial board examination and posted the required surety bond. Your firm is now registered with the provincial licensing authority, which means you can bid on work that crosses municipal lines and engages standardized provincial inspectors.',
+    effect: 'Adds Tier II Commercial and Tier II Infrastructure.' },
+  { tier: 'Tier II: National General Contractor Certification', upgradeCost: 10000000,
+    desc: 'The National Construction Authority has certified your firm to handle complex multi-jurisdictional projects. You’ve demonstrated sufficient capital reserves, safety record, and technical capability to be trusted with structures that require coordinated review across multiple regulatory regimes.',
+    effect: 'Adds Tier III Commercial and Tier III Infrastructure.' },
+  { tier: 'Tier III: Industrial Construction License', upgradeCost: 16000000,
+    desc: 'Your firm has been cleared by the Industrial Safety Board to operate at the scale and complexity of heavy industrial construction. This involves specialized certifications in hazardous-materials handling, process-systems integration, and large-scale industrial inspection protocols. Most general contractors never reach this tier.',
+    effect: 'Adds Tier IV Infrastructure.' },
+  { tier: 'Tier IV: Federal Defense Contractor Clearance', upgradeCost: 25000000,
+    desc: 'You hold a federal security clearance authorizing your firm to participate in classified construction work. Your principals have passed individual background reviews; your operational systems have been audited for security compliance; your supply chain is registered with the Defense Procurement Office. This authorization is rare and revocable.',
+    effect: 'Adds Tier I Military construction.' },
+  { tier: 'Tier V: International Construction Charter', upgradeCost: 40000000,
+    desc: 'Your firm is registered with international construction authorities and recognized in major foreign markets. You navigate cross-border regulatory frameworks, international labor compliance, foreign-investment review requirements, and host-country licensing protocols. Operating at this tier requires a permanent in-house regulatory affairs division.',
+    effect: 'Adds Foreign Construction — projects in other nations.' },
 ];
 
 // Display mirror of the per-type material requirements stamped onto
@@ -148,9 +173,7 @@ export const DEPARTMENTS = {
     { dept: 'SYSTEM DESIGN', tier: 'CAD System & Laptop',
       desc: 'You implement your own designs, limited by your own project expertise.',
       effect: 'You gain Experience at +3 per completed project.' },
-    { dept: 'REGULATORY COMPLIANCE', tier: 'City Permits',
-      desc: 'Your licensing stops at the city clerk’s counter. You’re cleared for small-scale municipal work — anything bigger needs certifications you don’t hold yet.',
-      effect: 'Can only build ‘Residential’ and ‘Tier I Commercial’.' },
+    { dept: 'REGULATORY COMPLIANCE', ...REG_TIERS[0] },
   ],
   automotive: [null, null, null, null, null],
 };

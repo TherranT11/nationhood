@@ -470,7 +470,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -485,7 +485,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, reg_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -623,10 +623,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
       const yard = YARD_TIERS[Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1)];
       const pmt  = PM_TIERS[Math.min(Number(corp.pm_tier) || 0, PM_TIERS.length - 1)];
       const supt = SUPPLY_TIERS[Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1)];
+      const regt = REG_TIERS[Math.min(Number(corp.reg_tier) || 0, REG_TIERS.length - 1)];
       depts = depts.map(d =>
-        d?.dept === 'HEAVY EQUIPMENT'     ? { ...d, ...yard } :
-        d?.dept === 'PROJECT MANAGEMENT'  ? { ...d, ...pmt }  :
-        d?.dept === 'SUPPLY & MATERIAL'   ? { ...d, ...supt } : d);
+        d?.dept === 'HEAVY EQUIPMENT'        ? { ...d, ...yard } :
+        d?.dept === 'PROJECT MANAGEMENT'     ? { ...d, ...pmt }  :
+        d?.dept === 'SUPPLY & MATERIAL'      ? { ...d, ...supt } :
+        d?.dept === 'REGULATORY COMPLIANCE'  ? { ...d, ...regt } : d);
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
           ? `<div class="dp-card">
@@ -1471,7 +1473,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
                   const REASON = {
                     invalid_price: 'Name a price above $0.',
                     no_actions_remaining: 'No executive actions remaining this tick.',
-                    international_locked: 'International bids need a Level III Regional PMO Division.',
+                    foreign_locked: 'Foreign projects need the Tier V International Construction Charter.',
+                    not_licensed: 'Your Regulatory Compliance tier doesn’t license this building type.',
                     blueprint_type_mismatch: 'That blueprint doesn’t match the requested building type.',
                     already_bid: 'You already have a bid on this project.',
                     request_not_open: 'This project is no longer taking bids.',
@@ -1565,6 +1568,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             const REASON = {
               no_actions_remaining: 'No executive actions remaining this tick.',
               project_cap_reached: 'You’re at your Max Active Projects — upgrade Project Management.',
+              foreign_locked: 'Foreign projects need the Tier V International Construction Charter.',
+              not_licensed: 'Your Regulatory Compliance tier doesn’t license this building type.',
               blueprint_not_found: 'That blueprint isn’t this corporation’s.',
               pm_not_found: 'That Project Manager no longer works here.',
               category_not_chartered: 'Only Residential projects can start right now.',
@@ -1769,12 +1774,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const pmNext = PM_TIERS[pmTier + 1] || null;
         const suTier = Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1);
         const suNext = SUPPLY_TIERS[suTier + 1] || null;
+        const rgTier = Math.min(Number(corp.reg_tier) || 0, REG_TIERS.length - 1);
+        const rgNext = REG_TIERS[rgTier + 1] || null;
         const ASSETS = [
           ['project_management',   'PROJECT MANAGEMENT',   PM_TIERS[pmTier].tier, pmNext],
           ['heavy_equipment',      'HEAVY EQUIPMENT',      YARD_TIERS[tier].tier, next],
           ['supply_material',      'SUPPLY & MATERIAL',    SUPPLY_TIERS[suTier].tier, suNext],
           ['system_design',        'SYSTEM DESIGN',        'CAD System & Laptop', null],
-          ['regulatory_compliance','REGULATORY COMPLIANCE','City Permits', null],
+          ['regulatory_compliance','REGULATORY COMPLIANCE',REG_TIERS[rgTier].tier, rgNext],
         ];
         const host = document.getElementById('lo-rows');
         host.innerHTML = ASSETS.map(([key, label, cur, nxt]) => `
