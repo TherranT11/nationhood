@@ -228,17 +228,24 @@
 
 <div id="ds-overlay">
   <div class="pd-modal">
-    <div class="pd-head">Dealer <em>Summit</em></div>
+    <div class="pd-head">Expand <em>Market</em></div>
     <div class="pd-body">
       <div class="pd-lab">NATION</div>
       <div class="pd-pills" id="ds-nations"></div>
-      <div class="pd-static" style="margin-top:10px;color:#888;font-size:10.5px;">The next Sales
-        Campaign in the chosen nation gets +1.5 appeal, then the charge clears. One summit
-        pending at a time.</div>
+      <div class="pd-lab">PRESENCE</div>
+      <div class="pd-pills" id="ds-kinds"></div>
+      <div id="ds-name-wrap" style="display:none;">
+        <div class="pd-lab">SUBSIDIARY NAME</div>
+        <input type="text" class="pd-input" id="ds-name" maxlength="60" placeholder="e.g. Velora del Norte">
+      </div>
+      <div class="pd-lab">ENTRY FEE &middot; PAID BY THE CORP ON ACCEPTANCE</div>
+      <div class="pd-static" id="ds-fee">—</div>
+      <div class="pd-static" style="margin-top:10px;color:#888;font-size:10.5px;">The pitch lands
+        in the CEO&rsquo;s Pressing Issues to accept or reject. One pitch on the desk at a time.</div>
     </div>
     <div class="pd-foot">
       <button type="button" class="pd-btn secondary" id="ds-cancel">CANCEL</button>
-      <button type="button" class="pd-btn" id="ds-call" disabled>CALL THE SUMMIT</button>
+      <button type="button" class="pd-btn" id="ds-call" disabled>PITCH TO THE CEO</button>
     </div>
   </div>
 </div>
@@ -499,8 +506,68 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
       console.warn('[businessman-home] proposals fetch failed:', e?.message || e);
     }
 
+    // Market expansion pitches (20270853): the CCO's market entry
+    // waits on the owner's desk with ACCEPT / REJECT.
+    try {
+      if (ownedCorps.length) {
+        const { data: xps, error: xpErr } = await _supabase.from('market_expansion_proposals')
+          .select(`id, kind, subsidiary_name,
+                   nation:nations!nation_id(name, standard_of_living),
+                   corp:entrepreneur_corps!corp_id(name, treasury_cash),
+                   proposer:factions!proposer_faction_id(leader_first_name, leader_last_name, nickname)`)
+          .in('corp_id', ownedCorps.map(c => c.id))
+          .eq('status', 'pending');
+        if (xpErr) throw xpErr;
+        for (const p of (xps || [])) {
+          const who = p.proposer?.nickname
+            || `${p.proposer?.leader_first_name || ''} ${p.proposer?.leader_last_name || ''}`.trim() || 'Your CCO';
+          // market_entry_cost mirror.
+          const fee = p.kind === 'subsidiary'
+            ? Math.round(7000000 * Math.max(1, Number(p.nation?.standard_of_living) || 50) / 50)
+            : 10000000;
+          piCards.push(`
+            <div class="biz-proj-card">
+              <div class="t">MARKET EXPANSION PITCH — ${esc(p.kind === 'subsidiary' ? `subsidiary “${p.subsidiary_name}”` : 'main brand')} in ${esc(p.nation?.name || '—')}.
+                <span class="due">${esc(who)} wants ${esc(p.corp?.name || '—')} in the market
+                · ${esc(hfFmtBig(fee))} from the treasury on acceptance (${esc(hfFmtBig(Math.floor(Number(p.corp?.treasury_cash) || 0)))} on hand)</span></div>
+              <div class="pi-acts">
+                <button type="button" class="pi-act" data-expansion="${esc(p.id)}" data-accept="1">ACCEPT — ${esc(hfFmtBig(fee))}</button>
+                <button type="button" class="pi-act rej" data-expansion="${esc(p.id)}" data-accept="">REJECT</button>
+              </div>
+            </div>`);
+        }
+      }
+    } catch (e) {
+      console.warn('[businessman-home] expansion pitches fetch failed:', e?.message || e);
+    }
+
     if (piCards.length) {
       document.getElementById('biz-pressing-issues').innerHTML = piCards.join('');
+      document.querySelectorAll('[data-expansion]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const { data, error: rvErr } = await _supabase.rpc('review_expansion_proposal', {
+              p_proposal_id: btn.dataset.expansion, p_accept: !!btn.dataset.accept,
+            });
+            if (rvErr) throw rvErr;
+            if (!data?.success) {
+              const REASON = {
+                not_pending: 'That pitch was already decided.',
+                already_present: 'The corporation already operates there — pitch closed.',
+                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+                not_owner: 'Only the owner reviews pitches.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not review: ' + (e?.message || e));
+            btn.disabled = false;
+          }
+        });
+      });
       document.querySelectorAll('[data-proposal]').forEach(btn => {
         btn.addEventListener('click', async () => {
           btn.disabled = true;
@@ -579,8 +646,8 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           actions: [
             { key: 'campaign', nm: 'RUN A CAMPAIGN', modal: 'campaign',
               ds: 'Fire a full Sales Campaign on your own authority — nation, Model, price — without touching the owner&rsquo;s executive action.' },
-            { key: 'summit', nm: 'DEALER SUMMIT', modal: 'summit',
-              ds: 'Call the network in one nation: the next Sales Campaign there gets +1.5 appeal — the franchisees show up when the chief calls.' },
+            { key: 'expand', nm: 'EXPAND MARKET', modal: 'expand',
+              ds: 'Pitch a market entry — pick the nation and the shape (main brand or named subsidiary). The CEO accepts or rejects it from Pressing Issues; the corp pays the entry fee on acceptance.' },
             { key: 'fleet', nm: 'FLEET CONTRACT', modal: 'fleet',
               ds: 'Sell up to 30 units of one Model to fleet buyers at 70% of its class anchor — instant cash, no demand roll.' },
           ],
@@ -656,7 +723,7 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
             const modal = KIT.actions.find(x => x.key === a.dataset.kitAction)?.modal;
             if (modal) {
               ({ design: openDesignProposal, campaign: openCcoCampaign,
-                 summit: openCcoSummit, fleet: openCcoFleet })[modal]?.();
+                 expand: openCcoExpand, fleet: openCcoFleet })[modal]?.();
               return;
             }
             kitInFlight = true;
@@ -812,7 +879,6 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           no_stock: 'Not enough vehicles in inventory.',
           invalid_price: 'Set a price of at least $1.',
           invalid_quantity: 'Order between 1 and 30 units.',
-          summit_already_called: 'A summit is already pending — it clears when a campaign runs there.',
           blueprint_not_found: 'That Model belongs to another corporation.',
         };
 
@@ -951,44 +1017,91 @@ import { CONSTRUCTION_STAGES, JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICL
           }
         });
 
-        // DEALER SUMMIT
-        let dsNation = null, dsInFlight = false;
-        async function openCcoSummit() {
-          dsNation = null;
-          document.getElementById('ds-call').disabled = true;
+        // EXPAND MARKET — the chief's pitch to the CEO's desk.
+        let dsNation = null, dsKind = null, dsSol = {}, dsInFlight = false;
+        function dsRefresh() {
+          const name = document.getElementById('ds-name').value.trim();
+          document.getElementById('ds-name-wrap').style.display =
+            dsKind === 'subsidiary' ? '' : 'none';
+          // market_entry_cost mirror: $10M flat / $7M × SoL ÷ 50.
+          document.getElementById('ds-fee').textContent = dsNation && dsKind
+            ? hfFmtBig(dsKind === 'subsidiary'
+                ? Math.round(7000000 * Math.max(1, Number(dsSol[dsNation]) || 50) / 50)
+                : 10000000)
+            : '—';
+          document.getElementById('ds-call').disabled = dsInFlight || !dsNation || !dsKind
+            || (dsKind === 'subsidiary' && name.length < 2);
+        }
+        async function openCcoExpand() {
+          dsNation = null; dsKind = null;
+          document.getElementById('ds-name').value = '';
           const host = document.getElementById('ds-nations');
+          const kinds = document.getElementById('ds-kinds');
           host.innerHTML = '<div class="pd-static" style="color:#888;">Loading…</div>';
+          kinds.innerHTML = `
+            <div class="pd-pill" data-val="expansion">EXPAND — MAIN BRAND</div>
+            <div class="pd-pill" data-val="subsidiary">OPEN A SUBSIDIARY</div>`;
+          kinds.querySelectorAll('.pd-pill').forEach(p => {
+            p.addEventListener('click', () => {
+              kinds.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
+              dsKind = p.dataset.val;
+              dsRefresh();
+            });
+          });
+          dsRefresh();
           document.getElementById('ds-overlay').classList.add('open');
           try {
-            const nations = await ccoNations();
+            const nations = (await ccoNations()).filter(n => n.id !== employer?.data?.hq_nation_id);
+            const [{ data: pres, error: pErr }, { data: sols, error: sErr }] = await Promise.all([
+              _supabase.from('corp_market_presence')
+                .select('nation_id').eq('corp_id', employerId),
+              _supabase.from('nations').select('id, standard_of_living')
+                .in('id', nations.map(n => n.id)),
+            ]);
+            if (pErr || sErr) throw (pErr || sErr);
+            const present = new Set((pres || []).map(p => p.nation_id));
+            dsSol = Object.fromEntries((sols || []).map(n => [n.id, n.standard_of_living]));
             host.innerHTML = nations.map(n => `
-              <div class="pd-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}</div>`).join('');
-            host.querySelectorAll('.pd-pill').forEach(p => {
+              <div class="pd-pill${present.has(n.id) ? ' locked' : ''}" data-val="${esc(n.id)}"
+                ${present.has(n.id) ? 'title="Already operating here"' : ''}>${esc(n.name.toUpperCase())}${present.has(n.id) ? ' ✓' : ''}</div>`).join('');
+            host.querySelectorAll('.pd-pill:not(.locked)').forEach(p => {
               p.addEventListener('click', () => {
                 host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === p));
                 dsNation = p.dataset.val;
-                document.getElementById('ds-call').disabled = dsInFlight;
+                dsRefresh();
               });
             });
           } catch (e) {
             host.innerHTML = '<div class="pd-static" style="color:#888;">Could not load nations — try again shortly.</div>';
           }
         }
+        document.getElementById('ds-name').addEventListener('input', dsRefresh);
         document.getElementById('ds-call').addEventListener('click', async () => {
-          if (dsInFlight || !dsNation) return;
-          dsInFlight = true;
-          document.getElementById('ds-call').disabled = true;
+          if (dsInFlight || !dsNation || !dsKind) return;
+          dsInFlight = true; dsRefresh();
           try {
-            const { data, error } = await _supabase.rpc('cco_dealer_summit', { p_nation_id: dsNation });
+            const { data, error } = await _supabase.rpc('cco_propose_expansion', {
+              p_nation_id: dsNation, p_kind: dsKind,
+              p_subsidiary_name: document.getElementById('ds-name').value.trim() || null,
+            });
             if (error) throw error;
-            if (!data?.success) throw new Error(CCO_REASON[data?.reason] || data?.reason || 'unknown');
+            if (!data?.success) {
+              const REASON = {
+                ...CCO_REASON,
+                home_nation: 'You already operate at home — pick a foreign nation.',
+                already_present: 'The corporation already operates there.',
+                proposal_pending: 'Your last pitch is still on the CEO’s desk.',
+                invalid_name: 'Subsidiary names run 2–60 characters.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
             document.getElementById('ds-overlay').classList.remove('open');
             peSetSpent();
-            peNote.textContent = `The network convenes in ${data.nation} — +1.5 appeal on the next campaign there. Back next tick.`;
+            peNote.textContent = `The ${data.kind === 'subsidiary' ? 'subsidiary' : 'expansion'} pitch for ${data.nation} (${hfFmtBig(Number(data.cost) || 0)}) is on the CEO’s desk. Back next tick.`;
           } catch (e) {
-            alert('Could not call the summit: ' + (e?.message || e));
+            alert('Could not pitch: ' + (e?.message || e));
           } finally {
-            dsInFlight = false;
+            dsInFlight = false; dsRefresh();
           }
         });
 

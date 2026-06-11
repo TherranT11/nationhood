@@ -662,7 +662,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, summit_nation_id, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -3013,12 +3013,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
             if (bErr || pErr) throw (bErr || pErr);
             slHqModels = (models || []).map(m => ({ ...m, label: m.name, stock: m.units_in_stock }));
             slPresence = Object.fromEntries((pres || []).map(p => [p.nation_id, p]));
-            // The CCO's pending Dealer Summit (20270850), if any.
-            if (corp.summit_nation_id) {
-              const sn = nations.find(n => n.id === corp.summit_nation_id);
-              const el = document.getElementById('sl-buffs');
-              el.textContent = `${el.textContent ? el.textContent + ' ' : ''}Dealer Summit pending in ${sn?.name || 'a nation'} — +1.5 appeal on the next campaign there.`;
-            }
             natHost.innerHTML = nations.map(n => {
               const tag = n.id === corp.hq_nation_id ? ' · HOME'
                 : slPresence[n.id] ? ' ✓' : '';
