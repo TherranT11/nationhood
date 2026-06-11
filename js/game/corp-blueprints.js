@@ -419,6 +419,29 @@ export const PARTS_TIERS = [
     effect: 'Store up to 250 Aluminum.' },
 ];
 
+// The FRANCHISE & COMMERCIAL SUITE ladder — automotive's fifth
+// asset, powering Supply Agreements. Level I is live: home-nation
+// Sales Campaigns get +1 Demand (run_sales_campaign, 20270841).
+// The deeper home bonuses and the Subsidiary-brand demand (III+)
+// arrive with the tier column and its upgrade mechanics.
+export const FRANCHISE_TIERS = [
+  { tier: 'Level I: Flagship Showroom Network',
+    desc: 'A small, corporate-owned network of modern dealerships situated in major metropolitan hubs to market your initial vehicle lineup directly to player-buyers and early consumer markets.',
+    effect: '+1 Demand for all vehicles in your nation.' },
+  { tier: 'Level II: Provincial Franchise Network',
+    desc: 'Establishes corporate franchise frameworks, allowing independent NPC dealerships to distribute and service your vehicles across the entire state or province.',
+    effect: '+2 Demand for all vehicles in your nation.' },
+  { tier: 'Level III: National Fleet Logistics Office',
+    desc: 'Unlocks dedicated commercial B2B sales infrastructure, allowing you to bid on and automatically fulfill massive vehicle transport contracts for shipping or rental corporations.',
+    effect: '+3 Demand for all vehicles in your nation · +1 Demand for Subsidiary brands.' },
+  { tier: 'Level IV: Continental Financing Corporation',
+    desc: 'Mass-market retail presence backed by an in-house consumer auto financing and leasing division, multiplying your retail sales volume.',
+    effect: '+4 Demand for all vehicles in your nation · +2 Demand for Subsidiary brands.' },
+  { tier: 'Level V: Sovereign Trade Matrix',
+    desc: 'Direct integration with international trade ministries, allowing you to establish nationwide consumer markets across multiple continents, secure massive state subsidies, and completely bypass import tariffs.',
+    effect: '+3 Demand for Subsidiary brands.' },
+];
+
 // The ASSEMBLY PLANT ladder — automotive's second asset. Display copy
 // only for now (every automotive corp starts at Level I); tier state
 // moves to a column when its upgrade mechanics land. Industrial
@@ -442,6 +465,30 @@ export const ASSEMBLY_TIERS = [
     desc: 'A fully autonomous, AI-orchestrated manufacturing ecosystem. Operates with near-zero variable labor overhead, self-corrects manufacturing defects in real-time, and scales production volume instantly.',
     effect: '4 Assembly Lines — 2 Superior · 2 Automated · Requires a Tier III Industrial building.' },
 ];
+
+// The five automotive assets behind the department cards' [UPGRADE]
+// buttons (20270842) — upgrade_automotive_asset and the per-level
+// SQL helpers are authoritative; tier state lives on the
+// entrepreneur_corps columns named here. Prices align with
+// construction's yard_upgrade_cost by Roman numeral (Level I is the
+// founding state).
+export const AUTOMOTIVE_ASSETS = {
+  design_studio: { col: 'design_studio_tier', dept: 'DESIGN & ENGINEERING', ladder: STUDIO_TIERS },
+  assembly:      { col: 'assembly_tier',      dept: 'ASSEMBLY PLANT', ladder: ASSEMBLY_TIERS },
+  data_center:   { col: 'data_center_tier',   dept: 'QUALITY & DATA CENTER', ladder: DATA_TIERS },
+  parts_depot:   { col: 'parts_depot_tier',   dept: 'SUPPLY CHAIN & PART DEPOT', ladder: PARTS_TIERS },
+  franchise:     { col: 'franchise_tier',     dept: 'FRANCHISE & COMMERCIAL SUITE', ladder: FRANCHISE_TIERS },
+};
+export const AUTOMOTIVE_ASSET_UPGRADE_COSTS = { 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
+
+// Assembly lines per plant level — mirror of assembly_lines (20270842).
+export const ASSEMBLY_LINES_BY_TIER = [1, 1, 2, 2, 3, 4];
+
+// Aluminum (20270843) — mirrors of vehicle_aluminum_per_unit and
+// parts_depot_cap; buy_aluminum / start_production_run enforce.
+export const ALUMINUM_PER_VEHICLE = { motorcycle: 0.5 }; // every other type: 1
+export const aluminumPerVehicle = (type) => ALUMINUM_PER_VEHICLE[type] ?? 1;
+export const PARTS_DEPOT_CAPS = [10, 10, 50, 75, 120, 250];
 
 // Display mirrors of the Sales Campaign pricing/appeal helpers
 // (20270839) — vehicle_class_anchor_price and vehicle_appeal are
@@ -520,6 +567,6 @@ export const DEPARTMENTS = {
     { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] },
     { dept: 'QUALITY & DATA CENTER', ...DATA_TIERS[0] },
     { dept: 'SUPPLY CHAIN & PART DEPOT', ...PARTS_TIERS[0] },
-    null,
+    { dept: 'FRANCHISE & COMMERCIAL SUITE', ...FRANCHISE_TIERS[0] },
   ],
 };
