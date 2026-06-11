@@ -1413,6 +1413,7 @@ const CAREER_EVENT_TEMPLATES = {
   ambassador_appointed: (name, target, meta = {}) => `${name} was confirmed by the legislature as Ambassador to ${target || 'a foreign capital'}${meta.yes_seats != null ? `, ${meta.yes_seats}–${meta.no_seats}` : ''}.`,
   ambassador_rejected: (name, target, meta = {}) => `The legislature declined ${name}'s ambassadorial appointment${meta.yes_seats != null ? `, ${meta.no_seats}–${meta.yes_seats}` : ''}.`,
   ambassador_term_ended: (name, target) => `${name} completed their term as Ambassador to ${target || 'a foreign capital'} with honors.`,
+  ambassador_resigned: (name, target) => `${name} resigned as Ambassador to ${target || 'a foreign capital'} before the term's end.`,
   ambassador_censured: (name) => `${name} was censured by the Foreign Ministry over a public statement.`,
   ambassador_recalled: (name) => `${name} was recalled from their ambassadorship in disgrace.`,
   envoy_appointed: (name) => `${name} was appointed Special Envoy of the Republic.`,
@@ -4153,6 +4154,10 @@ async function renderAmbassadorAffiliation(ctx, host) {
           <div class="ah-name">You are now the Ambassador to ${escHtml(nationName)}</div>
           <div class="ah-desc">Your location moves to <strong>${escHtml(capital)}</strong>. You speak for your nation now — every word carries two flags. <strong>Term ends ${escHtml(tickToDate(termEnds))}.</strong>${strikes > 0 ? ' <span style="color:#c87a7a;">One censure on record — the next recalls you.</span>' : ''}</div>
         </div>
+        <button class="resign-btn" data-amb-resign
+                style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
+                       font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
+                       cursor:pointer; font-family:inherit; flex-shrink:0;">RESIGN</button>
       </div>
       <div class="emb-stats">
         <div class="emb-stat"><span class="emb-stat-lab">REPUTATION</span><span class="emb-stat-val">${escHtml(String(embRep))}<span class="emb-stat-max">/100</span></span></div>
@@ -4217,6 +4222,28 @@ async function renderAmbassadorAffiliation(ctx, host) {
 
   host.querySelector('.act-btn[data-action="amb-statement"]')
     ?.addEventListener('click', () => openStatementModal(ctx));
+
+  // Resign the post (no claw-back — the next posting means winning
+  // the chamber again, which is its own barrier).
+  host.querySelector('[data-amb-resign]')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (btn.dataset.busy === '1') return;
+    if (!confirm(`Resign as Ambassador to ${nationName}? The posting vacates and a new term means winning the chamber again.`)) return;
+    btn.dataset.busy = '1';
+    try {
+      const { data, error } = await _supabase.rpc('politician_ambassador_resign',
+        { p_faction_id: ctx.faction?.id || null });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = { not_ambassador: 'The post is already vacated.' };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      location.reload();
+    } catch (err) {
+      alert('Could not resign: ' + (err?.message || err));
+      btn.dataset.busy = '0';
+    }
+  });
 }
 
 // 20270869 — the statement composer. Same chrome as the cable.
