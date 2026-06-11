@@ -154,7 +154,7 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     // wrong project / silent failure). Bump the date suffix on each
     // intentional redeploy so we can distinguish stale invocations
     // from new ones in the function logs.
-    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-10-c (corp-payroll+construction+equipment)');
+    console.log('[advance-corp-tick] BUILD_MARKER 2026-06-11-a (corp-payroll+construction+equipment+vehicles)');
 
     // 1+2+3. Read + idempotency + time-gating + atomic claim, all in
     //        one RPC. SECURITY DEFINER pl/pgsql bypasses PostgREST's
@@ -296,6 +296,25 @@ async function advanceCorpTick(supabase, { force = false, runNow = false } = {})
     } catch (eqErr) {
         console.error('[advance-corp-tick] FAILED equipment accrual:', eqErr);
         summary.errors.push({ scope: 'construction_equipment', error: String(eqErr) });
+    }
+
+    // Vehicle production (20270834): every running Production Run
+    // turns out 1 vehicle per tick into its Model's units_in_stock;
+    // runs complete when the assigned amount is built. Idempotent —
+    // produced derives from elapsed ticks.
+    try {
+        const { data: vehRes, error: vehErr } = await supabase.rpc(
+            'advance_vehicle_production', { p_tick: currentTick });
+        if (vehErr) {
+            console.warn('[VehicleProduction] sweep RPC failed:', vehErr.message);
+            summary.errors.push({ scope: 'vehicle_production', error: vehErr.message });
+        } else if (vehRes && Number(vehRes.vehicles_produced) > 0) {
+            summary.vehicleProduction = vehRes;
+            console.log(`[VehicleProduction] tick ${currentTick}: ${vehRes.vehicles_produced} vehicles built, ${vehRes.runs_completed} runs completed`);
+        }
+    } catch (vehErr) {
+        console.error('[advance-corp-tick] FAILED vehicle production:', vehErr);
+        summary.errors.push({ scope: 'vehicle_production', error: String(vehErr) });
     }
 
     try {

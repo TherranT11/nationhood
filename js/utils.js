@@ -243,6 +243,7 @@ export const OIL_GAS_PRICES = {
  */
 const INDUSTRY_LABELS = {
     construction:           'Construction',
+    automotive:             'Automotive',
     banking:                'Banking',
     shipping:               'Shipping',
     real_estate:            'Real Estate',
