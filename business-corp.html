@@ -1911,11 +1911,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
       // Estimated Cost (footer) — what the inputs run at today's HQ
       // prices: materials × the live Materials price plus one
       // Equipment unit, after the corp's Procurement Efficiency.
-      let dbMatPrice = null, dbEqPrice = null;
+      let dbMatPrice = null, dbEqPrice = null, dbPricesLoaded = false;
       function dbUpdateCost() {
         const el = document.getElementById('db-foot-cost');
         if (!dbType) { el.textContent = ''; return; }
-        if (dbMatPrice == null || dbEqPrice == null) { el.textContent = 'Estimated Cost: …'; return; }
+        if (!dbPricesLoaded) { el.textContent = 'Estimated Cost: …'; return; }
+        if (dbMatPrice == null || dbEqPrice == null) { el.textContent = ''; return; }
         const effPct = Math.min(99, Math.max(0, Number(corp.pillar_efficiency) || 1));
         const need = BUILDING_MATERIALS_NEEDED[dbType] ?? 1;
         const cost = Math.round((need * dbMatPrice + dbEqPrice) * (1 - effPct / 100));
@@ -1992,14 +1993,17 @@ import { CITY_STATS } from './js/game/city-labels.js';
             _supabase.rpc('construction_materials_market', { p_nation_id: corp.hq_nation_id }),
             _supabase.rpc('construction_equipment_market', { p_nation_id: corp.hq_nation_id }),
           ]);
+          // Prices land first so a cities-fetch failure can't strand
+          // the footer on its loading ellipsis.
+          dbMatPrice = mats.data?.success ? Number(mats.data.cost_per_unit) || 0 : null;
+          dbEqPrice  = equip.data?.success ? Number(equip.data.cost_per_unit) || 0 : null;
+          dbPricesLoaded = true;
+          dbUpdateCost();
           if (cityErr) throw cityErr;
           if (city) {
             document.getElementById('db-location').innerHTML =
               `${esc(corp.hq_city || '—')} <span class="dim">· Infrastructure: ${esc(String(city.infrastructure ?? '—'))}/10</span>`;
           }
-          dbMatPrice = mats.data?.success ? Number(mats.data.cost_per_unit) || 0 : null;
-          dbEqPrice  = equip.data?.success ? Number(equip.data.cost_per_unit) || 0 : null;
-          dbUpdateCost();
         } catch (e) {
           console.warn('[business-corp] blueprint modal load failed:', e?.message || e);
         }
