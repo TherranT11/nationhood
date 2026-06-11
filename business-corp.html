@@ -1340,7 +1340,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
           ? (Number(corp.payroll_ytd) || 0) : 0;
         const revenueMonth = Number(corp.last_revenue_tick) === currentTick
           ? (Number(corp.last_tick_revenue) || 0) : 0;
-        const taxRate = Math.max(0, Math.min(100, Number(corp.nation?.corporate_tax) || 0));
+        // Display mirror of file_corporate_tax (20270872): the 0-10
+        // Corporate Taxation policy scale pays ×5 as a real percent.
+        const taxRate = Math.max(0, Math.min(100, (Number(corp.nation?.corporate_tax) || 0) * 5));
         const taxesOwed = Math.floor(Math.max(0, revenueYtd) * taxRate / 100);
 
         let lastPaid = 'Never';

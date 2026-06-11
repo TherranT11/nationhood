@@ -3122,11 +3122,6 @@ function bindRungActions(ctx) {
           { p_faction_id: ctx.faction?.id || null });
         if (error) throw error;
         if (!data?.success) {
-          if (data?.reason === 'vote_failed') {
-            alert(`The chamber says no — ${data.yes_seats} for, ${data.no_seats} against. The ministry will float your name again ${tickToDate(Number(data.retry_at_tick))}.`);
-            location.reload();
-            return;
-          }
           const REASON = {
             cooldown: 'The chamber recently said no — wait for the ministry to float your name again.',
             confirmation_pending: 'Your confirmation vote is already on the floor — watch the Nation page.',

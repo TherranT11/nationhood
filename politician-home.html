@@ -380,6 +380,8 @@
 .ci-actions-lab .remind { color:#888; font-style:italic; font-size:8.5px; letter-spacing:0.04em; text-transform:none; }
 .ci-act-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
 .ci-act-grid.cols-3 { grid-template-columns:repeat(3, 1fr); }
+.ci-act-grid.cols-4 { grid-template-columns:repeat(4, 1fr); }
+@media (max-width:900px) { .ci-act-grid.cols-4 { grid-template-columns:repeat(2, 1fr); } }
 .ci-endorse-badge { cursor:default; opacity:0.85; }
 .ci-endorse-badge.endorsed { border-color:rgba(154,166,110,0.45); background:#0d1208; }
 .ci-endorse-badge.endorsed .ci-act-name { color:#b8cf90; letter-spacing:0.08em; font-size:10px; }
@@ -1979,6 +1981,9 @@ async function init() {
   _supabase.rpc('resolve_due_city_ordinance_proposals')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_city_ordinance_proposals:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
+  _supabase.rpc('resolve_due_ambassador_confirmations')
+    .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_ambassador_confirmations:', error.message); })
+    .catch(err => console.warn('[politician-home] resolve_due_ambassador_confirmations threw:', err?.message || err));
   // 20270769: expose ctx to FIS modal handlers (which fire much
   // later from button clicks and can't close over ctx directly).
   // Mirrors the __careerCtx pattern on politician-career.html.
@@ -6876,15 +6881,131 @@ function renderCampaignActions(ctx) {
         <div class="ci-act-meta"><span class="ci-act-effect">1d6 + Reputation: ≥3 endorse (+7), &lt;3 reject (&minus;1d3)</span><span class="ci-act-cost">no cost</span></div>
       </button>`;
   }
+  // Request Party Support (20270871): spend up to 6 Influence; the
+  // party matches each with $50k from the war chest, every $50k
+  // rolls 1d6 and a 4-6 lands +2 polling.
+  const influence = Math.floor(Number(politician.politician_influence) || 0);
+  const supportTitle = influence < 1 ? ' title="Need at least 1 Influence."' : '';
+  const supportBtn = `
+    <button class="ci-act" type="button" data-camp-action="support"${turnLocked || influence < 1 ? ' disabled' : ''}${supportTitle}>
+      <div class="ci-act-head"><span class="ci-act-icon" style="color:#9aa66e;">&#128176;</span><span class="ci-act-name">Request Party Support</span></div>
+      <div class="ci-act-blurb">Ask the party to open the war chest for your race. Your Influence buys the ask.</div>
+      <div class="ci-act-meta"><span class="ci-act-effect">per $50k: 1d6, 4&ndash;6 &rarr; +2 polling</span><span class="ci-act-cost">up to &minus;6 Influence</span></div>
+    </button>`;
   const lockMsg = turnLocked
     ? `Already campaigned this tick &mdash; next action at tick ${gateTick}.`
     : '';
   return `
     <div class="ci-actions">
       <div class="ci-actions-lab"><span>YOUR NEXT MOVE</span><span class="remind">1 action per tick</span></div>
-      <div class="ci-act-grid cols-3">${adsBtn}${rallyBtn}${endorseBlock}</div>
+      <div class="ci-act-grid cols-4">${adsBtn}${rallyBtn}${supportBtn}${endorseBlock}</div>
       ${lockMsg ? `<div class="ci-act-lockmsg">${lockMsg}</div>` : ''}
     </div>`;
+}
+
+// 20270871 — the Request Party Support composer. Spend up to 6
+// Influence; the war chest matches $50k per point (rounded down to
+// what it can fund); each $50k rolls 1d6, a 4-6 lands +2 polling.
+function ensurePartySupportModal() {
+  if (document.getElementById('pw-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #pw-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #pw-overlay.open { display:flex; }
+    .pw-modal { width:460px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(154,166,110,0.4); border-radius:6px; padding:20px 22px; }
+    .pw-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#9aa66e; font-weight:700; margin-bottom:10px; }
+    .pw-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    #pw-amount { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:9px 11px;
+      font-family:inherit; font-size:13px; }
+    #pw-amount:focus { outline:none; border-color:rgba(154,166,110,0.55); }
+    .pw-math { font-family:monospace; font-size:10px; color:#9aa66e; margin-top:8px; min-height:14px; }
+    .pw-foot { margin-top:14px; display:flex; justify-content:flex-end; gap:8px; }
+    .pw-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .pw-go { padding:8px 16px; background:rgba(154,166,110,0.1);
+      border:0.5px solid rgba(154,166,110,0.55); border-radius:4px; color:#9aa66e;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700; cursor:pointer; }
+    .pw-go:hover:not(:disabled) { background:rgba(154,166,110,0.2); }
+    .pw-go:disabled { opacity:0.4; cursor:not-allowed; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'pw-overlay';
+  host.innerHTML = `
+    <div class="pw-modal">
+      <div class="pw-title">REQUEST PARTY SUPPORT</div>
+      <div class="pw-sub">To help win an upcoming election, you request the party spend
+        money from its war chest to help your election efforts. Each Influence you put up
+        has the party commit $50k; if the chest runs short the ask rounds down, and only
+        the funded Influence is charged.</div>
+      <div class="ci-actions-lab" style="margin-bottom:6px;">INFLUENCE TO SPEND (1\u20136)</div>
+      <input type="number" id="pw-amount" min="1" max="6" step="1" value="1">
+      <div class="pw-math" id="pw-math"></div>
+      <div class="pw-foot">
+        <button type="button" class="pw-close" id="pw-close">CANCEL</button>
+        <button type="button" class="pw-go" id="pw-go">MAKE THE ASK</button>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
+  document.getElementById('pw-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+function openPartySupportModal(ctx) {
+  ensurePartySupportModal();
+  const politician = ctx.faction || {};
+  const maxInf = Math.max(1, Math.min(6, Math.floor(Number(politician.politician_influence) || 0)));
+  const amount = document.getElementById('pw-amount');
+  const math = document.getElementById('pw-math');
+  const go = document.getElementById('pw-go');
+  amount.max = String(maxInf);
+  amount.value = String(maxInf);
+  const refresh = () => {
+    const n = Math.floor(Number(amount.value) || 0);
+    const ok = n >= 1 && n <= maxInf;
+    math.textContent = ok
+      ? `${n} Influence \u2192 the party commits $${(n * 50000).toLocaleString()} \u2192 ${n} roll${n === 1 ? '' : 's'} of 1d6 \u00b7 each 4\u20136 lands +2 polling`
+      : `Pick 1\u2013${maxInf} (you hold ${Math.floor(Number(politician.politician_influence) || 0)} Influence).`;
+    go.disabled = !ok;
+  };
+  amount.oninput = refresh;
+  refresh();
+  const fresh = go.cloneNode(true);
+  go.replaceWith(fresh);
+  fresh.addEventListener('click', async () => {
+    fresh.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('politician_request_party_support', {
+        p_party_id: ctx.party?.id || null,
+        p_faction_id: ctx.faction?.id || null,
+        p_influence: Math.floor(Number(amount.value) || 0),
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          cooldown: 'You\u2019ve already taken your campaign action this tick.',
+          insufficient_influence: 'Not enough Influence for that ask.',
+          war_chest_empty: 'The war chest can\u2019t fund even one $50k block.',
+          no_active_race: 'No live race \u2014 the party doesn\u2019t write checks without a ballot.',
+          not_member: 'You are no longer a member of this party.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      document.getElementById('pw-overlay').classList.remove('open');
+      const rolls = (data.rolls || []).join(', ');
+      alert(`The party commits $${Number(data.war_chest_spent).toLocaleString()} (${data.influence_spent} Influence). Rolls: ${rolls} \u2014 ${data.hits} hit${data.hits === 1 ? '' : 's'}. +${data.polling_delta} polling.`);
+      location.reload();
+    } catch (e) {
+      alert('Could not make the ask: ' + (e?.message || e));
+      fresh.disabled = false;
+    }
+  });
+  document.getElementById('pw-overlay').classList.add('open');
 }
 
 // Campaign-action RPC map (20270591). Keyed on data-camp-action; each
@@ -6907,6 +7028,10 @@ function bindCampaignActions(ctx) {
     btn.addEventListener('click', async () => {
       if (btn.disabled) return;
       const slug = btn.dataset.campAction;
+      if (slug === 'support') {
+        openPartySupportModal(ctx);
+        return;
+      }
       const spec = CAMPAIGN_RPCS[slug];
       if (!spec) return;
       btn.disabled = true;
