@@ -1426,6 +1426,10 @@ const CAREER_EVENT_TEMPLATES = {
   // Permanent Undersecretary kit (20270878). Both land on the
   // TARGET's timeline; target_name on the sabotage row carries the
   // Undersecretary's name.
+  // Deputy Minister lifecycle (20270880). target_name carries the
+  // major-ministry slug; MAJOR_MINISTRY_LABEL renders it.
+  appointed_deputy_minister: (name, target) => `${name} was appointed Deputy Minister of ${MAJOR_MINISTRY_LABEL[target] || target || 'a major ministry'}.`,
+  deputy_minister_lost_power: (name, target) => `${name} lost the Deputy Minister seat${MAJOR_MINISTRY_LABEL[target] ? ` at ${MAJOR_MINISTRY_LABEL[target]}` : ''} when their party fell from power.`,
   noticed_by_undersecretary: (name) => `${name} was noticed by the Permanent Undersecretary.`,
   brief_sabotage_caught: (name, target) => `${name} discovered ${target || 'the Permanent Undersecretary'} had cooked their briefing papers.`,
   joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
@@ -2400,6 +2404,11 @@ const JUNIOR_MINISTER_ACTIONS = [
   { ic: '📜', name: 'CARRY A BILL',      cost: 'no cost', desc: 'Pilot a piece of government legislation through the chamber.' },
   { ic: '🎙', name: 'ANSWER QUESTIONS', cost: 'no cost', desc: 'Stand at the dispatch box and answer for your portfolio.' },
 ];
+// Deputy Minister (Tier 5, 20270880) placeholder actions.
+const DEPUTY_MINISTER_ACTIONS = [
+  { ic: '🏛', name: 'OVERSEE POLICY',         cost: 'no cost', desc: 'Run the policy areas the Minister has delegated to you.' },
+  { ic: '🌐', name: 'REPRESENT THE MINISTRY', cost: 'no cost', desc: 'Stand in for the Minister — in Cabinet, before the press, abroad.' },
+];
 // Permanent Undersecretary kit (Tier 3, 20270878). All three share
 // next_civil_service_action_tick — one move per tick.
 const PERMANENT_SECRETARY_ACTIONS = [
@@ -2684,6 +2693,25 @@ const AFFIL_VARIANTS = {
     nameFn:  (ctx) => `Junior Minister for ${portfolioLabel(ctx.faction?.politician_junior_portfolio)}`,
     descFn:  (ctx) => `You hold the <strong>${escHtml(portfolioLabel(ctx.faction?.politician_junior_portfolio))}</strong> portfolio — sub-Cabinet rank. You carry the brief, answer for the Minister when absent, and pilot legislation through the chamber. If the government falls, so does the portfolio.`,
     actions: JUNIOR_MINISTER_ACTIONS,
+    // actionsEnabled left undefined → placeholder slots render greyed.
+  },
+  // Deputy Minister (Tier 5, 20270880). politician_deputy_minister_
+  // ministry gates entry above the Junior Minister check. Falls with
+  // the government like the JM portfolio (election-resolver strip).
+  deputy_minister: {
+    variant: 'var-civ',
+    eyebrow: 'POLITICAL APPOINTMENT · TIER 5',
+    badge:   '🎗',
+    name:    'Deputy Minister',
+    nameFn:  (ctx) => {
+      const m = ctx.faction?.politician_deputy_minister_ministry;
+      return `Deputy Minister of ${MAJOR_MINISTRY_LABEL[m] || m || '—'}`;
+    },
+    descFn:  (ctx) => {
+      const m = ctx.faction?.politician_deputy_minister_ministry;
+      return `You deputise for the Minister of <strong>${escHtml(MAJOR_MINISTRY_LABEL[m] || m || '—')}</strong> — you own discrete policy areas, sit in Cabinet when they are absent, and represent the ministry externally. If the government falls, so do you.`;
+    },
+    actions: DEPUTY_MINISTER_ACTIONS,
     // actionsEnabled left undefined → placeholder slots render greyed.
   },
 };
@@ -3218,19 +3246,21 @@ function renderAffiliation(ctx) {
   // affiliation it should remove the Party Member one".
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
-  // Tier 4 Junior Minister outranks the whole career civil service;
-  // Tier 3 outranks both lower rungs (20270679).
+  // Appointed canopy outranks the career civil service: Tier 5
+  // Deputy Minister > Tier 4 Junior Minister > Tier 3 PS (20270679).
+  const isDM = !!ctx.faction?.politician_deputy_minister_ministry;
   const isJM = !!ctx.faction?.politician_junior_portfolio;
   const isPermSec = !!ctx.faction?.politician_permanent_secretary_ministry;
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
-    : (isJM ? AFFIL_VARIANTS.junior_minister
+    : (isDM ? AFFIL_VARIANTS.deputy_minister
+      : (isJM ? AFFIL_VARIANTS.junior_minister
       : (isPermSec ? AFFIL_VARIANTS.permanent_secretary
       : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
                               : (barNation ? pickJudicialVariant(ctx.faction)
                                            : ((fsNation || fisAgent) ? null
-                                                       : AFFIL_VARIANTS.party_member))))));
+                                                       : AFFIL_VARIANTS.party_member)))))));
   if (!variant) {
     // Foreign Service is the only affiliation — the secondary host
     // renderForeignAffiliation paints the only card. Clear the main
@@ -3414,7 +3444,7 @@ function renderAffiliation(ctx) {
   let resignCfg = null;
   if (office) {
     resignCfg = { kind: 'office', label: 'RESIGN' };
-  } else if (isJM || isPermSec || isSeniorCS || ministry) {
+  } else if (isDM || isJM || isPermSec || isSeniorCS || ministry) {
     resignCfg = { kind: 'rpc', label: 'RESIGN', rpc: 'politician_resign_from_civil_service',
       args: { p_faction_id: ctx.faction?.id || null },
       confirm: 'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.' };

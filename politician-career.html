@@ -1173,6 +1173,7 @@ const LEGISLATURE_RUNGS = [
 // surfaces on the politician's TOPMOST held rung. 20270705 backs the
 // resign action.
 function highestCivilServiceTier(s) {
+  if (s.deputyMinisterMinistry)              return 5;
   if (s.juniorPortfolio)                     return 4;
   if (s.permanentSecretaryMinistry)          return 3;
   if (s.seniorCivilServantAtTick != null)    return 2;
@@ -1305,6 +1306,9 @@ const GOVT_SERVICE_RUNGS = [
         const ticks = s.juniorAppointmentCooldownUntilTick - s.currentTick;
         return { label: `Reapply in ${ticks} tick${ticks === 1 ? '' : 's'}`, kind: 'disabled' };
       }
+      if (s.deputyMinisterMinistry) {
+        return { label: 'You serve above this rung', kind: 'disabled' };
+      }
       if (s.seniorCivilServantAtTick == null) {
         return { label: 'Agency Heads only', kind: 'disabled' };
       }
@@ -1320,10 +1324,25 @@ const GOVT_SERVICE_RUNGS = [
     tierNum: 5,
     name: 'Deputy Minister',
     trackPill:   { label: 'APPOINTED', kind: 'appointed' },
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You deputise for the Minister and own specific portfolio areas across Cabinet.',
-    descIfNot:   ()  => 'A senior appointed deputy to the Minister. You own discrete policy areas of the portfolio, deputise for the Minister in Cabinet when they are unavailable, and represent the ministry externally.',
+    held:        (s) => !!s.deputyMinisterMinistry,
+    descIfHeld:  (s) => `You are Deputy Minister of ${MAJOR_MINISTRY_LABEL[s.deputyMinisterMinistry] || s.deputyMinisterMinistry || 'a major ministry'} — you own discrete policy areas, deputise for the Minister in Cabinet, and represent the ministry externally.`,
+    descIfNot:   ()  => `A senior appointed deputy to the Minister. Apply as a sitting Junior Minister with ${CIVIL_SERVICE_THRESHOLDS.deputyMinister} Experience; the cabinet decides on the spot with a stat-modified roll, and on acceptance you're assigned by lot to a vacant major ministry — Interior, Defense, Economic Development or Foreign Affairs and Trade. Your Junior Minister portfolio vacates on promotion.`,
     actions:     ['Oversee Policy', 'Represent the Ministry'],
+    actionIfNot: (s) => {
+      if (s.juniorAppointmentCooldownUntilTick > s.currentTick) {
+        const ticks = s.juniorAppointmentCooldownUntilTick - s.currentTick;
+        return { label: `Reapply in ${ticks} tick${ticks === 1 ? '' : 's'}`, kind: 'disabled' };
+      }
+      if (!s.juniorPortfolio) {
+        return { label: 'Junior Ministers only', kind: 'disabled' };
+      }
+      const skill = Number(s.politicianSkill) || 0;
+      if (skill < CIVIL_SERVICE_THRESHOLDS.deputyMinister) {
+        return { label: `Apply · Need ${CIVIL_SERVICE_THRESHOLDS.deputyMinister} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
+      }
+      return { label: 'Seek Appointment', kind: 'primary', action: 'seek-deputy-appointment' };
+    },
+    actionIfHeld: (s) => highestCivilServiceTier(s) === 5 ? CS_RESIGN : null,
   },
   {
     tierNum: 6,
@@ -2422,6 +2441,9 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     // portfolio (drives held() + descIfHeld); the cooldown gate
     // blocks reapplication after a failed NPC-PM dice roll.
     juniorPortfolio:         ctx?.faction?.politician_junior_portfolio || null,
+    // Deputy Minister (Tier 5, 20270880) — major-ministry slug when
+    // serving; shares the canopy application cooldown with JM.
+    deputyMinisterMinistry:  ctx?.faction?.politician_deputy_minister_ministry || null,
     juniorAppointmentCooldownUntilTick: Number(ctx?.faction?.politician_seek_appointment_cooldown_until_tick) || 0,
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
@@ -3053,6 +3075,13 @@ function bindRungActions(ctx) {
   // party notice (20270875); members proceed from inside the modal.
   document.querySelectorAll('[data-action="seek-junior-appointment"]').forEach(btn => {
     btn.addEventListener('click', () => openJmGateNotice(btn));
+  });
+
+  // Seek Appointment — Junior Minister → Deputy Minister (Tier 5,
+  // 20270880). One-click: the cabinet rolls on the spot, breakdown
+  // modal shows the math vs the 25 bar.
+  document.querySelectorAll('[data-action="seek-deputy-appointment"]').forEach(btn => {
+    btn.addEventListener('click', () => submitDeputyAppointment(btn));
   });
 
   // Seek Promotion — Agency Head → Permanent Secretary (Tier 3,
@@ -3816,11 +3845,35 @@ function renderPortfolioPendingView(data) {
     </div>`;
 }
 
-function renderPortfolioRollResult(data) {
+// Shared roll-breakdown chrome for the canopy appointment modals
+// (Junior Minister 22 bar / Deputy Minister 25 bar). Every term with
+// the d20 highlighted, the appointment bar at the end, and a margin
+// sentence keyed off the outcome.
+function apptRollParts(b, need, status) {
+  const fmt = (n) => (n >= 0 ? '+' + n : String(n));
+  const terms = [
+    `<span class="ah-roll-term"><span class="ah-roll-num">${b.d20}</span><span class="ah-roll-lab">d20</span></span>`,
+    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.skill_mod)}</span><span class="ah-roll-lab">Experience</span></span>`,
+    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.reputation_mod)}</span><span class="ah-roll-lab">Rep</span></span>`,
+    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.alignment_mod)}</span><span class="ah-roll-lab">Party</span></span>`,
+    `<span class="ah-roll-op">=</span><span class="ah-roll-term ah-roll-total"><span class="ah-roll-num">${b.total}</span><span class="ah-roll-lab">total</span></span>`,
+    `<span class="ah-roll-op">vs</span><span class="ah-roll-term"><span class="ah-roll-num">${need}</span><span class="ah-roll-lab">needed</span></span>`,
+  ].join('');
+  const margin = Number(b.total) - need;
+  const marginLine = status === 'appointed'
+    ? `Cleared the bar by <strong>${margin}</strong>.`
+    : `<strong>${Math.abs(margin)}</strong> short of the <strong>${need}</strong> the cabinet wanted.`;
+  return { terms, marginLine };
+}
+
+// One engine for the canopy roll-result modals; the JM and Deputy
+// wrappers below feed it their bar + appointed strings. The bars
+// mirror the server roll tables (20270681: JM >=22; 20270880:
+// Deputy >=25).
+function renderApptRollResult(data, cfg) {
   const body = document.getElementById('jm-result-body');
   if (!body) return;
   const b = data.breakdown || {};
-  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'a portfolio';
   const status = data.status;
   const eyebrowMap = {
     appointed:  'APPOINTED',
@@ -3828,12 +3881,12 @@ function renderPortfolioRollResult(data) {
     humiliated: 'HUMILIATED',
   };
   const headlineMap = {
-    appointed:  `You are the new Junior Minister of ${label}`,
+    appointed:  cfg.appointedHeadline,
     rejected:   `The cabinet turned you down`,
     humiliated: `Laughed out of the cabinet room`,
   };
   const subMap = {
-    appointed:  `The portfolio was assigned by lot from the vacant set. The press writes nicely. <strong>+2 Reputation.</strong>`,
+    appointed:  cfg.appointedSub,
     rejected:   b.inf_delta === -1
       ? 'A polite rebuff in public view. <strong>−1 Influence.</strong>'
       : 'A quiet no. No public penalty.',
@@ -3843,24 +3896,7 @@ function renderPortfolioRollResult(data) {
   const cooldownLine = cooldown > 0
     ? `<div class="ah-result-cooldown">Reapplication closed for <strong>${cooldown} tick${cooldown === 1 ? '' : 's'}</strong>.</div>`
     : '';
-  // Roll breakdown row — every term, with the d20 highlighted, and
-  // the appointment bar at the end so the player can see what a
-  // winning total looks like. 22 mirrors the server's roll table
-  // (politician_seek_junior_appointment, 20270681: >=22 appointed).
-  const JM_APPOINT_AT = 22;
-  const fmt = (n) => (n >= 0 ? '+' + n : String(n));
-  const terms = [
-    `<span class="ah-roll-term"><span class="ah-roll-num">${b.d20}</span><span class="ah-roll-lab">d20</span></span>`,
-    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.skill_mod)}</span><span class="ah-roll-lab">Experience</span></span>`,
-    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.reputation_mod)}</span><span class="ah-roll-lab">Rep</span></span>`,
-    `<span class="ah-roll-op">+</span><span class="ah-roll-term"><span class="ah-roll-num">${fmt(b.alignment_mod)}</span><span class="ah-roll-lab">Party</span></span>`,
-    `<span class="ah-roll-op">=</span><span class="ah-roll-term ah-roll-total"><span class="ah-roll-num">${b.total}</span><span class="ah-roll-lab">total</span></span>`,
-    `<span class="ah-roll-op">vs</span><span class="ah-roll-term"><span class="ah-roll-num">${JM_APPOINT_AT}</span><span class="ah-roll-lab">needed</span></span>`,
-  ].join('');
-  const margin = Number(b.total) - JM_APPOINT_AT;
-  const marginLine = status === 'appointed'
-    ? `Cleared the bar by <strong>${margin}</strong>.`
-    : `<strong>${Math.abs(margin)}</strong> short of the <strong>${JM_APPOINT_AT}</strong> the cabinet wanted.`;
+  const { terms, marginLine } = apptRollParts(b, cfg.need, status);
   body.innerHTML = `
     <div class="ah-result-card ah-result-card--${status}">
       <div class="ah-result-eyebrow">${eyebrowMap[status] || status?.toUpperCase()}</div>
@@ -3869,6 +3905,62 @@ function renderPortfolioRollResult(data) {
       <div class="ah-result-sub">${marginLine} ${subMap[status] || ''}</div>
       ${cooldownLine}
     </div>`;
+}
+
+function renderPortfolioRollResult(data) {
+  const label = JUNIOR_PORTFOLIO_LABEL[data.portfolio] || data.portfolio || 'a portfolio';
+  renderApptRollResult(data, {
+    need: 22,
+    appointedHeadline: `You are the new Junior Minister of ${label}`,
+    appointedSub: `The portfolio was assigned by lot from the vacant set. The press writes nicely. <strong>+2 Reputation.</strong>`,
+  });
+}
+
+function renderDeputyRollResult(data) {
+  const label = MAJOR_MINISTRY_LABEL[data.ministry] || data.ministry || 'a major ministry';
+  renderApptRollResult(data, {
+    need: 25,
+    appointedHeadline: `You are the new Deputy Minister of ${label}`,
+    appointedSub: `Assigned by lot from the vacant major ministries — your Junior Minister portfolio vacates. <strong>+2 Reputation.</strong>`,
+  });
+}
+
+// ─── Seek Deputy Minister appointment (Tier 5, 20270880) ─────────
+// Sitting JM + 32 Experience; cabinet rolls on the spot (the player
+// HoG has no review here — assignment is automatic per spec). The
+// result modal shows the full breakdown vs the 25 bar.
+async function submitDeputyAppointment(btn) {
+  if (btn?.dataset.busy === '1') return;
+  if (btn) { btn.dataset.busy = '1'; btn.disabled = true; }
+  try {
+    const { data, error } = await _supabase.rpc('politician_seek_deputy_appointment',
+      { p_faction_id: window.__careerCtx?.faction?.id || null });
+    if (error) throw error;
+    if (!data?.success) {
+      const have = data?.have != null ? fmtStat(data.have) : '?';
+      const names = (Array.isArray(data?.governing_parties) ? data.governing_parties : []).filter(Boolean);
+      const msg = data?.reason === 'insufficient_skill'   ? `Application denied — you need ${CIVIL_SERVICE_THRESHOLDS.deputyMinister} Experience. You have ${have}.`
+        : data?.reason === 'not_junior_minister'           ? 'Only a sitting Junior Minister rises to Deputy Minister.'
+        : data?.reason === 'already_deputy_minister'       ? `You already serve as Deputy Minister of ${escHtml(MAJOR_MINISTRY_LABEL[data?.ministry] || data?.ministry || 'a major ministry')}.`
+        : data?.reason === 'not_governing_party'           ? (names.length
+            ? `The ${names.length > 1 ? 'parties' : 'party'} in power ${names.length > 1 ? 'are' : 'is'} ${names.join(' and ')}. You must be a member of ${names.length > 1 ? 'one of these parties' : 'this party'} before seeking to join the government ministry. If they lose power, so do you.`
+            : 'Only members of the governing coalition may seek the deputy seat.')
+        : data?.reason === 'all_slots_full'                ? 'Every Deputy Minister seat in your nation is held by a player. Try again once one opens.'
+        : data?.reason === 'on_cooldown'                   ? `Reapplication closed for ${data?.ticks_remaining} more tick${data?.ticks_remaining === 1 ? '' : 's'}.`
+        : data?.reason === 'not_authenticated'             ? 'Sign in to act.'
+        : data?.reason === 'no_politician'                 ? 'No politician on this account.'
+        : data?.reason === 'no_nation'                     ? 'Your politician is not yet seated in a nation.'
+        : ('Application failed: ' + (data?.reason || 'unknown'));
+      alert(msg);
+      if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+      return;
+    }
+    openResultModal();
+    renderDeputyRollResult(data);
+  } catch (e) {
+    alert('Application failed: ' + (e?.message || 'network or server error'));
+    if (btn) { btn.dataset.busy = '0'; btn.disabled = false; }
+  }
 }
 
 // ─── Seek Permanent Secretary ────────────────────────────────────
