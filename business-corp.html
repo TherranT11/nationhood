@@ -593,6 +593,7 @@
       <div class="db-static dim-line" id="sl-anchor"></div>
       <div class="jm-lab">UNIT COST · PROFIT PER VEHICLE</div>
       <div class="db-static" id="sl-profit">—</div>
+      <div class="db-static dim-line" id="sl-buffs"></div>
     </div>
     <div class="jm-foot" id="sl-foot">
       <button type="button" class="jm-btn secondary" id="sl-cancel">CANCEL</button>
@@ -652,7 +653,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -2867,6 +2868,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('ea-sales-campaign').addEventListener('click', async () => {
           slNation = null; slModel = null;
           document.getElementById('sl-price').value = '';
+          // The Sales Rep's queued charges — applied (and consumed,
+          // one of each) by the next campaign.
+          const slQueued = [
+            (Number(corp.sales_buff_units) || 0) && '+10% units',
+            (Number(corp.sales_buff_appeal) || 0) && '+0.5 appeal',
+            (Number(corp.sales_buff_price) || 0) && 'financing (price reads −10%)',
+          ].filter(Boolean);
+          document.getElementById('sl-buffs').textContent = slQueued.length
+            ? `Sales Rep charges queued for this campaign: ${slQueued.join(' · ')}.`
+            : '';
           document.getElementById('sl-stock').textContent = '—';
           document.getElementById('sl-comp').textContent = '—';
           slShowProfit();
