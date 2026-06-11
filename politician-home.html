@@ -3154,11 +3154,37 @@ async function renderForeignAffiliation(ctx) {
       ${embCooldown ? `<div class="act-cooldown">Ready in ${embCdLeft} tick${embCdLeft === 1 ? '' : 's'}</div>` : ''}
     </div>`;
 
+  // Send Cable (20270860): one dispatch per tick — the cable rows
+  // themselves are the ledger, so the tile greys by querying them.
+  let cableSent = false;
+  try {
+    const { data } = await _supabase.from('diplomatic_cables')
+      .select('id')
+      .eq('faction_id', ctx.faction?.id)
+      .eq('sent_at_tick', currentTick)
+      .limit(1);
+    cableSent = !!data?.length;
+  } catch (err) {
+    console.warn('[politician-home] cable check failed:', err?.message || err);
+  }
+  const cableAttrs = cableSent
+    ? ' aria-disabled="true" title="The cable already went out this tick"'
+    : ' data-action="embassy-send-cable"';
+  const cableTile = `
+    <div class="act-btn${cableSent ? ' cooldown' : ''}"${cableAttrs}>
+      <div class="act-head">
+        <span class="act-ic">📡</span>
+        <span class="act-name">SEND CABLE TO FOREIGN MINISTRY</span>
+        <span class="act-cost">no cost</span>
+      </div>
+      <div class="act-desc">File a coded dispatch back to your Foreign Ministry — the channel that grades your posting.</div>
+      ${cableSent ? '<div class="act-cooldown">Ready next tick</div>' : ''}
+    </div>`;
+
   const placeholderActions = [
     { ic: '🤝', name: 'BUILD LOCAL CONTACTS',          cost: 'no cost', desc: 'Cultivate sources inside the host nation — ministers, journalists, opposition figures.' },
-    { ic: '📡', name: 'SEND CABLE TO FOREIGN MINISTRY', cost: 'no cost', desc: 'File a coded dispatch back to your Foreign Ministry — the channel that grades your posting.' },
   ];
-  const actionsHtml = dayToDayTile + placeholderActions.map(a => `
+  const actionsHtml = dayToDayTile + cableTile + placeholderActions.map(a => `
     <div class="act-btn disabled" aria-disabled="true" title="Action mechanics coming soon">
       <div class="act-head">
         <span class="act-ic">${a.ic}</span>
@@ -3219,6 +3245,105 @@ async function renderForeignAffiliation(ctx) {
 
   host.querySelector('.act-btn[data-action="embassy-day-to-day"]')
     ?.addEventListener('click', () => openEmbassyEventModal());
+
+  host.querySelector('.act-btn[data-action="embassy-send-cable"]')
+    ?.addEventListener('click', () => openCableModal(ctx));
+}
+
+// 20270860 — the SEND CABLE composer. Same inject-on-demand overlay
+// pattern as ensureConstructionBidModal. The dispatch lands on the
+// home nation's Ministry of Foreign Affairs & Trade page as a
+// Diplomatic Communique under the attaché's name and posting.
+function ensureCableModal() {
+  if (document.getElementById('dc-overlay')) return;
+  const style = document.createElement('style');
+  style.textContent = `
+    #dc-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75);
+      z-index:300; align-items:center; justify-content:center; padding:20px; }
+    #dc-overlay.open { display:flex; }
+    .dc-modal { width:560px; max-width:94vw; background:#0a0807;
+      border:0.5px solid rgba(90,175,165,0.35); border-radius:6px; padding:20px 22px; }
+    .dc-title { font-family:monospace; font-size:11px; letter-spacing:0.14em;
+      color:#5aafa5; font-weight:700; margin-bottom:10px; }
+    .dc-sub { color:#9a958a; font-size:11px; line-height:1.5; margin-bottom:12px; }
+    #dc-text { width:100%; box-sizing:border-box; background:#0d0d0d; color:#e8e4da;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; padding:10px 12px;
+      font-family:inherit; font-size:12px; line-height:1.5; resize:vertical; min-height:84px; }
+    #dc-text:focus { outline:none; border-color:rgba(90,175,165,0.5); }
+    .dc-count { text-align:right; font-family:monospace; font-size:9px; color:#666;
+      margin-top:5px; }
+    .dc-foot { margin-top:14px; display:flex; justify-content:flex-end; gap:8px; }
+    .dc-close { padding:8px 14px; background:transparent;
+      border:0.5px solid rgba(255,255,255,0.15); border-radius:4px; color:#888;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+      cursor:pointer; }
+    .dc-send { padding:8px 16px; background:rgba(90,175,165,0.08);
+      border:0.5px solid rgba(90,175,165,0.5); border-radius:4px; color:#5aafa5;
+      font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+      cursor:pointer; }
+    .dc-send:hover:not(:disabled) { background:rgba(90,175,165,0.16); }
+    .dc-send:disabled { opacity:0.4; cursor:not-allowed; }`;
+  document.head.appendChild(style);
+  const host = document.createElement('div');
+  host.id = 'dc-overlay';
+  host.innerHTML = `
+    <div class="dc-modal">
+      <div class="dc-title">SEND CABLE TO FOREIGN MINISTRY</div>
+      <div class="dc-sub">The dispatch arrives at your Ministry of Foreign Affairs &amp; Trade
+        as a Diplomatic Communique, under your name and posting. One cable per tick.</div>
+      <textarea id="dc-text" maxlength="240" rows="4"
+        placeholder="Compose the dispatch — up to 240 characters."></textarea>
+      <div class="dc-count"><span id="dc-count">0</span>/240</div>
+      <div class="dc-foot">
+        <button type="button" class="dc-close" id="dc-close">CANCEL</button>
+        <button type="button" class="dc-send" id="dc-send" disabled>SEND CABLE</button>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
+  const text = document.getElementById('dc-text');
+  text.addEventListener('input', () => {
+    document.getElementById('dc-count').textContent = String(text.value.length);
+    document.getElementById('dc-send').disabled = text.value.trim().length < 1;
+  });
+  document.getElementById('dc-close').addEventListener('click', () =>
+    host.classList.remove('open'));
+  host.addEventListener('click', (e) => { if (e.target === host) host.classList.remove('open'); });
+}
+
+function openCableModal(ctx) {
+  ensureCableModal();
+  const text = document.getElementById('dc-text');
+  const send = document.getElementById('dc-send');
+  text.value = '';
+  document.getElementById('dc-count').textContent = '0';
+  send.disabled = true;
+  // Re-clone the send button so reopening never stacks handlers.
+  const fresh = send.cloneNode(true);
+  send.replaceWith(fresh);
+  fresh.addEventListener('click', async () => {
+    fresh.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('politician_send_cable',
+        { p_faction_id: ctx.faction?.id || null, p_text: text.value });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_attache: 'Only a serving attaché files cables.',
+          already_sent: 'One cable per tick — it already went out.',
+          invalid_text: 'Write something — up to 240 characters.',
+          arrested: 'You are under arrest — the channel is closed.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      document.getElementById('dc-overlay').classList.remove('open');
+      alert('The cable goes out under your name.');
+      location.reload();
+    } catch (err) {
+      alert('Could not send: ' + (err?.message || err));
+      fresh.disabled = false;
+    }
+  });
+  document.getElementById('dc-overlay').classList.add('open');
 }
 
 // 20270769 — Federal Investigations Tier 1 (Agent) affiliation card.
