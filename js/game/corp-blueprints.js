@@ -72,6 +72,32 @@ export const PM_TIERS = [
     effect: 'Max Number of Active Projects: Unlimited' },
 ];
 
+// The SUPPLY & MATERIAL Depot ladder — materials_tier (20270822),
+// upgraded by Logistical Overhaul on the same price ladder as the
+// yard. Caps / sourcing are enforced server-side
+// (materials_storage_cap + buy_construction_goods); storageCap and
+// upgradeCost are display mirrors.
+export const SUPPLY_TIERS = [
+  { tier: 'Level 0: Retail Hardware Store', upgradeCost: null, storageCap: 0,
+    desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
+    effect: 'Project Manager or Owner/CEO can buy Construction Materials directly for active projects.' },
+  { tier: 'Level I: Storage Shed & Materials Laydown', upgradeCost: 7000000, storageCap: 20,
+    desc: 'A rented, outdoor storage lot or warehouse bay allowing you to store a few material pallets purchased during minor market dips.',
+    effect: 'Buy and store up to 20 Construction Materials.' },
+  { tier: 'Level II: Municipal Distribution Yard', upgradeCost: 10000000, storageCap: 60,
+    desc: 'A dedicated warehouse featuring bulk storage silos for cement and structural steel racking, allowing direct wholesale purchasing.',
+    effect: 'Buy and store up to 60 Construction Materials.' },
+  { tier: 'Level III: Regional Supply Terminal', upgradeCost: 16000000, storageCap: 85,
+    desc: 'A massive logistics hub featuring an active rail spur link to receive raw steel shipments and aggregate trainloads directly from manufacturers.',
+    effect: 'Store up to 85 Construction Materials · buy from other nations.' },
+  { tier: 'Level IV: Deep-Water Staging Network', upgradeCost: 25000000, storageCap: 120,
+    desc: 'Direct ownership of multi-modal distribution centers, deep-water port access, and bulk transport loops that isolate you from market shortages.',
+    effect: 'Store 120 Materials · buy abroad · sell in your own nation (marketplace coming).' },
+  { tier: 'Level V: Sovereign Resource & Materials Conglomerate', upgradeCost: 40000000, storageCap: 170,
+    desc: 'A fully integrated global supply network with strategic ownership of extraction nodes and steel mills, guaranteeing the lowest material overhead on the server.',
+    effect: 'Store 170 Materials · buy abroad · sell nationally and on the world market (marketplace coming).' },
+];
+
 // Display mirror of the per-type material requirements stamped onto
 // blueprints by draft_blueprint (20270814) — the server CASE is
 // authoritative; this feeds the modal's live MATERIALS NEEDED line.
@@ -117,9 +143,7 @@ export const DEPARTMENTS = {
   construction: [
     { dept: 'PROJECT MANAGEMENT', ...PM_TIERS[0] },
     { dept: 'HEAVY EQUIPMENT', ...YARD_TIERS[0] },
-    { dept: 'SUPPLY & MATERIAL', tier: 'Retail Hardware Store',
-      desc: 'You buy concrete mix, lumber, and rebar directly from retail commercial distributors or local suppliers at standard market prices with zero bulk discounts.',
-      effect: 'Construction Project costs require standard upfront prices.' },
+    { dept: 'SUPPLY & MATERIAL', ...SUPPLY_TIERS[0] },
     { dept: 'SYSTEM DESIGN', tier: 'CAD System & Laptop',
       desc: 'You implement your own designs, limited by your own project expertise.',
       effect: 'You gain Experience at +3 per completed project.' },
