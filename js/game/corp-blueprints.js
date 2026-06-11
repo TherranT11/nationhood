@@ -123,6 +123,32 @@ export const REG_TIERS = [
     effect: 'Adds Foreign Construction — projects in other nations.' },
 ];
 
+// The SYSTEM DESIGN ladder — design_tier (20270827), upgraded by
+// Logistical Overhaul on the same price ladder as the yard. The
+// per-completion Experience contribution and the Experience cap are
+// enforced server-side (completion_experience + experience_cap);
+// expCap mirrors the cap for the registry readout.
+export const DESIGN_TIERS = [
+  { tier: 'Tier 0: CAD System & Laptop', upgradeCost: null, expCap: 30,
+    desc: 'You have a single laptop with a licensed CAD package and a printer that jams every third drawing. Your designs are 2D floor plans, elevations, and basic structural diagrams — adequate for permit submission but nothing more sophisticated.',
+    effect: '+1 Experience any time you finish a project.' },
+  { tier: 'Tier I: Drafting Workstations & Plotter', upgradeCost: 7000000, expCap: 30,
+    desc: 'You’ve upgraded to dedicated drafting workstations with proper graphics hardware, multiple monitors, and a large-format plotter. Your team can now produce coordinated drawing sets across disciplines — architectural, structural, mechanical — with consistent line weights and proper title blocks.',
+    effect: '+2 Experience any time you finish a project.' },
+  { tier: 'Tier II: BIM Network & Render Servers', upgradeCost: 10000000, expCap: 30,
+    desc: 'The firm has migrated to Building Information Modeling. Every project lives as a coordinated 3D model rather than a stack of disconnected drawings. Clash detection runs automatically. Renderings come out of dedicated render servers in hours instead of days. Your project files are now intelligent assets that compute their own quantities and costs.',
+    effect: '+3 Experience any time you finish a project.' },
+  { tier: 'Tier III: Integrated Design & Construction Suite', upgradeCost: 16000000, expCap: 50,
+    desc: 'Design, engineering, scheduling, and cost estimation now run on a single integrated platform. Changes to the model propagate automatically through structural calculations, MEP routing, construction sequencing, and budget projections. Your competitors are still maintaining separate systems and reconciling them by hand.',
+    effect: 'Max Experience rises from 30 to 50.' },
+  { tier: 'Tier IV: Parametric & Generative Design Platform', upgradeCost: 25000000, expCap: 50,
+    desc: 'Your design platform generates and tests thousands of variations on a single project brief, optimizing for cost, performance, daylight, structural efficiency, and aesthetic constraints simultaneously. Your designers no longer draw buildings — they direct algorithms that draw buildings, then select the best results for client presentation.',
+    effect: '+3 Experience per finished project · parametric modeling, generative optimization, simulation-driven engineering, digital twins.' },
+  { tier: 'Tier V: AI-Augmented Design & Digital Twin Network', upgradeCost: 40000000, expCap: 80,
+    desc: 'Your firm operates an AI-augmented design infrastructure that integrates project intelligence across every job, every client, and every market the firm has ever touched. Buildings are designed once and exist forever as living digital twins, fed real-time data by sensors embedded in the physical structures. Your design platform is a strategic asset competitors cannot replicate without decades of accumulated project data.',
+    effect: 'Max Experience rises to 80 · AI-augmented design, organization-wide intelligence, persistent digital twins, real-time feedback.' },
+];
+
 // Display mirror of the per-type material requirements stamped onto
 // blueprints by draft_blueprint (20270814) — the server CASE is
 // authoritative; this feeds the modal's live MATERIALS NEEDED line.
@@ -170,9 +196,7 @@ export const DEPARTMENTS = {
     { dept: 'PROJECT MANAGEMENT', ...PM_TIERS[0] },
     { dept: 'HEAVY EQUIPMENT', ...YARD_TIERS[0] },
     { dept: 'SUPPLY & MATERIAL', ...SUPPLY_TIERS[0] },
-    { dept: 'SYSTEM DESIGN', tier: 'CAD System & Laptop',
-      desc: 'You implement your own designs, limited by your own project expertise.',
-      effect: 'You gain Experience at +3 per completed project.' },
+    { dept: 'SYSTEM DESIGN', ...DESIGN_TIERS[0] },
     { dept: 'REGULATORY COMPLIANCE', ...REG_TIERS[0] },
   ],
   automotive: [null, null, null, null, null],

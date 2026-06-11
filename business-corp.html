@@ -46,6 +46,12 @@
   @media (max-width:860px) { .pl-grid { grid-template-columns:1fr; } }
   .pl-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
     padding:16px; display:flex; flex-direction:column; min-width:0; }
+  .pl-up { margin-top:12px; padding:7px 10px; background:rgba(138,170,106,0.08);
+    border:0.5px solid #4a6a4a; border-radius:4px; color:#8aaa6a;
+    font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.12em; font-weight:700;
+    cursor:pointer; }
+  .pl-up:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .pl-up:disabled { opacity:0.4; cursor:not-allowed; }
   .pl-name { font-family:var(--font-mono); font-size:9.5px; letter-spacing:0.16em; color:#aac88a;
     font-weight:700; }
   .pl-kind { font-family:Georgia,serif; font-style:italic; font-size:11px; color:#666;
@@ -126,6 +132,12 @@
     color:#555; font-weight:700; }
   .bp-grid .c { font-size:11px; color:#ccc; min-width:0; overflow-wrap:break-word; }
   .bp-grid .c.nm { color:#fff; font-weight:600; }
+  .ch-row { display:flex; gap:14px; align-items:baseline; padding:8px 2px;
+    border-bottom:0.5px solid rgba(255,255,255,0.05); }
+  .ch-row:last-child { border-bottom:none; }
+  .ch-date { font-family:var(--font-mono); font-size:9px; color:#8aaa6a; width:92px;
+    flex-shrink:0; }
+  .ch-label { font-size:11.5px; color:#ccc; min-width:0; overflow-wrap:break-word; }
   .ap-btns { display:flex; gap:5px; justify-content:flex-end; }
   .ap-btn { padding:4px 8px; border-radius:3px; font-family:var(--font-mono); font-size:8px;
     letter-spacing:0.08em; font-weight:700; cursor:pointer; background:transparent; }
@@ -298,6 +310,9 @@
       <div class="rl-section" id="bc-roles"></div>
       <div class="rl-section" id="bc-employees"></div>
       <div class="rl-section" id="bc-blueprints"></div>
+      <div class="rl-section" id="bc-projects"></div>
+      <div class="rl-section" id="bc-loans"></div>
+      <div class="rl-section" id="bc-history"></div>
     </div>
     <div class="bc-side">
       <div class="bc-box">
@@ -470,7 +485,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -485,7 +500,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, reg_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -584,7 +599,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
       <div class="bc-row"><div class="k">KEY PEOPLE</div>
         <div class="v">${esc(ownerName)} <span class="dim">· Owner</span></div></div>
       <div class="bc-row"><div class="k">EXPERIENCE</div>
-        <div class="v money">${esc(String(Number(corp.experience) || 0))} <span class="dim">EP</span></div></div>
+        <div class="v money">${esc(String(Number(corp.experience) || 0))} <span class="dim">/ ${esc(String(DESIGN_TIERS[Math.min(Number(corp.design_tier) || 0, DESIGN_TIERS.length - 1)].expCap))} EP</span></div></div>
       <div class="bc-row"><div class="k">REVENUE</div>
         <div class="v money">${esc(hfFmtBig(revenueYtd))} <span class="dim">(current year)</span></div></div>
       <div class="bc-row"><div class="k">WEBSITE</div>
@@ -596,19 +611,53 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // career page's role-view modal via corp-blueprints.js.
     const pillars = PILLARS[corp.industry];
     if (pillars) {
+      // [UPGRADE] — the Experience spend (20270829): +1 to a pillar
+      // for current level × 10 EP. Owner-only; EP is the constraint
+      // (no executive action spent).
+      const PILLAR_KEYS = { pillar_speed: 'speed', pillar_efficiency: 'efficiency', pillar_quality: 'quality' };
       document.getElementById('bc-pillars').innerHTML = `
         <div class="pl-panel">
           <div class="ea-head"><span class="rule"></span><span class="t">CORE METRICS</span><span class="rule"></span></div>
           <div class="pl-grid">
-            ${pillars.map(p => `
+            ${pillars.map(p => {
+              const lvl = Number(corp[p.col]) || 1;
+              const cost = lvl * 10;
+              const canAfford = (Number(corp.experience) || 0) >= cost;
+              return `
               <div class="pl-card">
                 <div class="pl-name">${esc(p.name)}</div>
                 <div class="pl-kind">${esc(p.kind)}</div>
-                <div class="pl-val">${esc(String(corp[p.col] ?? 1))}</div>
+                <div class="pl-val">${esc(String(lvl))}</div>
                 <div class="pl-desc">${esc(p.desc)}</div>
-              </div>`).join('')}
+                ${isOwner ? `<button type="button" class="pl-up" data-pillar="${esc(PILLAR_KEYS[p.col])}"
+                    ${canAfford ? '' : 'disabled'} title="${canAfford ? '' : `Needs ${cost} EP — you have ${Number(corp.experience) || 0}`}">
+                    UPGRADE — ${cost} EP</button>` : ''}
+              </div>`;
+            }).join('')}
           </div>
         </div>`;
+      document.querySelectorAll('.pl-up').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const { data, error: upErr } = await _supabase.rpc('upgrade_pillar',
+              { p_corp_id: corp.id, p_pillar: btn.dataset.pillar });
+            if (upErr) throw upErr;
+            if (!data?.success) {
+              const REASON = {
+                insufficient_experience: `Not enough Experience — ${data?.need ?? '?'} EP needed, ${data?.have ?? 0} on hand.`,
+                not_owner: 'Only the owner can upgrade the pillars.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not upgrade: ' + (e?.message || e));
+            btn.disabled = false;
+          }
+        });
+      });
     }
 
     // Departments — five per-industry tier containers (copy shared
@@ -624,11 +673,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
       const pmt  = PM_TIERS[Math.min(Number(corp.pm_tier) || 0, PM_TIERS.length - 1)];
       const supt = SUPPLY_TIERS[Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1)];
       const regt = REG_TIERS[Math.min(Number(corp.reg_tier) || 0, REG_TIERS.length - 1)];
+      const dsgt = DESIGN_TIERS[Math.min(Number(corp.design_tier) || 0, DESIGN_TIERS.length - 1)];
       depts = depts.map(d =>
         d?.dept === 'HEAVY EQUIPMENT'        ? { ...d, ...yard } :
         d?.dept === 'PROJECT MANAGEMENT'     ? { ...d, ...pmt }  :
         d?.dept === 'SUPPLY & MATERIAL'      ? { ...d, ...supt } :
-        d?.dept === 'REGULATORY COMPLIANCE'  ? { ...d, ...regt } : d);
+        d?.dept === 'REGULATORY COMPLIANCE'  ? { ...d, ...regt } :
+        d?.dept === 'SYSTEM DESIGN'          ? { ...d, ...dsgt } : d);
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
           ? `<div class="dp-card">
@@ -1076,6 +1127,110 @@ import { CITY_STATS } from './js/game/city-labels.js';
       }
     })();
 
+    // ── Active Projects / Corporate Loans / Corporate History ─────
+    // Three read-only panels from existing one-source tables: the
+    // building projects (same rows the procurement modal supplies),
+    // central_bank_loans, and a timeline derived from founding,
+    // blueprints, projects, and tax filings — no history table, no
+    // second source.
+    (async () => {
+      try {
+        const [projRes, loanRes, bpRes, allProjRes, taxRes] = await Promise.all([
+          _supabase.from('corp_construction_projects')
+            .select('id, kind, city, price, started_tick, completes_at_tick, materials_supplied, equipment_supplied, blueprint:corp_blueprints!blueprint_id(name, materials_needed)')
+            .eq('corp_id', corp.id).eq('status', 'building').order('started_tick'),
+          _supabase.from('central_bank_loans')
+            .select('outstanding, principal, interest_rate, term_ticks, started_tick, status, nation:nations!nation_id(name)')
+            .eq('borrower_corp_id', corp.id).order('created_at', { ascending: false }),
+          _supabase.from('corp_blueprints')
+            .select('name, created_at_tick').eq('corp_id', corp.id),
+          _supabase.from('corp_construction_projects')
+            .select('kind, city, status, started_tick, completes_at_tick, blueprint:corp_blueprints!blueprint_id(name)')
+            .eq('corp_id', corp.id),
+          _supabase.from('corp_tax_filings')
+            .select('year, amount_paid, status, filed_at_tick').eq('corp_id', corp.id),
+        ]);
+        const firstErr = [projRes, loanRes, bpRes, allProjRes, taxRes].find(r => r.error)?.error;
+        if (firstErr) throw firstErr;
+
+        // Active Projects
+        const projs = projRes.data || [];
+        document.getElementById('bc-projects').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">ACTIVE PROJECTS</span><span class="rule"></span></div>
+            ${!projs.length ? '<div class="rl-empty">No active job sites.</div>' : `
+            <div class="bp-grid" style="grid-template-columns:1.3fr 1fr 1fr 1.1fr;">
+              <div class="h">PROJECT</div><div class="h">CONTRACT</div><div class="h">SUPPLIES</div><div class="h">COMPLETION</div>
+              ${projs.map(p => {
+                const need = Number(p.blueprint?.materials_needed) || 0;
+                const got = Number(p.materials_supplied) || 0;
+                const hasEq = Number(p.equipment_supplied) >= 1;
+                const remaining = Math.max(0, p.completes_at_tick - currentTick);
+                const parked = remaining === 0 && (got < need || !hasEq);
+                return `
+                  <div class="c nm">${esc(p.blueprint?.name || 'Project')} — ${esc(p.city)}</div>
+                  <div class="c">${p.kind === 'self' ? 'Self-build' : `City contract · ${esc(hfFmtBig(Number(p.price) || 0))}`}</div>
+                  <div class="c">Materials ${got}/${need} · Equipment ${hasEq ? '✓' : '—'}</div>
+                  <div class="c">${parked ? 'Awaiting supplies' : `${esc(tickToDate(p.completes_at_tick))} (${remaining} tick${remaining === 1 ? '' : 's'})`}</div>`;
+              }).join('')}
+            </div>`}
+          </div>`;
+
+        // Corporate Loans
+        const loans = loanRes.data || [];
+        document.getElementById('bc-loans').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">CORPORATE LOANS</span><span class="rule"></span></div>
+            ${!loans.length ? '<div class="rl-empty">No loans on the books.</div>' : `
+            <div class="bp-grid" style="grid-template-columns:1.3fr 0.9fr 0.6fr 1fr 0.7fr;">
+              <div class="h">LENDER</div><div class="h">OUTSTANDING</div><div class="h">RATE</div><div class="h">TERM ENDS</div><div class="h">STATUS</div>
+              ${loans.map(l => `
+                <div class="c nm">Central Bank of ${esc(l.nation?.name || '—')}</div>
+                <div class="c">${esc(hfFmtBig(Number(l.outstanding) || 0))} <span style="color:#666">of ${esc(hfFmtBig(Number(l.principal) || 0))}</span></div>
+                <div class="c">${esc(String(l.interest_rate))}%</div>
+                <div class="c">${esc(tickToDate((Number(l.started_tick) || 0) + (Number(l.term_ticks) || 0)))}</div>
+                <div class="c">${esc(l.status)}</div>`).join('')}
+            </div>`}
+          </div>`;
+
+        // Corporate History — newest first, capped at 40 lines.
+        const events = [];
+        if (corp.founded_tick != null) {
+          events.push({ tick: Number(corp.founded_tick), label: `${corp.name} founded in ${corp.hq_city || '—'}.` });
+        }
+        for (const bp of (bpRes.data || [])) {
+          events.push({ tick: bp.created_at_tick, label: `Drafted blueprint “${bp.name || 'Unnamed'}”.` });
+        }
+        for (const p of (allProjRes.data || [])) {
+          const what = `${p.blueprint?.name || 'a project'} in ${p.city}`;
+          events.push({ tick: p.started_tick,
+            label: `${p.kind === 'self' ? 'Broke ground on' : 'Won the city contract for'} ${what}.` });
+          if (p.status === 'completed') {
+            events.push({ tick: p.completes_at_tick, label: `Completed ${what}.` });
+          }
+        }
+        for (const t of (taxRes.data || [])) {
+          events.push({ tick: t.filed_at_tick,
+            label: `Filed FY ${t.year} corporate taxes — paid ${hfFmtBig(Number(t.amount_paid) || 0)}${t.status === 'caught' ? ' (evasion caught)' : ''}.` });
+        }
+        events.sort((a, b) => (b.tick || 0) - (a.tick || 0));
+        document.getElementById('bc-history').innerHTML = `
+          <div class="rl-panel">
+            <div class="ea-head"><span class="rule"></span><span class="t">CORPORATE HISTORY</span><span class="rule"></span></div>
+            ${!events.length ? '<div class="rl-empty">Nothing on the record yet.</div>'
+              : events.slice(0, 40).map(ev => `
+                <div class="ch-row">
+                  <span class="ch-date">${esc(tickToDate(ev.tick || 0))}</span>
+                  <span class="ch-label">${esc(ev.label)}</span>
+                </div>`).join('')}
+          </div>`;
+      } catch (e) {
+        console.warn('[business-corp] south panels load failed:', e?.message || e);
+        ['bc-projects', 'bc-loans', 'bc-history'].forEach(id =>
+          document.getElementById(id).innerHTML = '');
+      }
+    })();
+
     // ── Post Job Opening modal ─────────────────────────────────────
     // The Operations ladder, six rungs. Rungs with full charters are
     // postable; the ones still being designed render dimmed with
@@ -1367,8 +1522,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const mEff   = Number(corp.pillar_efficiency) || 1;
         const mQual  = Number(corp.pillar_quality) || 1;
         document.getElementById('db-metrics').innerHTML = `
-          <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed} tick${mSpeed === 1 ? '' : 's'} off the build time</span></div>
-          <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff * 3}% material costs</span></div>
+          <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed}% build time</span></div>
+          <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff}% on materials &amp; equipment purchases</span></div>
           <div class="db-metric"><span class="nm">ENGINEERING QUALITY</span><span class="vl">${mQual}</span><span class="fx">+${(mQual * 0.1).toFixed(1)} Appeal when built in a city</span></div>`;
         // Arriving from the bid board's [CREATE BLUEPRINT]: the
         // request's building type picks its category too.
@@ -1661,7 +1816,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             </div>`;
 
           const matTier = Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1);
-          warn.textContent = `${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
+          const effPct = Math.min(99, Math.max(0, Number(corp.pillar_efficiency) || 1));
+          warn.textContent = `Procurement Efficiency −${effPct}% on every purchase. ${YARD_TIERS[tier].tier} — ${YARD_TIERS[tier].effect}`
             + (tier >= 1 ? ` Yard: ${units.length}/${YARD_TIERS[tier].equipmentCap} units (${totalUses} uses left).` : '')
             + (matTier >= 1 ? ` Depot: ${corp.materials_stock || 0}/${SUPPLY_TIERS[matTier].storageCap} materials.` : '');
           const eqBuyable = tier >= 1
@@ -1776,11 +1932,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const suNext = SUPPLY_TIERS[suTier + 1] || null;
         const rgTier = Math.min(Number(corp.reg_tier) || 0, REG_TIERS.length - 1);
         const rgNext = REG_TIERS[rgTier + 1] || null;
+        const dsTier = Math.min(Number(corp.design_tier) || 0, DESIGN_TIERS.length - 1);
+        const dsNext = DESIGN_TIERS[dsTier + 1] || null;
         const ASSETS = [
           ['project_management',   'PROJECT MANAGEMENT',   PM_TIERS[pmTier].tier, pmNext],
           ['heavy_equipment',      'HEAVY EQUIPMENT',      YARD_TIERS[tier].tier, next],
           ['supply_material',      'SUPPLY & MATERIAL',    SUPPLY_TIERS[suTier].tier, suNext],
-          ['system_design',        'SYSTEM DESIGN',        'CAD System & Laptop', null],
+          ['system_design',        'SYSTEM DESIGN',        DESIGN_TIERS[dsTier].tier, dsNext],
           ['regulatory_compliance','REGULATORY COMPLIANCE',REG_TIERS[rgTier].tier, rgNext],
         ];
         const host = document.getElementById('lo-rows');
