@@ -372,6 +372,53 @@ export const STUDIO_TIERS = [
     effect: 'New Experience ceiling: 60 · Requires a Tier III Commercial building.' },
 ];
 
+// The QUALITY & DATA CENTER ladder — automotive's third asset. It
+// charters Analyze Market's reach: every corp runs Level I today
+// (one vehicle type, home nation — exactly what the action does),
+// and the higher levels widen it (more types per analysis, foreign
+// nations at III+, the best-selling Quality at V) when the upgrade
+// mechanics land and the tier moves to a column.
+export const DATA_TIERS = [
+  { tier: 'Level I: Service Diagnostics & Warranty Depot',
+    desc: 'A centralized technical service bay where your corporate mechanics analyze warranty part returns and evaluate early fleet diagnostic data sent back from regional player-owned vehicle repairs.',
+    effect: 'Analyze Market shows Demand for 1 vehicle type, home nation only.' },
+  { tier: 'Level II: Fleet Analytics Station',
+    desc: 'Basic digital tracking hardware installed in your sold vehicles allows you to pull high-level mileage, fuel consumption, and battery health data over local cellular networks.',
+    effect: 'Shows Demand for any 2 selected types.' },
+  { tier: 'Level III: Data Processing Lab',
+    desc: 'Dedicated server architecture that continuously isolates mechanical, structural, and electronic bugs across thousands of active vehicles globally.',
+    effect: 'Select another Nation · shows Demand for any 3 selected types.' },
+  { tier: 'Level IV: Global Telemetry Over-The-Air Array',
+    desc: 'Continuous, high-bandwidth OTA cellular data streams link every single one of your vehicles on the road directly to your analytics database, feeding your R&D pipeline with real-world driving data.',
+    effect: 'Select another Nation · shows Demand for any 4 selected types.' },
+  { tier: 'Level V: Predictive AI Core',
+    desc: 'An advanced neural network that actively predicts component failures and vehicle wear across millions of units before they occur, drastically cutting your warranty liability and granting massive R&D bonuses.',
+    effect: 'Select another Nation · Demand for any 4 selected types · shows which Quality sells the best.' },
+];
+
+// The SUPPLY CHAIN & PART DEPOT ladder — automotive's fourth asset,
+// determining procurement costs. Display copy until Aluminum lands
+// as a market raw material with its procurement flow (the storage
+// caps 10/50/75/120/250 and the Level III foreign-buying gate get
+// enforced server-side then, like the construction depot's).
+export const PARTS_TIERS = [
+  { tier: 'Level I: Regional B2B Depot',
+    desc: 'A large on-site storage warehouse. Your starting status gives you the leverage to sign direct, bulk purchasing contracts with Tier-1 component suppliers, protecting your early production runs from retail markup.',
+    effect: 'Store up to 10 Aluminum.' },
+  { tier: 'Level II: Just-In-Time Logistics Center',
+    desc: 'Implements an active supply tracking network that links directly to component vendors, reducing your inventory storage overhead by matching part arrivals to your assembly schedule.',
+    effect: 'Store up to 50 Aluminum.' },
+  { tier: 'Level III: Vertical Consolidation Hub',
+    desc: 'Direct ownership of sub-assembly stamping and electronics component plants, insulating your company from global parts shortages.',
+    effect: 'Store up to 75 Aluminum · buy from other nations.' },
+  { tier: 'Level IV: Strategic Material Terminal',
+    desc: 'Direct ownership of raw foundry logistics, battery chemical contracts, and metal processing facilities, locking in permanently lower material costs.',
+    effect: 'Store up to 120 Aluminum.' },
+  { tier: 'Level V: Global Resource Network',
+    desc: 'Strategic international mining stakes, dedicated shipping fleets, and exclusive raw-material trade pipelines that guarantee your manufacturing costs are fundamentally unbeatable.',
+    effect: 'Store up to 250 Aluminum.' },
+];
+
 // The ASSEMBLY PLANT ladder — automotive's second asset. Display copy
 // only for now (every automotive corp starts at Level I); tier state
 // moves to a column when its upgrade mechanics land. Industrial
@@ -471,6 +518,8 @@ export const DEPARTMENTS = {
   automotive: [
     { dept: 'DESIGN & ENGINEERING', ...STUDIO_TIERS[0] },
     { dept: 'ASSEMBLY PLANT', ...ASSEMBLY_TIERS[0] },
-    null, null, null,
+    { dept: 'QUALITY & DATA CENTER', ...DATA_TIERS[0] },
+    { dept: 'SUPPLY CHAIN & PART DEPOT', ...PARTS_TIERS[0] },
+    null,
   ],
 };
