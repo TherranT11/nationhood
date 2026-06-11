@@ -396,6 +396,20 @@ export const ASSEMBLY_TIERS = [
     effect: '4 Assembly Lines — 2 Superior · 2 Automated · Requires a Tier III Industrial building.' },
 ];
 
+// Display mirrors of the Sales Campaign pricing/appeal helpers
+// (20270839) — vehicle_class_anchor_price and vehicle_appeal are
+// authoritative; these feed the campaign modal's live lines.
+export const VEHICLE_CLASS_ANCHORS = {
+  economy: 18000, mid_range: 35000, premium: 55000,
+  luxury: 90000, ultra_luxury: 250000,
+};
+
+export function vehicleAppeal(engine, quality, packageCount) {
+  const eMod = VEHICLE_ENGINES.find(e => e.value === engine)?.mod ?? 0;
+  const qMod = VEHICLE_QUALITY.find(q => q.value === quality)?.mod ?? 0;
+  return Math.max(0.5, 1 + eMod + qMod + 0.5 * (packageCount || 0));
+}
+
 export function vehicleBlueprintXpCost(type, klass, engine, packageCount, quality) {
   const base = VEHICLE_TYPES.find(t => t.value === type)?.base ?? 3;
   const mult = VEHICLE_CLASSES.find(c => c.value === klass)?.mult ?? 1.0;

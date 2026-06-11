@@ -183,11 +183,11 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay, #am-overlay { position:fixed;
+  #vp-overlay, #am-overlay, #sl-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -549,10 +549,10 @@
     <div class="jm-head"><div class="jm-title">Analyze <em>Market</em></div></div>
     <div class="jm-body">
       <div class="db-mech">The Mechanic: Process sales data and demand to get visibility into
-        the market. Pick a nation and a vehicle type — the analysis is the day&rsquo;s
-        executive action.</div>
+        the market. Pick a vehicle type — the analysis covers your home nation (foreign
+        intel comes later) and is the day&rsquo;s executive action.</div>
       <div class="jm-lab">NATION</div>
-      <div class="jm-pills db-cats" id="am-nations"></div>
+      <div class="db-static" id="am-nation">—</div>
       <div class="jm-lab">VEHICLE TYPE</div>
       <div class="jm-pills db-cats" id="am-types"></div>
       <div id="am-report"></div>
@@ -564,12 +564,41 @@
   </div>
 </div>
 
+<div id="sl-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Sales <em>Campaign</em></div></div>
+    <div class="jm-body" id="sl-body">
+      <div class="db-mech">The Mechanic: Pick a nation and a Model, set your price, and sell
+        into the month&rsquo;s demand — driven by Standard of Living, Wages, Cost of Living,
+        and the nation&rsquo;s Energy on hand (cheap gas sells cars). The campaign is the
+        day&rsquo;s executive action.</div>
+      <div class="jm-lab">NATION</div>
+      <div class="jm-pills db-cats" id="sl-nations"></div>
+      <div class="jm-lab">VEHICLE</div>
+      <div class="jm-pills db-cats" id="sl-models"></div>
+      <div class="jm-lab">VEHICLES AVAILABLE</div>
+      <div class="db-static" id="sl-stock">—</div>
+      <div class="jm-lab">COMPETITION IN MARKET</div>
+      <div class="db-static" id="sl-comp">—</div>
+      <div class="jm-lab">YOUR PRICE PER VEHICLE</div>
+      <input type="number" class="fin-amt" id="sl-price" min="1" step="500" placeholder="$" style="margin-bottom:0;">
+      <div class="db-static dim-line" id="sl-anchor"></div>
+      <div class="jm-lab">UNIT COST · PROFIT PER VEHICLE</div>
+      <div class="db-static" id="sl-profit">—</div>
+    </div>
+    <div class="jm-foot" id="sl-foot">
+      <button type="button" class="jm-btn secondary" id="sl-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="sl-confirm" disabled>CONFIRM</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS, DESIGN_TIERS, JOB_TRACKS, INDUSTRY_JOB_TRACKS, VEHICLE_TYPES, VEHICLE_CLASSES, VEHICLE_ENGINES, VEHICLE_PACKAGES, VEHICLE_QUALITY, VEHICLE_CLASS_ANCHORS, vehicleAppeal, vehicleBlueprintXpCost } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -1600,7 +1629,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">📊</div>
               <div class="nm">ANALYZE MARKET</div>
               <div class="soon">Demand intel by nation &amp; type</div>
-            </div>` + eaComingSoon(2)
+            </div>
+            <div class="ea-card live" id="ea-sales-campaign">
+              <div class="ic">📣</div>
+              <div class="nm">SALES CAMPAIGN</div>
+              <div class="soon">Price a Model and sell into a nation</div>
+            </div>` + eaComingSoon(1)
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
@@ -2438,24 +2472,22 @@ import { CITY_STATS } from './js/game/city-labels.js';
           }
         });
 
-        // ── Analyze Market (20270836) ─────────────────────────────
-        // Demand intel by nation and vehicle type — the model lives
-        // server-side in analyze_vehicle_market; this just renders
-        // the returned report. The nation pills derive from the same
-        // market-listings round-trip the exchange uses, so the live-
-        // nation list stays single-source.
-        let amNation = null, amType = null, amInFlight = false;
+        // ── Analyze Market (20270838) ─────────────────────────────
+        // Demand intel by vehicle type, home nation only when this
+        // action starts — the model lives server-side in
+        // analyze_vehicle_market; this just renders the report.
+        let amType = null, amInFlight = false;
 
         function amRefresh() {
-          document.getElementById('am-run').disabled = !(amNation && amType) || amInFlight;
+          document.getElementById('am-run').disabled = !amType || amInFlight;
         }
 
-        document.getElementById('ea-analyze-market').addEventListener('click', async () => {
-          amNation = null; amType = null;
+        document.getElementById('ea-analyze-market').addEventListener('click', () => {
+          amType = null;
           document.getElementById('am-report').innerHTML = '';
-          const natHost = document.getElementById('am-nations');
+          document.getElementById('am-nation').textContent =
+            `${corp.nation?.name || '—'} (home)`;
           const typeHost = document.getElementById('am-types');
-          natHost.innerHTML = '<div class="rl-empty">Loading nations…</div>';
           typeHost.innerHTML = VEHICLE_TYPES.map(t => `
             <div class="jm-pill" data-val="${esc(t.value)}" title="${esc(t.desc)}">${esc(t.label.toUpperCase())}</div>`).join('');
           typeHost.querySelectorAll('.jm-pill').forEach(p => {
@@ -2467,24 +2499,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
           });
           amRefresh();
           document.getElementById('am-overlay').classList.add('open');
-          try {
-            const { data: mkt, error: mErr } = await _supabase.rpc('construction_market_listings');
-            if (mErr) throw mErr;
-            const nations = (mkt?.materials || []).map(r =>
-              ({ id: r.nation_id, name: r.nation }));
-            natHost.innerHTML = nations.map(n => `
-              <div class="jm-pill" data-val="${esc(n.id)}">${esc(n.name.toUpperCase())}</div>`).join('');
-            natHost.querySelectorAll('.jm-pill').forEach(p => {
-              p.addEventListener('click', () => {
-                natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
-                amNation = p.dataset.val;
-                amRefresh();
-              });
-            });
-          } catch (e) {
-            natHost.innerHTML = '<div class="rl-empty">Could not load nations — try again shortly.</div>';
-            console.warn('[business-corp] analyze modal load failed:', e?.message || e);
-          }
         });
         wireModalClose('am-overlay', 'am-cancel');
 
@@ -2493,12 +2507,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
           amInFlight = true; amRefresh();
           try {
             const { data, error: aErr } = await _supabase.rpc('analyze_vehicle_market', {
-              p_corp_id: corp.id, p_nation_id: amNation, p_vehicle_type: amType,
+              p_corp_id: corp.id, p_vehicle_type: amType,
             });
             if (aErr) throw aErr;
             if (!data?.success) {
               const REASON = {
-                nation_not_live: 'That nation is not an active market.',
+                nation_not_live: 'Your home nation is not an active market.',
                 no_actions_remaining: 'No executive actions remaining this tick.',
                 not_owner: 'Only the owner runs market analysis.',
                 arrested: 'You are under arrest — your assets are frozen.',
@@ -2527,6 +2541,150 @@ import { CITY_STATS } from './js/game/city-labels.js';
           } finally {
             amInFlight = false;
             amRefresh();
+          }
+        });
+
+        // ── Sales Campaign (20270839) ─────────────────────────────
+        // The resolution model lives server-side in run_sales_campaign;
+        // this renders the picks and the live cost/profit/competition
+        // lines (anchor prices + appeal mirrored from corp-blueprints).
+        let slNation = null, slModel = null, slInFlight = false;
+        let slModels = [];
+
+        function slShowProfit() {
+          const price = Math.floor(Number(document.getElementById('sl-price').value) || 0);
+          const profitEl = document.getElementById('sl-profit');
+          const anchorEl = document.getElementById('sl-anchor');
+          if (!slModel) { profitEl.textContent = '—'; anchorEl.textContent = ''; return; }
+          const cost = Math.max(1, Number(slModel.xp_cost) || 1) * 5000;
+          const anchor = VEHICLE_CLASS_ANCHORS[slModel.vehicle_class] || 35000;
+          anchorEl.textContent = `Fair price for this class: ${hfFmtBig(anchor)} — undercut it to sell more.`;
+          profitEl.innerHTML = price >= 1
+            ? `${esc(hfFmtBig(cost))} cost · <span class="${price >= cost ? 'dim' : 'bad'}">${esc(hfFmtBig(price - cost))} profit per vehicle</span>`
+            : `${esc(hfFmtBig(cost))} cost · set a price`;
+          document.getElementById('sl-confirm').disabled =
+            !(slNation && slModel && price >= 1) || slInFlight;
+        }
+
+        async function slShowCompetition() {
+          const compEl = document.getElementById('sl-comp');
+          if (!slNation || !slModel) { compEl.textContent = '—'; return; }
+          compEl.textContent = 'Scouting the market…';
+          try {
+            const { data: rivals, error: rErr } = await _supabase.from('entrepreneur_corps')
+              .select('id').eq('hq_nation_id', slNation).eq('industry', 'automotive').neq('id', corp.id);
+            if (rErr) throw rErr;
+            let comps = [];
+            if (rivals?.length) {
+              const { data: cbs, error: cErr } = await _supabase.from('vehicle_blueprints')
+                .select('engine, quality, packages, units_in_stock')
+                .in('corp_id', rivals.map(r => r.id))
+                .eq('vehicle_type', slModel.vehicle_type)
+                .gt('units_in_stock', 0);
+              if (cErr) throw cErr;
+              comps = cbs || [];
+            }
+            const yours = vehicleAppeal(slModel.engine, slModel.quality, (slModel.packages || []).length);
+            const theirs = comps.reduce((s, c) =>
+              s + vehicleAppeal(c.engine, c.quality, (c.packages || []).length), 0);
+            compEl.textContent = comps.length
+              ? `${comps.length} rival Model${comps.length === 1 ? '' : 's'} of this type on the market — combined appeal ${theirs.toFixed(1)} vs your ${yours.toFixed(1)}.`
+              : `No rival Models of this type on the market — the demand is all yours (appeal ${yours.toFixed(1)}).`;
+          } catch (e) {
+            compEl.textContent = 'Could not scout the competition.';
+            console.warn('[business-corp] campaign competition load failed:', e?.message || e);
+          }
+        }
+
+        document.getElementById('ea-sales-campaign').addEventListener('click', async () => {
+          slNation = null; slModel = null;
+          document.getElementById('sl-price').value = '';
+          document.getElementById('sl-stock').textContent = '—';
+          document.getElementById('sl-comp').textContent = '—';
+          slShowProfit();
+          const natHost = document.getElementById('sl-nations');
+          const modHost = document.getElementById('sl-models');
+          natHost.innerHTML = '<div class="rl-empty">Loading…</div>';
+          modHost.innerHTML = '<div class="rl-empty">Loading…</div>';
+          document.getElementById('sl-overlay').classList.add('open');
+          try {
+            const [{ data: mkt, error: mErr }, { data: models, error: bErr }] = await Promise.all([
+              _supabase.rpc('construction_market_listings'),
+              _supabase.from('vehicle_blueprints')
+                .select('id, name, vehicle_type, vehicle_class, engine, quality, packages, xp_cost, units_in_stock')
+                .eq('corp_id', corp.id).gt('units_in_stock', 0)
+                .order('created_at', { ascending: false }),
+            ]);
+            if (mErr || bErr) throw (mErr || bErr);
+            slModels = models || [];
+            natHost.innerHTML = (mkt?.materials || []).map(r => `
+              <div class="jm-pill" data-val="${esc(r.nation_id)}">${esc(String(r.nation).toUpperCase())}</div>`).join('');
+            natHost.querySelectorAll('.jm-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+                slNation = p.dataset.val;
+                slShowCompetition();
+                slShowProfit();
+              });
+            });
+            modHost.innerHTML = slModels.length ? slModels.map(m => `
+              <div class="jm-pill" data-val="${esc(m.id)}" title="${esc(m.units_in_stock)} in stock">${esc(m.name.toUpperCase())}</div>`).join('')
+              : '<div class="rl-empty">No vehicles in stock — run the factories first.</div>';
+            modHost.querySelectorAll('.jm-pill').forEach(p => {
+              p.addEventListener('click', () => {
+                modHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+                slModel = slModels.find(m => m.id === p.dataset.val) || null;
+                document.getElementById('sl-stock').textContent =
+                  `${Number(slModel?.units_in_stock) || 0} × ${slModel?.name || ''} in inventory`;
+                slShowCompetition();
+                slShowProfit();
+              });
+            });
+          } catch (e) {
+            natHost.innerHTML = '<div class="rl-empty">Could not load the market — try again shortly.</div>';
+            console.warn('[business-corp] campaign modal load failed:', e?.message || e);
+          }
+        });
+        document.getElementById('sl-price').addEventListener('input', slShowProfit);
+        wireModalClose('sl-overlay', 'sl-cancel');
+
+        document.getElementById('sl-confirm').addEventListener('click', async () => {
+          if (slInFlight) return;
+          slInFlight = true;
+          document.getElementById('sl-confirm').disabled = true;
+          try {
+            const { data, error: sErr } = await _supabase.rpc('run_sales_campaign', {
+              p_corp_id: corp.id,
+              p_nation_id: slNation,
+              p_blueprint_id: slModel?.id,
+              p_price: Math.floor(Number(document.getElementById('sl-price').value) || 0),
+            });
+            if (sErr) throw sErr;
+            if (!data?.success) {
+              const REASON = {
+                invalid_price: 'Set a price of at least $1.',
+                no_stock: 'No vehicles of that Model in inventory.',
+                blueprint_not_found: 'That Model belongs to another corporation.',
+                nation_not_live: 'That nation is not an active market.',
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                not_owner: 'Only the owner runs sales campaigns.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            // The follow-up: the result replaces the campaign form.
+            document.getElementById('sl-body').innerHTML = `
+              <div class="db-mech" style="font-size:15px;color:#ddd;">You sold
+                ${esc(Number(data.sold).toLocaleString())} of ${esc(data.name)} for
+                ${esc(hfFmtBig(Number(data.revenue) || 0))} dollars.</div>
+              <div class="db-static dim-line">${esc(String(data.nation))} · ${esc(hfFmtBig(Number(data.price) || 0))} per vehicle · the proceeds are in the treasury.</div>`;
+            document.getElementById('sl-foot').innerHTML =
+              '<button type="button" class="jm-btn" id="sl-done">CLOSE</button>';
+            document.getElementById('sl-done').addEventListener('click', () => window.location.reload());
+          } catch (e) {
+            alert('Could not run the campaign: ' + (e?.message || e));
+            slInFlight = false;
+            slShowProfit();
           }
         });
       } // end if (eaAutomotive)
