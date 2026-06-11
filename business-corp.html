@@ -1424,7 +1424,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // second source.
     (async () => {
       try {
-        const [projRes, loanRes, bpRes, allProjRes, taxRes, runRes] = await Promise.all([
+        const [projRes, loanRes, bpRes, allProjRes, taxRes, runRes, histRes] = await Promise.all([
           _supabase.from('corp_construction_projects')
             .select('id, kind, city, price, started_tick, completes_at_tick, materials_supplied, equipment_supplied, blueprint:corp_blueprints!blueprint_id(name, materials_needed)')
             .eq('corp_id', corp.id).eq('status', 'building').order('started_tick'),
@@ -1444,8 +1444,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 .select('quantity, produced, completes_at_tick, blueprint:vehicle_blueprints!blueprint_id(name)')
                 .eq('corp_id', corp.id).eq('status', 'running').order('created_at')
             : Promise.resolve({ data: [] }),
+          // The executive-action ledger (20270852).
+          _supabase.from('corp_history')
+            .select('tick, label').eq('corp_id', corp.id),
         ]);
-        const firstErr = [projRes, loanRes, bpRes, allProjRes, taxRes, runRes].find(r => r.error)?.error;
+        const firstErr = [projRes, loanRes, bpRes, allProjRes, taxRes, runRes, histRes].find(r => r.error)?.error;
         if (firstErr) throw firstErr;
 
         // Active Projects — construction job sites; automotive shows
@@ -1524,6 +1527,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         for (const t of (taxRes.data || [])) {
           events.push({ tick: t.filed_at_tick,
             label: `Filed FY ${t.year} corporate taxes — paid ${hfFmtBig(Number(t.amount_paid) || 0)}${t.status === 'caught' ? ' (evasion caught)' : ''}.` });
+        }
+        // Executive actions, from the ledger (20270852).
+        for (const h of (histRes.data || [])) {
+          events.push({ tick: h.tick, label: h.label });
         }
         events.sort((a, b) => (b.tick || 0) - (a.tick || 0));
         document.getElementById('bc-history').innerHTML = `
