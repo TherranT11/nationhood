@@ -118,6 +118,7 @@
   .ap-grid .c .tag, .pe-grid .c .tag { font-family:var(--font-mono); font-size:8.5px; color:#8aaa6a; }
   .pe-grid { display:grid; grid-template-columns:1.3fr 1.1fr 1.1fr 0.8fr 1.2fr;
     gap:6px 12px; align-items:center; padding:4px 2px; }
+  .pe-grid.manage { grid-template-columns:1.3fr 1.1fr 1.1fr 0.8fr 1fr auto; }
   .pe-grid .c.money { font-family:var(--font-mono); color:#8aaa6a; }
   .bp-grid { display:grid; grid-template-columns:1.4fr 0.9fr 1.1fr 0.9fr 0.9fr;
     gap:6px 12px; align-items:center; padding:4px 2px; }
@@ -469,7 +470,7 @@ import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
 import { hfFmtBig, escapeHtml as esc, industryTitleLabel, postedMonthsAgo, displayName, tickToDate } from './js/utils.js';
 import { openInterviewChat } from './js/job-interview-chat.js';
-import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS } from './js/game/corp-blueprints.js';
+import { PILLARS, DEPARTMENTS, TIER_CITY_EFFECTS, BUILDING_MATERIALS_NEEDED, YARD_TIERS, PM_TIERS, SUPPLY_TIERS, REG_TIERS } from './js/game/corp-blueprints.js';
 import { CITY_STATS } from './js/game/city-labels.js';
 
 (async () => {
@@ -484,7 +485,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, supply_tier, pm_tier, materials_tier, reg_tier, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -514,6 +515,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // employee roster's CURRENT PROJECT, and the bid board all read
     // these (matching the CHECK constraints in 20270800).
     const BUILDING_TYPE_LABELS = {
+      infrastructure_tier_i: 'Infrastructure Tier I',
       single_story_home: 'Single Story Home',
       double_story: 'Double Story',
       multitenant_living: 'Multitenant Living',
@@ -529,7 +531,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
       return _supabase.from('job_applicants')
         .select(`id, name, city, applicant_faction_id,
                  applicant:factions!applicant_faction_id(nickname),
-                 opening:job_openings!opening_id!inner(title, salary_yearly, corp_id)`)
+                 opening:job_openings!opening_id!inner(title, salary_yearly, rung, corp_id)`)
         .eq('status', 'hired').eq('opening.corp_id', corp.id)
         .order('created_at');
     }
@@ -621,10 +623,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
       const yard = YARD_TIERS[Math.min(Number(corp.supply_tier) || 0, YARD_TIERS.length - 1)];
       const pmt  = PM_TIERS[Math.min(Number(corp.pm_tier) || 0, PM_TIERS.length - 1)];
       const supt = SUPPLY_TIERS[Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1)];
+      const regt = REG_TIERS[Math.min(Number(corp.reg_tier) || 0, REG_TIERS.length - 1)];
       depts = depts.map(d =>
-        d?.dept === 'HEAVY EQUIPMENT'     ? { ...d, ...yard } :
-        d?.dept === 'PROJECT MANAGEMENT'  ? { ...d, ...pmt }  :
-        d?.dept === 'SUPPLY & MATERIAL'   ? { ...d, ...supt } : d);
+        d?.dept === 'HEAVY EQUIPMENT'        ? { ...d, ...yard } :
+        d?.dept === 'PROJECT MANAGEMENT'     ? { ...d, ...pmt }  :
+        d?.dept === 'SUPPLY & MATERIAL'      ? { ...d, ...supt } :
+        d?.dept === 'REGULATORY COMPLIANCE'  ? { ...d, ...regt } : d);
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
           ? `<div class="dp-card">
@@ -853,14 +857,20 @@ import { CITY_STATS } from './js/game/city-labels.js';
               || `${BUILDING_TYPE_LABELS[bp.building_type] || bp.building_type} (${QUALITY_TIER_LABELS[bp.quality_tier] || bp.quality_tier})`;
           }
           rowsHtml = `
-            <div class="pe-grid">
-              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">CURRENT PROJECT</div>
+            <div class="pe-grid${isOwner ? ' manage' : ''}">
+              <div class="h">NAME</div><div class="h">TITLE</div><div class="h">LOCATION</div><div class="h">SALARY</div><div class="h">CURRENT PROJECT</div>${isOwner ? '<div class="h"></div>' : ''}
               ${emps.map(e => `
                 <div class="c">${applicantNameHtml(e)}</div>
                 <div class="c">${esc(e.opening?.title || '—')}</div>
                 <div class="c">${esc(e.city + (nationByCity[e.city] ? ', ' + nationByCity[e.city] : ''))}</div>
                 <div class="c money">${esc(hfFmtBig(Number(e.opening?.salary_yearly) || 0))}/yr</div>
-                <div class="c">${esc(projByPm[e.id] || '—')}</div>`).join('')}
+                <div class="c">${esc(projByPm[e.id] || '—')}</div>
+                ${isOwner ? `<div class="ap-btns">
+                  ${(Number(e.opening?.rung) || 1) < 3
+                    ? `<button type="button" class="ap-btn hr" data-promote="${esc(e.id)}">PROMOTE</button>`
+                    : ''}
+                  <button type="button" class="ap-btn rej" data-fire="${esc(e.id)}" data-name="${esc(e.name)}">FIRE</button>
+                </div>` : ''}`).join('')}
             </div>`;
         }
         host.innerHTML = `
@@ -868,6 +878,47 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div class="ea-head"><span class="rule"></span><span class="t">PROMINENT EMPLOYEES</span><span class="rule"></span></div>
             ${rowsHtml}
           </div>`;
+
+        // [PROMOTE] / [FIRE] — owner management actions (20270824).
+        // Promotion climbs to the next chartered rung (+25% salary,
+        // band-clamped, +12 headcount); firing reverses the hire.
+        const EMP_REASON = {
+          not_hired: 'They no longer work here.',
+          max_rung: 'Already at the top of the chartered ladder.',
+          not_owner: 'Only the owner manages the roster.',
+          arrested: 'You are under arrest — your assets are frozen.',
+        };
+        host.querySelectorAll('[data-promote]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const { data, error: pErr } = await _supabase.rpc('promote_employee',
+                { p_applicant_id: btn.dataset.promote });
+              if (pErr) throw pErr;
+              if (!data?.success) throw new Error(EMP_REASON[data?.reason] || data?.reason || 'unknown');
+              window.location.reload();
+            } catch (e) {
+              alert('Could not promote: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
+        host.querySelectorAll('[data-fire]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm(`Fire ${btn.dataset.name}? Their team leaves with them.`)) return;
+            btn.disabled = true;
+            try {
+              const { data, error: fErr } = await _supabase.rpc('fire_employee',
+                { p_applicant_id: btn.dataset.fire });
+              if (fErr) throw fErr;
+              if (!data?.success) throw new Error(EMP_REASON[data?.reason] || data?.reason || 'unknown');
+              window.location.reload();
+            } catch (e) {
+              alert('Could not fire: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
 
         // ── Blueprints — the corp's design library ────────────────
         document.getElementById('bc-blueprints').innerHTML = `
@@ -1250,23 +1301,42 @@ import { CITY_STATS } from './js/game/city-labels.js';
       if (eaConstruction) {
 
       // ── Draft Blueprint modal ────────────────────────────────────
-      // Residential is the only chartered category; materials /
-      // equipment are the residential baselines shown as static copy
-      // (they live on the blueprint row server-side).
+      // Residential and Infrastructure are chartered; the type pills
+      // re-render per category (pairing enforced server-side too).
       const DB_CATS = [
         ['residential', 'RESIDENTIAL', true],
+        ['infrastructure', 'INFRASTRUCTURE', true],
         ['tier_i_commercial', 'TIER I COMMERCIAL', false],
         ['tier_ii_commercial', 'TIER II COMMERCIAL', false],
         ['tier_iii_commercial', 'TIER III COMMERCIAL', false],
         ['industrial', 'INDUSTRIAL', false],
         ['military', 'MILITARY', false],
       ];
-      const DB_TYPES = Object.entries(BUILDING_TYPE_LABELS).map(([v, l]) => [v, l.toUpperCase()]);
+      const CATEGORY_TYPES = {
+        residential: ['single_story_home', 'double_story', 'multitenant_living'],
+        infrastructure: ['infrastructure_tier_i'],
+      };
       // Tier pills carry their city effect ("LUXURY · −0.3 Affordability
       // · +0.1 Appeal") so the trade-off is visible at pick time.
       const DB_TIERS = Object.entries(QUALITY_TIER_LABELS).map(([v, l]) =>
         [v, l.toUpperCase() + (TIER_CITY_EFFECTS[v] ? ' · ' + TIER_CITY_EFFECTS[v] : '')]);
-      let dbType = null, dbTier = null;
+      let dbCat = 'residential', dbType = null, dbTier = null;
+
+      function renderTypePills(presetType) {
+        dbType = null;
+        document.getElementById('db-materials').textContent = '—';
+        dbPills('db-types',
+          CATEGORY_TYPES[dbCat].map(v => [v, BUILDING_TYPE_LABELS[v].toUpperCase()]),
+          v => {
+            dbType = v;
+            document.getElementById('db-materials').textContent =
+              String(BUILDING_MATERIALS_NEEDED[v] ?? 1);
+          });
+        if (presetType && CATEGORY_TYPES[dbCat].includes(presetType)) {
+          document.querySelector(`#db-types .jm-pill[data-val="${presetType}"]`)?.click();
+        }
+        dbRefreshConfirm();
+      }
 
       function dbRefreshConfirm() {
         const name = document.getElementById('db-name').value.trim();
@@ -1300,20 +1370,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
           <div class="db-metric"><span class="nm">STRUCTURAL SPEED</span><span class="vl">${mSpeed}</span><span class="fx">&minus;${mSpeed} tick${mSpeed === 1 ? '' : 's'} off the build time</span></div>
           <div class="db-metric"><span class="nm">PROCUREMENT EFFICIENCY</span><span class="vl">${mEff}</span><span class="fx">&minus;${mEff * 3}% material costs</span></div>
           <div class="db-metric"><span class="nm">ENGINEERING QUALITY</span><span class="vl">${mQual}</span><span class="fx">+${(mQual * 0.1).toFixed(1)} Appeal when built in a city</span></div>`;
-        dbPills('db-cats', DB_CATS, () => {});
-        document.querySelector('#db-cats .jm-pill').classList.add('sel');
-        dbPills('db-types', DB_TYPES, v => {
-          dbType = v;
-          document.getElementById('db-materials').textContent =
-            String(BUILDING_MATERIALS_NEEDED[v] ?? 1);
-        });
-        document.getElementById('db-materials').textContent = '—';
-        dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
         // Arriving from the bid board's [CREATE BLUEPRINT]: the
-        // request's building type comes preselected.
-        if (presetType) {
-          document.querySelector(`#db-types .jm-pill[data-val="${presetType}"]`)?.click();
-        }
+        // request's building type picks its category too.
+        dbCat = presetType === 'infrastructure_tier_i' ? 'infrastructure' : 'residential';
+        dbPills('db-cats', DB_CATS, v => { dbCat = v; renderTypePills(); });
+        document.querySelector(`#db-cats .jm-pill[data-val="${dbCat}"]`)?.classList.add('sel');
+        renderTypePills(presetType);
+        dbPills('db-tiers', DB_TIERS, v => { dbTier = v; });
         document.getElementById('db-location').textContent = corp.hq_city || '—';
         document.getElementById('db-overlay').classList.add('open');
 
@@ -1410,7 +1473,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
                   const REASON = {
                     invalid_price: 'Name a price above $0.',
                     no_actions_remaining: 'No executive actions remaining this tick.',
-                    international_locked: 'International bids need a Level III Regional PMO Division.',
+                    foreign_locked: 'Foreign projects need the Tier V International Construction Charter.',
+                    not_licensed: 'Your Regulatory Compliance tier doesn’t license this building type.',
                     blueprint_type_mismatch: 'That blueprint doesn’t match the requested building type.',
                     already_bid: 'You already have a bid on this project.',
                     request_not_open: 'This project is no longer taking bids.',
@@ -1504,6 +1568,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             const REASON = {
               no_actions_remaining: 'No executive actions remaining this tick.',
               project_cap_reached: 'You’re at your Max Active Projects — upgrade Project Management.',
+              foreign_locked: 'Foreign projects need the Tier V International Construction Charter.',
+              not_licensed: 'Your Regulatory Compliance tier doesn’t license this building type.',
               blueprint_not_found: 'That blueprint isn’t this corporation’s.',
               pm_not_found: 'That Project Manager no longer works here.',
               category_not_chartered: 'Only Residential projects can start right now.',
@@ -1708,12 +1774,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const pmNext = PM_TIERS[pmTier + 1] || null;
         const suTier = Math.min(Number(corp.materials_tier) || 0, SUPPLY_TIERS.length - 1);
         const suNext = SUPPLY_TIERS[suTier + 1] || null;
+        const rgTier = Math.min(Number(corp.reg_tier) || 0, REG_TIERS.length - 1);
+        const rgNext = REG_TIERS[rgTier + 1] || null;
         const ASSETS = [
           ['project_management',   'PROJECT MANAGEMENT',   PM_TIERS[pmTier].tier, pmNext],
           ['heavy_equipment',      'HEAVY EQUIPMENT',      YARD_TIERS[tier].tier, next],
           ['supply_material',      'SUPPLY & MATERIAL',    SUPPLY_TIERS[suTier].tier, suNext],
           ['system_design',        'SYSTEM DESIGN',        'CAD System & Laptop', null],
-          ['regulatory_compliance','REGULATORY COMPLIANCE','City Permits', null],
+          ['regulatory_compliance','REGULATORY COMPLIANCE',REG_TIERS[rgTier].tier, rgNext],
         ];
         const host = document.getElementById('lo-rows');
         host.innerHTML = ASSETS.map(([key, label, cur, nxt]) => `
@@ -1807,7 +1875,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         try {
           const { data, error: dErr } = await _supabase.rpc('draft_blueprint', {
             p_corp_id: corp.id,
-            p_category: 'residential',
+            p_category: dbCat,
             p_building_type: dbType,
             p_quality_tier: dbTier,
             p_name: document.getElementById('db-name').value.trim(),
