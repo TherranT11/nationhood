@@ -1123,7 +1123,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 <div class="c">${esc(reportsTo(e))}</div>
                 <div class="c">${canDirect
                   ? `<button type="button" class="ap-btn hr" data-direct="${esc(e.id)}" data-track="${esc(e.opening?.track)}" data-name="${esc(e.name)}" data-salary="${esc(String(Number(e.opening?.salary_yearly) || 0))}">DIRECT</button>`
-                  : esc(projByPm[e.id] || '—')}</div>`;
+                  : esc(projByPm[e.id] || '—')}</div>
                 ${isOwner ? `<div class="ap-btns">
                   ${(Number(e.opening?.rung) || 1) < ((JOB_TRACKS[e.opening?.track] || []).filter(r => r.postable).length || 3)
                     ? `<button type="button" class="ap-btn hr" data-promote="${esc(e.id)}">PROMOTE</button>`
