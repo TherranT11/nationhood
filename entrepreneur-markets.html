@@ -410,6 +410,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // them to businessmen is a separate economy decision.
     const ctx = await bootstrapSharedViewer('markets', 'corporations');
     if (!ctx) return;
+    const entId = ctx.faction?.id || null;
     // Start Company moved here from the career page (design call) —
     // the founding flow itself stays on businessman-career.html, the
     // button deep-links to it (?found=1 auto-opens the modal).
@@ -420,8 +421,6 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
         window.location.href = 'businessman-career.html?found=1';
       });
     }
-    if (!ctx) return;
-    const entId = ctx.faction?.id || null;
 
     // All corps (entrepreneur_corps RLS = SELECT true) + ALL holdings
     // (corp_shareholdings RLS = SELECT true — public market data, the
