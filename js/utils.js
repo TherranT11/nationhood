@@ -487,7 +487,8 @@ export function careerLabel(politician, party) {
         : '';
     const localExecText = localExecutiveTitle(politician) || '';
     const judicialText = judicialTitle(politician, politician?.nation_id) || '';
-    return officeText || localExecText || ministryText || judicialText || party?.faction_name || 'Independent';
+    const fsText = foreignServiceTitle(politician) || '';
+    return officeText || localExecText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
 }
 
 /** Highest local-executive tier label the politician holds, or null
@@ -496,6 +497,19 @@ export function careerLabel(politician, party) {
  *  one-shot, never auto-cleared. Used by careerLabel so the hero
  *  standing pill doesn't fall through to "Independent" when a
  *  politician holds one of these but no office / ministry / bar. */
+/** Highest Foreign Service rank label the politician holds, or null.
+ *  Ladder order (20270759/65/66/69/70): Special Envoy → Ambassador →
+ *  DCM → Consul → Attaché. One source — careerLabel, the faction
+ *  switcher suffix, and any future surface all read this. */
+export function foreignServiceTitle(politician) {
+    if (politician?.politician_special_envoy_at_tick    != null) return 'Special Envoy';
+    if (politician?.politician_ambassador_nation_id) return 'Ambassador';
+    if (politician?.politician_dcm_region) return 'Deputy Chief of Mission';
+    if (politician?.politician_consul_nation_id) return 'Consul';
+    if (politician?.politician_foreign_service_nation_id) return 'Attaché';
+    return null;
+}
+
 export function localExecutiveTitle(politician) {
     if (politician?.politician_regional_leader_at_tick     != null) return 'Regional Leader';
     if (politician?.politician_mayor_of_capital_at_tick    != null) return 'Mayor of the Capital';

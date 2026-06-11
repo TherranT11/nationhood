@@ -2,15 +2,20 @@
 -- 20270869 — The Ambassador (Foreign Service tier 4 — THE BIG ONE)
 --
 -- A DCM with 30 Experience hits [REQUEST APPOINTMENT] and the home
--- legislature votes ON THE SPOT: the requester's own party banks its
--- seats as YES; every other party rolls 1D2 and its whole bloc
--- follows the die. More YES seats than NO appoints (a tie fails);
--- failure stamps a 12-tick re-request cooldown. Vacancy is checked
--- BEFORE the vote so a confirmation is never wasted. Either way the
--- chamber's verdict is AUTO-GENERATED as a bills row — 'Appointment
--- of {Politician} as Ambassador of {Nation}', bill_type
--- ambassador_confirmation, landed terminal (passed/failed) with the
--- seat tally, so it renders in the legislature's recent results.
+-- legislature TAKES IT UP: a 3-TICK chamber vote (design ruling,
+-- rev.) — ambassador_confirmation_votes — renders in the Nation
+-- page's VOTING section with the full division visible from the
+-- start: the requester's party banks its seats YES, every other
+-- party's bloc declares on a 1D2 at creation. After 3 ticks
+-- resolve_due_ambassador_confirmations (the resolve_due_* pattern,
+-- fired from page loads) enacts the verdict: more YES seats than NO
+-- appoints (a tie fails; failure stamps a 12-tick re-request
+-- cooldown), and the verdict lands in the chamber record as a
+-- terminal bills row ('Appointment of {Politician} as Ambassador of
+-- {Nation}', bill_type ambassador_confirmation). The target posting
+-- is quoted at request time; if it's taken during the window the
+-- resolver re-rolls a vacancy, and a confirmation with nowhere to
+-- send you lapses without a cooldown.
 --
 -- Appointment: a RANDOM vacant live nation (market_nation_names),
 -- home excluded, one ambassador per home→host pair (partial unique
@@ -75,6 +80,31 @@ CREATE TABLE IF NOT EXISTS public.ambassador_statements (
 );
 CREATE INDEX IF NOT EXISTS ambassador_statements_pending_idx
     ON public.ambassador_statements (host_nation_id) WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS public.ambassador_confirmation_votes (
+    id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nation_id            uuid NOT NULL,
+    candidate_faction_id uuid NOT NULL REFERENCES public.factions(id) ON DELETE CASCADE,
+    candidate_name       text NOT NULL,
+    target_nation_id     uuid NOT NULL,
+    target_nation_name   text NOT NULL,
+    -- The division, locked at creation: [{party_id, stance, seats}].
+    party_votes          jsonb NOT NULL DEFAULT '[]',
+    yes_seats            int NOT NULL DEFAULT 0,
+    no_seats             int NOT NULL DEFAULT 0,
+    chamber_size         int NOT NULL DEFAULT 0,
+    status               text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'passed', 'failed')),
+    started_at_tick      int NOT NULL,
+    resolve_at_tick      int NOT NULL,
+    resolved_tick        int,
+    created_at           timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS ambassador_confirmation_votes_active_idx
+    ON public.ambassador_confirmation_votes (nation_id) WHERE status = 'active';
+
+ALTER TABLE public.ambassador_confirmation_votes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow select for all" ON public.ambassador_confirmation_votes;
+CREATE POLICY "Allow select for all" ON public.ambassador_confirmation_votes FOR SELECT USING (true);
 
 ALTER TABLE public.ambassador_meetings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow select for all" ON public.ambassador_meetings;
@@ -161,6 +191,29 @@ END $$;
 
 REVOKE EXECUTE ON FUNCTION public._ambassador_check(uuid, uuid, int) FROM PUBLIC;
 
+-- ── _statement_approved_event — the approved words make the news ──
+CREATE OR REPLACE FUNCTION public._statement_approved_event(p_stmt ambassador_statements, p_tick int)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_amb  text;
+    v_host text;
+BEGIN
+    SELECT COALESCE(NULLIF(TRIM(COALESCE(leader_first_name, '') || ' '
+                  || COALESCE(leader_last_name, '')), ''), 'The Ambassador')
+      INTO v_amb FROM factions WHERE id = p_stmt.ambassador_faction_id;
+    SELECT name INTO v_host FROM nations WHERE id = p_stmt.host_nation_id;
+    INSERT INTO event_log (nation_id, event_name, event_type, category,
+                           description_chosen, fired_at_tick, effects_applied)
+    VALUES (p_stmt.home_nation_id, 'AMBASSADORIAL STATEMENT', 'diplomacy', 'government',
+            format('%s, Ambassador to %s, issues an approved statement: “%s”',
+                   v_amb, COALESCE(v_host, '—'), p_stmt.body),
+            p_tick, jsonb_build_object('statement_id', p_stmt.id));
+END $$;
+
+REVOKE EXECUTE ON FUNCTION public._statement_approved_event(ambassador_statements, int) FROM PUBLIC;
+
 -- ── _foreign_minister_of — who answers the door ───────────────────
 CREATE OR REPLACE FUNCTION public._foreign_minister_of(p_nation_id uuid)
 RETURNS uuid
@@ -175,7 +228,7 @@ $$;
 
 REVOKE EXECUTE ON FUNCTION public._foreign_minister_of(uuid) FROM PUBLIC;
 
--- ── politician_request_ambassador_appointment — THE VOTE ──────────
+-- ── politician_request_ambassador_appointment — THE VOTE OPENS ────
 CREATE OR REPLACE FUNCTION public.politician_request_ambassador_appointment(p_faction_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -187,8 +240,11 @@ DECLARE
     v_party  RECORD;
     v_yes    int := 0;
     v_no     int := 0;
+    v_stance text;
+    v_votes  jsonb := '[]'::jsonb;
     v_target nations%ROWTYPE;
     v_name   text;
+    v_id     uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -220,9 +276,14 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'cooldown',
             'ready_at_tick', v_pol.next_ambassador_request_tick);
     END IF;
+    IF EXISTS (SELECT 1 FROM ambassador_confirmation_votes
+                WHERE candidate_faction_id = v_pol.id AND status = 'active') THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'confirmation_pending');
+    END IF;
 
-    -- Vacancy precheck BEFORE the vote (design ruling) — never burn
-    -- a confirmation on "no postings". Expired terms sweep first.
+    -- Vacancy precheck BEFORE the chamber sits (design ruling) — the
+    -- quoted posting headlines the vote; the resolver re-rolls if
+    -- it's taken during the window.
     PERFORM _expire_due_ambassadors(v_tick);
     SELECT n.* INTO v_target FROM nations n
      WHERE n.name = ANY (market_nation_names())
@@ -238,9 +299,9 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'no_postings');
     END IF;
 
-    -- THE VOTE: party blocs, resolved on the spot. The requester's
-    -- party banks its seats YES; every other party rolls 1D2 and its
-    -- bloc follows. An empty chamber appoints unopposed.
+    -- The division declares at creation: the candidate's party banks
+    -- its seats YES; every other bloc follows a 1D2. The stances are
+    -- public for the full 3-tick window.
     FOR v_party IN
         SELECT id, COALESCE(seats, 0) AS seats FROM factions
          WHERE faction_type = 'movement_party'
@@ -248,68 +309,166 @@ BEGIN
            AND abandoned_at IS NULL
            AND COALESCE(seats, 0) > 0
     LOOP
-        IF v_party.id = v_pol.politician_party_id THEN
-            v_yes := v_yes + v_party.seats;
-        ELSIF FLOOR(random() * 2) = 0 THEN
+        IF v_party.id = v_pol.politician_party_id OR FLOOR(random() * 2) = 0 THEN
+            v_stance := 'yes';
             v_yes := v_yes + v_party.seats;
         ELSE
+            v_stance := 'no';
             v_no := v_no + v_party.seats;
         END IF;
+        v_votes := v_votes || jsonb_build_object(
+            'party_id', v_party.id, 'stance', v_stance, 'seats', v_party.seats);
     END LOOP;
 
     v_name := COALESCE(NULLIF(TRIM(COALESCE(v_pol.leader_first_name, '') || ' '
                     || COALESCE(v_pol.leader_last_name, '')), ''), 'The Nominee');
 
-    IF v_yes + v_no > 0 AND v_yes <= v_no THEN
-        -- The chamber says no (a tie fails). 12 ticks before the
-        -- ministry will float the name again. The verdict enters the
-        -- chamber record either way.
-        INSERT INTO bills (nation_id, proposed_by, proposed_tick, bill_name, bill_type,
-                           status, voting_ends_tick, passed_tick, votes_for, votes_against, preamble)
-        VALUES (v_pol.nation_id, v_pol.id, v_tick,
-                format('Appointment of %s as Ambassador of %s', v_name, v_target.name),
-                'ambassador_confirmation', 'failed', v_tick, v_tick, v_yes, v_no,
-                format('The Foreign Ministry put %s before the chamber for the embassy in %s. The chamber declined, %s seats to %s.', v_name, v_target.name, v_no, v_yes));
-        UPDATE factions SET next_ambassador_request_tick = v_tick + 12
-         WHERE id = v_pol.id;
-        INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
-        VALUES (v_pol.id, v_tick, 'ambassador_rejected', '',
-                jsonb_build_object('yes_seats', v_yes, 'no_seats', v_no));
-        RETURN jsonb_build_object('success', false, 'reason', 'vote_failed',
-            'yes_seats', v_yes, 'no_seats', v_no, 'retry_at_tick', v_tick + 12);
-    END IF;
+    INSERT INTO ambassador_confirmation_votes (
+        nation_id, candidate_faction_id, candidate_name,
+        target_nation_id, target_nation_name, party_votes,
+        yes_seats, no_seats, chamber_size, started_at_tick, resolve_at_tick
+    ) VALUES (
+        v_pol.nation_id, v_pol.id, v_name,
+        v_target.id, COALESCE(v_target.name, '—'), v_votes,
+        v_yes, v_no, v_yes + v_no, v_tick, v_tick + 3
+    ) RETURNING id INTO v_id;
 
-    BEGIN
-        UPDATE factions
-           SET politician_ambassador_nation_id = v_target.id,
-               politician_ambassador_at_tick   = v_tick,
-               politician_ambassador_strikes   = 0,
-               politician_dcm_region           = NULL,
-               politician_dcm_at_tick          = NULL
-         WHERE id = v_pol.id;
-    EXCEPTION WHEN unique_violation THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'no_postings');
-    END;
-
-    INSERT INTO bills (nation_id, proposed_by, proposed_tick, bill_name, bill_type,
-                       status, voting_ends_tick, passed_tick, votes_for, votes_against, preamble)
-    VALUES (v_pol.nation_id, v_pol.id, v_tick,
-            format('Appointment of %s as Ambassador of %s', v_name, v_target.name),
-            'ambassador_confirmation', 'passed', v_tick, v_tick, v_yes, v_no,
-            format('The chamber confirms %s as Ambassador to %s, %s seats to %s. The term runs sixty ticks.', v_name, v_target.name, v_yes, v_no));
-
-    INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
-    VALUES (v_pol.id, v_tick, 'ambassador_appointed', COALESCE(v_target.name, ''),
-            jsonb_build_object('nation', v_target.name, 'yes_seats', v_yes, 'no_seats', v_no,
-                               'term_ends_tick', v_tick + 60));
-
-    RETURN jsonb_build_object('success', true, 'nation', v_target.name,
-        'capital', v_target.capital, 'yes_seats', v_yes, 'no_seats', v_no,
-        'term_ends_tick', v_tick + 60);
+    RETURN jsonb_build_object('success', true, 'vote_id', v_id,
+        'nation', v_target.name, 'yes_seats', v_yes, 'no_seats', v_no,
+        'resolve_at_tick', v_tick + 3);
 END $$;
 
 REVOKE EXECUTE ON FUNCTION public.politician_request_ambassador_appointment(uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.politician_request_ambassador_appointment(uuid) TO authenticated;
+
+-- ── resolve_due_ambassador_confirmations — the chamber's verdict ──
+-- The resolve_due_* pattern: fired from page loads, idempotent,
+-- FOR UPDATE SKIP LOCKED. Enacts each due vote: appoint on a YES
+-- majority (tie fails), stamp the 12-tick re-request cooldown on a
+-- NO, and land the terminal bills row either way.
+CREATE OR REPLACE FUNCTION public.resolve_due_ambassador_confirmations()
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_tick     int;
+    v_vote     ambassador_confirmation_votes%ROWTYPE;
+    v_pol      factions%ROWTYPE;
+    v_target   nations%ROWTYPE;
+    v_passed   boolean;
+    v_resolved int := 0;
+BEGIN
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    FOR v_vote IN
+        SELECT * FROM ambassador_confirmation_votes
+         WHERE status = 'active' AND resolve_at_tick <= v_tick
+         FOR UPDATE SKIP LOCKED
+    LOOP
+        v_passed := v_vote.yes_seats > v_vote.no_seats;
+        SELECT * INTO v_pol FROM factions
+         WHERE id = v_vote.candidate_faction_id
+           AND faction_type = 'politician'
+           AND abandoned_at IS NULL
+         FOR UPDATE;
+        -- A candidate who lost the DCM post, got arrested, or
+        -- vanished during the window can't be sworn in.
+        IF v_passed AND (v_pol.id IS NULL
+            OR v_pol.politician_dcm_region IS NULL
+            OR lower(COALESCE(v_pol.status, '')) = 'arrested') THEN
+            v_passed := false;
+        END IF;
+
+        IF v_passed THEN
+            -- The quoted posting first; re-roll if it was taken
+            -- during the window.
+            PERFORM _expire_due_ambassadors(v_tick);
+            SELECT n.* INTO v_target FROM nations n
+             WHERE n.id = v_vote.target_nation_id
+               AND NOT EXISTS (
+                   SELECT 1 FROM factions f
+                    WHERE f.faction_type = 'politician'
+                      AND f.abandoned_at IS NULL
+                      AND f.nation_id = v_pol.nation_id
+                      AND f.politician_ambassador_nation_id = n.id);
+            IF v_target.id IS NULL THEN
+                SELECT n.* INTO v_target FROM nations n
+                 WHERE n.name = ANY (market_nation_names())
+                   AND n.id <> v_pol.nation_id
+                   AND NOT EXISTS (
+                       SELECT 1 FROM factions f
+                        WHERE f.faction_type = 'politician'
+                          AND f.abandoned_at IS NULL
+                          AND f.nation_id = v_pol.nation_id
+                          AND f.politician_ambassador_nation_id = n.id)
+                 ORDER BY random() LIMIT 1;
+            END IF;
+            IF v_target.id IS NULL THEN
+                -- Confirmed with nowhere to send them: the
+                -- appointment lapses, no cooldown — not the
+                -- chamber's fault.
+                v_passed := false;
+            ELSE
+                BEGIN
+                    UPDATE factions
+                       SET politician_ambassador_nation_id = v_target.id,
+                           politician_ambassador_at_tick   = v_tick,
+                           politician_ambassador_strikes   = 0,
+                           politician_dcm_region           = NULL,
+                           politician_dcm_at_tick          = NULL
+                     WHERE id = v_pol.id;
+                EXCEPTION WHEN unique_violation THEN
+                    v_passed := false;
+                END;
+            END IF;
+        ELSIF v_pol.id IS NOT NULL THEN
+            UPDATE factions SET next_ambassador_request_tick = v_tick + 12
+             WHERE id = v_pol.id;
+        END IF;
+
+        UPDATE ambassador_confirmation_votes
+           SET status = CASE WHEN v_passed THEN 'passed' ELSE 'failed' END,
+               resolved_tick = v_tick,
+               target_nation_id = CASE WHEN v_passed THEN v_target.id ELSE target_nation_id END,
+               target_nation_name = CASE WHEN v_passed THEN COALESCE(v_target.name, target_nation_name) ELSE target_nation_name END
+         WHERE id = v_vote.id;
+
+        -- The chamber record.
+        INSERT INTO bills (nation_id, proposed_by, proposed_tick, bill_name, bill_type,
+                           status, voting_ends_tick, passed_tick, votes_for, votes_against, preamble)
+        VALUES (v_vote.nation_id, v_vote.candidate_faction_id, v_vote.started_at_tick,
+                format('Appointment of %s as Ambassador to %s', v_vote.candidate_name,
+                       CASE WHEN v_passed THEN COALESCE(v_target.name, v_vote.target_nation_name)
+                            ELSE v_vote.target_nation_name END),
+                'ambassador_confirmation',
+                CASE WHEN v_passed THEN 'passed' ELSE 'failed' END,
+                v_vote.resolve_at_tick, v_tick, v_vote.yes_seats, v_vote.no_seats,
+                CASE WHEN v_passed
+                     THEN format('The chamber confirms %s as Ambassador to %s, %s seats to %s. The term runs sixty ticks.',
+                                 v_vote.candidate_name, COALESCE(v_target.name, v_vote.target_nation_name),
+                                 v_vote.yes_seats, v_vote.no_seats)
+                     ELSE format('The chamber declined to confirm %s for the embassy in %s, %s seats to %s.',
+                                 v_vote.candidate_name, v_vote.target_nation_name,
+                                 v_vote.no_seats, v_vote.yes_seats)
+                END);
+
+        IF v_pol.id IS NOT NULL THEN
+            INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
+            VALUES (v_pol.id, v_tick,
+                    CASE WHEN v_passed THEN 'ambassador_appointed' ELSE 'ambassador_rejected' END,
+                    CASE WHEN v_passed THEN COALESCE(v_target.name, '') ELSE '' END,
+                    jsonb_build_object('yes_seats', v_vote.yes_seats, 'no_seats', v_vote.no_seats,
+                                       'term_ends_tick', CASE WHEN v_passed THEN v_tick + 60 ELSE NULL END));
+        END IF;
+
+        v_resolved := v_resolved + 1;
+    END LOOP;
+
+    RETURN jsonb_build_object('success', true, 'resolved', v_resolved);
+END $$;
+
+GRANT EXECUTE ON FUNCTION public.resolve_due_ambassador_confirmations() TO authenticated;
 
 -- ── ambassador_request_meeting ────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.ambassador_request_meeting(p_faction_id uuid)
@@ -481,6 +640,8 @@ BEGIN
            SET embassy_reputation = LEAST(100, COALESCE(embassy_reputation, 50) + 2)
          WHERE id = v_fac.id;
         PERFORM _bump_relation_score(v_fac.nation_id, v_fac.politician_ambassador_nation_id, 1);
+        PERFORM _statement_approved_event(
+            (SELECT st FROM ambassador_statements st WHERE st.id = v_id), v_tick);
     ELSE
         UPDATE factions
            SET embassy_reputation = GREATEST(0, COALESCE(embassy_reputation, 50) - 1)
@@ -546,6 +707,7 @@ BEGIN
            SET embassy_reputation = LEAST(100, COALESCE(embassy_reputation, 50) + 2)
          WHERE id = v_stmt.ambassador_faction_id;
         PERFORM _bump_relation_score(v_stmt.home_nation_id, v_stmt.host_nation_id, 1);
+        PERFORM _statement_approved_event(v_stmt, v_tick);
     ELSE
         UPDATE factions
            SET embassy_reputation = GREATEST(0, COALESCE(embassy_reputation, 50) - 1)

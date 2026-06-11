@@ -1570,6 +1570,17 @@ async function loadVoting(nationId, currentTick) {
   const host = document.getElementById('sec-voting-body');
   if (!host) return;
   const footer = '<div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>';
+  // Sweep due ambassador confirmations first (resolve_due_* pattern,
+  // 20270869) so the section never shows a vote past its deadline.
+  try { await _supabase.rpc('resolve_due_ambassador_confirmations'); }
+  catch (e) { console.warn('politician-nation: confirmation sweep failed', e?.message || e); }
+  const { data: ambVotes, error: ambErr } = await _supabase
+    .from('ambassador_confirmation_votes')
+    .select('id, candidate_name, target_nation_name, party_votes, yes_seats, no_seats, chamber_size, resolve_at_tick')
+    .eq('nation_id', nationId)
+    .eq('status', 'active')
+    .order('resolve_at_tick', { ascending: true });
+  if (ambErr) console.warn('politician-nation: ambassador votes fetch failed', ambErr);
   const { data, error } = await _supabase
     .from('committee_admission_votes')
     .select('id, committee_id, applicant_party_id, started_at_tick, resolve_at_tick, yes_seats, no_seats, chamber_size, threshold_pct, applicant:factions!applicant_faction_id(leader_first_name, leader_last_name, politician_office, politician_party_id), party:factions!applicant_party_id(faction_name, abbreviation, party_color), committee:committees!committee_id(committee_key)')
@@ -1582,7 +1593,8 @@ async function loadVoting(nationId, currentTick) {
     return;
   }
   const votes = data || [];
-  if (!votes.length) {
+  const confVotes = ambVotes || [];
+  if (!votes.length && !confVotes.length) {
     host.innerHTML = `<div class="sec-empty">No active votes.</div>${footer}`;
     return;
   }
@@ -1600,7 +1612,90 @@ async function loadVoting(nationId, currentTick) {
   if (pErr) console.warn('politician-nation: parties for voting fetch failed', pErr);
   const partyRows = parties || [];
 
-  host.innerHTML = votes.map(v => renderVoteCard(v, partyRows, currentTick)).join('') + footer;
+  host.innerHTML = confVotes.map(v => renderAmbassadorVoteCard(v, partyRows, currentTick)).join('')
+    + votes.map(v => renderVoteCard(v, partyRows, currentTick)).join('') + footer;
+}
+
+// Ambassador confirmation votes (20270869) — the same vote-card
+// chrome as committee admissions; the division was declared at
+// creation (party_votes), so the card shows exactly who is voting
+// for what for the full 3-tick window.
+function renderAmbassadorVoteCard(v, partyRows, currentTick) {
+  const ticksRemaining = Math.max(0, Number(v.resolve_at_tick) - currentTick);
+  const yes = Number(v.yes_seats) || 0;
+  const no  = Number(v.no_seats)  || 0;
+  const cast = yes + no;
+  const chamber = Number(v.chamber_size) || cast;
+  const yesPctOfCast = cast > 0 ? Math.round((yes * 100) / cast) : 0;
+  const noPctOfCast  = cast > 0 ? Math.round((no  * 100) / cast) : 0;
+  const stanceByParty = new Map((v.party_votes || []).map(pv => [pv.party_id, pv.stance]));
+  const factionRows = partyRows.length ? partyRows.map(p => {
+    const stance = stanceByParty.get(p.id);
+    if (!stance) return '';
+    const color = safeHexColor(p.party_color);
+    const label = p.abbreviation || p.faction_name?.slice(0, 2) || '—';
+    return `
+      <div class="vote-fc-row">
+        <div class="vote-fc-flag" style="background:${color};">${escHtml(label.toUpperCase().slice(0, 3))}</div>
+        <div class="vote-fc-name">${escHtml(p.faction_name || '—')}</div>
+        <span class="vote-fc-seats">${Number(p.seats) || 0}</span>
+        <span class="vote-fc-vote ${stance === 'yes' ? 'yes' : 'no'}">${stance.toUpperCase()}</span>
+      </div>`;
+  }).join('') : '<div class="sec-empty">No parties.</div>';
+  return `
+    <div class="vote-card">
+      <div class="vote-head">
+        <div class="vote-head-info">
+          <div class="vote-eyebrow">CHAMBER VOTE &middot; AMBASSADOR CONFIRMATION</div>
+          <div class="vote-title">Appointment of ${escHtml(v.candidate_name)} as Ambassador to <span class="serif">${escHtml(v.target_nation_name)}</span></div>
+        </div>
+        <div class="vote-clock">
+          <div class="vote-clock-lab">RESOLVES</div>
+          <div class="vote-clock-val">${ticksRemaining} TICK${ticksRemaining === 1 ? '' : 'S'}</div>
+          <div class="vote-clock-sub">${ticksRemaining === 0 ? 'next refresh' : `at tick ${v.resolve_at_tick}`}</div>
+        </div>
+      </div>
+      <div class="vote-tally">
+        <div class="vote-tl-nums">
+          <div class="vote-tl-box yes">
+            <div class="vote-tl-key">YES</div>
+            <div class="vote-tl-big">${yes}</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">${yesPctOfCast}% of cast</div>
+          </div>
+          <div class="vote-tl-box no">
+            <div class="vote-tl-key">NO</div>
+            <div class="vote-tl-big">${no}</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">${noPctOfCast}% of cast</div>
+          </div>
+          <div class="vote-tl-box abs">
+            <div class="vote-tl-key">ABSTAIN</div>
+            <div class="vote-tl-big">0</div>
+            <div class="vote-tl-of">of ${chamber}</div>
+            <div class="vote-tl-pct">not counted</div>
+          </div>
+          <div class="vote-tl-box">
+            <div class="vote-tl-key">MAJORITY</div>
+            <div class="vote-tl-big">${yes > no ? 'YES' : no > yes ? 'NO' : 'TIE'}</div>
+            <div class="vote-tl-of">tie fails</div>
+            <div class="vote-tl-pct">simple majority</div>
+          </div>
+        </div>
+        <div class="vote-threshold">
+          <span class="vote-th-lab">YES OF CAST</span>
+          <div class="vote-th-bar">
+            <div class="vote-th-fill" style="width:${Math.min(100, yesPctOfCast)}%;"></div>
+            <div class="vote-th-mark"></div>
+          </div>
+          <span class="vote-th-val">${yesPctOfCast}% &middot; needs a majority</span>
+        </div>
+      </div>
+      <div class="vote-factions">
+        <div class="vote-fc-lab">HOW THE PARTIES ARE VOTING</div>
+        <div class="vote-fc-grid">${factionRows}</div>
+      </div>
+    </div>`;
 }
 
 function renderVoteCard(v, partyRows, currentTick) {

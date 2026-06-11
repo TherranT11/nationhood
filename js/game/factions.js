@@ -20,7 +20,7 @@
 // officeTitle resolves a politician_office enum to its display string.
 // Shared with the career-page rungs so a new office value only lands
 // in one place (utils.js OFFICE_TITLES) to flow through both surfaces.
-import { officeTitle } from '../utils.js';
+import { officeTitle, foreignServiceTitle } from '../utils.js';
 
 /**
  * Returns one of 'abandoned' | 'unassigned' | 'banned' | null.
@@ -140,15 +140,12 @@ export function getPoliticianRoleLabel(faction) {
     // null at the caller's `role ? ...` check.
     if (faction.politician_office) return officeTitle(faction.politician_office) || null;
     if (faction.politician_ministry) return 'Civil Servant';
-    // Foreign Service Tier 1 (20270759). Lowest-priority suffix —
-    // shown only when no office / ministry / bar career applies,
-    // matching renderAffiliation's fallback in politician-home.html.
-    // Source column was added to politician-topbar's select in
-    // c1454ae; other topbars (entrepreneur / military) don't pull
-    // it today and stay null-returning here, same as bar / office /
-    // ministry behave for those surfaces.
-    if (faction.politician_foreign_service_nation_id) return 'Attaché';
-    return null;
+    // Foreign Service ladder (20270759/65/66/69/70) — lowest-priority
+    // suffix, shown when no office / ministry / bar career applies.
+    // foreignServiceTitle (utils) is the one source for the rank
+    // labels; topbars that don't select the FS columns simply fall
+    // through to null here, same as office / ministry behave.
+    return foreignServiceTitle(faction);
 }
 
 /**

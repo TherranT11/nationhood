@@ -3156,6 +3156,7 @@ function bindRungActions(ctx) {
           }
           const REASON = {
             cooldown: 'The chamber recently said no — wait for the ministry to float your name again.',
+            confirmation_pending: 'Your confirmation vote is already on the floor — watch the Nation page.',
             no_postings: 'No ambassadorships are vacant — every live nation is covered.',
             not_dcm: 'Only a serving DCM stands for appointment.',
             not_enough_experience: 'The ministry wants 30 Experience first.',
@@ -3163,7 +3164,7 @@ function bindRungActions(ctx) {
           };
           throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
         }
-        alert(`The chamber confirms, ${data.yes_seats}\u2013${data.no_seats}. You are now the Ambassador of ${data.nation} — proceed to ${data.capital}. The term runs to ${tickToDate(Number(data.term_ends_tick))}.`);
+        alert(`The chamber takes it up — ${data.yes_seats}\u2013${data.no_seats} declared on the floor. The vote runs to ${tickToDate(Number(data.resolve_at_tick))}; watch it in the Nation page's Voting section.`);
         location.reload();
       } catch (err) {
         alert('Could not request the appointment: ' + (err?.message || err));

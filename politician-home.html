@@ -1404,6 +1404,17 @@ const CORPORATE_CATEGORIES = ['corporate','business','trade'];
 // affiliations are illegal in-fiction and the public career log isn't where
 // they belong (a separate private dossier surface would house those).
 const CAREER_EVENT_TEMPLATES = {
+  // Foreign Service ladder (20270865/66/68/69/70).
+  consul_posted: (name, target) => `${name} took the consulate in ${target || 'a foreign capital'}.`,
+  dcm_posted: (name, target) => `${name} was named Deputy Chief of Mission for ${target || 'a region'}.`,
+  fm_appointed: (name) => `${name} was appointed Foreign Minister.`,
+  ambassador_appointed: (name, target, meta = {}) => `${name} was confirmed by the legislature as Ambassador to ${target || 'a foreign capital'}${meta.yes_seats != null ? `, ${meta.yes_seats}–${meta.no_seats}` : ''}.`,
+  ambassador_rejected: (name, target, meta = {}) => `The legislature declined ${name}'s ambassadorial appointment${meta.yes_seats != null ? `, ${meta.no_seats}–${meta.yes_seats}` : ''}.`,
+  ambassador_term_ended: (name, target) => `${name} completed their term as Ambassador to ${target || 'a foreign capital'} with honors.`,
+  ambassador_censured: (name) => `${name} was censured by the Foreign Ministry over a public statement.`,
+  ambassador_recalled: (name) => `${name} was recalled from their ambassadorship in disgrace.`,
+  envoy_appointed: (name) => `${name} was appointed Special Envoy of the Republic.`,
+  envoy_arrangement_signed: (name, target) => `${name} signed “${target || 'an arrangement'}”.`,
   joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
   left_party:    (name, target) => `${name} has resigned their membership in the ${target || 'their political party'}.`,
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
@@ -4129,7 +4140,7 @@ async function renderAmbassadorAffiliation(ctx, host) {
         <div class="ah-badge">🎖️</div>
         <div class="ah-info">
           <div class="ah-eyebrow">FOREIGN SERVICE · TIER 4</div>
-          <div class="ah-name">You are now the Ambassador of ${escHtml(nationName)}</div>
+          <div class="ah-name">You are now the Ambassador to ${escHtml(nationName)}</div>
           <div class="ah-desc">Your location moves to <strong>${escHtml(capital)}</strong>. You speak for your nation now — every word carries two flags. <strong>Term ends ${escHtml(tickToDate(termEnds))}.</strong>${strikes > 0 ? ' <span style="color:#c87a7a;">One censure on record — the next recalls you.</span>' : ''}</div>
         </div>
       </div>
