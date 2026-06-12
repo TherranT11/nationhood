@@ -679,13 +679,17 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // hq_city as text).
     let hqTaxCut = false;
     try {
-      const { data: hqCities } = await _supabase.from('cities')
+      const { data: hqCities, error: hqErr } = await _supabase.from('cities')
         .select('city_name, tax_package_discount_charges')
         .eq('nation_id', corp.hq_nation_id);
+      if (hqErr) throw hqErr;
       const hqRow = (hqCities || []).find(c =>
         (c.city_name || '').toLowerCase() === (corp.hq_city || '').toLowerCase());
       hqTaxCut = (Number(hqRow?.tax_package_discount_charges) || 0) > 0;
-    } catch { /* display-only — show undiscounted */ }
+    } catch (e) {
+      // Display mirror only — undiscounted prices still confirm fine.
+      console.warn('[business-corp] HQ tax-package read failed:', e?.message || e);
+    }
     const hqDisc = (cost) => hqTaxCut ? Math.round(cost * 0.90) : cost;
     const hqTaxNoteHtml = hqTaxCut
       ? `<div class="dim-line" style="margin-top:6px;">−10% applied — ${esc(corp.hq_city)} has an active tax package.</div>`

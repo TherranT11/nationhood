@@ -14,6 +14,9 @@
 --
 --   • _consume_tax_package_charge(city) — the one consume+rebate
 --     seam; request_building_construction re-emits onto it.
+--   • _tax_package_city(nation, name) — the one HQ-city resolver
+--     for the name-keyed consumers, locking the charged row so two
+--     concurrent actions can't both discount off one charge.
 --   • businessman_start_corporation (20270889 body): -10% on the
 --     founding cost when the chosen city has charges — banking's
 --     20/80 split applies to the discounted figure.
@@ -40,6 +43,25 @@ BEGIN
 END $$;
 
 REVOKE EXECUTE ON FUNCTION public._consume_tax_package_charge(uuid) FROM PUBLIC;
+
+-- The HQ-city resolver for upgrades (corps carry hq_nation_id + a
+-- text hq_city, no city id): the charged city's id, or NULL. FOR
+-- UPDATE locks the row so check-then-consume serializes — under
+-- READ COMMITTED the loser re-evaluates charges > 0 after the lock
+-- and pays full price.
+CREATE OR REPLACE FUNCTION public._tax_package_city(p_nation_id uuid, p_city_name text)
+RETURNS uuid
+LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+    SELECT id FROM cities
+     WHERE nation_id = p_nation_id
+       AND lower(city_name) = lower(COALESCE(p_city_name, ''))
+       AND COALESCE(tax_package_discount_charges, 0) > 0
+     LIMIT 1
+     FOR UPDATE
+$$;
+
+REVOKE EXECUTE ON FUNCTION public._tax_package_city(uuid, text) FROM PUBLIC;
 
 -- ── 2. Founding ───────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.businessman_start_corporation(
@@ -90,8 +112,11 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
+    -- Locked: the tax-package check below must serialize against a
+    -- concurrent consumer of the city's last charge.
     SELECT * INTO v_city FROM cities
-     WHERE id = p_city_id AND nation_id = v_fac.nation_id;
+     WHERE id = p_city_id AND nation_id = v_fac.nation_id
+     FOR UPDATE;
     IF v_city.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'invalid_city');
     END IF;
@@ -196,8 +221,7 @@ DECLARE
     v_corp entrepreneur_corps%ROWTYPE;
     v_tick int;
     v_cost bigint;
-    v_city cities%ROWTYPE;
-    v_tax  boolean := false;
+    v_tax_city uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -231,15 +255,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
-    -- Three assets have chartered ladders: the yard (HEAVY
-    -- EQUIPMENT), PROJECT MANAGEMENT, and SUPPLY & MATERIAL. All
-    -- climb the same price ladder (design calls: PM and Supply
-    -- mirror the yard's $7-40M).
-    -- All five assets now climb the same price ladder.
-    IF p_asset NOT IN ('heavy_equipment', 'project_management', 'supply_material',
-                       'regulatory_compliance', 'system_design') THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'invalid_asset');
-    END IF;
+    -- All five assets climb the same price ladder ($7-40M).
     IF p_asset = 'heavy_equipment' THEN
         v_cost := yard_upgrade_cost(COALESCE(v_corp.supply_tier, 0) + 1);
     ELSIF p_asset = 'supply_material' THEN
@@ -264,12 +280,8 @@ BEGIN
     -- City tax package (20270890): an active package in the HQ city
     -- discounts the spend 10%; the charge is consumed (with its
     -- +1 Growth / -1 Unemployment rebate) only when the action lands.
-    SELECT * INTO v_city FROM cities
-     WHERE nation_id = v_corp.hq_nation_id
-       AND lower(city_name) = lower(COALESCE(v_corp.hq_city, ''))
-     LIMIT 1;
-    v_tax := v_city.id IS NOT NULL AND COALESCE(v_city.tax_package_discount_charges, 0) > 0;
-    IF v_tax THEN
+    v_tax_city := _tax_package_city(v_corp.hq_nation_id, v_corp.hq_city);
+    IF v_tax_city IS NOT NULL THEN
         v_cost := ROUND(v_cost * 0.90);
     END IF;
 
@@ -299,13 +311,13 @@ BEGIN
            exec_action_tick = v_tick
      WHERE id = p_corp_id;
 
-    IF v_tax THEN
-        PERFORM _consume_tax_package_charge(v_city.id);
+    IF v_tax_city IS NOT NULL THEN
+        PERFORM _consume_tax_package_charge(v_tax_city);
     END IF;
 
     PERFORM _log_corp_history(p_corp_id, v_tick, format('Logistical Overhaul — upgraded the %s asset ($%s).', replace(p_asset, '_', ' '), v_cost));
     RETURN jsonb_build_object('success', true, 'asset', p_asset, 'cost', v_cost,
-        'tax_package_applied', v_tax,
+        'tax_package_applied', v_tax_city IS NOT NULL,
         'new_tier', CASE p_asset
                          WHEN 'heavy_equipment'       THEN COALESCE(v_corp.supply_tier, 0) + 1
                          WHEN 'supply_material'       THEN COALESCE(v_corp.materials_tier, 0) + 1
@@ -327,8 +339,7 @@ DECLARE
     v_corp entrepreneur_corps%ROWTYPE;
     v_tier int;
     v_cost bigint;
-    v_city cities%ROWTYPE;
-    v_tax  boolean := false;
+    v_tax_city uuid;
     v_tick int;
 BEGIN
     IF v_uid IS NULL THEN
@@ -380,12 +391,8 @@ BEGIN
     -- City tax package (20270890): an active package in the HQ city
     -- discounts the spend 10%; the charge is consumed (with its
     -- +1 Growth / -1 Unemployment rebate) only when the action lands.
-    SELECT * INTO v_city FROM cities
-     WHERE nation_id = v_corp.hq_nation_id
-       AND lower(city_name) = lower(COALESCE(v_corp.hq_city, ''))
-     LIMIT 1;
-    v_tax := v_city.id IS NOT NULL AND COALESCE(v_city.tax_package_discount_charges, 0) > 0;
-    IF v_tax THEN
+    v_tax_city := _tax_package_city(v_corp.hq_nation_id, v_corp.hq_city);
+    IF v_tax_city IS NOT NULL THEN
         v_cost := ROUND(v_cost * 0.90);
     END IF;
 
@@ -413,8 +420,8 @@ BEGIN
         franchise_tier     = CASE WHEN p_asset = 'franchise'     THEN v_tier + 1 ELSE franchise_tier END
      WHERE id = p_corp_id;
 
-    IF v_tax THEN
-        PERFORM _consume_tax_package_charge(v_city.id);
+    IF v_tax_city IS NOT NULL THEN
+        PERFORM _consume_tax_package_charge(v_tax_city);
     END IF;
 
     PERFORM _log_corp_history(p_corp_id, v_tick,
@@ -423,7 +430,7 @@ BEGIN
 
     RETURN jsonb_build_object('success', true,
         'asset', p_asset, 'tier', v_tier + 1, 'cost', v_cost,
-        'tax_package_applied', v_tax);
+        'tax_package_applied', v_tax_city IS NOT NULL);
 END $$;
 
 -- ── 5. Construction requests ride the shared seam ─────────────────
