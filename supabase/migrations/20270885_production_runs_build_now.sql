@@ -47,6 +47,16 @@
 
 BEGIN;
 
+-- Vestigial columns under the build-now model (kept for the legacy
+-- row shape; nothing reads them on 'running' rows anymore):
+--   quantity          → stores vehicle_production_rate() at assign
+--   unit_cost         → snapshot at assign (per-build cost derives
+--                       from the blueprint's xp_cost each turn)
+--   total_cost        → 0 on new assignments
+--   completes_at_tick → = started_tick on new assignments
+--   bonus_units       → always 0 (turn bonuses land directly)
+-- `produced` is live: lifetime vehicles built by the line.
+
 -- ── 1. Convert in-flight prepaid runs ─────────────────────────────
 DO $do$
 DECLARE
