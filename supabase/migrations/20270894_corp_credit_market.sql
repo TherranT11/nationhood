@@ -275,7 +275,18 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'comments_too_long');
     END IF;
 
-    -- Lock the bank: allowance + treasury checks serialize.
+    -- Lock the request FIRST — the accept path takes the same lock
+    -- first, so a simultaneous accept and offer serialize instead of
+    -- deadlocking, and no offer can land on a just-funded request.
+    SELECT * INTO v_req FROM corp_loan_requests WHERE id = p_request_id FOR UPDATE;
+    IF v_req.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'request_not_found');
+    END IF;
+    IF v_req.status <> 'open' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'request_closed');
+    END IF;
+
+    -- Then the bank: allowance + treasury checks serialize.
     SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_bank_corp_id FOR UPDATE;
     IF v_bank.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
@@ -293,14 +304,6 @@ BEGIN
     -- No sheet, no lending — the offer's rate IS the posted prime.
     IF v_bank.bank_prime_rate_bps IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_rate_sheet');
-    END IF;
-
-    SELECT * INTO v_req FROM corp_loan_requests WHERE id = p_request_id;
-    IF v_req.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'request_not_found');
-    END IF;
-    IF v_req.status <> 'open' THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'request_closed');
     END IF;
 
     SELECT * INTO v_borrower FROM entrepreneur_corps WHERE id = v_req.corp_id;
@@ -391,6 +394,9 @@ BEGIN
     v_fac := _corp_owner_faction(v_borrower.owner_faction_id, v_uid);
     IF v_fac.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+    IF lower(COALESCE(v_fac.status, '')) = 'arrested' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
     -- The vault funds the loan NOW — re-check, then move the money.
@@ -488,6 +494,9 @@ BEGIN
     v_fac := _corp_owner_faction(v_borrower.owner_faction_id, v_uid);
     IF v_fac.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+    IF lower(COALESCE(v_fac.status, '')) = 'arrested' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;

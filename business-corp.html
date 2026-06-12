@@ -3682,7 +3682,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const isBank = corp.industry === 'banking';
 
         const loanSel = _supabase.from('corp_bank_loans')
-          .select('id, bank_corp_id, borrower_corp_id, principal, rate_bps, due_tick, balance, accrued_interest, last_accrual_tick, collateral_asset, status, bank:entrepreneur_corps!bank_corp_id(name), borrower:entrepreneur_corps!borrower_corp_id(name)')
+          .select('id, bank_corp_id, borrower_corp_id, rate_bps, due_tick, balance, accrued_interest, last_accrual_tick, collateral_asset, bank:entrepreneur_corps!bank_corp_id(name), borrower:entrepreneur_corps!borrower_corp_id(name)')
           .or(`borrower_corp_id.eq.${corp.id},bank_corp_id.eq.${corp.id}`)
           .eq('status', 'active')
           .order('due_tick', { ascending: true });
