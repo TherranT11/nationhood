@@ -30,7 +30,6 @@
 .anchor { text-align:right; padding-left:28px;
   border-left:0.5px solid rgba(255,255,255,0.08); min-width:280px; }
 .anchor-label   { color:#555; font-size:10px; letter-spacing:0.15em; margin-bottom:6px; }
-.anchor-message { color:#888; font-size:14px; font-style:italic; line-height:1.5; max-width:280px; margin-left:auto; }
 /* Player Nickname row — sits under the AFFILIATION block in the
    anchor. Toggle between display + inline edit. The pencil opens
    edit mode; ✓ saves, ✕ cancels. 12-char limit enforced both
@@ -432,7 +431,6 @@
   .nc-input-pill { display:none; }
   .hero { grid-template-columns:1fr; gap:18px; }
   .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
-  .anchor-message { margin-left:0; max-width:none; }
   .stats-row { grid-template-columns:repeat(2, 1fr); }
   .identity-body .name { flex-wrap:wrap; gap:6px; }
   .identity-body .name .first, .identity-body .name .last { font-size:32px; }
@@ -1299,9 +1297,7 @@
       </div>
     </div>
     <div class="anchor">
-      <div class="anchor-label">AFFILIATION</div>
-      <div class="anchor-message" id="hero-affiliation">This character has no affiliation.</div>
-      <div class="anchor-nick">
+      <div class="anchor-nick" style="margin-top:0; padding-top:0; border-top:none;">
         <div class="anchor-label">PLAYER NICKNAME</div>
         <div class="anchor-nick-row" id="nick-row"></div>
       </div>
@@ -1401,7 +1397,6 @@ import { COMMITTEES } from './js/committees.js';
 import { isFactionInactive, getFactionDashboardUrl } from './js/game/factions.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
-const NO_AFFILIATION_MESSAGE = 'This character has no affiliation.';
 // Dispatch bucket categories for the World Events panel.
 //
 // POLITICS_CATEGORIES on this surface is intentionally NARROW: only
@@ -2115,26 +2110,9 @@ function renderHero(shard) {
   document.getElementById('hero-nation').textContent = (nation && nation.name) || '—';
   document.getElementById('hero-career').textContent = career;
   renderNicknameRow((politician.nickname || '').trim());
-  // Affiliation: held role + party affiliation, in whichever
-  // combination applies. Role text comes from office first, then
-  // ministry; collapses with the party name into "{Role} · {Party}"
-  // when both exist, mirroring the office+party form. Previously
-  // dropped ministry on party+ministry players (rendered as just
-  // "Party Member of X") and dropped office on office-only players
-  // with no party (rendered as NO_AFFILIATION_MESSAGE). Same OFFICE_
-  // TITLES + ministryName SoT as politician-career.html and the
-  // careerLabel() helper.
-  const office   = politician.politician_office || null;
-  const ministry = politician.politician_ministry || null;
-  const roleText = office
-    ? officeTitle(office)
-    : (ministry ? `Civil Servant of ${ministryName(ministry) || ministry}` : '');
-  let affiliation;
-  if (roleText && party)  affiliation = `${roleText} · ${party.faction_name}`;
-  else if (roleText)      affiliation = roleText;
-  else if (party)         affiliation = `Party Member of ${party.faction_name}`;
-  else                    affiliation = NO_AFFILIATION_MESSAGE;
-  document.getElementById('hero-affiliation').textContent = affiliation;
+  // The hero's old AFFILIATION line was removed — the Current
+  // Affiliation cards and the Party Membership box own that
+  // information further down the page.
 }
 
 // Paint the split hero name. first goes in the bold span, last + any
