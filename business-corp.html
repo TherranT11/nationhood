@@ -3382,13 +3382,22 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const IR_PRIME   = [600, 800, 1000, 1200];
         let irDeposit = Number(corp.bank_deposit_rate_bps) || 200;
         let irPrime   = Number(corp.bank_prime_rate_bps)   || 800;
+        let irInFlight = false;
 
         const irPerTickPerM = (bps) => Math.round(1000000 * bps / 10000 / 12);
-        function irShowMath() {
+        function irRefresh() {
           document.getElementById('ir-math').textContent =
             `Deposits cost ${hfFmtBig(irPerTickPerM(irDeposit))}/tick per $1M held · `
             + `loans earn ${hfFmtBig(irPerTickPerM(irPrime))}/tick per $1M lent · `
             + `spread ${(irPrime - irDeposit) / 100}%.`;
+          // Re-posting the identical sheet would burn the day's
+          // executive action for nothing — keep confirm locked until
+          // a pill actually differs from the posted rates.
+          const unchanged = Number(corp.bank_deposit_rate_bps) === irDeposit
+                         && Number(corp.bank_prime_rate_bps)   === irPrime;
+          const btn = document.getElementById('ir-confirm');
+          btn.disabled = unchanged || irInFlight;
+          btn.title = unchanged ? 'This is already your posted sheet — pick a different rate.' : '';
         }
         function irPillRow(hostId, values, current, onPick) {
           const host = document.getElementById(hostId);
@@ -3398,19 +3407,18 @@ import { CITY_STATS } from './js/game/city-labels.js';
             pill.addEventListener('click', () => {
               host.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === pill));
               onPick(Number(pill.dataset.v));
-              irShowMath();
+              irRefresh();
             });
           });
         }
         document.getElementById('ea-set-rates').addEventListener('click', () => {
           irPillRow('ir-deposit', IR_DEPOSIT, irDeposit, v => { irDeposit = v; });
           irPillRow('ir-prime',   IR_PRIME,   irPrime,   v => { irPrime = v; });
-          irShowMath();
+          irRefresh();
           document.getElementById('ir-overlay').classList.add('open');
         });
         wireModalClose('ir-overlay', 'ir-cancel');
 
-        let irInFlight = false;
         document.getElementById('ir-confirm').addEventListener('click', async () => {
           if (irInFlight) return;
           irInFlight = true;
