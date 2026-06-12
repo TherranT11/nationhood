@@ -184,12 +184,12 @@
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
   #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay,
-  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay, #sp-overlay { position:fixed;
+  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay, #sp-overlay, #bo-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
   #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open,
-  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open, #sp-overlay.open { display:flex; }
+  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open, #sp-overlay.open, #bo-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -726,6 +726,26 @@
   </div>
 </div>
 
+<!-- Bank Logistical Overhaul (20270896). The five bank assets on
+     the shared construction price ladder. Tiers only for now —
+     effects come online as each system lands. -->
+<div id="bo-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Logistical <em>Overhaul</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: invest capital to permanently upgrade one of the
+        bank&rsquo;s five assets — the construction price ladder, by level. <strong>Asset
+        effects come online as each banking system lands.</strong></div>
+      <div class="jm-lab">SELECT AN ASSET</div>
+      <div id="bo-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="bo-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="bo-confirm" disabled title="Pick an asset">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
 <!-- Request Loan (any non-bank corp, 20270894). -->
 <div id="rq-overlay">
   <div class="jm-modal">
@@ -786,7 +806,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, bank_deposit_rate_bps, bank_prime_rate_bps, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, bank_deposit_rate_bps, bank_prime_rate_bps, bank_branch_tier, bank_vault_tier, bank_underwriting_tier, bank_trading_tier, bank_clearing_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year, expenses_ytd, expenses_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax, market_heat, market_heat_updated_tick, crash_lamps),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -2112,7 +2132,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">📉</div>
               <div class="nm">SUBPRIME PACKAGING</div>
               <div class="soon">Lucrative. Risky. Systemic.</div>
-            </div>` + eaComingSoon(1)
+            </div>
+            <div class="ea-card live" id="ea-bank-overhaul">
+              <div class="ic">🏭</div>
+              <div class="nm">LOGISTICAL OVERHAUL</div>
+              <div class="soon">Permanently upgrade an asset</div>
+            </div>`
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
@@ -3859,6 +3884,82 @@ import { CITY_STATS } from './js/game/city-labels.js';
           } catch (e) {
             alert('Could not package: ' + (e?.message || e));
             spInFlight = false;
+            btn.disabled = false;
+          }
+        });
+        // ── Logistical Overhaul (20270896) ────────────────────────
+        // The five bank assets on the shared yard_upgrade_cost
+        // ladder; hqDisc shows the tax-package discount the server
+        // recomputes. Tiers only — effect wiring is a later slice.
+        const BANK_ASSETS = [
+          ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Retail reach across the nation.'],
+          ['vault',          'VAULT',            'bank_vault_tier',        'The reserve itself — what survives a bad day.'],
+          ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'How big a loan the bank can responsibly write.'],
+          ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      'The paper operation — structured products.'],
+          ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'Settlement plumbing for longer, larger paper.'],
+        ];
+        const BANK_LADDER_COST = { 1: 7000000, 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
+        let boAsset = null;
+        document.getElementById('ea-bank-overhaul').addEventListener('click', () => {
+          boAsset = null;
+          const host = document.getElementById('bo-rows');
+          host.innerHTML = BANK_ASSETS.map(([key, label, col, desc]) => {
+            const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
+            const next = tier < 5 ? BANK_LADDER_COST[tier + 1] : null;
+            return `
+              <div class="jm-rung${next ? '' : ' locked'}" data-asset="${esc(key)}" data-cost="${next || 0}"
+                ${next ? '' : 'title="Already at the top of the ladder"'}>
+                <div class="top">
+                  <div>
+                    <div class="rung-no">${esc(label)}</div>
+                    <div class="nm">${tier === 0 ? 'Not built' : `Level ${tier}`}</div>
+                  </div>
+                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(hqDisc(next)))}` : 'MAX LEVEL'}</span>
+                </div>
+                <div class="ds">${esc(desc)}</div>
+              </div>`;
+          }).join('') + hqTaxNoteHtml;
+          host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
+            row.addEventListener('click', () => {
+              boAsset = row.dataset.asset;
+              host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
+              const btn = document.getElementById('bo-confirm');
+              btn.disabled = false;
+              btn.textContent = `CONFIRM — ${hfFmtBig(hqDisc(Number(row.dataset.cost)))}`;
+              btn.title = '';
+            });
+          });
+          const btn = document.getElementById('bo-confirm');
+          btn.disabled = true;
+          btn.textContent = 'CONFIRM';
+          btn.title = 'Pick an asset';
+          document.getElementById('bo-overlay').classList.add('open');
+        });
+        wireModalClose('bo-overlay', 'bo-cancel');
+        let boInFlight = false;
+        document.getElementById('bo-confirm').addEventListener('click', async () => {
+          if (boInFlight || !boAsset) return;
+          boInFlight = true;
+          const btn = document.getElementById('bo-confirm');
+          btn.disabled = true;
+          try {
+            const { data, error: boErr } = await _supabase.rpc('bank_logistical_overhaul',
+              { p_corp_id: corp.id, p_asset: boAsset });
+            if (boErr) throw boErr;
+            if (!data?.success) {
+              const REASON = {
+                max_tier: 'Already at the top of the ladder.',
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                insufficient_treasury: `The treasury can\u2019t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+                not_owner: 'Only the owner upgrades assets.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not upgrade: ' + (e?.message || e));
+            boInFlight = false;
             btn.disabled = false;
           }
         });
