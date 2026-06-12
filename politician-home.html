@@ -2362,7 +2362,7 @@ const PARTY_MEMBER_ACTIONS = [
 const MAYOR_ACTIONS = [
   { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
-  { ic: '📋', name: 'TAX PACKAGE',   cost: 'See tiers',          desc: 'Pass a Minor / Moderate / Major tax cut. Pay upfront Growth + Jobs; the next 2-5 construction requests in this city get -10% off and rebate +1 Growth +1 Jobs each. Blocked while a package is active.', action: 'tax-package' },
+  { ic: '📋', name: 'TAX PACKAGE',   cost: 'See tiers',          desc: 'Pass a Minor / Moderate / Major tax cut. Pay upfront Growth and take an Unemployment hit; the next 2-5 construction requests in this city get -10% off and each rebates +1 Growth, -1 Unemployment. Blocked while a package is active.', action: 'tax-package' },
 ];
 // City Council President (Tier 3 Local Legislative) — 20270744. Same
 // Propose Ordinance flow as CCM (shared modal + RPC), with a -1

@@ -484,12 +484,14 @@ BEGIN
         v_tick + GREATEST(1, COALESCE(p_bidding_ticks, 6)), '{}'::jsonb, v_tick
     ) RETURNING id INTO v_id;
 
-    -- Tax Package consumption: decrement charge, rebate +1 Growth +1 Jobs.
+    -- Tax Package consumption: decrement charge, rebate +1 Growth and
+    -- -1 Unemployment (20270881: the agreement puts people to work —
+    -- same direction call as plant completions).
     IF v_tax_active THEN
         UPDATE cities
            SET tax_package_discount_charges = GREATEST(0, COALESCE(tax_package_discount_charges, 0) - 1),
-               growth = LEAST(10, GREATEST(1, COALESCE(growth, 5) + 1)),
-               jobs   = LEAST(10, GREATEST(1, COALESCE(jobs, 5)   + 1))
+               growth       = LEAST(10, GREATEST(1, COALESCE(growth, 5) + 1)),
+               unemployment = LEAST(10, GREATEST(1, COALESCE(unemployment, 5) - 1))
          WHERE id = p_city_id;
     END IF;
 
