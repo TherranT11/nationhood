@@ -109,14 +109,6 @@
 .pnl-body { padding:20px 28px; display:flex; flex-direction:column; gap:18px; }
 
 .pnl-fg { display:flex; flex-direction:column; gap:7px; }
-/* Advanced Options — collapsible tuck for the optional extras. */
-.pnl-adv { border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; padding:10px 12px; }
-.pnl-adv-sum { font-size:8.5px; letter-spacing:0.16em; color:var(--leg); font-weight:700;
-  cursor:pointer; user-select:none; list-style:none; }
-.pnl-adv-sum::-webkit-details-marker { display:none; }
-.pnl-adv-sum::before { content:'▸'; margin-right:7px; }
-.pnl-adv[open] .pnl-adv-sum::before { content:'▾'; }
-.pnl-adv[open] .pnl-adv-sum { margin-bottom:10px; }
 .pnl-fg-lab { font-size:8.5px; letter-spacing:0.16em; color:var(--leg); font-weight:700; }
 .pnl-fg-lab .req { color:var(--red); margin-left:3px; }
 .pnl-fg-hint { font-size:9px; color:var(--faint); font-style:italic; line-height:1.5; margin-top:-2px; }
@@ -1403,7 +1395,6 @@ function pplReasonText(reason) {
     option_not_found:        'Selected option no longer exists.',
     option_policy_mismatch:  'The selected option doesn\'t belong to the chosen policy.',
     no_change_proposed:      'The selected option is already the active one.',
-    cooldown:                'You\'ve already used your MP action this tick.',
   })[reason] || `Could not submit: ${reason}`;
 }
 </script>

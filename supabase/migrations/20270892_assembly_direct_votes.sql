@@ -71,6 +71,10 @@ ALTER TABLE public.committee_policy_proposals
     DROP COLUMN IF EXISTS committee_id;
 ALTER TABLE public.committee_proposals
     DROP COLUMN IF EXISTS committee_id;
+-- Chair bids are gone with the committees — the per-faction bid
+-- cooldown column has no writer or reader left.
+ALTER TABLE public.factions
+    DROP COLUMN IF EXISTS next_chair_bid_tick;
 
 COMMENT ON TABLE public.committee_proposals IS
     'Statute and amendment proposals (legacy name). Since 20270892 a proposal opens its 3-tick assembly floor vote at submit time; status=enacted rows are the Statutes page. persona_roles is a dead column from the hearings era.';
@@ -594,8 +598,8 @@ BEGIN
     );
 END $$;
 
-GRANT EXECUTE ON FUNCTION public.committee_propose_policy_change(uuid, uuid, uuid)
-    TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.committee_propose_policy_change(uuid, uuid, uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.committee_propose_policy_change(uuid, uuid, uuid) TO authenticated;
 
 -- ── 7b. The Tax Holiday Act files straight to the floor too ───────
 -- 20270873 body minus the Finance committee routing; the archetype
