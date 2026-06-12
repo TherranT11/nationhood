@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { _supabase } from './supabase-client.js';
 
-export const LEAVE_PARTY_CONFIRM = 'Leave your political party? This costs 5 Influence.';
+export const LEAVE_PARTY_CONFIRM = 'Leave your political party?';
 
 export async function callPartyAction(mode, politicianId, partyId) {
     try {
