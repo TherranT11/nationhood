@@ -184,12 +184,12 @@
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
   #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay,
-  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay { position:fixed;
+  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay, #sp-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
   #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open,
-  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open { display:flex; }
+  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open, #sp-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -700,6 +700,32 @@
   </div>
 </div>
 
+<!-- Subprime Packaging (banking, 20270895). The push-your-luck
+     action: heat gauge, five permanent crash lamps, one button. -->
+<div id="sp-overlay">
+  <div class="jm-modal" style="max-width:620px;">
+    <div class="jm-head"><div class="jm-title">Subprime <em>Packaging</em></div></div>
+    <div class="jm-body" id="sp-body">
+      <div class="db-mech">The Mechanic: bundle junk paper and sell it — cash now, booked as
+        income. Every package (yours or any rival&rsquo;s) heats this nation&rsquo;s market;
+        each pull rolls 1d100 against the heat, and a roll at or under it lights a crash
+        indicator. <strong>Lamps never go dark.</strong> The fifth lights the fuse.</div>
+      <div class="jm-lab">MARKET HEAT</div>
+      <div style="height:14px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;overflow:hidden;">
+        <div id="sp-heatbar" style="height:100%;width:0%;background:#8aaa6a;transition:width 0.3s;"></div>
+      </div>
+      <div class="db-static dim-line" id="sp-heatline" style="margin-top:6px;"></div>
+      <div class="jm-lab" style="margin-top:12px;">MARKET CRASH INDICATORS</div>
+      <div id="sp-lamps" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      <div class="db-static" id="sp-math" style="margin-top:12px;"></div>
+    </div>
+    <div class="jm-foot" id="sp-foot">
+      <button type="button" class="jm-btn secondary" id="sp-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="sp-confirm">PACKAGE THE TRANCHES</button>
+    </div>
+  </div>
+</div>
+
 <!-- Request Loan (any non-bank corp, 20270894). -->
 <div id="rq-overlay">
   <div class="jm-modal">
@@ -762,7 +788,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
       .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, bank_deposit_rate_bps, bank_prime_rate_bps, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year, expenses_ytd, expenses_ytd_year,
-               nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
+               nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax, market_heat, market_heat_updated_tick, crash_lamps),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
       .eq('id', corpId).maybeSingle();
     if (error) throw error;
@@ -2081,7 +2107,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">🤝</div>
               <div class="nm">ISSUE LOAN</div>
               <div class="soon">Disburse an accepted offer</div>
-            </div>` + eaComingSoon(2)
+            </div>
+            <div class="ea-card live" id="ea-subprime">
+              <div class="ic">📉</div>
+              <div class="nm">SUBPRIME PACKAGING</div>
+              <div class="soon">Lucrative. Risky. Systemic.</div>
+            </div>` + eaComingSoon(1)
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
@@ -3759,6 +3790,78 @@ import { CITY_STATS } from './js/game/city-labels.js';
           ilLoad();
         });
         wireModalClose('il-overlay', 'il-cancel');
+
+        // ── Subprime Packaging (20270895) ─────────────────────────
+        // Display mirrors of the server's math: lazy-cooled heat
+        // (-2/tick against the stamp), the post-package heat (+12),
+        // the payout ($1.5M + $50K × heat) and the lamp odds. The
+        // RPC recomputes all of it under a nation lock.
+        const SP_LAMPS = ['TOXIC PAPER', 'OVERLEVERAGE', 'BLIND RATINGS', 'CREDIT FREEZE', 'MARGIN CALL'];
+        const spLiveHeat = () => Math.max(0, (Number(corp.nation?.market_heat) || 0)
+          - 2 * Math.max(0, currentTick - (Number(corp.nation?.market_heat_updated_tick) || 0)));
+        let spInFlight = false;
+        function spRender() {
+          const lamps = Math.min(5, Number(corp.nation?.crash_lamps) || 0);
+          const heatNow = spLiveHeat();
+          const heatNext = Math.min(100, heatNow + 12);
+          const payout = 1500000 + heatNext * 50000;
+          const bar = document.getElementById('sp-heatbar');
+          bar.style.width = heatNow + '%';
+          bar.style.background = heatNow > 60 ? '#c66' : heatNow > 30 ? '#c89e6e' : '#8aaa6a';
+          document.getElementById('sp-heatline').textContent =
+            `${corp.nation?.name || 'This nation'}: ${heatNow} / 100 — every bank's packages feed this number. Cools 2 per tick.`;
+          document.getElementById('sp-lamps').innerHTML = SP_LAMPS.map((nm, i) => `
+            <div style="flex:1 1 18%;min-width:96px;text-align:center;padding:8px 4px;border-radius:4px;font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:0.06em;
+              ${i < lamps
+                ? 'background:#1a0d0d;border:1px solid #c66;color:#e88;'
+                : 'background:#0a0a0a;border:1px solid rgba(255,255,255,0.1);color:#555;'}">
+              ${i < lamps ? '🔴' : '⚫'}<br>${nm}</div>`).join('');
+          document.getElementById('sp-math').innerHTML =
+            `This package: <strong>${hfFmtBig(payout)}</strong> into the treasury · heat rises to ${heatNext} · `
+            + `lamp risk: <strong>${heatNext}%</strong> (1d100 vs ${heatNext})`
+            + (lamps === 4 ? ' · <span style="color:#c66;font-weight:700;">ONE LAMP FROM THE CRASH</span>' : '');
+        }
+        document.getElementById('ea-subprime').addEventListener('click', () => {
+          spRender();
+          document.getElementById('sp-overlay').classList.add('open');
+        });
+        wireModalClose('sp-overlay', 'sp-cancel');
+        document.getElementById('sp-confirm').addEventListener('click', async () => {
+          if (spInFlight) return;
+          spInFlight = true;
+          const btn = document.getElementById('sp-confirm');
+          btn.disabled = true;
+          try {
+            const { data, error: spErr } = await _supabase.rpc('bank_package_subprime',
+              { p_corp_id: corp.id });
+            if (spErr) throw spErr;
+            if (!data?.success) {
+              const REASON = {
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                not_owner: 'Only the owner packages paper.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            // The receipt replaces the form — backdrop close reloads.
+            const lampLine = data.crashed
+              ? `<div class="db-mech" style="color:#e88;font-size:15px;">THE ROLL CAME UP ${esc(String(data.roll))}. <strong>MARGIN CALL</strong> lights — the market crashes. Depositors besiege every branch in ${esc(corp.nation?.name || 'the nation')}; half your treasury is written down. The paper you already sold stays sold.</div>`
+              : data.lamp_lit
+                ? `<div class="db-mech">Sold <strong>${hfFmtBig(data.payout)}</strong> of paper. Rolled ${esc(String(data.roll))} vs heat ${esc(String(data.heat))} — <strong style="color:#e88;">${esc(SP_LAMPS[Math.min(4, data.lamps - 1)])}</strong> lights up. ${esc(String(data.lamps))} of 5.</div>`
+                : `<div class="db-mech">Sold <strong>${hfFmtBig(data.payout)}</strong> of paper. Rolled ${esc(String(data.roll))} vs heat ${esc(String(data.heat))} — the music keeps playing. Heat now ${esc(String(data.heat))}.</div>`;
+            document.getElementById('sp-body').innerHTML = lampLine;
+            document.getElementById('sp-foot').innerHTML =
+              '<button type="button" class="jm-btn" id="sp-done">CLOSE</button>';
+            document.getElementById('sp-done').addEventListener('click', () => window.location.reload());
+            document.getElementById('sp-overlay').addEventListener('click', (e) => {
+              if (e.target?.id === 'sp-overlay') window.location.reload();
+            });
+          } catch (e) {
+            alert('Could not package: ' + (e?.message || e));
+            spInFlight = false;
+            btn.disabled = false;
+          }
+        });
       } // end if (eaBanking)
 
       // ── FINANCING (20270894) — every corp's credit-market surface.

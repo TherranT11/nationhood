@@ -1,0 +1,192 @@
+-- ════════════════════════════════════════════════════════════════════
+-- 20270895 — Banking executive action #4: Subprime Packaging
+--
+-- The lucrative, systemic one. The bank bundles junk paper and sells
+-- it for an immediate cash payout — but every package feeds a
+-- per-nation MARKET HEAT gauge shared by every bank, and rolls
+-- against it. The doom clock:
+--
+--   • Heat: +12 per package (cap 100), cooling 2/tick LAZILY — the
+--     live value is max(0, stored - 2 × ticks_elapsed), re-stamped
+--     whenever anything touches it. No timers, ever.
+--   • Payout: $1.5M + $50K × heat (the post-package heat), booked
+--     as revenue_finance — taxable income, unlike loan principal.
+--     The frenzy pays best right at the cliff.
+--   • The roll: 1d100 ≤ heat lights one of the five MARKET CRASH
+--     lamps, in order: TOXIC PAPER, OVERLEVERAGE, BLIND RATINGS,
+--     CREDIT FREEZE, MARGIN CALL. Lamps are PERMANENT (user ruling:
+--     "once a lamp is lit, it's there") — only the crash clears them.
+--   • The fifth lamp: THE CRASH. Every bank in the nation takes a
+--     30% treasury writedown; the bank that lit it takes 50%
+--     (instead, not stacked); the nation takes +10 Unrest; the
+--     event log gets its headline; heat resets to 10, lamps to 0.
+--     Profits already extracted are untouched — getting out one
+--     pull early is the whole game.
+--
+-- The writedown is a pure treasury loss — deliberately NOT pushed
+-- through _corp_log_expense. The payouts were taxed as income on the
+-- way in; the crash is not a tax shelter on the way out.
+-- ════════════════════════════════════════════════════════════════════
+
+BEGIN;
+
+ALTER TABLE public.nations
+    ADD COLUMN IF NOT EXISTS market_heat              int NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS market_heat_updated_tick int NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS crash_lamps              int NOT NULL DEFAULT 0
+        CHECK (crash_lamps BETWEEN 0 AND 5);
+
+COMMENT ON COLUMN public.nations.market_heat IS
+    'Subprime frenzy gauge 0-100 (20270895). Shared by every bank in the nation: +12 per package, -2/tick lazy decay against market_heat_updated_tick. Read live as GREATEST(0, market_heat - 2*(tick - stamp)).';
+COMMENT ON COLUMN public.nations.crash_lamps IS
+    'Market Crash indicators lit, 0-5 (20270895). Permanent until the fifth lights and the market crashes. Names (client display, in order): Toxic Paper, Overleverage, Blind Ratings, Credit Freeze, Margin Call.';
+
+CREATE OR REPLACE FUNCTION public.bank_package_subprime(
+    p_corp_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_uid      uuid := auth.uid();
+    v_bank     entrepreneur_corps%ROWTYPE;
+    v_fac      factions%ROWTYPE;
+    v_nation   nations%ROWTYPE;
+    v_tick     int;
+    v_heat     int;
+    v_payout   bigint;
+    v_roll     int;
+    v_lamp_lit boolean := false;
+    v_lamps    int;
+    v_crashed  boolean := false;
+    v_burned   record;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+    IF p_corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'invalid_arguments');
+    END IF;
+
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_corp_id FOR UPDATE;
+    IF v_bank.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
+    END IF;
+    IF v_bank.industry <> 'banking' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'industry_not_chartered');
+    END IF;
+    v_fac := _corp_owner_faction(v_bank.owner_faction_id, v_uid);
+    IF v_fac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+    IF lower(COALESCE(v_fac.status, '')) = 'arrested' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'arrested');
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+    IF COALESCE(v_bank.exec_action_tick, -1) >= v_tick THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_actions_remaining');
+    END IF;
+
+    -- Lock the nation: heat + lamps are shared state — two banks
+    -- packaging the same market serialize here.
+    SELECT * INTO v_nation FROM nations WHERE id = v_bank.hq_nation_id FOR UPDATE;
+    IF v_nation.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_nation');
+    END IF;
+
+    -- Bring the gauge current (lazy cool), then feed the frenzy.
+    v_heat := GREATEST(0, COALESCE(v_nation.market_heat, 0)
+                  - 2 * GREATEST(0, v_tick - COALESCE(v_nation.market_heat_updated_tick, v_tick)));
+    v_heat := LEAST(100, v_heat + 12);
+
+    -- The payout — richest right at the cliff. Taxable income.
+    v_payout := 1500000 + v_heat * 50000;
+
+    -- The roll: 1d100 ≤ heat lights the next lamp. Permanent.
+    v_roll  := 1 + floor(random() * 100)::int;
+    v_lamps := COALESCE(v_nation.crash_lamps, 0);
+    IF v_roll <= v_heat THEN
+        v_lamp_lit := true;
+        v_lamps := v_lamps + 1;
+    END IF;
+    v_crashed := v_lamps >= 5;
+
+    UPDATE entrepreneur_corps
+       SET treasury_cash    = COALESCE(treasury_cash, 0) + v_payout,
+           exec_action_tick = v_tick
+     WHERE id = p_corp_id;
+    INSERT INTO corp_cash_events (corp_id, tick, category, label, delta, nation_id)
+    VALUES (p_corp_id, v_tick, 'revenue_finance',
+            'Subprime tranches sold', v_payout, v_bank.hq_nation_id);
+
+    IF NOT v_crashed THEN
+        UPDATE nations
+           SET market_heat              = v_heat,
+               market_heat_updated_tick = v_tick,
+               crash_lamps              = v_lamps
+         WHERE id = v_nation.id;
+
+        PERFORM _log_corp_history(p_corp_id, v_tick,
+            format('Packaged subprime tranches — $%s sold. Market Heat %s%s.',
+                   v_payout, v_heat,
+                   CASE WHEN v_lamp_lit
+                        THEN format(', crash indicator %s of 5 lit', v_lamps)
+                        ELSE '' END));
+    ELSE
+        -- ── THE CRASH ─────────────────────────────────────────────
+        -- Every bank in the nation holds the paper. 30% writedown
+        -- across the board; the bank that lit MARGIN CALL takes 50%.
+        -- Pure treasury losses — no expense deduction (the payouts
+        -- were taxed as income; the crash is not a shelter).
+        FOR v_burned IN
+            SELECT id, name, treasury_cash FROM entrepreneur_corps
+             WHERE hq_nation_id = v_nation.id AND industry = 'banking'
+             FOR UPDATE
+        LOOP
+            UPDATE entrepreneur_corps
+               SET treasury_cash = ROUND(COALESCE(treasury_cash, 0)
+                       * CASE WHEN v_burned.id = p_corp_id THEN 0.50 ELSE 0.70 END)
+             WHERE id = v_burned.id;
+            PERFORM _log_corp_history(v_burned.id, v_tick,
+                CASE WHEN v_burned.id = p_corp_id
+                     THEN 'MARKET CRASH — your tranches lit the MARGIN CALL. 50% of the treasury written down.'
+                     ELSE 'MARKET CRASH — the paper went to zero. 30% of the treasury written down.' END);
+        END LOOP;
+
+        UPDATE nations
+           SET market_heat              = 10,
+               market_heat_updated_tick = v_tick,
+               crash_lamps              = 0,
+               unrest                   = LEAST(100, COALESCE(unrest, 0) + 10)
+         WHERE id = v_nation.id;
+
+        INSERT INTO event_log (
+            nation_id, faction_id, event_name, description_used,
+            category, trigger_key, fired_at_tick
+        ) VALUES (
+            v_nation.id, v_fac.id,
+            'Market Crash',
+            format('MARKET CRASH IN %s — the subprime market collapses. Depositors besiege the branches; every bank writes down its book. %s packaged the tranche that broke it.',
+                   upper(v_nation.name), v_bank.name),
+            'economy', 'bank_market_crash', v_tick
+        );
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success',   true,
+        'payout',    v_payout,
+        'roll',      v_roll,
+        'heat',      CASE WHEN v_crashed THEN 10 ELSE v_heat END,
+        'lamp_lit',  v_lamp_lit,
+        'lamps',     CASE WHEN v_crashed THEN 0 ELSE v_lamps END,
+        'crashed',   v_crashed
+    );
+END $$;
+
+REVOKE EXECUTE ON FUNCTION public.bank_package_subprime(uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.bank_package_subprime(uuid) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+COMMIT;
