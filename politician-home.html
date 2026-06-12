@@ -2006,6 +2006,9 @@ async function init() {
   _supabase.rpc('resolve_due_city_ordinance_proposals')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_city_ordinance_proposals:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
+  _supabase.rpc('resolve_due_committee_floor_votes')
+    .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_committee_floor_votes:', error.message); })
+    .catch(err => console.warn('[politician-home] resolve_due_committee_floor_votes threw:', err?.message || err));
   _supabase.rpc('resolve_due_ambassador_confirmations')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_ambassador_confirmations:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_ambassador_confirmations threw:', err?.message || err));

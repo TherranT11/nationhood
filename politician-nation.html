@@ -1574,6 +1574,8 @@ async function loadVoting(nationId, currentTick) {
   // 20270869) so the section never shows a vote past its deadline.
   try { await _supabase.rpc('resolve_due_ambassador_confirmations'); }
   catch (e) { console.warn('politician-nation: confirmation sweep failed', e?.message || e); }
+  try { await _supabase.rpc('resolve_due_committee_floor_votes'); }
+  catch (e) { console.warn('politician-nation: floor-vote sweep failed', e?.message || e); }
   const { data: ambVotes, error: ambErr } = await _supabase
     .from('ambassador_confirmation_votes')
     .select('id, candidate_name, target_nation_name, party_votes, yes_seats, no_seats, chamber_size, resolve_at_tick')
@@ -1581,6 +1583,13 @@ async function loadVoting(nationId, currentTick) {
     .eq('status', 'active')
     .order('resolve_at_tick', { ascending: true });
   if (ambErr) console.warn('politician-nation: ambassador votes fetch failed', ambErr);
+  const { data: floorVotes, error: floorErr } = await _supabase
+    .from('committee_floor_votes')
+    .select('id, bill_name, category, sponsor_name, party_votes, yes_seats, no_seats, chamber_size, resolve_at_tick')
+    .eq('nation_id', nationId)
+    .eq('status', 'active')
+    .order('resolve_at_tick', { ascending: true });
+  if (floorErr) console.warn('politician-nation: floor votes fetch failed', floorErr);
   const { data, error } = await _supabase
     .from('committee_admission_votes')
     .select('id, committee_id, applicant_party_id, started_at_tick, resolve_at_tick, yes_seats, no_seats, chamber_size, threshold_pct, applicant:factions!applicant_faction_id(leader_first_name, leader_last_name, politician_office, politician_party_id), party:factions!applicant_party_id(faction_name, abbreviation, party_color), committee:committees!committee_id(committee_key)')
@@ -1594,7 +1603,8 @@ async function loadVoting(nationId, currentTick) {
   }
   const votes = data || [];
   const confVotes = ambVotes || [];
-  if (!votes.length && !confVotes.length) {
+  const readings = floorVotes || [];
+  if (!votes.length && !confVotes.length && !readings.length) {
     host.innerHTML = `<div class="sec-empty">No active votes.</div>${footer}`;
     return;
   }
@@ -1612,7 +1622,8 @@ async function loadVoting(nationId, currentTick) {
   if (pErr) console.warn('politician-nation: parties for voting fetch failed', pErr);
   const partyRows = parties || [];
 
-  host.innerHTML = confVotes.map(v => renderAmbassadorVoteCard(v, partyRows, currentTick)).join('')
+  host.innerHTML = readings.map(v => renderFloorVoteCard(v, partyRows, currentTick)).join('')
+    + confVotes.map(v => renderAmbassadorVoteCard(v, partyRows, currentTick)).join('')
     + votes.map(v => renderVoteCard(v, partyRows, currentTick)).join('') + footer;
 }
 
@@ -1621,6 +1632,24 @@ async function loadVoting(nationId, currentTick) {
 // creation (party_votes), so the card shows exactly who is voting
 // for what for the full 3-tick window.
 function renderAmbassadorVoteCard(v, partyRows, currentTick) {
+  return chamberVoteCardHtml(
+    'CHAMBER VOTE &middot; AMBASSADOR CONFIRMATION',
+    `Appointment of ${escHtml(v.candidate_name)} as Ambassador to <span class="serif">${escHtml(v.target_nation_name)}</span>`,
+    v, partyRows, currentTick);
+}
+
+// Committee floor reading (20270883) — the bill's final chamber
+// vote. Division locked at creation: sponsor's party + support
+// archetypes YES, oppose archetypes NO, neutral blocs roll 1D2.
+function renderFloorVoteCard(v, partyRows, currentTick) {
+  const code = v.category ? v.category.charAt(0).toUpperCase() + v.category.slice(1) : 'Statute';
+  return chamberVoteCardHtml(
+    'CHAMBER VOTE &middot; FINAL READING',
+    `${escHtml(v.bill_name)} <span class="serif">&mdash; ${escHtml(code)} Code</span>${v.sponsor_name ? ` &middot; sponsored by ${escHtml(v.sponsor_name)}` : ''}`,
+    v, partyRows, currentTick);
+}
+
+function chamberVoteCardHtml(eyebrow, titleHtml, v, partyRows, currentTick) {
   const ticksRemaining = Math.max(0, Number(v.resolve_at_tick) - currentTick);
   const yes = Number(v.yes_seats) || 0;
   const no  = Number(v.no_seats)  || 0;
@@ -1646,8 +1675,8 @@ function renderAmbassadorVoteCard(v, partyRows, currentTick) {
     <div class="vote-card">
       <div class="vote-head">
         <div class="vote-head-info">
-          <div class="vote-eyebrow">CHAMBER VOTE &middot; AMBASSADOR CONFIRMATION</div>
-          <div class="vote-title">Appointment of ${escHtml(v.candidate_name)} as Ambassador to <span class="serif">${escHtml(v.target_nation_name)}</span></div>
+          <div class="vote-eyebrow">${eyebrow}</div>
+          <div class="vote-title">${titleHtml}</div>
         </div>
         <div class="vote-clock">
           <div class="vote-clock-lab">RESOLVES</div>
