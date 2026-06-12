@@ -1300,7 +1300,40 @@
     </div>
   </div>
 
-  <!-- TOP ROW: World Events (dispatch feed) + Nation Chat side-by-side. -->
+  <div class="stats-row" id="stats-row"></div>
+
+  <div class="section-heading">
+    <span class="roman">I.</span>
+    <span class="sans">Pressing</span>
+    <span class="serif">Issues</span>
+  </div>
+  <div id="pressing-issues"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">II.</span>
+    <span class="sans">Current</span>
+    <span class="serif">Affiliation</span>
+  </div>
+  <div id="affiliation-host"></div>
+  <div id="foreign-affiliation-host"></div>
+  <div id="fis-affiliation-host"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">III.</span>
+    <span class="sans">Party</span>
+    <span class="serif">Membership</span>
+  </div>
+  <div id="party-membership-host"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">IV.</span>
+    <span class="sans">Political</span>
+    <span class="serif">Career</span>
+    <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
+  </div>
+  <div class="career-events" id="career-events"></div>
+
+  <!-- BOTTOM ROW: World Events (dispatch feed) + Nation Chat side-by-side. -->
   <div class="top-row">
 
     <!-- World Events — global event_log feed, 5 category tabs. -->
@@ -1345,32 +1378,6 @@
       </div>
     </div>
   </div>
-
-  <div class="stats-row" id="stats-row"></div>
-
-  <div class="section-heading">
-    <span class="roman">I.</span>
-    <span class="sans">Pressing</span>
-    <span class="serif">Issues</span>
-  </div>
-  <div id="pressing-issues"></div>
-
-  <div class="section-heading" style="margin-top:28px;">
-    <span class="roman">II.</span>
-    <span class="sans">Current</span>
-    <span class="serif">Affiliation</span>
-  </div>
-  <div id="affiliation-host"></div>
-  <div id="foreign-affiliation-host"></div>
-  <div id="fis-affiliation-host"></div>
-
-  <div class="section-heading" style="margin-top:28px;">
-    <span class="roman">III.</span>
-    <span class="sans">Political</span>
-    <span class="serif">Career</span>
-    <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
-  </div>
-  <div class="career-events" id="career-events"></div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
@@ -2018,6 +2025,7 @@ async function init() {
   window.__politicianCtx = ctx;
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
+  renderPartyMembership(ctx);
   // Foreign Service is additive: politicians who've passed the Tier 1
   // exam (20270759) get a second affiliation card below their main one.
   // Function self-noops when the column is null.
@@ -2252,15 +2260,6 @@ const STAT_CARDS = [
     party:  `Reputable members lift the ceiling. Voters trust the whole party more.`,
   },
   {
-    key:   'cap',
-    label: 'CAPITAL',
-    quote: '"Money and favors banked."',
-    earns:  `Salaries. Party allowances. Race payouts. Side channels (some <b>risky</b>).`,
-    spends: `Race entry fees. Party donations. Action costs.`,
-    career: `Higher races cost more to enter. <em>Leadership tiers scale up substantially.</em>`,
-    party:  `Flows two ways — you donate, or the party underwrites your races.`,
-  },
-  {
     key:   'skill',
     label: 'EXPERIENCE',
     quote: '"Are you good at the job?"',
@@ -2277,6 +2276,15 @@ const STAT_CARDS = [
     spends: `Lobbying. Vote-whipping. Calling in favors. Pushing for appointments.`,
     career: `<b>Not a hard gate</b> — the currency that makes appointed and party-internal moves happen.`,
     party:  `Cashed in for party-internal moves — whipping a bloc, securing seats for colleagues.`,
+  },
+  {
+    key:   'cap',
+    label: 'CAPITAL',
+    quote: '"Money and favors banked."',
+    earns:  `Salaries. Party allowances. Race payouts. Side channels (some <b>risky</b>).`,
+    spends: `Race entry fees. Party donations. Action costs.`,
+    career: `Higher races cost more to enter. <em>Leadership tiers scale up substantially.</em>`,
+    party:  `Flows two ways — you donate, or the party underwrites your races.`,
   },
 ];
 
@@ -3225,6 +3233,50 @@ function pickJudicialVariant(faction) {
   if (faction?.politician_state_prosecutor_at_tick      != null) return AFFIL_VARIANTS.state_advocate;
   if (faction?.politician_experienced_advocate_at_tick  != null) return AFFIL_VARIANTS.experienced_advocate;
   return AFFIL_VARIANTS.advocate;
+}
+
+// ─── III. Party Membership ──────────────────────────────────────────
+// One card for the party itself — name, archetype, popularity, seats,
+// description, and the door to the dedicated party page. Reads the
+// enriched ctx.party row the topbar bootstrap already fetches.
+function renderPartyMembership(ctx) {
+  const host = document.getElementById('party-membership-host');
+  if (!host) return;
+  const p = ctx.party;
+  if (!p) {
+    host.innerHTML = `
+      <div class="affil var-party">
+        <div class="ah-row">
+          <div class="ah-badge">🏛</div>
+          <div class="ah-info">
+            <div class="ah-eyebrow">PARTY MEMBERSHIP</div>
+            <div class="ah-name">Independent</div>
+            <div class="ah-desc">You carry no party card. The movements page lists every party recruiting in your nation.</div>
+          </div>
+          <a class="ah-cta" href="politician-movements.html" style="align-self:flex-start;">BROWSE MOVEMENTS</a>
+        </div>
+      </div>`;
+    return;
+  }
+  const pop   = Number(p.popularity_pct);
+  const seats = Number(p.seats) || 0;
+  host.innerHTML = `
+    <div class="affil var-party">
+      <div class="ah-row">
+        <div class="ah-badge">🏛</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">PARTY MEMBERSHIP${p.archetype ? ' &middot; ' + escHtml(p.archetype.toUpperCase()) : ''}${p.party_status ? ' &middot; ' + escHtml(p.party_status.toUpperCase()) : ''}</div>
+          <div class="ah-name">${escHtml(p.faction_name || '—')}</div>
+          <div class="ah-desc">${escHtml(p.party_description || 'No party platform on record.')}</div>
+        </div>
+        <div class="ah-tenure">
+          <span class="ah-tenure-val">${Number.isFinite(pop) ? pop.toFixed(1) + '%' : '—'}</span>
+          <div class="ah-tenure-lab">PARTY POPULARITY</div>
+          <div class="ah-tenure-elected"><strong>${seats}</strong> SEAT${seats === 1 ? '' : 'S'}</div>
+          <a class="ah-cta" href="party.html?id=${encodeURIComponent(p.id)}">PARTY PAGE</a>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderAffiliation(ctx) {

@@ -320,7 +320,7 @@ export async function bootstrapPolitician(activeTab) {
   if (faction.politician_party_id) {
     try {
       const { data, error } = await _supabase.from('factions')
-        .select('id, faction_name, abbreviation, party_status')
+        .select('id, faction_name, abbreviation, party_status, popularity_pct, seats, archetype, party_description')
         .eq('id', faction.politician_party_id)
         .is('abandoned_at', null)
         .maybeSingle();
