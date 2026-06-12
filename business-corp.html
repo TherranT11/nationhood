@@ -659,7 +659,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
       .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
-               treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year,
+               treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year, expenses_ytd, expenses_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
       .eq('id', corpId).maybeSingle();
@@ -1332,6 +1332,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const payrollMonth = Math.max(1, Number(corp.employee_count) || 1) * 1000 + Math.floor(wagesSum / 12);
         const payrollYear = corp.payroll_ytd_year === Math.floor(currentTick / 12)
           ? (Number(corp.payroll_ytd) || 0) : 0;
+        // Operating expenses accumulator (20270888) — same year guard.
+        const expensesYear = corp.expenses_ytd_year === Math.floor(currentTick / 12)
+          ? (Number(corp.expenses_ytd) || 0) : 0;
         const revenueMonth = Number(corp.last_revenue_tick) === currentTick
           ? (Number(corp.last_tick_revenue) || 0) : 0;
         // Display mirror of file_corporate_tax (20270872/73): the 0-10
@@ -1355,7 +1358,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         } catch (e) {
           console.warn('[business-corp] holiday fetch failed:', e?.message || e);
         }
-        const taxesOwed = Math.floor(Math.max(0, revenueYtd) * taxRate / 100);
+        // 20270887/88: taxable base is revenue net of payroll and
+        // operating expenses, mirroring file_corporate_tax.
+        const taxableProfit = Math.max(0, revenueYtd - payrollYear - expensesYear);
+        const taxesOwed = Math.floor(taxableProfit * taxRate / 100);
 
         let lastPaid = 'Never';
         try {
@@ -1380,6 +1386,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div class="v money">${esc(hfFmtBig(payrollMonth))}</div></div>
           <div class="bc-row"><div class="k">PAYROLL COSTS THIS YEAR</div>
             <div class="v money">${esc(hfFmtBig(payrollYear))}</div></div>
+          <div class="bc-row"><div class="k">OPERATING EXPENSES THIS YEAR</div>
+            <div class="v money">${esc(hfFmtBig(expensesYear))}</div></div>
           <div class="bc-row"><div class="k">CORPORATE TAX RATE</div>
             <div class="v">${esc(String(taxRate))}%${holidayNote ? `<span class="sub">${esc(holidayNote)}</span>` : ''}</div></div>
           <div class="bc-row"><div class="k">TAXES OWED</div>
@@ -1453,7 +1461,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             pxTier = null;
             document.getElementById('px-confirm').disabled = true;
             document.getElementById('px-summary').textContent =
-              `Taxable profit (revenue YTD): ${hfFmtBig(Math.max(0, revenueYtd))} · Rate: ${taxRate}% · Owed in full: ${hfFmtBig(taxesOwed)}. Treasury: ${hfFmtBig(Number(corp.treasury_cash) || 0)}.`;
+              `Taxable profit (revenue − payroll − expenses YTD): ${hfFmtBig(taxableProfit)} · Rate: ${taxRate}% · Owed in full: ${hfFmtBig(taxesOwed)}. Treasury: ${hfFmtBig(Number(corp.treasury_cash) || 0)}.`;
             document.getElementById('px-tiers').innerHTML = [100, 75, 50, 25].map(pct => `
               <div class="jm-rung" data-pct="${pct}">
                 <div class="top">
