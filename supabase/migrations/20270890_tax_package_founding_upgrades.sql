@@ -19,7 +19,9 @@
 --     concurrent actions can't both discount off one charge.
 --   • businessman_start_corporation (20270889 body): -10% on the
 --     founding cost when the chosen city has charges — banking's
---     20/80 split applies to the discounted figure.
+--     20/80 split applies to the discounted figure. Every founding
+--     also lifts the home city +1 Growth / -1 Unemployment (the
+--     package rebate stacks on top when a charge burns).
 --   • logistical_overhaul (20270852 body) + upgrade_automotive_asset
 --     (20270855 body): -10% when the HQ city has charges; consumed
 --     on success. All three return tax_package_applied for the UI.
@@ -177,6 +179,14 @@ BEGIN
         -- Banking: the 80% reserve opens the vault (20270889).
         v_reserve
     ) RETURNING id INTO v_corp_id;
+
+    -- A new corporation lifts its home city: +1 Growth and
+    -- -1 Unemployment — payrolls open. The tax-package rebate
+    -- (when a charge burns below) stacks on top.
+    UPDATE cities
+       SET growth       = LEAST(10, GREATEST(1, COALESCE(growth, 5) + 1)),
+           unemployment = LEAST(10, GREATEST(1, COALESCE(unemployment, 5) - 1))
+     WHERE id = p_city_id;
 
     IF v_tax THEN
         PERFORM _consume_tax_package_charge(p_city_id);

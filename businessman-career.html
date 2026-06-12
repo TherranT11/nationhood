@@ -326,7 +326,7 @@ async function openStartCompany(faction) {
         <span class="st">UNEMPLOYMENT: ${esc(String(c.unemployment ?? '—'))} &middot; POPULATION: ${esc(fmtBig(population))}</span>
       </div>`;
     }).join('')
-      + '<div class="sc-file" style="margin-top:2px;color:#555;">Jobs represent the amount of those looking for jobs in those cities.</div>';
+      + '<div class="sc-file" style="margin-top:2px;color:#555;">Unemployment shows how many in each city are looking for work.</div>';
     host.querySelectorAll('.sc-city').forEach(row => {
       row.addEventListener('click', () => {
         scCityId = row.dataset.city;
