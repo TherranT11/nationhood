@@ -1355,7 +1355,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         } catch (e) {
           console.warn('[business-corp] holiday fetch failed:', e?.message || e);
         }
-        const taxesOwed = Math.floor(Math.max(0, revenueYtd) * taxRate / 100);
+        // 20270887: taxable base is revenue net of payroll, mirroring
+        // file_corporate_tax. Production spend isn't deductible yet.
+        const taxableProfit = Math.max(0, revenueYtd - payrollYear);
+        const taxesOwed = Math.floor(taxableProfit * taxRate / 100);
 
         let lastPaid = 'Never';
         try {
@@ -1453,7 +1456,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             pxTier = null;
             document.getElementById('px-confirm').disabled = true;
             document.getElementById('px-summary').textContent =
-              `Taxable profit (revenue YTD): ${hfFmtBig(Math.max(0, revenueYtd))} · Rate: ${taxRate}% · Owed in full: ${hfFmtBig(taxesOwed)}. Treasury: ${hfFmtBig(Number(corp.treasury_cash) || 0)}.`;
+              `Taxable profit (revenue − payroll YTD): ${hfFmtBig(taxableProfit)} · Rate: ${taxRate}% · Owed in full: ${hfFmtBig(taxesOwed)}. Treasury: ${hfFmtBig(Number(corp.treasury_cash) || 0)}.`;
             document.getElementById('px-tiers').innerHTML = [100, 75, 50, 25].map(pct => `
               <div class="jm-rung" data-pct="${pct}">
                 <div class="top">
