@@ -184,12 +184,12 @@
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
   #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay,
-  #ol-overlay, #rq-overlay, #pay-overlay { position:fixed;
+  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
   #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open,
-  #ol-overlay.open, #rq-overlay.open, #pay-overlay.open { display:flex; }
+  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -678,6 +678,24 @@
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="ol-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Issue Loan (banking, 20270894). Accepted offers awaiting
+     disbursement — issuing moves the money and starts the clock. -->
+<div id="il-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Issue <em>Loan</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: the borrower accepted — now you disburse. Issuing
+        moves the principal from your vault to their treasury and starts the loan&rsquo;s
+        clock: interest runs from today, due in the offered term.</div>
+      <div class="jm-lab">ACCEPTED — AWAITING DISBURSEMENT</div>
+      <div id="il-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="il-cancel">CLOSE</button>
     </div>
   </div>
 </div>
@@ -2058,7 +2076,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="ic">💸</div>
               <div class="nm">OFFER LOAN</div>
               <div class="soon">Browse the open credit market</div>
-            </div>` + eaComingSoon(3)
+            </div>
+            <div class="ea-card live" id="ea-issue-loan">
+              <div class="ic">🤝</div>
+              <div class="nm">ISSUE LOAN</div>
+              <div class="soon">Disburse an accepted offer</div>
+            </div>` + eaComingSoon(2)
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
@@ -3668,6 +3691,74 @@ import { CITY_STATS } from './js/game/city-labels.js';
           olLoadBoard();
         });
         wireModalClose('ol-overlay', 'ol-cancel');
+
+        // ── Issue Loan (20270894) ─────────────────────────────────
+        // Accepted offers awaiting disbursement. Issuing moves the
+        // principal and burns the day's action; the server locks the
+        // offer row so a double-issue loses cleanly.
+        const IL_REASON = {
+          offer_not_accepted: 'That offer was already issued or is no longer accepted.',
+          no_actions_remaining: 'No executive actions remaining this tick.',
+          insufficient_treasury: 'The vault can\u2019t fund the disbursement right now.',
+          borrower_gone: 'The borrower no longer exists.',
+          not_owner: 'Only the owner issues loans.',
+          arrested: 'You are under arrest — your assets are frozen.',
+        };
+        let ilInFlight = false;
+        async function ilLoad() {
+          const host = document.getElementById('il-rows');
+          host.innerHTML = '<div class="rl-empty">Loading…</div>';
+          const { data, error: ilErr } = await _supabase.from('corp_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, collateral_asset, request:corp_loan_requests!request_id(corp:entrepreneur_corps!corp_id(name, industry))')
+            .eq('bank_corp_id', corp.id)
+            .eq('status', 'accepted')
+            .order('created_at_tick', { ascending: true });
+          if (ilErr) {
+            console.warn('[business-corp] issuance queue fetch failed:', ilErr.message);
+            host.innerHTML = '<div class="rl-empty">Could not load — try again shortly.</div>';
+            return;
+          }
+          if (!data?.length) {
+            host.innerHTML = '<div class="rl-empty">No accepted offers waiting. Offers land here once a borrower says yes.</div>';
+            return;
+          }
+          host.innerHTML = data.map(o => `
+            <div class="jm-rung" data-offer="${esc(o.id)}">
+              <div class="top">
+                <div>
+                  <div class="rung-no">${esc((o.request?.corp?.industry || '').toUpperCase())}</div>
+                  <div class="nm">${esc(o.request?.corp?.name || 'A corporation')}</div>
+                </div>
+                <div class="staff">${esc(hfFmtBig(o.amount))}</div>
+              </div>
+              <div class="ds">${o.rate_bps / 100}% &middot; ${o.term_ticks} ticks &middot; collateral: ${esc(COLLATERAL_LABEL[o.collateral_asset] || o.collateral_asset)}</div>
+              <div class="resp"><button type="button" class="jm-btn il-send" style="padding:6px 14px;font-size:10px;">ISSUE — ${esc(hfFmtBig(o.amount))}</button></div>
+            </div>`).join('');
+          host.querySelectorAll('.il-send').forEach(btn =>
+            btn.addEventListener('click', async () => {
+              if (ilInFlight) return;
+              ilInFlight = true;
+              btn.disabled = true;
+              try {
+                const { data: res, error: isErr } = await _supabase.rpc('bank_issue_loan', {
+                  p_offer_id:     btn.closest('[data-offer]').dataset.offer,
+                  p_bank_corp_id: corp.id,
+                });
+                if (isErr) throw isErr;
+                if (!res?.success) throw new Error(IL_REASON[res?.reason] || res?.reason || 'unknown');
+                window.location.reload();
+              } catch (e) {
+                alert('Could not issue: ' + (e?.message || e));
+                ilInFlight = false;
+                btn.disabled = false;
+              }
+            }));
+        }
+        document.getElementById('ea-issue-loan').addEventListener('click', () => {
+          document.getElementById('il-overlay').classList.add('open');
+          ilLoad();
+        });
+        wireModalClose('il-overlay', 'il-cancel');
       } // end if (eaBanking)
 
       // ── FINANCING (20270894) — every corp's credit-market surface.
@@ -3707,6 +3798,18 @@ import { CITY_STATS } from './js/game/city-labels.js';
           offers = offerRows || [];
         }
 
+        // Accepted-but-unissued offers on this corp's requests — the
+        // money is promised, the bank hasn't disbursed yet.
+        let awaiting = [];
+        if (!isBank) {
+          const { data: awRows, error: awErr } = await _supabase.from('corp_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, bank:entrepreneur_corps!bank_corp_id(name), request:corp_loan_requests!request_id!inner(corp_id)')
+            .eq('status', 'accepted')
+            .eq('request.corp_id', corp.id);
+          if (awErr) throw awErr;
+          awaiting = awRows || [];
+        }
+
         if (isBank && !loans.length) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
 
@@ -3740,6 +3843,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div style="margin-bottom:8px;">
               <button type="button" class="jm-btn" id="fin-request" style="padding:7px 14px;font-size:10px;">REQUEST LOAN</button>
             </div>`;
+          html += awaiting.map(o => `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Accepted — awaiting disbursement from ${esc(o.bank?.name || 'the bank')}</div>
+                <div class="staff">${esc(hfFmtBig(o.amount))}</div>
+              </div>
+              <div class="ds">${o.rate_bps / 100}% &middot; ${o.term_ticks} ticks once issued. The bank moves the money with its Issue Loan action.</div>
+            </div>`).join('');
         }
 
         html += borrowed.map(l => `
@@ -3770,7 +3881,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
           banks_dont_borrow: 'Banks lend — they don\u2019t borrow.',
           not_owner: 'Only the owner can do this.',
           arrested: 'You are under arrest — your assets are frozen.',
-          bank_cannot_fund: 'That bank can no longer fund the loan — pick another offer.',
           offer_closed: 'That offer is gone — the request may already be funded.',
           insufficient_treasury: 'The treasury can\u2019t cover that payment.',
           nothing_owed: 'Nothing is owed on this loan.',

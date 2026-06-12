@@ -10,8 +10,11 @@
 --     sheet is the one source; repricing means re-posting it), set
 --     the term (12/24/36 ticks), demand one of the borrower's five
 --     assets as collateral, add comments.
---   • The borrower accepts an offer: funds move bank → borrower,
---     the loan originates with its rate LOCKED at the offered prime.
+--   • The borrower accepts an offer — a COMMITMENT, not a payment.
+--   • ISSUE LOAN (the bank's day action #3): the bank picks one of
+--     its accepted offers and disburses — only then do funds move
+--     bank → borrower and the loan originates, rate LOCKED at the
+--     offered prime, the clock starting at issuance.
 --   • Repayment is MANUAL (user ruling): the borrower pays when
 --     they choose. Interest accrues lazily — simple interest on the
 --     outstanding balance, rate/12 per tick (a tick is a month) —
@@ -56,8 +59,10 @@ CREATE TABLE IF NOT EXISTS public.corp_loan_offers (
     term_ticks       int NOT NULL CHECK (term_ticks IN (12, 24, 36)),
     collateral_asset text NOT NULL,
     comments         text CHECK (comments IS NULL OR length(comments) <= 300),
+    -- accepted = the borrower committed; issued = the bank disbursed
+    -- and the corp_bank_loans row exists.
     status           text NOT NULL DEFAULT 'pending'
-                         CHECK (status IN ('pending', 'accepted', 'declined')),
+                         CHECK (status IN ('pending', 'accepted', 'declined', 'issued')),
     created_at_tick  int NOT NULL,
     created_at       timestamptz NOT NULL DEFAULT now()
 );
@@ -71,6 +76,7 @@ CREATE TABLE IF NOT EXISTS public.corp_bank_loans (
     bank_corp_id     uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
     borrower_corp_id uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
     request_id       uuid REFERENCES public.corp_loan_requests(id) ON DELETE SET NULL,
+    offer_id         uuid REFERENCES public.corp_loan_offers(id)   ON DELETE SET NULL,
     principal        bigint NOT NULL,
     rate_bps         int NOT NULL,
     term_ticks       int NOT NULL,
@@ -91,6 +97,8 @@ CREATE INDEX IF NOT EXISTS corp_bank_loans_borrower_idx
     ON public.corp_bank_loans (borrower_corp_id, status);
 CREATE INDEX IF NOT EXISTS corp_bank_loans_bank_idx
     ON public.corp_bank_loans (bank_corp_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS corp_bank_loans_one_per_offer
+    ON public.corp_bank_loans (offer_id) WHERE offer_id IS NOT NULL;
 
 -- The credit market is public record — every row readable, every
 -- write through the definer functions below.
@@ -356,7 +364,7 @@ END $$;
 REVOKE EXECUTE ON FUNCTION public.bank_offer_loan(uuid, uuid, int, text, text) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.bank_offer_loan(uuid, uuid, int, text, text) TO authenticated;
 
--- ── 6. The borrower accepts — the loan originates ─────────────────
+-- ── 6. The borrower accepts — a commitment, not a payment ─────────
 CREATE OR REPLACE FUNCTION public.corp_accept_loan_offer(
     p_offer_id uuid,
     p_corp_id  uuid
@@ -367,11 +375,9 @@ DECLARE
     v_uid      uuid := auth.uid();
     v_offer    corp_loan_offers%ROWTYPE;
     v_req      corp_loan_requests%ROWTYPE;
-    v_bank     entrepreneur_corps%ROWTYPE;
     v_borrower entrepreneur_corps%ROWTYPE;
     v_fac      factions%ROWTYPE;
     v_tick     int;
-    v_loan_id  uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -390,7 +396,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'offer_closed');
     END IF;
 
-    SELECT * INTO v_borrower FROM entrepreneur_corps WHERE id = p_corp_id FOR UPDATE;
+    SELECT * INTO v_borrower FROM entrepreneur_corps WHERE id = p_corp_id;
     v_fac := _corp_owner_faction(v_borrower.owner_faction_id, v_uid);
     IF v_fac.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
@@ -399,56 +405,133 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
-    -- The vault funds the loan NOW — re-check, then move the money.
-    SELECT * INTO v_bank FROM entrepreneur_corps
-     WHERE id = v_offer.bank_corp_id FOR UPDATE;
-    IF FLOOR(COALESCE(v_bank.treasury_cash, 0))::bigint < v_offer.amount THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'bank_cannot_fund');
-    END IF;
-
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    -- Principal is not income for the borrower and not an expense
-    -- for the bank — straight treasury moves, no cash events, so the
-    -- corporate tax base stays honest.
-    UPDATE entrepreneur_corps
-       SET treasury_cash = COALESCE(treasury_cash, 0) - v_offer.amount
-     WHERE id = v_bank.id;
-    UPDATE entrepreneur_corps
-       SET treasury_cash = COALESCE(treasury_cash, 0) + v_offer.amount
-     WHERE id = p_corp_id;
-
-    INSERT INTO corp_bank_loans (
-        bank_corp_id, borrower_corp_id, request_id,
-        principal, rate_bps, term_ticks,
-        originated_tick, due_tick,
-        balance, last_accrual_tick, collateral_asset
-    ) VALUES (
-        v_bank.id, p_corp_id, v_req.id,
-        v_offer.amount, v_offer.rate_bps, v_offer.term_ticks,
-        v_tick, v_tick + v_offer.term_ticks,
-        v_offer.amount, v_tick, v_offer.collateral_asset
-    ) RETURNING id INTO v_loan_id;
-
+    -- No money moves here. The bank disburses with ISSUE LOAN; the
+    -- loan's clock starts at issuance, not acceptance.
     UPDATE corp_loan_offers SET status = 'accepted' WHERE id = p_offer_id;
     UPDATE corp_loan_offers SET status = 'declined'
      WHERE request_id = v_req.id AND status = 'pending';
     UPDATE corp_loan_requests SET status = 'funded' WHERE id = v_req.id;
 
     PERFORM _log_corp_history(p_corp_id, v_tick,
-        format('Borrowed $%s from %s — %s%% prime, due tick %s.',
-               v_offer.amount, v_bank.name, v_offer.rate_bps / 100, v_tick + v_offer.term_ticks));
-    PERFORM _log_corp_history(v_bank.id, v_tick,
-        format('Funded a $%s loan to %s — %s%% prime, due tick %s.',
+        format('Accepted a $%s loan offer — awaiting disbursement.', v_offer.amount));
+    PERFORM _log_corp_history(v_offer.bank_corp_id, v_tick,
+        format('%s accepted the $%s offer — issue the loan to disburse.',
+               v_borrower.name, v_offer.amount));
+
+    RETURN jsonb_build_object('success', true, 'offer_id', p_offer_id,
+        'amount', v_offer.amount, 'status', 'awaiting_issuance');
+END $$;
+
+REVOKE EXECUTE ON FUNCTION public.corp_accept_loan_offer(uuid, uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.corp_accept_loan_offer(uuid, uuid) TO authenticated;
+
+-- ── 6b. ISSUE LOAN — the bank disburses (executive action #3) ─────
+CREATE OR REPLACE FUNCTION public.bank_issue_loan(
+    p_offer_id     uuid,
+    p_bank_corp_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_uid      uuid := auth.uid();
+    v_bank     entrepreneur_corps%ROWTYPE;
+    v_borrower entrepreneur_corps%ROWTYPE;
+    v_offer    corp_loan_offers%ROWTYPE;
+    v_fac      factions%ROWTYPE;
+    v_tick     int;
+    v_loan_id  uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+    IF p_offer_id IS NULL OR p_bank_corp_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'invalid_arguments');
+    END IF;
+
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_bank_corp_id FOR UPDATE;
+    IF v_bank.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
+    END IF;
+    IF v_bank.industry <> 'banking' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'industry_not_chartered');
+    END IF;
+    v_fac := _corp_owner_faction(v_bank.owner_faction_id, v_uid);
+    IF v_fac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+    IF lower(COALESCE(v_fac.status, '')) = 'arrested' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'arrested');
+    END IF;
+
+    -- Lock the offer: a double-issue serializes here and the loser
+    -- sees status=issued.
+    SELECT * INTO v_offer FROM corp_loan_offers WHERE id = p_offer_id FOR UPDATE;
+    IF v_offer.id IS NULL OR v_offer.bank_corp_id <> p_bank_corp_id THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'offer_not_found');
+    END IF;
+    IF v_offer.status <> 'accepted' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'offer_not_accepted');
+    END IF;
+
+    IF FLOOR(COALESCE(v_bank.treasury_cash, 0))::bigint < v_offer.amount THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'insufficient_treasury',
+            'need', v_offer.amount, 'have', FLOOR(COALESCE(v_bank.treasury_cash, 0))::bigint);
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+    IF COALESCE(v_bank.exec_action_tick, -1) >= v_tick THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_actions_remaining');
+    END IF;
+
+    SELECT * INTO v_borrower FROM entrepreneur_corps
+     WHERE id = (SELECT corp_id FROM corp_loan_requests WHERE id = v_offer.request_id)
+     FOR UPDATE;
+    IF v_borrower.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'borrower_gone');
+    END IF;
+
+    -- Principal is not income for the borrower and not an expense
+    -- for the bank — straight treasury moves, no cash events, so the
+    -- corporate tax base stays honest.
+    UPDATE entrepreneur_corps
+       SET treasury_cash    = COALESCE(treasury_cash, 0) - v_offer.amount,
+           exec_action_tick = v_tick
+     WHERE id = p_bank_corp_id;
+    UPDATE entrepreneur_corps
+       SET treasury_cash = COALESCE(treasury_cash, 0) + v_offer.amount
+     WHERE id = v_borrower.id;
+
+    INSERT INTO corp_bank_loans (
+        bank_corp_id, borrower_corp_id, request_id, offer_id,
+        principal, rate_bps, term_ticks,
+        originated_tick, due_tick,
+        balance, last_accrual_tick, collateral_asset
+    ) VALUES (
+        p_bank_corp_id, v_borrower.id, v_offer.request_id, v_offer.id,
+        v_offer.amount, v_offer.rate_bps, v_offer.term_ticks,
+        v_tick, v_tick + v_offer.term_ticks,
+        v_offer.amount, v_tick, v_offer.collateral_asset
+    ) RETURNING id INTO v_loan_id;
+
+    UPDATE corp_loan_offers SET status = 'issued' WHERE id = p_offer_id;
+
+    PERFORM _log_corp_history(p_bank_corp_id, v_tick,
+        format('Issued the $%s loan to %s — %s%% prime, due tick %s.',
                v_offer.amount, v_borrower.name, v_offer.rate_bps / 100, v_tick + v_offer.term_ticks));
+    PERFORM _log_corp_history(v_borrower.id, v_tick,
+        format('Received $%s from %s — %s%% prime, due tick %s.',
+               v_offer.amount, v_bank.name, v_offer.rate_bps / 100, v_tick + v_offer.term_ticks));
 
     RETURN jsonb_build_object('success', true, 'loan_id', v_loan_id,
         'amount', v_offer.amount, 'due_tick', v_tick + v_offer.term_ticks);
 END $$;
 
-REVOKE EXECUTE ON FUNCTION public.corp_accept_loan_offer(uuid, uuid) FROM PUBLIC;
-GRANT  EXECUTE ON FUNCTION public.corp_accept_loan_offer(uuid, uuid) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.bank_issue_loan(uuid, uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.bank_issue_loan(uuid, uuid) TO authenticated;
 
 -- ── 7. Manual repayment ───────────────────────────────────────────
 -- Interest accrues lazily at payment time: balance × rate/12 per
