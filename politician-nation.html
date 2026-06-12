@@ -467,6 +467,40 @@
 @media (max-width:420px) {
   .info-grid, .stats-grid { grid-template-columns:1fr; }
 }
+
+/* ── Vola World Cup (Sports section, 20270889 client) ────────────── */
+.vola-tile { display:flex; align-items:center; gap:14px; padding:14px 16px;
+  background:#0e1218; border:0.5px solid rgba(122,154,171,0.25); border-radius:6px;
+  cursor:pointer; transition:border-color 0.15s, background 0.15s; }
+.vola-tile:hover { border-color:rgba(122,154,171,0.55); background:#101521; }
+.vtl-ic { font-size:22px; flex-shrink:0; }
+.vtl-info { flex:1; min-width:0; }
+.vtl-eyebrow { font-size:8px; letter-spacing:0.14em; color:#7a9aab; font-weight:600; }
+.vtl-name { font-size:14px; font-weight:600; color:#fff; }
+.vtl-name .serif { font-family:Georgia,serif; font-style:italic; color:#a5c0d0; }
+.vtl-sub { font-size:10px; color:#888; margin-top:2px; }
+.vtl-cta { font-family:monospace; font-size:9px; letter-spacing:0.12em; font-weight:700;
+  color:#7a9aab; border:0.5px solid rgba(122,154,171,0.4); border-radius:4px;
+  padding:5px 11px; flex-shrink:0; }
+.vola-cup { margin-top:12px; }
+.vola-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+.vola-head .cupnum { font-size:16px; font-weight:700; color:#fff; }
+.vola-head .meta { font-size:10px; color:#888; letter-spacing:0.06em; }
+.vola-head .meta b { color:#d4b87a; font-weight:600; }
+.vola-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+@media (max-width:720px) { .vola-grid { grid-template-columns:1fr; } }
+.vola-panel { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; padding:12px 14px; }
+.vola-panel .pt { font-size:8.5px; letter-spacing:0.14em; color:#666; font-weight:700; margin-bottom:8px; }
+.vola-row { display:flex; justify-content:space-between; gap:8px; font-size:11px; color:#bbb;
+  padding:4px 0; border-bottom:0.5px dashed rgba(255,255,255,0.05); }
+.vola-row:last-child { border-bottom:none; }
+.vola-row .us { color:#a5c0d0; font-weight:700; }
+.vola-row .score { font-family:monospace; color:#fff; flex-shrink:0; }
+.vola-row .pos { font-family:monospace; color:#666; flex-shrink:0; width:22px; }
+.vola-campaign { font-size:11.5px; color:#ccc; line-height:1.6; margin-bottom:12px;
+  background:#0e1218; border-left:3px solid #7a9aab; border-radius:4px; padding:10px 14px; }
+.vola-campaign b { color:#fff; }
+.vola-empty { font-size:11px; color:#777; font-style:italic; padding:8px 2px; }
 </style>
 </head>
 <body>
@@ -723,7 +757,16 @@
   <details id="sec-sports" class="sec">
     <summary>Sports</summary>
     <div class="sec-body">
-      <div class="sec-empty">No sporting bodies, leagues, or fixtures recorded yet.</div>
+      <div class="vola-tile" id="vola-tile" role="button" tabindex="0">
+        <div class="vtl-ic">🏆</div>
+        <div class="vtl-info">
+          <div class="vtl-eyebrow">INTERNATIONAL TOURNAMENT</div>
+          <div class="vtl-name">Vola <span class="serif">World Cup</span></div>
+          <div class="vtl-sub">The latest cup — the bracket, the standings, and the national team's campaign.</div>
+        </div>
+        <div class="vtl-cta" id="vola-tile-cta">VIEW</div>
+      </div>
+      <div id="vola-cup-body" style="display:none;"></div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -976,6 +1019,8 @@ async function init() {
   // Legal Cases (20270541) — list resolved trials in this nation.
   // Non-blocking; failure renders an empty-state, doesn't break
   // the page.
+  bindVolaCup(nation.id);
+
   loadLegalCases(nation.id).catch(err => {
     console.warn('politician-nation: loadLegalCases threw', err);
     renderLegalCases({ error: err?.message || 'load failed' });
@@ -1149,6 +1194,155 @@ let _viewerPm        = null;
 // so submitCommitteeApplication can forward it to apply_for_committee
 // (20270658 multi-politician fix; the RPC no longer picks oldest-first).
 let _viewerPolId     = null;
+// ── Vola World Cup (Sports section) ─────────────────────────────────
+// Clickable tile → lazy one-shot load of the LATEST cup: header (host,
+// champion or in-progress), this nation's campaign summary, its group
+// fixtures, the knockout bracket, and final standings. All four cup
+// tables are authenticated-read (20261124); vola_cup_hosts predates the
+// repo's RLS pass, so the host lookup degrades silently if unreadable.
+let _volaLoaded = false;
+function bindVolaCup(nationId) {
+  const tile = document.getElementById('vola-tile');
+  const body = document.getElementById('vola-cup-body');
+  if (!tile || !body) return;
+  const toggle = () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    document.getElementById('vola-tile-cta').textContent = open ? 'VIEW' : 'HIDE';
+    if (!open && !_volaLoaded) {
+      _volaLoaded = true;
+      loadVolaCup(nationId).catch(err => {
+        console.warn('politician-nation: vola cup load failed', err?.message || err);
+        body.innerHTML = '<div class="vola-empty">Could not load the cup — try again shortly.</div>';
+      });
+    }
+  };
+  tile.addEventListener('click', toggle);
+  tile.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+}
+
+async function loadVolaCup(nationId) {
+  const body = document.getElementById('vola-cup-body');
+  body.innerHTML = '<div class="vola-empty">Loading the cup…</div>';
+
+  const { data: latest, error: lErr } = await _supabase
+    .from('vola_cup_groups').select('cup_number')
+    .order('cup_number', { ascending: false }).limit(1).maybeSingle();
+  if (lErr) throw lErr;
+  if (!latest) {
+    body.innerHTML = '<div class="vola-empty">The first Vola World Cup hasn\u2019t been drawn yet.</div>';
+    return;
+  }
+  const cup = latest.cup_number;
+
+  const [groupsRes, matchesRes, koRes, standRes] = await Promise.all([
+    _supabase.from('vola_cup_groups')
+      .select('nation_id, group_letter, seed_rank, qualified_via, nation:nations!nation_id(name)')
+      .eq('cup_number', cup).order('group_letter').order('seed_rank'),
+    _supabase.from('vola_cup_group_matches')
+      .select('group_letter, round_number, scheduled_tick, team_a_score, team_b_score, team_a_nation_id, team_b_nation_id, winner_nation_id, team_a:nations!team_a_nation_id(name), team_b:nations!team_b_nation_id(name)')
+      .eq('cup_number', cup).order('round_number'),
+    _supabase.from('vola_cup_knockout')
+      .select('round, match_number, scheduled_tick, team_a_score, team_b_score, team_a_nation_id, team_b_nation_id, winner_nation_id, team_a:nations!team_a_nation_id(name), team_b:nations!team_b_nation_id(name)')
+      .eq('cup_number', cup).order('match_number'),
+    _supabase.from('vola_cup_final_standings')
+      .select('nation_id, final_position, eliminated_at, nation:nations!nation_id(name)')
+      .eq('cup_number', cup).order('final_position'),
+  ]);
+  for (const r of [groupsRes, matchesRes, koRes, standRes]) { if (r.error) throw r.error; }
+  const groups    = groupsRes.data || [];
+  const matches   = matchesRes.data || [];
+  const knockout  = koRes.data || [];
+  const standings = standRes.data || [];
+
+  // Host — defensive: the table predates the RLS pass.
+  let hostName = null;
+  try {
+    const { data: host } = await _supabase.from('vola_cup_hosts')
+      .select('host_nation_id, nation:nations!host_nation_id(name)')
+      .eq('cup_number', cup).maybeSingle();
+    hostName = host?.nation?.name || null;
+  } catch (_) { /* unreadable → omit the host line */ }
+
+  const champion = standings.find(s => s.final_position === 1);
+  const mine     = groups.find(g => g.nation_id === nationId);
+  const myStand  = standings.find(s => s.nation_id === nationId);
+
+  const nm = (n, id) => `<span class="${id === nationId ? 'us' : ''}">${escHtml(n?.name || '—')}</span>`;
+  const matchRow = (m) => {
+    const played = m.team_a_score != null && m.team_b_score != null;
+    return `<div class="vola-row">
+      <span>${nm(m.team_a, m.team_a_nation_id)} vs ${nm(m.team_b, m.team_b_nation_id)}</span>
+      <span class="score">${played ? `${m.team_a_score}\u2013${m.team_b_score}` : escHtml(tickToDate(m.scheduled_tick))}</span>
+    </div>`;
+  };
+
+  // The national team's campaign, in one sentence.
+  const ELIM_LABEL = { champion: 'champions of the world', final: 'beaten finalists',
+    semifinal: 'eliminated in the semifinals', quarterfinal: 'eliminated in the quarterfinals',
+    group_stage: 'out at the group stage', placement: 'placed in the qualifiers' };
+  let campaign;
+  if (myStand) {
+    campaign = `<b>Cup #${cup}:</b> the national team finished <b>${myStand.final_position}${['st','nd','rd'][myStand.final_position - 1] || 'th'}</b> \u2014 ${ELIM_LABEL[myStand.eliminated_at] || myStand.eliminated_at}.`;
+  } else if (mine) {
+    const myPlayed = matches.filter(m => (m.team_a_nation_id === nationId || m.team_b_nation_id === nationId) && m.winner_nation_id != null);
+    const wins = myPlayed.filter(m => m.winner_nation_id === nationId).length;
+    campaign = `<b>Cup #${cup}:</b> the national team is seeded <b>#${mine.seed_rank}</b> in <b>Group ${escHtml(mine.group_letter)}</b> (${mine.qualified_via === 'auto' ? 'automatic qualifier' : 'qualified on placement'}) \u2014 ${wins} win${wins === 1 ? '' : 's'} from ${myPlayed.length} played. The campaign is alive.`;
+  } else {
+    campaign = `<b>Cup #${cup}:</b> the national team did not qualify. The next cycle is the road back.`;
+  }
+
+  const myGroupMatches = mine ? matches.filter(m => m.group_letter === mine.group_letter) : [];
+  const groupPanel = mine ? `
+    <div class="vola-panel">
+      <div class="pt">GROUP ${escHtml(mine.group_letter)} \u00b7 FIXTURES</div>
+      ${myGroupMatches.length ? myGroupMatches.map(matchRow).join('') : '<div class="vola-empty">Not yet scheduled.</div>'}
+    </div>` : `
+    <div class="vola-panel">
+      <div class="pt">GROUPS</div>
+      ${groups.length ? ['A','B','C'].map(L => {
+        const g = groups.filter(x => x.group_letter === L);
+        return g.length ? `<div class="vola-row"><span>Group ${L}</span><span>${g.map(x => escHtml(x.nation?.name || '—')).join(' \u00b7 ')}</span></div>` : '';
+      }).join('') : '<div class="vola-empty">Not yet drawn.</div>'}
+    </div>`;
+
+  const KO_LABEL = { QF: 'Quarterfinal', SF: 'Semifinal', F: 'THE FINAL' };
+  const koPanel = `
+    <div class="vola-panel">
+      <div class="pt">KNOCKOUT BRACKET</div>
+      ${knockout.length ? ['QF','SF','F'].map(rd => {
+        const ms = knockout.filter(k => k.round === rd);
+        return ms.length ? `<div class="vola-row"><span style="color:#666;">${KO_LABEL[rd]}</span><span></span></div>` + ms.map(matchRow).join('') : '';
+      }).join('') : '<div class="vola-empty">The bracket forms after the groups.</div>'}
+    </div>`;
+
+  const standPanel = `
+    <div class="vola-panel">
+      <div class="pt">FINAL STANDINGS</div>
+      ${standings.length ? standings.map(s => `
+        <div class="vola-row"><span class="pos">${s.final_position}.</span>
+          <span style="flex:1;">${s.final_position === 1 ? '\u{1F3C6} ' : ''}${nm(s.nation, s.nation_id)}</span>
+          <span style="color:#666;">${escHtml(ELIM_LABEL[s.eliminated_at] || s.eliminated_at)}</span></div>`).join('')
+        : '<div class="vola-empty">The cup is still being played.</div>'}
+    </div>`;
+
+  body.innerHTML = `
+    <div class="vola-cup">
+      <div class="vola-head">
+        <span class="cupnum">Vola World Cup #${cup}</span>
+        <span class="meta">${hostName ? `HOSTED BY <b>${escHtml(hostName)}</b> \u00b7 ` : ''}${champion ? `CHAMPIONS: <b>${escHtml(champion.nation?.name || '\u2014')}</b>` : 'IN PROGRESS'}</span>
+      </div>
+      <div class="vola-campaign">${campaign}</div>
+      <div class="vola-grid">
+        ${groupPanel}
+        ${koPanel}
+      </div>
+      <div class="vola-grid" style="margin-top:12px;">
+        ${standPanel}
+      </div>
+    </div>`;
+}
+
 function bindLazySections() {
   const govSec = document.getElementById('sec-govt');
   if (govSec) {
