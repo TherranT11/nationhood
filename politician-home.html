@@ -3528,11 +3528,14 @@ function renderAffiliation(ctx) {
   } else if (ctx.party?.id) {
     resignCfg = { kind: 'leave-party', label: 'LEAVE PARTY' };
   }
+  // LEAVE PARTY gets the larger cut — it's the primary action on the
+  // party-member card, not a danger afterthought like RESIGN.
+  const resignBig = resignCfg?.kind === 'leave-party';
   const resignHtml = resignCfg
     ? `<button class="resign-btn" data-affil-resign
-               style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
-                      font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
-                      cursor:pointer; font-family:inherit; flex-shrink:0; align-self:flex-start;">${resignCfg.label}</button>`
+               style="background:transparent; border:0.5px solid rgba(200,120,120,${resignBig ? '0.45' : '0.3'}); color:#c87a7a;
+                      font-size:${resignBig ? '12px' : '10px'}; letter-spacing:0.08em; padding:${resignBig ? '10px 22px' : '5px 12px'}; border-radius:4px;
+                      cursor:pointer; font-family:inherit; flex-shrink:0; align-self:flex-start;${resignBig ? ' font-weight:700;' : ''}">${resignCfg.label}</button>`
     : '';
 
   host.innerHTML = `
