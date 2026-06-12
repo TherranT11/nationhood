@@ -522,25 +522,23 @@
   <div class="jm-modal">
     <div class="jm-head"><div class="jm-title">Production <em>Run</em></div></div>
     <div class="jm-body">
-      <div class="db-mech">The Mechanic: Select an assembly line that is available, select a
-        vehicle, and select the amount to build — the line is assigned one tick per vehicle and
-        the cost leaves the corporate coffers up front.</div>
-      <div class="jm-lab">ASSEMBLY LINE</div>
+      <div class="db-mech">The Mechanic: optionally assign a free line to a Model, then every
+        assigned line builds 50 vehicles THIS TURN — cash and materials are charged per line as
+        it builds, and the cars land in inventory immediately. Lines the treasury or depot can't
+        cover are skipped.</div>
+      <div class="jm-lab">ASSEMBLY LINES</div>
       <div class="jm-pills" id="vp-lines"></div>
-      <div class="jm-lab">VEHICLE</div>
+      <div class="jm-lab">ASSIGN A FREE LINE TO &middot; OPTIONAL</div>
       <div class="jm-pills db-cats" id="vp-models"></div>
       <div class="db-static dim-line" id="vp-models-desc"></div>
-      <div class="jm-lab">AMOUNT TO BUILD</div>
-      <input type="number" class="fin-amt" id="vp-qty" min="1" max="200" step="1" value="1" style="margin-bottom:0;">
-      <div class="db-static dim-line">50 vehicles per tick — the line is assigned for one tick per 50 ordered.</div>
-      <div class="jm-lab">ALUMINUM &middot; ASSIGNED AT START</div>
+      <div class="jm-lab">ALUMINUM &middot; THIS TURN</div>
       <div class="db-static" id="vp-aluminum">—</div>
       <div class="jm-pills" style="margin-top:8px;">
         <input type="number" class="fin-amt" id="vp-buy-qty" min="1" step="1" placeholder="Buy Aluminum…" style="margin:0;flex:1;">
         <button type="button" class="jm-btn secondary" id="vp-buy" style="flex:0 0 auto;">BUY</button>
       </div>
       <div class="db-static dim-line" id="vp-buy-note"></div>
-      <div class="jm-lab">ELECTRICAL COMPONENTS &middot; ASSIGNED AT START</div>
+      <div class="jm-lab">ELECTRICAL COMPONENTS &middot; THIS TURN</div>
       <div class="db-static" id="vp-components">—</div>
       <div class="jm-pills" style="margin-top:8px;">
         <input type="number" class="fin-amt" id="vp-buy-ec-qty" min="1" step="1" placeholder="Buy Components…" style="margin:0;flex:1;">
@@ -548,16 +546,12 @@
       </div>
       <div class="db-static dim-line" id="vp-buy-ec-note"></div>
       <div class="db-static dim-line" id="vp-buffs"></div>
-      <div class="jm-lab">TOTAL COST</div>
+      <div class="jm-lab">TOTAL COST &middot; THIS TURN</div>
       <div class="db-static" id="vp-total">—</div>
-      <div class="jm-lab">COST PER VEHICLE</div>
-      <div class="db-static" id="vp-unit">—</div>
-      <div class="jm-lab">COST PER TICK</div>
-      <div class="db-static" id="vp-tick">—</div>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="vp-cancel">CANCEL</button>
-      <button type="button" class="jm-btn" id="vp-confirm" disabled>RUN FACTORIES</button>
+      <button type="button" class="jm-btn" id="vp-confirm" disabled>ASSIGN AND BUILD</button>
     </div>
   </div>
 </div>
@@ -1539,7 +1533,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           // Automotive: running Production Runs are the active work.
           corp.industry === 'automotive'
             ? _supabase.from('vehicle_production_runs')
-                .select('quantity, produced, completes_at_tick, blueprint:vehicle_blueprints!blueprint_id(name)')
+                .select('id, produced, blueprint:vehicle_blueprints!blueprint_id(name)')
                 .eq('corp_id', corp.id).eq('status', 'running').order('created_at')
             : Promise.resolve({ data: [] }),
           // The executive-action ledger (20270852).
@@ -1562,9 +1556,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 const run = runs[i];
                 return `
                   <div class="c nm">Line ${i + 1}</div>
-                  <div class="c">${run ? 'Running' : 'Off'}</div>
-                  <div class="c">${run ? `${esc(run.blueprint?.name || 'Model')} (${esc(String(run.produced))}/${esc(String(run.quantity))} · done ${esc(tickToDate(run.completes_at_tick))})` : '—'}</div>
-                  <div class="c">${run ? `${PRODUCTION_RATE} vehicles` : '—'}</div>`;
+                  <div class="c">${run ? 'Assigned' : 'Off'}</div>
+                  <div class="c">${run ? `${esc(run.blueprint?.name || 'Model')} · ${esc(Number(run.produced).toLocaleString())} built` : '—'}</div>
+                  <div class="c">${run ? `${PRODUCTION_RATE} vehicles <button type="button" class="jm-btn secondary" data-unassign-line="${esc(run.id)}" style="margin-left:8px;padding:2px 8px;font-size:9px;">UNASSIGN</button>` : '—'}</div>`;
               }).join('')}
             </div>`
           : (!projs.length ? '<div class="rl-empty">No active job sites.</div>' : `
@@ -1588,6 +1582,24 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div class="ea-head"><span class="rule"></span><span class="t">${corp.industry === 'automotive' ? 'ASSEMBLY LINES' : 'ACTIVE PROJECTS'}</span><span class="rule"></span></div>
             ${projRows}
           </div>`;
+        // Free a line (20270885) — owner-only server-side; no
+        // allowance burn, so no busy choreography beyond the disable.
+        document.querySelectorAll('[data-unassign-line]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Unassign this line? It stops building until a Model is assigned again.')) return;
+            btn.disabled = true;
+            try {
+              const { data, error } = await _supabase.rpc('unassign_production_line', {
+                p_corp_id: corp.id, p_run_id: btn.dataset.unassignLine });
+              if (error) throw error;
+              if (!data?.success) throw new Error(data?.reason || 'unknown');
+              window.location.reload();
+            } catch (e) {
+              alert('Could not unassign: ' + (e?.message || e));
+              btn.disabled = false;
+            }
+          });
+        });
 
         // Corporate Loans
         const loans = loanRes.data || [];
@@ -2693,41 +2705,45 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // Unit cost = the Model's design XP × $5,000 — the same math
         // start_production_run charges. One line at Assembly Plant
         // Level I, 1 vehicle per tick.
-        let vpModel = null, vpLineFree = false;
+        let vpModel = null, vpAssigned = [], vpFreeLines = 0;
         let vpTreasury = Math.floor(Number(corp.treasury_cash) || 0);
         let vpAluminum = Number(corp.aluminum_stock) || 0;
         let vpComponents = Number(corp.components_stock) || 0;
 
+        // This turn's plan: every assigned line + the newly picked
+        // Model (if a free line can take it), 50 vehicles each.
+        function vpPlan() {
+          const bps = vpAssigned.map(r => r.blueprint).filter(Boolean);
+          if (vpModel && vpFreeLines > 0) bps.push(vpModel);
+          return bps;
+        }
+
         function vpRefresh() {
-          const qty = Math.floor(Number(document.getElementById('vp-qty').value) || 0);
-          const unit = vpModel ? Math.max(1, Number(vpModel.xp_cost) || 1) * 5000 : 0;
-          const total = unit * qty;
-          // Materials are assigned in full when the run starts —
-          // mirrors of vehicle_aluminum/components_per_unit.
+          const plan = vpPlan();
           const depotCap = PARTS_DEPOT_CAPS[Math.min(Number(corp.parts_depot_tier) || 1, 5)];
-          const alNeed = vpModel && qty >= 1 ? aluminumPerVehicle(vpModel.vehicle_type) * qty : 0;
+          const total  = plan.reduce((s, b) => s + Math.max(1, Number(b.xp_cost) || 1) * 5000 * PRODUCTION_RATE, 0);
+          const alNeed = plan.reduce((s, b) => s + aluminumPerVehicle(b.vehicle_type) * PRODUCTION_RATE, 0);
+          const ecNeed = plan.reduce((s, b) => s + componentsPerVehicle(b.engine, b.packages) * PRODUCTION_RATE, 0);
           const alOk = alNeed <= vpAluminum;
-          document.getElementById('vp-aluminum').innerHTML = vpModel && qty >= 1
+          const ecOk = ecNeed <= vpComponents;
+          document.getElementById('vp-aluminum').innerHTML = plan.length
             ? `Needs ${esc(String(alNeed))} <span class="${alOk ? 'dim' : 'bad'}">· ${esc(String(vpAluminum))} in the depot (cap ${esc(String(depotCap))})</span>`
             : `${esc(String(vpAluminum))} in the depot (cap ${esc(String(depotCap))})`;
-          const ecNeed = vpModel && qty >= 1
-            ? componentsPerVehicle(vpModel.engine, vpModel.packages) * qty : 0;
-          const ecOk = ecNeed <= vpComponents;
-          document.getElementById('vp-components').innerHTML = vpModel && qty >= 1
+          document.getElementById('vp-components').innerHTML = plan.length
             ? `Needs ${esc(String(ecNeed))} <span class="${ecOk ? 'dim' : 'bad'}">· ${esc(String(vpComponents))} in the depot (cap ${esc(String(depotCap))})</span>`
             : `${esc(String(vpComponents))} in the depot (cap ${esc(String(depotCap))})`;
-          const valid = vpLineFree && vpModel && qty >= 1 && qty <= 200;
-          document.getElementById('vp-unit').textContent = vpModel ? hfFmtBig(unit) : '—';
-          document.getElementById('vp-tick').textContent = vpModel ? `${hfFmtBig(unit * Math.min(qty || PRODUCTION_RATE, PRODUCTION_RATE))} (${PRODUCTION_RATE} vehicles per tick)` : '—';
-          document.getElementById('vp-total').innerHTML = valid
-            ? `${esc(hfFmtBig(total))} <span class="${total <= vpTreasury ? 'dim' : 'bad'}">· ${esc(hfFmtBig(vpTreasury))} in treasury</span>`
+          document.getElementById('vp-total').innerHTML = plan.length
+            ? `${esc(hfFmtBig(total))} for ${plan.length * PRODUCTION_RATE} vehicles across ${plan.length} line${plan.length === 1 ? '' : 's'} <span class="${total <= vpTreasury ? 'dim' : 'bad'}">· ${esc(hfFmtBig(vpTreasury))} in treasury</span>`
             : '—';
-          document.getElementById('vp-confirm').disabled = !(valid && total <= vpTreasury && alOk && ecOk);
+          // The server skips lines it can't fund, so the only hard
+          // client gate is "there is something to build".
+          document.getElementById('vp-confirm').disabled = plan.length === 0;
         }
 
         document.getElementById('ea-production-run').addEventListener('click', async () => {
           vpModel = null;
-          document.getElementById('vp-qty').value = '1';
+          vpAssigned = [];
+          vpFreeLines = 0;
           document.getElementById('vp-buy-qty').value = '';
           document.getElementById('vp-buy-note').textContent = '';
           document.getElementById('vp-buy-ec-qty').value = '';
@@ -2752,7 +2768,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
           try {
             const [{ data: runs, error: rErr }, { data: models, error: mErr }, { data: alMkt, error: aErr }, { data: ecMkt, error: ecErr }] = await Promise.all([
               _supabase.from('vehicle_production_runs')
-                .select('id').eq('corp_id', corp.id).eq('status', 'running'),
+                .select('id, blueprint:vehicle_blueprints!blueprint_id(name, xp_cost, vehicle_type, engine, packages)')
+                .eq('corp_id', corp.id).eq('status', 'running').order('created_at'),
               _supabase.from('vehicle_blueprints')
                 .select('id, name, xp_cost, vehicle_type, engine, packages')
                 .eq('corp_id', corp.id).order('created_at', { ascending: false }),
@@ -2768,12 +2785,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
               ? `${hfFmtBig(vpAlPrice)} per unit from ${corp.nation?.name || 'home'} · ${Number(alMkt.amount_available).toLocaleString()} available${(Number(corp.parts_depot_tier) || 1) < 3 ? ' · Depot Level III unlocks foreign sourcing' : ''}`
               : 'Aluminum price unavailable — try again shortly.';
             const lines = corpAssemblyLines;
-            const busy = (runs || []).length;
-            vpLineFree = busy < lines;
-            linesHost.innerHTML = Array.from({ length: lines }, (_, i) => `
-              <div class="jm-pill${i >= busy ? (i === busy ? ' sel' : '') : ' locked'}"
-                ${i < busy ? 'title="Assigned to a running production order"' : ''}>
-                LINE ${i + 1} — ${i < busy ? 'BUSY' : 'AVAILABLE'}</div>`).join('');
+            vpAssigned = runs || [];
+            vpFreeLines = Math.max(0, lines - vpAssigned.length);
+            linesHost.innerHTML = Array.from({ length: lines }, (_, i) => {
+              const r = vpAssigned[i];
+              return `
+              <div class="jm-pill${r ? ' locked' : (i === vpAssigned.length ? ' sel' : '')}"
+                ${r ? 'title="Builds 50 of this Model every production run"' : ''}>
+                LINE ${i + 1} — ${r ? esc((r.blueprint?.name || 'MODEL').toUpperCase()) : 'FREE'}</div>`;
+            }).join('');
             if (!models?.length) {
               document.getElementById('vp-models-desc').textContent =
                 'No Models designed yet — draft a blueprint first.';
@@ -2795,7 +2815,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
             console.warn('[business-corp] production modal load failed:', e?.message || e);
           }
         });
-        document.getElementById('vp-qty').addEventListener('input', vpRefresh);
         wireModalClose('vp-overlay', 'vp-cancel');
 
         // Free logistics (design ruling): buying materials into the
@@ -2841,33 +2860,41 @@ import { CITY_STATS } from './js/game/city-labels.js';
         vpWireBuy('vp-buy', 'vp-buy-qty', 'buy_aluminum', 'Aluminum', v => { vpAluminum = v; });
         vpWireBuy('vp-buy-ec', 'vp-buy-ec-qty', 'buy_components', 'Components', v => { vpComponents = v; });
 
+        const VP_SKIP_REASON = {
+          insufficient_treasury: 'treasury short',
+          not_enough_aluminum: 'no Aluminum',
+          not_enough_components: 'no Components',
+        };
+        function vpLinesText(lines) {
+          return (lines || []).map(l => l.built > 0
+            ? `Line ${l.line} produced ${l.built} ${l.model}`
+            : `Line ${l.line} skipped — ${VP_SKIP_REASON[l.skipped] || l.skipped}`).join('\n');
+        }
         document.getElementById('vp-confirm').addEventListener('click', async () => {
           const btn = document.getElementById('vp-confirm');
           btn.disabled = true;
           try {
             const { data, error: pErr } = await _supabase.rpc('start_production_run', {
               p_corp_id: corp.id,
-              p_blueprint_id: vpModel?.id,
-              p_quantity: Math.floor(Number(document.getElementById('vp-qty').value) || 0),
+              p_blueprint_id: vpModel?.id || null,
             });
             if (pErr) throw pErr;
             if (!data?.success) {
               const REASON = {
-                invalid_quantity: 'Order between 1 and 200 vehicles.',
-                not_enough_aluminum: `Not enough Aluminum — ${data?.need ?? '?'} needed, ${data?.have ?? 0} in the depot.`,
-                not_enough_components: `Not enough Electrical Components — ${data?.need ?? '?'} needed, ${data?.have ?? 0} in the depot.`,
+                no_lines_assigned: 'No assembly line has a Model assigned — pick one to assign first.',
+                nothing_built: 'Nothing built — every line was skipped:\n' + vpLinesText(data?.lines),
                 blueprint_not_found: 'That Model belongs to another corporation.',
-                no_line_available: 'Every assembly line is already running an order.',
+                no_line_available: 'Every assembly line is already assigned.',
                 no_actions_remaining: 'No executive actions remaining this tick.',
-                insufficient_treasury: `The treasury can’t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
                 not_owner: 'Only the owner runs the factories.',
                 arrested: 'You are under arrest — your assets are frozen.',
               };
               throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
             }
+            alert(`You built ${Number(data.total_built).toLocaleString()} cars this turn\n\n` + vpLinesText(data.lines));
             window.location.reload();
           } catch (e) {
-            alert('Could not start the run: ' + (e?.message || e));
+            alert('Could not run production: ' + (e?.message || e));
             vpRefresh();
           }
         });
