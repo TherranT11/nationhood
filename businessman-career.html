@@ -240,6 +240,7 @@ import { PILLARS, DEPARTMENTS } from './js/game/corp-blueprints.js';
 
 // ── Start Company modal state ──
 let scCityId = null;
+let scCityCharges = 0;   // selected city's tax_package_discount_charges
 let scIndustry = null;
 let scInFlight = false;
 let scFaction = null;
@@ -251,14 +252,20 @@ let scSol = 50;
 const SC_BASE_COST = { construction: 10000000, automotive: 35000000, banking: 50000000 };
 
 function scShowCost() {
-  const cost = scIndustry ? Math.round(SC_BASE_COST[scIndustry] * scSol / 50) : 0;
+  let cost = scIndustry ? Math.round(SC_BASE_COST[scIndustry] * scSol / 50) : 0;
+  // Tax package (20270890): a city with discount charges takes 10%
+  // off founding there — the banking split below works on the
+  // discounted figure, same as the server.
+  const taxCut = scCityCharges > 0;
+  if (taxCut) cost = Math.round(cost * 0.90);
+  const cutNote = taxCut ? ' · −10% city tax package' : '';
   // Banking (20270889): 20% burns as the charter, 80% opens the
   // vault — the corp treasury starts with the reserve.
   document.getElementById('sc-cost').textContent = !scIndustry
     ? 'Select a type below'
     : scIndustry === 'banking'
-      ? `${hfFmtBig(cost)} (Standard of Living ${scSol}) — ${hfFmtBig(Math.round(cost * 0.20))} charter · ${hfFmtBig(Math.round(cost * 0.80))} deposited as your bank's opening reserve`
-      : `${hfFmtBig(cost)} (Standard of Living ${scSol})`;
+      ? `${hfFmtBig(cost)} (Standard of Living ${scSol}${cutNote}) — ${hfFmtBig(Math.round(cost * 0.20))} charter · ${hfFmtBig(Math.round(cost * 0.80))} deposited as your bank's opening reserve`
+      : `${hfFmtBig(cost)} (Standard of Living ${scSol}${cutNote})`;
 }
 
 function scUpdateSubmit() {
@@ -269,7 +276,7 @@ function scUpdateSubmit() {
 
 async function openStartCompany(faction) {
   scFaction = faction;
-  scCityId = null; scIndustry = null;
+  scCityId = null; scCityCharges = 0; scIndustry = null;
   document.getElementById('sc-name').value = '';
   document.getElementById('sc-logo').value = '';
   document.getElementById('sc-err').textContent = '';
@@ -286,7 +293,7 @@ async function openStartCompany(faction) {
   try {
     const [cityRes, natRes] = await Promise.all([
       _supabase.from('cities')
-        .select('id, city_name, city_type, unemployment, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype)')
+        .select('id, city_name, city_type, unemployment, population_pct, tax_package_discount_charges, mayor_first_name, mayor_last_name, mayor_archetype, mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype)')
         .eq('nation_id', faction.nation_id)
         .order('city_type'),
       _supabase.from('nations').select('population, standard_of_living').eq('id', faction.nation_id).maybeSingle(),
@@ -309,10 +316,11 @@ async function openStartCompany(faction) {
       const mayorBits = mayorName !== '—'
         ? `Mayor: ${esc(mayorName)}${partyAbbr ? ` <span class="tag">[${esc(partyAbbr)}]</span>` : ''}${archetype ? ` <span class="tag">[${esc(archetype)}]</span>` : ''}`
         : 'Mayor: —';
+      const charges = Number(c.tax_package_discount_charges) || 0;
       return `
-      <div class="sc-city" data-city="${esc(c.id)}">
+      <div class="sc-city" data-city="${esc(c.id)}" data-charges="${charges}">
         <div class="left">
-          <span class="nm">${esc(c.city_name)}${c.city_type === 'capital' ? ' (Capital)' : ''}</span>
+          <span class="nm">${esc(c.city_name)}${c.city_type === 'capital' ? ' (Capital)' : ''}${charges > 0 ? ' <span class="tag" style="color:#1a7a3a;">[TAX PACKAGE −10%]</span>' : ''}</span>
           <div class="mayor">${mayorBits}</div>
         </div>
         <span class="st">UNEMPLOYMENT: ${esc(String(c.unemployment ?? '—'))} &middot; POPULATION: ${esc(fmtBig(population))}</span>
@@ -322,7 +330,9 @@ async function openStartCompany(faction) {
     host.querySelectorAll('.sc-city').forEach(row => {
       row.addEventListener('click', () => {
         scCityId = row.dataset.city;
+        scCityCharges = Number(row.dataset.charges) || 0;
         host.querySelectorAll('.sc-city').forEach(r => r.classList.toggle('sel', r === row));
+        scShowCost();
         scUpdateSubmit();
       });
     });

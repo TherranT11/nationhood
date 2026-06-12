@@ -671,6 +671,25 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     const isOwner = corp.owner_faction_id === ctx.faction.id;
     const currentTick = Number(ctx.shard?.current_tick) || 0;
+
+    // Tax package (20270890): an HQ city holding discount charges
+    // takes 10% off asset upgrades here. Display mirror only — the
+    // upgrade RPCs recompute server-side, so a stale read can't
+    // change the price. Same name match the server uses (corps store
+    // hq_city as text).
+    let hqTaxCut = false;
+    try {
+      const { data: hqCities } = await _supabase.from('cities')
+        .select('city_name, tax_package_discount_charges')
+        .eq('nation_id', corp.hq_nation_id);
+      const hqRow = (hqCities || []).find(c =>
+        (c.city_name || '').toLowerCase() === (corp.hq_city || '').toLowerCase());
+      hqTaxCut = (Number(hqRow?.tax_package_discount_charges) || 0) > 0;
+    } catch { /* display-only — show undiscounted */ }
+    const hqDisc = (cost) => hqTaxCut ? Math.round(cost * 0.90) : cost;
+    const hqTaxNoteHtml = hqTaxCut
+      ? `<div class="dim-line" style="margin-top:6px;">−10% applied — ${esc(corp.hq_city)} has an active tax package.</div>`
+      : '';
     // Assembly lines at the corp's plant level — the one client
     // read of the assembly_lines mirror (panel + production modal).
     // Plant tier's count + completed plant expansions (20270864) —
@@ -2449,11 +2468,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
             ${nxt ? '' : 'title="No higher tiers chartered yet"'}>
             <div class="top">
               <div class="nm">${esc(label)}</div>
-              ${nxt ? `<div class="staff">${esc(hfFmtBig(nxt.upgradeCost))}</div>` : ''}
+              ${nxt ? `<div class="staff">${esc(hfFmtBig(hqDisc(nxt.upgradeCost)))}</div>` : ''}
             </div>
             <div class="ds">${esc(cur)}${nxt ? ` → ${esc(nxt.tier)}` : ' — no higher tiers yet'}</div>
             ${nxt ? `<div class="resp"><span class="k">UNLOCKS:</span> ${esc(nxt.effect)}${nxt.requirement ? ` · <span class="k">REQUIRES:</span> ${esc(nxt.requirement)}` : ''}</div>` : ''}
-          </div>`).join('');
+          </div>`).join('') + hqTaxNoteHtml;
         host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
           row.addEventListener('click', () => {
             loAsset = row.dataset.asset;
@@ -3262,11 +3281,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
                     <div class="rung-no">${esc(a.dept)}</div>
                     <div class="nm">${esc(a.ladder[tier - 1].tier)}</div>
                   </div>
-                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0))}` : 'MAX LEVEL'}</span>
+                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(hqDisc(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0)))}` : 'MAX LEVEL'}</span>
                 </div>
                 ${next ? `<div class="ds">${esc(next.tier)} — ${esc(next.effect)}</div>` : ''}
               </div>`;
-          }).join('');
+          }).join('') + hqTaxNoteHtml;
           host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
             row.addEventListener('click', () => {
               aoAsset = row.dataset.asset;
@@ -3274,7 +3293,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               const tier = Math.min(Math.max(Number(corp[AUTOMOTIVE_ASSETS[aoAsset].col]) || 1, 1), 5);
               const btn = document.getElementById('ao-confirm');
               btn.disabled = false;
-              btn.textContent = `CONFIRM — ${hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0)}`;
+              btn.textContent = `CONFIRM — ${hfFmtBig(hqDisc(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0))}`;
               btn.title = '';
             });
           });
