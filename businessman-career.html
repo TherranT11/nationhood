@@ -197,6 +197,7 @@
       <div class="sc-types">
         <div class="sc-type" data-ind="construction">CONSTRUCTION</div>
         <div class="sc-type" data-ind="automotive">AUTOMOTIVE</div>
+        <div class="sc-type" data-ind="banking">BANKING</div>
       </div>
       <div class="sc-lab">NAME OF CORPORATION</div>
       <input type="text" class="sc-input" id="sc-name" maxlength="60" placeholder="e.g. Serrano Construcciones">
@@ -247,12 +248,17 @@ let scSol = 50;
 // Founding capital (20270835): base by industry × the nation's
 // Standard of Living / 50 — the same formula
 // businessman_start_corporation charges.
-const SC_BASE_COST = { construction: 10000000, automotive: 35000000 };
+const SC_BASE_COST = { construction: 10000000, automotive: 35000000, banking: 50000000 };
 
 function scShowCost() {
-  document.getElementById('sc-cost').textContent = scIndustry
-    ? `${hfFmtBig(Math.round(SC_BASE_COST[scIndustry] * scSol / 50))} (Standard of Living ${scSol})`
-    : 'Select a type below';
+  const cost = scIndustry ? Math.round(SC_BASE_COST[scIndustry] * scSol / 50) : 0;
+  // Banking (20270889): 20% burns as the charter, 80% opens the
+  // vault — the corp treasury starts with the reserve.
+  document.getElementById('sc-cost').textContent = !scIndustry
+    ? 'Select a type below'
+    : scIndustry === 'banking'
+      ? `${hfFmtBig(cost)} (Standard of Living ${scSol}) — ${hfFmtBig(Math.round(cost * 0.20))} charter · ${hfFmtBig(Math.round(cost * 0.80))} deposited as your bank's opening reserve`
+      : `${hfFmtBig(cost)} (Standard of Living ${scSol})`;
 }
 
 function scUpdateSubmit() {

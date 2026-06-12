@@ -127,6 +127,15 @@ All notable changes to Nationhood are recorded here. Format inspired by
   purchases, construction materials & equipment, and Advance Build
   fees all count. The corp page shows the expense line and the honest
   "(revenue − payroll − expenses)" math.
+- **Founding costs got real** (previously unlogged): the flat $10K
+  Start Company filing became **$10M Construction / $35M Automotive ×
+  the nation's Standard of Living ÷ 50**. And **Banking charters
+  arrive** at a **$50M base** on the same formula — with a twist: 20%
+  burns as the charter, **80% is deposited into the corp treasury as
+  the bank's opening reserve**. Foundable wherever businessmen live
+  (Sierramar, Melizea, Avelia, Montequilla); the legacy
+  entrepreneur-side banking charter is retired (existing banks
+  grandfather).
 - **Multi-businessman accounts unlocked their desks.** Kit actions now
   resolve the character who actually holds the job, not the oldest
   one on the account — the CMO/CCO/engineer lockout is gone, and the
