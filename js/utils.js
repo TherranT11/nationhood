@@ -434,11 +434,11 @@ export const CHAIR_BID_THRESHOLDS = {
 // drive the client-side pre-check + the rung labels + the rung
 // descriptions + the error messages, so a retune is a one-line
 // edit here plus the matching change in the rung's migration.
-// Add deputyMinister when 20270682 ships (32 Experience per spec).
 export const CIVIL_SERVICE_THRESHOLDS = {
     agencyHead:          15,   // 20270674 — politician_apply_for_promotion
     permanentSecretary:  20,   // 20270679 — politician_seek_permanent_secretary
     juniorMinister:      28,   // 20270681 — politician_seek_junior_appointment
+    deputyMinister:      32,   // 20270880 — politician_seek_deputy_appointment
 };
 
 // Civil-service ministry slug → display name. Source of truth for the

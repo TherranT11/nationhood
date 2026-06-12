@@ -422,6 +422,14 @@
   .top-row { grid-template-columns:1fr; }
 }
 @media (max-width:700px) {
+  /* Stat cards compact to a 2x2 dashboard — label, value, quote;
+     the EARNS/SPENDS/CAREER/PARTY detail rows are desktop reading. */
+  .stat-card { padding:13px 14px; }
+  .stat-card .stat-value { font-size:24px; }
+  .stat-card .stat-sec { display:none; }
+  /* Chat input: drop the identity pill so the field gets the width. */
+  .nc-input { padding:10px 12px; }
+  .nc-input-pill { display:none; }
   .hero { grid-template-columns:1fr; gap:18px; }
   .anchor { text-align:left; padding-left:0; border-left:none; border-top:0.5px solid rgba(255,255,255,0.08); padding-top:14px; }
   .anchor-message { margin-left:0; max-width:none; }
@@ -505,6 +513,16 @@
   font-variant-numeric:tabular-nums; text-align:right; }
 @media (max-width: 640px) {
   .mayor-stats { grid-template-columns:1fr; }
+  /* Mobile affiliation header: the tenure pill + resign button are
+     flex-shrink:0, which starved .ah-info into a one-word-per-line
+     column on phones. Let the row wrap — badge + info hold the first
+     line, tenure/resign drop below it at full width. */
+  .ah-row { flex-wrap:wrap; row-gap:10px; }
+  .ah-info { flex:1 1 220px; }
+  .ah-tenure { text-align:left; }
+  /* Action tiles single-file on phones — three-across collapses each
+     tile to an unreadable sliver. */
+  .ar-buttons, .ar-buttons.cols-2 { grid-template-columns:1fr; }
 }
 
 .act-row { padding:14px 20px; }
@@ -1290,7 +1308,40 @@
     </div>
   </div>
 
-  <!-- TOP ROW: World Events (dispatch feed) + Nation Chat side-by-side. -->
+  <div class="stats-row" id="stats-row"></div>
+
+  <div class="section-heading">
+    <span class="roman">I.</span>
+    <span class="sans">Pressing</span>
+    <span class="serif">Issues</span>
+  </div>
+  <div id="pressing-issues"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">II.</span>
+    <span class="sans">Current</span>
+    <span class="serif">Affiliation</span>
+  </div>
+  <div id="affiliation-host"></div>
+  <div id="foreign-affiliation-host"></div>
+  <div id="fis-affiliation-host"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">III.</span>
+    <span class="sans">Party</span>
+    <span class="serif">Membership</span>
+  </div>
+  <div id="party-membership-host"></div>
+
+  <div class="section-heading" style="margin-top:28px;">
+    <span class="roman">IV.</span>
+    <span class="sans">Political</span>
+    <span class="serif">Career</span>
+    <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
+  </div>
+  <div class="career-events" id="career-events"></div>
+
+  <!-- BOTTOM ROW: World Events (dispatch feed) + Nation Chat side-by-side. -->
   <div class="top-row">
 
     <!-- World Events — global event_log feed, 5 category tabs. -->
@@ -1335,32 +1386,6 @@
       </div>
     </div>
   </div>
-
-  <div class="stats-row" id="stats-row"></div>
-
-  <div class="section-heading">
-    <span class="roman">I.</span>
-    <span class="sans">Pressing</span>
-    <span class="serif">Issues</span>
-  </div>
-  <div id="pressing-issues"></div>
-
-  <div class="section-heading" style="margin-top:28px;">
-    <span class="roman">II.</span>
-    <span class="sans">Current</span>
-    <span class="serif">Affiliation</span>
-  </div>
-  <div id="affiliation-host"></div>
-  <div id="foreign-affiliation-host"></div>
-  <div id="fis-affiliation-host"></div>
-
-  <div class="section-heading" style="margin-top:28px;">
-    <span class="roman">III.</span>
-    <span class="sans">Political</span>
-    <span class="serif">Career</span>
-    <button class="retire-btn" id="retire-btn" title="End this politician's career">Retire</button>
-  </div>
-  <div class="career-events" id="career-events"></div>
 </div>
 
 <div id="loading" class="loading">LOADING...</div>
@@ -1426,6 +1451,10 @@ const CAREER_EVENT_TEMPLATES = {
   // Permanent Undersecretary kit (20270878). Both land on the
   // TARGET's timeline; target_name on the sabotage row carries the
   // Undersecretary's name.
+  // Deputy Minister lifecycle (20270880). target_name carries the
+  // major-ministry slug; MAJOR_MINISTRY_LABEL renders it.
+  appointed_deputy_minister: (name, target) => `${name} was appointed Deputy Minister of ${MAJOR_MINISTRY_LABEL[target] || target || 'a major ministry'}.`,
+  deputy_minister_lost_power: (name, target) => `${name} lost the Deputy Minister seat${MAJOR_MINISTRY_LABEL[target] ? ` at ${MAJOR_MINISTRY_LABEL[target]}` : ''} when their party fell from power.`,
   noticed_by_undersecretary: (name) => `${name} was noticed by the Permanent Undersecretary.`,
   brief_sabotage_caught: (name, target) => `${name} discovered ${target || 'the Permanent Undersecretary'} had cooked their briefing papers.`,
   joined_party:  (name, target) => `${name} has registered their membership in the ${target || 'a political party'}.`,
@@ -1709,7 +1738,7 @@ async function init() {
     //           CCM by office can't hold the CCP seat).
     const cityFetch = politician.politician_office === 'mayor'
       ? _supabase.from('cities')
-          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, mayor_term_end_tick, tax_package_discount_charges')
+          .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, unemployment, services, affordability, mayor_term_end_tick, tax_package_discount_charges')
           .eq('nation_id', politician.nation_id)
           .eq('mayor_first_name', politician.leader_first_name)
           .eq('mayor_last_name',  politician.leader_last_name)
@@ -1717,7 +1746,7 @@ async function init() {
           .maybeSingle()
       : politician.politician_office === 'city_council_president'
         ? _supabase.from('cities')
-            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council, tax_package_discount_charges')
+            .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, unemployment, services, affordability, council, tax_package_discount_charges')
             .eq('nation_id', politician.nation_id)
             .filter('council->0->>holder_faction_id', 'eq', politician.id)
             .maybeSingle()
@@ -1728,7 +1757,7 @@ async function init() {
           // .or() across the three member seat indices — same
           // shape as the CCP filter (which targets index 0).
           ? _supabase.from('cities')
-              .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, jobs, services, affordability, council, tax_package_discount_charges')
+              .select('id, city_name, description, budget, infrastructure, appeal, growth, crime, approval, pollution, unemployment, services, affordability, council, tax_package_discount_charges')
               .eq('nation_id', politician.nation_id)
               .or(`council->1->>holder_faction_id.eq.${politician.id},council->2->>holder_faction_id.eq.${politician.id},council->3->>holder_faction_id.eq.${politician.id}`)
               .maybeSingle()
@@ -1992,6 +2021,9 @@ async function init() {
   _supabase.rpc('resolve_due_city_ordinance_proposals')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_city_ordinance_proposals:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_city_ordinance_proposals threw:', err?.message || err));
+  _supabase.rpc('resolve_due_committee_floor_votes')
+    .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_committee_floor_votes:', error.message); })
+    .catch(err => console.warn('[politician-home] resolve_due_committee_floor_votes threw:', err?.message || err));
   _supabase.rpc('resolve_due_ambassador_confirmations')
     .then(({ error }) => { if (error) console.warn('[politician-home] resolve_due_ambassador_confirmations:', error.message); })
     .catch(err => console.warn('[politician-home] resolve_due_ambassador_confirmations threw:', err?.message || err));
@@ -2001,6 +2033,7 @@ async function init() {
   window.__politicianCtx = ctx;
   renderPressingIssues(ctx);
   renderAffiliation(ctx);
+  renderPartyMembership(ctx);
   // Foreign Service is additive: politicians who've passed the Tier 1
   // exam (20270759) get a second affiliation card below their main one.
   // Function self-noops when the column is null.
@@ -2229,37 +2262,37 @@ const STAT_CARDS = [
     key:   'rep',
     label: 'REPUTATION',
     quote: '"Do peers and press respect you?"',
-    earns:  `Time. Competence. A clean record. <em>Surviving terms without scandal.</em>`,
-    spends: `Doesn't deplete. <b>Passive stat</b> — gates eligibility, not consumed.`,
-    career: `Required for senior appointed office — ministerial seats, judicial appointments, leadership tiers.`,
-    party:  `Reputable members lift the ceiling. Voters trust the whole party more.`,
-  },
-  {
-    key:   'cap',
-    label: 'CAPITAL',
-    quote: '"Money and favors banked."',
-    earns:  `Salaries. Party allowances. Race payouts. Side channels (some <b>risky</b>).`,
-    spends: `Race entry fees. Party donations. Action costs.`,
-    career: `Higher races cost more to enter. <em>Leadership tiers scale up substantially.</em>`,
-    party:  `Flows two ways — you donate, or the party underwrites your races.`,
+    earns:  `Competence, clean records, surviving terms.`,
+    spends: `Passive — gates eligibility, never spent.`,
+    career: `Required for senior appointed office.`,
+    party:  `Reputable members lift the whole ticket.`,
   },
   {
     key:   'skill',
     label: 'EXPERIENCE',
     quote: '"Are you good at the job?"',
-    earns:  `Practice and success. Winning contests. Performing the role well under pressure.`,
-    spends: `Doesn't deplete. <b>Rolled in every contest</b> — races, decisions, dispositions.`,
-    career: `Each rung has an Experience floor. <b>Technical paths</b> (civil service, judiciary) lean on it hardest.`,
-    party:  `Indirect — higher-Experience members win more races, so more seats.`,
+    earns:  `Practice, wins, performing under pressure.`,
+    spends: `Rolled in every contest — never depletes.`,
+    career: `Every rung has an Experience floor.`,
+    party:  `Experienced members win more seats.`,
   },
   {
     key:   'inf',
     label: 'INFLUENCE',
-    quote: '"Who owes you, who returns your calls?"',
-    earns:  `Visibility and connection. Chamber time. Speeches. Sponsoring legislation. Building a base.`,
-    spends: `Lobbying. Vote-whipping. Calling in favors. Pushing for appointments.`,
-    career: `<b>Not a hard gate</b> — the currency that makes appointed and party-internal moves happen.`,
-    party:  `Cashed in for party-internal moves — whipping a bloc, securing seats for colleagues.`,
+    quote: '"Who returns your calls?"',
+    earns:  `Chamber time, speeches, sponsoring bills.`,
+    spends: `Lobbying, whipping votes, calling in favors.`,
+    career: `The currency of appointed moves.`,
+    party:  `Whips blocs, places colleagues in seats.`,
+  },
+  {
+    key:   'cap',
+    label: 'CAPITAL',
+    quote: '"Money and favors banked."',
+    earns:  `Salaries, allowances, race payouts.`,
+    spends: `Race entries, donations, action costs.`,
+    career: `Higher races cost more to enter.`,
+    party:  `You donate, or the party underwrites you.`,
   },
 ];
 
@@ -2329,7 +2362,7 @@ const PARTY_MEMBER_ACTIONS = [
 const MAYOR_ACTIONS = [
   { ic: '💰', name: 'COLLECT TAXES', cost: '-1 Party Popularity', desc: 'Tax the citizens. Adds $floor(Growth / 3) to the city budget.', action: 'collect-taxes' },
   { ic: '📣', name: 'CAMPAIGN',      cost: '-1 Growth',          desc: 'Spend the month on the stump for yourself. +1 Influence, +1 Reputation. City Growth drops by 1.', action: 'campaign' },
-  { ic: '📋', name: 'TAX PACKAGE',   cost: 'See tiers',          desc: 'Pass a Minor / Moderate / Major tax cut. Pay upfront Growth + Jobs; the next 2-5 construction requests in this city get -10% off and rebate +1 Growth +1 Jobs each. Blocked while a package is active.', action: 'tax-package' },
+  { ic: '📋', name: 'TAX PACKAGE',   cost: 'See tiers',          desc: 'Pass a Minor / Moderate / Major tax cut. Pay upfront Growth and take an Unemployment hit; the next 2-5 construction requests in this city get -10% off and each rebates +1 Growth, -1 Unemployment. Blocked while a package is active.', action: 'tax-package' },
 ];
 // City Council President (Tier 3 Local Legislative) — 20270744. Same
 // Propose Ordinance flow as CCM (shared modal + RPC), with a -1
@@ -2399,6 +2432,11 @@ const AGENCY_HEAD_ACTIONS = [
 const JUNIOR_MINISTER_ACTIONS = [
   { ic: '📜', name: 'CARRY A BILL',      cost: 'no cost', desc: 'Pilot a piece of government legislation through the chamber.' },
   { ic: '🎙', name: 'ANSWER QUESTIONS', cost: 'no cost', desc: 'Stand at the dispatch box and answer for your portfolio.' },
+];
+// Deputy Minister (Tier 5, 20270880) placeholder actions.
+const DEPUTY_MINISTER_ACTIONS = [
+  { ic: '🏛', name: 'OVERSEE POLICY',         cost: 'no cost', desc: 'Run the policy areas the Minister has delegated to you.' },
+  { ic: '🌐', name: 'REPRESENT THE MINISTRY', cost: 'no cost', desc: 'Stand in for the Minister — in Cabinet, before the press, abroad.' },
 ];
 // Permanent Undersecretary kit (Tier 3, 20270878). All three share
 // next_civil_service_action_tick — one move per tick.
@@ -2684,6 +2722,25 @@ const AFFIL_VARIANTS = {
     nameFn:  (ctx) => `Junior Minister for ${portfolioLabel(ctx.faction?.politician_junior_portfolio)}`,
     descFn:  (ctx) => `You hold the <strong>${escHtml(portfolioLabel(ctx.faction?.politician_junior_portfolio))}</strong> portfolio — sub-Cabinet rank. You carry the brief, answer for the Minister when absent, and pilot legislation through the chamber. If the government falls, so does the portfolio.`,
     actions: JUNIOR_MINISTER_ACTIONS,
+    // actionsEnabled left undefined → placeholder slots render greyed.
+  },
+  // Deputy Minister (Tier 5, 20270880). politician_deputy_minister_
+  // ministry gates entry above the Junior Minister check. Falls with
+  // the government like the JM portfolio (election-resolver strip).
+  deputy_minister: {
+    variant: 'var-civ',
+    eyebrow: 'POLITICAL APPOINTMENT · TIER 5',
+    badge:   '🎗',
+    name:    'Deputy Minister',
+    nameFn:  (ctx) => {
+      const m = ctx.faction?.politician_deputy_minister_ministry;
+      return `Deputy Minister of ${MAJOR_MINISTRY_LABEL[m] || m || '—'}`;
+    },
+    descFn:  (ctx) => {
+      const m = ctx.faction?.politician_deputy_minister_ministry;
+      return `You deputise for the Minister of <strong>${escHtml(MAJOR_MINISTRY_LABEL[m] || m || '—')}</strong> — you own discrete policy areas, sit in Cabinet when they are absent, and represent the ministry externally. If the government falls, so do you.`;
+    },
+    actions: DEPUTY_MINISTER_ACTIONS,
     // actionsEnabled left undefined → placeholder slots render greyed.
   },
 };
@@ -3155,7 +3212,7 @@ async function enactTaxPackage(ctx, tier, btn) {
         on_cooldown:          'You’ve already used your action this tick.',
         package_active:       'A tax package is still active here. Wait until its charges are spent.',
         insufficient_growth:  'City Growth is too low to enact this tier.',
-        insufficient_jobs:    'City Jobs is too low to enact this tier.',
+        unemployment_too_high: 'Unemployment would climb past the ceiling — the city can\u2019t absorb this tier.',
       };
       alert(REASON[data?.reason] || ('Could not enact: ' + (data?.reason || 'unknown')));
       btn.disabled = false;
@@ -3184,6 +3241,50 @@ function pickJudicialVariant(faction) {
   if (faction?.politician_state_prosecutor_at_tick      != null) return AFFIL_VARIANTS.state_advocate;
   if (faction?.politician_experienced_advocate_at_tick  != null) return AFFIL_VARIANTS.experienced_advocate;
   return AFFIL_VARIANTS.advocate;
+}
+
+// ─── III. Party Membership ──────────────────────────────────────────
+// One card for the party itself — name, archetype, popularity, seats,
+// description, and the door to the dedicated party page. Reads the
+// enriched ctx.party row the topbar bootstrap already fetches.
+function renderPartyMembership(ctx) {
+  const host = document.getElementById('party-membership-host');
+  if (!host) return;
+  const p = ctx.party;
+  if (!p) {
+    host.innerHTML = `
+      <div class="affil var-party">
+        <div class="ah-row">
+          <div class="ah-badge">🏛</div>
+          <div class="ah-info">
+            <div class="ah-eyebrow">PARTY MEMBERSHIP</div>
+            <div class="ah-name">Independent</div>
+            <div class="ah-desc">You carry no party card. The movements page lists every party recruiting in your nation.</div>
+          </div>
+          <a class="ah-cta" href="politician-movements.html" style="align-self:flex-start;">BROWSE MOVEMENTS</a>
+        </div>
+      </div>`;
+    return;
+  }
+  const pop   = Number(p.popularity_pct);
+  const seats = Number(p.seats) || 0;
+  host.innerHTML = `
+    <div class="affil var-party">
+      <div class="ah-row">
+        <div class="ah-badge">🏛</div>
+        <div class="ah-info">
+          <div class="ah-eyebrow">PARTY MEMBERSHIP${p.archetype ? ' &middot; ' + escHtml(p.archetype.toUpperCase()) : ''}${p.party_status ? ' &middot; ' + escHtml(p.party_status.toUpperCase()) : ''}</div>
+          <div class="ah-name">${escHtml(p.faction_name || '—')}</div>
+          <div class="ah-desc">${escHtml(p.party_description || 'No party platform on record.')}</div>
+        </div>
+        <div class="ah-tenure">
+          <span class="ah-tenure-val">${Number.isFinite(pop) ? pop.toFixed(1) + '%' : '—'}</span>
+          <div class="ah-tenure-lab">PARTY POPULARITY</div>
+          <div class="ah-tenure-elected"><strong>${seats}</strong> SEAT${seats === 1 ? '' : 'S'}</div>
+          <a class="ah-cta" href="party.html?id=${encodeURIComponent(p.id)}">PARTY PAGE</a>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderAffiliation(ctx) {
@@ -3218,19 +3319,21 @@ function renderAffiliation(ctx) {
   // affiliation it should remove the Party Member one".
   const isSeniorCS = !!ministry
     && ctx.faction?.politician_senior_civil_servant_at_tick != null;
-  // Tier 4 Junior Minister outranks the whole career civil service;
-  // Tier 3 outranks both lower rungs (20270679).
+  // Appointed canopy outranks the career civil service: Tier 5
+  // Deputy Minister > Tier 4 Junior Minister > Tier 3 PS (20270679).
+  const isDM = !!ctx.faction?.politician_deputy_minister_ministry;
   const isJM = !!ctx.faction?.politician_junior_portfolio;
   const isPermSec = !!ctx.faction?.politician_permanent_secretary_ministry;
   const variant = (office && AFFIL_VARIANTS[office])
     ? AFFIL_VARIANTS[office]
-    : (isJM ? AFFIL_VARIANTS.junior_minister
+    : (isDM ? AFFIL_VARIANTS.deputy_minister
+      : (isJM ? AFFIL_VARIANTS.junior_minister
       : (isPermSec ? AFFIL_VARIANTS.permanent_secretary
       : (isSeniorCS ? AFFIL_VARIANTS.senior_civil_servant
                   : (ministry ? AFFIL_VARIANTS.civil_servant
                               : (barNation ? pickJudicialVariant(ctx.faction)
                                            : ((fsNation || fisAgent) ? null
-                                                       : AFFIL_VARIANTS.party_member))))));
+                                                       : AFFIL_VARIANTS.party_member)))))));
   if (!variant) {
     // Foreign Service is the only affiliation — the secondary host
     // renderForeignAffiliation paints the only card. Clear the main
@@ -3414,7 +3517,7 @@ function renderAffiliation(ctx) {
   let resignCfg = null;
   if (office) {
     resignCfg = { kind: 'office', label: 'RESIGN' };
-  } else if (isJM || isPermSec || isSeniorCS || ministry) {
+  } else if (isDM || isJM || isPermSec || isSeniorCS || ministry) {
     resignCfg = { kind: 'rpc', label: 'RESIGN', rpc: 'politician_resign_from_civil_service',
       args: { p_faction_id: ctx.faction?.id || null },
       confirm: 'Resign from the civil service? You will lose 2 Reputation and forfeit every civil-service rung — Civil Servant through Junior Minister. You can re-sit the exam later.' };
@@ -3425,11 +3528,14 @@ function renderAffiliation(ctx) {
   } else if (ctx.party?.id) {
     resignCfg = { kind: 'leave-party', label: 'LEAVE PARTY' };
   }
+  // LEAVE PARTY gets the larger cut — it's the primary action on the
+  // party-member card, not a danger afterthought like RESIGN.
+  const resignBig = resignCfg?.kind === 'leave-party';
   const resignHtml = resignCfg
     ? `<button class="resign-btn" data-affil-resign
-               style="background:transparent; border:0.5px solid rgba(200,120,120,0.3); color:#c87a7a;
-                      font-size:10px; letter-spacing:0.08em; padding:5px 12px; border-radius:4px;
-                      cursor:pointer; font-family:inherit; flex-shrink:0; align-self:flex-start;">${resignCfg.label}</button>`
+               style="background:transparent; border:0.5px solid rgba(200,120,120,${resignBig ? '0.45' : '0.3'}); color:#c87a7a;
+                      font-size:${resignBig ? '12px' : '10px'}; letter-spacing:0.08em; padding:${resignBig ? '10px 22px' : '5px 12px'}; border-radius:4px;
+                      cursor:pointer; font-family:inherit; flex-shrink:0; align-self:flex-start;${resignBig ? ' font-weight:700;' : ''}">${resignCfg.label}</button>`
     : '';
 
   host.innerHTML = `

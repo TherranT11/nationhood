@@ -30,7 +30,7 @@ export const CITY_STATS = [
   { key: 'crime',          name: 'Crime',          bands: ['Safe Streets',    'Smuggling Dominant',    'Organized Crime',                'Gangs Control Districts',         'Total Lawlessness'] },
   { key: 'appeal',         name: 'Appeal',         bands: ['Bleak Eyesore',   'Faded and Neglected',   'Pleasant but Modest',            'Charming and Picturesque',        'Breathtaking and World-Class'] },
   { key: 'growth',         name: 'Growth',         bands: ['Deep Recession',  'Stagnant',              'Moderate',                       'Booming',                         'Hyper-Growth'] },
-  { key: 'jobs',           name: 'Jobs',           bands: ['Critical Deficit','Limited Availability',  'Modest Openings',                'Robust Hiring',                   'Surging Labor Demand'] },
+  { key: 'unemployment',   name: 'Unemployment',   bands: ['Near-Full Employment','Low Unemployment', 'Moderate Unemployment',          'High Unemployment',               'Mass Unemployment'] },
   { key: 'services',       name: 'Services',       bands: ['Non-Existent',    'Long Queues',           'Functional',                     'Efficient and Reliable Delivery', 'Comprehensive and Affordable'] },
   { key: 'affordability',  name: 'Affordability',  bands: ['Extreme Hardship','Pricing Out Locals',    'Cost of Living Balance',         'Accessible',                      'Dirt Cheap'] },
 ];

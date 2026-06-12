@@ -633,7 +633,7 @@ async function handleJoinClick(btn) {
   if (!_politicianId) return;
   const partyId = btn.dataset.partyId;
   const mode    = btn.dataset.mode;
-  // Leave is destructive (-5 Influence). Confirm before firing the RPC.
+  // Confirm before firing the leave RPC.
   if (mode === 'leave' && !confirm(LEAVE_PARTY_CONFIRM)) return;
   const prevTxt = btn.textContent;
   btn.disabled = true; btn.textContent = mode === 'leave' ? 'Leaving…' : 'Joining…';

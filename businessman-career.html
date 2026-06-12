@@ -280,7 +280,7 @@ async function openStartCompany(faction) {
   try {
     const [cityRes, natRes] = await Promise.all([
       _supabase.from('cities')
-        .select('id, city_name, city_type, jobs, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype)')
+        .select('id, city_name, city_type, unemployment, population_pct, mayor_first_name, mayor_last_name, mayor_archetype, mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype)')
         .eq('nation_id', faction.nation_id)
         .order('city_type'),
       _supabase.from('nations').select('population, standard_of_living').eq('id', faction.nation_id).maybeSingle(),
@@ -309,7 +309,7 @@ async function openStartCompany(faction) {
           <span class="nm">${esc(c.city_name)}${c.city_type === 'capital' ? ' (Capital)' : ''}</span>
           <div class="mayor">${mayorBits}</div>
         </div>
-        <span class="st">JOBS: ${esc(String(c.jobs ?? '—'))} &middot; POPULATION: ${esc(fmtBig(population))}</span>
+        <span class="st">UNEMPLOYMENT: ${esc(String(c.unemployment ?? '—'))} &middot; POPULATION: ${esc(fmtBig(population))}</span>
       </div>`;
     }).join('')
       + '<div class="sc-file" style="margin-top:2px;color:#555;">Jobs represent the amount of those looking for jobs in those cities.</div>';

@@ -230,16 +230,14 @@
   <div class="pd-modal">
     <div class="pd-head">Run the <em>Line</em></div>
     <div class="pd-body">
-      <div class="pd-lab">MODEL</div>
+      <div class="pd-lab">ASSIGN A FREE LINE TO &middot; OPTIONAL</div>
       <div class="pd-pills" id="ml-models"></div>
-      <div class="pd-lab">AMOUNT TO BUILD</div>
-      <input type="number" class="pd-input" id="ml-qty" min="1" max="200" step="1" value="1">
       <div class="pd-static" id="ml-cost" style="margin-top:8px;">&mdash;</div>
-      <div class="pd-static" style="margin-top:6px;color:#888;font-size:10px;">50 vehicles per tick &mdash; the line is assigned one tick per 50 ordered. Treasury pays; the depot supplies the Aluminum and Components up front. Pending charges (yours and the engineers&rsquo;) ride this run.</div>
+      <div class="pd-static" style="margin-top:6px;color:#888;font-size:10px;">Every assigned line builds 50 vehicles THIS TURN &mdash; treasury and depot pay per line as it builds, lines that can&rsquo;t be covered are skipped. Pending charges (yours and the engineers&rsquo;) ride this build.</div>
     </div>
     <div class="pd-foot">
       <button type="button" class="pd-btn secondary" id="ml-cancel">CANCEL</button>
-      <button type="button" class="pd-btn" id="ml-run" disabled>START RUN</button>
+      <button type="button" class="pd-btn" id="ml-run">ASSIGN AND BUILD</button>
     </div>
   </div>
 </div>
@@ -1041,32 +1039,27 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
         const CMO_REASON = {
           not_cmo: 'This desk belongs to the Chief Manufacturing Officer.',
           no_actions_remaining: 'You already acted this tick.',
-          no_line_available: 'Every assembly line is already running.',
-          invalid_quantity: 'Order between 1 and 200 vehicles.',
-          insufficient_treasury: 'The treasury can\u2019t cover the run.',
-          not_enough_aluminum: 'Not enough Aluminum in the depot.',
-          not_enough_components: 'Not enough Electrical Components in the depot.',
+          no_line_available: 'Every assembly line is already assigned.',
+          no_lines_assigned: 'No assembly line has a Model assigned \u2014 pick one to assign first.',
+          nothing_built: 'Nothing built \u2014 every line was skipped.',
           blueprint_not_found: 'That Model belongs to another corporation.',
           industry_not_chartered: 'Not an automotive corporation.',
         };
         let mlModel = null, mlInFlight = false;
         function mlRefresh() {
-          const qty = Math.floor(Number(document.getElementById('ml-qty').value) || 0);
-          const ok = !!mlModel && qty >= 1 && qty <= 200;
           const cost = document.getElementById('ml-cost');
-          if (ok) {
+          if (mlModel) {
             const unit = Math.max(1, Number(mlModel.xp_cost) || 1) * 5000;
-            const alu = aluminumPerVehicle(mlModel.vehicle_type) * qty;
-            const comp = componentsPerVehicle(mlModel.engine, mlModel.packages) * qty;
-            cost.textContent = `Total ${hfFmtBig(unit * qty)} \u00b7 Aluminum ${alu} of ${Number(employer?.data?.aluminum_stock) || 0} \u00b7 Components ${comp} of ${Number(employer?.data?.components_stock) || 0} in the depot`;
+            const alu = aluminumPerVehicle(mlModel.vehicle_type) * 50;
+            const comp = componentsPerVehicle(mlModel.engine, mlModel.packages) * 50;
+            cost.textContent = `New line: ${hfFmtBig(unit * 50)} \u00b7 Aluminum ${alu} \u00b7 Components ${comp} per turn \u2014 plus every line already assigned.`;
           } else {
-            cost.textContent = '\u2014';
+            cost.textContent = 'No new assignment \u2014 every assigned line builds its 50.';
           }
-          document.getElementById('ml-run').disabled = mlInFlight || !ok;
+          document.getElementById('ml-run').disabled = mlInFlight;
         }
         async function openCmoRunLine() {
           mlModel = null;
-          document.getElementById('ml-qty').value = '1';
           const host = document.getElementById('ml-models');
           host.innerHTML = '<div class="pd-static" style="color:#888;">Loading\u2026</div>';
           mlRefresh();
@@ -1096,20 +1089,25 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
           }
         }
         ccoWireClose('ml-overlay', 'ml-cancel');
-        document.getElementById('ml-qty').addEventListener('input', mlRefresh);
         document.getElementById('ml-run').addEventListener('click', async () => {
           if (mlInFlight) return;
           mlInFlight = true; mlRefresh();
           try {
             const { data, error } = await _supabase.rpc('cmo_start_production_run', {
-              p_blueprint_id: mlModel?.id,
-              p_quantity: Math.floor(Number(document.getElementById('ml-qty').value) || 0),
+              p_blueprint_id: mlModel?.id || null,
             });
             if (error) throw error;
-            if (!data?.success) throw new Error(CMO_REASON[data?.reason] || data?.reason || 'unknown');
+            if (!data?.success) {
+              const detail = data?.reason === 'nothing_built'
+                ? ' ' + (data?.lines || []).map(l => `Line ${l.line}: ${l.skipped}`).join(' \u00b7 ')
+                : '';
+              throw new Error((CMO_REASON[data?.reason] || data?.reason || 'unknown') + detail);
+            }
             document.getElementById('ml-overlay').classList.remove('open');
             peSetSpent();
-            peNote.textContent = `The line spins up \u2014 ${Number(data.quantity).toLocaleString()} vehicles for ${hfFmtBig(Number(data.total_cost) || 0)}${Number(data.bonus_units) ? ` (+${data.bonus_units} bonus)` : ''}, done ${tickToDate(Number(data.completes_at_tick))}. Back next tick.`;
+            peNote.textContent = `Built ${Number(data.total_built).toLocaleString()} vehicles this turn \u2014 `
+              + (data.lines || []).filter(l => l.built > 0).map(l => `Line ${l.line}: ${l.built} ${l.model}`).join(' \u00b7 ')
+              + ` (${hfFmtBig(Number(data.total_cost) || 0)}). Back next tick.`;
           } catch (e) {
             alert('Could not start the run: ' + (e?.message || e));
           } finally {
@@ -1120,11 +1118,12 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
         // PROPOSE PLANT EXPANSION (20270864) — city pick, jobs-priced
         // quote (mirror of plant_expansion_cost: $25M − 3% per Job),
         // pitch to the CEO's Pressing Issues.
-        const plantExpansionCost = (jobs) => Math.round(25000000 * (1 - (Number(jobs) || 0) * 0.03));
+        // 20270881: idle labor is cheap labor — discount reads Unemployment.
+        const plantExpansionCost = (unemployment) => Math.round(25000000 * (1 - (Number(unemployment) || 0) * 0.03));
         let pxCity = null, pxInFlight = false;
         function pxRefresh() {
           document.getElementById('px-cost').textContent = pxCity
-            ? `Quote ${hfFmtBig(plantExpansionCost(pxCity.jobs))} \u00b7 ${pxCity.city_name} runs ${pxCity.jobs} Jobs`
+            ? `Quote ${hfFmtBig(plantExpansionCost(pxCity.unemployment))} \u00b7 ${pxCity.city_name} runs ${pxCity.unemployment} Unemployment`
             : '\u2014';
           document.getElementById('px-pitch').disabled = pxInFlight || !pxCity;
         }
@@ -1136,7 +1135,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
           document.getElementById('px-overlay').classList.add('open');
           try {
             const { data: cities, error } = await _supabase.from('cities')
-              .select('id, city_name, jobs, nation:nations!nation_id(name)')
+              .select('id, city_name, unemployment, nation:nations!nation_id(name)')
               .order('city_name');
             if (error) throw error;
             if (!cities?.length) {
@@ -1144,7 +1143,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
               return;
             }
             host.innerHTML = cities.map(c =>
-              `<div class="pd-pill" data-val="${esc(c.id)}">${esc(c.city_name.toUpperCase())} \u00b7 ${esc(c.nation?.name || '\u2014')} \u00b7 ${esc(String(c.jobs ?? '?'))} JOBS</div>`).join('');
+              `<div class="pd-pill" data-val="${esc(c.id)}">${esc(c.city_name.toUpperCase())} \u00b7 ${esc(c.nation?.name || '\u2014')} \u00b7 ${esc(String(c.unemployment ?? '?'))} UNEMPLOYMENT</div>`).join('');
             host.querySelectorAll('.pd-pill').forEach(pill => {
               pill.addEventListener('click', () => {
                 host.querySelectorAll('.pd-pill').forEach(x => x.classList.toggle('sel', x === pill));
