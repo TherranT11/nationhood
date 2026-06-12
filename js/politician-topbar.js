@@ -351,18 +351,18 @@ export async function bootstrapPolitician(activeTab) {
   _supabase.rpc('resolve_due_judge_timeouts')
     .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_judge_timeouts:', error.message); })
     .catch(e => console.warn('[politician-topbar] resolve_due_judge_timeouts threw:', e?.message || e));
-  // 20270772: resolve committee motions whose 3-tick window has closed
-  // (majority of votes cast carries; chair breaks ties), then carry out
-  // the winner (hearing / floor / amend / table).
-  _supabase.rpc('resolve_due_committee_motions')
-    .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_committee_motions:', error.message); })
-    .catch(e => console.warn('[politician-topbar] resolve_due_committee_motions threw:', e?.message || e));
+  // 20270892: resolve assembly floor votes whose 3-tick window has
+  // closed — statutes, amendments, and policy changes all ride this
+  // sweep now that proposals skip the committee stage.
+  _supabase.rpc('resolve_due_committee_floor_votes')
+    .then(({ error }) => { if (error) console.warn('[politician-topbar] resolve_due_committee_floor_votes:', error.message); })
+    .catch(e => console.warn('[politician-topbar] resolve_due_committee_floor_votes threw:', e?.message || e));
 
   return { user, faction, shard, nation, allUserFactions, party };
 }
 
 // Shared viewer for the nation-page family (nation / economy /
-// statutes / laws / modifiers / ministries / cabinet / committees /
+// statutes / laws / modifiers / ministries / cabinet /
 // elections / cities). Businessmen browse the same pages read-only
 // under their own chrome — a businessman faction has no politician
 // office or party, so every action gate on those pages falls through

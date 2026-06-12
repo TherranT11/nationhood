@@ -409,24 +409,11 @@ export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
 // MP-tier predicate — the two politician_office values that count as
 // "sitting Member of Parliament" for legislative gates (Propose New
-// Law, Committee admission, etc.). Single source: every "is this
+// Law, amendments, policy changes). Single source: every "is this
 // caller an MP?" check across the politician pages reads from here
 // so that adding a third MP-tier office is a one-line change.
 export const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
 export function isMpOffice(office) { return MP_OFFICES.has(office); }
-
-// Committee Chair bid thresholds — single source for politician_bid_
-// for_chair (migration 20270584). The RPC is the authority; these
-// constants exist so the career rung pre-check and the nation-page
-// Bid-for-Chair button can disable themselves with matching reason
-// labels instead of letting every player learn the gates by hitting
-// the server. Change these here if you bump the SQL tunables.
-export const CHAIR_BID_THRESHOLDS = {
-    SKILL:                   8,
-    INFLUENCE:              15,
-    SEATED_TICKS_REQUIRED:   4,
-    COOLDOWN_TICKS:          8,
-};
 
 // Civil-service / political-canopy Experience thresholds — single
 // source for the GOVT_SERVICE_RUNGS gates. Each migration's RPC is

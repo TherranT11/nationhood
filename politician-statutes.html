@@ -144,16 +144,6 @@
   font-family:inherit; }
 .pnl-ss-chip:hover { color:var(--leg-bright); border-color:var(--leg-dim); background:var(--leg-bg); }
 
-.pnl-comm-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-.pnl-comm { padding:10px 13px; background:#0a0807; border:0.5px solid var(--line); border-radius:4px;
-  cursor:pointer; display:flex; align-items:flex-start; gap:9px; font-family:inherit; text-align:left; color:#d4d4d4; }
-.pnl-comm:hover { background:#101010; border-color:#3a3a3a; }
-.pnl-comm.selected { background:var(--leg-bg); border-color:var(--leg); border-left:3px solid var(--leg);
-  padding-left:11px; }
-.pnl-comm-ic { font-size:13px; color:var(--leg-bright); flex-shrink:0; margin-top:1px; }
-.pnl-comm-name { font-size:10.5px; font-weight:600; color:#fff; letter-spacing:-0.005em; line-height:1.35; }
-.pnl-comm.selected .pnl-comm-name { color:var(--leg-bright); }
-
 .pnl-articles { display:flex; flex-direction:column; gap:9px; }
 .pnl-article { background:var(--paper); border:0.5px solid var(--paper-line); border-radius:5px; overflow:hidden; }
 .pnl-art-head { padding:8px 14px; background:#1e1916; border-bottom:0.5px solid var(--paper-line);
@@ -199,17 +189,6 @@
 .pnl-arch-chip:disabled { opacity:0.35; cursor:not-allowed; }
 @media (max-width:520px) { .pnl-arch-grid { grid-template-columns:1fr; } }
 
-.pnl-stakeholders { display:flex; flex-direction:column; gap:6px; }
-.pnl-stk-row { display:flex; align-items:center; gap:8px; }
-.pnl-stk-num { font-family:Georgia,serif; font-size:11px; color:var(--leg); width:18px; flex-shrink:0;
-  text-align:right; font-weight:600; letter-spacing:-0.005em; }
-.pnl-stk-input { flex:1; padding:8px 12px; background:#0a0807;
-  border:0.5px solid var(--line); border-radius:4px; color:#fff; font-size:11px;
-  font-family:inherit; letter-spacing:-0.005em; box-sizing:border-box; }
-.pnl-stk-input::placeholder { color:var(--faint); font-style:italic; }
-.pnl-stk-input:focus { outline:none; border-color:var(--leg-dim); }
-.pnl-stk-input.invalid { border-color:var(--red-dim); background:var(--red-bg); }
-
 .pnl-foot { padding:14px 28px; background:#0a0807; border-top:0.5px solid var(--leg-dim);
   display:flex; align-items:center; gap:14px; }
 .pnl-foot-note { flex:1; font-size:9.5px; color:var(--mut); line-height:1.55; }
@@ -223,7 +202,7 @@
 .pnl-err.show { display:block; }
 
 /* Phone-class viewport. Category pills fall to a 2×2 grid so the
-   COMMERCIAL label has room; committee picker stacks single-column;
+   COMMERCIAL label has room;
    modal padding trims back so the form isn't choked by chrome. */
 @media (max-width:520px) {
   .pnl-overlay { padding:24px 12px 12px; }
@@ -234,15 +213,12 @@
   .pnl-submit { width:100%; }
   .pnl-cat-row    { grid-template-columns:repeat(2,1fr); }
   #aml-cat-row    { grid-template-columns:repeat(2,1fr); }
-  .pnl-comm-grid  { grid-template-columns:1fr; }
   .pnl-art-actions { flex-wrap:wrap; }
   .pnl-art-counter { margin-left:0; width:100%; text-align:right; }
 }
 
 /* Propose Law (policy-switch) modal — 20270728.
-   Current-option line reads as a snapshot pill; the new-option grid
-   uses the same .pnl-comm tile shape so the modal feels cohesive
-   with the existing two. The disabled (= currently-active) tile
+   Current-option line reads as a snapshot pill. The disabled (= currently-active) tile
    greys out so the player can see it but not pick it. */
 .ppl-current { padding:11px 14px; background:#0a0807; border:0.5px solid var(--line);
   border-radius:4px; font-size:12.5px; color:#cfcabf; line-height:1.45; }
@@ -328,7 +304,7 @@
     <div class="pnl-head">
       <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
       <div class="pnl-title">Propose a <em>New Law</em></div>
-      <div class="pnl-sub">Draft a bill for referral to the appropriate standing committee. <strong>Once submitted</strong>, the committee will set the proposal on its agenda when calendar permits.</div>
+      <div class="pnl-sub">Draft a bill for the floor of the assembly. <strong>Once submitted</strong>, the parties divide immediately and the vote stands in the nation's Voting section for 3 ticks.</div>
       <button class="pnl-close" id="pnl-close" type="button" title="Cancel">&#10005;</button>
     </div>
 
@@ -355,11 +331,6 @@
       </div>
 
       <div class="pnl-fg">
-        <div class="pnl-fg-lab">REFER TO COMMITTEE<span class="req">*</span></div>
-        <div class="pnl-comm-grid" id="pnl-comm-grid"></div>
-      </div>
-
-      <div class="pnl-fg">
         <div class="pnl-fg-lab">ARTICLES<span class="req">*</span></div>
         <div class="pnl-fg-hint">Each article is one operative clause. Section numbers auto-generate once the law is reported out. <strong>600 characters total across all articles.</strong></div>
         <div class="pnl-articles" id="pnl-articles"></div>
@@ -369,24 +340,15 @@
         </div>
       </div>
 
-      <details class="pnl-adv">
-        <summary class="pnl-adv-sum">ADVANCED OPTIONS</summary>
-        <div class="pnl-fg">
-          <div class="pnl-fg-lab">STAKEHOLDERS</div>
-          <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing (e.g. "Tenants' Union Rep," "Small Business Owner"). Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
-          <div class="pnl-stakeholders" id="pnl-stakeholders"></div>
-        </div>
-      </details>
-
       <div class="pnl-fg">
         <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>support</em> this bill. NPC parties with a matching archetype will vote <strong>Report</strong> in committee. Player MPs whose party archetype is listed and vote <strong>Table</strong> pay 1 Party Popularity. <strong>Pick the same number of Supporting and Opposing archetypes.</strong></div>
+        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>support</em> this bill. Parties with a matching archetype bank their seats <strong>Yes</strong> on the floor. <strong>Pick the same number of Supporting and Opposing archetypes.</strong></div>
         <div class="pnl-arch-grid" id="pnl-support-arch"></div>
       </div>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>oppose</em> this bill. NPC parties with a matching archetype will vote <strong>Table</strong>. Player MPs whose party archetype is listed and vote <strong>Report</strong> pay 1 Party Popularity. Cannot overlap with Supporting; <strong>must match the Supporting count.</strong></div>
+        <div class="pnl-fg-hint">Optional. Party archetypes expected to <em>oppose</em> this bill. Parties with a matching archetype bank their seats <strong>No</strong>. Cannot overlap with Supporting; <strong>must match the Supporting count.</strong></div>
         <div class="pnl-arch-grid" id="pnl-oppose-arch"></div>
       </div>
 
@@ -396,9 +358,9 @@
 
     <div class="pnl-foot">
       <div class="pnl-foot-note">
-        Once submitted, your proposal enters the committee's <em>queue</em> &mdash; it may be marked up, tabled, or reported out. <strong>You retain authorship</strong>; amendments are tracked separately.
+        Once submitted, your bill is <em>before the assembly</em> &mdash; the division is public for 3 ticks, then it passes into the Code or dies on the floor. <strong>You retain authorship.</strong>
       </div>
-      <button type="button" class="pnl-submit" id="pnl-submit">&#9999; SUBMIT TO COMMITTEE</button>
+      <button type="button" class="pnl-submit" id="pnl-submit">&#9999; SUBMIT TO THE ASSEMBLY</button>
     </div>
   </div>
 </div>
@@ -406,14 +368,14 @@
 <!-- Amend Law modal — same .pnl-* chrome as the Propose New Law
      modal, narrower body: just a statute picker (enacted laws,
      grouped by category) + a single textarea for the amendment
-     text. Committee + category + section are inherited from the
-     parent statute server-side; no committee picker here. -->
+     text. Category + section are inherited from the parent statute
+     server-side. -->
 <div class="pnl-overlay" id="aml-overlay" role="dialog" aria-modal="true" aria-hidden="true">
   <div class="pnl-modal" id="aml-modal">
     <div class="pnl-head">
       <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
       <div class="pnl-title">Amend an <em>Existing Law</em></div>
-      <div class="pnl-sub">Pick a category, choose an enacted statute, write what it should say once amended, then refer it to a committee. <strong>600 characters.</strong></div>
+      <div class="pnl-sub">Pick a category, choose an enacted statute, and write what it should say once amended — the assembly divides on it immediately. <strong>600 characters.</strong></div>
       <button class="pnl-close" id="aml-close" type="button" title="Cancel">&#10005;</button>
     </div>
 
@@ -446,28 +408,14 @@
       </div>
 
       <div class="pnl-fg">
-        <div class="pnl-fg-lab">REFER TO COMMITTEE<span class="req">*</span></div>
-        <div class="pnl-comm-grid" id="aml-comm-grid"></div>
-      </div>
-
-      <details class="pnl-adv">
-        <summary class="pnl-adv-sum">ADVANCED OPTIONS</summary>
-        <div class="pnl-fg">
-          <div class="pnl-fg-lab">STAKEHOLDERS</div>
-          <div class="pnl-fg-hint">Optional. List up to 5 stakeholder occupations the committee should hear from at the hearing. Leave any field blank to skip. <strong>1–40 characters each; no duplicates.</strong></div>
-          <div class="pnl-stakeholders" id="aml-stakeholders"></div>
-        </div>
-      </details>
-
-      <div class="pnl-fg">
         <div class="pnl-fg-lab">SUPPORTING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Archetypes whose parties are expected to <em>support</em>. NPC parties matching vote <strong>Report</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Table</strong>. <strong>Pick the same number of Supporting and Opposing archetypes.</strong></div>
+        <div class="pnl-fg-hint">Optional. Archetypes whose parties are expected to <em>support</em> — their seats bank <strong>Yes</strong> on the floor. <strong>Pick the same number of Supporting and Opposing archetypes.</strong></div>
         <div class="pnl-arch-grid" id="aml-support-arch"></div>
       </div>
 
       <div class="pnl-fg">
         <div class="pnl-fg-lab">OPPOSING ARCHETYPES</div>
-        <div class="pnl-fg-hint">Optional. Archetypes expected to <em>oppose</em>. NPC parties matching vote <strong>Table</strong>; player MPs matching pay 1 Party Popularity if they vote <strong>Report</strong>. Cannot overlap with Supporting; <strong>must match the Supporting count.</strong></div>
+        <div class="pnl-fg-hint">Optional. Archetypes expected to <em>oppose</em> — their seats bank <strong>No</strong>. Cannot overlap with Supporting; <strong>must match the Supporting count.</strong></div>
         <div class="pnl-arch-grid" id="aml-oppose-arch"></div>
       </div>
 
@@ -477,23 +425,22 @@
 
     <div class="pnl-foot">
       <div class="pnl-foot-note">
-        Amendments enter the committee's queue alongside new bills. <strong>You retain authorship.</strong>
+        Amendments go before the assembly like new bills — 3 ticks on the floor, then the division decides. <strong>You retain authorship.</strong>
       </div>
-      <button type="button" class="pnl-submit" id="aml-submit">&#9999; SEND TO COMMITTEE</button>
+      <button type="button" class="pnl-submit" id="aml-submit">&#9999; SUBMIT TO THE ASSEMBLY</button>
     </div>
   </div>
 </div>
 
-<!-- Propose Law (policy-switch) modal — 20270728. Same .pnl-* chrome
-     as the other two but with three picker steps: policy, new option,
-     committee. Current option renders inline once the policy is
-     chosen. Submit hits committee_propose_policy_change. -->
+<!-- Propose Law (policy-switch) modal — 20270728/20270892. Same
+     .pnl-* chrome as the other two: pick a policy, pick a new option,
+     and the assembly divides on it immediately. -->
 <div class="pnl-overlay" id="ppl-overlay" role="dialog" aria-modal="true" aria-hidden="true">
   <div class="pnl-modal" id="ppl-modal">
     <div class="pnl-head">
       <div class="pnl-eyebrow">FOR THE CONSIDERATION OF THE CHAMBER</div>
       <div class="pnl-title">Propose a <em>Policy Change</em></div>
-      <div class="pnl-sub">Pick an active law, choose a new option to move it to, and refer the proposal to a standing committee. <strong>The current option is snapshotted</strong> at submission so the committee can see where things stood when you filed.</div>
+      <div class="pnl-sub">Pick an active law and choose a new option to move it to — the assembly divides on it immediately. <strong>The current option is snapshotted</strong> at submission so the record shows where things stood when you filed.</div>
       <button class="pnl-close" id="ppl-close" type="button" title="Cancel">&#10005;</button>
     </div>
 
@@ -516,20 +463,15 @@
         <div class="ppl-options" id="ppl-options"></div>
       </div>
 
-      <div class="pnl-fg">
-        <div class="pnl-fg-lab">REFER TO COMMITTEE<span class="req">*</span></div>
-        <div class="pnl-comm-grid" id="ppl-comm-grid"></div>
-      </div>
-
     </div>
 
     <div class="pnl-err" id="ppl-err"></div>
 
     <div class="pnl-foot">
       <div class="pnl-foot-note">
-        Once submitted, your proposal enters the committee's <em>queue</em>. <strong>You retain authorship</strong>; the markup and report-out flow runs through the committee as usual.
+        Once submitted, the parties divide on the floor for 3 ticks. <strong>If the chamber adopts it, the law changes immediately.</strong>
       </div>
-      <button type="button" class="pnl-submit" id="ppl-submit">&#9999; SUBMIT TO COMMITTEE</button>
+      <button type="button" class="pnl-submit" id="ppl-submit">&#9999; SUBMIT TO THE ASSEMBLY</button>
     </div>
   </div>
 </div>
@@ -537,7 +479,6 @@
 <script type="module">
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { COMMITTEES } from './js/committees.js';
 import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 import { isMpOffice } from './js/utils.js';
 
@@ -578,34 +519,14 @@ const SECTION_SUGGESTIONS = {
   electoral:  ['Voter Eligibility', 'Campaign Finance', 'Ballot Access', 'Party Registration', 'Election Officials', 'Term Limits'],
 };
 
-// Mapping from committee_key → ordering in the modal. Defense is
-// rarely the right home for legislation by category, but list it
-// first to match the committee panel order on politician-nation.
-const COMMITTEE_ORDER = [
-  'defense_foreign_affairs',
-  'finance_budget',
-  'judiciary_constitutional',
-  'industry_trade_labor',
-  'interior_public_welfare',
-];
-
 // In-memory draft state.
 const draft = {
   category: 'civil',
   section: '',
-  committeeKey: null,
   articles: [{ tag: 'operative', text: '' }],
-  stakeholders: ['', '', '', '', ''],   // up to 5; blanks dropped on submit
   supportArchetypes: [],                // archetype names; unique + in catalog
   opposeArchetypes:  [],                // archetype names; disjoint from above
 };
-
-const STK_MAX = 5;
-const STK_LEN_MAX = 40;
-
-// Lookup of committee_key → committee row id for the active nation,
-// populated on modal open.
-const committeeIdByKey = new Map();
 
 let politicianCtx = null;   // result of bootstrapPolitician
 let submitInFlight = false;
@@ -759,21 +680,10 @@ async function openModal() {
     return;
   }
 
-  // Load committees for this nation so we have committee_id for each
-  // key. Builds the committee picker tiles as a side effect.
-  committeeIdByKey.clear();
-  const { data, error } = await _supabase.from('committees')
-    .select('id, committee_key')
-    .eq('nation_id', politicianCtx.nation.id);
-  if (error) { alert('Could not load committees: ' + (error.message || 'unknown')); return; }
-  for (const row of (data || [])) committeeIdByKey.set(row.committee_key, row.id);
-
   // Reset draft, render, open.
   draft.category = 'civil';
   draft.section  = '';
-  draft.committeeKey = null;
   draft.articles = [{ tag: defaultTagFor(0), text: '' }];
-  draft.stakeholders = ['', '', '', '', ''];
   draft.supportArchetypes = [];
   draft.opposeArchetypes  = [];
 
@@ -783,12 +693,7 @@ async function openModal() {
 
   paintCategorySelection('pnl-cat-row', draft.category);
   renderSectionSuggestions();
-  bindCommitteePicker('pnl-comm-grid', (key) => {
-    draft.committeeKey = key;
-    refreshSubmitState();
-  });
   renderArticles();
-  renderStakeholders('pnl-stakeholders', draft.stakeholders);
   renderArchetypePair('pnl-support-arch', 'pnl-oppose-arch',
                      draft.supportArchetypes, draft.opposeArchetypes, refreshSubmitState);
   refreshSubmitState();
@@ -812,30 +717,6 @@ function paintCategorySelection(rowId, activeCat) {
   document.querySelectorAll(`#${rowId} .pnl-cat`).forEach(b => {
     b.classList.toggle('selected', b.dataset.cat === activeCat);
   });
-}
-
-// Build a committee picker into `hostId` from the COMMITTEE_ORDER /
-// COMMITTES catalog. Calls `onPick(committee_key)` when the user
-// picks a tile, after applying the selection accent. Shared between
-// the Propose New Statute and Amend Statute modals.
-function bindCommitteePicker(hostId, onPick) {
-  const grid = document.getElementById(hostId);
-  if (!grid) return;
-  grid.replaceChildren();
-  for (const key of COMMITTEE_ORDER) {
-    const meta = COMMITTEES[key]; if (!meta) continue;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pnl-comm';
-    btn.dataset.key = key;
-    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
-                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
-    btn.addEventListener('click', () => {
-      grid.querySelectorAll('.pnl-comm').forEach(n => n.classList.toggle('selected', n.dataset.key === key));
-      onPick(key);
-    });
-    grid.appendChild(btn);
-  }
 }
 
 function renderSectionSuggestions() {
@@ -913,91 +794,11 @@ function refreshSubmitState() {
   const sectionLen = (draft.section || '').trim().length;
   const ok = !!draft.category
           && sectionLen >= 1 && sectionLen <= 80    // server CHECK matches
-          && !!draft.committeeKey
-          && committeeIdByKey.has(draft.committeeKey)
           && draft.articles.length >= 1 && draft.articles.length <= 10
           && allText
           && total > 0 && total <= 600
-          && validateStakeholders(draft.stakeholders).ok
           && validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes).ok;
   document.getElementById('pnl-submit').disabled = !ok || submitInFlight;
-}
-
-// Renders a fixed 5-row stakeholder input list into `hostId`, bound
-// to `state` (a 5-element string array on the draft object). Edits
-// write back into the array slot and re-run validation so the submit
-// button stays in sync with stakeholder-rule violations.
-function renderStakeholders(hostId, state) {
-  const host = document.getElementById(hostId);
-  if (!host) return;
-  host.replaceChildren();
-  for (let i = 0; i < STK_MAX; i++) {
-    const row = document.createElement('div');
-    row.className = 'pnl-stk-row';
-    row.innerHTML = `
-      <span class="pnl-stk-num">${i + 1}.</span>
-      <input type="text" class="pnl-stk-input" maxlength="${STK_LEN_MAX}"
-             placeholder="Stakeholder occupation (optional)" />`;
-    const inp = row.querySelector('input');
-    inp.value = state[i] || '';
-    inp.addEventListener('input', () => {
-      state[i] = inp.value;
-      // Per-row validity reflects "if you type something, it has to
-      // be valid" — non-empty + unique against the other filled rows.
-      paintStakeholderInvalidity(hostId, state);
-      if (hostId === 'pnl-stakeholders') refreshSubmitState();
-      else refreshAmendSubmitState();
-    });
-    host.appendChild(row);
-  }
-  paintStakeholderInvalidity(hostId, state);
-}
-
-function paintStakeholderInvalidity(hostId, state) {
-  const host = document.getElementById(hostId);
-  if (!host) return;
-  const inputs = host.querySelectorAll('.pnl-stk-input');
-  // Case-insensitive duplicate detection across the filled rows.
-  const seen = new Map();
-  state.forEach((v, i) => {
-    const t = (v || '').trim().toLowerCase();
-    if (!t) return;
-    if (!seen.has(t)) seen.set(t, []);
-    seen.get(t).push(i);
-  });
-  const dupIdx = new Set();
-  for (const arr of seen.values()) {
-    if (arr.length > 1) arr.forEach(i => dupIdx.add(i));
-  }
-  inputs.forEach((inp, i) => {
-    const raw = state[i] || '';
-    const trimmed = raw.trim();
-    // A row is "invalid" when it has any content but breaks a rule:
-    // over-length (input maxlength catches this but defensively
-    // colour anyway) or duplicate of another filled row.
-    const tooLong = trimmed.length > STK_LEN_MAX;
-    const dup = dupIdx.has(i);
-    inp.classList.toggle('invalid', trimmed.length > 0 && (tooLong || dup));
-  });
-}
-
-// Returns {ok, roles} — `roles` is the cleaned array (trimmed,
-// blanks dropped) ready for the RPC payload, or null when invalid.
-// State is always a STK_MAX-length array so we don't need a separate
-// cap check on `cleaned.length` — it can't exceed STK_MAX.
-function validateStakeholders(state) {
-  const cleaned = [];
-  const seen = new Set();
-  for (const raw of state) {
-    const t = (raw || '').trim();
-    if (!t) continue;
-    if (t.length > STK_LEN_MAX) return { ok: false, roles: null };
-    const k = t.toLowerCase();
-    if (seen.has(k)) return { ok: false, roles: null };
-    seen.add(k);
-    cleaned.push(t);
-  }
-  return { ok: true, roles: cleaned };
 }
 
 // Render two parallel chip grids (Support / Oppose) sharing the
@@ -1088,14 +889,11 @@ const REASON_HUMAN = {
   not_authenticated:    'You are not signed in.',
   no_politician:        'No politician faction found.',
   not_mp:               'Only Members of Parliament may propose laws.',
-  committee_not_found:  'Committee not found.',
-  wrong_nation:         'That committee is not in your nation.',
   invalid_category:     'Pick a category.',
   invalid_section:      'Section name must be 1–80 characters.',
   invalid_articles:     'Need between 1 and 10 articles.',
   empty_article:        'Every article needs some text.',
   articles_too_long:    'Articles total over 600 characters — trim before submitting.',
-  invalid_persona_roles:'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
   invalid_archetype_positions: 'Archetype lists invalid — Supporting and Opposing must be the same size, with no archetype on both sides.',
   cooldown:             'You\'ve already used your MP action this tick.',
 };
@@ -1105,25 +903,12 @@ async function submit() {
   const err = document.getElementById('pnl-err');
   err.classList.remove('show'); err.textContent = '';
 
-  const committeeId = committeeIdByKey.get(draft.committeeKey);
-  if (!committeeId) {
-    err.textContent = 'That committee has no row in your nation yet — open the committee page once to seed it, then retry.';
-    err.classList.add('show');
-    return;
-  }
-
   const articlesPayload = draft.articles.map((a, i) => ({
     ordinal: i + 1,
     tag:     ARTICLE_TAG_VALUES.includes(a.tag) ? a.tag : defaultTagFor(i),
     text:    (a.text || '').trim(),
   }));
 
-  const stkCheck = validateStakeholders(draft.stakeholders);
-  if (!stkCheck.ok) {
-    err.textContent = REASON_HUMAN.invalid_persona_roles;
-    err.classList.add('show');
-    return;
-  }
   const archCheck = validateArchetypes(draft.supportArchetypes, draft.opposeArchetypes);
   if (!archCheck.ok) {
     err.textContent = archCheck.why === 'unbalanced'
@@ -1132,22 +917,15 @@ async function submit() {
     err.classList.add('show');
     return;
   }
-  // Server treats NULL as "no author personas — fall back to
-  // category-template auto-seed." Empty array would mean the same
-  // semantically but null is the explicit default in the RPC.
-  const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
-
   submitInFlight = true;
   refreshSubmitState();
 
   try {
     const { data, error } = await _supabase.rpc('committee_propose_law', {
-      p_committee_id:       committeeId,
       p_category:           draft.category,
       p_section:            draft.section.trim(),
       p_articles:           articlesPayload,
       p_faction_id:         politicianCtx?.faction?.id || null,
-      p_persona_roles:      personaRolesPayload,
       p_support_archetypes: archCheck.support,
       p_oppose_archetypes:  archCheck.oppose,
     });
@@ -1160,10 +938,8 @@ async function submit() {
       refreshSubmitState();
       return;
     }
-    // Success — send the user to the receiving committee so they see
-    // their proposal in Upcoming Agenda immediately.
-    const goKey = data.committee_key || draft.committeeKey;
-    window.location.href = `committee.html?key=${encodeURIComponent(goKey)}`;
+    // Success — the vote is open on the nation's Voting section.
+    window.location.href = 'politician-nation.html#sec-voting';
   } catch (e) {
     err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
     err.classList.add('show');
@@ -1175,14 +951,11 @@ async function submit() {
 // ─── Amend Law ────────────────────────────────────────────────────
 // Same .pnl-* chrome as the propose-new-law modal; narrower body.
 // The user picks an enacted statute and writes free-text describing
-// the change; the server inherits committee + category + section
-// from the parent so there's no committee picker here.
+// the change; the server inherits category + section from the parent.
 const amendDraft = {
   category:          null,    // 'constitutional' | 'criminal' | 'civil' | 'commercial' | 'electoral'
   amendsProposalId:  null,
   text:              '',
-  committeeKey:      null,
-  stakeholders:      ['', '', '', '', ''],
   supportArchetypes: [],
   opposeArchetypes:  [],
 };
@@ -1204,12 +977,9 @@ const AMEND_REASON_HUMAN = {
   invalid_target:           'Pick a statute to amend.',
   target_not_found:         'That statute no longer exists.',
   target_not_enacted:       'That proposal is not enacted — pick an enacted statute.',
-  wrong_nation:             'That statute or committee belongs to a different nation.',
+  wrong_nation:             'That statute belongs to a different nation.',
   empty_amendment:          'Write the amended statute text.',
   amendment_too_long:       'Amendment is over 600 characters — trim before sending.',
-  invalid_committee:        'Pick a committee to refer the amendment to.',
-  committee_not_found:      'That committee could not be found — try a different one.',
-  invalid_persona_roles:    'Stakeholder entries must each be 1–40 characters with no duplicates — max 5.',
   invalid_archetype_positions: 'Archetype lists invalid — Supporting and Opposing must be the same size, with no archetype on both sides.',
 };
 
@@ -1222,34 +992,16 @@ async function openAmendModal() {
   amendDraft.category = null;
   amendDraft.amendsProposalId = null;
   amendDraft.text = '';
-  amendDraft.committeeKey = null;
-  amendDraft.stakeholders = ['', '', '', '', ''];
   amendDraft.supportArchetypes = [];
   amendDraft.opposeArchetypes  = [];
   document.getElementById('aml-text').value = '';
   document.getElementById('aml-err').classList.remove('show');
   document.getElementById('aml-err').textContent = '';
   paintCategorySelection('aml-cat-row', amendDraft.category);
-  renderStakeholders('aml-stakeholders', amendDraft.stakeholders);
   renderArchetypePair('aml-support-arch', 'aml-oppose-arch',
                      amendDraft.supportArchetypes, amendDraft.opposeArchetypes,
                      refreshAmendSubmitState);
   refreshAmendCounter();
-
-  // Make sure the committee-id map is populated. The Propose New
-  // Statute modal populates it lazily; the amend flow needs the same
-  // committee_key → committee_id resolution.
-  if (committeeIdByKey.size === 0) {
-    const { data: cdata, error: cerr } = await _supabase.from('committees')
-      .select('id, committee_key')
-      .eq('nation_id', politicianCtx.nation.id);
-    if (cerr) { alert('Could not load committees: ' + (cerr.message || 'unknown')); return; }
-    for (const row of (cdata || [])) committeeIdByKey.set(row.committee_key, row.id);
-  }
-  bindCommitteePicker('aml-comm-grid', (key) => {
-    amendDraft.committeeKey = key;
-    refreshAmendSubmitState();
-  });
   refreshAmendSubmitState();
 
   const hint = document.getElementById('aml-statute-hint');
@@ -1362,9 +1114,6 @@ function refreshAmendSubmitState() {
     && amendDraft.amendsProposalId
     && amendDraft.text.trim().length > 0
     && amendDraft.text.length <= 600
-    && amendDraft.committeeKey
-    && committeeIdByKey.has(amendDraft.committeeKey)
-    && validateStakeholders(amendDraft.stakeholders).ok
     && validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes).ok;
   document.getElementById('aml-submit').disabled = !ok || amendInFlight;
 }
@@ -1376,19 +1125,6 @@ async function submitAmendment() {
 
   if (!amendDraft.amendsProposalId || !amendDraft.text.trim()) return;
 
-  const committeeId = committeeIdByKey.get(amendDraft.committeeKey);
-  if (!committeeId) {
-    err.textContent = AMEND_REASON_HUMAN.invalid_committee;
-    err.classList.add('show');
-    return;
-  }
-
-  const stkCheck = validateStakeholders(amendDraft.stakeholders);
-  if (!stkCheck.ok) {
-    err.textContent = AMEND_REASON_HUMAN.invalid_persona_roles;
-    err.classList.add('show');
-    return;
-  }
   const archCheck = validateArchetypes(amendDraft.supportArchetypes, amendDraft.opposeArchetypes);
   if (!archCheck.ok) {
     err.textContent = archCheck.why === 'unbalanced'
@@ -1397,8 +1133,6 @@ async function submitAmendment() {
     err.classList.add('show');
     return;
   }
-  const personaRolesPayload = stkCheck.roles.length ? stkCheck.roles : null;
-
   amendInFlight = true;
   refreshAmendSubmitState();
 
@@ -1407,8 +1141,6 @@ async function submitAmendment() {
       p_amends_proposal_id: amendDraft.amendsProposalId,
       p_amendment_text:     amendDraft.text.trim(),
       p_faction_id:         politicianCtx?.faction?.id || null,
-      p_committee_id:       committeeId,
-      p_persona_roles:      personaRolesPayload,
       p_support_archetypes: archCheck.support,
       p_oppose_archetypes:  archCheck.oppose,
     });
@@ -1421,15 +1153,8 @@ async function submitAmendment() {
       refreshAmendSubmitState();
       return;
     }
-    // Send the player to the receiving committee so they see the
-    // amendment land in the queue. Same pattern as propose_law.
-    const goKey = data.committee_key;
-    if (goKey) {
-      window.location.href = `committee.html?key=${encodeURIComponent(goKey)}`;
-    } else {
-      closeAmendModal();
-      location.reload();
-    }
+    // The vote is open on the nation's Voting section.
+    window.location.href = 'politician-nation.html#sec-voting';
   } catch (e) {
     err.textContent = 'Could not submit: ' + (e?.message || 'unknown error');
     err.classList.add('show');
@@ -1444,17 +1169,14 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-// ── Propose Law (policy-switch) modal — 20270728 ─────────────────
+// ── Propose Law (policy-switch) modal — 20270728/20270892 ────────
 // Picks a policy, snapshots the current option, picks a new option,
-// picks a committee, fires committee_propose_policy_change. Shares
-// the committeeIdByKey map populated by the existing Propose New
-// Statute modal — both pickers point at the same committees table
-// rows, so the lookup is keyed off the same committee.committee_key.
+// fires committee_propose_policy_change — the assembly divides on it
+// immediately.
 const pplDraft = {
   policyId:        null,
   currentOptionId: null,
   newOptionId:     null,
-  committeeKey:    null,
 };
 let pplPolicies = [];          // [{ id, policy_name, description, major_sector }]
 let pplOptionsByPolicy = new Map(); // policy_id → [{ id, option_name, option_description }]
@@ -1484,20 +1206,6 @@ async function openProposePolicyModal() {
   ov.classList.add('show');
   ov.setAttribute('aria-hidden', 'false');
   pplResetDraft();
-  // committeeIdByKey is shared with the Propose New Statute modal —
-  // load it on demand if the player opened this one first.
-  if (committeeIdByKey.size === 0) {
-    const { data, error } = await _supabase.from('committees')
-      .select('id, committee_key')
-      .eq('nation_id', politicianCtx.nation.id);
-    if (error) {
-      document.getElementById('ppl-err').textContent =
-        'Could not load committees: ' + (error.message || 'unknown');
-      return;
-    }
-    for (const row of (data || [])) committeeIdByKey.set(row.committee_key, row.id);
-  }
-  pplRenderCommitteeGrid();
   if (!pplLoaded) {
     await pplLoadData();
     pplLoaded = true;
@@ -1516,35 +1224,10 @@ function pplResetDraft() {
   pplDraft.policyId = null;
   pplDraft.currentOptionId = null;
   pplDraft.newOptionId = null;
-  pplDraft.committeeKey = null;
   document.getElementById('ppl-err').textContent = '';
   document.getElementById('ppl-current-row').style.display = 'none';
   document.getElementById('ppl-options-row').style.display = 'none';
   pplRefreshSubmitState();
-}
-
-// Reuses the existing committee picker tile shape so the two modals
-// match. The pnl-comm-grid id is unique to this modal (#ppl-comm-grid)
-// but the styling is shared via the .pnl-comm class.
-function pplRenderCommitteeGrid() {
-  const grid = document.getElementById('ppl-comm-grid');
-  grid.replaceChildren();
-  for (const key of COMMITTEE_ORDER) {
-    const meta = COMMITTEES[key]; if (!meta) continue;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'pnl-comm';
-    btn.dataset.key = key;
-    btn.innerHTML = `<span class="pnl-comm-ic">${escapeHtml(meta.icon || '')}</span>
-                     <span class="pnl-comm-name">${escapeHtml(meta.name)}</span>`;
-    btn.addEventListener('click', () => {
-      pplDraft.committeeKey = key;
-      grid.querySelectorAll('.pnl-comm').forEach(n =>
-        n.classList.toggle('selected', n.dataset.key === key));
-      pplRefreshSubmitState();
-    });
-    grid.appendChild(btn);
-  }
 }
 
 // Fetches policies + options + the nation's active law selections
@@ -1677,7 +1360,6 @@ function pplRefreshSubmitState() {
   if (!btn) return;
   const ok = pplDraft.policyId
           && pplDraft.newOptionId
-          && pplDraft.committeeKey
           && !pplSubmitInFlight;
   btn.disabled = !ok;
 }
@@ -1688,13 +1370,10 @@ async function pplSubmit() {
   errEl.textContent = '';
   const factionId = politicianCtx?.faction?.id || null;
   if (!factionId) { errEl.textContent = 'No politician on this account.'; return; }
-  const committeeId = committeeIdByKey.get(pplDraft.committeeKey);
-  if (!committeeId) { errEl.textContent = 'Committee not loaded yet — try again.'; return; }
   pplSubmitInFlight = true;
   pplRefreshSubmitState();
   try {
     const { data, error } = await _supabase.rpc('committee_propose_policy_change', {
-      p_committee_id:       committeeId,
       p_policy_id:          pplDraft.policyId,
       p_proposed_option_id: pplDraft.newOptionId,
       p_faction_id:         factionId,
@@ -1704,11 +1383,8 @@ async function pplSubmit() {
       errEl.textContent = pplReasonText(data?.reason || 'unknown');
       return;
     }
-    closeProposePolicyModal();
-    // Soft toast — no full reload needed; the page itself doesn't
-    // list policy proposals (committee.html does). location.search
-    // is preserved so a deep link doesn't get clobbered.
-    location.reload();
+    // The vote is open on the nation's Voting section.
+    window.location.href = 'politician-nation.html#sec-voting';
   } catch (err) {
     console.error('[politician-statutes] policy proposal submit failed:', err);
     errEl.textContent = `Failed: ${err?.message || err}`;
@@ -1724,8 +1400,6 @@ function pplReasonText(reason) {
     no_politician:           'No politician on this account.',
     not_mp:                  'Only Members of Parliament can submit proposals.',
     invalid_arguments:       'Missing required input.',
-    committee_not_found:     'Selected committee no longer exists.',
-    wrong_nation:            'That committee belongs to another nation.',
     option_not_found:        'Selected option no longer exists.',
     option_policy_mismatch:  'The selected option doesn\'t belong to the chosen policy.',
     no_change_proposed:      'The selected option is already the active one.',

@@ -901,7 +901,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CHAIR_BID_THRESHOLDS, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -1054,64 +1054,10 @@ const PARTY_OFFICE_RUNGS = [
   },
 ];
 
-// Tier 0 — Party Membership. Renders ABOVE the branch into Party Office
-// and Government & State; both ladders' Tier 1 races require being a
-// Legislature rungs — Committee Member is the entry rung (its right-side
-// [Apply to Committee] is the only live advance action; you climb to Chair
-// from there). Each rung carries inline `actions` (the verbs available to
-// the holder) shown as greyed chips today; they activate when the underlying
-// committee / floor / chamber mechanics are wired.
+// Legislature rungs — the chamber-officer climb (Deputy Speaker on
+// up). Since 20270892 statutes go straight to the assembly floor, so
+// there is no committee stage to staff.
 const LEGISLATURE_RUNGS = [
-  {
-    name: 'Committee Member',
-    held:        (s) => s.committeeCount > 0,
-    descIfHeld:  ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
-    descIfNot:   ()  => 'Assigned to a standing committee. This is where real policy work happens away from the floor.',
-    actions:     ['Hold a Hearing', 'Vote on Proposal', 'Amend Proposal'],
-    actionIfNot: (s) => {
-      if (s.committeeApplicationPending) {
-        return { label: 'Applied for Committee. Awaiting Vote.', kind: 'disabled' };
-      }
-      return s.office === 'member_of_parliament'
-        ? { label: 'Apply to Committee', kind: 'primary',  href: 'politician-nation.html#sec-committees' }
-        : { label: 'Apply to Committee', kind: 'disabled' };
-    },
-  },
-  {
-    name: 'Committee Chair',
-    held:        (s) => s.committeeChairCount > 0,
-    descIfHeld:  ()  => 'You chair a standing committee — set its agenda, decide what gets heard.',
-    descIfNot:   ()  => 'You run a committee — set its agenda, decide what gets examined.',
-    actions:     ['Advance Bill'],
-    // Mirrors the politician_bid_for_chair RPC gates (20270584).
-    // Thresholds live in CHAIR_BID_THRESHOLDS (js/utils.js) so the
-    // nation-page Bid-for-Chair button and this rung agree by
-    // construction. Server is the authority; client gates here are
-    // pre-checks for a clean disabled label.
-    actionIfNot: (s) => {
-      if (s.committeeCount === 0) {
-        return { label: 'Apply to a committee first', kind: 'disabled' };
-      }
-      const skill = Number(s.politicianSkill) || 0;
-      if (skill < CHAIR_BID_THRESHOLDS.SKILL) {
-        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.SKILL} Experience (have ${fmtStat(skill)})`, kind: 'disabled' };
-      }
-      const influence = Number(s.politicianInfluence) || 0;
-      if (influence < CHAIR_BID_THRESHOLDS.INFLUENCE) {
-        return { label: `Bid for Chair — need ${CHAIR_BID_THRESHOLDS.INFLUENCE} Influence (have ${Math.floor(influence)})`, kind: 'disabled' };
-      }
-      const seatedAt = Number(s.earliestCommitteeSeatedTick);
-      if (Number.isFinite(seatedAt) && (s.currentTick - seatedAt) < CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED) {
-        const left = CHAIR_BID_THRESHOLDS.SEATED_TICKS_REQUIRED - (s.currentTick - seatedAt);
-        return { label: `Seated too recently — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
-      }
-      if (s.nextChairBidTick > s.currentTick) {
-        const left = s.nextChairBidTick - s.currentTick;
-        return { label: `Bid cooldown — ${left} more tick${left === 1 ? '' : 's'}`, kind: 'disabled' };
-      }
-      return { label: 'Bid for Chair', kind: 'primary', href: 'politician-nation.html#sec-committees' };
-    },
-  },
   {
     name: 'Deputy Speaker · Presiding Officer',
     held:        (s) => s.deputySpeakerAtTick != null,
@@ -2259,48 +2205,6 @@ async function init() {
     console.error('politician-career: active_election fetch threw', err);
   }
 
-  // Viewer's committee memberships — drives both the Committee Member
-  // rung's held() check AND the Committee Chair rung (20270584).
-  // role tells us whether any seat is a chair seat; seated_at_tick
-  // gates the 4-tick "skin in the game" requirement for bidding.
-  // Soft-fail to 0 / no-chair so an outage doesn't claim the rung is
-  // held when it isn't.
-  let committeeCount = 0;
-  let committeeChairCount = 0;
-  let earliestCommitteeSeatedTick = null;
-  try {
-    const { data, error } = await _supabase
-      .from('committee_members')
-      .select('id, role, seated_at_tick')
-      .eq('politician_faction_id', ctx.faction.id);
-    if (error) console.warn('politician-career: committee_members fetch failed', error);
-    const rows = data || [];
-    committeeCount = rows.length;
-    committeeChairCount = rows.filter(r => r.role === 'chair').length;
-    const seatedTicks = rows
-      .map(r => Number(r.seated_at_tick))
-      .filter(n => Number.isFinite(n));
-    if (seatedTicks.length) earliestCommitteeSeatedTick = Math.min(...seatedTicks);
-  } catch (err) {
-    console.warn('politician-career: committee_members fetch threw', err);
-  }
-
-  // Pending committee admission vote — drives the rung's "Applied for
-  // Committee. Awaiting Vote." state. Any active admission vote where
-  // we're the applicant flips the rung from CTA to dim pending tag.
-  let committeeApplicationPending = false;
-  try {
-    const { count, error } = await _supabase
-      .from('committee_admission_votes')
-      .select('id', { count: 'exact', head: true })
-      .eq('applicant_faction_id', ctx.faction.id)
-      .eq('status', 'active');
-    if (error) console.warn('politician-career: pending admission count failed', error);
-    committeeApplicationPending = (Number(count) || 0) > 0;
-  } catch (err) {
-    console.warn('politician-career: pending admission count threw', err);
-  }
-
   // Pending State Advocate appointment request — flips the rung's
   // [Seek Appointment] CTA into a disabled "Awaiting Interior
   // Minister" state so re-clicks don't try to recreate the request
@@ -2323,7 +2227,7 @@ async function init() {
 
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, committeeCount, committeeChairCount, earliestCommitteeSeatedTick, committeeApplicationPending, stateAdvocateRequestPending), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, stateAdvocateRequestPending), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -2423,7 +2327,7 @@ function renderResolutionBanner(r) {
 //                            ticks after winning Community Organizer).
 //   currentTick            → both eligibility windows.
 //   nextGeneralElectionTick → Senior MP window (opens 3 ticks before).
-function buildLadderState(party, activeRace, office, ctx, committeeCount, committeeChairCount, earliestCommitteeSeatedTick, committeeApplicationPending, stateAdvocateRequestPending) {
+function buildLadderState(party, activeRace, office, ctx, stateAdvocateRequestPending) {
   return {
     stateAdvocateRequestPending: !!stateAdvocateRequestPending,
     partyId:                 party?.id || null,
@@ -2457,16 +2361,6 @@ function buildLadderState(party, activeRace, office, ctx, committeeCount, commit
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
     nextGeneralElectionTick: Number(ctx?.nation?.next_election_tick) || 0,
     parliamentaryTermTicks:  Number(ctx?.nation?.parliamentary_term_ticks) || 24,
-    // Committee Chair (20270584) — surfaces held state + bid eligibility
-    // on the LEGISLATURE_RUNGS Chair rung. Cost / cooldown match the SQL
-    // RPC's gates (Skill ≥ 8, Influence ≥ 15, seated ≥ 4 ticks, cooldown
-    // clear).
-    committeeChairCount:           Number(committeeChairCount) || 0,
-    earliestCommitteeSeatedTick:   Number.isFinite(earliestCommitteeSeatedTick) ? earliestCommitteeSeatedTick : null,
-    politicianInfluence:           Number(ctx?.faction?.politician_influence) || 0,
-    nextChairBidTick:              Number(ctx?.faction?.next_chair_bid_tick) || 0,
-    committeeCount:          Number(committeeCount) || 0,
-    committeeApplicationPending: !!committeeApplicationPending,
     // Bar exam (20270503). barAdmittedNationId tracks the nation
     // whose bar this politician is admitted to (NULL = not admitted).
     // Compared against ctx.nation.id to drive the Advocate rung's
