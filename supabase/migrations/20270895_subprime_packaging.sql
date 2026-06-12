@@ -67,7 +67,9 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'invalid_arguments');
     END IF;
 
-    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_corp_id FOR UPDATE;
+    -- Unlocked read for the cheap gates; the authoritative re-read
+    -- happens under lock below.
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_corp_id;
     IF v_bank.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
     END IF;
@@ -82,17 +84,28 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
+    -- LOCK ORDER: nation FIRST, then the own corp row. The crash
+    -- branch locks every bank in the nation while holding the nation
+    -- lock; if packagers took their corp lock before queueing on the
+    -- nation, a crash and a concurrent package would deadlock
+    -- (A holds nation + wants B's corp; B holds its corp + wants
+    -- nation). Nation-first means every packager queues here holding
+    -- nothing, and no other banking action ever takes a nation lock.
+    SELECT * INTO v_nation FROM nations WHERE id = v_bank.hq_nation_id FOR UPDATE;
+    IF v_nation.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'no_nation');
+    END IF;
+
+    -- Now the authoritative corp row, re-checked under lock.
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_corp_id FOR UPDATE;
+    IF v_bank.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
+    END IF;
+
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
     IF COALESCE(v_bank.exec_action_tick, -1) >= v_tick THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_actions_remaining');
-    END IF;
-
-    -- Lock the nation: heat + lamps are shared state — two banks
-    -- packaging the same market serialize here.
-    SELECT * INTO v_nation FROM nations WHERE id = v_bank.hq_nation_id FOR UPDATE;
-    IF v_nation.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'no_nation');
     END IF;
 
     -- Bring the gauge current (lazy cool), then feed the frenzy.
