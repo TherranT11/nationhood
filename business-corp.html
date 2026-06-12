@@ -183,11 +183,13 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay { position:fixed;
+  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay,
+  #ol-overlay, #rq-overlay, #pay-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open,
+  #ol-overlay.open, #rq-overlay.open, #pay-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -661,6 +663,65 @@
   </div>
 </div>
 
+<!-- Offer Loan (banking, 20270894). The open credit market: every
+     unfunded loan request, each expandable into an offer form whose
+     amount is the ask and whose rate is the bank's posted prime. -->
+<div id="ol-overlay">
+  <div class="jm-modal" style="max-width:660px;">
+    <div class="jm-head"><div class="jm-title">Offer <em>Loan</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: browse the open loan requests. Your offer lends the
+        full ask at <strong>your posted prime</strong>; you choose the term and name one of the
+        borrower&rsquo;s assets as collateral. The borrower picks among competing offers.</div>
+      <div class="jm-lab">OPEN REQUESTS</div>
+      <div id="ol-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="ol-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Request Loan (any non-bank corp, 20270894). -->
+<div id="rq-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Request a <em>Loan</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">File an ask on the credit market. Banks browse open requests and
+        respond with offers — their posted prime, a term, and the collateral they demand.
+        You pick the offer you can live with. $100K&ndash;$50M.</div>
+      <div class="jm-lab">AMOUNT</div>
+      <input type="number" id="rq-amount" min="100000" max="50000000" step="100000"
+             placeholder="e.g. 10000000"
+             style="width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#fff;font-family:var(--font-mono);font-size:13px;box-sizing:border-box;" />
+      <div class="db-static dim-line" id="rq-note" style="margin-top:10px;"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="rq-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="rq-confirm" disabled>FILE THE REQUEST</button>
+    </div>
+  </div>
+</div>
+
+<!-- Make Payment (borrower, 20270894). Interest first, then principal. -->
+<div id="pay-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Make a <em>Payment</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">Payments clear accrued interest first, then principal. Overpaying
+        is safe — the charge clamps to what you owe.</div>
+      <div class="db-static" id="pay-status" style="margin-bottom:10px;"></div>
+      <div class="jm-lab">PAYMENT AMOUNT</div>
+      <input type="number" id="pay-amount" min="1" step="1000"
+             style="width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#fff;font-family:var(--font-mono);font-size:13px;box-sizing:border-box;" />
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="pay-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="pay-confirm" disabled>PAY</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
@@ -749,6 +810,28 @@ import { CITY_STATS } from './js/game/city-labels.js';
       low_cost: 'Low Cost', standard: 'Standard', high_end: 'High End',
       luxury: 'Luxury', ultra_rich: 'Ultra Rich',
     };
+
+    // Credit market (20270894): the collateral menu per borrower
+    // industry — [asset key, label, tier column]. Mirror of the
+    // server's _loan_collateral_menu; the RPC revalidates.
+    const LOAN_COLLATERAL = {
+      construction: [
+        ['project_management',    'PROJECT MANAGEMENT',    'pm_tier'],
+        ['heavy_equipment',       'HEAVY EQUIPMENT',       'supply_tier'],
+        ['supply_material',       'SUPPLY & MATERIAL',     'materials_tier'],
+        ['system_design',         'SYSTEM DESIGN',         'design_tier'],
+        ['regulatory_compliance', 'REGULATORY COMPLIANCE', 'reg_tier'],
+      ],
+      automotive: [
+        ['design_studio', 'DESIGN STUDIO', 'design_studio_tier'],
+        ['assembly',      'ASSEMBLY',      'assembly_tier'],
+        ['data_center',   'DATA CENTER',   'data_center_tier'],
+        ['parts_depot',   'PARTS DEPOT',   'parts_depot_tier'],
+        ['franchise',     'FRANCHISE',     'franchise_tier'],
+      ],
+    };
+    const COLLATERAL_LABEL = Object.fromEntries(
+      Object.values(LOAN_COLLATERAL).flat().map(([k, l]) => [k, l]));
 
     // The corp's hired roster — one query definition, read by the
     // Prominent Employees panel and the Start Project PM dropdown.
@@ -1970,14 +2053,24 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="soon">${corp.bank_prime_rate_bps
                 ? `Sheet: ${corp.bank_deposit_rate_bps / 100}% deposits · ${corp.bank_prime_rate_bps / 100}% prime`
                 : 'Post your first rate sheet'}</div>
-            </div>` + eaComingSoon(4)
+            </div>
+            <div class="ea-card live" id="ea-offer-loan">
+              <div class="ic">💸</div>
+              <div class="nm">OFFER LOAN</div>
+              <div class="soon">Browse the open credit market</div>
+            </div>` + eaComingSoon(3)
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
           <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
           <div class="ea-grid">${eaCards}
           </div>
+        </div>
+        <div class="ea-panel" id="fin-panel" style="display:none;">
+          <div class="ea-head"><span class="rule"></span><span class="t">FINANCING</span><span class="rule"></span></div>
+          <div id="fin-body"></div>
         </div>`;
+      loadFinancing().catch(e => console.warn('[business-corp] financing load failed:', e?.message || e));
 
       // Everything below wires the construction actions and their
       // modals — other industries have nothing to wire. (Block kept
@@ -3448,7 +3541,310 @@ import { CITY_STATS } from './js/game/city-labels.js';
             btn.disabled = false;
           }
         });
+        // ── Offer Loan (20270894) ─────────────────────────────────
+        // The open board. Each request expands into an offer form:
+        // amount locked to the ask, rate locked to the posted prime,
+        // term pills, the borrower's five assets as the collateral
+        // menu, comments. Server revalidates everything and burns
+        // the day's action.
+        const OL_REASON = {
+          no_rate_sheet: 'Post a rate sheet first — the offer lends at your prime.',
+          no_actions_remaining: 'No executive actions remaining this tick.',
+          request_closed: 'That request was funded or withdrawn — refresh the board.',
+          offer_already_pending: 'You already have a pending offer on this request.',
+          self_dealing: 'That corporation is yours — banks don\u2019t lend to their own books.',
+          insufficient_treasury: 'The vault can\u2019t fund that ask.',
+          invalid_collateral: 'Pick one of the borrower\u2019s assets as collateral.',
+          invalid_term: 'Pick a term.',
+          comments_too_long: 'Comments are capped at 300 characters.',
+          not_owner: 'Only the owner writes loans.',
+          arrested: 'You are under arrest — your assets are frozen.',
+        };
+        let olState = null;   // { requestId, term, collateral } for the expanded row
+        let olInFlight = false;
+        async function olLoadBoard() {
+          const host = document.getElementById('ol-rows');
+          host.innerHTML = '<div class="rl-empty">Loading the board…</div>';
+          if (!corp.bank_prime_rate_bps) {
+            host.innerHTML = '<div class="rl-empty">Post a rate sheet first — your offers lend at your posted prime.</div>';
+            return;
+          }
+          const { data, error: olErr } = await _supabase.from('corp_loan_requests')
+            .select('id, amount, created_at_tick, corp:entrepreneur_corps!corp_id(id, name, industry, employee_count, last_tick_revenue, owner_faction_id, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier)')
+            .eq('status', 'open')
+            .order('created_at_tick', { ascending: false });
+          if (olErr) {
+            console.warn('[business-corp] loan board fetch failed:', olErr.message);
+            host.innerHTML = '<div class="rl-empty">Could not load the board — try again shortly.</div>';
+            return;
+          }
+          const rows = (data || []).filter(r => r.corp && r.corp.owner_faction_id !== corp.owner_faction_id);
+          if (!rows.length) {
+            host.innerHTML = '<div class="rl-empty">No open loan requests right now.</div>';
+            return;
+          }
+          host.innerHTML = rows.map(r => `
+            <div class="jm-rung" data-req="${esc(r.id)}">
+              <div class="top">
+                <div>
+                  <div class="rung-no">${esc((r.corp.industry || '').toUpperCase())}</div>
+                  <div class="nm">${esc(r.corp.name)}</div>
+                </div>
+                <div class="staff">ASK: ${esc(hfFmtBig(r.amount))}</div>
+              </div>
+              <div class="ds">Employees: ${Number(r.corp.employee_count) || 0} &middot; Revenue (last tick): ${esc(hfFmtBig(Number(r.corp.last_tick_revenue) || 0))}</div>
+              <div class="resp"><button type="button" class="jm-btn ol-open-btn" style="padding:6px 14px;font-size:10px;">OFFER LOAN</button></div>
+              <div class="ol-form" style="display:none;"></div>
+            </div>`).join('');
+          host.querySelectorAll('.ol-open-btn').forEach(btn => {
+            btn.addEventListener('click', () => olExpand(btn.closest('[data-req]'), rows));
+          });
+        }
+        function olExpand(rowEl, rows) {
+          const req = rows.find(r => r.id === rowEl.dataset.req);
+          if (!req) return;
+          // Collapse any other open form — one offer at a time.
+          document.querySelectorAll('#ol-rows .ol-form').forEach(f => { f.style.display = 'none'; f.innerHTML = ''; });
+          olState = { requestId: req.id, term: 24, collateral: null };
+          const menu = LOAN_COLLATERAL[req.corp.industry] || [];
+          const form = rowEl.querySelector('.ol-form');
+          form.style.display = 'block';
+          form.innerHTML = `
+            <div class="jm-lab" style="margin-top:10px;">AMOUNT (THE ASK — LOCKED)</div>
+            <div class="db-static">${esc(hfFmtBig(req.amount))}</div>
+            <div class="jm-lab" style="margin-top:10px;">RATE (YOUR POSTED PRIME — LOCKED)</div>
+            <div class="db-static">${corp.bank_prime_rate_bps / 100}% yearly &middot; ${esc(hfFmtBig(Math.round(req.amount * corp.bank_prime_rate_bps / 10000 / 12)))}/tick while fully drawn</div>
+            <div class="jm-lab" style="margin-top:10px;">TERM</div>
+            <div class="jm-pills ol-term">${[12, 24, 36].map(t =>
+              `<div class="jm-pill${t === 24 ? ' sel' : ''}" data-t="${t}">${t} TICKS</div>`).join('')}</div>
+            <div class="jm-lab" style="margin-top:10px;">REQUESTED COLLATERAL</div>
+            <div class="jm-pills ol-coll" style="flex-wrap:wrap;">${menu.map(([key, label, col]) =>
+              `<div class="jm-pill" data-c="${esc(key)}" style="flex:1 1 45%;">${esc(label)} · LV ${Math.max(1, Number(req.corp[col]) || 0)}</div>`).join('')}</div>
+            <div class="jm-lab" style="margin-top:10px;">COMMENTS</div>
+            <textarea class="ol-comments" maxlength="300" placeholder="Optional — terms, expectations, a warning…"
+              style="width:100%;min-height:54px;padding:8px 10px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#ddd;font-size:11px;box-sizing:border-box;resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+              <button type="button" class="jm-btn secondary ol-form-cancel" style="padding:7px 14px;font-size:10px;">CANCEL</button>
+              <button type="button" class="jm-btn ol-form-send" style="padding:7px 14px;font-size:10px;" disabled title="Pick collateral">OFFER LOAN</button>
+            </div>`;
+          form.querySelectorAll('.ol-term .jm-pill').forEach(p => p.addEventListener('click', () => {
+            form.querySelectorAll('.ol-term .jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+            olState.term = Number(p.dataset.t);
+          }));
+          form.querySelectorAll('.ol-coll .jm-pill').forEach(p => p.addEventListener('click', () => {
+            form.querySelectorAll('.ol-coll .jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+            olState.collateral = p.dataset.c;
+            const send = form.querySelector('.ol-form-send');
+            send.disabled = false; send.title = '';
+          }));
+          form.querySelector('.ol-form-cancel').addEventListener('click', () => {
+            form.style.display = 'none'; form.innerHTML = ''; olState = null;
+          });
+          form.querySelector('.ol-form-send').addEventListener('click', async (e) => {
+            if (olInFlight || !olState?.collateral) return;
+            olInFlight = true;
+            const send = e.currentTarget;
+            send.disabled = true;
+            try {
+              const { data, error: ofErr } = await _supabase.rpc('bank_offer_loan', {
+                p_request_id:       olState.requestId,
+                p_bank_corp_id:     corp.id,
+                p_term_ticks:       olState.term,
+                p_collateral_asset: olState.collateral,
+                p_comments:         form.querySelector('.ol-comments').value.trim() || null,
+              });
+              if (ofErr) throw ofErr;
+              if (!data?.success) throw new Error(OL_REASON[data?.reason] || data?.reason || 'unknown');
+              window.location.reload();
+            } catch (err) {
+              alert('Could not offer: ' + (err?.message || err));
+              olInFlight = false;
+              send.disabled = false;
+            }
+          });
+        }
+        document.getElementById('ea-offer-loan').addEventListener('click', () => {
+          document.getElementById('ol-overlay').classList.add('open');
+          olLoadBoard();
+        });
+        wireModalClose('ol-overlay', 'ol-cancel');
       } // end if (eaBanking)
+
+      // ── FINANCING (20270894) — every corp's credit-market surface.
+      // Non-banks: file/withdraw an ask, weigh the offers, accept.
+      // Borrowers: active loans with [MAKE PAYMENT]. Banks: the loan
+      // book, read-only. Panel hides when there is nothing to show
+      // and no ask to file (banks with an empty book).
+      async function loadFinancing() {
+        const panel = document.getElementById('fin-panel');
+        const body  = document.getElementById('fin-body');
+        if (!panel || !body) return;
+        const isBank = corp.industry === 'banking';
+
+        const loanSel = _supabase.from('corp_bank_loans')
+          .select('id, bank_corp_id, borrower_corp_id, principal, rate_bps, due_tick, balance, accrued_interest, last_accrual_tick, collateral_asset, status, bank:entrepreneur_corps!bank_corp_id(name), borrower:entrepreneur_corps!borrower_corp_id(name)')
+          .or(`borrower_corp_id.eq.${corp.id},bank_corp_id.eq.${corp.id}`)
+          .eq('status', 'active')
+          .order('due_tick', { ascending: true });
+        const reqSel = isBank
+          ? Promise.resolve({ data: null, error: null })
+          : _supabase.from('corp_loan_requests')
+              .select('id, amount, created_at_tick')
+              .eq('corp_id', corp.id).eq('status', 'open').maybeSingle();
+        const [loanRes, reqRes] = await Promise.all([loanSel, reqSel]);
+        if (loanRes.error) throw loanRes.error;
+        if (reqRes.error) throw reqRes.error;
+        const loans = loanRes.data || [];
+        const myReq = reqRes.data || null;
+
+        let offers = [];
+        if (myReq) {
+          const { data: offerRows, error: offErr } = await _supabase.from('corp_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, collateral_asset, comments, bank:entrepreneur_corps!bank_corp_id(name)')
+            .eq('request_id', myReq.id).eq('status', 'pending')
+            .order('rate_bps', { ascending: true });
+          if (offErr) throw offErr;
+          offers = offerRows || [];
+        }
+
+        if (isBank && !loans.length) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+
+        // Live payoff estimate — display mirror of corp_pay_loan's
+        // accrual (the server recomputes at payment time).
+        const payoffOf = (l) => Math.round(Number(l.balance) + Number(l.accrued_interest)
+          + Number(l.balance) * l.rate_bps / 10000 / 12
+            * Math.max(0, currentTick - l.last_accrual_tick));
+
+        const borrowed = loans.filter(l => l.borrower_corp_id === corp.id);
+        const lent     = loans.filter(l => l.bank_corp_id === corp.id);
+        let html = '';
+
+        if (!isBank) {
+          html += myReq ? `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Open loan request — ${esc(hfFmtBig(myReq.amount))}</div>
+                <button type="button" class="jm-btn secondary" id="fin-withdraw" style="padding:6px 12px;font-size:10px;">WITHDRAW</button>
+              </div>
+              <div class="ds">${offers.length
+                ? `${offers.length} offer${offers.length === 1 ? '' : 's'} on the table:`
+                : 'Waiting for the banks. Offers land here.'}</div>
+              ${offers.map(o => `
+                <div class="resp" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;">
+                  <span><strong>${esc(o.bank?.name || 'A bank')}</strong> &middot; ${o.rate_bps / 100}% &middot; ${o.term_ticks} ticks &middot; collateral: ${esc(COLLATERAL_LABEL[o.collateral_asset] || o.collateral_asset)}</span>
+                  <button type="button" class="jm-btn fin-accept" data-offer="${esc(o.id)}" style="padding:5px 12px;font-size:10px;">ACCEPT</button>
+                  ${o.comments ? `<div style="flex-basis:100%;color:#888;font-style:italic;font-size:10.5px;">&ldquo;${esc(o.comments)}&rdquo;</div>` : ''}
+                </div>`).join('')}
+            </div>` : `
+            <div style="margin-bottom:8px;">
+              <button type="button" class="jm-btn" id="fin-request" style="padding:7px 14px;font-size:10px;">REQUEST LOAN</button>
+            </div>`;
+        }
+
+        html += borrowed.map(l => `
+          <div class="jm-rung" style="margin-bottom:8px;">
+            <div class="top">
+              <div class="nm">Owed to ${esc(l.bank?.name || 'a bank')}${currentTick > l.due_tick ? ' <span style="color:#c66;font-size:10px;font-weight:700;">OVERDUE</span>' : ''}</div>
+              <div class="staff">${esc(hfFmtBig(payoffOf(l)))} to settle</div>
+            </div>
+            <div class="ds">${l.rate_bps / 100}% &middot; due tick ${l.due_tick} &middot; collateral: ${esc(COLLATERAL_LABEL[l.collateral_asset] || l.collateral_asset || '—')}</div>
+            <div class="resp"><button type="button" class="jm-btn fin-pay" data-loan="${esc(l.id)}" data-payoff="${payoffOf(l)}" style="padding:6px 14px;font-size:10px;">MAKE PAYMENT</button></div>
+          </div>`).join('');
+
+        html += lent.map(l => `
+          <div class="jm-rung" style="margin-bottom:8px;">
+            <div class="top">
+              <div class="nm">Lent to ${esc(l.borrower?.name || 'a corporation')}${currentTick > l.due_tick ? ' <span style="color:#c66;font-size:10px;font-weight:700;">OVERDUE</span>' : ''}</div>
+              <div class="staff">${esc(hfFmtBig(payoffOf(l)))} outstanding</div>
+            </div>
+            <div class="ds">${l.rate_bps / 100}% &middot; due tick ${l.due_tick} &middot; collateral: ${esc(COLLATERAL_LABEL[l.collateral_asset] || l.collateral_asset || '—')}</div>
+          </div>`).join('');
+
+        body.innerHTML = html || '<div class="rl-empty">Nothing on the books.</div>';
+
+        // ── Request modal ──
+        const FIN_REASON = {
+          invalid_amount: 'Ask between $100K and $50M.',
+          request_already_open: 'You already have an open request.',
+          banks_dont_borrow: 'Banks lend — they don\u2019t borrow.',
+          not_owner: 'Only the owner can do this.',
+          arrested: 'You are under arrest — your assets are frozen.',
+          bank_cannot_fund: 'That bank can no longer fund the loan — pick another offer.',
+          offer_closed: 'That offer is gone — the request may already be funded.',
+          insufficient_treasury: 'The treasury can\u2019t cover that payment.',
+          nothing_owed: 'Nothing is owed on this loan.',
+          loan_settled: 'This loan is already settled.',
+        };
+        document.getElementById('fin-request')?.addEventListener('click', () => {
+          const inp = document.getElementById('rq-amount');
+          inp.value = '';
+          document.getElementById('rq-note').textContent = '';
+          document.getElementById('rq-confirm').disabled = true;
+          document.getElementById('rq-overlay').classList.add('open');
+        });
+        document.getElementById('rq-amount').addEventListener('input', () => {
+          const v = Math.floor(Number(document.getElementById('rq-amount').value) || 0);
+          const ok = v >= 100000 && v <= 50000000;
+          document.getElementById('rq-confirm').disabled = !ok;
+          document.getElementById('rq-note').textContent =
+            ok ? `Asking ${hfFmtBig(v)}.` : 'Between $100K and $50M.';
+        });
+        let finInFlight = false;
+        const finRpc = async (btn, rpc, args) => {
+          if (finInFlight) return;
+          finInFlight = true;
+          if (btn) btn.disabled = true;
+          try {
+            const { data, error: fErr } = await _supabase.rpc(rpc, args);
+            if (fErr) throw fErr;
+            if (!data?.success) throw new Error(FIN_REASON[data?.reason] || data?.reason || 'unknown');
+            window.location.reload();
+          } catch (e) {
+            alert('Could not complete: ' + (e?.message || e));
+            finInFlight = false;
+            if (btn) btn.disabled = false;
+          }
+        };
+        document.getElementById('rq-confirm').addEventListener('click', (e) =>
+          finRpc(e.currentTarget, 'corp_request_loan', {
+            p_corp_id: corp.id,
+            p_amount:  Math.floor(Number(document.getElementById('rq-amount').value) || 0),
+          }));
+        wireModalClose('rq-overlay', 'rq-cancel');
+
+        document.getElementById('fin-withdraw')?.addEventListener('click', (e) =>
+          finRpc(e.currentTarget, 'corp_withdraw_loan_request',
+            { p_request_id: myReq.id, p_corp_id: corp.id }));
+        body.querySelectorAll('.fin-accept').forEach(btn =>
+          btn.addEventListener('click', () =>
+            finRpc(btn, 'corp_accept_loan_offer',
+              { p_offer_id: btn.dataset.offer, p_corp_id: corp.id })));
+
+        // ── Payment modal ──
+        let payLoanId = null;
+        body.querySelectorAll('.fin-pay').forEach(btn =>
+          btn.addEventListener('click', () => {
+            payLoanId = btn.dataset.loan;
+            document.getElementById('pay-status').textContent =
+              `Estimated payoff today: ${hfFmtBig(Number(btn.dataset.payoff) || 0)} · treasury: ${hfFmtBig(Math.floor(Number(corp.treasury_cash) || 0))}`;
+            const inp = document.getElementById('pay-amount');
+            inp.value = '';
+            document.getElementById('pay-confirm').disabled = true;
+            document.getElementById('pay-overlay').classList.add('open');
+          }));
+        document.getElementById('pay-amount').addEventListener('input', () => {
+          const v = Math.floor(Number(document.getElementById('pay-amount').value) || 0);
+          document.getElementById('pay-confirm').disabled = !(v > 0);
+        });
+        document.getElementById('pay-confirm').addEventListener('click', (e) =>
+          finRpc(e.currentTarget, 'corp_pay_loan', {
+            p_loan_id: payLoanId,
+            p_corp_id: corp.id,
+            p_amount:  Math.floor(Number(document.getElementById('pay-amount').value) || 0),
+          }));
+        wireModalClose('pay-overlay', 'pay-cancel');
+      }
     }
 
     document.getElementById('loading').style.display = 'none';
