@@ -71,15 +71,3 @@ export const ARCHETYPES = [
         strongholds: ['TECH_ENGINEERING_CLASS', 'URBAN_PROFESSIONALS', 'SMALL_BUSINESS_OWNERS'],
     },
 ];
-
-/** Look up an archetype by its `key`. Returns null if not found. */
-export function getArchetypeByKey(key) {
-    if (!key) return null;
-    return ARCHETYPES.find(a => a.key === key) || null;
-}
-
-/** Look up an archetype by its display `name`. Returns null if not found. */
-export function getArchetypeByName(name) {
-    if (!name) return null;
-    return ARCHETYPES.find(a => a.name === name) || null;
-}
