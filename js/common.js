@@ -527,9 +527,6 @@ export function renderNavTabs(activeTab) {
         if (overrideFactionId) params.push('faction_id=' + overrideFactionId);
         if (params.length) href += '?' + params.join('&');
         let badgeHtml = '';
-        if (tab.id === 'diplomacy') {
-            badgeHtml = '<span class="nav-badge" id="diplomacy-badge" style="display:none;"></span>';
-        }
         if (tab.id === 'politics') {
             badgeHtml = '<span class="nav-badge nav-badge--amber" id="politics-badge" style="display:none;min-width:8px;height:8px;line-height:8px;border-radius:50%;padding:0;top:4px;right:4px;animation:coalition-pulse 1.5s ease-in-out infinite;"></span>';
         }
@@ -598,161 +595,6 @@ async function updateBillsBadge(faction, nation, shard) {
 
 // ===== DIPLOMACY ROLE DETECTION (for badge gating) =====
 
-/**
- * Lightweight role check: is this faction the FM or MoT?
- * Used by the nav-bar badge functions so only relevant players see notifications.
- */
-async function getDiploBadgeRoles(faction, nation) {
-    const roles = { isFM: false, isMoT: false };
-    if (!faction || !nation) return roles;
-
-    try {
-        const { data: ministries } = await _supabase.from('ministries')
-            .select('ministry_key, party_id')
-            .eq('nation_id', nation.id)
-            .in('ministry_key', ['foreign', 'trade'])
-            .eq('is_active', true);
-
-        (ministries || []).forEach(m => {
-            if (m.party_id === faction.id) {
-                if (m.ministry_key === 'foreign') roles.isFM = true;
-                if (m.ministry_key === 'trade') roles.isMoT = true;
-            }
-        });
-    } catch (e) {
-        console.warn('Error fetching diplo badge roles:', e);
-    }
-
-    return roles;
-}
-
-// ===== DIPLOMACY BADGE (open trade negotiations + pending shipping apps) =====
-
-async function updateDiplomacyBadge(faction, nation, roles) {
-    const badge = document.getElementById('diplomacy-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        if (!roles) roles = await getDiploBadgeRoles(faction, nation);
-
-        // No diplomatic role → no badge
-        if (!roles.isFM && !roles.isMoT) {
-            badge.style.display = 'none';
-            return;
-        }
-
-        let count = 0;
-
-        // Open trade negotiations (FM or MoT)
-        const { data: tradeNegs } = await _supabase
-            .from('trade_negotiations')
-            .select('nation_a_id, nation_b_id, initiated_by_nation, status')
-            .eq('status', 'open')
-            .or('nation_a_id.eq.' + nation.id + ',nation_b_id.eq.' + nation.id)
-            .neq('initiated_by_nation', nation.id);
-
-        count += (tradeNegs || []).length;
-
-        if (count > 0) {
-            badge.textContent = count;
-            badge.style.display = '';
-            if (shippingAppsCount > 0) {
-                badge.classList.add('nav-badge--amber');
-                badge.style.animation = 'coalition-pulse 1.5s ease-in-out infinite';
-            } else {
-                badge.classList.remove('nav-badge--amber');
-                badge.style.animation = '';
-            }
-        } else {
-            badge.style.display = 'none';
-            badge.classList.remove('nav-badge--amber');
-            badge.style.animation = '';
-        }
-    } catch (e) {
-        console.error('Error updating diplomacy badge:', e);
-    }
-}
-
-
-// ===== CONFLICTS BADGE + GLOBAL INCIDENT NOTIFICATION =====
-
-const FISHING_DISPUTE_NOTIFICATIONS = [
-    '{nationA} seized a {nationB} fishing vessel in disputed waters. Crew detained, catch confiscated.',
-    '{nationA} coast guard intercepted {nationB} fishermen operating in contested maritime territory.',
-    'A maritime dispute has erupted after {nationA} enforced exclusion zone claims against {nationB} vessels.'
-];
-
-function getIncidentNotificationText(incident) {
-    const nameA = incident.nation_a?.name || incident._nameA || 'Unknown';
-    const nameB = incident.nation_b?.name || incident._nameB || 'Unknown';
-    if (incident.incident_type === 'fishing_dispute') {
-        const template = FISHING_DISPUTE_NOTIFICATIONS[Math.floor(Math.random() * FISHING_DISPUTE_NOTIFICATIONS.length)];
-        // Nation A role is aggrieved (vessel seized), Nation B is enforcer (seized it)
-        // So the enforcer (B) acts against the aggrieved (A)
-        return template.replace(/\{nationA\}/g, nameB).replace(/\{nationB\}/g, nameA);
-    }
-    return `A ${incident.incident_type.replace(/_/g, ' ')} incident has been triggered between ${nameA} and ${nameB}.`;
-}
-
-function showConflictNotification(text) {
-    const existing = document.getElementById('conflict-notification');
-    if (existing) existing.remove();
-    const el = document.createElement('div');
-    el.id = 'conflict-notification';
-    el.style.cssText = 'position:fixed;top:48px;left:50%;transform:translateX(-50%);z-index:9999;padding:10px 20px;border-radius:3px;font-size:11px;font-family:var(--font-sans,sans-serif);max-width:560px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.4);background:rgba(176,154,91,0.12);color:#b09a5b;border:1px solid rgba(176,154,91,0.3);transition:opacity 0.4s;';
-    el.textContent = text;
-    document.body.appendChild(el);
-    setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }, 6000);
-}
-
-async function updateConflictsBadge(faction, nation) {
-    const badge = document.getElementById('conflicts-badge');
-    if (!badge || !faction || !nation) return;
-    try {
-        // Count ALL active incidents globally (not just yours) for the amber badge
-        const { count } = await _supabase
-            .from('incidents')
-            .select('id', { count: 'exact', head: true })
-            .in('status', ['active', 'mediating']);
-
-        if (count && count > 0) {
-            badge.textContent = count;
-            badge.style.display = '';
-        } else {
-            badge.style.display = 'none';
-        }
-
-        // Check for NEW incidents since last visit (notification toast)
-        const lastSeenKey = 'nationhood_last_seen_incident_tick';
-        const lastSeenTick = parseInt(localStorage.getItem(lastSeenKey) || '0', 10);
-
-        const { data: newIncidents } = await _supabase
-            .from('incidents')
-            .select('incident_type, nation_a_id, nation_b_id, started_tick, nation_a:nations!incidents_nation_a_id_fkey(name), nation_b:nations!incidents_nation_b_id_fkey(name)')
-            .gt('started_tick', lastSeenTick)
-            .in('status', ['active', 'mediating'])
-            .order('started_tick', { ascending: false })
-            .limit(1);
-
-        if (newIncidents && newIncidents.length > 0) {
-            const incident = newIncidents[0];
-            const text = getIncidentNotificationText(incident);
-            showConflictNotification(text);
-        }
-
-        // Update last seen tick to current shard tick
-        const { data: shard } = await _supabase
-            .from('shard')
-            .select('current_tick')
-            .eq('name', 'Alpha Shard')
-            .single();
-        if (shard?.current_tick) {
-            localStorage.setItem(lastSeenKey, String(shard.current_tick));
-        }
-    } catch (e) {
-        console.error('Error updating conflicts badge:', e);
-    }
-}
-
 
 // ===== COALITION FORMATION BADGE (no government formed after election) =====
 
@@ -776,69 +618,6 @@ async function checkCoalitionFormationBadge(nation) {
         badge.style.display = (hasElection && !activeGov) ? '' : 'none';
     } catch (e) {
         // Non-critical — don't break the page
-    }
-}
-
-// ===== IPO INVITE BADGE (pending org invitations) =====
-
-async function updateIPOInviteBadge(faction, roles) {
-    const dipBadge = document.getElementById('diplomacy-badge');
-    if (!faction) return;
-    try {
-        // Count pending invites
-        const { data: invites, error } = await _supabase
-            .from('ipo_invitations')
-            .select('id')
-            .eq('target_faction_id', faction.id)
-            .eq('status', 'pending');
-        if (error) return;
-        const inviteCount = (invites || []).length;
-        window._ipoPendingInviteCount = inviteCount;
-
-        // Count open IPO votes where player hasn't voted (shows for ALL members)
-        let pendingVoteCount = 0;
-        try {
-            const { data: myOrgs } = await _supabase
-                .from('ipo_members')
-                .select('org_id')
-                .eq('faction_id', faction.id)
-                .eq('is_active', true)
-                .eq('role', 'member');
-            if (myOrgs && myOrgs.length > 0) {
-                const orgIds = myOrgs.map(m => m.org_id);
-                const { data: openVotes } = await _supabase
-                    .from('ipo_votes')
-                    .select('id')
-                    .in('org_id', orgIds)
-                    .eq('status', 'open');
-                if (openVotes && openVotes.length > 0) {
-                    const voteIds = openVotes.map(v => v.id);
-                    const { data: myBallots } = await _supabase
-                        .from('ipo_ballots')
-                        .select('vote_id')
-                        .in('vote_id', voteIds)
-                        .eq('faction_id', faction.id);
-                    const votedSet = new Set((myBallots || []).map(b => b.vote_id));
-                    pendingVoteCount = openVotes.filter(v => !votedSet.has(v.id)).length;
-                }
-            }
-        } catch (_) {}
-
-        const totalIPO = inviteCount + pendingVoteCount;
-        window._ipoPendingVoteCount = pendingVoteCount;
-
-        // Show badge: IPO votes show for ALL players, invites only for diplomatic roles
-        if (dipBadge) {
-            const hasDiploRole = roles && (roles.isFM || roles.isMoT);
-            const badgeCount = pendingVoteCount + (hasDiploRole ? inviteCount : 0);
-            if (badgeCount > 0) {
-                const existing = parseInt(dipBadge.textContent) || 0;
-                dipBadge.textContent = existing + badgeCount;
-                dipBadge.style.display = '';
-            }
-        }
-    } catch (e) {
-        console.error('Error updating IPO invite badge:', e);
     }
 }
 
@@ -1335,16 +1114,6 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     // Update bills badge (non-blocking, skip on laws page since it marks seen)
     if (activeTab !== 'laws') {
         updateBillsBadge(state.faction, state.nation, state.shard);
-    }
-    // Update diplomacy badge (role-gated: only FM or MoT see it)
-    const diploRoles = await getDiploBadgeRoles(state.faction, state.nation);
-    if (activeTab !== 'diplomacy') {
-        updateDiplomacyBadge(state.faction, state.nation, diploRoles);
-    }
-    updateIPOInviteBadge(state.faction, diploRoles);
-    // Update conflicts badge (active incidents involving your nation)
-    if (activeTab !== 'conflicts') {
-        updateConflictsBadge(state.faction, state.nation);
     }
 
     // Check if coalition formation is needed (amber badge on Actions tab)
