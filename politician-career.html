@@ -901,7 +901,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, isMpOffice, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -912,7 +912,6 @@ import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-label
 const LADDERS = [
   { id: 'party',      icon: '\u{1F6A9}', name: 'National Politics',  rungs: () => PARTY_OFFICE_RUNGS, branch: true },
   { id: 'govt',       icon: '\u{1F451}', name: 'Local Politics',     rungs: () => GOVERNMENT_RUNGS,   branch: true },
-  { id: 'legislature',icon: '⚖️',       name: 'Legislature',         rungs: () => LEGISLATURE_RUNGS },
   { id: 'govt_service', icon: '\u{265A}', name: 'Government Service', rungs: () => GOVT_SERVICE_RUNGS },
   { id: 'judiciary',  icon: '\u{1F3DB}\u{FE0F}', name: 'Judiciary',  rungs: () => JUDICIARY_RUNGS,
     footer: 'The judiciary does not campaign or command — it waits for cases, then rules. Its power is reactive but absolute: a Chief Justice can undo what the Legislature passed, jail a Minister, or declare a war footing unlawful. The only limit is the independence that makes those rulings stick.' },
@@ -1051,55 +1050,6 @@ const PARTY_OFFICE_RUNGS = [
     held:        ()  => false,
     descIfHeld:  ()  => 'You lead your party. The face of the movement — and the candidate for Prime Minister.',
     descIfNot:   ()  => 'Lead a political party. The face of the movement — and the candidate for Prime Minister.',
-  },
-];
-
-// Legislature rungs — the chamber-officer climb (Deputy Speaker on
-// up). Since 20270892 statutes go straight to the assembly floor, so
-// there is no committee stage to staff.
-const LEGISLATURE_RUNGS = [
-  {
-    name: 'Deputy Speaker · Presiding Officer',
-    held:        (s) => s.deputySpeakerAtTick != null,
-    descIfHeld:  ()  => 'You help run the chamber itself — neutral-ish, procedural power. You hold the chair until the next general election or you resign.',
-    descIfNot:   ()  => 'You help run the chamber itself — neutral-ish, procedural power. Open to a sitting MP with 35 Reputation whose party holds the plurality. One seat per nation; held until the next general election.',
-    actions:     [{ label: 'Change Legislative Agenda', kind: 'disabled' }],
-    actionIfHeld: { label: 'Resign Chair · Back to MP', kind: 'secondary', action: 'resign-chair' },
-    actionIfNot: (s) => {
-      if (s.office !== 'member_of_parliament') {
-        return { label: 'Become Deputy Speaker', kind: 'disabled' };
-      }
-      if (s.politicianReputation < 35) {
-        return { label: `Become Deputy Speaker — need 35 Reputation (have ${s.politicianReputation})`, kind: 'disabled' };
-      }
-      if (s.speakerAtTick != null) {
-        return { label: 'Already Speaker — resign first', kind: 'disabled' };
-      }
-      return { label: 'Become Deputy Speaker', kind: 'primary', action: 'become-deputy-speaker' };
-    },
-  },
-  {
-    name: 'Speaker of the Assembly',
-    held:        (s) => s.speakerAtTick != null,
-    descIfHeld:  ()  => 'The top — institutional, not partisan. You hold the chair until the next general election or you resign.',
-    descIfNot:   ()  => 'The top — institutional, not partisan. Open to a sitting MP with 35 Reputation whose party holds the Head of Government role. One seat per nation; held until the next general election.',
-    actions:     [{ label: 'Set Legislative Calendar', kind: 'disabled' }, { label: 'Convene Legislature', kind: 'disabled' }],
-    actionIfHeld: { label: 'Resign Chair · Back to MP', kind: 'secondary', action: 'resign-chair' },
-    actionIfNot: (s) => {
-      if (s.office !== 'member_of_parliament') {
-        return { label: 'Run as Speaker', kind: 'disabled' };
-      }
-      if (s.politicianReputation < 35) {
-        return { label: `Run as Speaker — need 35 Reputation (have ${s.politicianReputation})`, kind: 'disabled' };
-      }
-      if (s.partyStatus !== 'Governing') {
-        return { label: 'Run as Speaker — your party must hold the HoG role', kind: 'disabled' };
-      }
-      if (s.deputySpeakerAtTick != null) {
-        return { label: 'Resign Deputy Speaker first', kind: 'disabled' };
-      }
-      return { label: 'Run as Speaker', kind: 'primary', action: 'run-for-speaker' };
-    },
   },
 ];
 
@@ -2423,17 +2373,6 @@ function buildLadderState(party, activeRace, office, ctx, stateAdvocateRequestPe
     // path. 35 Rep + 25 Influence threshold (no spend), Experienced Advocate
     // prereq. Doesn't gate or unlock Magistrate.
     stateProsecutorAtTick:   ctx?.faction?.politician_state_prosecutor_at_tick ?? null,
-    // Deputy Speaker (20270592). Stamped on appointment by
-    // politician_become_deputy_speaker; cleared at the nation's
-    // next general election. Plurality check happens server-side
-    // (the client gates only on Reputation + MP-status + not-held).
-    deputySpeakerAtTick:     ctx?.faction?.politician_deputy_speaker_at_tick ?? null,
-    // Speaker of the Assembly (20270593). Same lifecycle as Deputy
-    // Speaker; gated server-side on party_status='Governing' (the
-    // HoG-filled flag) instead of plurality. Mutually exclusive with
-    // Deputy Speaker at the holder level — server rejects with
-    // holds_other_chair if the caller already holds the Deputy seat.
-    speakerAtTick:           ctx?.faction?.politician_speaker_of_assembly_at_tick ?? null,
     // party_status reaches the Speaker rung's actionIfNot gate so the
     // button greys out with a useful hint when the caller's party
     // isn't in Governing status, instead of failing on the wire.
@@ -2532,12 +2471,10 @@ function render(politician, shard, nation, party) {
 // Pick the ladder ID for the politician's current stacked-section
 // career. Branch ladders (party / local govt) sit above this section
 // and aren't candidates here. Precedence picks the highest stake
-// when multiple apply (e.g. an MP who's also bar-admitted reads as
-// Legislature, not Judiciary).
+// when multiple apply (e.g. a minister who's also bar-admitted reads
+// as Government Service, not Judiciary).
 function chosenCareerLadderId(ctx) {
   const f = ctx?.faction || {};
-  const office = f.politician_office;
-  if (isMpOffice(office)) return 'legislature';
   if (f.politician_ministry) return 'govt_service';
   if (f.bar_admitted_nation_id) return 'judiciary';
   return null;
@@ -2560,10 +2497,9 @@ function renderLadders(state, ctx) {
   // climbing in the stacked section. Tagged with a pill in the summary
   // and hoisted to the top of restLadders so the active track is the
   // first card the player sees. Precedence: ministry → govt service,
-  // MP-tier office → legislature, bar admission → judiciary. Returns
-  // null when the player has no stacked-ladder career yet (party
-  // membership / local office only — those sit in the branch row
-  // above).
+  // bar admission → judiciary. Returns null when the player has no
+  // stacked-ladder career yet (party membership / local office only —
+  // those sit in the branch row above).
   const chosenId = chosenCareerLadderId(ctx);
   if (chosenId) {
     const idx = restLadders.findIndex(l => l.id === chosenId);
@@ -2831,88 +2767,6 @@ function bindRungActions(ctx) {
   // (politician_register_for_office) — only the target_office differs.
   // Page reloads on success so the rung flips to "in race" and the
   // Pressing Issues card picks up the new active race.
-  // Chair appointments (20270592 Deputy Speaker, 20270593 Speaker).
-  // Each RPC validates the full gate chain server-side; the client
-  // pre-screens what it can see so the obvious-fail cases don't hit
-  // the wire. Shared reason map covers both RPCs — the additional
-  // codes only the Speaker RPC raises (holds_other_chair, already_speaker,
-  // party_not_governing as HoG-flag rather than plurality) get
-  // distinct strings; everything else is shared.
-  const CHAIR_RPC = {
-    'become-deputy-speaker': { rpc: 'politician_become_deputy_speaker', verb: 'appointing' },
-    'run-for-speaker':       { rpc: 'politician_run_for_speaker',       verb: 'running for Speaker' },
-  };
-  const CHAIR_REASON = {
-    not_authenticated:        'Sign in to act.',
-    not_member:               'You are no longer a member of this party.',
-    party_not_found:          'Party not found.',
-    no_shard:                 'Shard not found.',
-    not_mp:                   'You must be a sitting Member of Parliament.',
-    already_deputy_speaker:   'You already hold the Deputy Speaker chair.',
-    already_speaker:          'You already hold the Speaker chair.',
-    holds_other_chair:        'Resign your current chair before taking another.',
-    seat_filled:              'Another MP already holds that chair.',
-    party_not_governing:      'Your party isn’t in the governing position required for this chair.',
-  };
-  document.querySelectorAll('[data-action="become-deputy-speaker"], [data-action="run-for-speaker"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const partyId = ctx?.party?.id || null;
-      if (!partyId) { alert('Join a political party first.'); return; }
-      const spec = CHAIR_RPC[btn.dataset.action];
-      if (!spec) return;
-      const prev = btn.textContent;
-      btn.disabled = true; btn.textContent = `${spec.verb[0].toUpperCase()}${spec.verb.slice(1)}…`;
-      try {
-        const { data, error } = await _supabase.rpc(spec.rpc, {
-          p_party_id:   partyId,
-          p_faction_id: ctx?.faction?.id || null,
-        });
-        if (error) throw error;
-        if (!data?.success) {
-          const msg = data?.reason === 'insufficient_reputation'
-            ? `Reputation too low — need ${data?.required ?? 35} (you have ${data?.have ?? 0}).`
-            : (CHAIR_REASON[data?.reason] || ('Could not appoint: ' + (data?.reason || 'unknown')));
-          alert(msg);
-          btn.disabled = false; btn.textContent = prev;
-          return;
-        }
-        location.reload();
-      } catch (e) {
-        alert('Failed: ' + (e?.message || e));
-        btn.disabled = false; btn.textContent = prev;
-      }
-    });
-  });
-
-  // Chair resignation (20270593). Clears whichever chair the caller
-  // currently holds; politician_office stays MP per spec.
-  document.querySelectorAll('[data-action="resign-chair"]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Resign your chair? You return to Member of Parliament.')) return;
-      const prev = btn.textContent;
-      btn.disabled = true; btn.textContent = 'Resigning…';
-      try {
-        const { data, error } = await _supabase.rpc('politician_resign_chair', {
-          p_faction_id: ctx?.faction?.id || null,
-        });
-        if (error) throw error;
-        if (!data?.success) {
-          const REASON = {
-            not_authenticated: 'Sign in to act.',
-            no_politician:     'No politician on this account.',
-            no_chair_held:     'You don’t hold a chair to resign from.',
-          };
-          alert(REASON[data?.reason] || ('Could not resign: ' + (data?.reason || 'unknown')));
-          btn.disabled = false; btn.textContent = prev;
-          return;
-        }
-        location.reload();
-      } catch (e) {
-        alert('Failed: ' + (e?.message || e));
-        btn.disabled = false; btn.textContent = prev;
-      }
-    });
-  });
 
   document.querySelectorAll('[data-action="register-senior-mp"]')
     .forEach(btn => {

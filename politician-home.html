@@ -3354,24 +3354,12 @@ function renderAffiliation(ctx) {
     ? '' // future: " · District N · {PARTY_ABBREV}"
     : (partyName ? ` <span class="ah-rank">· ${escHtml(partyName)}</span>` : '');
 
-  // Deputy Speaker (20270592) / Speaker of the Assembly (20270593)
-  // layer on top of the elected office — an MP can hold either chair
-  // without changing politician_office, so we surface the role by
-  // amending the variant's eyebrow + name in place rather than
-  // introducing a separate variant. Mutually exclusive at the holder
-  // level (server enforces); Speaker takes precedence in display.
-  // Cleared at the next general election or by politician_resign_chair.
-  const chairLabel = ctx.faction?.politician_speaker_of_assembly_at_tick != null
-    ? { upper: 'SPEAKER OF THE ASSEMBLY', mixed: 'Speaker of the Assembly' }
-    : ctx.faction?.politician_deputy_speaker_at_tick != null
-      ? { upper: 'DEPUTY SPEAKER', mixed: 'Deputy Speaker' }
-      : null;
   // 20270737: mayor variant uses nameFn(ctx) so the title can read
   // "Mayor of {City}" rather than the static name. Other variants
   // ignore the missing field via the || fallback.
   const variantName = variant.nameFn ? variant.nameFn(ctx) : variant.name;
-  const eyebrowText = chairLabel ? `${variant.eyebrow} · ${chairLabel.upper}` : variant.eyebrow;
-  const nameText    = chairLabel ? `${variantName} · ${chairLabel.mixed}`     : variantName;
+  const eyebrowText = variant.eyebrow;
+  const nameText    = variantName;
 
   // Cooldown: per-tier column. MP variants read next_mp_action_tick;
   // local-tier variants read next_local_action_tick (20270461). Each
