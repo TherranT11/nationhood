@@ -753,9 +753,9 @@
     <div class="jm-body">
       <div class="db-mech">File an ask on the credit market. Banks browse open requests and
         respond with offers — their posted prime, a term, and the collateral they demand.
-        You pick the offer you can live with. $100K&ndash;$50M.</div>
+        You pick the offer you can live with. $100K&ndash;$100M.</div>
       <div class="jm-lab">AMOUNT</div>
-      <input type="number" id="rq-amount" min="100000" max="50000000" step="100000"
+      <input type="number" id="rq-amount" min="100000" max="100000000" step="100000"
              placeholder="e.g. 10000000"
              style="width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#fff;font-family:var(--font-mono);font-size:13px;box-sizing:border-box;" />
       <div class="db-static dim-line" id="rq-note" style="margin-top:10px;"></div>
@@ -3632,6 +3632,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           request_closed: 'That request was funded or withdrawn — refresh the board.',
           offer_already_pending: 'You already have a pending offer on this request.',
           self_dealing: 'That corporation is yours — banks don\u2019t lend to their own books.',
+          underwriting_too_small: 'That ask exceeds your Underwriting Desk — overhaul it to write bigger tickets.',
           insufficient_treasury: 'The vault can\u2019t fund that ask.',
           invalid_collateral: 'Pick one of the borrower\u2019s assets as collateral.',
           invalid_term: 'Pick a term.',
@@ -3662,6 +3663,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
             host.innerHTML = '<div class="rl-empty">No open loan requests right now.</div>';
             return;
           }
+          // The Underwriting Desk caps the ticket — $20M per level
+          // (display mirror; bank_offer_loan re-checks).
+          const uwCap = Math.max(1, Number(corp.bank_underwriting_tier) || 1) * 20000000;
           host.innerHTML = rows.map(r => `
             <div class="jm-rung" data-req="${esc(r.id)}">
               <div class="top">
@@ -3672,7 +3676,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 <div class="staff">ASK: ${esc(hfFmtBig(r.amount))}</div>
               </div>
               <div class="ds">Employees: ${Number(r.corp.employee_count) || 0} &middot; Revenue (last tick): ${esc(hfFmtBig(Number(r.corp.last_tick_revenue) || 0))}</div>
-              <div class="resp"><button type="button" class="jm-btn ol-open-btn" style="padding:6px 14px;font-size:10px;">OFFER LOAN</button></div>
+              <div class="resp">${Number(r.amount) > uwCap
+                ? `<span style="color:#888;font-size:10px;font-style:italic;">Exceeds your underwriting — LV ${Math.max(1, Number(corp.bank_underwriting_tier) || 1)} caps at ${esc(hfFmtBig(uwCap))}. Overhaul the desk.</span>`
+                : '<button type="button" class="jm-btn ol-open-btn" style="padding:6px 14px;font-size:10px;">OFFER LOAN</button>'}</div>
               <div class="ol-form" style="display:none;"></div>
             </div>`).join('');
           host.querySelectorAll('.ol-open-btn').forEach(btn => {
@@ -3895,10 +3901,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
           'The Regional Network', 'The National Institution', 'The Pillar of the Republic'];
         const VAULT_TIER_NAMES = ['The Strongroom', 'The Time-Lock Vault',
           'The Bullion Floor', 'The Fortress Reserve', 'The National Depository'];
+        const UNDERWRITING_TIER_NAMES = ['The Loan Officer\u2019s Desk', 'The Credit Committee',
+          'The Risk Department', 'The Ratings Floor', 'The Sovereign Desk'];
         const BANK_ASSETS = [
           ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
           ['vault',          'VAULT',            'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.', VAULT_TIER_NAMES],
-          ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'How big a loan the bank can responsibly write.'],
+          ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'The largest loan ask the bank may offer on — $20M per level. The Sovereign Desk reaches the board\u2019s $100M ceiling.', UNDERWRITING_TIER_NAMES],
           ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      'The paper operation — structured products.'],
           ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'Settlement plumbing for longer, larger paper.'],
         ];
@@ -4115,7 +4123,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
         // ── Request modal ──
         const FIN_REASON = {
-          invalid_amount: 'Ask between $100K and $50M.',
+          invalid_amount: 'Ask between $100K and $100M.',
           request_already_open: 'You already have an open request.',
           banks_dont_borrow: 'Banks lend — they don\u2019t borrow.',
           not_owner: 'Only the owner can do this.',
@@ -4134,10 +4142,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         });
         document.getElementById('rq-amount').addEventListener('input', () => {
           const v = Math.floor(Number(document.getElementById('rq-amount').value) || 0);
-          const ok = v >= 100000 && v <= 50000000;
+          const ok = v >= 100000 && v <= 100000000;
           document.getElementById('rq-confirm').disabled = !ok;
           document.getElementById('rq-note').textContent =
-            ok ? `Asking ${hfFmtBig(v)}.` : 'Between $100K and $50M.';
+            ok ? `Asking ${hfFmtBig(v)}.` : 'Between $100K and $100M.';
         });
         let finInFlight = false;
         const finRpc = async (btn, rpc, args) => {

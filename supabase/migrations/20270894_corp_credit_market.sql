@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS public.corp_loan_requests (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     corp_id         uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
     nation_id       uuid REFERENCES public.nations(id) ON DELETE SET NULL,
-    amount          bigint NOT NULL CHECK (amount >= 100000 AND amount <= 50000000),
+    -- Ceiling matches the Underwriting Desk's top ticket (level ×
+    -- $20M, Sovereign Desk = $100M).
+    amount          bigint NOT NULL CHECK (amount >= 100000 AND amount <= 100000000),
     status          text NOT NULL DEFAULT 'open'
                         CHECK (status IN ('open', 'funded', 'withdrawn')),
     created_at_tick int NOT NULL,
@@ -169,9 +171,9 @@ BEGIN
     IF p_corp_id IS NULL OR p_amount IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'invalid_arguments');
     END IF;
-    IF p_amount < 100000 OR p_amount > 50000000 THEN
+    IF p_amount < 100000 OR p_amount > 100000000 THEN
         RETURN jsonb_build_object('success', false, 'reason', 'invalid_amount',
-            'min', 100000, 'max', 50000000);
+            'min', 100000, 'max', 100000000);
     END IF;
 
     -- Corp lock serializes the one-open-request check.
@@ -312,6 +314,14 @@ BEGIN
     -- No sheet, no lending — the offer's rate IS the posted prime.
     IF v_bank.bank_prime_rate_bps IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_rate_sheet');
+    END IF;
+    -- The Underwriting Desk caps the ticket (20270896 wiring):
+    -- $20M per level. The Sovereign Desk (V) reaches the board's
+    -- $100M ceiling — nothing is out of reach.
+    IF v_req.amount > COALESCE(v_bank.bank_underwriting_tier, 1)::bigint * 20000000 THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'underwriting_too_small',
+            'cap', COALESCE(v_bank.bank_underwriting_tier, 1)::bigint * 20000000,
+            'ask', v_req.amount);
     END IF;
     -- Bring the deposit ledger current (20270897) — the treasury
     -- gate below must see interest paid and flows landed.

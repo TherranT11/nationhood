@@ -10,8 +10,10 @@
 -- The five assets. BRANCH NETWORK went live with the deposit ledger
 -- (20270897 — pool share + drift speed); THE VAULT went live in the
 -- crash (20270895 — writedown armor, run shelter, the Level V
--- flight-to-quality refuge); the other three are TIERS ONLY for
--- now (user ruling), wired action by action later:
+-- flight-to-quality refuge); the UNDERWRITING DESK caps the loan
+-- ticket in bank_offer_loan (20270894 — $20M per level, Sovereign
+-- Desk reaching the board's $100M ceiling); Trading Desk and
+-- Clearing House are TIERS ONLY for now (user ruling):
 --   • BRANCH NETWORK   (bank_branch_tier, floor 1)
 --   • VAULT            (bank_vault_tier, floor 1)
 --   • UNDERWRITING DESK (bank_underwriting_tier, floor 1)
