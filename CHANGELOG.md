@@ -3,6 +3,201 @@
 All notable changes to Nationhood are recorded here. Format inspired by
 [Keep a Changelog](https://keepachangelog.com/); dates use ISO 8601.
 
+## [ALPHA — 3.1] — 2026-06-12
+
+### Added — Foreign Service (Tiers 2–5)
+
+- **Consul (Tier 2).** 12 Experience and a vacant pair opens [Take the
+  Consul Post] — one consul per home→host pairing. The consulate runs
+  on the **morning docket**: cases land in Pressing Issues, you handle
+  one properly and rubber-stamp the rest, and live with both. Adds
+  **Build a Network** and recipient-only **backchannel messages**
+  (read it, [Close] it, it burns).
+- **Deputy Chief of Mission (Tier 3).** 20 Experience claims a vacant
+  continental region. The DCM card carries the **Station Board** —
+  every officer your nation fields in the region — plus **Review a
+  Station** (commend/reprimand), **Set a Priority** (work the docket /
+  build standing, fulfilled by the officers' own actions), and **Call
+  a Summit** ($20: every officer is invited through Pressing Issues;
+  each acceptance is +1 relations).
+- **Foreign Minister.** A new dedicated post: apply to a player Prime
+  Minister for review, or face the ministry's d20 (skill, reputation
+  and party alignment modifiers, 28 to clear). One FM per nation.
+- **Ambassador (Tier 4).** [Request Appointment] from the DCM desk at
+  30 Experience files a real **3-tick confirmation vote in the
+  legislature** — your party banks its seats, the rest split — visible
+  in the nation's Voting section and recorded as a terminal bill
+  either way. Confirmation posts you to a random vacant nation for a
+  **60-tick term**: request meetings with the FM, issue public
+  statements (FM-reviewed, or the odds decide), collect **censure
+  strikes** from home (two recalls you), resign the posting, and
+  complete the term with honors on your career record.
+- **Special Envoy (Tier 5).** 55 Experience plus a completed
+  ambassadorial term. Appointed by a player FM — or seek it when the
+  chair is NPC. Negotiations open a dedicated **envoy-session
+  chamber**: free-text articles, three bindable **accords** (trade
+  understanding, consular convention, friendship), live chat, and
+  dual agree-flags — any edit resets both. Signing pays +5 relations
+  and the accords' standing effects (trade understanding discounts
+  market entry 10%; the consular convention doubles consul XP).
+- **Diplomatic Cables + Build Local Contacts** round out the attaché
+  desk, **NPC directives** flow down the reports-to chain (max 3 per
+  tick), and **[Resign]** now works from every rung — the resignation
+  clears the whole ladder, not just Tier 1.
+
+### Added — Government Service (the appointed canopy)
+
+- **The governing-party rule.** "The parties in power are X and Y. You
+  must be a member of one of these parties before seeking to join the
+  government ministry. If they lose power, so do you." — enforced.
+  Junior and Deputy Minister appointments gate on membership in a
+  governing-coalition party (read from the same party-status pills the
+  Movements page shows), and the election resolver strips sitting
+  ministers whose party falls out of the new coalition.
+- **Junior Minister appointments got honest.** The seek flow surfaces
+  the party-government notice first; the cabinet's d20 renders a full
+  **breakdown modal** — d20 + Experience + Rep + Party = total **vs
+  the 22 needed**, with the margin spelled out. No sitting PM? The
+  cabinet machinery now rolls on its own instead of dead-ending.
+- **Deputy Minister (Tier 5).** Sitting Junior Ministers with 32
+  Experience face a 25 bar on the same visible roll; winners are
+  assigned by lot to a vacant major ministry (Interior / Defense /
+  Economic Development / Foreign Affairs & Trade), vacating the JM
+  portfolio. One player deputy per ministry per nation.
+- **Permanent Undersecretary (Tier 3) goes live.** A new affiliation
+  card — "Permanent Undersecretary of {Ministry}" — with a real kit:
+  **Direct the Portfolio** (the only action in the game that moves a
+  nation stat directly — d20 + Experience/5 vs 18 nudges your desk's
+  lever ±0.5), **Prepare the Brief** (the only action that modifies
+  someone else's roll: a thorough brief is +2 on a sitting minister's
+  next d20; a thin one is −2 with a 1-in-4 scandal that names you on
+  their timeline), and **Patronage** (+1 Experience to a bureaucrat on
+  your desk's track, +0.3 Influence to you).
+- **Affiliation cards for the canopy.** "Junior Minister for
+  {Portfolio}" and "Deputy Minister of {Ministry}" cards outrank the
+  civil-service tiers, and **every role card now carries [Resign] in
+  the top right** — offices, civil service, judiciary, party
+  membership (Leave Party, now free of its 5-Influence cost), and the
+  Foreign Service.
+
+### Added — Legislature & Parties
+
+- **The committee floor vote is a real vote.** Sending a bill to the
+  floor opens a public **3-tick FINAL READING** in the nation's Voting
+  section — party blocs vote their declared stakeholder stances, the
+  **sponsor's own party always backs the bill**, neutral blocs break
+  on the day, and the outcome lands in the Laws page's Recent Results
+  whether it passes or dies. No more silent 0–0 deaths.
+- **Tax Holiday Act.** Any MP can file a one-time corporate tax break
+  with the Finance & Budget Committee — years (1–3), sectors (or all),
+  and percentage (25/50/75/100). Libertarians, Traditional
+  Conservatives and Liberals back it; the left opposes; your own party
+  backs its member. An enacted holiday discounts every covered corp's
+  filing rate for its term.
+- **Request Party Support.** A fourth campaign action: spend up to 6
+  Influence and the war chest matches $50k per point — every funded
+  block rolls 1d6, with 4–6 landing +2 polling.
+- **Losing re-election unseats you.** A sitting MP or Senior MP whose
+  re-election fails is evicted on the spot — office cleared, the
+  party's seat count rides down. Already-affected seats were repaired.
+
+### Added — Economy & Corporations
+
+- **Production runs BUILD the cars.** [Assign and Build]: every
+  assembly line with a Model assigned produces its 50 vehicles THE
+  MOMENT you fire the action — per-line cash and materials charged for
+  the turn, cars landing in inventory on the spot, and a per-line
+  receipt ("You built 100 cars this turn — Line 1 produced 50 Ríos
+  Hinchazón…"). Lines the treasury or depot can't cover are skipped
+  with reasons; [Unassign] frees a line. The CMO's Run the Line desk
+  fires the same engine, in-flight prepaid runs delivered their cars
+  at migration, and engineer/Second-Shift buffs now ride one
+  fleet-wide build.
+- **The CMO desk + plant expansions.** The Chief Manufacturing
+  Officer's kit (Run the Line, Second Shift overtime) and **Propose
+  Plant Expansion** — a city-priced ~$25M pitch to the CEO that posts
+  a public Tier-I construction bid, builds in 18 ticks, and grants a
+  bonus assembly line, +2 Growth and −3 Unemployment to the city.
+- **Corporate tax is real now.** The Active Laws Corporate Taxation
+  policy is the single source: the 0–10 codebook position files at ×5
+  (Tax Haven 5% → Heavy 45%). Legacy percent-scale nations (Sierramar
+  read 100%) were normalized onto the codebook. And the base is **net
+  profit**: filings deduct **payroll YTD** and the new **operating
+  expenses accumulator** — production builds, aluminum/component
+  purchases, construction materials & equipment, and Advance Build
+  fees all count. The corp page shows the expense line and the honest
+  "(revenue − payroll − expenses)" math.
+- **Founding costs got real** (previously unlogged): the flat $10K
+  Start Company filing became **$10M Construction / $35M Automotive ×
+  the nation's Standard of Living ÷ 50**. And **Banking charters
+  arrive** at a **$50M base** on the same formula — with a twist: 20%
+  burns as the charter, **80% is deposited into the corp treasury as
+  the bank's opening reserve**. Foundable wherever businessmen live
+  (Sierramar, Melizea, Avelia, Montequilla); the legacy
+  entrepreneur-side banking charter is retired (existing banks
+  grandfather).
+- **Multi-businessman accounts unlocked their desks.** Kit actions now
+  resolve the character who actually holds the job, not the oldest
+  one on the account — the CMO/CCO/engineer lockout is gone, and the
+  same fix landed for politician promotions (Permanent Secretary /
+  Junior Minister reading a sibling's Experience).
+
+### Added — Cities & Local Politics
+
+- **Jobs is now Unemployment** — renamed, inverted, and everywhere:
+  city values flipped to keep their meaning, ordinance effects
+  mirrored (+2 Jobs became −2 Unemployment), bands re-written
+  (Near-Full Employment → Mass Unemployment), plant completions HIRE
+  (−3 Unemployment), mayor tax packages raise it, and construction is
+  cheapest where labor idles (−3% per point — the cheap and expensive
+  build towns swapped).
+- **CCP Build the Base rebalanced.** Every month of organising lands
+  +1 Volunteer no matter the roll; the d6 sets the Reputation slice
+  (+0.5 on 1–2, +1 on 3–6).
+
+### Added — Nation Page & Home
+
+- **Vola World Cup card.** The Sports section's clickable tournament
+  tile opens the latest cup — host, champion or IN PROGRESS, your
+  national team's campaign in a sentence, your group's fixtures with
+  scores, the knockout bracket, and the full 1–13 standings.
+- **The politician home page reoriented.** Stat cards first
+  (Reputation · Experience · Influence · Capital, copy cut to single
+  clauses), then Pressing Issues, Current Affiliation, the new **Party
+  Membership** box (name, archetype, governing status, popularity,
+  seats, platform, [Party Page]), Political Career, and World Events +
+  Nation Chat side by side at the bottom. The hero's duplicate
+  AFFILIATION line is gone.
+- **Mobile pass.** Stat cards compact to a 2×2 dashboard on phones,
+  affiliation headers wrap instead of crushing the text into a
+  one-word column, action tiles stack single-file, and the chat input
+  gets the full width.
+
+### Added — Player Guide
+
+- Four new sections: **Local Politics** (the city ladder, ordinances,
+  mayor levers, strategy), **National Politics** (the chamber tier by
+  tier with real numbers), **The Businessman path** (own it or work
+  it, plus the three creation archetypes), and **Construction
+  Corporations** (the five executive actions, five asset ladders, and
+  the project pipeline). The orphaned 1,700-line legacy guide script
+  was deleted.
+
+### Fixed
+
+- Promotions on multi-politician accounts read the wrong character
+  ("you need 20 Experience. You have 4" — at Experience 54).
+- Sierramar's governing coalition listed phantom formation-era parties;
+  the record was rebuilt from the live movement parties and the
+  election resolver now keeps the party-status pills in sync.
+- The Sierramar 100% corporate tax rate (legacy scale) and the
+  gross-income tax base.
+- A committee bill could pass its motion and then vanish without a
+  trace; sitting MPs survived lost re-elections; the mayor tax-package
+  rebate referenced a dropped column; the Permanent Secretary rung
+  rendered literal `<strong>` tags; leave-party copy still claimed a
+  cost; stale-cache 404s diagnosed (hard refresh after merges).
+
 ## [MARIANNE — 3.0] — 2026-06-10
 
 ### Added — Businessman (Alpha)

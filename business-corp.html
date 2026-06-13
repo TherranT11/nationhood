@@ -183,11 +183,13 @@
 
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
-  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay { position:fixed;
+  #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay,
+  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay, #sp-overlay, #bo-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
-  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open { display:flex; }
+  #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open,
+  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open, #sp-overlay.open, #bo-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -638,6 +640,152 @@
   </div>
 </div>
 
+<!-- Set Interest Rate (banking, 20270893). Two pill rows — the rate
+     sheet. Rates persist until re-posted; posting burns the day's
+     executive action. -->
+<div id="ir-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Set <em>Interest Rate</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: post the bank&rsquo;s two prices. The DEPOSIT RATE is
+        what you pay savers for funding; the PRIME RATE is what your loans will price from.
+        The spread between them is the business. The sheet stands until you re-post it.</div>
+      <div class="jm-lab">DEPOSIT RATE &middot; YEARLY &middot; WHAT YOU PAY SAVERS</div>
+      <div class="jm-pills" id="ir-deposit"></div>
+      <div class="jm-lab" style="margin-top:14px;">PRIME RATE &middot; YEARLY &middot; WHAT BORROWERS PAY YOU</div>
+      <div class="jm-pills" id="ir-prime"></div>
+      <div class="db-static dim-line" id="ir-math" style="margin-top:14px;"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="ir-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="ir-confirm">POST THE SHEET</button>
+    </div>
+  </div>
+</div>
+
+<!-- Offer Loan (banking, 20270894). The open credit market: every
+     unfunded loan request, each expandable into an offer form whose
+     amount is the ask and whose rate is the bank's posted prime. -->
+<div id="ol-overlay">
+  <div class="jm-modal" style="max-width:660px;">
+    <div class="jm-head"><div class="jm-title">Offer <em>Loan</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: browse the open loan requests. Your offer lends the
+        full ask at <strong>your posted prime</strong>; you choose the term and name one of the
+        borrower&rsquo;s assets as collateral. The borrower picks among competing offers.</div>
+      <div class="jm-lab">OPEN REQUESTS</div>
+      <div id="ol-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="ol-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Issue Loan (banking, 20270894). Accepted offers awaiting
+     disbursement — issuing moves the money and starts the clock. -->
+<div id="il-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Issue <em>Loan</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: the borrower accepted — now you disburse. Issuing
+        moves the principal from your vault to their treasury and starts the loan&rsquo;s
+        clock: interest runs from today, due in the offered term.</div>
+      <div class="jm-lab">ACCEPTED — AWAITING DISBURSEMENT</div>
+      <div id="il-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="il-cancel">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Subprime Packaging (banking, 20270895). The push-your-luck
+     action: heat gauge, five permanent crash lamps, one button. -->
+<div id="sp-overlay">
+  <div class="jm-modal" style="max-width:620px;">
+    <div class="jm-head"><div class="jm-title">Subprime <em>Packaging</em></div></div>
+    <div class="jm-body" id="sp-body">
+      <div class="db-mech">The Mechanic: bundle junk paper and sell it — cash now, booked as
+        income. Every package (yours or any rival&rsquo;s) heats this nation&rsquo;s market;
+        each pull rolls 1d100 against the heat, and a roll at or under it lights a crash
+        indicator. <strong>Lamps never go dark.</strong> The fifth lights the fuse.</div>
+      <div class="jm-lab">MARKET HEAT</div>
+      <div style="height:14px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;overflow:hidden;">
+        <div id="sp-heatbar" style="height:100%;width:0%;background:#8aaa6a;transition:width 0.3s;"></div>
+      </div>
+      <div class="db-static dim-line" id="sp-heatline" style="margin-top:6px;"></div>
+      <div class="jm-lab" style="margin-top:12px;">MARKET CRASH INDICATORS</div>
+      <div id="sp-lamps" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      <div class="db-static" id="sp-math" style="margin-top:12px;"></div>
+    </div>
+    <div class="jm-foot" id="sp-foot">
+      <button type="button" class="jm-btn secondary" id="sp-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="sp-confirm">PACKAGE THE TRANCHES</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bank Logistical Overhaul (20270896). The five bank assets on
+     the shared construction price ladder. Tiers only for now —
+     effects come online as each system lands. -->
+<div id="bo-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Logistical <em>Overhaul</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">The Mechanic: invest capital to permanently upgrade one of the
+        bank&rsquo;s five assets — the construction price ladder, by level. <strong>Asset
+        effects come online as each banking system lands.</strong></div>
+      <div class="jm-lab">SELECT AN ASSET</div>
+      <div id="bo-rows"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="bo-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="bo-confirm" disabled title="Pick an asset">CONFIRM</button>
+    </div>
+  </div>
+</div>
+
+<!-- Request Loan (any non-bank corp, 20270894). -->
+<div id="rq-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Request a <em>Loan</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">File an ask on the credit market. Banks browse open requests and
+        respond with offers — their posted prime, a term, and the collateral they demand.
+        You pick the offer you can live with. $100K&ndash;$100M.</div>
+      <div class="jm-lab">AMOUNT</div>
+      <input type="number" id="rq-amount" min="100000" max="100000000" step="100000"
+             placeholder="e.g. 10000000"
+             style="width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#fff;font-family:var(--font-mono);font-size:13px;box-sizing:border-box;" />
+      <div class="db-static dim-line" id="rq-note" style="margin-top:10px;"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="rq-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="rq-confirm" disabled>FILE THE REQUEST</button>
+    </div>
+  </div>
+</div>
+
+<!-- Make Payment (borrower, 20270894). Interest first, then principal. -->
+<div id="pay-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Make a <em>Payment</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech">Payments clear accrued interest first, then principal. Overpaying
+        is safe — the charge clamps to what you owe.</div>
+      <div class="db-static" id="pay-status" style="margin-bottom:10px;"></div>
+      <div class="jm-lab">PAYMENT AMOUNT</div>
+      <input type="number" id="pay-amount" min="1" step="1000"
+             style="width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#fff;font-family:var(--font-mono);font-size:13px;box-sizing:border-box;" />
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="pay-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="pay-confirm" disabled>PAY</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapBusinessman } from './js/entrepreneur-topbar.js';
@@ -658,9 +806,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, bank_deposit_rate_bps, bank_prime_rate_bps, bank_branch_tier, bank_vault_tier, bank_underwriting_tier, bank_trading_tier, bank_clearing_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year, expenses_ytd, expenses_ytd_year,
-               nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax),
+               nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax, market_heat, market_heat_updated_tick, crash_lamps),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
       .eq('id', corpId).maybeSingle();
     if (error) throw error;
@@ -671,6 +819,29 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     const isOwner = corp.owner_faction_id === ctx.faction.id;
     const currentTick = Number(ctx.shard?.current_tick) || 0;
+
+    // Tax package (20270890): an HQ city holding discount charges
+    // takes 10% off asset upgrades here. Display mirror only — the
+    // upgrade RPCs recompute server-side, so a stale read can't
+    // change the price. Same name match the server uses (corps store
+    // hq_city as text).
+    let hqTaxCut = false;
+    try {
+      const { data: hqCities, error: hqErr } = await _supabase.from('cities')
+        .select('city_name, tax_package_discount_charges')
+        .eq('nation_id', corp.hq_nation_id);
+      if (hqErr) throw hqErr;
+      const hqRow = (hqCities || []).find(c =>
+        (c.city_name || '').toLowerCase() === (corp.hq_city || '').toLowerCase());
+      hqTaxCut = (Number(hqRow?.tax_package_discount_charges) || 0) > 0;
+    } catch (e) {
+      // Display mirror only — undiscounted prices still confirm fine.
+      console.warn('[business-corp] HQ tax-package read failed:', e?.message || e);
+    }
+    const hqDisc = (cost) => hqTaxCut ? Math.round(cost * 0.90) : cost;
+    const hqTaxNoteHtml = hqTaxCut
+      ? `<div class="dim-line" style="margin-top:6px;">−10% applied — ${esc(corp.hq_city)} has an active tax package.</div>`
+      : '';
     // Assembly lines at the corp's plant level — the one client
     // read of the assembly_lines mirror (panel + production modal).
     // Plant tier's count + completed plant expansions (20270864) —
@@ -703,6 +874,28 @@ import { CITY_STATS } from './js/game/city-labels.js';
       low_cost: 'Low Cost', standard: 'Standard', high_end: 'High End',
       luxury: 'Luxury', ultra_rich: 'Ultra Rich',
     };
+
+    // Credit market (20270894): the collateral menu per borrower
+    // industry — [asset key, label, tier column]. Mirror of the
+    // server's _loan_collateral_menu; the RPC revalidates.
+    const LOAN_COLLATERAL = {
+      construction: [
+        ['project_management',    'PROJECT MANAGEMENT',    'pm_tier'],
+        ['heavy_equipment',       'HEAVY EQUIPMENT',       'supply_tier'],
+        ['supply_material',       'SUPPLY & MATERIAL',     'materials_tier'],
+        ['system_design',         'SYSTEM DESIGN',         'design_tier'],
+        ['regulatory_compliance', 'REGULATORY COMPLIANCE', 'reg_tier'],
+      ],
+      automotive: [
+        ['design_studio', 'DESIGN STUDIO', 'design_studio_tier'],
+        ['assembly',      'ASSEMBLY',      'assembly_tier'],
+        ['data_center',   'DATA CENTER',   'data_center_tier'],
+        ['parts_depot',   'PARTS DEPOT',   'parts_depot_tier'],
+        ['franchise',     'FRANCHISE',     'franchise_tier'],
+      ],
+    };
+    const COLLATERAL_LABEL = Object.fromEntries(
+      Object.values(LOAN_COLLATERAL).flat().map(([k, l]) => [k, l]));
 
     // The corp's hired roster — one query definition, read by the
     // Prominent Employees panel and the Start Project PM dropdown.
@@ -1848,15 +2041,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
       });
     }
 
-    // Executive Actions — owner-only surface. The five live cards are
-    // CONSTRUCTION's playbook; AUTOMOTIVE has its first (Draft
-    // Blueprint, 20270831) with four still being designed; other
-    // industries show five coming-soon slots. Every backing RPC gates
-    // on the industry. The allowance pill derives from
+    // Executive Actions — owner-only surface. CONSTRUCTION and
+    // AUTOMOTIVE run full five-card playbooks; BANKING has its first
+    // (Set Interest Rate, 20270893) with four still being designed;
+    // other industries show five coming-soon slots. Every backing
+    // RPC gates on the industry. The allowance pill derives from
     // exec_action_tick (20270800): one action per tick.
     if (isOwner) {
       const eaConstruction = corp.industry === 'construction';
       const eaAutomotive = corp.industry === 'automotive';
+      const eaBanking = corp.industry === 'banking';
       const actionsLeft = currentTick > (corp.exec_action_tick ?? -1) ? 1 : 0;
       const eaComingSoon = n => Array.from({ length: n }, () => `
             <div class="ea-card" title="Coming soon">
@@ -1916,13 +2110,46 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="nm">LOGISTICAL OVERHAUL</div>
               <div class="soon">Permanently upgrade an asset</div>
             </div>`
+        : eaBanking ? `
+            <div class="ea-card live" id="ea-set-rates">
+              <div class="ic">🏦</div>
+              <div class="nm">SET INTEREST RATE</div>
+              <div class="soon">${corp.bank_prime_rate_bps
+                ? `Sheet: ${corp.bank_deposit_rate_bps / 100}% deposits · ${corp.bank_prime_rate_bps / 100}% prime`
+                : 'Post your first rate sheet'}</div>
+            </div>
+            <div class="ea-card live" id="ea-offer-loan">
+              <div class="ic">💸</div>
+              <div class="nm">OFFER LOAN</div>
+              <div class="soon">Browse the open credit market</div>
+            </div>
+            <div class="ea-card live" id="ea-issue-loan">
+              <div class="ic">🤝</div>
+              <div class="nm">ISSUE LOAN</div>
+              <div class="soon">Disburse an accepted offer</div>
+            </div>
+            <div class="ea-card live" id="ea-subprime">
+              <div class="ic">📉</div>
+              <div class="nm">SUBPRIME PACKAGING</div>
+              <div class="soon">Lucrative. Risky. Systemic.</div>
+            </div>
+            <div class="ea-card live" id="ea-bank-overhaul">
+              <div class="ic">🏭</div>
+              <div class="nm">LOGISTICAL OVERHAUL</div>
+              <div class="soon">Permanently upgrade an asset</div>
+            </div>`
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
           <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
           <div class="ea-grid">${eaCards}
           </div>
+        </div>
+        <div class="ea-panel" id="fin-panel" style="display:none;">
+          <div class="ea-head"><span class="rule"></span><span class="t">FINANCING</span><span class="rule"></span></div>
+          <div id="fin-body"></div>
         </div>`;
+      loadFinancing().catch(e => console.warn('[business-corp] financing load failed:', e?.message || e));
 
       // Everything below wires the construction actions and their
       // modals — other industries have nothing to wire. (Block kept
@@ -2449,11 +2676,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
             ${nxt ? '' : 'title="No higher tiers chartered yet"'}>
             <div class="top">
               <div class="nm">${esc(label)}</div>
-              ${nxt ? `<div class="staff">${esc(hfFmtBig(nxt.upgradeCost))}</div>` : ''}
+              ${nxt ? `<div class="staff">${esc(hfFmtBig(hqDisc(nxt.upgradeCost)))}</div>` : ''}
             </div>
             <div class="ds">${esc(cur)}${nxt ? ` → ${esc(nxt.tier)}` : ' — no higher tiers yet'}</div>
             ${nxt ? `<div class="resp"><span class="k">UNLOCKS:</span> ${esc(nxt.effect)}${nxt.requirement ? ` · <span class="k">REQUIRES:</span> ${esc(nxt.requirement)}` : ''}</div>` : ''}
-          </div>`).join('');
+          </div>`).join('') + hqTaxNoteHtml;
         host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
           row.addEventListener('click', () => {
             loAsset = row.dataset.asset;
@@ -3262,11 +3489,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
                     <div class="rung-no">${esc(a.dept)}</div>
                     <div class="nm">${esc(a.ladder[tier - 1].tier)}</div>
                   </div>
-                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0))}` : 'MAX LEVEL'}</span>
+                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(hqDisc(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0)))}` : 'MAX LEVEL'}</span>
                 </div>
                 ${next ? `<div class="ds">${esc(next.tier)} — ${esc(next.effect)}</div>` : ''}
               </div>`;
-          }).join('');
+          }).join('') + hqTaxNoteHtml;
           host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
             row.addEventListener('click', () => {
               aoAsset = row.dataset.asset;
@@ -3274,7 +3501,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               const tier = Math.min(Math.max(Number(corp[AUTOMOTIVE_ASSETS[aoAsset].col]) || 1, 1), 5);
               const btn = document.getElementById('ao-confirm');
               btn.disabled = false;
-              btn.textContent = `CONFIRM — ${hfFmtBig(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0)}`;
+              btn.textContent = `CONFIRM — ${hfFmtBig(hqDisc(AUTOMOTIVE_ASSET_UPGRADE_COSTS[tier + 1] || 0))}`;
               btn.title = '';
             });
           });
@@ -3315,6 +3542,680 @@ import { CITY_STATS } from './js/game/city-labels.js';
         });
 
       } // end if (eaAutomotive)
+
+      // ── Banking: Set Interest Rate (20270893) ───────────────────
+      // The rate sheet. A tick is a month, so the math line shows
+      // each rate's per-tick cashflow per $1M (annual ÷ 12) plus the
+      // spread — the same look-before-you-confirm idiom as the
+      // production-run and sales modals. Server revalidates the pill
+      // values and burns exec_action_tick.
+      if (eaBanking) {
+        const IR_DEPOSIT = [100, 200, 300, 400];
+        const IR_PRIME   = [600, 800, 1000, 1200];
+        let irDeposit = Number(corp.bank_deposit_rate_bps) || 200;
+        let irPrime   = Number(corp.bank_prime_rate_bps)   || 800;
+        let irInFlight = false;
+
+        const irPerTickPerM = (bps) => Math.round(1000000 * bps / 10000 / 12);
+        function irRefresh() {
+          document.getElementById('ir-math').textContent =
+            `Deposits cost ${hfFmtBig(irPerTickPerM(irDeposit))}/tick per $1M held · `
+            + `loans earn ${hfFmtBig(irPerTickPerM(irPrime))}/tick per $1M lent · `
+            + `spread ${(irPrime - irDeposit) / 100}%.`;
+          // Re-posting the identical sheet would burn the day's
+          // executive action for nothing — keep confirm locked until
+          // a pill actually differs from the posted rates.
+          const unchanged = Number(corp.bank_deposit_rate_bps) === irDeposit
+                         && Number(corp.bank_prime_rate_bps)   === irPrime;
+          const btn = document.getElementById('ir-confirm');
+          btn.disabled = unchanged || irInFlight;
+          btn.title = unchanged ? 'This is already your posted sheet — pick a different rate.' : '';
+        }
+        function irPillRow(hostId, values, current, onPick) {
+          const host = document.getElementById(hostId);
+          host.innerHTML = values.map(v =>
+            `<div class="jm-pill${v === current ? ' sel' : ''}" data-v="${v}">${v / 100}%</div>`).join('');
+          host.querySelectorAll('.jm-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+              host.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === pill));
+              onPick(Number(pill.dataset.v));
+              irRefresh();
+            });
+          });
+        }
+        document.getElementById('ea-set-rates').addEventListener('click', () => {
+          irPillRow('ir-deposit', IR_DEPOSIT, irDeposit, v => { irDeposit = v; });
+          irPillRow('ir-prime',   IR_PRIME,   irPrime,   v => { irPrime = v; });
+          irRefresh();
+          document.getElementById('ir-overlay').classList.add('open');
+        });
+        wireModalClose('ir-overlay', 'ir-cancel');
+
+        document.getElementById('ir-confirm').addEventListener('click', async () => {
+          if (irInFlight) return;
+          irInFlight = true;
+          const btn = document.getElementById('ir-confirm');
+          btn.disabled = true;
+          try {
+            const { data, error: irErr } = await _supabase.rpc('bank_set_interest_rate', {
+              p_corp_id:     corp.id,
+              p_deposit_bps: irDeposit,
+              p_prime_bps:   irPrime,
+            });
+            if (irErr) throw irErr;
+            if (!data?.success) {
+              const REASON = {
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                invalid_rate: 'Pick a rate from each row.',
+                invalid_spread: 'The deposit rate must sit below prime.',
+                not_owner: 'Only the owner sets the rates.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not post the sheet: ' + (e?.message || e));
+            irInFlight = false;
+            btn.disabled = false;
+          }
+        });
+        // ── Offer Loan (20270894) ─────────────────────────────────
+        // The open board. Each request expands into an offer form:
+        // amount locked to the ask, rate locked to the posted prime,
+        // term pills, the borrower's five assets as the collateral
+        // menu, comments. Server revalidates everything and burns
+        // the day's action.
+        const OL_REASON = {
+          no_rate_sheet: 'Post a rate sheet first — the offer lends at your prime.',
+          no_actions_remaining: 'No executive actions remaining this tick.',
+          request_closed: 'That request was funded or withdrawn — refresh the board.',
+          offer_already_pending: 'You already have a pending offer on this request.',
+          self_dealing: 'That corporation is yours — banks don\u2019t lend to their own books.',
+          underwriting_too_small: 'That ask exceeds your Underwriting Desk — overhaul it to write bigger tickets.',
+          clearing_too_small: 'Your Clearing House can\u2019t service paper that long — overhaul it.',
+          insufficient_treasury: 'The vault can\u2019t fund that ask.',
+          invalid_collateral: 'Pick one of the borrower\u2019s assets as collateral.',
+          invalid_term: 'Pick a term.',
+          comments_too_long: 'Comments are capped at 300 characters.',
+          not_owner: 'Only the owner writes loans.',
+          arrested: 'You are under arrest — your assets are frozen.',
+        };
+        let olState = null;   // { requestId, term, collateral } for the expanded row
+        let olInFlight = false;
+        async function olLoadBoard() {
+          const host = document.getElementById('ol-rows');
+          host.innerHTML = '<div class="rl-empty">Loading the board…</div>';
+          if (!corp.bank_prime_rate_bps) {
+            host.innerHTML = '<div class="rl-empty">Post a rate sheet first — your offers lend at your posted prime.</div>';
+            return;
+          }
+          const { data, error: olErr } = await _supabase.from('corp_loan_requests')
+            .select('id, amount, created_at_tick, corp:entrepreneur_corps!corp_id(id, name, industry, employee_count, last_tick_revenue, owner_faction_id, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier)')
+            .eq('status', 'open')
+            .order('created_at_tick', { ascending: false });
+          if (olErr) {
+            console.warn('[business-corp] loan board fetch failed:', olErr.message);
+            host.innerHTML = '<div class="rl-empty">Could not load the board — try again shortly.</div>';
+            return;
+          }
+          const rows = (data || []).filter(r => r.corp && r.corp.owner_faction_id !== corp.owner_faction_id);
+          if (!rows.length) {
+            host.innerHTML = '<div class="rl-empty">No open loan requests right now.</div>';
+            return;
+          }
+          // The Underwriting Desk caps the ticket — $20M per level
+          // (display mirror; bank_offer_loan re-checks).
+          const uwCap = Math.max(1, Number(corp.bank_underwriting_tier) || 1) * 20000000;
+          host.innerHTML = rows.map(r => `
+            <div class="jm-rung" data-req="${esc(r.id)}">
+              <div class="top">
+                <div>
+                  <div class="rung-no">${esc((r.corp.industry || '').toUpperCase())}</div>
+                  <div class="nm">${esc(r.corp.name)}</div>
+                </div>
+                <div class="staff">ASK: ${esc(hfFmtBig(r.amount))}</div>
+              </div>
+              <div class="ds">Employees: ${Number(r.corp.employee_count) || 0} &middot; Revenue (last tick): ${esc(hfFmtBig(Number(r.corp.last_tick_revenue) || 0))}</div>
+              <div class="resp">${Number(r.amount) > uwCap
+                ? `<span style="color:#888;font-size:10px;font-style:italic;">Exceeds your underwriting — LV ${Math.max(1, Number(corp.bank_underwriting_tier) || 1)} caps at ${esc(hfFmtBig(uwCap))}. Overhaul the desk.</span>`
+                : '<button type="button" class="jm-btn ol-open-btn" style="padding:6px 14px;font-size:10px;">OFFER LOAN</button>'}</div>
+              <div class="ol-form" style="display:none;"></div>
+            </div>`).join('');
+          host.querySelectorAll('.ol-open-btn').forEach(btn => {
+            btn.addEventListener('click', () => olExpand(btn.closest('[data-req]'), rows));
+          });
+        }
+        function olExpand(rowEl, rows) {
+          const req = rows.find(r => r.id === rowEl.dataset.req);
+          if (!req) return;
+          // Collapse any other open form — one offer at a time.
+          document.querySelectorAll('#ol-rows .ol-form').forEach(f => { f.style.display = 'none'; f.innerHTML = ''; });
+          // The Clearing House gates the longer paper — 24t needs
+          // Level I, 36t Level II (display mirror; the RPC re-checks).
+          const chTier = Math.max(0, Number(corp.bank_clearing_tier) || 0);
+          const termOk = (t) => t === 12 || (t === 24 && chTier >= 1) || (t === 36 && chTier >= 2);
+          olState = { requestId: req.id, term: chTier >= 1 ? 24 : 12, collateral: null };
+          const menu = LOAN_COLLATERAL[req.corp.industry] || [];
+          const form = rowEl.querySelector('.ol-form');
+          form.style.display = 'block';
+          form.innerHTML = `
+            <div class="jm-lab" style="margin-top:10px;">AMOUNT (THE ASK — LOCKED)</div>
+            <div class="db-static">${esc(hfFmtBig(req.amount))}</div>
+            <div class="jm-lab" style="margin-top:10px;">RATE (YOUR POSTED PRIME — LOCKED)</div>
+            <div class="db-static">${corp.bank_prime_rate_bps / 100}% yearly &middot; ${esc(hfFmtBig(Math.round(req.amount * corp.bank_prime_rate_bps / 10000 / 12)))}/tick while fully drawn</div>
+            <div class="jm-lab" style="margin-top:10px;">TERM</div>
+            <div class="jm-pills ol-term">${[12, 24, 36].map(t =>
+              `<div class="jm-pill${t === olState.term ? ' sel' : ''}${termOk(t) ? '' : ' locked'}" data-t="${t}"
+                 ${termOk(t) ? '' : `title="Needs Clearing House Level ${t === 24 ? 'I' : 'II'}"`}>${t} TICKS</div>`).join('')}</div>
+            <div class="jm-lab" style="margin-top:10px;">REQUESTED COLLATERAL</div>
+            <div class="jm-pills ol-coll" style="flex-wrap:wrap;">${menu.map(([key, label, col]) =>
+              `<div class="jm-pill" data-c="${esc(key)}" style="flex:1 1 45%;">${esc(label)} · LV ${Math.max(1, Number(req.corp[col]) || 0)}</div>`).join('')}</div>
+            <div class="jm-lab" style="margin-top:10px;">COMMENTS</div>
+            <textarea class="ol-comments" maxlength="300" placeholder="Optional — terms, expectations, a warning…"
+              style="width:100%;min-height:54px;padding:8px 10px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#ddd;font-size:11px;box-sizing:border-box;resize:vertical;"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+              <button type="button" class="jm-btn secondary ol-form-cancel" style="padding:7px 14px;font-size:10px;">CANCEL</button>
+              <button type="button" class="jm-btn ol-form-send" style="padding:7px 14px;font-size:10px;" disabled title="Pick collateral">OFFER LOAN</button>
+            </div>`;
+          form.querySelectorAll('.ol-term .jm-pill:not(.locked)').forEach(p => p.addEventListener('click', () => {
+            form.querySelectorAll('.ol-term .jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+            olState.term = Number(p.dataset.t);
+          }));
+          form.querySelectorAll('.ol-coll .jm-pill').forEach(p => p.addEventListener('click', () => {
+            form.querySelectorAll('.ol-coll .jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+            olState.collateral = p.dataset.c;
+            const send = form.querySelector('.ol-form-send');
+            send.disabled = false; send.title = '';
+          }));
+          form.querySelector('.ol-form-cancel').addEventListener('click', () => {
+            form.style.display = 'none'; form.innerHTML = ''; olState = null;
+          });
+          form.querySelector('.ol-form-send').addEventListener('click', async (e) => {
+            if (olInFlight || !olState?.collateral) return;
+            olInFlight = true;
+            const send = e.currentTarget;
+            send.disabled = true;
+            try {
+              const { data, error: ofErr } = await _supabase.rpc('bank_offer_loan', {
+                p_request_id:       olState.requestId,
+                p_bank_corp_id:     corp.id,
+                p_term_ticks:       olState.term,
+                p_collateral_asset: olState.collateral,
+                p_comments:         form.querySelector('.ol-comments').value.trim() || null,
+              });
+              if (ofErr) throw ofErr;
+              if (!data?.success) throw new Error(OL_REASON[data?.reason] || data?.reason || 'unknown');
+              window.location.reload();
+            } catch (err) {
+              alert('Could not offer: ' + (err?.message || err));
+              olInFlight = false;
+              send.disabled = false;
+            }
+          });
+        }
+        document.getElementById('ea-offer-loan').addEventListener('click', () => {
+          document.getElementById('ol-overlay').classList.add('open');
+          olLoadBoard();
+        });
+        wireModalClose('ol-overlay', 'ol-cancel');
+
+        // ── Issue Loan (20270894) ─────────────────────────────────
+        // Accepted offers awaiting disbursement. Issuing moves the
+        // principal and burns the day's action; the server locks the
+        // offer row so a double-issue loses cleanly.
+        const IL_REASON = {
+          offer_not_accepted: 'That offer was already issued or is no longer accepted.',
+          book_full: 'The book is full — your Clearing House services 2 loans + 2 per level. Collect or overhaul.',
+          no_actions_remaining: 'No executive actions remaining this tick.',
+          insufficient_treasury: 'The vault can\u2019t fund the disbursement right now.',
+          borrower_gone: 'The borrower no longer exists.',
+          not_owner: 'Only the owner issues loans.',
+          arrested: 'You are under arrest — your assets are frozen.',
+        };
+        let ilInFlight = false;
+        async function ilLoad() {
+          const host = document.getElementById('il-rows');
+          host.innerHTML = '<div class="rl-empty">Loading…</div>';
+          const { data, error: ilErr } = await _supabase.from('corp_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, collateral_asset, request:corp_loan_requests!request_id(corp:entrepreneur_corps!corp_id(name, industry))')
+            .eq('bank_corp_id', corp.id)
+            .eq('status', 'accepted')
+            .order('created_at_tick', { ascending: true });
+          if (ilErr) {
+            console.warn('[business-corp] issuance queue fetch failed:', ilErr.message);
+            host.innerHTML = '<div class="rl-empty">Could not load — try again shortly.</div>';
+            return;
+          }
+          if (!data?.length) {
+            host.innerHTML = '<div class="rl-empty">No accepted offers waiting. Offers land here once a borrower says yes.</div>';
+            return;
+          }
+          host.innerHTML = data.map(o => `
+            <div class="jm-rung" data-offer="${esc(o.id)}">
+              <div class="top">
+                <div>
+                  <div class="rung-no">${esc((o.request?.corp?.industry || '').toUpperCase())}</div>
+                  <div class="nm">${esc(o.request?.corp?.name || 'A corporation')}</div>
+                </div>
+                <div class="staff">${esc(hfFmtBig(o.amount))}</div>
+              </div>
+              <div class="ds">${o.rate_bps / 100}% &middot; ${o.term_ticks} ticks &middot; collateral: ${esc(COLLATERAL_LABEL[o.collateral_asset] || o.collateral_asset)}</div>
+              <div class="resp"><button type="button" class="jm-btn il-send" style="padding:6px 14px;font-size:10px;">ISSUE — ${esc(hfFmtBig(o.amount))}</button></div>
+            </div>`).join('');
+          host.querySelectorAll('.il-send').forEach(btn =>
+            btn.addEventListener('click', async () => {
+              if (ilInFlight) return;
+              ilInFlight = true;
+              btn.disabled = true;
+              try {
+                const { data: res, error: isErr } = await _supabase.rpc('bank_issue_loan', {
+                  p_offer_id:     btn.closest('[data-offer]').dataset.offer,
+                  p_bank_corp_id: corp.id,
+                });
+                if (isErr) throw isErr;
+                if (!res?.success) throw new Error(IL_REASON[res?.reason] || res?.reason || 'unknown');
+                window.location.reload();
+              } catch (e) {
+                alert('Could not issue: ' + (e?.message || e));
+                ilInFlight = false;
+                btn.disabled = false;
+              }
+            }));
+        }
+        document.getElementById('ea-issue-loan').addEventListener('click', () => {
+          document.getElementById('il-overlay').classList.add('open');
+          ilLoad();
+        });
+        wireModalClose('il-overlay', 'il-cancel');
+
+        // ── Subprime Packaging (20270895) ─────────────────────────
+        // Display mirrors of the server's math: lazy-cooled heat
+        // (-2/tick against the stamp), the post-package heat (+12),
+        // the payout ($1.5M + $50K × heat) and the lamp odds. The
+        // RPC recomputes all of it under a nation lock.
+        const SP_LAMPS = ['TOXIC PAPER', 'OVERLEVERAGE', 'BLIND RATINGS', 'CREDIT FREEZE', 'MARGIN CALL'];
+        const spLiveHeat = () => Math.max(0, (Number(corp.nation?.market_heat) || 0)
+          - 2 * Math.max(0, currentTick - (Number(corp.nation?.market_heat_updated_tick) || 0)));
+        let spInFlight = false;
+        function spRender() {
+          const lamps = Math.min(5, Number(corp.nation?.crash_lamps) || 0);
+          const heatNow = spLiveHeat();
+          const heatNext = Math.min(100, heatNow + 12);
+          // Display mirror of the server's payout (incl. the Trading
+          // Desk multiplier) — the RPC recomputes under lock.
+          const tdTier = Math.min(5, Math.max(0, Number(corp.bank_trading_tier) || 0));
+          const payout = Math.round((1500000 + heatNext * 50000) * (1 + 0.10 * tdTier));
+          const bar = document.getElementById('sp-heatbar');
+          bar.style.width = heatNow + '%';
+          bar.style.background = heatNow > 60 ? '#c66' : heatNow > 30 ? '#c89e6e' : '#8aaa6a';
+          document.getElementById('sp-heatline').textContent =
+            `${corp.nation?.name || 'This nation'}: ${heatNow} / 100 — every bank's packages feed this number. Cools 2 per tick.`;
+          document.getElementById('sp-lamps').innerHTML = SP_LAMPS.map((nm, i) => `
+            <div style="flex:1 1 18%;min-width:96px;text-align:center;padding:8px 4px;border-radius:4px;font-family:var(--font-mono);font-size:8.5px;font-weight:700;letter-spacing:0.06em;
+              ${i < lamps
+                ? 'background:#1a0d0d;border:1px solid #c66;color:#e88;'
+                : 'background:#0a0a0a;border:1px solid rgba(255,255,255,0.1);color:#555;'}">
+              ${i < lamps ? '🔴' : '⚫'}<br>${nm}</div>`).join('');
+          document.getElementById('sp-math').innerHTML =
+            `This package: <strong>${hfFmtBig(payout)}</strong> into the treasury · heat rises to ${heatNext} · `
+            + `lamp risk: <strong>${heatNext}%</strong> (1d100 vs ${heatNext})`
+            + (lamps === 4 ? ' · <span style="color:#c66;font-weight:700;">ONE LAMP FROM THE CRASH</span>' : '');
+        }
+        document.getElementById('ea-subprime').addEventListener('click', () => {
+          spRender();
+          document.getElementById('sp-overlay').classList.add('open');
+        });
+        wireModalClose('sp-overlay', 'sp-cancel');
+        document.getElementById('sp-confirm').addEventListener('click', async () => {
+          if (spInFlight) return;
+          spInFlight = true;
+          const btn = document.getElementById('sp-confirm');
+          btn.disabled = true;
+          try {
+            const { data, error: spErr } = await _supabase.rpc('bank_package_subprime',
+              { p_corp_id: corp.id });
+            if (spErr) throw spErr;
+            if (!data?.success) {
+              const REASON = {
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                not_owner: 'Only the owner packages paper.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            // The receipt replaces the form — backdrop close reloads.
+            const lampLine = data.crashed
+              ? `<div class="db-mech" style="color:#e88;font-size:15px;">THE ROLL CAME UP ${esc(String(data.roll))}. <strong>MARGIN CALL</strong> lights — the market crashes. Depositors besiege every branch in ${esc(corp.nation?.name || 'the nation')}; half your treasury is written down. The paper you already sold stays sold.</div>`
+              : data.lamp_lit
+                ? `<div class="db-mech">Sold <strong>${hfFmtBig(data.payout)}</strong> of paper. Rolled ${esc(String(data.roll))} vs heat ${esc(String(data.heat))} — <strong style="color:#e88;">${esc(SP_LAMPS[Math.min(4, data.lamps - 1)])}</strong> lights up. ${esc(String(data.lamps))} of 5.</div>`
+                : `<div class="db-mech">Sold <strong>${hfFmtBig(data.payout)}</strong> of paper. Rolled ${esc(String(data.roll))} vs heat ${esc(String(data.heat))} — the music keeps playing. Heat now ${esc(String(data.heat))}.</div>`;
+            document.getElementById('sp-body').innerHTML = lampLine;
+            document.getElementById('sp-foot').innerHTML =
+              '<button type="button" class="jm-btn" id="sp-done">CLOSE</button>';
+            document.getElementById('sp-done').addEventListener('click', () => window.location.reload());
+            document.getElementById('sp-overlay').addEventListener('click', (e) => {
+              if (e.target?.id === 'sp-overlay') window.location.reload();
+            });
+          } catch (e) {
+            alert('Could not package: ' + (e?.message || e));
+            spInFlight = false;
+            btn.disabled = false;
+          }
+        });
+        // ── Logistical Overhaul (20270896) ────────────────────────
+        // The five bank assets on the shared yard_upgrade_cost
+        // ladder; hqDisc shows the tax-package discount the server
+        // recomputes. Tiers only — effect wiring is a later slice.
+        const BRANCH_TIER_NAMES = ['The Corner Branch', 'The High Street Offices',
+          'The Regional Network', 'The National Institution', 'The Pillar of the Republic'];
+        const VAULT_TIER_NAMES = ['The Strongroom', 'The Time-Lock Vault',
+          'The Bullion Floor', 'The Fortress Reserve', 'The National Depository'];
+        const UNDERWRITING_TIER_NAMES = ['The Loan Officer\u2019s Desk', 'The Credit Committee',
+          'The Risk Department', 'The Ratings Floor', 'The Sovereign Desk'];
+        const TRADING_TIER_NAMES = ['The Side Desk', 'The Trading Room',
+          'The Proprietary Desk', 'The Structured Products Floor', 'The Black Box'];
+        const CLEARING_TIER_NAMES = ['The Ledger Room', 'The Settlement Office',
+          'The Wire Room', 'The Clearing Floor', 'The Grand Clearing House'];
+        const BANK_ASSETS = [
+          ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
+          ['vault',          'VAULT',            'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.', VAULT_TIER_NAMES],
+          ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'The largest loan ask the bank may offer on — $20M per level. The Sovereign Desk reaches the board\u2019s $100M ceiling.', UNDERWRITING_TIER_NAMES],
+          ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      '+10% on every Subprime Packaging payout per level — The Black Box pays \u00d71.5. Appetite, not admission: no desk still packages at base.', TRADING_TIER_NAMES],
+          ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'The book\u2019s plumbing: Level I services 24-tick paper, II services 36; the active book caps at 2 + 2 per level. The Grand Clearing House (V) skims 1% of every rival bank\u2019s interest settlements.', CLEARING_TIER_NAMES],
+        ];
+        const BANK_LADDER_COST = { 1: 7000000, 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
+        let boAsset = null;
+        document.getElementById('ea-bank-overhaul').addEventListener('click', () => {
+          boAsset = null;
+          const host = document.getElementById('bo-rows');
+          host.innerHTML = BANK_ASSETS.map(([key, label, col, desc, names]) => {
+            const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
+            const next = tier < 5 ? BANK_LADDER_COST[tier + 1] : null;
+            const nm = tier === 0 ? 'Not built' : (names?.[tier - 1] || `Level ${tier}`);
+            return `
+              <div class="jm-rung${next ? '' : ' locked'}" data-asset="${esc(key)}" data-cost="${next || 0}"
+                ${next ? '' : 'title="Already at the top of the ladder"'}>
+                <div class="top">
+                  <div>
+                    <div class="rung-no">${esc(label)}</div>
+                    <div class="nm">${esc(nm)}</div>
+                  </div>
+                  <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(hqDisc(next)))}` : 'MAX LEVEL'}</span>
+                </div>
+                <div class="ds">${esc(desc)}</div>
+              </div>`;
+          }).join('') + hqTaxNoteHtml;
+          host.querySelectorAll('.jm-rung:not(.locked)').forEach(row => {
+            row.addEventListener('click', () => {
+              boAsset = row.dataset.asset;
+              host.querySelectorAll('.jm-rung').forEach(x => x.classList.toggle('sel', x === row));
+              const btn = document.getElementById('bo-confirm');
+              btn.disabled = false;
+              btn.textContent = `CONFIRM — ${hfFmtBig(hqDisc(Number(row.dataset.cost)))}`;
+              btn.title = '';
+            });
+          });
+          const btn = document.getElementById('bo-confirm');
+          btn.disabled = true;
+          btn.textContent = 'CONFIRM';
+          btn.title = 'Pick an asset';
+          document.getElementById('bo-overlay').classList.add('open');
+        });
+        wireModalClose('bo-overlay', 'bo-cancel');
+        let boInFlight = false;
+        document.getElementById('bo-confirm').addEventListener('click', async () => {
+          if (boInFlight || !boAsset) return;
+          boInFlight = true;
+          const btn = document.getElementById('bo-confirm');
+          btn.disabled = true;
+          try {
+            const { data, error: boErr } = await _supabase.rpc('bank_logistical_overhaul',
+              { p_corp_id: corp.id, p_asset: boAsset });
+            if (boErr) throw boErr;
+            if (!data?.success) {
+              const REASON = {
+                max_tier: 'Already at the top of the ladder.',
+                no_actions_remaining: 'No executive actions remaining this tick.',
+                insufficient_treasury: `The treasury can\u2019t cover it — ${hfFmtBig(data?.need ?? 0)} needed, ${hfFmtBig(data?.have ?? 0)} on hand.`,
+                not_owner: 'Only the owner upgrades assets.',
+                arrested: 'You are under arrest — your assets are frozen.',
+              };
+              throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+            }
+            window.location.reload();
+          } catch (e) {
+            alert('Could not upgrade: ' + (e?.message || e));
+            boInFlight = false;
+            btn.disabled = false;
+          }
+        });
+      } // end if (eaBanking)
+
+      // ── FINANCING (20270894) — every corp's credit-market surface.
+      // Non-banks: file/withdraw an ask, weigh the offers, accept.
+      // Borrowers: active loans with [MAKE PAYMENT]. Banks: the loan
+      // book, read-only. Panel hides when there is nothing to show
+      // and no ask to file (banks with an empty book).
+      async function loadFinancing() {
+        const panel = document.getElementById('fin-panel');
+        const body  = document.getElementById('fin-body');
+        if (!panel || !body) return;
+        const isBank = corp.industry === 'banking';
+
+        const loanSel = _supabase.from('corp_bank_loans')
+          .select('id, bank_corp_id, borrower_corp_id, rate_bps, due_tick, balance, accrued_interest, last_accrual_tick, collateral_asset, bank:entrepreneur_corps!bank_corp_id(name), borrower:entrepreneur_corps!borrower_corp_id(name)')
+          .or(`borrower_corp_id.eq.${corp.id},bank_corp_id.eq.${corp.id}`)
+          .eq('status', 'active')
+          .order('due_tick', { ascending: true });
+        const reqSel = isBank
+          ? Promise.resolve({ data: null, error: null })
+          : _supabase.from('corp_loan_requests')
+              .select('id, amount, created_at_tick')
+              .eq('corp_id', corp.id).eq('status', 'open').maybeSingle();
+        // Settle the deposit ledger first (20270897) — the lazy
+        // resolver brings drift + interest current and returns the
+        // snapshot the DEPOSITS block renders. Soft-fail: the panel
+        // just omits the block.
+        let depo = null;
+        if (isBank) {
+          try {
+            const { data: dRes, error: dErr } = await _supabase.rpc('bank_settle_deposits',
+              { p_corp_id: corp.id });
+            if (dErr) throw dErr;
+            if (dRes?.success) depo = dRes;
+          } catch (e) {
+            console.warn('[business-corp] deposit settle failed:', e?.message || e);
+          }
+        }
+
+        const [loanRes, reqRes] = await Promise.all([loanSel, reqSel]);
+        if (loanRes.error) throw loanRes.error;
+        if (reqRes.error) throw reqRes.error;
+        const loans = loanRes.data || [];
+        const myReq = reqRes.data || null;
+
+        let offers = [];
+        if (myReq) {
+          const { data: offerRows, error: offErr } = await _supabase.from('corp_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, collateral_asset, comments, bank:entrepreneur_corps!bank_corp_id(name)')
+            .eq('request_id', myReq.id).eq('status', 'pending')
+            .order('rate_bps', { ascending: true });
+          if (offErr) throw offErr;
+          offers = offerRows || [];
+        }
+
+        // Accepted-but-unissued offers on this corp's requests — the
+        // money is promised, the bank hasn't disbursed yet.
+        let awaiting = [];
+        if (!isBank) {
+          const { data: awRows, error: awErr } = await _supabase.from('corp_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, bank:entrepreneur_corps!bank_corp_id(name), request:corp_loan_requests!request_id!inner(corp_id)')
+            .eq('status', 'accepted')
+            .eq('request.corp_id', corp.id);
+          if (awErr) throw awErr;
+          awaiting = awRows || [];
+        }
+
+        if (isBank && !loans.length && !depo) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+
+        // Live payoff estimate — display mirror of corp_pay_loan's
+        // accrual (the server recomputes at payment time).
+        const payoffOf = (l) => Math.round(Number(l.balance) + Number(l.accrued_interest)
+          + Number(l.balance) * l.rate_bps / 10000 / 12
+            * Math.max(0, currentTick - l.last_accrual_tick));
+
+        const borrowed = loans.filter(l => l.borrower_corp_id === corp.id);
+        const lent     = loans.filter(l => l.bank_corp_id === corp.id);
+        let html = '';
+
+        if (depo) {
+          const d = (k) => Number(depo[k]) || 0;
+          html += `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Deposits — other people's money</div>
+                <div class="staff">${esc(hfFmtBig(d('deposits')))}</div>
+              </div>
+              <div class="ds">${corp.bank_deposit_rate_bps
+                ? `Drifting toward ${esc(hfFmtBig(d('equilibrium')))} (your branches &times; your ${(Number(corp.bank_deposit_rate_bps) || 0) / 100}% rate, from a ${esc(hfFmtBig(d('pool')))} national pool) &middot; costing ${esc(hfFmtBig(d('per_tick_cost')))}/tick`
+                : 'Post a rate sheet — savers need a number before they walk in.'}</div>
+            </div>`;
+        }
+
+        if (!isBank) {
+          html += myReq ? `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Open loan request — ${esc(hfFmtBig(myReq.amount))}</div>
+                <button type="button" class="jm-btn secondary" id="fin-withdraw" style="padding:6px 12px;font-size:10px;">WITHDRAW</button>
+              </div>
+              <div class="ds">${offers.length
+                ? `${offers.length} offer${offers.length === 1 ? '' : 's'} on the table:`
+                : 'Waiting for the banks. Offers land here.'}</div>
+              ${offers.map(o => `
+                <div class="resp" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;">
+                  <span><strong>${esc(o.bank?.name || 'A bank')}</strong> &middot; ${o.rate_bps / 100}% &middot; ${o.term_ticks} ticks &middot; collateral: ${esc(COLLATERAL_LABEL[o.collateral_asset] || o.collateral_asset)}</span>
+                  <button type="button" class="jm-btn fin-accept" data-offer="${esc(o.id)}" style="padding:5px 12px;font-size:10px;">ACCEPT</button>
+                  ${o.comments ? `<div style="flex-basis:100%;color:#888;font-style:italic;font-size:10.5px;">&ldquo;${esc(o.comments)}&rdquo;</div>` : ''}
+                </div>`).join('')}
+            </div>` : `
+            <div style="margin-bottom:8px;">
+              <button type="button" class="jm-btn" id="fin-request" style="padding:7px 14px;font-size:10px;">REQUEST LOAN</button>
+            </div>`;
+          html += awaiting.map(o => `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Accepted — awaiting disbursement from ${esc(o.bank?.name || 'the bank')}</div>
+                <div class="staff">${esc(hfFmtBig(o.amount))}</div>
+              </div>
+              <div class="ds">${o.rate_bps / 100}% &middot; ${o.term_ticks} ticks once issued. The bank moves the money with its Issue Loan action.</div>
+            </div>`).join('');
+        }
+
+        html += borrowed.map(l => `
+          <div class="jm-rung" style="margin-bottom:8px;">
+            <div class="top">
+              <div class="nm">Owed to ${esc(l.bank?.name || 'a bank')}${currentTick > l.due_tick ? ' <span style="color:#c66;font-size:10px;font-weight:700;">OVERDUE</span>' : ''}</div>
+              <div class="staff">${esc(hfFmtBig(payoffOf(l)))} to settle</div>
+            </div>
+            <div class="ds">${l.rate_bps / 100}% &middot; due tick ${l.due_tick} &middot; collateral: ${esc(COLLATERAL_LABEL[l.collateral_asset] || l.collateral_asset || '—')}</div>
+            <div class="resp"><button type="button" class="jm-btn fin-pay" data-loan="${esc(l.id)}" data-payoff="${payoffOf(l)}" style="padding:6px 14px;font-size:10px;">MAKE PAYMENT</button></div>
+          </div>`).join('');
+
+        html += lent.map(l => `
+          <div class="jm-rung" style="margin-bottom:8px;">
+            <div class="top">
+              <div class="nm">Lent to ${esc(l.borrower?.name || 'a corporation')}${currentTick > l.due_tick ? ' <span style="color:#c66;font-size:10px;font-weight:700;">OVERDUE</span>' : ''}</div>
+              <div class="staff">${esc(hfFmtBig(payoffOf(l)))} outstanding</div>
+            </div>
+            <div class="ds">${l.rate_bps / 100}% &middot; due tick ${l.due_tick} &middot; collateral: ${esc(COLLATERAL_LABEL[l.collateral_asset] || l.collateral_asset || '—')}</div>
+          </div>`).join('');
+
+        body.innerHTML = html || '<div class="rl-empty">Nothing on the books.</div>';
+
+        // ── Request modal ──
+        const FIN_REASON = {
+          invalid_amount: 'Ask between $100K and $100M.',
+          request_already_open: 'You already have an open request.',
+          banks_dont_borrow: 'Banks lend — they don\u2019t borrow.',
+          not_owner: 'Only the owner can do this.',
+          arrested: 'You are under arrest — your assets are frozen.',
+          offer_closed: 'That offer is gone — the request may already be funded.',
+          insufficient_treasury: 'The treasury can\u2019t cover that payment.',
+          nothing_owed: 'Nothing is owed on this loan.',
+          loan_settled: 'This loan is already settled.',
+        };
+        document.getElementById('fin-request')?.addEventListener('click', () => {
+          const inp = document.getElementById('rq-amount');
+          inp.value = '';
+          document.getElementById('rq-note').textContent = '';
+          document.getElementById('rq-confirm').disabled = true;
+          document.getElementById('rq-overlay').classList.add('open');
+        });
+        document.getElementById('rq-amount').addEventListener('input', () => {
+          const v = Math.floor(Number(document.getElementById('rq-amount').value) || 0);
+          const ok = v >= 100000 && v <= 100000000;
+          document.getElementById('rq-confirm').disabled = !ok;
+          document.getElementById('rq-note').textContent =
+            ok ? `Asking ${hfFmtBig(v)}.` : 'Between $100K and $100M.';
+        });
+        let finInFlight = false;
+        const finRpc = async (btn, rpc, args) => {
+          if (finInFlight) return;
+          finInFlight = true;
+          if (btn) btn.disabled = true;
+          try {
+            const { data, error: fErr } = await _supabase.rpc(rpc, args);
+            if (fErr) throw fErr;
+            if (!data?.success) throw new Error(FIN_REASON[data?.reason] || data?.reason || 'unknown');
+            window.location.reload();
+          } catch (e) {
+            alert('Could not complete: ' + (e?.message || e));
+            finInFlight = false;
+            if (btn) btn.disabled = false;
+          }
+        };
+        document.getElementById('rq-confirm').addEventListener('click', (e) =>
+          finRpc(e.currentTarget, 'corp_request_loan', {
+            p_corp_id: corp.id,
+            p_amount:  Math.floor(Number(document.getElementById('rq-amount').value) || 0),
+          }));
+        wireModalClose('rq-overlay', 'rq-cancel');
+
+        document.getElementById('fin-withdraw')?.addEventListener('click', (e) =>
+          finRpc(e.currentTarget, 'corp_withdraw_loan_request',
+            { p_request_id: myReq.id, p_corp_id: corp.id }));
+        body.querySelectorAll('.fin-accept').forEach(btn =>
+          btn.addEventListener('click', () =>
+            finRpc(btn, 'corp_accept_loan_offer',
+              { p_offer_id: btn.dataset.offer, p_corp_id: corp.id })));
+
+        // ── Payment modal ──
+        let payLoanId = null;
+        body.querySelectorAll('.fin-pay').forEach(btn =>
+          btn.addEventListener('click', () => {
+            payLoanId = btn.dataset.loan;
+            document.getElementById('pay-status').textContent =
+              `Estimated payoff today: ${hfFmtBig(Number(btn.dataset.payoff) || 0)} · treasury: ${hfFmtBig(Math.floor(Number(corp.treasury_cash) || 0))}`;
+            const inp = document.getElementById('pay-amount');
+            inp.value = '';
+            document.getElementById('pay-confirm').disabled = true;
+            document.getElementById('pay-overlay').classList.add('open');
+          }));
+        document.getElementById('pay-amount').addEventListener('input', () => {
+          const v = Math.floor(Number(document.getElementById('pay-amount').value) || 0);
+          document.getElementById('pay-confirm').disabled = !(v > 0);
+        });
+        document.getElementById('pay-confirm').addEventListener('click', (e) =>
+          finRpc(e.currentTarget, 'corp_pay_loan', {
+            p_loan_id: payLoanId,
+            p_corp_id: corp.id,
+            p_amount:  Math.floor(Number(document.getElementById('pay-amount').value) || 0),
+          }));
+        wireModalClose('pay-overlay', 'pay-cancel');
+      }
     }
 
     document.getElementById('loading').style.display = 'none';
