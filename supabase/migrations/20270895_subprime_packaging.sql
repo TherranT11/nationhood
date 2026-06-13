@@ -66,9 +66,9 @@ DECLARE
     v_flee     numeric;
     v_fled_i   numeric;
     v_fled     numeric := 0;
-    v_refuge   record;
-    v_refuges  int := 0;
-    v_inflow   numeric;
+    v_refuge_ids uuid[];
+    v_refuge_id  uuid;
+    v_inflow     numeric;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -201,23 +201,19 @@ BEGIN
         -- fled runs TO the nation's National Depository banks
         -- (Vault V), split among them. The trigger bank is never
         -- the refuge from its own panic. No Depository: the money
-        -- stays under mattresses.
-        SELECT count(*) INTO v_refuges FROM entrepreneur_corps
+        -- stays under mattresses. One query defines who qualifies.
+        SELECT array_agg(id) INTO v_refuge_ids FROM entrepreneur_corps
          WHERE hq_nation_id = v_nation.id AND industry = 'banking'
            AND COALESCE(bank_vault_tier, 1) >= 5 AND id <> p_corp_id;
-        IF v_refuges > 0 AND v_fled > 0 THEN
-            v_inflow := ROUND(v_fled * 0.5 / v_refuges);
-            FOR v_refuge IN
-                SELECT id, name FROM entrepreneur_corps
-                 WHERE hq_nation_id = v_nation.id AND industry = 'banking'
-                   AND COALESCE(bank_vault_tier, 1) >= 5 AND id <> p_corp_id
-            LOOP
+        IF v_refuge_ids IS NOT NULL AND v_fled > 0 THEN
+            v_inflow := ROUND(v_fled * 0.5 / array_length(v_refuge_ids, 1));
+            FOREACH v_refuge_id IN ARRAY v_refuge_ids LOOP
                 UPDATE entrepreneur_corps
                    SET bank_deposits = COALESCE(bank_deposits, 0) + v_inflow,
                        treasury_cash = COALESCE(treasury_cash, 0) + v_inflow,
                        bank_deposits_updated_tick = v_tick
-                 WHERE id = v_refuge.id;
-                PERFORM _log_corp_history(v_refuge.id, v_tick,
+                 WHERE id = v_refuge_id;
+                PERFORM _log_corp_history(v_refuge_id, v_tick,
                     format('FLIGHT TO QUALITY — $%s of panicked deposits ran to the National Depository.', v_inflow));
             END LOOP;
         END IF;
