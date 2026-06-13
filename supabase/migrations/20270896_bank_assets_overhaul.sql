@@ -12,8 +12,9 @@
 -- crash (20270895 — writedown armor, run shelter, the Level V
 -- flight-to-quality refuge); the UNDERWRITING DESK caps the loan
 -- ticket in bank_offer_loan (20270894 — $20M per level, Sovereign
--- Desk reaching the board's $100M ceiling); Trading Desk and
--- Clearing House are TIERS ONLY for now (user ruling):
+-- Desk reaching the board's $100M ceiling); the TRADING DESK
+-- sweetens subprime payouts +10%/level (20270895); the CLEARING
+-- HOUSE is TIERS ONLY for now (user ruling):
 --   • BRANCH NETWORK   (bank_branch_tier, floor 1)
 --   • VAULT            (bank_vault_tier, floor 1)
 --   • UNDERWRITING DESK (bank_underwriting_tier, floor 1)

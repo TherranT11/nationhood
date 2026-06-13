@@ -9,9 +9,9 @@
 --   • Heat: +12 per package (cap 100), cooling 2/tick LAZILY — the
 --     live value is max(0, stored - 2 × ticks_elapsed), re-stamped
 --     whenever anything touches it. No timers, ever.
---   • Payout: $1.5M + $50K × heat (the post-package heat), booked
---     as revenue_finance — taxable income, unlike loan principal.
---     The frenzy pays best right at the cliff.
+--   • Payout: ($1.5M + $50K × heat) × (1 + 10% per Trading Desk
+--     level), booked as revenue_finance — taxable income, unlike
+--     loan principal. The frenzy pays best right at the cliff.
 --   • The roll: 1d100 ≤ heat lights one of the five MARKET CRASH
 --     lamps, in order: TOXIC PAPER, OVERLEVERAGE, BLIND RATINGS,
 --     CREDIT FREEZE, MARGIN CALL. Lamps are PERMANENT (user ruling:
@@ -126,7 +126,11 @@ BEGIN
     v_heat := LEAST(100, v_heat + 12);
 
     -- The payout — richest right at the cliff. Taxable income.
-    v_payout := 1500000 + v_heat * 50000;
+    -- The Trading Desk (20270896 wiring) sweetens every tranche:
+    -- +10% per level, The Black Box (V) paying ×1.5. No desk still
+    -- packages at base — the desk is appetite, not admission.
+    v_payout := ROUND((1500000 + v_heat * 50000)
+        * (1 + 0.10 * LEAST(5, GREATEST(0, COALESCE(v_bank.bank_trading_tier, 0)))));
 
     -- The roll: 1d100 ≤ heat lights the next lamp. Permanent.
     v_roll  := 1 + floor(random() * 100)::int;

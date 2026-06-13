@@ -3835,7 +3835,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
           const lamps = Math.min(5, Number(corp.nation?.crash_lamps) || 0);
           const heatNow = spLiveHeat();
           const heatNext = Math.min(100, heatNow + 12);
-          const payout = 1500000 + heatNext * 50000;
+          // Display mirror of the server's payout (incl. the Trading
+          // Desk multiplier) — the RPC recomputes under lock.
+          const tdTier = Math.min(5, Math.max(0, Number(corp.bank_trading_tier) || 0));
+          const payout = Math.round((1500000 + heatNext * 50000) * (1 + 0.10 * tdTier));
           const bar = document.getElementById('sp-heatbar');
           bar.style.width = heatNow + '%';
           bar.style.background = heatNow > 60 ? '#c66' : heatNow > 30 ? '#c89e6e' : '#8aaa6a';
@@ -3903,11 +3906,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
           'The Bullion Floor', 'The Fortress Reserve', 'The National Depository'];
         const UNDERWRITING_TIER_NAMES = ['The Loan Officer\u2019s Desk', 'The Credit Committee',
           'The Risk Department', 'The Ratings Floor', 'The Sovereign Desk'];
+        const TRADING_TIER_NAMES = ['The Side Desk', 'The Trading Room',
+          'The Proprietary Desk', 'The Structured Products Floor', 'The Black Box'];
         const BANK_ASSETS = [
           ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
           ['vault',          'VAULT',            'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.', VAULT_TIER_NAMES],
           ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'The largest loan ask the bank may offer on — $20M per level. The Sovereign Desk reaches the board\u2019s $100M ceiling.', UNDERWRITING_TIER_NAMES],
-          ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      'The paper operation — structured products.'],
+          ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      '+10% on every Subprime Packaging payout per level — The Black Box pays \u00d71.5. Appetite, not admission: no desk still packages at base.', TRADING_TIER_NAMES],
           ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'Settlement plumbing for longer, larger paper.'],
         ];
         const BANK_LADDER_COST = { 1: 7000000, 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
