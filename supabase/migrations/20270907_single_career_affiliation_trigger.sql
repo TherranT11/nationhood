@@ -295,6 +295,18 @@ BEGIN
         END IF;
     END IF;
 
+    -- ── Side effects of leaving the FIS track ────────────────────────
+    -- A non-agent can't carry open cases — dismiss them, mirroring
+    -- politician_fis_resign (20270777). Cost-free: no reputation hit and
+    -- none of that RPC's academy-grant claw-back (this is advancement
+    -- into a new role, not a voluntary quit).
+    IF 'fis' = ANY(v_cleared) THEN
+        UPDATE fis_investigations
+           SET status = 'dismissed', closed_at_tick = v_tick
+         WHERE agent_faction_id = OLD.id
+           AND status = 'active';
+    END IF;
+
     -- One summary career event so the timeline records the handover.
     INSERT INTO politician_career_events (faction_id, event_tick, event_type, target_name, metadata)
     VALUES (OLD.id, v_tick, 'auto_resigned_affiliation', v_keep,
