@@ -402,17 +402,19 @@ export const OFFICE_TITLES = {
     mayor:                  'Mayor',
     mayor_of_capital:       'Mayor of the Capital',
     regional_leader:        'Regional Leader',
-    member_of_parliament:   'Member of Parliament',
+    member_of_parliament:   'Junior MP',
+    full_mp:                'Member of Parliament',
     senior_mp:              'Senior MP',
 };
 export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
-// MP-tier predicate — the two politician_office values that count as
-// "sitting Member of Parliament" for legislative gates (Propose New
-// Law, amendments, policy changes). Single source: every "is this
-// caller an MP?" check across the politician pages reads from here
-// so that adding a third MP-tier office is a one-line change.
-export const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
+// MP-tier predicate — the politician_office values that count as a
+// "sitting MP" for legislative gates (Propose New Law, amendments,
+// policy changes, tax holidays). The three national-ladder rungs:
+// member_of_parliament = Junior MP, full_mp = Member of Parliament,
+// senior_mp = Senior MP. Client mirror of the server's _is_mp_office()
+// (20270902); every "is this caller an MP?" check reads from here.
+export const MP_OFFICES = new Set(['member_of_parliament', 'full_mp', 'senior_mp']);
 export function isMpOffice(office) { return MP_OFFICES.has(office); }
 
 // Civil-service / political-canopy Experience thresholds — single

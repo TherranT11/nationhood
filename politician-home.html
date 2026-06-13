@@ -1481,6 +1481,10 @@ const CAREER_EVENT_TEMPLATES = {
           : `${name} has filed to run for a City Council seat against ${opp}.`;
       case 'city_council_president':
         return `${name} has filed to run for the City Council Presidency against ${opp}.`;
+      case 'parliament':
+        return `${name} has filed to run for a seat in the National Assembly against ${opp}.`;
+      case 'full_mp':
+        return `${name} has filed for re-election as a Member of Parliament against ${opp}.`;
       case 'senior_mp':
         return `${name} has filed for the Senior MP nomination against ${opp}.`;
       case 'mayor':
@@ -1511,6 +1515,8 @@ const CAREER_EVENT_TEMPLATES = {
         return target && target !== 'City Council seat'
           ? `${name} won a City Council seat in ${target}${opp}.`
           : `${name} won a City Council seat${opp}.`;
+      case 'full_mp':
+        return `${name} won re-election as a Member of Parliament${opp}.`;
       case 'senior_mp':
         return `${name} won the Senior MP nomination${opp}.`;
       default:
@@ -1532,6 +1538,8 @@ const CAREER_EVENT_TEMPLATES = {
         return target && target !== 'City Council seat'
           ? `${name} lost the City Council race in ${target}${opp}.`
           : `${name} lost a City Council race${opp}.`;
+      case 'full_mp':
+        return `${name} lost re-election as a Member of Parliament${opp}.`;
       case 'senior_mp':
         return `${name} lost the Senior MP nomination${opp}.`;
       default:
@@ -2501,19 +2509,28 @@ const AFFIL_VARIANTS = {
     variant: 'var-leg',
     eyebrow: 'LEGISLATURE · TIER 1',
     badge:   '⚛',
-    name:    'Member of Parliament',
+    name:    'Junior MP',
     desc:    'You sit in the National Assembly representing your district. <strong>The work is institutional</strong> — speeches, votes, committee rooms, the whip’s office. Build a reputation here and you become someone the press calls, the leadership listens to, and the country knows.',
     actions: LEGISLATURE_ACTIONS,
     actionsEnabled: true,  // wired to politician_mp_* RPCs (20270433)
   },
-  senior_mp: {
+  full_mp: {
     variant: 'var-leg',
     eyebrow: 'LEGISLATURE · TIER 2',
     badge:   '⚛',
-    name:    'Senior MP',
-    desc:    'A second-term backbencher with committee assignments and a name the press knows. The same institutional levers, with more weight behind them.',
+    name:    'Member of Parliament',
+    desc:    'A re-elected Member of Parliament — a full seat with a record behind you. The same institutional levers as a Junior MP, with more weight behind them.',
     actions: LEGISLATURE_ACTIONS,
-    actionsEnabled: true,  // Tier-2 MP keeps the same action set
+    actionsEnabled: true,  // same chamber action set as the other MP tiers
+  },
+  senior_mp: {
+    variant: 'var-leg',
+    eyebrow: 'LEGISLATURE · TIER 3',
+    badge:   '⚛',
+    name:    'Senior MP',
+    desc:    'A senior MP with a full term served and a name the press knows. The same institutional levers, with the most weight behind them.',
+    actions: LEGISLATURE_ACTIONS,
+    actionsEnabled: true,  // top MP tier keeps the same action set
   },
   // Triggered when politician_office is NULL, politician_ministry is
   // NULL, but bar_admitted_nation_id is set — the player has chosen
