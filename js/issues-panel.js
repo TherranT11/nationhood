@@ -656,10 +656,9 @@ function ensureStyles() {
     .issues-panel .iss-lever .ld{font-size:9px;color:#999;line-height:1.4;}
     .issues-panel .doors{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
     .issues-panel .door{font-family:inherit;cursor:pointer;text-align:center;border-radius:4px;padding:12px 11px;border:0.5px solid;}
-    .issues-panel .door.war{background:#1f0e0e;border-color:rgba(200,90,90,0.5);} .issues-panel .door.war:hover{background:#2a1212;}
     .issues-panel .door.back{background:#161616;border-color:rgba(255,255,255,0.15);} .issues-panel .door.back:hover{background:#1c1c1c;}
-    .issues-panel .door .dn{font-size:12px;font-weight:600;margin-bottom:3px;} .issues-panel .door.war .dn{color:#e08080;} .issues-panel .door.back .dn{color:#aaa;}
-    .issues-panel .door .dc{font-size:8px;line-height:1.4;} .issues-panel .door.war .dc{color:#a86a6a;} .issues-panel .door.back .dc{color:#777;}
+    .issues-panel .door .dn{font-size:12px;font-weight:600;margin-bottom:3px;} .issues-panel .door.back .dn{color:#aaa;}
+    .issues-panel .door .dc{font-size:8px;line-height:1.4;} .issues-panel .door.back .dc{color:#777;}
     .issues-panel .iss-lever:disabled,.issues-panel .door:disabled,.issues-panel button.cza:disabled,.issues-panel .is-busy{opacity:0.5;cursor:default;}
 
     .issues-panel .channel .ch-head{padding:11px 18px;background:#0a0a0a;border-bottom:0.5px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;}

@@ -231,9 +231,6 @@ export const EVENT_TYPES = {
     sovereign_default:  { section: 'economy', tier: 1, label: 'Sovereign Default' },
 
     // ── Military & Diplomacy ──
-    war_declaration:    { section: 'military',  tier: 1, label: 'War Declaration' },
-    war_failed:         { section: 'military',  tier: 1, label: 'War Vote Failed' },
-    peace_accepted:     { section: 'military',  tier: 1, label: 'Peace Accepted' },
     alliance_signed:    { section: 'diplomacy', tier: 1, label: 'Alliance Signed' },
     state_visit:        { section: 'diplomacy', tier: 2, label: 'State Visit' },
     io_founded:         { section: 'diplomacy', tier: 1, label: 'IO Founded' },
@@ -466,30 +463,6 @@ export const HEADLINE_TEMPLATES = {
         { id: 'default_h_02', template: "{nation_name} Restructures Debt — Partial Default Declared", conditions: [{ field: 'default_type', op: '==', value: 'partial_restructuring' }], weight: 2 },
         { id: 'default_h_03', template: "Financial Catastrophe: {nation_name} Cannot Pay Its Debts", conditions: [], weight: 1 },
         { id: 'default_h_04', template: "Creditors Stunned as {nation_name} Declares Sovereign Default", conditions: [], weight: 2 },
-    ],
-
-    // ─────────── WAR ───────────
-    war_declaration: [
-        { id: 'war_h_01', template: "{declarer} Declares War on {target}", conditions: [], weight: 1 },
-        { id: 'war_h_02', template: "War: {declarer} Launches Military Action Against {target}", conditions: [], weight: 2 },
-        { id: 'war_h_03', template: "Parliament Authorizes War — {declarer} to Strike {target}", conditions: [], weight: 1 },
-        { id: 'war_h_04', template: "{declarer_pm}: 'We Have No Choice' — War Declared on {target}", conditions: [], weight: 2 },
-        { id: 'war_h_05', template: "Continental Crisis: {declarer} Goes to War", conditions: [], weight: 1 },
-    ],
-
-    war_failed: [
-        { id: 'war_fail_h_01', template: "Parliament Blocks War — {declarer} Cannot Attack {target}", conditions: [], weight: 1 },
-        { id: 'war_fail_h_02', template: "War Vote Fails: {declarer} Pulls Back from Brink", conditions: [], weight: 2 },
-        { id: 'war_fail_h_03', template: "Parliament Says No: War Motion Defeated {vote_against}-{vote_for}", conditions: [{ field: 'vote_for', op: '!=', value: '' }], weight: 1 },
-        { id: 'war_fail_h_04', template: "{declarer_pm} Humiliated as War Resolution Fails", conditions: [{ field: 'margin', op: '>', value: 15 }], weight: 2 },
-    ],
-
-    peace_accepted: [
-        { id: 'peace_h_01', template: "Peace: {nation_a} and {nation_b} Sign Agreement", conditions: [], weight: 1 },
-        { id: 'peace_h_02', template: "War Over: {nation_a} and {nation_b} Agree to Terms", conditions: [], weight: 2 },
-        { id: 'peace_h_03', template: "Historic Peace Accord Ends {war_duration}-Tick Conflict", conditions: [{ field: 'war_duration', op: '>', value: 10 }], weight: 3 },
-        { id: 'peace_h_04', template: "Guns Fall Silent: Peace at Last Between {nation_a} and {nation_b}", conditions: [], weight: 1 },
-        { id: 'peace_h_05', template: "Ceasefire Becomes Peace — {nation_a} and {nation_b} Lay Down Arms", conditions: [], weight: 1 },
     ],
 
     // ─────────── DIPLOMACY ───────────
@@ -970,7 +943,6 @@ export const OPINION_TRIGGERS = [
     { condition: 'stability_below_30', topic: 'governance', headline: "Editorial: Can {nation_name}'s Government Survive?" },
     { condition: 'failed_state_active', topic: 'governance', headline: "Analysis: {nation_name} — A Nation In Name Only" },
     { condition: 'debt_critical', topic: 'economy', headline: "Editorial: The Debt Bomb — Is Default Inevitable?" },
-    { condition: 'war_active_5_ticks', topic: 'war', headline: "Analysis: {war_duration} Ticks In — Is Peace Possible?" },
     { condition: 'shutdown_active', topic: 'budget', headline: "Editorial: The Cost of a Government That Can't Govern" },
     { condition: 'inaction_3_ticks', topic: 'governance', headline: "Editorial: The Price of Doing Nothing" },
 ];
