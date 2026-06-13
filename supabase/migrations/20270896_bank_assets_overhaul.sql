@@ -7,9 +7,9 @@
 -- III $16M, IV $25M, V $40M), one level per action, tax-package
 -- discount parity with the other industries' overhauls (20270890).
 --
--- The five assets — TIERS ONLY for now (user ruling: don't wire the
--- effects yet). The ladders climb and the levels are recorded; what
--- each level does gets wired action by action when the design says:
+-- The five assets. BRANCH NETWORK went live with the deposit ledger
+-- (20270897 — pool share + drift speed); the other four are TIERS
+-- ONLY for now (user ruling), wired action by action later:
 --   • BRANCH NETWORK   (bank_branch_tier, floor 1)
 --   • VAULT            (bank_vault_tier, floor 1)
 --   • UNDERWRITING DESK (bank_underwriting_tier, floor 1)
@@ -84,6 +84,11 @@ BEGIN
     IF v_cost IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'max_tier');
     END IF;
+
+    -- Bring the deposit ledger current (20270897) — the treasury
+    -- gate below must see interest paid and flows landed.
+    PERFORM _bank_settle_deposits(p_corp_id);
+    SELECT * INTO v_corp FROM entrepreneur_corps WHERE id = p_corp_id;
 
     -- City tax package (20270890): an active package in the HQ city
     -- discounts the spend 10%; consumed only when the action lands.

@@ -85,6 +85,10 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'no_actions_remaining');
     END IF;
 
+    -- Settle the deposit ledger at the OLD rate before repricing
+    -- (20270897) — the elapsed window was lived under the old sheet.
+    PERFORM _bank_settle_deposits(p_corp_id);
+
     UPDATE entrepreneur_corps
        SET bank_deposit_rate_bps = p_deposit_bps,
            bank_prime_rate_bps   = p_prime_bps,

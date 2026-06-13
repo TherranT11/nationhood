@@ -3891,8 +3891,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // The five bank assets on the shared yard_upgrade_cost
         // ladder; hqDisc shows the tax-package discount the server
         // recomputes. Tiers only — effect wiring is a later slice.
+        const BRANCH_TIER_NAMES = ['The Corner Branch', 'The High Street Offices',
+          'The Regional Network', 'The National Institution', 'The Pillar of the Republic'];
         const BANK_ASSETS = [
-          ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Retail reach across the nation.'],
+          ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
           ['vault',          'VAULT',            'bank_vault_tier',        'The reserve itself — what survives a bad day.'],
           ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'How big a loan the bank can responsibly write.'],
           ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      'The paper operation — structured products.'],
@@ -3903,16 +3905,17 @@ import { CITY_STATS } from './js/game/city-labels.js';
         document.getElementById('ea-bank-overhaul').addEventListener('click', () => {
           boAsset = null;
           const host = document.getElementById('bo-rows');
-          host.innerHTML = BANK_ASSETS.map(([key, label, col, desc]) => {
+          host.innerHTML = BANK_ASSETS.map(([key, label, col, desc, names]) => {
             const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
             const next = tier < 5 ? BANK_LADDER_COST[tier + 1] : null;
+            const nm = tier === 0 ? 'Not built' : (names?.[tier - 1] || `Level ${tier}`);
             return `
               <div class="jm-rung${next ? '' : ' locked'}" data-asset="${esc(key)}" data-cost="${next || 0}"
                 ${next ? '' : 'title="Already at the top of the ladder"'}>
                 <div class="top">
                   <div>
                     <div class="rung-no">${esc(label)}</div>
-                    <div class="nm">${tier === 0 ? 'Not built' : `Level ${tier}`}</div>
+                    <div class="nm">${esc(nm)}</div>
                   </div>
                   <span class="staff">${next ? `NEXT: ${esc(hfFmtBig(hqDisc(next)))}` : 'MAX LEVEL'}</span>
                 </div>
@@ -3986,6 +3989,22 @@ import { CITY_STATS } from './js/game/city-labels.js';
           : _supabase.from('corp_loan_requests')
               .select('id, amount, created_at_tick')
               .eq('corp_id', corp.id).eq('status', 'open').maybeSingle();
+        // Settle the deposit ledger first (20270897) — the lazy
+        // resolver brings drift + interest current and returns the
+        // snapshot the DEPOSITS block renders. Soft-fail: the panel
+        // just omits the block.
+        let depo = null;
+        if (isBank) {
+          try {
+            const { data: dRes, error: dErr } = await _supabase.rpc('bank_settle_deposits',
+              { p_corp_id: corp.id });
+            if (dErr) throw dErr;
+            if (dRes?.success) depo = dRes;
+          } catch (e) {
+            console.warn('[business-corp] deposit settle failed:', e?.message || e);
+          }
+        }
+
         const [loanRes, reqRes] = await Promise.all([loanSel, reqSel]);
         if (loanRes.error) throw loanRes.error;
         if (reqRes.error) throw reqRes.error;
@@ -4014,7 +4033,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           awaiting = awRows || [];
         }
 
-        if (isBank && !loans.length) { panel.style.display = 'none'; return; }
+        if (isBank && !loans.length && !depo) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
 
         // Live payoff estimate — display mirror of corp_pay_loan's
@@ -4026,6 +4045,20 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const borrowed = loans.filter(l => l.borrower_corp_id === corp.id);
         const lent     = loans.filter(l => l.bank_corp_id === corp.id);
         let html = '';
+
+        if (depo) {
+          const d = (k) => Number(depo[k]) || 0;
+          html += `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Deposits — other people's money</div>
+                <div class="staff">${esc(hfFmtBig(d('deposits')))}</div>
+              </div>
+              <div class="ds">${corp.bank_prime_rate_bps
+                ? `Drifting toward ${esc(hfFmtBig(d('equilibrium')))} (your branches &times; your ${(Number(corp.bank_deposit_rate_bps) || 0) / 100}% rate, from a ${esc(hfFmtBig(d('pool')))} national pool) &middot; costing ${esc(hfFmtBig(d('per_tick_cost')))}/tick`
+                : 'Post a rate sheet — savers need a number before they walk in.'}</div>
+            </div>`;
+        }
 
         if (!isBank) {
           html += myReq ? `

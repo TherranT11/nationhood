@@ -313,6 +313,10 @@ BEGIN
     IF v_bank.bank_prime_rate_bps IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'no_rate_sheet');
     END IF;
+    -- Bring the deposit ledger current (20270897) — the treasury
+    -- gate below must see interest paid and flows landed.
+    PERFORM _bank_settle_deposits(p_bank_corp_id);
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_bank_corp_id;
 
     SELECT * INTO v_borrower FROM entrepreneur_corps WHERE id = v_req.corp_id;
     -- Lending to your own corp at your own prime is money laundering
@@ -465,6 +469,11 @@ BEGIN
     IF lower(COALESCE(v_fac.status, '')) = 'arrested' THEN
         RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
+
+    -- Bring the deposit ledger current (20270897) before the
+    -- funding check — issuing lends real, settled cash.
+    PERFORM _bank_settle_deposits(p_bank_corp_id);
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = p_bank_corp_id;
 
     -- Lock the offer: a double-issue serializes here and the loser
     -- sees status=issued.

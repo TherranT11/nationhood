@@ -101,6 +101,8 @@ BEGIN
     IF v_bank.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
     END IF;
+    -- Bring the deposit ledger current (20270897) before the frenzy.
+    PERFORM _bank_settle_deposits(p_corp_id);
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
@@ -150,10 +152,13 @@ BEGIN
         -- ── THE CRASH ─────────────────────────────────────────────
         -- Every bank in the nation holds the paper. 30% writedown
         -- across the board; the bank that lit MARGIN CALL takes 50%.
-        -- Pure treasury losses — no expense deduction (the payouts
-        -- were taxed as income; the crash is not a shelter).
+        -- Then the RUN (20270897): half of every bank's deposit base
+        -- demands its money back — the claim halves regardless, the
+        -- cash leaves only as far as the post-writedown vault can
+        -- pay. Pure treasury losses — no expense deduction (the
+        -- payouts were taxed as income; the crash is not a shelter).
         FOR v_burned IN
-            SELECT id, name, treasury_cash FROM entrepreneur_corps
+            SELECT id FROM entrepreneur_corps
              WHERE hq_nation_id = v_nation.id AND industry = 'banking'
              FOR UPDATE
         LOOP
@@ -161,10 +166,17 @@ BEGIN
                SET treasury_cash = ROUND(COALESCE(treasury_cash, 0)
                        * CASE WHEN v_burned.id = p_corp_id THEN 0.50 ELSE 0.70 END)
              WHERE id = v_burned.id;
+            UPDATE entrepreneur_corps
+               SET treasury_cash = GREATEST(0, COALESCE(treasury_cash, 0)
+                       - ROUND(COALESCE(bank_deposits, 0) * 0.5)),
+                   bank_deposits = COALESCE(bank_deposits, 0)
+                       - ROUND(COALESCE(bank_deposits, 0) * 0.5),
+                   bank_deposits_updated_tick = v_tick
+             WHERE id = v_burned.id;
             PERFORM _log_corp_history(v_burned.id, v_tick,
                 CASE WHEN v_burned.id = p_corp_id
-                     THEN 'MARKET CRASH — your tranches lit the MARGIN CALL. 50% of the treasury written down.'
-                     ELSE 'MARKET CRASH — the paper went to zero. 30% of the treasury written down.' END);
+                     THEN 'MARKET CRASH — your tranches lit the MARGIN CALL. 50% of the treasury written down; depositors besiege the branches.'
+                     ELSE 'MARKET CRASH — the paper went to zero. 30% of the treasury written down; depositors besiege the branches.' END);
         END LOOP;
 
         UPDATE nations
