@@ -1388,7 +1388,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, cabinetMinisterTitle, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
@@ -1638,6 +1638,7 @@ const CAREER_EVENT_TEMPLATES = {
 let politician = null;
 let nation = null;
 let party = null;
+let cabinetTitle = null;  // "Minister of …" if this politician holds a cabinet seat (ministries table)
 let currentTick = 0;
 let allEvents = [];       // event_log rows feeding the World Events panel
 let evCurrentTab = 'politics';
@@ -1680,6 +1681,21 @@ async function init() {
   nation     = ctx.nation;
   party      = ctx.party || null;
   currentTick  = Number(ctx.shard?.current_tick) || 0;
+
+  // Cabinet standing (party-side ministries table, name-matched like the
+  // Head Office gate) so a sitting minister's hero pill reads "Minister
+  // of …" instead of falling through to party/Independent. Soft-fails —
+  // purely a display nicety; careerLabel still works without it.
+  cabinetTitle = null;
+  if (nation?.id) {
+    try {
+      const { data } = await _supabase.from('ministries')
+        .select('ministry_key, minister_first_name, minister_last_name, is_active')
+        .eq('nation_id', nation.id)
+        .eq('is_active', true);
+      cabinetTitle = cabinetMinisterTitle(politician, data || []);
+    } catch (_) { /* non-fatal */ }
+  }
 
   // 20270719: file an auto-re-election if the mayor's 48-tick term
   // just hit. Runs before resolve_due_elections so a freshly-filed
@@ -2088,7 +2104,7 @@ function renderHero(shard) {
   // Previously read just party.faction_name || 'Independent', which
   // dropped civil-servant identity entirely and showed party for
   // any card-carrier even when they held a state role.
-  const career = careerLabel(politician, party);
+  const career = careerLabel(politician, party, cabinetTitle);
   const age = String(currentAge(politician, shard?.current_tick || 0));
 
   document.getElementById('hero-portrait').textContent = ini;

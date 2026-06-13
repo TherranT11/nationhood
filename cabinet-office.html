@@ -31,10 +31,10 @@
     font-family:Georgia,'Times New Roman',serif;font-style:italic;}
   .ph-sub{font-size:12px;color:var(--mut);margin-top:8px;}
 
-  /* Locked state — Cabinet Office is gated to PM + 5 underlying ministry_keys
-     (defense, interior, foreign_affairs, trade, economic_development).
-     Foreign Affairs + Trade are merged player-facing as "Foreign Ministry &
-     Trade" per spec; either key satisfies the gate. */
+  /* Locked state — Cabinet Office is gated to PM + the major ministry_keys
+     (defense, interior, foreign, trade). foreign + trade are merged
+     player-facing as "Foreign Ministry & Trade"; either key satisfies the
+     gate. See MAJOR_MINISTER_KEYS below. */
   .locked{margin-top:60px;text-align:center;color:var(--neu);font-size:14px;
     font-family:Georgia,serif;font-style:italic;}
 
@@ -144,11 +144,14 @@ import { SEVERITY_LABELS } from './js/game/modifiers.js';
 // ── Access gate ──────────────────────────────────────────────────────
 // PM (head_of_government.faction_id) OR Major Minister (ministries
 // row with a leader-name match on the player's faction in the active
-// nation). The five underlying ministry_keys collapse to four player-
-// facing portfolios: defense, interior, "Foreign Ministry & Trade"
-// (covers BOTH foreign_affairs + trade since the player thinks of
-// them as one), economic_development.
-const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign_affairs', 'trade', 'economic_development'];
+// nation). These are the REAL ministry_key values seeded for nations;
+// the foreign + trade keys collapse to one player-facing portfolio,
+// "Foreign Ministry & Trade". (Earlier this list carried the slugs
+// 'foreign_affairs' / 'economic_development', which never exist as
+// ministries rows — so foreign ministers were silently locked out.
+// 'foreign' is the live key; 'finance' is the live economic key, left
+// off here pending a separate decision on finance-minister access.)
+const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign', 'trade'];
 
 async function init() {
   let ctx = null;

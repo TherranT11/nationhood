@@ -457,16 +457,56 @@ export const MINISTRY_BLURBS = {
         `Administers domestic affairs, supervises sub-national government, oversees policing and the civil registry, manages internal security, and coordinates disaster response.`,
 };
 
+// Cabinet (government-formation) ministry_key → standing label for the
+// politician hero/career H1. This is the PARTY-SIDE cabinet seat held in
+// the ministries table (name-matched to the politician) — distinct from
+// the civil-service ladder, where politician_ministry renders "Civil
+// Servant of …". foreign + trade collapse to one portfolio, mirroring
+// cabinet-office.html's merged "Foreign Ministry & Trade". prime_minister
+// is owned by head_of_government, not surfaced here.
+export const CABINET_MINISTER_TITLES = {
+    foreign:        'Minister of Foreign Affairs & Trade',
+    trade:          'Minister of Foreign Affairs & Trade',
+    defense:        'Minister of Defense',
+    interior:       'Minister of the Interior',
+    finance:        'Minister of Finance',
+    education:      'Minister of Education',
+    healthcare:     'Minister of Healthcare',
+    labor:          'Minister of Labor',
+    justice:        'Minister of Justice',
+    energy:         'Minister of Energy',
+    transportation: 'Minister of Transportation',
+};
+
+// Resolve a politician's sitting cabinet title from active ministries
+// rows for their nation, name-matched exactly as the Head Office gate
+// (cabinet-office.html) matches. Returns a CABINET_MINISTER_TITLES entry
+// or null. Pass the result into careerLabel as the top-precedence
+// standing so the hero pill, the career H1, and the Head Office gate
+// never disagree about who holds a cabinet seat.
+export function cabinetMinisterTitle(politician, ministriesRows) {
+    if (!politician || !Array.isArray(ministriesRows)) return null;
+    const fn = politician.leader_first_name;
+    const ln = politician.leader_last_name;
+    if (!fn || !ln) return null;
+    const row = ministriesRows.find(m =>
+        m && m.is_active !== false &&
+        m.minister_first_name === fn &&
+        m.minister_last_name  === ln);
+    return row ? (CABINET_MINISTER_TITLES[row.ministry_key] || null) : null;
+}
+
 // Single-line career standing for politician hero cards (the H1 on
 // politician-career, the hero-career pill on politician-home). Same
-// precedence everywhere it's read: a held state role IS your standing,
-// so an elected office beats a civil-service post which beats card-
-// carrying party membership which beats nothing. Used to live inline
+// precedence everywhere it's read: a sitting cabinet minister beats a
+// held state role, which beats a civil-service post, which beats card-
+// carrying party membership, which beats nothing. Used to live inline
 // on each page with subtly different fallback chains — politician-home
 // didn't even fall through to ministry, so a civil-servant card-
 // carrier would render as just the party name there. SoT here so both
-// surfaces stay locked.
-export function careerLabel(politician, party) {
+// surfaces stay locked. ministerTitle (from cabinetMinisterTitle) is
+// optional; callers that don't pass it keep the prior behaviour.
+export function careerLabel(politician, party, ministerTitle = null) {
     const office       = politician?.politician_office  || null;
     const ministrySlug = politician?.politician_ministry || null;
     const officeText   = office ? officeTitle(office) : '';
@@ -476,7 +516,7 @@ export function careerLabel(politician, party) {
     const localExecText = localExecutiveTitle(politician) || '';
     const judicialText = judicialTitle(politician, politician?.nation_id) || '';
     const fsText = foreignServiceTitle(politician) || '';
-    return officeText || localExecText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
+    return ministerTitle || officeText || localExecText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
 }
 
 /** Highest local-executive tier label the politician holds, or null
