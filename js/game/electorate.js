@@ -29,8 +29,8 @@ import { computeEngagementScores } from './engagement.js';
 /**
  * Inactivity-driven seat penalties.
  *
- * Single source of truth for both browser-side filters (politics.js
- * forecast, elections.js candidate eligibility) and the per-tick seat
+ * Single source of truth for both browser-side filters (elections.js
+ * candidate eligibility) and the per-tick seat
  * drain / auto-disband loop in advance-tick. The edge function bundle
  * mirrors these constants locally — see handler-template.ts for the
  * "must match" comment.
