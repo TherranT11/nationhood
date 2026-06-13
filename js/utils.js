@@ -71,14 +71,13 @@ export const FLAG_URLS = {
 // Secretary (Tier 3 Civil Service, 20270679) and Deputy Minister
 // (Tier 5 Political Appointment, coming next). Single SoT for both
 // rungs; the slug set mirrors _major_ministry_keys() on the server.
-// foreign_affairs_and_trade is a combined slug (politician_sit_the_
-// exam's 'foreign_affairs' civil servants graduate into this slot
-// per _major_ministry_of_politician).
+// One Ministry of Foreign Affairs and Trade, keyed 'foreign_affairs'
+// everywhere (page, civil service, canopy) since 20270904.
 export const MAJOR_MINISTRY_LABEL = {
-    interior:                  'Interior',
-    defense:                   'Defense',
-    economic_development:      'Economic Development',
-    foreign_affairs_and_trade: 'Foreign Affairs and Trade',
+    interior:             'Interior',
+    defense:              'Defense',
+    economic_development: 'Economic Development',
+    foreign_affairs:      'Foreign Affairs and Trade',
 };
 
 // Returns the canonical asset path for a nation name, falling back

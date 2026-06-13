@@ -2736,7 +2736,7 @@ const PS_LEVERS = {
   interior:                  [{ key: 'crime', label: 'Crime', dir: 'down' }, { key: 'unrest', label: 'Unrest', dir: 'down' }],
   defense:                   [{ key: 'state_apparatus', label: 'State Apparatus', dir: 'up' }],
   economic_development:      [{ key: 'industry', label: 'Industry', dir: 'up' }],
-  foreign_affairs_and_trade: [{ key: 'global_image', label: 'Global Image', dir: 'up' }],
+  foreign_affairs:      [{ key: 'global_image', label: 'Global Image', dir: 'up' }],
 };
 // Civil-service slugs that report to each major desk — the client
 // mirror of _major_ministry_of_politician for the patronage list.
@@ -2744,7 +2744,7 @@ const PS_TRACK_SLUGS = {
   interior:                  ['interior'],
   defense:                   ['defense'],
   economic_development:      ['economic_development'],
-  foreign_affairs_and_trade: ['foreign_affairs'],
+  foreign_affairs:      ['foreign_affairs'],
 };
 
 function psOpenOverlay(title, sub) {
@@ -2823,7 +2823,7 @@ async function openPrepareBriefModal(ctx) {
     if (error) throw error;
     const ministers = (pols || []).filter(p => p.id !== ctx.faction?.id
       && (p.politician_junior_portfolio != null
-          || (p.politician_foreign_minister_at_tick != null && desk === 'foreign_affairs_and_trade')));
+          || (p.politician_foreign_minister_at_tick != null && desk === 'foreign_affairs')));
     if (!ministers.length) {
       rows.innerHTML = '<div class="cp-empty">No sitting minister takes your briefs — the canopy is empty.</div>';
       return;
