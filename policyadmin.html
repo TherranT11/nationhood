@@ -175,6 +175,7 @@
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
+import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 // ==================== CONFIG ====================
 const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
 async function hashPassword(pw) {
@@ -322,7 +323,7 @@ function createEmptyOption() {
         sector_weight_targets: [],  // [{ sector_key, delta -5..+5 }]
         // Party reception: which archetypes' seated parties vote YES /
         // NO when this option is proposed as a policy change. Names are
-        // drawn from POLICY_ARCHETYPES; the two lists are disjoint. An
+        // drawn from PARTY_ARCHETYPES; the two lists are disjoint. An
         // archetype on neither list rolls 1D2 server-side. Stored as
         // NULL when empty (see savePolicy).
         support_archetypes: [],
@@ -381,31 +382,17 @@ const FISCAL_CATEGORY_OPTIONS = [
 
 const MAX_OPTIONS_PER_POLICY = 10;
 
-// Canonical movement-party archetype labels (10). Must stay in lockstep
-// with the server's _archetype_catalog_names() (20270686) and the Add
-// Party admin dropdown (20270394) — factions.archetype holds these exact
-// strings, and derive_bill_stance keys the policy-vote division off them.
-const POLICY_ARCHETYPES = [
-    'Reform',
-    'Social Democratic',
-    'Traditional Conservative',
-    'Liberal',
-    'Libertarian',
-    'Communist / Leftist',
-    'Green',
-    'Nationalist',
-    'Populist',
-    'Centrist',
-];
-
 // Toggle an archetype's Support/Oppose membership for one option. The two
 // lists are mutually exclusive: checking a box on one side drops the name
 // from the other (and unchecks its sibling box in the DOM). State is the
 // source of truth; savePolicy reads support_archetypes / oppose_archetypes.
+// Archetype labels come from the canonical PARTY_ARCHETYPES catalog, which
+// mirrors the server's _archetype_catalog_names() that derive_bill_stance
+// keys the policy-vote division off.
 function toggleArchetypePosition(optIdx, archIdx, side, checked) {
     const opt = options[optIdx];
     if (!opt) return;
-    const arch = POLICY_ARCHETYPES[archIdx];
+    const arch = PARTY_ARCHETYPES[archIdx];
     if (!arch) return;
     if (!Array.isArray(opt.support_archetypes)) opt.support_archetypes = [];
     if (!Array.isArray(opt.oppose_archetypes))  opt.oppose_archetypes = [];
@@ -787,10 +774,10 @@ async function loadPolicyIntoBuilder(p) {
             // on load (Support wins) so a hand-edited row can't show a name
             // ticked on both sides.
             const sup = Array.isArray(row.support_archetypes)
-                ? row.support_archetypes.filter(a => POLICY_ARCHETYPES.includes(a)) : [];
+                ? row.support_archetypes.filter(a => PARTY_ARCHETYPES.includes(a)) : [];
             opt.support_archetypes = sup;
             opt.oppose_archetypes = Array.isArray(row.oppose_archetypes)
-                ? row.oppose_archetypes.filter(a => POLICY_ARCHETYPES.includes(a) && !sup.includes(a)) : [];
+                ? row.oppose_archetypes.filter(a => PARTY_ARCHETYPES.includes(a) && !sup.includes(a)) : [];
 
             const startingSet = startingByOption.get(row.id);
             if (startingSet) opt.starting_nations = startingSet;
@@ -921,7 +908,7 @@ function renderOptionCard(idx) {
                     <div></div>
                     <div style="font-size:0.72rem; color:#5fae5f; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Support</div>
                     <div style="font-size:0.72rem; color:#cf6b6b; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Oppose</div>
-                    ${POLICY_ARCHETYPES.map((arch, ai) => {
+                    ${PARTY_ARCHETYPES.map((arch, ai) => {
                         const sup = Array.isArray(opt.support_archetypes) && opt.support_archetypes.includes(arch);
                         const opp = Array.isArray(opt.oppose_archetypes)  && opt.oppose_archetypes.includes(arch);
                         return `
@@ -1852,6 +1839,7 @@ function showStatus(msg, type) {
 // Expose functions for HTML onclick/onchange handlers
 window.checkAuth = checkAuth;
 window.syncOptionField = syncOptionField;
+window.toggleArchetypePosition = toggleArchetypePosition;
 window.switchView = switchView;
 window.filterPolicies = filterPolicies;
 window.populateLawCategories = populateLawCategories;
