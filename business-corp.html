@@ -3650,7 +3650,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             host.innerHTML = '<div class="rl-empty">Post a rate sheet first — your offers lend at your posted prime.</div>';
             return;
           }
-          const { data, error: olErr } = await _supabase.from('corp_loan_requests')
+          const { data, error: olErr } = await _supabase.from('corp_bank_loan_requests')
             .select('id, amount, created_at_tick, corp:entrepreneur_corps!corp_id(id, name, industry, employee_count, last_tick_revenue, owner_faction_id, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier)')
             .eq('status', 'open')
             .order('created_at_tick', { ascending: false });
@@ -3777,8 +3777,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
         async function ilLoad() {
           const host = document.getElementById('il-rows');
           host.innerHTML = '<div class="rl-empty">Loading…</div>';
-          const { data, error: ilErr } = await _supabase.from('corp_loan_offers')
-            .select('id, amount, rate_bps, term_ticks, collateral_asset, request:corp_loan_requests!request_id(corp:entrepreneur_corps!corp_id(name, industry))')
+          const { data, error: ilErr } = await _supabase.from('corp_bank_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, collateral_asset, request:corp_bank_loan_requests!request_id(corp:entrepreneur_corps!corp_id(name, industry))')
             .eq('bank_corp_id', corp.id)
             .eq('status', 'accepted')
             .order('created_at_tick', { ascending: true });
@@ -4010,7 +4010,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           .order('due_tick', { ascending: true });
         const reqSel = isBank
           ? Promise.resolve({ data: null, error: null })
-          : _supabase.from('corp_loan_requests')
+          : _supabase.from('corp_bank_loan_requests')
               .select('id, amount, created_at_tick')
               .eq('corp_id', corp.id).eq('status', 'open').maybeSingle();
         // Settle the deposit ledger first (20270897) — the lazy
@@ -4037,7 +4037,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
         let offers = [];
         if (myReq) {
-          const { data: offerRows, error: offErr } = await _supabase.from('corp_loan_offers')
+          const { data: offerRows, error: offErr } = await _supabase.from('corp_bank_loan_offers')
             .select('id, amount, rate_bps, term_ticks, collateral_asset, comments, bank:entrepreneur_corps!bank_corp_id(name)')
             .eq('request_id', myReq.id).eq('status', 'pending')
             .order('rate_bps', { ascending: true });
@@ -4049,8 +4049,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // money is promised, the bank hasn't disbursed yet.
         let awaiting = [];
         if (!isBank) {
-          const { data: awRows, error: awErr } = await _supabase.from('corp_loan_offers')
-            .select('id, amount, rate_bps, term_ticks, bank:entrepreneur_corps!bank_corp_id(name), request:corp_loan_requests!request_id!inner(corp_id)')
+          const { data: awRows, error: awErr } = await _supabase.from('corp_bank_loan_offers')
+            .select('id, amount, rate_bps, term_ticks, bank:entrepreneur_corps!bank_corp_id(name), request:corp_bank_loan_requests!request_id!inner(corp_id)')
             .eq('status', 'accepted')
             .eq('request.corp_id', corp.id);
           if (awErr) throw awErr;

@@ -2,6 +2,12 @@
 -- 20270894 — The credit market: loan requests, bank offers, manual
 --            repayment (banking executive action #2)
 --
+-- NAMING: every table carries the corp_bank_ prefix because the
+-- party-side economy already owns corp_loan_requests /
+-- corp_loan_offers / corporations.corp_loans (a live legacy lending
+-- system, e.g. 20270392) — the first push of this file collided
+-- with it in prod and rolled back.
+--
 -- User spec + AskUserQuestion rulings:
 --   • Any non-bank corp files a loan request (free — asking for
 --     money isn't running the company). One open ask per corp.
@@ -35,7 +41,7 @@
 BEGIN;
 
 -- ── 1. The open board ─────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS public.corp_loan_requests (
+CREATE TABLE IF NOT EXISTS public.corp_bank_loan_requests (
     id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     corp_id         uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
     nation_id       uuid REFERENCES public.nations(id) ON DELETE SET NULL,
@@ -47,14 +53,14 @@ CREATE TABLE IF NOT EXISTS public.corp_loan_requests (
     created_at_tick int NOT NULL,
     created_at      timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS corp_loan_requests_one_open_per_corp
-    ON public.corp_loan_requests (corp_id) WHERE status = 'open';
-CREATE INDEX IF NOT EXISTS corp_loan_requests_open_idx
-    ON public.corp_loan_requests (status, created_at_tick DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS corp_bank_loan_requests_one_open_per_corp
+    ON public.corp_bank_loan_requests (corp_id) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS corp_bank_loan_requests_open_idx
+    ON public.corp_bank_loan_requests (status, created_at_tick DESC);
 
-CREATE TABLE IF NOT EXISTS public.corp_loan_offers (
+CREATE TABLE IF NOT EXISTS public.corp_bank_loan_offers (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    request_id       uuid NOT NULL REFERENCES public.corp_loan_requests(id) ON DELETE CASCADE,
+    request_id       uuid NOT NULL REFERENCES public.corp_bank_loan_requests(id) ON DELETE CASCADE,
     bank_corp_id     uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
     amount           bigint NOT NULL,
     rate_bps         int NOT NULL,
@@ -68,17 +74,17 @@ CREATE TABLE IF NOT EXISTS public.corp_loan_offers (
     created_at_tick  int NOT NULL,
     created_at       timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS corp_loan_offers_one_pending_per_bank
-    ON public.corp_loan_offers (request_id, bank_corp_id) WHERE status = 'pending';
-CREATE INDEX IF NOT EXISTS corp_loan_offers_request_idx
-    ON public.corp_loan_offers (request_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS corp_bank_loan_offers_one_pending_per_bank
+    ON public.corp_bank_loan_offers (request_id, bank_corp_id) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS corp_bank_loan_offers_request_idx
+    ON public.corp_bank_loan_offers (request_id, status);
 
 CREATE TABLE IF NOT EXISTS public.corp_bank_loans (
     id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     bank_corp_id     uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
     borrower_corp_id uuid NOT NULL REFERENCES public.entrepreneur_corps(id) ON DELETE CASCADE,
-    request_id       uuid REFERENCES public.corp_loan_requests(id) ON DELETE SET NULL,
-    offer_id         uuid REFERENCES public.corp_loan_offers(id)   ON DELETE SET NULL,
+    request_id       uuid REFERENCES public.corp_bank_loan_requests(id) ON DELETE SET NULL,
+    offer_id         uuid REFERENCES public.corp_bank_loan_offers(id)   ON DELETE SET NULL,
     principal        bigint NOT NULL,
     rate_bps         int NOT NULL,
     term_ticks       int NOT NULL,
@@ -104,14 +110,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS corp_bank_loans_one_per_offer
 
 -- The credit market is public record — every row readable, every
 -- write through the definer functions below.
-ALTER TABLE public.corp_loan_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.corp_loan_offers   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.corp_bank_loan_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.corp_bank_loan_offers   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.corp_bank_loans         ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS corp_loan_requests_select ON public.corp_loan_requests;
-CREATE POLICY corp_loan_requests_select ON public.corp_loan_requests
+DROP POLICY IF EXISTS corp_bank_loan_requests_select ON public.corp_bank_loan_requests;
+CREATE POLICY corp_bank_loan_requests_select ON public.corp_bank_loan_requests
     FOR SELECT TO authenticated USING (true);
-DROP POLICY IF EXISTS corp_loan_offers_select ON public.corp_loan_offers;
-CREATE POLICY corp_loan_offers_select ON public.corp_loan_offers
+DROP POLICY IF EXISTS corp_bank_loan_offers_select ON public.corp_bank_loan_offers;
+CREATE POLICY corp_bank_loan_offers_select ON public.corp_bank_loan_offers
     FOR SELECT TO authenticated USING (true);
 DROP POLICY IF EXISTS corp_bank_loans_select ON public.corp_bank_loans;
 CREATE POLICY corp_bank_loans_select ON public.corp_bank_loans
@@ -193,7 +199,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'arrested');
     END IF;
 
-    IF EXISTS (SELECT 1 FROM corp_loan_requests
+    IF EXISTS (SELECT 1 FROM corp_bank_loan_requests
                 WHERE corp_id = p_corp_id AND status = 'open') THEN
         RETURN jsonb_build_object('success', false, 'reason', 'request_already_open');
     END IF;
@@ -201,7 +207,7 @@ BEGIN
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, 0);
 
-    INSERT INTO corp_loan_requests (corp_id, nation_id, amount, created_at_tick)
+    INSERT INTO corp_bank_loan_requests (corp_id, nation_id, amount, created_at_tick)
     VALUES (p_corp_id, v_corp.hq_nation_id, p_amount, v_tick)
     RETURNING id INTO v_id;
 
@@ -223,14 +229,14 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
     v_uid  uuid := auth.uid();
-    v_req  corp_loan_requests%ROWTYPE;
+    v_req  corp_bank_loan_requests%ROWTYPE;
     v_corp entrepreneur_corps%ROWTYPE;
     v_fac  factions%ROWTYPE;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
     END IF;
-    SELECT * INTO v_req FROM corp_loan_requests
+    SELECT * INTO v_req FROM corp_bank_loan_requests
      WHERE id = p_request_id AND corp_id = p_corp_id FOR UPDATE;
     IF v_req.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'request_not_found');
@@ -244,8 +250,8 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
     END IF;
 
-    UPDATE corp_loan_requests SET status = 'withdrawn' WHERE id = p_request_id;
-    UPDATE corp_loan_offers SET status = 'declined'
+    UPDATE corp_bank_loan_requests SET status = 'withdrawn' WHERE id = p_request_id;
+    UPDATE corp_bank_loan_offers SET status = 'declined'
      WHERE request_id = p_request_id AND status = 'pending';
     RETURN jsonb_build_object('success', true);
 END $$;
@@ -268,7 +274,7 @@ DECLARE
     v_bank     entrepreneur_corps%ROWTYPE;
     v_borrower entrepreneur_corps%ROWTYPE;
     v_fac      factions%ROWTYPE;
-    v_req      corp_loan_requests%ROWTYPE;
+    v_req      corp_bank_loan_requests%ROWTYPE;
     v_tick     int;
     v_id       uuid;
 BEGIN
@@ -288,7 +294,7 @@ BEGIN
     -- Lock the request FIRST — the accept path takes the same lock
     -- first, so a simultaneous accept and offer serialize instead of
     -- deadlocking, and no offer can land on a just-funded request.
-    SELECT * INTO v_req FROM corp_loan_requests WHERE id = p_request_id FOR UPDATE;
+    SELECT * INTO v_req FROM corp_bank_loan_requests WHERE id = p_request_id FOR UPDATE;
     IF v_req.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'request_not_found');
     END IF;
@@ -360,7 +366,7 @@ BEGIN
     END IF;
 
     BEGIN
-        INSERT INTO corp_loan_offers (
+        INSERT INTO corp_bank_loan_offers (
             request_id, bank_corp_id, amount, rate_bps, term_ticks,
             collateral_asset, comments, created_at_tick
         ) VALUES (
@@ -394,8 +400,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
     v_uid      uuid := auth.uid();
-    v_offer    corp_loan_offers%ROWTYPE;
-    v_req      corp_loan_requests%ROWTYPE;
+    v_offer    corp_bank_loan_offers%ROWTYPE;
+    v_req      corp_bank_loan_requests%ROWTYPE;
     v_borrower entrepreneur_corps%ROWTYPE;
     v_fac      factions%ROWTYPE;
     v_tick     int;
@@ -403,12 +409,12 @@ BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
     END IF;
-    SELECT * INTO v_offer FROM corp_loan_offers WHERE id = p_offer_id;
+    SELECT * INTO v_offer FROM corp_bank_loan_offers WHERE id = p_offer_id;
     IF v_offer.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'offer_not_found');
     END IF;
     -- Lock the request: two simultaneous accepts serialize here.
-    SELECT * INTO v_req FROM corp_loan_requests
+    SELECT * INTO v_req FROM corp_bank_loan_requests
      WHERE id = v_offer.request_id FOR UPDATE;
     IF v_req.corp_id IS DISTINCT FROM p_corp_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_your_request');
@@ -431,10 +437,10 @@ BEGIN
 
     -- No money moves here. The bank disburses with ISSUE LOAN; the
     -- loan's clock starts at issuance, not acceptance.
-    UPDATE corp_loan_offers SET status = 'accepted' WHERE id = p_offer_id;
-    UPDATE corp_loan_offers SET status = 'declined'
+    UPDATE corp_bank_loan_offers SET status = 'accepted' WHERE id = p_offer_id;
+    UPDATE corp_bank_loan_offers SET status = 'declined'
      WHERE request_id = v_req.id AND status = 'pending';
-    UPDATE corp_loan_requests SET status = 'funded' WHERE id = v_req.id;
+    UPDATE corp_bank_loan_requests SET status = 'funded' WHERE id = v_req.id;
 
     PERFORM _log_corp_history(p_corp_id, v_tick,
         format('Accepted a $%s loan offer — awaiting disbursement.', v_offer.amount));
@@ -460,7 +466,7 @@ DECLARE
     v_uid      uuid := auth.uid();
     v_bank     entrepreneur_corps%ROWTYPE;
     v_borrower entrepreneur_corps%ROWTYPE;
-    v_offer    corp_loan_offers%ROWTYPE;
+    v_offer    corp_bank_loan_offers%ROWTYPE;
     v_fac      factions%ROWTYPE;
     v_tick     int;
     v_loan_id  uuid;
@@ -494,7 +500,7 @@ BEGIN
 
     -- Lock the offer: a double-issue serializes here and the loser
     -- sees status=issued.
-    SELECT * INTO v_offer FROM corp_loan_offers WHERE id = p_offer_id FOR UPDATE;
+    SELECT * INTO v_offer FROM corp_bank_loan_offers WHERE id = p_offer_id FOR UPDATE;
     IF v_offer.id IS NULL OR v_offer.bank_corp_id <> p_bank_corp_id THEN
         RETURN jsonb_build_object('success', false, 'reason', 'offer_not_found');
     END IF;
@@ -525,7 +531,7 @@ BEGIN
     END IF;
 
     SELECT * INTO v_borrower FROM entrepreneur_corps
-     WHERE id = (SELECT corp_id FROM corp_loan_requests WHERE id = v_offer.request_id)
+     WHERE id = (SELECT corp_id FROM corp_bank_loan_requests WHERE id = v_offer.request_id)
      FOR UPDATE;
     IF v_borrower.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'borrower_gone');
@@ -554,7 +560,7 @@ BEGIN
         v_offer.amount, v_tick, v_offer.collateral_asset
     ) RETURNING id INTO v_loan_id;
 
-    UPDATE corp_loan_offers SET status = 'issued' WHERE id = p_offer_id;
+    UPDATE corp_bank_loan_offers SET status = 'issued' WHERE id = p_offer_id;
 
     PERFORM _log_corp_history(p_bank_corp_id, v_tick,
         format('Issued the $%s loan to %s — %s%% prime, due tick %s.',
