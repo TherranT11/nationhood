@@ -10,9 +10,9 @@ import { bootstrapBusinessman } from './entrepreneur-topbar.js';
 
 const POL_TABS = [
   { id: 'home',      label: 'HOME',      href: 'politician-home.html',      icon: '🏠' },
+  { id: 'career',    label: 'CAREER',    href: 'politician-career.html',    icon: '⚖️' },
   { id: 'movements', label: 'MOVEMENTS', href: 'politician-movements.html', icon: '✊' },
   { id: 'nation',    label: 'NATION',    href: 'politician-nation.html',    icon: '🌍' },
-  { id: 'career',    label: 'CAREER',    href: 'politician-career.html',    icon: '⚖️' },
   { id: 'forum',     label: 'FORUM',     href: 'politician-forum.html',     icon: '💬' },
 ];
 
