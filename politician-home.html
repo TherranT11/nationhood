@@ -1457,6 +1457,23 @@ const CAREER_EVENT_TEMPLATES = {
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
+  // 20270907: auto-resign when taking a new career (one affiliation at a
+  // time). metadata.kept_track = the track entered; resigned_tracks = the
+  // ones left behind. Track keys mirror the trigger's labels.
+  auto_resigned_affiliation: (name, target, meta = {}) => {
+    const TRACK = {
+      elected:         'elected office',
+      civil_service:   'the civil service',
+      judicial:        'the bench',
+      foreign_service: 'the foreign service',
+      fis:             'the Federal Investigations Service',
+    };
+    const kept = TRACK[meta.kept_track] || TRACK[target] || 'a new post';
+    const left = Array.isArray(meta.resigned_tracks) && meta.resigned_tracks.length
+      ? meta.resigned_tracks.map(t => TRACK[t] || t).join(' and ')
+      : 'a previous post';
+    return `${name} resigned from ${left} to take up ${kept}.`;
+  },
   // stood_for_election: written by politician_stand_for_election (20270402),
   // politician_register_for_office (20270709/20270712). metadata.race_tier
   // routes the template; falls back to a generic "ran in {target}" line
