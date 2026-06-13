@@ -14327,8 +14327,8 @@ async function computeEngagementScores(supabase, nation, factions, coalitionPart
 /**
  * Inactivity-driven seat penalties.
  *
- * Single source of truth for both browser-side filters (politics.js
- * forecast, elections candidate eligibility) and the per-tick seat
+ * Single source of truth for both browser-side filters (elections
+ * candidate eligibility) and the per-tick seat
  * drain / auto-disband loop in advance-tick. The edge function bundle
  * mirrors these constants locally — see handler-template.ts for the
  * "must match" comment.
@@ -17450,7 +17450,7 @@ async function resolveProtest(supabase, protest, nationStats, currentTick) {
     // crisis row keyed by PROTEST_CONFIG.TIER*_CRISIS_ID) is removed.
     // The protest itself still becomes "crisis_active" via protest_log
     // below, which is what the protest mechanic reads. Cross-system
-    // visibility (politics.js display, etc.) goes away with the table.
+    // visibility (the politics page display, etc.) goes away with the table.
     let crisisCreated = false;
     if (effects.isCrisis) {
         // T6 fizzles after 1d6 ticks, T7 after 1d12 ticks
