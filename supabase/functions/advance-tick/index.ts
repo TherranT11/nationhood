@@ -2059,9 +2059,6 @@ async function computeInteriorInfraAnnualCost(supabase, nation) {
 // (from combined_arms_school_spec, $2) every tick, perpetually,
 // surfaced under National Infrastructure. Keyed off the nation (not
 // the issuing faction) so it persists even if that faction is gone.
-// Single source of truth: the client mirror is the army_units-style
-// fetch in loadBudgetData + the National Infrastructure deep-dive
-// row in government.html — both must compute this identically.
 async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
     if (!nation?.id) return { totalAnnual: 0, count: 0 };
     let perTick = 0;
@@ -2119,8 +2116,7 @@ async function computeUnitMaintenanceAnnual() {
  *                               contracts of tier.upkeep_per_year
  *                               (small $1 / modest $2 / extravagant $4)
  *   - Public Sector Wages     = (state_apparatus × wages) / 200 × 12
- *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
- *                               over non-Decommissioned army_units × 12
+ *   - Unit Maintenance        = 0 (army units retired — 20270905)
  *   - Combined Arms School    = (#completed schools) × upkeep_per_tick($2) × 12
  *                               (rolls up under National Infrastructure)
  *
