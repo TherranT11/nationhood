@@ -488,10 +488,6 @@ export function renderTopBar(activeTab) {
         mobileNav.innerHTML = [
             { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
             { id: 'politics',  label: 'Actions', icon: '\u2694\uFE0F', href: 'politics.html' },
-            { id: 'government',label: 'Gov',   icon: '\u2696\uFE0F',  href: 'government.html' },
-            { id: 'nation',    label: 'Nation', icon: '\uD83C\uDF0D', href: 'nation.html' },
-            { id: 'diplomacy', label: 'World', icon: '\uD83C\uDF10', href: 'diplomacy.html' },
-            { id: 'ledger',    label: 'Ledger', icon: '\uD83D\uDCCA', href: 'ledger.html' },
         ].map(tab => `<a href="${tab.href}${suffix}" class="mobile-bottom-nav__item ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
             <span class="mobile-bottom-nav__icon">${tab.icon}</span>
             <span class="mobile-bottom-nav__label">${tab.label}</span>
@@ -517,10 +513,6 @@ export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
         { id: 'politics', label: 'Actions', href: 'politics.html' },
-        { id: 'government', label: 'Government', href: 'government.html' },
-        { id: 'nation', label: 'Nation', href: 'nation.html' },
-        { id: 'diplomacy', label: 'World', href: 'diplomacy.html' },
-        { id: 'ledger', label: 'Ledger', href: 'ledger.html' }
     ];
 
     // Preserve admin overrides in nav links so clicking tabs
