@@ -14,14 +14,18 @@
 --   • Ceiling by Branch Network level: 4/8/15/25/40% of the pool.
 --   • Aim by posted deposit rate: 1% ×0.5 · 2% ×1.0 · 3% ×1.3 ·
 --     4% ×1.5. No rate sheet → equilibrium 0 (savers need a number).
+--   • THE POOL IS A COMMONS: when the nation's banks together
+--     demand more than the pool (Σ share×factor > 1), every
+--     equilibrium scales by pool/total — outbidding rivals takes
+--     share FROM them at their next settle.
 --   • Drift: the gap to equilibrium closes 3/5/7/10/14% per tick by
 --     branch level, compounded over the elapsed window — in BOTH
 --     directions. Cut the rate and the same drift walks deposits
 --     back out the door.
---   • Cost: deposit interest accrues on the WINDOW'S STARTING base
---     (rate/12 per tick) and is paid from the treasury at settlement
---     — a deliberate approximation; windows stay short because every
---     banking action and page load settles — a deductible
+--   • Cost: deposit interest is PATH-EXACT — the drifting base has
+--     a geometric closed form, so a window of any length integrates
+--     to the dollar: rate/12 × [eq×T + (d0−eq)×(1−r^T)/(1−r)].
+--     Paid from the treasury at settlement — a deductible
 --     expense (_corp_log_expense), the mirror of loan interest being
 --     taxable income. A treasury too dry to pay capitalizes the
 --     shortfall INTO the base: unpaid interest is money you now owe
@@ -33,9 +37,11 @@
 --
 -- Settlement fires inside every banking executive action (the
 -- unmerged 20270893-20270896 emissions gain the call) and via the
--- public bank_settle_deposits wrapper the corp page fires on load —
--- the lazy-resolver pattern, callable by any authenticated player
--- because it only moves state toward the truth.
+-- bank_settle_deposits wrapper the corp page fires on load —
+-- OWNER-GATED: path-exact interest means a window settles
+-- retroactively to the dollar on the owner's next touch, so absence
+-- defers settlement but never dodges it, and nobody else needs the
+-- power to mutate a rival's ledger.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -46,6 +52,21 @@ ALTER TABLE public.entrepreneur_corps
 
 COMMENT ON COLUMN public.entrepreneur_corps.bank_deposits IS
     'Household deposit base (20270897) — a liability; the cash itself sits inside treasury_cash. Drifts toward pool × branch share × rate factor, settled lazily by _bank_settle_deposits.';
+
+-- The Branch share and rate-factor maps — used for the bank's own
+-- equilibrium AND inside the commons SUM, so they live once.
+CREATE OR REPLACE FUNCTION public._bank_pool_share(p_branch_tier int)
+RETURNS numeric LANGUAGE sql IMMUTABLE
+AS $$ SELECT CASE LEAST(5, GREATEST(0, COALESCE(p_branch_tier, 1)))
+        WHEN 1 THEN 0.04 WHEN 2 THEN 0.08 WHEN 3 THEN 0.15
+        WHEN 4 THEN 0.25 WHEN 5 THEN 0.40 ELSE 0 END $$;
+CREATE OR REPLACE FUNCTION public._bank_rate_factor(p_deposit_bps int)
+RETURNS numeric LANGUAGE sql IMMUTABLE
+AS $$ SELECT CASE p_deposit_bps
+        WHEN 100 THEN 0.5 WHEN 200 THEN 1.0
+        WHEN 300 THEN 1.3 WHEN 400 THEN 1.5 ELSE 0 END $$;
+REVOKE EXECUTE ON FUNCTION public._bank_pool_share(int) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public._bank_rate_factor(int) FROM PUBLIC;
 
 -- ── The one source of deposit math ────────────────────────────────
 -- Caller must hold the corp row lock (every banking action does).
@@ -69,6 +90,7 @@ DECLARE
     v_paid     numeric := 0;
     v_delta    numeric := 0;
     v_moved    numeric := 0;
+    v_demand   numeric;
 BEGIN
     SELECT * INTO v_corp FROM entrepreneur_corps WHERE id = p_corp_id;
     IF v_corp.id IS NULL OR v_corp.industry <> 'banking' THEN
@@ -93,25 +115,37 @@ BEGIN
 
     -- The ceiling and the aim (computed even when no time elapsed,
     -- so the snapshot below is always current for the UI).
-    v_share := CASE LEAST(5, GREATEST(0, COALESCE(v_corp.bank_branch_tier, 1)))
-                   WHEN 1 THEN 0.04 WHEN 2 THEN 0.08 WHEN 3 THEN 0.15
-                   WHEN 4 THEN 0.25 WHEN 5 THEN 0.40 ELSE 0 END;
+    v_share := _bank_pool_share(v_corp.bank_branch_tier);
     v_speed := CASE LEAST(5, GREATEST(0, COALESCE(v_corp.bank_branch_tier, 1)))
                    WHEN 1 THEN 0.03 WHEN 2 THEN 0.05 WHEN 3 THEN 0.07
                    WHEN 4 THEN 0.10 WHEN 5 THEN 0.14 ELSE 0 END;
-    v_factor := CASE v_corp.bank_deposit_rate_bps
-                   WHEN 100 THEN 0.5 WHEN 200 THEN 1.0
-                   WHEN 300 THEN 1.3 WHEN 400 THEN 1.5 ELSE 0 END;
+    v_factor := _bank_rate_factor(v_corp.bank_deposit_rate_bps);
     v_pool := GREATEST(0, COALESCE(v_nation.population, 0))
               * GREATEST(1, COALESCE(v_nation.standard_of_living, 50)) / 50.0
               * 2;
-    v_eq := ROUND(v_pool * v_share * v_factor);
+    -- THE COMMONS: the nation's banks together can't aim past the
+    -- pool. When total demand (Σ share×factor) exceeds 1, every
+    -- bank's equilibrium scales by 1/total — read at THIS bank's
+    -- settle, so the landscape is as current as the last actor.
+    SELECT COALESCE(SUM(_bank_pool_share(bank_branch_tier)
+                        * _bank_rate_factor(bank_deposit_rate_bps)), 0)
+      INTO v_demand
+      FROM entrepreneur_corps
+     WHERE hq_nation_id = v_corp.hq_nation_id AND industry = 'banking';
+    v_eq := ROUND(v_pool * v_share * v_factor
+                  * CASE WHEN v_demand > 1 THEN 1 / v_demand ELSE 1 END);
 
     IF v_ticks > 0 THEN
-        -- 1. Interest on the base over the window — deductible, paid
-        --    from the vault; a dry vault capitalizes the shortfall.
+        -- 1. Interest over the window — PATH-EXACT: the base drifts
+        --    geometrically toward eq, so the per-tick sum has a
+        --    closed form. Deductible, paid from the vault; a dry
+        --    vault capitalizes the shortfall.
         IF v_corp.bank_deposit_rate_bps IS NOT NULL AND v_deposits > 0 THEN
-            v_cost := ROUND(v_deposits * v_corp.bank_deposit_rate_bps / 10000.0 / 12.0 * v_ticks);
+            v_cost := ROUND(v_corp.bank_deposit_rate_bps / 10000.0 / 12.0
+                * CASE WHEN v_speed = 0 THEN v_deposits * v_ticks
+                       ELSE v_eq * v_ticks
+                            + (v_deposits - v_eq) * (1 - power(1 - v_speed, v_ticks)) / v_speed
+                  END);
             v_paid := LEAST(v_cost, GREATEST(0, v_treasury));
             v_treasury := v_treasury - v_paid;
             v_deposits := v_deposits + (v_cost - v_paid);
@@ -161,15 +195,22 @@ RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
-    v_id uuid;
+    v_uid  uuid := auth.uid();
+    v_corp entrepreneur_corps%ROWTYPE;
 BEGIN
-    IF auth.uid() IS NULL THEN
+    IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
     END IF;
     -- Take the lock here; the internal assumes the caller holds it.
-    SELECT id INTO v_id FROM entrepreneur_corps WHERE id = p_corp_id FOR UPDATE;
-    IF v_id IS NULL THEN
+    SELECT * INTO v_corp FROM entrepreneur_corps WHERE id = p_corp_id FOR UPDATE;
+    IF v_corp.id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'corp_not_found');
+    END IF;
+    -- Owner-gated: path-exact interest settles any window
+    -- retroactively to the dollar, so absence defers but never
+    -- dodges — and nobody needs the power to mutate a rival's books.
+    IF (_corp_owner_faction(v_corp.owner_faction_id, v_uid)).id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
     END IF;
     RETURN _bank_settle_deposits(p_corp_id);
 END $$;

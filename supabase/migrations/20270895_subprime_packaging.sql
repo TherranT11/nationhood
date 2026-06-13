@@ -19,9 +19,11 @@
 --   • The fifth lamp: THE CRASH. Every bank in the nation takes a
 --     30% treasury writedown; the bank that lit it takes 50% — each
 --     softened 3%/Vault level past I. Then the run: half the deposit
---     base flees, less 10%/Vault level (floor 10%), and half of all
---     fled money lands at the nation's Vault-V banks (flight to
---     quality; never the trigger bank). The nation takes +10 Unrest; the
+--     base demands its money, less 10%/Vault level (floor 10%) —
+--     paid only as far as the post-writedown vault reaches, the
+--     UNPAID CLAIM STAYING OWED — and half the cash that actually
+--     left lands at the nation's Vault-V banks (flight to quality;
+--     never the trigger bank). The nation takes +10 Unrest; the
 --     event log gets its headline; heat resets to 10, lamps to 0.
 --     Profits already extracted are untouched — getting out one
 --     pull early is the whole game.
@@ -175,7 +177,8 @@ BEGIN
         -- expense deduction (the payouts were taxed as income; the
         -- crash is not a shelter).
         FOR v_burned IN
-            SELECT id, bank_vault_tier, bank_deposits FROM entrepreneur_corps
+            SELECT id, bank_vault_tier, bank_deposits, treasury_cash
+              FROM entrepreneur_corps
              WHERE hq_nation_id = v_nation.id AND industry = 'banking'
              ORDER BY id
              FOR UPDATE
@@ -185,11 +188,17 @@ BEGIN
                 + 0.03 * GREATEST(0, COALESCE(v_burned.bank_vault_tier, 1) - 1));
             v_flee := GREATEST(0.10,
                 0.50 - 0.10 * GREATEST(0, COALESCE(v_burned.bank_vault_tier, 1) - 1));
-            v_fled_i := ROUND(COALESCE(v_burned.bank_deposits, 0) * v_flee);
+            -- The run pays out only what the post-writedown vault
+            -- holds; the UNPAID CLAIM STAYS OWED (consistent with
+            -- orderly settlement — and the illiquid bank keeps
+            -- paying interest on money it couldn't return). Only
+            -- cash that actually left counts toward the flight.
+            v_fled_i := LEAST(
+                ROUND(COALESCE(v_burned.bank_deposits, 0) * v_flee),
+                GREATEST(0, ROUND(COALESCE(v_burned.treasury_cash, 0) * v_keep)));
             v_fled   := v_fled + v_fled_i;
             UPDATE entrepreneur_corps
-               SET treasury_cash = GREATEST(0,
-                       ROUND(COALESCE(treasury_cash, 0) * v_keep) - v_fled_i),
+               SET treasury_cash = ROUND(COALESCE(treasury_cash, 0) * v_keep) - v_fled_i,
                    bank_deposits = COALESCE(bank_deposits, 0) - v_fled_i,
                    bank_deposits_updated_tick = v_tick
              WHERE id = v_burned.id;
@@ -202,11 +211,12 @@ BEGIN
         END LOOP;
 
         -- ── FLIGHT TO QUALITY (Vault Level V capstone) ────────────
-        -- Panicked money doesn't vanish — half of everything that
-        -- fled runs TO the nation's National Depository banks
-        -- (Vault V), split among them. The trigger bank is never
-        -- the refuge from its own panic. No Depository: the money
-        -- stays under mattresses. One query defines who qualifies.
+        -- Panicked money doesn't vanish — half of the cash that
+        -- ACTUALLY left the banks runs TO the nation's National
+        -- Depository banks (Vault V), split among them. The trigger
+        -- bank is never the refuge from its own panic. No
+        -- Depository: the money stays under mattresses. One query
+        -- defines who qualifies.
         SELECT array_agg(id) INTO v_refuge_ids FROM entrepreneur_corps
          WHERE hq_nation_id = v_nation.id AND industry = 'banking'
            AND COALESCE(bank_vault_tier, 1) >= 5 AND id <> p_corp_id;
