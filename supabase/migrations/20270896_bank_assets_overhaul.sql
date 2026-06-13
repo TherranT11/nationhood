@@ -8,8 +8,10 @@
 -- discount parity with the other industries' overhauls (20270890).
 --
 -- The five assets. BRANCH NETWORK went live with the deposit ledger
--- (20270897 — pool share + drift speed); the other four are TIERS
--- ONLY for now (user ruling), wired action by action later:
+-- (20270897 — pool share + drift speed); THE VAULT went live in the
+-- crash (20270895 — writedown armor, run shelter, the Level V
+-- flight-to-quality refuge); the other three are TIERS ONLY for
+-- now (user ruling), wired action by action later:
 --   • BRANCH NETWORK   (bank_branch_tier, floor 1)
 --   • VAULT            (bank_vault_tier, floor 1)
 --   • UNDERWRITING DESK (bank_underwriting_tier, floor 1)

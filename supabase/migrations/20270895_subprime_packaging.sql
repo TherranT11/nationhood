@@ -17,8 +17,11 @@
 --     CREDIT FREEZE, MARGIN CALL. Lamps are PERMANENT (user ruling:
 --     "once a lamp is lit, it's there") — only the crash clears them.
 --   • The fifth lamp: THE CRASH. Every bank in the nation takes a
---     30% treasury writedown; the bank that lit it takes 50%
---     (instead, not stacked); the nation takes +10 Unrest; the
+--     30% treasury writedown; the bank that lit it takes 50% — each
+--     softened 3%/Vault level past I. Then the run: half the deposit
+--     base flees, less 10%/Vault level (floor 10%), and half of all
+--     fled money lands at the nation's Vault-V banks (flight to
+--     quality; never the trigger bank). The nation takes +10 Unrest; the
 --     event log gets its headline; heat resets to 10, lamps to 0.
 --     Profits already extracted are untouched — getting out one
 --     pull early is the whole game.
@@ -59,6 +62,13 @@ DECLARE
     v_lamps    int;
     v_crashed  boolean := false;
     v_burned   record;
+    v_keep     numeric;
+    v_flee     numeric;
+    v_fled_i   numeric;
+    v_fled     numeric := 0;
+    v_refuge   record;
+    v_refuges  int := 0;
+    v_inflow   numeric;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -150,34 +160,67 @@ BEGIN
                         ELSE '' END));
     ELSE
         -- ── THE CRASH ─────────────────────────────────────────────
-        -- Every bank in the nation holds the paper. 30% writedown
-        -- across the board; the bank that lit MARGIN CALL takes 50%.
-        -- Then the RUN (20270897): half of every bank's deposit base
-        -- demands its money back — the claim halves regardless, the
-        -- cash leaves only as far as the post-writedown vault can
-        -- pay. Pure treasury losses — no expense deduction (the
-        -- payouts were taxed as income; the crash is not a shelter).
+        -- Every bank in the nation holds the paper. The base
+        -- writedown is 50% for the bank that lit MARGIN CALL, 30%
+        -- for bystanders — each bank's VAULT keeps +3% per level
+        -- past I (20270896 wiring). Then the RUN: half the deposit
+        -- base flees, less 10% per Vault level past I (floor 10%) —
+        -- the claim leaves regardless, the cash only as far as the
+        -- post-writedown vault can pay. Fled money is tallied for
+        -- the flight to quality below. Pure treasury losses — no
+        -- expense deduction (the payouts were taxed as income; the
+        -- crash is not a shelter).
         FOR v_burned IN
-            SELECT id FROM entrepreneur_corps
+            SELECT id, bank_vault_tier, bank_deposits FROM entrepreneur_corps
              WHERE hq_nation_id = v_nation.id AND industry = 'banking'
              FOR UPDATE
         LOOP
+            v_keep := LEAST(1.0,
+                CASE WHEN v_burned.id = p_corp_id THEN 0.50 ELSE 0.70 END
+                + 0.03 * GREATEST(0, COALESCE(v_burned.bank_vault_tier, 1) - 1));
+            v_flee := GREATEST(0.10,
+                0.50 - 0.10 * GREATEST(0, COALESCE(v_burned.bank_vault_tier, 1) - 1));
+            v_fled_i := ROUND(COALESCE(v_burned.bank_deposits, 0) * v_flee);
+            v_fled   := v_fled + v_fled_i;
             UPDATE entrepreneur_corps
-               SET treasury_cash = ROUND(COALESCE(treasury_cash, 0)
-                       * CASE WHEN v_burned.id = p_corp_id THEN 0.50 ELSE 0.70 END)
-             WHERE id = v_burned.id;
-            UPDATE entrepreneur_corps
-               SET treasury_cash = GREATEST(0, COALESCE(treasury_cash, 0)
-                       - ROUND(COALESCE(bank_deposits, 0) * 0.5)),
-                   bank_deposits = COALESCE(bank_deposits, 0)
-                       - ROUND(COALESCE(bank_deposits, 0) * 0.5),
+               SET treasury_cash = GREATEST(0,
+                       ROUND(COALESCE(treasury_cash, 0) * v_keep) - v_fled_i),
+                   bank_deposits = COALESCE(bank_deposits, 0) - v_fled_i,
                    bank_deposits_updated_tick = v_tick
              WHERE id = v_burned.id;
             PERFORM _log_corp_history(v_burned.id, v_tick,
                 CASE WHEN v_burned.id = p_corp_id
-                     THEN 'MARKET CRASH — your tranches lit the MARGIN CALL. 50% of the treasury written down; depositors besiege the branches.'
-                     ELSE 'MARKET CRASH — the paper went to zero. 30% of the treasury written down; depositors besiege the branches.' END);
+                     THEN format('MARKET CRASH — your tranches lit the MARGIN CALL. %s%% of the treasury written down; %s%% of depositors besiege the branches.',
+                                 ROUND((1 - v_keep) * 100), ROUND(v_flee * 100))
+                     ELSE format('MARKET CRASH — the paper went to zero. %s%% of the treasury written down; %s%% of depositors besiege the branches.',
+                                 ROUND((1 - v_keep) * 100), ROUND(v_flee * 100)) END);
         END LOOP;
+
+        -- ── FLIGHT TO QUALITY (Vault Level V capstone) ────────────
+        -- Panicked money doesn't vanish — half of everything that
+        -- fled runs TO the nation's National Depository banks
+        -- (Vault V), split among them. The trigger bank is never
+        -- the refuge from its own panic. No Depository: the money
+        -- stays under mattresses.
+        SELECT count(*) INTO v_refuges FROM entrepreneur_corps
+         WHERE hq_nation_id = v_nation.id AND industry = 'banking'
+           AND COALESCE(bank_vault_tier, 1) >= 5 AND id <> p_corp_id;
+        IF v_refuges > 0 AND v_fled > 0 THEN
+            v_inflow := ROUND(v_fled * 0.5 / v_refuges);
+            FOR v_refuge IN
+                SELECT id, name FROM entrepreneur_corps
+                 WHERE hq_nation_id = v_nation.id AND industry = 'banking'
+                   AND COALESCE(bank_vault_tier, 1) >= 5 AND id <> p_corp_id
+            LOOP
+                UPDATE entrepreneur_corps
+                   SET bank_deposits = COALESCE(bank_deposits, 0) + v_inflow,
+                       treasury_cash = COALESCE(treasury_cash, 0) + v_inflow,
+                       bank_deposits_updated_tick = v_tick
+                 WHERE id = v_refuge.id;
+                PERFORM _log_corp_history(v_refuge.id, v_tick,
+                    format('FLIGHT TO QUALITY — $%s of panicked deposits ran to the National Depository.', v_inflow));
+            END LOOP;
+        END IF;
 
         UPDATE nations
            SET market_heat              = 10,

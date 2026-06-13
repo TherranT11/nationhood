@@ -3893,9 +3893,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // recomputes. Tiers only — effect wiring is a later slice.
         const BRANCH_TIER_NAMES = ['The Corner Branch', 'The High Street Offices',
           'The Regional Network', 'The National Institution', 'The Pillar of the Republic'];
+        const VAULT_TIER_NAMES = ['The Strongroom', 'The Time-Lock Vault',
+          'The Bullion Floor', 'The Fortress Reserve', 'The National Depository'];
         const BANK_ASSETS = [
           ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
-          ['vault',          'VAULT',            'bank_vault_tier',        'The reserve itself — what survives a bad day.'],
+          ['vault',          'VAULT',            'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.', VAULT_TIER_NAMES],
           ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'How big a loan the bank can responsibly write.'],
           ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      'The paper operation — structured products.'],
           ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'Settlement plumbing for longer, larger paper.'],
