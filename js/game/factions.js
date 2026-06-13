@@ -166,9 +166,9 @@ export function getFactionDashboardUrl(faction) {
     // (login → dashboard → faction-select → dashboard → …). initPage's
     // party-page guard in js/common.js keys on this exact value.
     if (faction.faction_type === 'party')       return 'politics.html';
-    if (faction.faction_type === 'military') {
-        return BRANCH_DASHBOARDS[faction.branch] || 'faction-select.html';
-    }
+    // Military faction UI retired (army pages culled) — route any stray
+    // military login to the neutral chooser rather than a deleted dashboard.
+    if (faction.faction_type === 'military') return 'faction-select.html';
     if (faction.faction_type === 'entrepreneur') return 'entrepreneur-dashboard.html';
     if (faction.faction_type === 'businessman')  return 'businessman-home.html';
     if (faction.faction_type === 'politician')   return 'politician-home.html';

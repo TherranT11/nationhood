@@ -883,14 +883,8 @@ export function updateTopBarInfo(faction, shard, nation) {
         // (migration 20270612). Players now only create Entrepreneurs
         // and Politicians; existing parties keep operating but no new
         // ones are accepted from this dropdown.
-        // "Join a Military Faction" option if no military faction exists
-        const hasMilitary = _userFactions.some(f => f.faction_type === 'military');
-        if (!hasMilitary) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','military'); window.location.href='faction-select.html'">
-                <span class="faction-dropdown__type" style="color:var(--red)">+</span>
-                <span class="faction-dropdown__name">Join a Military Faction</span>
-            </div>`;
-        }
+        // (Military faction UI retired — the "Join a Military Faction"
+        // entry was removed with the army pages.)
         // "Become an Entrepreneur" REMOVED with the entrepreneur
         // sunset — [Add Character] below covers every creatable path.
         // [Add Character] — the 5-character / 3-per-type rules live
