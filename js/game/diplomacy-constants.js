@@ -54,64 +54,6 @@ export function resolveTransferEndpoints(article, agreement) {
 }
 
 /**
- * Writer of the war-state transition. Puts two nations into relation_type='war'
- * on their canonical (a<b) diplomatic_relations row.
- *
- * Callers (intentional dual-writer reality):
- *   1. bills.js — manual declaration resolver (declare_war bill passes).
- *   2. issues.js startWarFromIssue — natural-deadline auto-escalation in the
- *      territorial-dispute tick branch.
- *   3. SQL RPC public.go_to_war (sql/migrations/20270354) — the pressor's
- *      manual "Go to War" click. This path REPLICATES the upsert + front-line
- *      init in PL/pgSQL so war is instant. The companion bilateral_issues
- *      status='escalated' it sets gates the issues.js tick branch so the
- *      auto-escalation path does NOT re-fire.
- *
- * If you change the upsert shape or the front-line init contract here, you
- * MUST mirror the change in 20270354_go_to_war_instant.sql.
- * Returns { ok }.
- */
-export async function setNationsAtWar(supabase, nationX, nationY, currentTick, justification) {
-    if (!nationX || !nationY) return { ok: false };
-    const a = nationX < nationY ? nationX : nationY;
-    const b = nationX < nationY ? nationY : nationX;
-    const { error } = await supabase.from('diplomatic_relations').upsert({
-        nation_a_id: a,
-        nation_b_id: b,
-        relation_type: 'war',
-        war_declared_at_tick: currentTick,
-        war_justification: justification,
-        updated_at: new Date().toISOString(),
-    }, { onConflict: 'nation_a_id,nation_b_id' });
-    if (error) { console.error('[setNationsAtWar] failed:', error.message); return { ok: false, error: error }; }
-
-    // Initialise each land front's line to the static border (count of nation_a's
-    // sectors), clamped inside the chain — the single place the front line is
-    // seeded, so supply/combat never read a NULL. Only sets fronts not yet set.
-    // Best-effort: a hiccup here leaves line_position NULL (combat/supply skip the
-    // front, no wrong result) and the migration backfill is the safety net.
-    try {
-        const { data: fronts } = await supabase.from('war_fronts')
-            .select('id, sector_count').eq('front_type', 'land')
-            .eq('nation_a_id', a).eq('nation_b_id', b).is('line_position', null);
-        if (fronts && fronts.length) {
-            const ids = fronts.map(f => f.id);
-            const { data: secs } = await supabase.from('war_sectors').select('front_id, nation_id').in('front_id', ids);
-            const aCount = new Map();
-            for (const s of (secs || [])) if (s.nation_id === a) aCount.set(s.front_id, (aCount.get(s.front_id) || 0) + 1);
-            for (const f of fronts) {
-                const N = Number(f.sector_count) || 0;
-                const border = Math.min(Math.max(aCount.get(f.id) || Math.floor(N / 2), 1), Math.max(N - 1, 1));
-                await supabase.from('war_fronts').update({ line_position: border }).eq('id', f.id);
-            }
-        }
-    } catch (e) {
-        console.warn('[setNationsAtWar] front-line init failed (backfill/next call covers it):', e?.message || e);
-    }
-    return { ok: true };
-}
-
-/**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  */
 export const TRADE_AGREEMENT_TYPES = {

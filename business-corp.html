@@ -879,6 +879,23 @@ import { CITY_STATS } from './js/game/city-labels.js';
       luxury: 'Luxury', ultra_rich: 'Ultra Rich',
     };
 
+    // Bank assets (20270896) — the 5 upgradeable banking assets: factions
+    // column, label, blurb, and per-level names. Single source of truth
+    // for the BANK ASSETS display panel and the Logistical Overhaul modal.
+    const BANK_ASSETS = [
+      ['branch_network', 'BRANCH NETWORK',    'bank_branch_tier',       'Your share of the nation’s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.',
+        ['The Corner Branch', 'The High Street Offices', 'The Regional Network', 'The National Institution', 'The Pillar of the Republic']],
+      ['vault',          'VAULT',             'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.',
+        ['The Strongroom', 'The Time-Lock Vault', 'The Bullion Floor', 'The Fortress Reserve', 'The National Depository']],
+      ['underwriting',   'UNDERWRITING DESK', 'bank_underwriting_tier', 'The largest loan ask the bank may offer on — $20M per level. The Sovereign Desk reaches the board’s $100M ceiling.',
+        ['The Loan Officer’s Desk', 'The Credit Committee', 'The Risk Department', 'The Ratings Floor', 'The Sovereign Desk']],
+      ['trading_desk',   'TRADING DESK',      'bank_trading_tier',      '+10% on every Subprime Packaging payout per level — The Black Box pays ×1.5. Appetite, not admission: no desk still packages at base.',
+        ['The Side Desk', 'The Trading Room', 'The Proprietary Desk', 'The Structured Products Floor', 'The Black Box']],
+      ['clearing_house', 'CLEARING HOUSE',    'bank_clearing_tier',     'The book’s plumbing: Level I services 24-tick paper, II services 36; the active book caps at 2 + 2 per level. The Grand Clearing House (V) skims 1% of every rival bank’s interest settlements.',
+        ['The Ledger Room', 'The Settlement Office', 'The Wire Room', 'The Clearing Floor', 'The Grand Clearing House']],
+    ];
+    const BANK_ASSET_TIER_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+
     // Credit market (20270894): the collateral menu per borrower
     // industry — [asset key, label, tier column]. Mirror of the
     // server's _loan_collateral_menu; the RPC revalidates.
@@ -1486,11 +1503,28 @@ import { CITY_STATS } from './js/game/city-labels.js';
                     <div class="c">${esc(tickToDate(bp.created_at_tick))}</div>`).join('')}
                 </div>`;
         }
-        document.getElementById('bc-blueprints').innerHTML = `
-          <div class="rl-panel">
-            <div class="ea-head"><span class="rule"></span><span class="t">${corp.industry === 'automotive' ? 'MODELS' : 'BLUEPRINTS'}</span><span class="rule"></span></div>
-            ${bpRows}
-          </div>`;
+        if (corp.industry === 'banking') {
+          // Banks have no blueprints — show the five upgradeable bank
+          // assets and their current level instead.
+          document.getElementById('bc-blueprints').innerHTML = `
+            <div class="rl-panel">
+              <div class="ea-head"><span class="rule"></span><span class="t">BANK ASSETS</span><span class="rule"></span></div>
+              <div class="bp-grid" style="grid-template-columns:1.1fr 1.4fr 2.2fr;">
+                <div class="h">ASSET</div><div class="h">LEVEL</div><div class="h">WHAT IT DOES</div>
+                ${BANK_ASSETS.map(([key, label, col, desc, names]) => {
+                  const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
+                  const lvl = tier === 0 ? 'Not built' : `${BANK_ASSET_TIER_ROMAN[tier - 1]} · ${esc(names[tier - 1] || `Level ${tier}`)}`;
+                  return `<div class="c nm">${esc(label)}</div><div class="c">${lvl}</div><div class="c">${esc(desc)}</div>`;
+                }).join('')}
+              </div>
+            </div>`;
+        } else {
+          document.getElementById('bc-blueprints').innerHTML = `
+            <div class="rl-panel">
+              <div class="ea-head"><span class="rule"></span><span class="t">${corp.industry === 'automotive' ? 'MODELS' : 'BLUEPRINTS'}</span><span class="rule"></span></div>
+              ${bpRows}
+            </div>`;
+        }
 
         // [RETIRE] — removes the Model; refused while a line runs it,
         // and any remaining inventory (home + shipped) is scrapped.
@@ -1782,7 +1816,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
                   <div class="c">${parked ? 'Awaiting supplies' : `${esc(tickToDate(p.completes_at_tick))} (${remaining} tick${remaining === 1 ? '' : 's'})`}</div>`;
               }).join('')}
             </div>`);
-        document.getElementById('bc-projects').innerHTML = `
+        // Banks have no job sites / assembly lines — skip the panel.
+        document.getElementById('bc-projects').innerHTML = corp.industry === 'banking' ? '' : `
           <div class="rl-panel">
             <div class="ea-head"><span class="rule"></span><span class="t">${corp.industry === 'automotive' ? 'ASSEMBLY LINES' : 'ACTIVE PROJECTS'}</span><span class="rule"></span></div>
             ${projRows}
@@ -3917,23 +3952,6 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // The five bank assets on the shared yard_upgrade_cost
         // ladder; hqDisc shows the tax-package discount the server
         // recomputes. Tiers only — effect wiring is a later slice.
-        const BRANCH_TIER_NAMES = ['The Corner Branch', 'The High Street Offices',
-          'The Regional Network', 'The National Institution', 'The Pillar of the Republic'];
-        const VAULT_TIER_NAMES = ['The Strongroom', 'The Time-Lock Vault',
-          'The Bullion Floor', 'The Fortress Reserve', 'The National Depository'];
-        const UNDERWRITING_TIER_NAMES = ['The Loan Officer\u2019s Desk', 'The Credit Committee',
-          'The Risk Department', 'The Ratings Floor', 'The Sovereign Desk'];
-        const TRADING_TIER_NAMES = ['The Side Desk', 'The Trading Room',
-          'The Proprietary Desk', 'The Structured Products Floor', 'The Black Box'];
-        const CLEARING_TIER_NAMES = ['The Ledger Room', 'The Settlement Office',
-          'The Wire Room', 'The Clearing Floor', 'The Grand Clearing House'];
-        const BANK_ASSETS = [
-          ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
-          ['vault',          'VAULT',            'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.', VAULT_TIER_NAMES],
-          ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'The largest loan ask the bank may offer on — $20M per level. The Sovereign Desk reaches the board\u2019s $100M ceiling.', UNDERWRITING_TIER_NAMES],
-          ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      '+10% on every Subprime Packaging payout per level — The Black Box pays \u00d71.5. Appetite, not admission: no desk still packages at base.', TRADING_TIER_NAMES],
-          ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'The book\u2019s plumbing: Level I services 24-tick paper, II services 36; the active book caps at 2 + 2 per level. The Grand Clearing House (V) skims 1% of every rival bank\u2019s interest settlements.', CLEARING_TIER_NAMES],
-        ];
         const BANK_LADDER_COST = { 1: 7000000, 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
         let boAsset = null;
         document.getElementById('ea-bank-overhaul').addEventListener('click', () => {
