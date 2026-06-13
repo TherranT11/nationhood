@@ -18,8 +18,10 @@
 --     branch level, compounded over the elapsed window — in BOTH
 --     directions. Cut the rate and the same drift walks deposits
 --     back out the door.
---   • Cost: deposit interest accrues on the base (rate/12 per tick)
---     and is paid from the treasury at settlement — a deductible
+--   • Cost: deposit interest accrues on the WINDOW'S STARTING base
+--     (rate/12 per tick) and is paid from the treasury at settlement
+--     — a deliberate approximation; windows stay short because every
+--     banking action and page load settles — a deductible
 --     expense (_corp_log_expense), the mirror of loan interest being
 --     taxable income. A treasury too dry to pay capitalizes the
 --     shortfall INTO the base: unpaid interest is money you now owe

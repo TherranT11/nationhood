@@ -4054,7 +4054,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 <div class="nm">Deposits — other people's money</div>
                 <div class="staff">${esc(hfFmtBig(d('deposits')))}</div>
               </div>
-              <div class="ds">${corp.bank_prime_rate_bps
+              <div class="ds">${corp.bank_deposit_rate_bps
                 ? `Drifting toward ${esc(hfFmtBig(d('equilibrium')))} (your branches &times; your ${(Number(corp.bank_deposit_rate_bps) || 0) / 100}% rate, from a ${esc(hfFmtBig(d('pool')))} national pool) &middot; costing ${esc(hfFmtBig(d('per_tick_cost')))}/tick`
                 : 'Post a rate sheet — savers need a number before they walk in.'}</div>
             </div>`;

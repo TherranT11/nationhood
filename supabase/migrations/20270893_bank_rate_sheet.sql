@@ -12,8 +12,9 @@
 -- never reprice an existing book.
 --
 -- Stored in basis points (200 = 2%) so the columns stay integers.
--- NULL = the bank has never posted a sheet. No money moves here —
--- deposit gathering and lending are the follow-up actions.
+-- NULL = the bank has never posted a sheet. Repricing settles the
+-- deposit ledger first (20270897) so the elapsed window is paid at
+-- the rate it was lived under.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
