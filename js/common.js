@@ -1031,47 +1031,6 @@ export function updateThemeButton() {
 
 // ===== PAGE INITIALIZATION =====
 
-// Persistent war banner under the top bar — shown to every party in a nation
-// that is currently at war (diplomatic_relations.relation_type='war'). Re-mounted
-// on every page load; removed automatically once peace returns. Text/DOM only,
-// no dismiss.
-export async function mountWarBanner(nation) {
-    document.getElementById('war-banner')?.remove();
-    if (!nation?.id) return;
-    let rels = [];
-    try {
-        const { data, error } = await _supabase.from('diplomatic_relations')
-            .select('nation_a_id, nation_b_id, war_justification')
-            .eq('relation_type', 'war')
-            .or(`nation_a_id.eq.${nation.id},nation_b_id.eq.${nation.id}`);
-        if (error) { console.warn('[war-banner] load failed:', error.message); return; }
-        rels = data || [];
-    } catch (e) { console.warn('[war-banner] load failed:', e?.message || e); return; }
-    if (!rels.length) return;
-
-    const enemyIds = [...new Set(rels.map(r => r.nation_a_id === nation.id ? r.nation_b_id : r.nation_a_id))];
-    const { data: nats } = await _supabase.from('nations').select('id, name').in('id', enemyIds);
-    const nameById = new Map((nats || []).map(n => [n.id, n.name]));
-
-    const banner = document.createElement('div');
-    banner.id = 'war-banner';
-    // flex:0 0 auto pins the banner to content height — dashboard.css:186
-    // gives every unnamed direct body child flex:1, which would otherwise
-    // stretch the banner to fill the entire below-topbar viewport.
-    banner.style.cssText = 'flex:0 0 auto;background:#7a1f1f;color:#f5e9e9;font-family:var(--font-mono,monospace);font-size:12px;font-weight:600;padding:8px 16px;text-align:center;border-bottom:1px solid #a33;letter-spacing:0.03em;display:flex;flex-direction:column;gap:2px;align-items:center;';
-    for (const r of rels) {
-        const enemyId = r.nation_a_id === nation.id ? r.nation_b_id : r.nation_a_id;
-        const enemy = nameById.get(enemyId) || 'a neighbouring nation';
-        const line = r.war_justification === 'Territorial Dispute'
-            ? `After the territorial dispute went unresolved, a state of war now exists between ${nation.name} and ${enemy}.`
-            : `A state of war now exists between ${nation.name} and ${enemy}.`;
-        const span = document.createElement('span');
-        span.textContent = '⚔ ' + line;
-        banner.appendChild(span);
-    }
-    document.getElementById('top-bar')?.insertAdjacentElement('afterend', banner);
-}
-
 export async function initPage(activeTab, onReady, requireFaction = true) {
     renderTopBar(activeTab);
     window.__currentTab = activeTab;
@@ -1101,7 +1060,6 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     }
 
     updateTopBarInfo(state.faction, state.shard, state.nation);
-    mountWarBanner(state.nation);
 
     // Always fetch fresh AP from DB — cached AP can be minutes stale
     if (state.faction?.id) {
