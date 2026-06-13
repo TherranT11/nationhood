@@ -19,7 +19,6 @@ import { GAME_CONFIG, FORMATION_DEADLINE_TICKS } from './game/config.js';
 import { fileNoConfidenceMotion } from './game/no-confidence.js';
 import { callEarlyElectionsAction } from './game/elections.js';
 import { openImpeachmentTrigger } from './game/impeachment.js';
-import { MODIFIERS, ISSUE_TYPES } from './game/issues.js';
 import { getAdminFactionOverride } from './common.js';
 import { broadcastWorldEvent } from './game/event-helpers.js';
 
@@ -1274,8 +1273,6 @@ function renderPage(root) {
             triggerImpeachPresident();
         } else if (actionId === 'debt_payment') {
             openDebtPaymentModal(root, faction);
-        } else if (actionId === 'press_claim') {
-            openPressClaimModal(root, faction);
         } else if (actionId === 'allocate_funds') {
             openAllocateFundsModal(root);
         } else if (actionId === 'cb_lower_rate') {
@@ -1645,14 +1642,6 @@ const _MINISTRY_ACTION_REGISTRY = {
     ],
     president: [],
     foreign: [
-        {
-            id: 'press_claim',
-            name: 'Press Claim',
-            desc: 'Press a claim that is important to your nation against a bordering nation. Opens a territorial dispute — a 30-turn diplomatic contest that can escalate into armed conflict if tensions run too high.',
-            cost: '$3',
-            costColor: '#c8a832',
-            tags: ['DIPLOMACY', 'COSTS BUDGET'],
-        },
     ],
     central_bank_governor: [
         {
@@ -1825,12 +1814,6 @@ function ministryActionLockReason(actionId, faction, roleDescriptor) {
         const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
         if (balance < 1_000_000) {
             return 'Defense Ministry discretionary budget is $0 — pass a funding bill first.';
-        }
-    }
-    if (actionId === 'press_claim') {
-        const balance = Number(roleDescriptor?.discretionaryBalance ?? 0);
-        if (balance < 3_000_000) {
-            return 'Foreign Ministry discretionary budget is below $3 — pass a funding bill first.';
         }
     }
     if (actionId === 'cb_lower_rate' || actionId === 'cb_raise_rate') {
@@ -3247,178 +3230,6 @@ async function openDebtPaymentModal(root, faction) {
     overlay.classList.add('active');
     render();
 }
-
-// ════════════════════════ PRESS CLAIM (Foreign Ministry) ════════════════════════
-// Starter modifiers for a fresh territorial dispute, built from the engine's
-// MODIFIERS table (one source) so the issue ticks identically to one spawned by
-// admin or the auto-spawner. Passed to the press_claim RPC, which inserts them.
-function buildTerritorialStarterModifiers() {
-    const keys = ISSUE_TYPES.territorial_ownership?.starter_modifiers || [];
-    return keys.map(key => {
-        const def = MODIFIERS[key] || {};
-        return {
-            modifier_key: key,
-            category: def.category || 'structural',
-            applies_to: def.applies_to || 'both',
-            stat_effects: def.stat_effects || [],
-            duration_remaining: def.duration ?? null,
-            is_periodic: def.is_periodic || false,
-            periodic_interval: def.periodic_interval ?? null,
-            periodic_duration: def.periodic_duration ?? null,
-        };
-    });
-}
-
-async function openPressClaimModal(root, faction) {
-    const overlay = document.getElementById('pa-press-claim-modal');
-    if (!overlay) return;
-    const myNationId = _state?.nation?.id;
-
-    // Load the FM discretionary balance + bordering (proximity 0) nations, minus
-    // any we already have an active territorial dispute with. discretionary_balance
-    // is raw dollars; the UI shows the $1 = $1M abstract scale.
-    const COST = 3;                     // displayed cost ($3)
-    const COST_RAW = 3_000_000;         // affordability threshold (raw dollars)
-    const toAbstract = (raw) => Math.floor((Number(raw) || 0) / 1_000_000);
-    let loadError = '';
-    let balance = 0;
-    let neighbours = [];   // { id, name, disputed }
-    try {
-        const [mResp, relResp, issResp] = await Promise.all([
-            _supabase.from('ministries').select('discretionary_balance')
-                .eq('nation_id', myNationId).eq('ministry_key', 'foreign').eq('is_active', true).maybeSingle(),
-            _supabase.from('diplomatic_relations').select('nation_a_id, nation_b_id, proximity')
-                .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`).eq('proximity', 0),
-            _supabase.from('bilateral_issues').select('nation_a_id, nation_b_id')
-                .eq('issue_type', 'territorial_ownership').in('status', ['active', 'partial'])
-                .or(`nation_a_id.eq.${myNationId},nation_b_id.eq.${myNationId}`),
-        ]);
-        if (mResp.error || relResp.error) throw (mResp.error || relResp.error);
-        balance = Number(mResp.data?.discretionary_balance || 0);
-        const ids = (relResp.data || []).map(r => r.nation_a_id === myNationId ? r.nation_b_id : r.nation_a_id);
-        const disputed = new Set((issResp.data || []).map(i => i.nation_a_id === myNationId ? i.nation_b_id : i.nation_a_id));
-        if (ids.length) {
-            const { data: nats } = await _supabase.from('nations').select('id, name').in('id', ids);
-            neighbours = (nats || []).map(n => ({ id: n.id, name: n.name, disputed: disputed.has(n.id) }))
-                .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-        }
-    } catch (e) {
-        loadError = e?.message || 'Could not load bordering nations.';
-    }
-
-    let submitting = false;
-    let result = null;   // { issue_id, stake_resource, stake_quantity }
-    let errorMsg = loadError;
-    let selectedId = neighbours.find(n => !n.disputed)?.id || '';
-    const RESOURCE_LABEL = { farmland: 'Farmland', minerals: 'Minerals', energy: 'Energy' };
-
-    function render() {
-        const affordable = balance >= COST_RAW;
-        const hasTarget = !!selectedId;
-
-        const optionsHtml = neighbours.map(n =>
-            `<option value="${esc(n.id)}"${n.id === selectedId ? ' selected' : ''}${n.disputed ? ' disabled' : ''}>${esc(n.name)}${n.disputed ? ' — dispute active' : ''}</option>`
-        ).join('');
-
-        const resultHtml = result ? `
-            <div style="padding:12px;background:rgba(200,168,50,0.08);border:1px solid rgba(200,168,50,0.22);margin-top:12px;">
-                <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:#c8a832;margin-bottom:4px;">Claim pressed</div>
-                <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);">
-                    A territorial dispute has opened. What's at stake: <strong>${result.stake_quantity} ${esc(RESOURCE_LABEL[result.stake_resource] || result.stake_resource || '')}</strong>.<br>
-                    Track it under World &rarr; Diplomacy &rarr; Issues, or the Conflicts board.
-                </div>
-            </div>` : '';
-        const errorHtml = errorMsg ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:6px;">${esc(errorMsg)}</div>` : '';
-
-        const bodyHtml = (neighbours.length === 0 && !loadError)
-            ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">No bordering nations to press a claim against. Territorial claims can only be pressed against a nation you share a border with.</div>`
-            : `
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">DISCRETIONARY</div>
-                        <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:${affordable ? 'var(--green)' : 'var(--red)'};">$${toAbstract(balance)}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim);letter-spacing:0.04em;">COST</div>
-                        <div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:#c8a832;">$${COST}</div>
-                    </div>
-                </div>
-                <div class="pa-modal-step-label">Select a Nation</div>
-                <select id="pa-pc-nation" class="pa-modal-input" ${result || submitting ? 'disabled' : ''} style="font-family:var(--font-ui);font-size:12px;">${optionsHtml}</select>
-                <div class="pa-modal-step-label">Select a Claim</div>
-                <select class="pa-modal-input" disabled style="font-family:var(--font-ui);font-size:12px;"><option>Territorial Dispute</option></select>
-                ${errorHtml}
-                ${resultHtml}
-            `;
-
-        overlay.innerHTML = `
-            <div class="pa-modal" style="width:460px;">
-                <div class="pa-modal-header">
-                    <div class="pa-modal-header-left">
-                        <div class="pa-modal-dot" style="background:#c8a832;"></div>
-                        <span class="pa-modal-title">Press Claim</span>
-                    </div>
-                    <button class="pa-modal-close" id="pa-pc-close">&times;</button>
-                </div>
-                <div style="padding:10px 16px;border-bottom:1px solid var(--border-main);font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                    Your nation will press a claim that is important to it, though this may bring you into active armed conflict if tensions escalate too high. Costs $${COST} from the Foreign Ministry discretionary budget.
-                </div>
-                <div class="pa-modal-body" style="gap:10px;">${bodyHtml}</div>
-                <div class="pa-modal-footer">
-                    <button class="pa-modal-btn pa-modal-btn--cancel" id="pa-pc-cancel">${result ? 'Close' : 'Cancel'}</button>
-                    ${result ? '' : `<button class="pa-modal-btn pa-modal-btn--submit" id="pa-pc-press" ${(!hasTarget || !affordable || submitting || loadError || neighbours.length === 0) ? 'disabled' : ''}>${submitting ? 'Pressing…' : 'Press'}</button>`}
-                </div>
-            </div>`;
-
-        const close = () => { overlay.classList.remove('active'); if (result) renderPage(root); };
-        document.getElementById('pa-pc-close')?.addEventListener('click', close);
-        document.getElementById('pa-pc-cancel')?.addEventListener('click', close);
-        overlay.onclick = (e) => { if (e.target === overlay) close(); };
-        const sel = document.getElementById('pa-pc-nation');
-        if (sel) sel.addEventListener('change', (e) => { selectedId = e.target.value; });
-        document.getElementById('pa-pc-press')?.addEventListener('click', submit);
-    }
-
-    async function submit() {
-        if (submitting || result || !selectedId) return;
-        submitting = true; errorMsg = ''; render();
-        try {
-            const { data, error } = await _supabase.rpc('press_claim', {
-                p_target_nation_id: selectedId,
-                p_modifiers: buildTerritorialStarterModifiers(),
-                p_region_name: null,
-                p_stake_resource: null,
-                p_stake_quantity: null,
-            });
-            if (error) errorMsg = error.message || 'Could not press the claim.';
-            else if (!data?.ok) errorMsg = data?.message || 'Could not press the claim.';
-            else {
-                result = data;
-                // World news. Awaited to match the codebase's event_log insert
-                // pattern (elections.js, impeachment.js, budget.js, …); the
-                // helper swallows its own errors so this can't break the flow.
-                const myName = _state?.nation?.name || 'A nation';
-                const targetName = neighbours.find(n => n.id === selectedId)?.name || 'another nation';
-                await broadcastWorldEvent(_supabase, {
-                    eventName: 'Territorial Claim Pressed',
-                    triggerKey: 'dispute_press_claim',
-                    description: `${myName} has pressed a territorial claim against ${targetName}.`,
-                    category: 'diplomacy',
-                    currentTick: _state?.shard?.current_tick,
-                });
-            }
-        } catch (e) {
-            errorMsg = e?.message || 'Network error.';
-        } finally {
-            submitting = false; render();
-        }
-    }
-
-    overlay.classList.add('active');
-    render();
-}
-
-// ════════════════════════ ALLOCATE FUNDS (Minister of Defense) ════════════════════════
 
 async function openAllocateFundsModal(root) {
     const overlay = document.getElementById('pa-allocate-funds-modal');
