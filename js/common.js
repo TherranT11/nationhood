@@ -488,10 +488,6 @@ export function renderTopBar(activeTab) {
         mobileNav.innerHTML = [
             { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
             { id: 'politics',  label: 'Actions', icon: '\u2694\uFE0F', href: 'politics.html' },
-            { id: 'government',label: 'Gov',   icon: '\u2696\uFE0F',  href: 'government.html' },
-            { id: 'nation',    label: 'Nation', icon: '\uD83C\uDF0D', href: 'nation.html' },
-            { id: 'diplomacy', label: 'World', icon: '\uD83C\uDF10', href: 'diplomacy.html' },
-            { id: 'ledger',    label: 'Ledger', icon: '\uD83D\uDCCA', href: 'ledger.html' },
         ].map(tab => `<a href="${tab.href}${suffix}" class="mobile-bottom-nav__item ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
             <span class="mobile-bottom-nav__icon">${tab.icon}</span>
             <span class="mobile-bottom-nav__label">${tab.label}</span>
@@ -517,10 +513,6 @@ export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
         { id: 'politics', label: 'Actions', href: 'politics.html' },
-        { id: 'government', label: 'Government', href: 'government.html' },
-        { id: 'nation', label: 'Nation', href: 'nation.html' },
-        { id: 'diplomacy', label: 'World', href: 'diplomacy.html' },
-        { id: 'ledger', label: 'Ledger', href: 'ledger.html' }
     ];
 
     // Preserve admin overrides in nav links so clicking tabs
@@ -891,14 +883,8 @@ export function updateTopBarInfo(faction, shard, nation) {
         // (migration 20270612). Players now only create Entrepreneurs
         // and Politicians; existing parties keep operating but no new
         // ones are accepted from this dropdown.
-        // "Join a Military Faction" option if no military faction exists
-        const hasMilitary = _userFactions.some(f => f.faction_type === 'military');
-        if (!hasMilitary) {
-            html += `<div class="faction-dropdown__item faction-dropdown__item--create" onclick="sessionStorage.setItem('pending_faction_type','military'); window.location.href='faction-select.html'">
-                <span class="faction-dropdown__type" style="color:var(--red)">+</span>
-                <span class="faction-dropdown__name">Join a Military Faction</span>
-            </div>`;
-        }
+        // (Military faction UI retired — the "Join a Military Faction"
+        // entry was removed with the army pages.)
         // "Become an Entrepreneur" REMOVED with the entrepreneur
         // sunset — [Add Character] below covers every creatable path.
         // [Add Character] — the 5-character / 3-per-type rules live

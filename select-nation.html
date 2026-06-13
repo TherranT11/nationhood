@@ -713,25 +713,6 @@ body {
   </div>
 </div>
 
-<div class="modal-overlay" id="military-modal-overlay">
-  <div class="modal">
-    <div class="modal__header">
-      <div class="modal__dot" style="background:var(--red);"></div>
-      <span class="modal__title">Take Command</span>
-    </div>
-    <div class="modal__body">
-      <div class="modal__text">You are about to take command of:</div>
-      <div class="modal__nation-name" id="military-modal-name"></div>
-      <div class="modal__text" style="font-size:10px;color:var(--text-muted);font-family:var(--font-mono);margin-top:4px;line-height:1.5;">A military faction cannot share a nation with a political party or corporation you already hold.</div>
-      <div id="military-modal-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;line-height:1.5;"></div>
-      <div class="modal__actions">
-        <button class="modal__btn modal__btn--cancel" onclick="closeMilitaryModal()">CANCEL</button>
-        <button class="modal__btn modal__btn--confirm" id="military-modal-confirm-btn" onclick="confirmMilitaryJoin()">JOIN</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modal-overlay" id="entrepreneur-modal-overlay">
   <div class="modal">
     <div class="modal__header">
@@ -768,8 +749,7 @@ body {
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml, countEligibleParties, hfFmtBig, fmtBig } from './js/utils.js';
-import { BRANCH_DASHBOARDS } from './js/game/factions.js';
-import { getNationNames, isFemaleName, processArmyManpower } from './js/game/political-actions.js';
+import { getNationNames, isFemaleName } from './js/game/political-actions.js';
 import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
 
 // Flag file lookup — some filenames don't match nation names exactly
@@ -799,7 +779,6 @@ let allNations = [];
 let selectedNationId = null;
 let activeContinent = 'Crucera';
 let cachedPartiesByNation = {};
-let cachedMilitaryByNation = {};
 // Entrepreneurs are nation-agnostic (nation_id = null) but carry their origin
 // in the `nation` text column; this map counts active entrepreneurs by origin
 // nation name, used in the entrepreneur picker's per-nation stat block.
@@ -809,8 +788,6 @@ let cachedEntrepreneursByNation = {};
 // hard-DELETEd, so a plain count is live).
 let cachedCorpCountsByNation = {};
 let pendingFactionType = null;
-let pendingMilitaryNationId = null;
-let militaryJoinInFlight = false;
 let pendingEntrepreneurNationId = null;
 let userOccupiedNationIds = new Set();   // nations where this user holds a party/military (entrepreneur hard lock)
 let entrepreneurGender = 'male';
@@ -833,14 +810,6 @@ const ENTREPRENEUR_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla'
 // other.
 const BUSINESSMAN_ALLOWED_NATIONS = new Set(['Melizea', 'Avelia', 'Montequilla', 'Sierramar']);
 
-// Branches currently open for player recruitment. Navy and Air Force are
-// scaffolded but disabled until their dashboards land.
-const MILITARY_BRANCHES = [
-  { key: 'army',      label: 'Army',      color: 'var(--red)',    enabled: true,  description: 'Command infantry, hold territory, and decide wars where boots meet ground.' },
-  { key: 'navy',      label: 'Navy',      color: 'var(--blue)',   enabled: false, description: 'Rule the seas, blockade trade routes, and project power along every coast.' },
-  { key: 'air_force', label: 'Air Force', color: 'var(--purple)', enabled: false, description: 'Dominate the skies, strike at distance, and shield your nation from above.' },
-];
-
 async function init() {
   try {
     const { data: { user } } = await _supabase.auth.getUser();
@@ -851,16 +820,14 @@ async function init() {
 
     // Check if user already has a faction. Allow:
     //  - corp users founding a party (pending_faction_type === 'party')
-    //  - users adding a military faction (pending_faction_type === 'military')
     const pendingParty = pendingFactionType === 'party';
-    const pendingMilitary = pendingFactionType === 'military';
     const pendingEntrepreneur = pendingFactionType === 'entrepreneur';
     const pendingBusinessman = pendingFactionType === 'businessman';
     const { data: faction } = await _supabase
       .from('factions').select('id, nation_id, faction_type').eq('id', user.id).maybeSingle();
     if (faction && faction.nation_id
         && !(pendingParty && faction.faction_type === 'corporation')
-        && !pendingMilitary && !pendingEntrepreneur && !pendingBusinessman) {
+        && !pendingEntrepreneur && !pendingBusinessman) {
       window.location.href = 'dashboard.html';
       return;
     }
@@ -889,13 +856,6 @@ async function init() {
       if (subEl) subEl.textContent = 'Choose carefully — your origin nation is where your career begins, and its corporations are the ladder you\u2019ll climb.';
     }
 
-    if (pendingMilitary) {
-      const titleEl = document.querySelector('.page-header .title');
-      const subEl = document.querySelector('.page-header .subtitle');
-      if (titleEl) titleEl.textContent = 'Choose a Nation to Defend';
-      if (subEl) subEl.textContent = 'Pick a nation to view its military branches. Each nation has three branches — Army, Navy, and Air Force — and each can be commanded by only one player.';
-    }
-
     await loadNations();
 
     document.getElementById('loading').style.display = 'none';
@@ -919,29 +879,22 @@ function switchContinent(continent) {
 async function loadNations() {
   // Crisis sunset (Phase 3): active_crises read + cachedCrisesByNation
   // dropped. Cards no longer display per-nation crisis pips.
-  const [nationsRes, partiesRes, militaryRes, entRes] = await Promise.all([
+  const [nationsRes, partiesRes, entRes] = await Promise.all([
     _supabase.from('nations').select('*, nation_profiles(flag_url)'),
     _supabase.from('factions').select('id, faction_type, faction_name, abbreviation, seats, nation_id, party_color').eq('faction_type', 'party'),
-    _supabase.from('factions').select('id, nation_id, branch').eq('faction_type', 'military').is('abandoned_at', null),
     _supabase.from('factions').select('nation').eq('faction_type', 'entrepreneur').is('abandoned_at', null),
   ]);
 
   const nations = nationsRes.data || [];
   const parties = partiesRes.data || [];
-  const military = militaryRes.data || [];
   const entrepreneurs = entRes.data || [];
 
   cachedPartiesByNation = {};
-  cachedMilitaryByNation = {};
   cachedEntrepreneursByNation = {};
 
   for (const p of parties) {
     if (!cachedPartiesByNation[p.nation_id]) cachedPartiesByNation[p.nation_id] = [];
     cachedPartiesByNation[p.nation_id].push(p);
-  }
-  for (const m of military) {
-    if (!cachedMilitaryByNation[m.nation_id]) cachedMilitaryByNation[m.nation_id] = {};
-    if (m.branch) cachedMilitaryByNation[m.nation_id][m.branch] = m;
   }
   for (const e of entrepreneurs) {
     if (!e.nation) continue;
@@ -1067,10 +1020,6 @@ function renderNations(nations, partiesByNation) {
       `;
     }).join('');
 
-    if (pendingFactionType === 'military') {
-      return renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode);
-    }
-
     if (pendingFactionType === 'entrepreneur' || pendingFactionType === 'businessman') {
       // Businessman (alpha) shares the entrepreneur card shape plus
       // per-nation corp counts, and opens the same gender + generated-
@@ -1082,7 +1031,7 @@ function renderNations(nations, partiesByNation) {
       const locked = !isBusinessman && userOccupiedNationIds.has(nation.id);
       const corpCounts = cachedCorpCountsByNation[nation.id] || { construction: 0, automotive: 0 };
       const ctaLine = locked
-        ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party or Military Branch here</div>`
+        ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party here</div>`
         : isBusinessman
           ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`
           : `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--purple,#8b5cf6);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Businessman from ${escapeHtml(nation.name)}</div>`;
@@ -1157,52 +1106,6 @@ function renderNations(nations, partiesByNation) {
   }).join('');
 }
 
-function renderMilitaryNationCard(nation, flagUrl, govClass, govLabel, needsAlphaCode) {
-  const branchRows = MILITARY_BRANCHES.map(b => {
-    const taken = !!(cachedMilitaryByNation[nation.id] && cachedMilitaryByNation[nation.id][b.key]);
-    const clickable = b.enabled && !taken;
-    let statusLabel, statusColor;
-    if (!b.enabled) { statusLabel = 'Coming Soon'; statusColor = 'var(--text-dim)'; }
-    else if (taken) { statusLabel = 'Taken'; statusColor = 'var(--red)'; }
-    else { statusLabel = 'Open'; statusColor = 'var(--green)'; }
-
-    const rowStyle = clickable
-      ? 'border:1px solid var(--border-1);background:var(--bg-3);padding:10px 12px;margin-top:8px;cursor:pointer;transition:border-color 0.15s,background 0.15s;'
-      : 'opacity:0.45;border:1px solid var(--border-0);background:var(--bg-1);padding:10px 12px;margin-top:8px;cursor:not-allowed;';
-    const rowHover = clickable
-      ? `onmouseover="this.style.borderColor='${b.color}'" onmouseout="this.style.borderColor='var(--border-1)'"`
-      : '';
-    const rowClick = clickable
-      ? `onclick="openMilitaryJoin('${nation.id}','${b.key}')"`
-      : '';
-
-    return `
-      <div style="${rowStyle}" ${rowHover} ${rowClick}>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:${b.color};text-transform:uppercase;letter-spacing:0.06em;">${b.label}</span>
-          <span style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:${statusColor};text-transform:uppercase;letter-spacing:0.08em;">${b.label}: ${statusLabel}</span>
-        </div>
-        <div style="font-family:var(--font-ui);font-size:10.5px;color:var(--text-muted);line-height:1.5;">${b.description}</div>
-      </div>
-    `;
-  }).join('');
-
-  return `
-    <div class="nation-card" data-nation-id="${nation.id}" style="cursor:default;">
-      <div class="nation-card__header">
-        ${flagUrl ? `<img class="nation-card__flag" src="${flagUrl}" alt="${escapeHtml(nation.name)}" onerror="this.style.display='none'">` : ''}
-        <span class="nation-card__name">${escapeHtml(nation.name)}${needsAlphaCode ? '<span class="alpha-badge">Alpha</span>' : ''}</span>
-        <span class="nation-card__gov-type ${govClass}">${govLabel}</span>
-      </div>
-      <div class="nation-card__body">
-        ${NATION_DESCRIPTIONS[nation.name] ? `<div style="font-size:10px;color:var(--text-dim);line-height:1.5;margin-bottom:8px;font-style:italic;">${escapeHtml(NATION_DESCRIPTIONS[nation.name])}</div>` : ''}
-        <div style="font-family:var(--font-mono);font-size:9px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Military Branches</div>
-        ${branchRows}
-      </div>
-    </div>
-  `;
-}
-
 function selectNation(nationId) {
   selectedNationId = nationId;
   const nation = allNations.find(n => n.id === nationId);
@@ -1230,193 +1133,6 @@ function selectNation(nationId) {
 
   document.getElementById('modal-overlay').classList.add('active');
   if (needsCode) alphaInput.focus();
-}
-
-function openMilitaryJoin(nationId, branch) {
-  if (branch !== 'army') return; // Phase 1 only enables Army
-  const nation = allNations.find(n => n.id === nationId);
-  if (!nation) return;
-  // Re-check Taken: another player could have claimed the slot since the
-  // page rendered. The unique index will also enforce this server-side.
-  if (cachedMilitaryByNation[nationId] && cachedMilitaryByNation[nationId][branch]) return;
-
-  pendingMilitaryNationId = nationId;
-  document.getElementById('military-modal-name').textContent = MILITARY_BRANCHES.find(b => b.key === branch).label + ' of ' + nation.name;
-  document.getElementById('military-modal-error').style.display = 'none';
-  const btn = document.getElementById('military-modal-confirm-btn');
-  btn.disabled = false;
-  btn.textContent = 'JOIN';
-  document.getElementById('military-modal-overlay').classList.add('active');
-}
-
-function closeMilitaryModal() {
-  document.getElementById('military-modal-overlay').classList.remove('active');
-  pendingMilitaryNationId = null;
-  militaryJoinInFlight = false;
-}
-
-async function confirmMilitaryJoin() {
-  if (militaryJoinInFlight) return;
-  if (!pendingMilitaryNationId) return;
-  const nation = allNations.find(n => n.id === pendingMilitaryNationId);
-  if (!nation) return;
-
-  militaryJoinInFlight = true;
-  const errEl = document.getElementById('military-modal-error');
-  const btn = document.getElementById('military-modal-confirm-btn');
-  errEl.style.display = 'none';
-  btn.disabled = true;
-  btn.textContent = 'JOINING...';
-
-  try {
-    // Block if user already holds a party or corp in this nation. The
-    // primary record is keyed on user.id; linked secondary factions
-    // (e.g. corp as a linked faction for a party player) use
-    // linked_user_id. Match both.
-    const { data: conflictRow, error: conflictErr } = await _supabase
-      .from('factions')
-      .select('faction_type, faction_name')
-      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
-      .in('faction_type', ['party', 'corporation'])
-      .eq('nation_id', pendingMilitaryNationId)
-      .is('abandoned_at', null)
-      .maybeSingle();
-    if (conflictErr) throw conflictErr;
-    if (conflictRow) {
-      const label = conflictRow.faction_type === 'corporation' ? 'corporation' : 'political party';
-      errEl.textContent = `Your ${label} "${conflictRow.faction_name}" is already in ${nation.name}. A military faction cannot share a nation with your other factions.`;
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'JOIN';
-      militaryJoinInFlight = false;
-      return;
-    }
-
-    // Block if user already has any military faction (one per player).
-    const { data: existingMilitary, error: existingErr } = await _supabase
-      .from('factions')
-      .select('id, faction_name, nation_id')
-      .or(`id.eq.${currentUser.id},linked_user_id.eq.${currentUser.id}`)
-      .eq('faction_type', 'military')
-      .is('abandoned_at', null)
-      .maybeSingle();
-    if (existingErr) throw existingErr;
-    if (existingMilitary) {
-      errEl.textContent = 'You already command a military faction. Abandon it before joining another.';
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'JOIN';
-      militaryJoinInFlight = false;
-      return;
-    }
-
-    // Determine whether this row goes in as the user's primary faction
-    // (id = user.id) or as a linked secondary (new uuid, linked_user_id).
-    // Mirrors the corp creation logic in corp-nation-select.html.
-    const { data: primary, error: primaryErr } = await _supabase
-      .from('factions')
-      .select('id')
-      .eq('id', currentUser.id)
-      .is('abandoned_at', null)
-      .maybeSingle();
-    if (primaryErr) throw primaryErr;
-
-    const isLinked = !!primary;
-    const factionId = isLinked ? crypto.randomUUID() : currentUser.id;
-    const factionName = MILITARY_BRANCHES.find(b => b.key === 'army').label + ' of ' + nation.name;
-
-    // Generate the Chief of the Army from the nation's name pool. Stored
-    // in the existing leader_* columns (same polymorphic field used for
-    // party leaders and corp CEOs). These columns are the one source of
-    // truth — every place that displays the chief reads from here, never
-    // re-derives. Age range 50–75 per the design spec.
-    const { firstNames, lastNames } = getNationNames(nation.name);
-    const chiefFirst = firstNames[Math.floor(Math.random() * firstNames.length)];
-    const chiefLast  = lastNames[Math.floor(Math.random() * lastNames.length)];
-    const chiefAge   = 50 + Math.floor(Math.random() * 26); // 50..75 inclusive
-
-    const row = {
-      id: factionId,
-      faction_type: 'military',
-      branch: 'army',
-      faction_name: factionName,
-      nation_id: nation.id,
-      nation: nation.name,
-      seats: 0,
-      action_points: 0,
-      abandoned_at: null,
-      leader_first_name: chiefFirst,
-      leader_last_name:  chiefLast,
-      leader_age:        chiefAge,
-    };
-    if (isLinked) row.linked_user_id = currentUser.id;
-
-    const op = isLinked
-      ? _supabase.from('factions').insert(row)
-      : _supabase.from('factions').upsert(row);
-    const { error: writeErr } = await op;
-    if (writeErr) {
-      // Unique-index collision means another player claimed the slot
-      // between the open and the confirm. Surface a clear message.
-      if (writeErr.code === '23505') {
-        errEl.textContent = 'That branch was just claimed by another player. Please choose a different nation.';
-      } else {
-        errEl.textContent = 'Could not join: ' + (writeErr.message || 'unknown error');
-      }
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'JOIN';
-      militaryJoinInFlight = false;
-      return;
-    }
-
-    // Materialize the army's manpower share now (Σ active-law
-    // manpower_pct × population × 70%) via the SAME single-source
-    // function the tick runs, so the new Chief sees manpower
-    // immediately instead of waiting one tick. `nation` is from
-    // nations.select('*') so it carries .population/.id. Own swallowing
-    // try/catch — non-fatal: the per-tick processArmyManpower is the
-    // safety net, and the join already succeeded, so this must never
-    // trip the outer "Failed to join" catch.
-    try {
-      await processArmyManpower(_supabase, nation);
-    } catch (mpErr) {
-      console.warn('Army manpower materialize on join failed (non-fatal):', mpErr?.message || mpErr);
-    }
-
-    // Public "command appointed" dispatch — Politics, scoped to the
-    // player's nation (category 'government' + this nation_id). Wrapped
-    // in its own swallowing try/catch: confirmMilitaryJoin's outer
-    // catch surfaces "Failed to join", so a dispatch failure must never
-    // abort a join that already succeeded.
-    try {
-      const { data: shardRow } = await _supabase
-        .from('shard').select('current_tick').eq('name', 'Alpha Shard').maybeSingle();
-      const { error: evErr } = await _supabase.from('event_log').insert({
-        nation_id: nation.id,
-        faction_id: factionId,
-        event_name: `General ${chiefFirst} ${chiefLast} Appointed`,
-        description_chosen: `General ${chiefFirst} ${chiefLast} has been appointed to lead the ${factionName}. He is ${chiefAge} old.`,
-        category: 'government',
-        trigger_key: 'military_command_appointed',
-        fired_at_tick: Number(shardRow?.current_tick) || 0,
-      });
-      if (evErr) console.warn('Military appointment dispatch failed (non-fatal):', evErr.message);
-    } catch (evErr) {
-      console.warn('Military appointment dispatch failed (non-fatal):', evErr?.message || evErr);
-    }
-
-    sessionStorage.setItem('active_faction_id', factionId);
-    sessionStorage.removeItem('pending_faction_type');
-    sessionStorage.removeItem('nationhood_pending_nation');
-    window.location.href = BRANCH_DASHBOARDS.army;
-  } catch (err) {
-    errEl.textContent = 'Failed to join: ' + (err?.message || 'unknown error');
-    errEl.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = 'JOIN';
-    militaryJoinInFlight = false;
-  }
 }
 
 // ── Entrepreneur (nation-agnostic; nation = origin/name-pool only) ──
@@ -1750,9 +1466,6 @@ init();
 window.selectNation = selectNation;
 window.closeModal = closeModal;
 window.confirmNation = confirmNation;
-window.openMilitaryJoin = openMilitaryJoin;
-window.closeMilitaryModal = closeMilitaryModal;
-window.confirmMilitaryJoin = confirmMilitaryJoin;
 window.openEntrepreneurModal = openEntrepreneurModal;
 window.openBusinessmanModal = openBusinessmanModal;
 window.setEntrepreneurGender = setEntrepreneurGender;

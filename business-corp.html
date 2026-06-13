@@ -270,6 +270,10 @@
   .jm-pill.locked { opacity:0.35; cursor:not-allowed; }
   .db-cats { flex-wrap:wrap; }
   .db-cats .jm-pill { flex:1 1 30%; }
+  /* Interest-rate sheet now has 7-8 pills per row — wrap to ~4/row
+     rather than squishing them into one line (mirrors .db-cats). */
+  #ir-deposit, #ir-prime { flex-wrap:wrap; }
+  #ir-deposit .jm-pill, #ir-prime .jm-pill { flex:1 1 21%; }
   .db-mech { font-family:Georgia,serif; font-style:italic; font-size:12px; color:#999;
     line-height:1.55; }
   .db-static { font-family:var(--font-mono); font-size:12px; color:#fff; }
@@ -3550,8 +3554,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
       // production-run and sales modals. Server revalidates the pill
       // values and burns exec_action_tick.
       if (eaBanking) {
-        const IR_DEPOSIT = [100, 200, 300, 400];
-        const IR_PRIME   = [600, 800, 1000, 1200];
+        const IR_DEPOSIT = [100, 150, 200, 250, 300, 350, 400, 450];
+        const IR_PRIME   = [200, 400, 500, 600, 800, 1000, 1200];
         let irDeposit = Number(corp.bank_deposit_rate_bps) || 200;
         let irPrime   = Number(corp.bank_prime_rate_bps)   || 800;
         let irInFlight = false;
@@ -3567,9 +3571,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
           // a pill actually differs from the posted rates.
           const unchanged = Number(corp.bank_deposit_rate_bps) === irDeposit
                          && Number(corp.bank_prime_rate_bps)   === irPrime;
+          // The deposit/prime ranges now overlap, so a deposit ≥ prime pick
+          // is reachable — block it client-side (the server enforces the
+          // same 'invalid_spread' doctrine) rather than fail after POST.
+          const badSpread = irDeposit >= irPrime;
           const btn = document.getElementById('ir-confirm');
-          btn.disabled = unchanged || irInFlight;
-          btn.title = unchanged ? 'This is already your posted sheet — pick a different rate.' : '';
+          btn.disabled = unchanged || badSpread || irInFlight;
+          btn.title = badSpread  ? 'The deposit rate must sit below prime.'
+                    : unchanged  ? 'This is already your posted sheet — pick a different rate.'
+                    : '';
         }
         function irPillRow(hostId, values, current, onPick) {
           const host = document.getElementById(hostId);

@@ -1543,7 +1543,7 @@ export async function resolveProtest(supabase, protest, nationStats, currentTick
     // crisis row keyed by PROTEST_CONFIG.TIER*_CRISIS_ID) is removed.
     // The protest itself still becomes "crisis_active" via protest_log
     // below, which is what the protest mechanic reads. Cross-system
-    // visibility (politics.js display, etc.) goes away with the table.
+    // visibility (the politics page display, etc.) goes away with the table.
     let crisisCreated = false;
     if (effects.isCrisis) {
         // T6 fizzles after 1d6 ticks, T7 after 1d12 ticks

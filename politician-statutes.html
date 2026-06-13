@@ -31,9 +31,9 @@
 .mof-desc b { color:#fff; font-weight:600; }
 
 /* Top-right action — Propose New Law button. MP-gated: visible to
-   everyone but disabled unless the viewing politician holds
-   politician_office IN ('member_of_parliament','senior_mp'), matching
-   the gate used by the existing MP-actions RPCs (20270485 etc.). */
+   everyone but disabled unless the viewing politician holds an MP-tier
+   office (isMpOffice / MP_OFFICES — Junior MP, Member of Parliament,
+   Senior MP), matching the server's _is_mp_office() gate (20270902). */
 .mof-action { flex-shrink:0; padding-top:4px; display:flex; flex-direction:column; gap:6px; }
 .statute-action { font-family:monospace; font-size:10px; letter-spacing:0.08em;
   text-transform:uppercase; color:#5aafa5; background:transparent;

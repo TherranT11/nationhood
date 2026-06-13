@@ -1481,6 +1481,10 @@ const CAREER_EVENT_TEMPLATES = {
           : `${name} has filed to run for a City Council seat against ${opp}.`;
       case 'city_council_president':
         return `${name} has filed to run for the City Council Presidency against ${opp}.`;
+      case 'parliament':
+        return `${name} has filed to run for a seat in the National Assembly against ${opp}.`;
+      case 'full_mp':
+        return `${name} has filed for re-election as a Member of Parliament against ${opp}.`;
       case 'senior_mp':
         return `${name} has filed for the Senior MP nomination against ${opp}.`;
       case 'mayor':
@@ -1511,6 +1515,8 @@ const CAREER_EVENT_TEMPLATES = {
         return target && target !== 'City Council seat'
           ? `${name} won a City Council seat in ${target}${opp}.`
           : `${name} won a City Council seat${opp}.`;
+      case 'full_mp':
+        return `${name} won re-election as a Member of Parliament${opp}.`;
       case 'senior_mp':
         return `${name} won the Senior MP nomination${opp}.`;
       default:
@@ -1532,6 +1538,8 @@ const CAREER_EVENT_TEMPLATES = {
         return target && target !== 'City Council seat'
           ? `${name} lost the City Council race in ${target}${opp}.`
           : `${name} lost a City Council race${opp}.`;
+      case 'full_mp':
+        return `${name} lost re-election as a Member of Parliament${opp}.`;
       case 'senior_mp':
         return `${name} lost the Senior MP nomination${opp}.`;
       default:
@@ -2291,7 +2299,7 @@ function renderStats() {
 // One panel per role with theming that matches the ladder track:
 //   no office → Party Member (legislature steel-blue, 2 actions)
 //   community_organizer / city_council_member → Local Govt green
-//   member_of_parliament / senior_mp          → Legislature steel-blue
+//   member_of_parliament / full_mp / senior_mp → Legislature steel-blue
 // Action buttons are visual-only today (greyed) — the user's directive
 // was to ship the role panel first and wire RPCs when each per-role
 // action mechanic lands. Tenure pill is suppressed for Party Member
@@ -2501,19 +2509,28 @@ const AFFIL_VARIANTS = {
     variant: 'var-leg',
     eyebrow: 'LEGISLATURE · TIER 1',
     badge:   '⚛',
-    name:    'Member of Parliament',
+    name:    'Junior MP',
     desc:    'You sit in the National Assembly representing your district. <strong>The work is institutional</strong> — speeches, votes, committee rooms, the whip’s office. Build a reputation here and you become someone the press calls, the leadership listens to, and the country knows.',
     actions: LEGISLATURE_ACTIONS,
     actionsEnabled: true,  // wired to politician_mp_* RPCs (20270433)
   },
-  senior_mp: {
+  full_mp: {
     variant: 'var-leg',
     eyebrow: 'LEGISLATURE · TIER 2',
     badge:   '⚛',
-    name:    'Senior MP',
-    desc:    'A second-term backbencher with committee assignments and a name the press knows. The same institutional levers, with more weight behind them.',
+    name:    'Member of Parliament',
+    desc:    'A re-elected Member of Parliament — a full seat with a record behind you. The same institutional levers as a Junior MP, with more weight behind them.',
     actions: LEGISLATURE_ACTIONS,
-    actionsEnabled: true,  // Tier-2 MP keeps the same action set
+    actionsEnabled: true,  // same chamber action set as the other MP tiers
+  },
+  senior_mp: {
+    variant: 'var-leg',
+    eyebrow: 'LEGISLATURE · TIER 3',
+    badge:   '⚛',
+    name:    'Senior MP',
+    desc:    'A senior MP with a full term served and a name the press knows. The same institutional levers, with the most weight behind them.',
+    actions: LEGISLATURE_ACTIONS,
+    actionsEnabled: true,  // top MP tier keeps the same action set
   },
   // Triggered when politician_office is NULL, politician_ministry is
   // NULL, but bar_admitted_nation_id is set — the player has chosen
@@ -2719,7 +2736,7 @@ const PS_LEVERS = {
   interior:                  [{ key: 'crime', label: 'Crime', dir: 'down' }, { key: 'unrest', label: 'Unrest', dir: 'down' }],
   defense:                   [{ key: 'state_apparatus', label: 'State Apparatus', dir: 'up' }],
   economic_development:      [{ key: 'industry', label: 'Industry', dir: 'up' }],
-  foreign_affairs_and_trade: [{ key: 'global_image', label: 'Global Image', dir: 'up' }],
+  foreign_affairs:      [{ key: 'global_image', label: 'Global Image', dir: 'up' }],
 };
 // Civil-service slugs that report to each major desk — the client
 // mirror of _major_ministry_of_politician for the patronage list.
@@ -2727,7 +2744,7 @@ const PS_TRACK_SLUGS = {
   interior:                  ['interior'],
   defense:                   ['defense'],
   economic_development:      ['economic_development'],
-  foreign_affairs_and_trade: ['foreign_affairs'],
+  foreign_affairs:      ['foreign_affairs'],
 };
 
 function psOpenOverlay(title, sub) {
@@ -2806,7 +2823,7 @@ async function openPrepareBriefModal(ctx) {
     if (error) throw error;
     const ministers = (pols || []).filter(p => p.id !== ctx.faction?.id
       && (p.politician_junior_portfolio != null
-          || (p.politician_foreign_minister_at_tick != null && desk === 'foreign_affairs_and_trade')));
+          || (p.politician_foreign_minister_at_tick != null && desk === 'foreign_affairs')));
     if (!ministers.length) {
       rows.innerHTML = '<div class="cp-empty">No sitting minister takes your briefs — the canopy is empty.</div>';
       return;
@@ -3354,24 +3371,12 @@ function renderAffiliation(ctx) {
     ? '' // future: " · District N · {PARTY_ABBREV}"
     : (partyName ? ` <span class="ah-rank">· ${escHtml(partyName)}</span>` : '');
 
-  // Deputy Speaker (20270592) / Speaker of the Assembly (20270593)
-  // layer on top of the elected office — an MP can hold either chair
-  // without changing politician_office, so we surface the role by
-  // amending the variant's eyebrow + name in place rather than
-  // introducing a separate variant. Mutually exclusive at the holder
-  // level (server enforces); Speaker takes precedence in display.
-  // Cleared at the next general election or by politician_resign_chair.
-  const chairLabel = ctx.faction?.politician_speaker_of_assembly_at_tick != null
-    ? { upper: 'SPEAKER OF THE ASSEMBLY', mixed: 'Speaker of the Assembly' }
-    : ctx.faction?.politician_deputy_speaker_at_tick != null
-      ? { upper: 'DEPUTY SPEAKER', mixed: 'Deputy Speaker' }
-      : null;
   // 20270737: mayor variant uses nameFn(ctx) so the title can read
   // "Mayor of {City}" rather than the static name. Other variants
   // ignore the missing field via the || fallback.
   const variantName = variant.nameFn ? variant.nameFn(ctx) : variant.name;
-  const eyebrowText = chairLabel ? `${variant.eyebrow} · ${chairLabel.upper}` : variant.eyebrow;
-  const nameText    = chairLabel ? `${variantName} · ${chairLabel.mixed}`     : variantName;
+  const eyebrowText = variant.eyebrow;
+  const nameText    = variantName;
 
   // Cooldown: per-tier column. MP variants read next_mp_action_tick;
   // local-tier variants read next_local_action_tick (20270461). Each

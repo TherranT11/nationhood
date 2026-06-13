@@ -71,14 +71,13 @@ export const FLAG_URLS = {
 // Secretary (Tier 3 Civil Service, 20270679) and Deputy Minister
 // (Tier 5 Political Appointment, coming next). Single SoT for both
 // rungs; the slug set mirrors _major_ministry_keys() on the server.
-// foreign_affairs_and_trade is a combined slug (politician_sit_the_
-// exam's 'foreign_affairs' civil servants graduate into this slot
-// per _major_ministry_of_politician).
+// One Ministry of Foreign Affairs and Trade, keyed 'foreign_affairs'
+// everywhere (page, civil service, canopy) since 20270904.
 export const MAJOR_MINISTRY_LABEL = {
-    interior:                  'Interior',
-    defense:                   'Defense',
-    economic_development:      'Economic Development',
-    foreign_affairs_and_trade: 'Foreign Affairs and Trade',
+    interior:             'Interior',
+    defense:              'Defense',
+    economic_development: 'Economic Development',
+    foreign_affairs:      'Foreign Affairs and Trade',
 };
 
 // Returns the canonical asset path for a nation name, falling back
@@ -402,17 +401,19 @@ export const OFFICE_TITLES = {
     mayor:                  'Mayor',
     mayor_of_capital:       'Mayor of the Capital',
     regional_leader:        'Regional Leader',
-    member_of_parliament:   'Member of Parliament',
+    member_of_parliament:   'Junior MP',
+    full_mp:                'Member of Parliament',
     senior_mp:              'Senior MP',
 };
 export function officeTitle(office) { return OFFICE_TITLES[office] || ''; }
 
-// MP-tier predicate — the two politician_office values that count as
-// "sitting Member of Parliament" for legislative gates (Propose New
-// Law, amendments, policy changes). Single source: every "is this
-// caller an MP?" check across the politician pages reads from here
-// so that adding a third MP-tier office is a one-line change.
-export const MP_OFFICES = new Set(['member_of_parliament', 'senior_mp']);
+// MP-tier predicate — the politician_office values that count as a
+// "sitting MP" for legislative gates (Propose New Law, amendments,
+// policy changes, tax holidays). The three national-ladder rungs:
+// member_of_parliament = Junior MP, full_mp = Member of Parliament,
+// senior_mp = Senior MP. Client mirror of the server's _is_mp_office()
+// (20270902); every "is this caller an MP?" check reads from here.
+export const MP_OFFICES = new Set(['member_of_parliament', 'full_mp', 'senior_mp']);
 export function isMpOffice(office) { return MP_OFFICES.has(office); }
 
 // Civil-service / political-canopy Experience thresholds — single
