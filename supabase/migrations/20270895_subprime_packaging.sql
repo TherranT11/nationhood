@@ -177,6 +177,7 @@ BEGIN
         FOR v_burned IN
             SELECT id, bank_vault_tier, bank_deposits FROM entrepreneur_corps
              WHERE hq_nation_id = v_nation.id AND industry = 'banking'
+             ORDER BY id
              FOR UPDATE
         LOOP
             v_keep := LEAST(1.0,

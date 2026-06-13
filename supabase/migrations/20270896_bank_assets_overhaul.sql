@@ -14,7 +14,9 @@
 -- ticket in bank_offer_loan (20270894 — $20M per level, Sovereign
 -- Desk reaching the board's $100M ceiling); the TRADING DESK
 -- sweetens subprime payouts +10%/level (20270895); the CLEARING
--- HOUSE is TIERS ONLY for now (user ruling):
+-- HOUSE gates loan terms (24t at I, 36t at II), caps the active
+-- book (2 + 2/level), and at V skims 1% of rival banks' interest
+-- settlements (all in 20270894). ALL FIVE ASSETS ARE LIVE:
 --   • BRANCH NETWORK   (bank_branch_tier, floor 1)
 --   • VAULT            (bank_vault_tier, floor 1)
 --   • UNDERWRITING DESK (bank_underwriting_tier, floor 1)

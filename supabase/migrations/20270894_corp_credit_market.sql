@@ -323,6 +323,13 @@ BEGIN
             'cap', COALESCE(v_bank.bank_underwriting_tier, 1)::bigint * 20000000,
             'ask', v_req.amount);
     END IF;
+    -- The Clearing House gates the longer paper (20270896 wiring):
+    -- 12-tick terms always; Level I services 24, Level II services 36.
+    IF (p_term_ticks = 24 AND COALESCE(v_bank.bank_clearing_tier, 0) < 1)
+       OR (p_term_ticks = 36 AND COALESCE(v_bank.bank_clearing_tier, 0) < 2) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'clearing_too_small',
+            'clearing_tier', COALESCE(v_bank.bank_clearing_tier, 0), 'term', p_term_ticks);
+    END IF;
     -- Bring the deposit ledger current (20270897) — the treasury
     -- gate below must see interest paid and flows landed.
     PERFORM _bank_settle_deposits(p_bank_corp_id);
@@ -494,6 +501,17 @@ BEGIN
     IF v_offer.status <> 'accepted' THEN
         RETURN jsonb_build_object('success', false, 'reason', 'offer_not_accepted');
     END IF;
+    -- The Clearing House caps the active book (20270896 wiring):
+    -- 2 loans at floor 0, +2 per level — a full book must collect
+    -- before it writes again. Checked before any money or the
+    -- action burns. The bank row is locked, so this count can't
+    -- race against a concurrent issue by the same bank.
+    IF (SELECT count(*) FROM corp_bank_loans
+         WHERE bank_corp_id = p_bank_corp_id AND status = 'active')
+       >= 2 + 2 * COALESCE(v_bank.bank_clearing_tier, 0) THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'book_full',
+            'cap', 2 + 2 * COALESCE(v_bank.bank_clearing_tier, 0));
+    END IF;
 
     IF FLOOR(COALESCE(v_bank.treasury_cash, 0))::bigint < v_offer.amount THEN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_treasury',
@@ -575,6 +593,10 @@ DECLARE
     v_interest  numeric;
     v_principal numeric;
     v_charge    numeric;
+    v_gch_ids   uuid[];
+    v_gch_id    uuid;
+    v_skim      numeric := 0;
+    v_skim_each numeric := 0;
 BEGIN
     IF v_uid IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
@@ -625,18 +647,56 @@ BEGIN
     UPDATE entrepreneur_corps
        SET treasury_cash = COALESCE(treasury_cash, 0) - v_charge
      WHERE id = p_corp_id;
-    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = v_loan.bank_corp_id FOR UPDATE;
-    UPDATE entrepreneur_corps
-       SET treasury_cash = COALESCE(treasury_cash, 0) + v_charge
-     WHERE id = v_loan.bank_corp_id;
 
-    -- The interest slice: bank income (taxable), borrower expense
-    -- (deductible). Principal stays off both books.
+    -- The rails were never free (20270896, Clearing House V): Grand
+    -- Clearing Houses in the LENDER's nation — never the lender
+    -- itself — skim 1% of the interest slice, split among them. A
+    -- transfer at settlement, not minting: the lender banks 99%.
+    -- LOCK ORDER: every multi-bank site (this one and the crash
+    -- sweep) locks bank rows in id order, so they can never cycle.
+    SELECT array_agg(id ORDER BY id) INTO v_gch_ids FROM entrepreneur_corps
+     WHERE hq_nation_id = (SELECT hq_nation_id FROM entrepreneur_corps WHERE id = v_loan.bank_corp_id)
+       AND industry = 'banking'
+       AND COALESCE(bank_clearing_tier, 0) >= 5
+       AND id <> v_loan.bank_corp_id;
+    IF v_gch_ids IS NOT NULL AND ROUND(v_interest) > 0 THEN
+        v_skim_each := FLOOR(ROUND(v_interest) * 0.01 / array_length(v_gch_ids, 1));
+        v_skim      := v_skim_each * array_length(v_gch_ids, 1);
+    END IF;
+    IF v_skim <= 0 THEN
+        v_gch_ids := NULL; v_skim := 0; v_skim_each := 0;
+    END IF;
+
+    -- Lock the lender + any clearing houses as one id-ordered batch.
+    PERFORM 1 FROM entrepreneur_corps
+     WHERE id = ANY (array_append(COALESCE(v_gch_ids, '{}'::uuid[]), v_loan.bank_corp_id))
+     ORDER BY id FOR UPDATE;
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = v_loan.bank_corp_id;
+    UPDATE entrepreneur_corps
+       SET treasury_cash = COALESCE(treasury_cash, 0) + v_charge - v_skim
+     WHERE id = v_loan.bank_corp_id;
+    IF v_gch_ids IS NOT NULL THEN
+        FOREACH v_gch_id IN ARRAY v_gch_ids LOOP
+            UPDATE entrepreneur_corps
+               SET treasury_cash = COALESCE(treasury_cash, 0) + v_skim_each
+             WHERE id = v_gch_id;
+            INSERT INTO corp_cash_events (corp_id, tick, category, label, delta, nation_id)
+            VALUES (v_gch_id, v_tick, 'revenue_finance',
+                    'Clearing fees — the rails were never free', v_skim_each, v_bank.hq_nation_id);
+            PERFORM _log_corp_history(v_gch_id, v_tick,
+                format('The Grand Clearing House skimmed $%s settling %s''s interest payment.',
+                       v_skim_each, v_borrower.name));
+        END LOOP;
+    END IF;
+
+    -- The interest slice: bank income (taxable, net of the skim),
+    -- borrower expense (deductible, the full interest they paid).
+    -- Principal stays off both books.
     IF ROUND(v_interest) > 0 THEN
         INSERT INTO corp_cash_events (corp_id, tick, category, label, delta, nation_id)
         VALUES (v_loan.bank_corp_id, v_tick, 'revenue_finance',
                 format('Loan interest — %s', v_borrower.name),
-                ROUND(v_interest), v_bank.hq_nation_id);
+                ROUND(v_interest) - v_skim, v_bank.hq_nation_id);
         PERFORM _corp_log_expense(p_corp_id, ROUND(v_interest)::bigint);
     END IF;
 

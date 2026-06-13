@@ -3633,6 +3633,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           offer_already_pending: 'You already have a pending offer on this request.',
           self_dealing: 'That corporation is yours — banks don\u2019t lend to their own books.',
           underwriting_too_small: 'That ask exceeds your Underwriting Desk — overhaul it to write bigger tickets.',
+          clearing_too_small: 'Your Clearing House can\u2019t service paper that long — overhaul it.',
           insufficient_treasury: 'The vault can\u2019t fund that ask.',
           invalid_collateral: 'Pick one of the borrower\u2019s assets as collateral.',
           invalid_term: 'Pick a term.',
@@ -3690,7 +3691,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
           if (!req) return;
           // Collapse any other open form — one offer at a time.
           document.querySelectorAll('#ol-rows .ol-form').forEach(f => { f.style.display = 'none'; f.innerHTML = ''; });
-          olState = { requestId: req.id, term: 24, collateral: null };
+          // The Clearing House gates the longer paper — 24t needs
+          // Level I, 36t Level II (display mirror; the RPC re-checks).
+          const chTier = Math.max(0, Number(corp.bank_clearing_tier) || 0);
+          const termOk = (t) => t === 12 || (t === 24 && chTier >= 1) || (t === 36 && chTier >= 2);
+          olState = { requestId: req.id, term: chTier >= 1 ? 24 : 12, collateral: null };
           const menu = LOAN_COLLATERAL[req.corp.industry] || [];
           const form = rowEl.querySelector('.ol-form');
           form.style.display = 'block';
@@ -3701,7 +3706,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div class="db-static">${corp.bank_prime_rate_bps / 100}% yearly &middot; ${esc(hfFmtBig(Math.round(req.amount * corp.bank_prime_rate_bps / 10000 / 12)))}/tick while fully drawn</div>
             <div class="jm-lab" style="margin-top:10px;">TERM</div>
             <div class="jm-pills ol-term">${[12, 24, 36].map(t =>
-              `<div class="jm-pill${t === 24 ? ' sel' : ''}" data-t="${t}">${t} TICKS</div>`).join('')}</div>
+              `<div class="jm-pill${t === olState.term ? ' sel' : ''}${termOk(t) ? '' : ' locked'}" data-t="${t}"
+                 ${termOk(t) ? '' : `title="Needs Clearing House Level ${t === 24 ? 'I' : 'II'}"`}>${t} TICKS</div>`).join('')}</div>
             <div class="jm-lab" style="margin-top:10px;">REQUESTED COLLATERAL</div>
             <div class="jm-pills ol-coll" style="flex-wrap:wrap;">${menu.map(([key, label, col]) =>
               `<div class="jm-pill" data-c="${esc(key)}" style="flex:1 1 45%;">${esc(label)} · LV ${Math.max(1, Number(req.corp[col]) || 0)}</div>`).join('')}</div>
@@ -3712,7 +3718,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <button type="button" class="jm-btn secondary ol-form-cancel" style="padding:7px 14px;font-size:10px;">CANCEL</button>
               <button type="button" class="jm-btn ol-form-send" style="padding:7px 14px;font-size:10px;" disabled title="Pick collateral">OFFER LOAN</button>
             </div>`;
-          form.querySelectorAll('.ol-term .jm-pill').forEach(p => p.addEventListener('click', () => {
+          form.querySelectorAll('.ol-term .jm-pill:not(.locked)').forEach(p => p.addEventListener('click', () => {
             form.querySelectorAll('.ol-term .jm-pill').forEach(x => x.classList.toggle('sel', x === p));
             olState.term = Number(p.dataset.t);
           }));
@@ -3760,6 +3766,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // offer row so a double-issue loses cleanly.
         const IL_REASON = {
           offer_not_accepted: 'That offer was already issued or is no longer accepted.',
+          book_full: 'The book is full — your Clearing House services 2 loans + 2 per level. Collect or overhaul.',
           no_actions_remaining: 'No executive actions remaining this tick.',
           insufficient_treasury: 'The vault can\u2019t fund the disbursement right now.',
           borrower_gone: 'The borrower no longer exists.',
@@ -3908,12 +3915,14 @@ import { CITY_STATS } from './js/game/city-labels.js';
           'The Risk Department', 'The Ratings Floor', 'The Sovereign Desk'];
         const TRADING_TIER_NAMES = ['The Side Desk', 'The Trading Room',
           'The Proprietary Desk', 'The Structured Products Floor', 'The Black Box'];
+        const CLEARING_TIER_NAMES = ['The Ledger Room', 'The Settlement Office',
+          'The Wire Room', 'The Clearing Floor', 'The Grand Clearing House'];
         const BANK_ASSETS = [
           ['branch_network', 'BRANCH NETWORK',   'bank_branch_tier',       'Your share of the nation\u2019s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.', BRANCH_TIER_NAMES],
           ['vault',          'VAULT',            'bank_vault_tier',        'Crash armor: each level past I keeps 3% more treasury in a market crash and shelters 10% more depositors from the run. Level V is where panicked money runs TO.', VAULT_TIER_NAMES],
           ['underwriting',   'UNDERWRITING DESK','bank_underwriting_tier', 'The largest loan ask the bank may offer on — $20M per level. The Sovereign Desk reaches the board\u2019s $100M ceiling.', UNDERWRITING_TIER_NAMES],
           ['trading_desk',   'TRADING DESK',     'bank_trading_tier',      '+10% on every Subprime Packaging payout per level — The Black Box pays \u00d71.5. Appetite, not admission: no desk still packages at base.', TRADING_TIER_NAMES],
-          ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'Settlement plumbing for longer, larger paper.'],
+          ['clearing_house', 'CLEARING HOUSE',   'bank_clearing_tier',     'The book\u2019s plumbing: Level I services 24-tick paper, II services 36; the active book caps at 2 + 2 per level. The Grand Clearing House (V) skims 1% of every rival bank\u2019s interest settlements.', CLEARING_TIER_NAMES],
         ];
         const BANK_LADDER_COST = { 1: 7000000, 2: 10000000, 3: 16000000, 4: 25000000, 5: 40000000 };
         let boAsset = null;
