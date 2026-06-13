@@ -877,12 +877,11 @@ export async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'partial';
         }
 
-        // ── 8. Check tension 10 → incident escalation (non-territorial) ──
-        // Territorial disputes don't spawn a tension incident — with the war
-        // terminal removed they resolve through their structural modifiers.
-        // Every other issue type still spawns its incident at tension 10.
-        if (newTension >= 10 && issue.status !== 'escalated'
-            && issue.issue_type !== 'territorial_ownership') {
+        // ── 8. Check tension 10 → incident escalation ──
+        // Each issue type spawns its incident at tension 10. (Territorial
+        // disputes were removed with the war mechanic; spawnIncidentFromIssue
+        // no-ops on any unknown issue_type, so a stray legacy row is safe.)
+        if (newTension >= 10 && issue.status !== 'escalated') {
             const leverage = favorToLeverage(issue.favor);
             const incidentResult = await spawnIncidentFromIssue(
                 supabase, issue, nationA, nationB, leverage, currentTick
