@@ -1403,14 +1403,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             console.error(`[advanceTick] Stat effects failed for ${nation.name} (non-fatal):`, statEffErr);
         }
 
-        // Army Composition: materialize the army's manpower share onto the
-        // army faction (Σ active-law manpower_pct × population × 70%).
-        try {
-            await processArmyManpower(supabase, nation);
-        } catch (manpowerErr) {
-            console.error(`[advanceTick] Army manpower failed for ${nation.name} (non-fatal):`, manpowerErr);
-        }
-
         // Ministry action effects
         try {
             const ministryResults = await processMinistryActions(supabase, nation, newTick);
@@ -2712,53 +2704,6 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
         }
     } catch (casErr) {
         console.error('[advanceTick] Combined Arms School completion sweep failed (non-fatal):', casErr);
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // 4a-quater-ter. ARMY UNITS — FORMING → ACTIVE — global pass.
-    // Flips army_units whose 2-tick forming window has elapsed
-    // (forming_until_tick <= current tick) from 'Forming' to 'Active'.
-    // Single set-based update; idempotent.
-    // ══════════════════════════════════════════════════════════════════
-    try {
-        const formRes = await processFormingUnits(supabase, newTick);
-        if (formRes?.activated) {
-            console.log(`[ArmyUnits] ${formRes.activated} unit(s) activated`);
-        }
-    } catch (formErr) {
-        console.error('[advanceTick] Army units forming sweep failed (non-fatal):', formErr);
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // 4a-ter. ARMY SUPPLY — global pass.
-    // Armies of nations at war consume supply each tick (manpower + brigade
-    // costs, less the logistics tail), delivered from the capital with −1 per
-    // sector of transit and capped by the faction's logistics stat. Shortfall
-    // drains army_cohesion. Places newly-at-war armies at their start sector.
-    // ══════════════════════════════════════════════════════════════════
-    try {
-        const supRes = await processArmySupply(supabase, newTick);
-        if (supRes?.underSupplied) {
-            console.log(`[ArmySupply] ${supRes.underSupplied} faction(s) under-supplied this tick`);
-        }
-    } catch (supErr) {
-        console.error('[advanceTick] Army supply sweep failed (non-fatal):', supErr);
-    }
-
-    // ══════════════════════════════════════════════════════════════════
-    // 4a-quater. COMBAT — global pass.
-    // Resolves land battles on every front between nations at war: pooled
-    // ECP per side, mutual casualties + cohesion drain, line moves toward a
-    // broken side's capital when its foe assaulted. Runs after supply so the
-    // supply_balance feeding ECP is current.
-    // ══════════════════════════════════════════════════════════════════
-    try {
-        const combatRes = await processCombat(supabase, newTick);
-        if (combatRes?.battles) {
-            console.log(`[Combat] resolved ${combatRes.battles} front battle(s)`);
-        }
-    } catch (combatErr) {
-        console.error('[advanceTick] Combat sweep failed (non-fatal):', combatErr);
     }
 
     // ══════════════════════════════════════════════════════════════════

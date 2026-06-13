@@ -4,7 +4,6 @@
  */
 
 import { GAME_CONFIG } from './config.js';
-import { unitUpkeepPerTick } from './military-units.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { hasElectedPresident, isAbsoluteMonarchy } from './government-types.js';
@@ -240,30 +239,11 @@ export async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
 // status <> 'Decommissioned' filter is the SAME committed-unit rule
 // create_unit uses for manpower (one definition).
 //
-// Single source of truth: the client mirror is the army_units fetch
-// in loadBudgetData + the Defense & Security deep-dive rows in
-// government.html — both must compute this identically or the panel
-// Balance lies (same contract as activeLawAnnual). Returns the
-// annual scalar (the only value the expenditures sum consumes).
-export async function computeUnitMaintenanceAnnual(supabase, nation) {
-    let perTick = 0;
-    try {
-        const { data: units, error } = await supabase
-            .from('army_units')
-            .select('construction_cost, army:armies(army_type)')
-            .eq('nation_id', nation.id)
-            .neq('status', 'Decommissioned');
-        if (error) {
-            console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
-        } else {
-            for (const u of (units || [])) {
-                perTick += unitUpkeepPerTick(u?.construction_cost, u?.army?.army_type);
-            }
-        }
-    } catch (err) {
-        console.warn(`[Budget] army_units threw for ${nation.name}:`, err?.message || err);
-    }
-    return perTick * GAME_CONFIG.TICKS_PER_YEAR; // per-tick → annual abstract $
+// The military faction was retired (2027xxxx): there are no army units
+// to maintain, so unit maintenance is structurally zero. Kept as a
+// function so computePanelAnnualExpenditures' shape is unchanged.
+export async function computeUnitMaintenanceAnnual() {
+    return 0;
 }
 
 /**

@@ -1567,58 +1567,6 @@ export async function processStatEffects(supabase, nation, currentTick) {
 }
 
 /**
- * Army Composition manpower. Sums policy_options.manpower_pct across the
- * nation's active laws, mobilizes that % of the nation's population, and
- * materializes the army's 70% share onto the nation's army faction
- * (factions.army_manpower — the one army stat that is a raw headcount,
- * not 0-100). The navy 20% + air force 10% are intentionally discarded
- * until those faction branches exist. Recomputed every tick so it
- * tracks population growth and law changes; no-op when the nation has
- * no army faction. Non-throwing — failures are logged, never fatal.
- */
-export async function processArmyManpower(supabase, nation) {
-    const { data: laws, error: lawErr } = await supabase
-        .from('active_laws')
-        .select('selected_option:policy_options!selected_option_id(manpower_pct)')
-        .eq('nation_id', nation.id);
-    if (lawErr) {
-        console.error('[processArmyManpower] active_laws fetch failed:', lawErr.message);
-        return;
-    }
-    let pct = 0;
-    for (const l of (laws || [])) {
-        const v = Number(l.selected_option?.manpower_pct);
-        if (Number.isFinite(v) && v > 0) pct += v;
-    }
-    const pop = Number(nation.population) || 0;
-    // 70% to the army; navy 20% + air 10% discarded — no faction yet.
-    const armyShare = Math.round(Math.round(pop * pct / 100) * 0.70);
-
-    const { data: army, error: facErr } = await supabase
-        .from('factions')
-        .select('id, army_manpower')
-        .eq('nation_id', nation.id)
-        .eq('faction_type', 'military')
-        .eq('branch', 'army')
-        .is('abandoned_at', null)
-        .or('is_banned.is.null,is_banned.eq.false')
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-    if (facErr) {
-        console.error('[processArmyManpower] army faction fetch failed:', facErr.message);
-        return;
-    }
-    if (!army) return;                                  // no army faction — nothing to materialize
-    if (Number(army.army_manpower) === armyShare) return; // unchanged — skip the write
-    const { error: updErr } = await supabase
-        .from('factions')
-        .update({ army_manpower: armyShare })
-        .eq('id', army.id);
-    if (updErr) console.error('[processArmyManpower] army_manpower update failed:', updErr.message);
-}
-
-/**
  * Process ministry action stat effects during tick advancement.
  * Mirrors processStatEffects but reads from ministry_action_log.
  */
