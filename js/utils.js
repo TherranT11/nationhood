@@ -474,9 +474,31 @@ export function careerLabel(politician, party) {
         ? `Civil Servant of ${ministryName(ministrySlug) || ministrySlug}`
         : '';
     const localExecText = localExecutiveTitle(politician) || '';
+    const apptText     = appointmentTitle(politician) || '';
     const judicialText = judicialTitle(politician, politician?.nation_id) || '';
     const fsText = foreignServiceTitle(politician) || '';
-    return officeText || localExecText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
+    return officeText || localExecText || apptText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
+}
+
+/** Highest appointed-canopy / senior-civil-service title the politician
+ *  holds, or null. Precedence mirrors the home affiliation card
+ *  (politician-home.html ~3294): Deputy Minister (Tier 5) > Junior
+ *  Minister (Tier 4) > Permanent Undersecretary (Tier 3) > Agency Head
+ *  (Tier 2). All four sit ABOVE the plain "Civil Servant of …" (Tier 1)
+ *  label that careerLabel falls through to — without this a Junior
+ *  Minister whose politician_ministry is still set read as "Civil
+ *  Servant" (the Mateo Paredes bug). One source — careerLabel and the
+ *  faction-switcher suffix both read it. */
+export function appointmentTitle(politician) {
+    const dm = politician?.politician_deputy_minister_ministry;
+    if (dm) return `Deputy Minister of ${MAJOR_MINISTRY_LABEL[dm] || dm}`;
+    const jp = politician?.politician_junior_portfolio;
+    if (jp) return `Junior Minister for ${JUNIOR_PORTFOLIO_LABEL[jp] || jp}`;
+    const ps = politician?.politician_permanent_secretary_ministry;
+    if (ps) return `Permanent Undersecretary of ${MAJOR_MINISTRY_LABEL[ps] || ps}`;
+    if (politician?.politician_senior_civil_servant_at_tick != null
+        && politician?.politician_ministry) return 'Agency Head';
+    return null;
 }
 
 /** Highest local-executive tier label the politician holds, or null
