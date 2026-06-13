@@ -331,7 +331,7 @@ function claimantZone(issue, canManage) {
 }
 
 // Pressor role module — LIVE for territorial disputes: the demand ladder reads
-// demand_rung; soften / press_harder / extend_deadline / go_to_war / drop (back
+// demand_rung; soften / press_harder / extend_deadline / drop (back
 // down) call their RPCs (wired in mountIssuesPanel, with a busy-lock). For any
 // other issue type there is no ladder yet, so it stays an inert preview.
 function pressorZone(issue, region, roles, canManage) {
@@ -361,7 +361,7 @@ function pressorZone(issue, region, roles, canManage) {
   }
   const soften = cur < 4
     ? `<button type="button" class="iss-btn soften" data-action="soften" data-id="${id}">&#9662; Soften one rung &mdash; smaller prize, easier yes (cannot be undone)</button>`
-    : `<div class="iss-note">At the floor. The only moves left are to go to war or back down.</div>`;
+    : `<div class="iss-note">At the floor. The only move left is to back down.</div>`;
   return `<div class="pressor-zone">
     <div class="pz-ladder">
       <div class="lab">YOUR DEMAND &mdash; SOFTEN TO MAKE A "YES" EASIER</div>
@@ -376,9 +376,8 @@ function pressorZone(issue, region, roles, canManage) {
       </div>
     </div>
     <div class="pz-doors">
-      <div class="lab">AT THE DEADLINE, YOU MUST CHOOSE</div>
+      <div class="lab">AT THE DEADLINE</div>
       <div class="doors">
-        <button type="button" class="door war" data-action="go_to_war" data-id="${id}"><div class="dn">&#9876; Go to War</div><div class="dc">Escalate to the front &mdash; a state of war begins immediately.</div></button>
         <button type="button" class="door back" data-action="drop" data-id="${id}"><div class="dn">Back Down</div><div class="dc">Drop the claim &mdash; &minus;25 approval, +10 unrest, 360-tick re-press cooldown.</div></button>
       </div>
     </div>
@@ -720,14 +719,13 @@ export function renderIssuesPanel(host, issues, nationId, opts = {}) {
 const ACTION_RPC = {
   soften: 'soften_demand', drop: 'drop_claim',
   press_harder: 'press_harder', extend: 'extend_deadline',
-  go_to_war: 'go_to_war', concede: 'concede_claim',
+  concede: 'concede_claim',
 };
 const ACTION_CONFIRM = {
   soften: 'Soften your demand one rung? This cannot be undone.',
   drop: 'Back down — drop the claim entirely? You take −25 approval, +10 unrest, and cannot re-press this nation for 360 ticks.',
   press_harder: 'Press harder? This burns one tick off the decision clock.',
   extend: 'Extend the deadline by 2 ticks? This costs you 8 approval.',
-  go_to_war: 'Go to war? This is final — a state of war begins immediately.',
   concede: 'Concede the claim? You accept the demand and the dispute resolves in the pressor’s favour.',
 };
 

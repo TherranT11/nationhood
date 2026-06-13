@@ -667,64 +667,6 @@ function resolveTransferEndpoints(article, agreement) {
 }
 
 /**
- * Writer of the war-state transition. Puts two nations into relation_type='war'
- * on their canonical (a<b) diplomatic_relations row.
- *
- * Callers (intentional dual-writer reality):
- *   1. bills — manual declaration resolver (declare_war bill passes).
- *   2. issues startWarFromIssue — natural-deadline auto-escalation in the
- *      territorial-dispute tick branch.
- *   3. SQL RPC public.go_to_war (sql/migrations/20270354) — the pressor's
- *      manual "Go to War" click. This path REPLICATES the upsert + front-line
- *      init in PL/pgSQL so war is instant. The companion bilateral_issues
- *      status='escalated' it sets gates the issues tick branch so the
- *      auto-escalation path does NOT re-fire.
- *
- * If you change the upsert shape or the front-line init contract here, you
- * MUST mirror the change in 20270354_go_to_war_instant.sql.
- * Returns { ok }.
- */
-async function setNationsAtWar(supabase, nationX, nationY, currentTick, justification) {
-    if (!nationX || !nationY) return { ok: false };
-    const a = nationX < nationY ? nationX : nationY;
-    const b = nationX < nationY ? nationY : nationX;
-    const { error } = await supabase.from('diplomatic_relations').upsert({
-        nation_a_id: a,
-        nation_b_id: b,
-        relation_type: 'war',
-        war_declared_at_tick: currentTick,
-        war_justification: justification,
-        updated_at: new Date().toISOString(),
-    }, { onConflict: 'nation_a_id,nation_b_id' });
-    if (error) { console.error('[setNationsAtWar] failed:', error.message); return { ok: false, error: error }; }
-
-    // Initialise each land front's line to the static border (count of nation_a's
-    // sectors), clamped inside the chain — the single place the front line is
-    // seeded, so supply/combat never read a NULL. Only sets fronts not yet set.
-    // Best-effort: a hiccup here leaves line_position NULL (combat/supply skip the
-    // front, no wrong result) and the migration backfill is the safety net.
-    try {
-        const { data: fronts } = await supabase.from('war_fronts')
-            .select('id, sector_count').eq('front_type', 'land')
-            .eq('nation_a_id', a).eq('nation_b_id', b).is('line_position', null);
-        if (fronts && fronts.length) {
-            const ids = fronts.map(f => f.id);
-            const { data: secs } = await supabase.from('war_sectors').select('front_id, nation_id').in('front_id', ids);
-            const aCount = new Map();
-            for (const s of (secs || [])) if (s.nation_id === a) aCount.set(s.front_id, (aCount.get(s.front_id) || 0) + 1);
-            for (const f of fronts) {
-                const N = Number(f.sector_count) || 0;
-                const border = Math.min(Math.max(aCount.get(f.id) || Math.floor(N / 2), 1), Math.max(N - 1, 1));
-                await supabase.from('war_fronts').update({ line_position: border }).eq('id', f.id);
-            }
-        }
-    } catch (e) {
-        console.warn('[setNationsAtWar] front-line init failed (backfill/next call covers it):', e?.message || e);
-    }
-    return { ok: true };
-}
-
-/**
  * Trade Agreement types that can be negotiated as Diplomatic Initiatives.
  */
 const TRADE_AGREEMENT_TYPES = {
@@ -3386,7 +3328,7 @@ async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
 /**
  * Broadcast a hand-written event to every nation (world news). Inserts one
  * event_log row per nation with the supplied description. Mirrors the existing
- * direct-insert pattern in issues (startWarFromIssue, spawnIncidentFromIssue)
+ * direct-insert pattern in issues (spawnIncidentFromIssue)
  * rather than the templated fire_system_event RPC, because these events are
  * fully composed at the call site and don't need placeholder substitution.
  *
@@ -5494,7 +5436,6 @@ const BILL_TYPE_SPECS = Object.freeze({
     default_resolution:     { threshold: 'supermajority' },
     veto_override:          { threshold: 'veto_override' },
     impeachment_conviction: { threshold: 'supermajority' },
-    declare_war:            { threshold: 'supermajority' },
     no_confidence:          { threshold: 'absolute' },
     impeachment_motion:     { threshold: 'absolute' },
 });
@@ -6321,36 +6262,6 @@ async function resolveNoConfidenceBill(supabase, bill, ctx) {
         votesAgainst,
         type: 'no_confidence',
         earlyResolution: bill.early_resolution_status || null,
-    };
-}
-
-/**
- * Resolve a passed/failed declare_war bill. On pass (supermajority), the two
- * nations enter a state of war: set the canonical diplomatic_relations pair's
- * relation_type='war' with the tick + casus belli as justification. Fronts
- * between the pair are "active" whenever that relation = war (derived, no
- * separate flag). On fail, the motion just dies — no extra penalty (any
- * 'our_honor' cost was already paid at filing time).
- */
-async function resolveDeclareWarBill(supabase, bill, ctx) {
-    const { passed, currentTick, votesFor, votesAgainst } = ctx;
-    if (passed) {
-        await supabase.from('bills').update({ status: 'passed', passed_tick: currentTick }).eq('id', bill.id);
-        const target = bill.metadata?.target_nation_id;
-        if (target && bill.nation_id) {
-            const { ok } = await setNationsAtWar(supabase, bill.nation_id, target, currentTick, 'Our Honor');
-            if (!ok) console.error(`[resolveDeclareWarBill] failed to set war state for bill ${bill.id}`);
-        }
-    } else {
-        await failBill(supabase, bill);
-    }
-    return {
-        billId: bill.id,
-        billName: bill.bill_name,
-        result: passed ? 'passed' : 'failed',
-        votesFor,
-        votesAgainst,
-        type: 'declare_war',
     };
 }
 
@@ -7254,7 +7165,6 @@ async function resolveOrdinaryBill(supabase, bill, ctx) {
 // This mirrors BILL_TYPE_SPECS (threshold side, R2) on the dispatch side.
 const BILL_RESOLVERS = Object.freeze({
     no_confidence:          ()  => resolveNoConfidenceBill,
-    declare_war:            ()  => resolveDeclareWarBill,
     foundational:           ()  => resolveFoundationalBill,
     default_resolution:     ()  => resolveDefaultResolutionBill,
     minister_confirmation:  (b) => b.ministry_key       ? resolveMinisterConfirmationBill   : null,
@@ -7473,7 +7383,7 @@ async function resolveExpiredVotes(supabase, nationId) {
         // NO voters: +2/article on fail. Abstain: nothing.
         // Skip momentum for special bill types and presidential desk (not yet enacted)
         const lastResult = results[results.length - 1];
-        const skipMomentum = ['no_confidence', 'declare_war', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
+        const skipMomentum = ['no_confidence', 'minister_confirmation', 'governor_confirmation', 'impeachment_conviction'].includes(bill.bill_type)
             || lastResult?.result === 'president_desk';
         if (!skipMomentum) {
             try {
@@ -7774,7 +7684,7 @@ async function resolveStuckFloorBills(supabase, nationId) {
         constitutional_amendment_streamlining: !!nation?.constitutional_amendment_streamlining
     };
 
-    const specialTypes = new Set(['no_confidence', 'declare_war', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
+    const specialTypes = new Set(['no_confidence', 'foundational', 'default_resolution', 'veto_override', 'impeachment_motion', 'impeachment_conviction', 'ratification', 'minister_confirmation', 'governor_confirmation']);
     const results = [];
 
     for (const bill of stuckBills) {
@@ -25435,45 +25345,11 @@ async function processIssueTick(supabase, nationList, currentTick) {
             newStatus = 'partial';
         }
 
-        // ── 7. Territorial decision clock → war ──
-        // Territorial disputes resolve via their decision clock, NOT passive
-        // tension. At/after the deadline with nothing resolved, the dispute
-        // auto-goes to war (the clock running out IS the casus belli) — this
-        // branch handles the natural-deadline path via setNationsAtWar inside
-        // startWarFromIssue.
-        //
-        // Manual press: the go_to_war SQL RPC (20270354) flips the war state
-        // directly AND sets bilateral_issues.status='escalated' before returning,
-        // so the player experiences instant war. The `status !== 'escalated'`
-        // guard below makes that path skip this branch — no duplicate writes,
-        // no duplicate 'War Declared' event_log rows.
-        let escalatedToWar = false;
-        if (issue.issue_type === 'territorial_ownership' && issue.status !== 'escalated') {
-            let deadline = issue.decision_deadline_tick;
-            if (deadline == null && issue.created_tick != null) {
-                deadline = issue.created_tick + 6;
-                await supabase.from('bilateral_issues')
-                    .update({ decision_deadline_tick: deadline }).eq('id', issue.id);
-            }
-            if (deadline != null && currentTick >= deadline
-                && await startWarFromIssue(supabase, issue, nationA, nationB, currentTick)) {
-                newStatus = 'escalated';
-                escalatedToWar = true;
-                results.escalations.push({
-                    issue_id: issue.id, issue_type: issue.issue_type, incident_id: null,
-                    war: true, nation_a_id: issue.nation_a_id, nation_b_id: issue.nation_b_id,
-                    favor: issue.favor, starting_leverage: favorToLeverage(issue.favor),
-                });
-                await insertHistory(supabase, issue.id, currentTick, 'escalated',
-                    'The decision clock ran out — a state of war now exists.',
-                    { deadline_tick: deadline, tension: newTension });
-            }
-        }
-
-        // ── 8. Check tension 10 → incident escalation (non-territorial only) ──
-        // Territorial disputes no longer escalate on tension; they use the clock
-        // above. Every other issue type still spawns its incident at tension 10.
-        if (!escalatedToWar && newTension >= 10 && issue.status !== 'escalated'
+        // ── 8. Check tension 10 → incident escalation (non-territorial) ──
+        // Territorial disputes don't spawn a tension incident — with the war
+        // terminal removed they resolve through their structural modifiers.
+        // Every other issue type still spawns its incident at tension 10.
+        if (newTension >= 10 && issue.status !== 'escalated'
             && issue.issue_type !== 'territorial_ownership') {
             const leverage = favorToLeverage(issue.favor);
             const incidentResult = await spawnIncidentFromIssue(
@@ -25656,30 +25532,6 @@ async function spawnModifier(supabase, issue, modifierKey, appliesTo, currentTic
         { modifier_key: modifierKey, created_by: createdBy });
 }
 
-
-// ==================== ISSUE → WAR ESCALATION ====================
-
-/**
- * Territorial dispute escalation = war. Sets the canonical diplomatic_relations
- * pair to relation_type='war' (the same state a manual declaration produces, so
- * the fronts + supply systems pick it up automatically) and writes a war-start
- * dispatch to both nations' event_log. Returns true if the war state was set.
- */
-async function startWarFromIssue(supabase, issue, nationA, nationB, currentTick) {
-    // Natural-deadline path: setNationsAtWar (diplomacy-constants) flips the
-    // war state and inits front lines. The manual-press path goes through the
-    // go_to_war SQL RPC (20270354) which writes the same state itself and sets
-    // status='escalated' to gate this branch — so the two paths never collide.
-    const { ok } = await setNationsAtWar(supabase, issue.nation_a_id, issue.nation_b_id, currentTick, 'Territorial Dispute');
-    if (!ok) return false;
-    const summary = `After the territorial dispute went unresolved, a state of war now exists between ${nationA?.name || 'one nation'} and ${nationB?.name || 'another nation'}.`;
-    const { error: logErr } = await supabase.from('event_log').insert([
-        { nation_id: issue.nation_a_id, event_name: 'War Declared', trigger_key: 'war_started_territorial', description_chosen: summary, category: 'crisis', fired_at_tick: currentTick },
-        { nation_id: issue.nation_b_id, event_name: 'War Declared', trigger_key: 'war_started_territorial', description_chosen: summary, category: 'crisis', fired_at_tick: currentTick },
-    ]);
-    if (logErr) console.warn('[startWarFromIssue] event_log insert failed:', logErr.message);
-    return true;
-}
 
 // ==================== ISSUE → INCIDENT ESCALATION ====================
 
