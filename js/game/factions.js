@@ -77,27 +77,6 @@ export function isHiddenFromSwitcher(f) {
 }
 
 /**
- * Branch → dashboard URL for military factions. Add entries as new
- * branch dashboards land. Importers should look up by faction.branch
- * and fall back gracefully if the entry is missing.
- */
-export const BRANCH_DASHBOARDS = {
-    army: 'army-dashboard.html',
-};
-
-/**
- * Branch key → uppercase display label for badges and headers
- * ("army" → "ARMY", "air_force" → "AIR FORCE"). Fallback handles any
- * future branch keys by upper-casing and converting underscores.
- */
-export function getBranchDisplayLabel(branch) {
-    if (branch === 'army')      return 'ARMY';
-    if (branch === 'navy')      return 'NAVY';
-    if (branch === 'air_force') return 'AIR FORCE';
-    return (branch || '').toUpperCase().replace(/_/g, ' ');
-}
-
-/**
  * Role suffix for a politician faction in the switcher chips, so a
  * player with multiple politicians can tell their advocate from their
  * MP from their civil servant when switching between them.
