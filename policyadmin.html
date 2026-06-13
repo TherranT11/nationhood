@@ -320,6 +320,13 @@ function createEmptyOption() {
         sector_rapport_targets: [], // [{ sector_key, rapport -10..+10 }]
         sector_turnout_targets: [], // [{ sector_key, delta -1.00..+0.30 }]
         sector_weight_targets: [],  // [{ sector_key, delta -5..+5 }]
+        // Party reception: which archetypes' seated parties vote YES /
+        // NO when this option is proposed as a policy change. Names are
+        // drawn from POLICY_ARCHETYPES; the two lists are disjoint. An
+        // archetype on neither list rolls 1D2 server-side. Stored as
+        // NULL when empty (see savePolicy).
+        support_archetypes: [],
+        oppose_archetypes: [],
     };
 }
 
@@ -373,6 +380,54 @@ const FISCAL_CATEGORY_OPTIONS = [
 ];
 
 const MAX_OPTIONS_PER_POLICY = 10;
+
+// Canonical movement-party archetype labels (10). Must stay in lockstep
+// with the server's _archetype_catalog_names() (20270686) and the Add
+// Party admin dropdown (20270394) — factions.archetype holds these exact
+// strings, and derive_bill_stance keys the policy-vote division off them.
+const POLICY_ARCHETYPES = [
+    'Reform',
+    'Social Democratic',
+    'Traditional Conservative',
+    'Liberal',
+    'Libertarian',
+    'Communist / Leftist',
+    'Green',
+    'Nationalist',
+    'Populist',
+    'Centrist',
+];
+
+// Toggle an archetype's Support/Oppose membership for one option. The two
+// lists are mutually exclusive: checking a box on one side drops the name
+// from the other (and unchecks its sibling box in the DOM). State is the
+// source of truth; savePolicy reads support_archetypes / oppose_archetypes.
+function toggleArchetypePosition(optIdx, archIdx, side, checked) {
+    const opt = options[optIdx];
+    if (!opt) return;
+    const arch = POLICY_ARCHETYPES[archIdx];
+    if (!arch) return;
+    if (!Array.isArray(opt.support_archetypes)) opt.support_archetypes = [];
+    if (!Array.isArray(opt.oppose_archetypes))  opt.oppose_archetypes = [];
+
+    const thisList  = side === 'support' ? opt.support_archetypes : opt.oppose_archetypes;
+    const otherList = side === 'support' ? opt.oppose_archetypes  : opt.support_archetypes;
+
+    if (checked) {
+        if (!thisList.includes(arch)) thisList.push(arch);
+        // Enforce disjointness — drop from the other side + uncheck its box.
+        const oi = otherList.indexOf(arch);
+        if (oi !== -1) {
+            otherList.splice(oi, 1);
+            const otherSide = side === 'support' ? 'oppose' : 'support';
+            const sibling = document.getElementById(`b-arch-${otherSide}-${optIdx}-${archIdx}`);
+            if (sibling) sibling.checked = false;
+        }
+    } else {
+        const i = thisList.indexOf(arch);
+        if (i !== -1) thisList.splice(i, 1);
+    }
+}
 
 // ==================== AUTH ====================
 async function checkAuth() {
@@ -728,6 +783,15 @@ async function loadPolicyIntoBuilder(p) {
                 .map(r => ({ sector_key: r.sector_key, delta: normalizeWeightDelta(r.delta) }))
                 .filter(r => r.delta !== 0);
 
+            // Party reception. Keep only catalog names; enforce disjointness
+            // on load (Support wins) so a hand-edited row can't show a name
+            // ticked on both sides.
+            const sup = Array.isArray(row.support_archetypes)
+                ? row.support_archetypes.filter(a => POLICY_ARCHETYPES.includes(a)) : [];
+            opt.support_archetypes = sup;
+            opt.oppose_archetypes = Array.isArray(row.oppose_archetypes)
+                ? row.oppose_archetypes.filter(a => POLICY_ARCHETYPES.includes(a) && !sup.includes(a)) : [];
+
             const startingSet = startingByOption.get(row.id);
             if (startingSet) opt.starting_nations = startingSet;
 
@@ -846,6 +910,26 @@ function renderOptionCard(idx) {
                     When this option is active, each sector's election-time weight is <code>weight + delta</code> (integer, floored at 1). Range −5 to +5. Higher weight = that sector pushes harder on TWP / seat allocation. Stacks with other active options. Leave a slider at 0 for no effect.
                 </p>
                 <div id="sector-weight-container-${idx}"></div>
+            </div>
+
+            <div style="${subDivider}">
+                ${subTitle('🗳️', 'Party Reception')}
+                <p style="color:#888; font-size:0.82rem; margin-bottom:12px;">
+                    When this option is proposed as a policy change, each seated party's archetype decides its vote: a <strong style="color:#5fae5f;">Supporting</strong> archetype votes <strong>YES</strong>, an <strong style="color:#cf6b6b;">Opposing</strong> one votes <strong>NO</strong>, and any archetype on neither list rolls <strong>1D2</strong> (1 = YES, 2 = NO). An archetype can't be on both lists.
+                </p>
+                <div style="display:grid; grid-template-columns:1fr auto auto; gap:6px 18px; align-items:center; max-width:480px;">
+                    <div></div>
+                    <div style="font-size:0.72rem; color:#5fae5f; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Support</div>
+                    <div style="font-size:0.72rem; color:#cf6b6b; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Oppose</div>
+                    ${POLICY_ARCHETYPES.map((arch, ai) => {
+                        const sup = Array.isArray(opt.support_archetypes) && opt.support_archetypes.includes(arch);
+                        const opp = Array.isArray(opt.oppose_archetypes)  && opt.oppose_archetypes.includes(arch);
+                        return `
+                        <div style="font-size:0.85rem; color:#ccc;">${escapeHtml(arch)}</div>
+                        <div style="text-align:center;"><input type="checkbox" id="b-arch-support-${idx}-${ai}"${sup ? ' checked' : ''} onchange="toggleArchetypePosition(${idx}, ${ai}, 'support', this.checked)"></div>
+                        <div style="text-align:center;"><input type="checkbox" id="b-arch-oppose-${idx}-${ai}"${opp ? ' checked' : ''} onchange="toggleArchetypePosition(${idx}, ${ai}, 'oppose', this.checked)"></div>`;
+                    }).join('')}
+                </div>
             </div>
 
             <div style="${subDivider}">
@@ -1543,6 +1627,12 @@ async function savePolicy() {
                     sector_rapport_targets: validRapport,
                     sector_turnout_targets: validTurnout,
                     sector_weight_targets: validWeight,
+                    // Party reception. Null when empty (matches the
+                    // committee_proposals convention + the NULL-OK CHECK).
+                    // The UI keeps the lists disjoint; the DB CHECK is the
+                    // backstop.
+                    support_archetypes: Array.isArray(o.support_archetypes) && o.support_archetypes.length ? o.support_archetypes : null,
+                    oppose_archetypes: Array.isArray(o.oppose_archetypes) && o.oppose_archetypes.length ? o.oppose_archetypes : null,
                     is_target_based: true,
                 }
             });
