@@ -233,7 +233,9 @@ BEGIN
                AND abandoned_at IS NULL;
         END IF;
 
-        -- Vacate a held City Council seat back to an NPC.
+        -- Vacate a held City Council seat back to an NPC. Only council
+        -- offices stamp a seat, so skip the cities scan otherwise.
+        IF OLD.politician_office IN ('city_council_member', 'city_council_president') THEN
         SELECT c.* INTO v_city
           FROM cities c
          WHERE c.council @> jsonb_build_array(
@@ -269,21 +271,28 @@ BEGIN
                  WHERE id = v_city.id;
             END IF;
         END IF;
+        END IF;
 
         -- Vacate a held Mayor stamp back to an NPC (matches the
-        -- resolver's mayor-loss eviction in 20270722).
-        UPDATE cities c
-           SET mayor_first_name    = COALESCE(pick_random_pool_name(n.first_name_pool), 'Mayor'),
-               mayor_last_name     = COALESCE(pick_random_pool_name(n.last_name_pool),  'Smith'),
-               mayor_age           = 35 + floor(random() * 31)::int,
-               mayor_archetype     = NULL,
-               mayor_party_id      = NULL,
-               mayor_term_end_tick = NULL
-          FROM nations n
-         WHERE n.id = c.nation_id
-           AND c.mayor_party_id   = OLD.politician_party_id
-           AND c.mayor_first_name = OLD.leader_first_name
-           AND c.mayor_last_name  = OLD.leader_last_name;
+        -- resolver's mayor-loss eviction in 20270722). Gated on actually
+        -- having been a mayor so a non-mayor MP whose name + party
+        -- happen to match a city's mayor stamp is never wrongly evicted.
+        IF OLD.politician_office IN ('mayor', 'mayor_of_capital')
+           OR OLD.politician_mayor_at_tick IS NOT NULL
+           OR OLD.politician_mayor_of_capital_at_tick IS NOT NULL THEN
+            UPDATE cities c
+               SET mayor_first_name    = COALESCE(pick_random_pool_name(n.first_name_pool), 'Mayor'),
+                   mayor_last_name     = COALESCE(pick_random_pool_name(n.last_name_pool),  'Smith'),
+                   mayor_age           = 35 + floor(random() * 31)::int,
+                   mayor_archetype     = NULL,
+                   mayor_party_id      = NULL,
+                   mayor_term_end_tick = NULL
+              FROM nations n
+             WHERE n.id = c.nation_id
+               AND c.mayor_party_id   = OLD.politician_party_id
+               AND c.mayor_first_name = OLD.leader_first_name
+               AND c.mayor_last_name  = OLD.leader_last_name;
+        END IF;
     END IF;
 
     -- One summary career event so the timeline records the handover.
