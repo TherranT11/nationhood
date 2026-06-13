@@ -21695,17 +21695,17 @@ async function processInteriorInfrastructureCompletions(supabase, currentTick) {
 
 const _CAS_PROJECT_SUBTYPE = 'Combined Arms School';
 
-// Combined Arms School completion sweep. Mirrors
-// processInteriorInfrastructureCompletions, but the stat effects
-// land on the ISSUING ARMY FACTION (issuer_faction_id), not the
-// nation — and only if that faction still exists & is active
-// (resign/disband during the 36-month build → skip the buff;
-// product decision "Skip buff, keep the rest"). The build still
-// completes, the corp is still paid via the standard payout_tick,
-// and the $2/tick National Infrastructure upkeep still starts
-// (computeCombinedArmsSchoolUpkeepAnnual keys off the nation).
-// Effects + upkeep read combined_arms_school_spec() — the same
-// single source of truth post_combined_arms_school committed to.
+// Combined Arms School completion sweep — a drain for any schools
+// posted before the military-faction cull (20270905/20270908 dropped
+// the posting RPC, so no new ones can be created). The build still
+// completes, the corp is still paid via the standard payout_tick, and
+// the $2/tick National Infrastructure upkeep still starts
+// (computeCombinedArmsSchoolUpkeepAnnual keys off the nation). The
+// stat-buff branch targets the issuing army faction but can no longer
+// fire — every military faction was abandoned in 20270905 — so it is a
+// no-op kept until in-flight schools clear. Effects + upkeep read
+// combined_arms_school_spec(), the single source of truth for the
+// school's constants.
 async function processCombinedArmsSchoolCompletions(supabase, currentTick) {
     const { data: due, error } = await supabase.from('corp_contracts')
         .select('id, name, issuer_nation_id, issuer_faction_id, expected_finish_tick')
