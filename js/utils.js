@@ -496,6 +496,24 @@ export function cabinetMinisterTitle(politician, ministriesRows) {
     return row ? (CABINET_MINISTER_TITLES[row.ministry_key] || null) : null;
 }
 
+// Fetch-and-resolve the politician's cabinet title in one place — the
+// hero pill (politician-home) and the career H1 (politician-career) both
+// call this, so the active-ministries query + soft-fail live once.
+// Returns the "Minister of …" title or null. supabase is passed in to
+// keep utils dependency-free.
+export async function loadCabinetMinisterTitle(supabase, politician, nationId) {
+    if (!supabase || !politician || !nationId) return null;
+    try {
+        const { data } = await supabase.from('ministries')
+            .select('ministry_key, minister_first_name, minister_last_name, is_active')
+            .eq('nation_id', nationId)
+            .eq('is_active', true);
+        return cabinetMinisterTitle(politician, data || []);
+    } catch (_) {
+        return null;  // display nicety — fall back to office/party/Independent
+    }
+}
+
 // Single-line career standing for politician hero cards (the H1 on
 // politician-career, the hero-career pill on politician-home). Same
 // precedence everywhere it's read: a sitting cabinet minister beats a

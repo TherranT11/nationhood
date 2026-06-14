@@ -901,7 +901,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, cabinetMinisterTitle, currentAge as ageNow, careerYears, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, loadCabinetMinisterTitle, currentAge as ageNow, careerYears, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -2183,16 +2183,7 @@ async function init() {
   // Cabinet standing (party-side ministries table, name-matched like the
   // Head Office gate) so the H1 reads "Minister of …" when this politician
   // holds a cabinet seat. Soft-fails — careerLabel works without it.
-  let cabinetTitle = null;
-  if (ctx.nation?.id) {
-    try {
-      const { data } = await _supabase.from('ministries')
-        .select('ministry_key, minister_first_name, minister_last_name, is_active')
-        .eq('nation_id', ctx.nation.id)
-        .eq('is_active', true);
-      cabinetTitle = cabinetMinisterTitle(ctx.faction, data || []);
-    } catch (_) { /* non-fatal */ }
-  }
+  const cabinetTitle = await loadCabinetMinisterTitle(_supabase, ctx.faction, ctx.nation?.id);
 
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party, cabinetTitle);
   if (resolution) renderResolutionBanner(resolution);
