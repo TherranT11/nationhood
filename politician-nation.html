@@ -317,6 +317,12 @@
 /* Voting panel — chamber vote cards (floor readings, policy
    changes, ambassador confirmations). Design tokens are generic so
    new vote shapes can reuse them. */
+.vote-actions { display:flex; gap:8px; padding:12px 18px 16px; border-top:0.5px solid rgba(255,255,255,0.06); }
+.vote-cast { flex:1; font-size:11px; letter-spacing:0.05em; padding:9px; border-radius:4px; cursor:pointer;
+  background:transparent; border:0.5px solid rgba(255,255,255,0.15); color:#bbb; }
+.vote-cast.yes:hover:not(:disabled), .vote-cast.yes.on { border-color:#6ab07a; color:#8fd49b; background:rgba(106,176,122,0.10); }
+.vote-cast.no:hover:not(:disabled), .vote-cast.no.on { border-color:#c87a7a; color:#e09b9b; background:rgba(200,122,122,0.10); }
+.vote-cast:disabled { opacity:0.5; cursor:default; }
 .vote-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07);
   border-radius:7px; overflow:hidden; border-left:3px solid #a0c0d0;
   margin-bottom:10px; }
@@ -884,6 +890,8 @@ async function init() {
   // build until expand. Both fire-and-forget — failures render an
   // empty state in their own section without blocking the page.
   _viewerMyPartyId = ctx.faction?.politician_party_id || null;
+  _viewerOffice    = ctx.faction?.politician_office || null;
+  _viewerPolId     = ctx.faction?.id || null;
   _viewerNation    = nation;
   _viewerPm        = pmMinistry;
   renderElections(nation, Number(ctx.shard?.current_tick) || 0);
@@ -1028,6 +1036,8 @@ function renderSpecialElectionRow(race, pol, partyById, currentTick) {
 // call may finish before or after, so the body falls back to a
 // Loading placeholder until data settles).
 let _viewerMyPartyId = null;
+let _viewerOffice    = null;
+let _viewerPolId     = null;
 let _viewerNation    = null;
 let _viewerPm        = null;
 
@@ -1324,8 +1334,44 @@ async function loadVoting(nationId, currentTick) {
   if (pErr) console.warn('politician-nation: parties for voting fetch failed', pErr);
   const partyRows = parties || [];
 
-  host.innerHTML = readings.map(v => renderFloorVoteCard(v, partyRows, currentTick)).join('')
+  // The viewer's own floor votes — full/senior MPs vote on bills (20270922).
+  const isMP = _viewerOffice === 'full_mp' || _viewerOffice === 'senior_mp';
+  const myFloorVotes = new Map();
+  if (isMP && _viewerPolId && readings.length) {
+    const { data: mine, error: mErr } = await _supabase.from('floor_vote_votes')
+      .select('floor_vote_id, position')
+      .eq('politician_id', _viewerPolId)
+      .in('floor_vote_id', readings.map(v => v.id));
+    if (mErr) console.warn('politician-nation: own floor votes fetch failed', mErr);
+    (mine || []).forEach(r => myFloorVotes.set(r.floor_vote_id, r.position));
+  }
+
+  host.innerHTML = readings.map(v => renderFloorVoteCard(v, partyRows, currentTick, isMP, myFloorVotes.get(v.id))).join('')
     + confVotes.map(v => renderAmbassadorVoteCard(v, partyRows, currentTick)).join('') + footer;
+
+  // Wire the MP vote buttons (floor votes only).
+  host.querySelectorAll('.vote-cast').forEach(btn =>
+    btn.addEventListener('click', () => castFloorVote(btn, nationId, currentTick)));
+}
+
+// An MP casts (or changes) their vote on a nation-page bill, then the
+// section reloads to reflect the live division + their selection.
+async function castFloorVote(btn, nationId, currentTick) {
+  const fvId = btn.dataset.fv, pos = btn.dataset.pos;
+  const card = btn.closest('.vote-card');
+  if (card) card.querySelectorAll('.vote-cast').forEach(b => { b.disabled = true; });
+  try {
+    const { data, error } = await _supabase.rpc('cast_floor_vote', { p_floor_vote_id: fvId, p_position: pos });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = { not_mp: 'Only full and Senior MPs can vote.', vote_closed: 'This vote has closed.',
+                  wrong_nation: 'You can only vote in your own nation.', no_politician: 'No politician on this account.' };
+      throw new Error(R[data?.reason] || data?.reason || 'failed');
+    }
+  } catch (e) {
+    alert('Could not cast vote: ' + (e?.message || e));
+  }
+  await loadVoting(nationId, currentTick);
 }
 
 // Ambassador confirmation votes (20270869) — the division was
@@ -1343,22 +1389,22 @@ function renderAmbassadorVoteCard(v, partyRows, currentTick) {
 // banks YES, support/oppose archetypes divide, neutral blocs roll
 // 1D2. Policy votes carry category='policy' and flip the active law
 // on pass instead of entering a Code.
-function renderFloorVoteCard(v, partyRows, currentTick) {
+function renderFloorVoteCard(v, partyRows, currentTick, votable, myVote) {
   const sponsor = v.sponsor_name ? ` &middot; sponsored by ${escHtml(v.sponsor_name)}` : '';
   if (v.category === 'policy') {
     return chamberVoteCardHtml(
       'CHAMBER VOTE &middot; POLICY CHANGE',
       `${escHtml(v.bill_name)}${sponsor}`,
-      v, partyRows, currentTick);
+      v, partyRows, currentTick, votable, myVote);
   }
   const code = v.category ? v.category.charAt(0).toUpperCase() + v.category.slice(1) : 'Statute';
   return chamberVoteCardHtml(
     'CHAMBER VOTE &middot; FINAL READING',
     `${escHtml(v.bill_name)} <span class="serif">&mdash; ${escHtml(code)} Code</span>${sponsor}`,
-    v, partyRows, currentTick);
+    v, partyRows, currentTick, votable, myVote);
 }
 
-function chamberVoteCardHtml(eyebrow, titleHtml, v, partyRows, currentTick) {
+function chamberVoteCardHtml(eyebrow, titleHtml, v, partyRows, currentTick, votable, myVote) {
   const ticksRemaining = Math.max(0, Number(v.resolve_at_tick) - currentTick);
   const yes = Number(v.yes_seats) || 0;
   const no  = Number(v.no_seats)  || 0;
@@ -1433,6 +1479,11 @@ function chamberVoteCardHtml(eyebrow, titleHtml, v, partyRows, currentTick) {
         <div class="vote-fc-lab">HOW THE PARTIES ARE VOTING</div>
         <div class="vote-fc-grid">${factionRows}</div>
       </div>
+      ${votable ? `
+      <div class="vote-actions">
+        <button type="button" class="vote-cast yes${myVote === 'yes' ? ' on' : ''}" data-fv="${escHtml(v.id)}" data-pos="yes">Vote Yes</button>
+        <button type="button" class="vote-cast no${myVote === 'no' ? ' on' : ''}" data-fv="${escHtml(v.id)}" data-pos="no">Vote No</button>
+      </div>` : ''}
     </div>`;
 }
 
