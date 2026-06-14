@@ -94,6 +94,12 @@
 
     <div class="vola-campaign" id="campaign"></div>
 
+    <div class="section-head">Hosting</div>
+    <div class="panel" id="hosting"></div>
+
+    <div class="section-head">Qualifier Round</div>
+    <div class="panel" id="qualifiers"></div>
+
     <div class="section-head">Group Stage</div>
     <div class="group-grid" id="groups"></div>
 
@@ -151,6 +157,8 @@ async function loadCup(usId) {
   if (!latest) {
     document.getElementById('ph-sub').textContent = 'The first Vola World Cup hasn’t been drawn yet.';
     document.getElementById('campaign').style.display = 'none';
+    renderHosting(null, [], usId);
+    renderQualifiers([], usId);
     renderGroups([], [], usId);
     renderKnockout([], usId);
     renderStandings([], usId);
@@ -158,7 +166,7 @@ async function loadCup(usId) {
   }
   const cup = latest.cup_number;
 
-  const [groupsRes, matchesRes, koRes, standRes] = await Promise.all([
+  const [groupsRes, matchesRes, koRes, standRes, placeRes] = await Promise.all([
     _supabase.from('vola_cup_groups')
       .select('nation_id, group_letter, seed_rank, qualified_via, nation:nations!nation_id(name)')
       .eq('cup_number', cup).order('group_letter').order('seed_rank'),
@@ -171,28 +179,40 @@ async function loadCup(usId) {
     _supabase.from('vola_cup_final_standings')
       .select('nation_id, final_position, eliminated_at, nation:nations!nation_id(name)')
       .eq('cup_number', cup).order('final_position'),
+    _supabase.from('vola_placement_matches')
+      .select('match_number, scheduled_tick, team_a_score, team_b_score, team_a_nation_id, team_b_nation_id, winner_nation_id, team_a:nations!team_a_nation_id(name), team_b:nations!team_b_nation_id(name)')
+      .eq('cup_number', cup).order('match_number'),
   ]);
-  for (const r of [groupsRes, matchesRes, koRes, standRes]) { if (r.error) throw r.error; }
+  for (const r of [groupsRes, matchesRes, koRes, standRes, placeRes]) { if (r.error) throw r.error; }
   const groups    = groupsRes.data  || [];
   const matches   = matchesRes.data || [];
   const knockout  = koRes.data      || [];
   const standings = standRes.data   || [];
+  const placement = placeRes.data   || [];
 
-  // Host — defensive: vola_cup_hosts predates the RLS pass, so a denied
-  // read just drops the host line rather than failing the page.
-  let hostName = null;
+  // Host + bidding race (vola_cup_hosts / vola_host_bids — both
+  // authenticated-read, 20260920). Defensive: a read hiccup just drops
+  // the hosting panel rather than failing the page.
+  let host = null, bids = [];
   try {
-    const { data: host } = await _supabase.from('vola_cup_hosts')
-      .select('host_nation_id, nation:nations!host_nation_id(name)')
-      .eq('cup_number', cup).maybeSingle();
-    hostName = host?.nation?.name || null;
-  } catch (_) { /* omit host */ }
+    const [hRes, bRes] = await Promise.all([
+      _supabase.from('vola_cup_hosts')
+        .select('host_nation_id, home_advantage, winning_score, nation:nations!host_nation_id(name)')
+        .eq('cup_number', cup).maybeSingle(),
+      _supabase.from('vola_host_bids')
+        .select('nation_id, bid_score, won, nation:nations!nation_id(name)')
+        .eq('cup_number', cup).order('bid_score', { ascending: false }),
+    ]);
+    host = hRes.data || null;
+    bids = bRes.data || [];
+  } catch (_) { /* omit hosting panel */ }
 
   const champion = standings.find(s => s.final_position === 1);
   const mine     = groups.find(g => g.nation_id === usId);
   const myStand  = standings.find(s => s.nation_id === usId);
 
   // ── Header sub-line ──
+  const hostName = host?.nation?.name || null;
   document.getElementById('ph-sub').innerHTML =
     `Cup <b>#${cup}</b>${hostName ? ` · Hosted by <b>${esc(hostName)}</b>` : ''} · ` +
     (champion ? `Champions: <b>${esc(champion.nation?.name || '—')}</b>` : '<b>In progress</b>');
@@ -216,6 +236,8 @@ async function loadCup(usId) {
     campaignEl.innerHTML = 'Your national team did not qualify for this cup. The next cycle is the road back.';
   }
 
+  renderHosting(host, bids, usId);
+  renderQualifiers(placement, usId);
   renderGroups(groups, matches, usId);
   renderKnockout(knockout, usId);
   renderStandings(standings, usId);
@@ -294,6 +316,36 @@ function renderGroups(groups, matches, usId) {
       ${fixturesHtml}
     </div>`;
   }).join('');
+}
+
+function renderHosting(host, bids, usId) {
+  const el = document.getElementById('hosting');
+  if (!host || !host.host_nation_id) {
+    el.innerHTML = '<div class="empty">The host hasn’t been awarded yet.</div>';
+    return;
+  }
+  const score = host.winning_score != null ? ` · winning bid ${Math.round(host.winning_score)}` : '';
+  const hostRow = `<div class="vrow${host.host_nation_id === usId ? ' us' : ''}">
+    <span>🏟️ ${nm(host.nation, host.host_nation_id, usId)} — host nation</span>
+    <span class="score">+${host.home_advantage} home${score}</span>
+  </div>`;
+  // Optional bidding race — every nation that bid to host, strongest first.
+  const bidRows = bids.length ? '<div class="fix-head">Host bids</div>' + bids.map(b => `
+    <div class="vrow${b.nation_id === usId ? ' us' : ''}">
+      <span>${nm(b.nation, b.nation_id, usId)}${b.won ? ' · won' : ''}</span>
+      <span class="score">${b.bid_score != null ? Math.round(b.bid_score) : '—'}</span>
+    </div>`).join('') : '';
+  el.innerHTML = hostRow + bidRows;
+}
+
+function renderQualifiers(placement, usId) {
+  const el = document.getElementById('qualifiers');
+  if (!placement.length) {
+    el.innerHTML = '<div class="empty">No qualifier round this cycle.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="qual-note">Bottom-three play-in round — fills the final two group slots.</div>'
+    + placement.map(m => matchRow(m, usId)).join('');
 }
 
 function renderKnockout(knockout, usId) {
