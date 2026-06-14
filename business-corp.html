@@ -1060,6 +1060,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // via corp-blueprints.js). Every corp starts at its industry's
     // entry tier; these baselines are display copy until upgrade
     // mechanics land (tier state moves to columns then).
+    // One source for an asset card's chrome — automotive/construction
+    // (with an effect line) and banking (without) both build from it.
+    const dpCard = (dept, tier, desc, effect) => `<div class="dp-card">
+        <div class="dp-id">
+          <div class="dp-dept">${esc(dept)}</div>
+          <div class="dp-tier">${esc(tier)}</div>
+        </div>
+        <div class="dp-desc">${esc(desc)}</div>
+        ${effect ? `<div class="dp-effect">${esc(effect)}</div>` : ''}
+      </div>`;
     let depts = DEPARTMENTS[corp.industry];
     if (depts) {
       // HEAVY EQUIPMENT and PROJECT MANAGEMENT render the corp's
@@ -1088,14 +1098,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
       });
       document.getElementById('bc-departments').innerHTML =
         '<div class="dp-grid">' + depts.map(d => d
-          ? `<div class="dp-card">
-              <div class="dp-id">
-                <div class="dp-dept">${esc(d.dept)}</div>
-                <div class="dp-tier">${esc(d.tier)}</div>
-              </div>
-              <div class="dp-desc">${esc(d.desc)}</div>
-              <div class="dp-effect">${esc(d.effect)}</div>
-            </div>`
+          ? dpCard(d.dept, d.tier, d.desc, d.effect)
           : `<div class="dp-card empty" title="Coming soon">
               <div class="soon">(To be chartered)</div>
             </div>`).join('') + '</div>';
@@ -1105,17 +1108,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
       // (single source: BANK_ASSETS, 20270896) — per-level name as the
       // tier line, the what-it-does blurb as the card description.
       document.getElementById('bc-departments').innerHTML =
-        '<div class="dp-grid">' + BANK_ASSETS.map(([key, label, col, desc, names]) => {
+        '<div class="dp-grid">' + BANK_ASSETS.map(([, label, col, desc, names]) => {
           const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
           const lvl = tier === 0 ? 'Not built'
             : `Level ${BANK_ASSET_TIER_ROMAN[tier - 1]} · ${names[tier - 1] || `Level ${tier}`}`;
-          return `<div class="dp-card">
-              <div class="dp-id">
-                <div class="dp-dept">${esc(label)}</div>
-                <div class="dp-tier">${esc(lvl)}</div>
-              </div>
-              <div class="dp-desc">${esc(desc)}</div>
-            </div>`;
+          return dpCard(label, lvl, desc);
         }).join('') + '</div>';
     }
 
