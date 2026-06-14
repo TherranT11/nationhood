@@ -407,26 +407,21 @@ function leaderRow(role, title, name, age) {
   </div>`;
 }
 
-// Cabinet roster — one card per major ministry (ministry · minister ·
-// party tag). The Head of Government and Head of State sit in the
-// Leadership panel up top, not here. Foreign Affairs & Trade reads the
-// dedicated Foreign Minister post (politician_foreign_minister_at_tick,
-// the single source on the politician side), falling back to the
-// ministries 'foreign'/'foreign_affairs' row for nations where an NPC
-// holds it. The other three majors read the ministries table directly.
-// A missing holder reads "Vacant".
-const CABINET_POSTS = [
-  { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade' },
-  { key: 'interior',             label: 'Interior' },
-  { key: 'economic_development', label: 'Economic Development' },
-  { key: 'defense',              label: 'Defense' },
+// The four major ministries, in display order — `label` titles the
+// Cabinet roster card, `name` titles the dedicated container below.
+// (Head of Government and Head of State sit in the Leadership panel up
+// top, not in the cabinet.)
+const MINISTRIES = [
+  { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade', name: 'Foreign Affairs and Trade Ministry' },
+  { key: 'economic_development', label: 'Economic Development',       name: 'Ministry of Economic Development' },
+  { key: 'interior',             label: 'Interior',                   name: 'Ministry of the Interior' },
+  { key: 'defense',              label: 'Defense',                    name: 'Ministry of Defense' },
 ];
 
-// Ministry action containers — a ministry listed here renders as a wide
-// card carrying its per-turn tools. `chip` is the head's top-right status
-// (e.g. the foreign minister's one action per turn); an action's `meta`
-// is a small note (e.g. a cooldown). All display-only for now — none of
-// these are wired.
+// Per-ministry actions, keyed by ministry. `chip` is the container
+// head's top-right status (e.g. the foreign minister's one action per
+// turn); an action's `meta` is a small note (e.g. a cooldown). All
+// display-only for now — none of these are wired.
 const MINISTRY_ACTIONS = {
   foreign_affairs: {
     chip: '1 Action Remaining',
@@ -445,15 +440,6 @@ const MINISTRY_ACTIONS = {
     }],
   },
 };
-
-// The dedicated ministry containers beneath the Cabinet roster — full
-// display name + that ministry's actions (from MINISTRY_ACTIONS).
-const MINISTRY_CONTAINERS = [
-  { key: 'foreign_affairs',      name: 'Foreign Affairs and Trade Ministry' },
-  { key: 'economic_development', name: 'Ministry of Economic Development' },
-  { key: 'interior',             name: 'Ministry of the Interior' },
-  { key: 'defense',              name: 'Ministry of Defense' },
-];
 
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
@@ -504,12 +490,12 @@ async function renderCabinet(nation) {
       return `<span class="cab-party" style="color:${color}">${escapeHtml(party.faction_name || 'Party')}</span>`;
     };
 
-    host.innerHTML = CABINET_POSTS.map(p => {
-      const name = nameFor(p.key);
+    host.innerHTML = MINISTRIES.map(m => {
+      const name = nameFor(m.key);
       const nameHtml = name ? escapeHtml(name) : `<span class="cab-vacant">Vacant</span>`;
-      const tag = partyTagFor(p.key);
+      const tag = partyTagFor(m.key);
       return `<div class="cab-card">
-        <div class="cab-title">${escapeHtml(p.label)}</div>
+        <div class="cab-title">${escapeHtml(m.label)}</div>
         <div class="cab-holder">${nameHtml}</div>
         ${tag ? `<div class="cab-party-row">${tag}</div>` : ''}
       </div>`;
@@ -527,7 +513,7 @@ async function renderCabinet(nation) {
 function renderMinistries() {
   const host = document.getElementById('ministry-containers');
   if (!host) return;
-  host.innerHTML = MINISTRY_CONTAINERS.map(m => {
+  host.innerHTML = MINISTRIES.map(m => {
     const act = MINISTRY_ACTIONS[m.key];
     const chip = act?.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : '';
     const body = act
