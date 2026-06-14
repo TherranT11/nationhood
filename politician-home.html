@@ -1316,7 +1316,7 @@
   <div class="section-heading" style="margin-top:28px;">
     <span class="roman">II.</span>
     <span class="sans">Current</span>
-    <span class="serif">Affiliation</span>
+    <span class="serif">Office</span>
   </div>
   <div id="affiliation-host"></div>
   <div id="foreign-affiliation-host"></div>
@@ -3283,6 +3283,28 @@ function renderPartyMembership(ctx) {
 function renderAffiliation(ctx) {
   const host = document.getElementById('affiliation-host');
   if (!host) return;
+
+  // A Cabinet seat (ministries table — e.g. Minister of Foreign Affairs &
+  // Trade, name-matched the same way the Head Office gate matches) is the
+  // headline Office. It takes precedence over the civil-service /
+  // appointment card so this container agrees with the hero, and links
+  // straight to Head Office. cabinetTitle is loaded in init() before this.
+  if (cabinetTitle) {
+    host.innerHTML = `
+      <div class="affil var-civ">
+        <div class="ah-row">
+          <div class="ah-badge">🏛</div>
+          <div class="ah-info">
+            <div class="ah-eyebrow">CABINET</div>
+            <div class="ah-name">${escHtml(cabinetTitle)}</div>
+            <div class="ah-desc">You hold a seat in the Cabinet — the nation's government. Head Office is open to you.</div>
+          </div>
+          <a class="ah-cta" href="cabinet-office.html" style="align-self:flex-start;">HEAD OFFICE</a>
+        </div>
+      </div>`;
+    return;
+  }
+
   const office     = ctx.faction?.politician_office       || null;
   const ministry   = ctx.faction?.politician_ministry     || null;
   const barNation  = ctx.faction?.bar_admitted_nation_id  || null;
