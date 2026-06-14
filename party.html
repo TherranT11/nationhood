@@ -644,7 +644,7 @@ async function renderOpenMotion(host, party, motion, isMine) {
         <div class="ncv-name">${escHtml(motion.challenger_name)}</div><div class="ncv-role">Challenger</div>
         <div class="ncv-tally">${chalW}</div></div>
     </div>
-    <div class="ncv-sub">Weighted member votes so far. The party's NPC members decide the rest from the leader's standing when this resolves in <b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'}.</div>
+    <div class="ncv-sub">Weighted member votes so far. The party's NPC members decide the rest from the leader's standing when this resolves ${ticksLeft === 0 ? '<b>imminently</b>' : `in <b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'}`}.</div>
     ${isMine ? `<div class="ncv-actions">
       <button class="ncv-vote${myVote === 'leader' ? ' on' : ''}" data-choice="leader">Back the leader</button>
       <button class="ncv-vote chal${myVote === 'challenger' ? ' on' : ''}" data-choice="challenger">Back ${escHtml(motion.challenger_name)}</button>
@@ -656,12 +656,15 @@ async function renderOpenMotion(host, party, motion, isMine) {
 }
 
 function ncvResultLine(motion) {
+  // Final weighted tally (NPC bloc + member votes), cached on the motion.
+  const tally = (motion.challenger_support != null && motion.leader_support != null)
+    ? ` (${Math.round(motion.challenger_support)}–${Math.round(motion.leader_support)})` : '';
   if (motion.status === 'passed') {
-    return `<div class="ncv-result">${escHtml(motion.challenger_name)} won a vote of no confidence and now leads the party.</div>`;
+    return `<div class="ncv-result">${escHtml(motion.challenger_name)} won a vote of no confidence${tally} and now leads the party.</div>`;
   }
   if (motion.status === 'failed') {
     const leaderName = [motion.leader_first_name, motion.leader_last_name].filter(Boolean).join(' ') || 'the leader';
-    return `<div class="ncv-result">The last vote of no confidence failed — ${escHtml(leaderName)} kept the leadership.</div>`;
+    return `<div class="ncv-result">The last vote of no confidence failed${tally} — ${escHtml(leaderName)} kept the leadership.</div>`;
   }
   return '';
 }

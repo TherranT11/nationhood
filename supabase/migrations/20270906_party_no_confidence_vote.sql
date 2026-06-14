@@ -150,18 +150,27 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'reason', 'insufficient_capital',
                                   'needed', NCV_FILE_COST);
     END IF;
+
+    -- Insert the motion first (catching the rare race that slips past the
+    -- EXISTS check) so a loser charges no cost; the partial unique index
+    -- party_ncv_one_open_per_party is the real one-open-at-a-time guard.
+    BEGIN
+        INSERT INTO party_no_confidence_motions (
+            party_faction_id, nation_id, challenger_faction_id, challenger_name,
+            leader_first_name, leader_last_name, opened_at_tick, resolve_tick)
+        VALUES (
+            p_party_id, v_party.nation_id, v_me.id,
+            TRIM(COALESCE(v_me.leader_first_name,'') || ' ' || COALESCE(v_me.leader_last_name,'')),
+            v_party.leader_first_name, v_party.leader_last_name,
+            v_tick, v_tick + NCV_WINDOW_TICKS)
+        RETURNING id INTO v_motion_id;
+    EXCEPTION WHEN unique_violation THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'already_open');
+    END;
+
+    -- Charge the filing cost now that the motion is secured.
     UPDATE factions SET political_capital = political_capital - NCV_FILE_COST
      WHERE id = v_me.id;
-
-    INSERT INTO party_no_confidence_motions (
-        party_faction_id, nation_id, challenger_faction_id, challenger_name,
-        leader_first_name, leader_last_name, opened_at_tick, resolve_tick)
-    VALUES (
-        p_party_id, v_party.nation_id, v_me.id,
-        TRIM(COALESCE(v_me.leader_first_name,'') || ' ' || COALESCE(v_me.leader_last_name,'')),
-        v_party.leader_first_name, v_party.leader_last_name,
-        v_tick, v_tick + NCV_WINDOW_TICKS)
-    RETURNING id INTO v_motion_id;
 
     -- Challenger auto-votes for themselves.
     INSERT INTO party_no_confidence_votes (motion_id, voter_faction_id, choice, weight)
