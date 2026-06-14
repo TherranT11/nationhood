@@ -807,7 +807,7 @@ async function fileNoConfidence(party) {
     await renderNoConfidence(party, true);
   } catch (e) {
     alert('Could not file: ' + (e?.message || e));
-    if (btn) { btn.disabled = false; btn.textContent = 'Vote of No Confidence'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Challenge Party Leadership'; }
   }
 }
 
