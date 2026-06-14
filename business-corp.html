@@ -898,7 +898,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     // Bank assets (20270896) — the 5 upgradeable banking assets: factions
     // column, label, blurb, and per-level names. Single source of truth
-    // for the BANK ASSETS display panel and the Logistical Overhaul modal.
+    // for the asset dp-cards (same format as automotive) and the
+    // Logistical Overhaul modal.
     const BANK_ASSETS = [
       ['branch_network', 'BRANCH NETWORK',    'bank_branch_tier',       'Your share of the nation’s savings pool — 4/8/15/25/40% by level — and how fast deposits drift in.',
         ['The Corner Branch', 'The High Street Offices', 'The Regional Network', 'The National Institution', 'The Pillar of the Republic']],
@@ -1099,6 +1100,23 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="soon">(To be chartered)</div>
             </div>`).join('') + '</div>';
 
+    } else if (corp.industry === 'banking') {
+      // Banking's five assets render as the SAME dp-cards as automotive
+      // (single source: BANK_ASSETS, 20270896) — per-level name as the
+      // tier line, the what-it-does blurb as the card description.
+      document.getElementById('bc-departments').innerHTML =
+        '<div class="dp-grid">' + BANK_ASSETS.map(([key, label, col, desc, names]) => {
+          const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
+          const lvl = tier === 0 ? 'Not built'
+            : `Level ${BANK_ASSET_TIER_ROMAN[tier - 1]} · ${names[tier - 1] || `Level ${tier}`}`;
+          return `<div class="dp-card">
+              <div class="dp-id">
+                <div class="dp-dept">${esc(label)}</div>
+                <div class="dp-tier">${esc(lvl)}</div>
+              </div>
+              <div class="dp-desc">${esc(desc)}</div>
+            </div>`;
+        }).join('') + '</div>';
     }
 
     // Roles — the corp's job board. Openings will list here and on the
@@ -1521,20 +1539,10 @@ import { CITY_STATS } from './js/game/city-labels.js';
                 </div>`;
         }
         if (corp.industry === 'banking') {
-          // Banks have no blueprints — show the five upgradeable bank
-          // assets and their current level instead.
-          document.getElementById('bc-blueprints').innerHTML = `
-            <div class="rl-panel">
-              <div class="ea-head"><span class="rule"></span><span class="t">BANK ASSETS</span><span class="rule"></span></div>
-              <div class="bp-grid" style="grid-template-columns:1.1fr 1.4fr 2.2fr;">
-                <div class="h">ASSET</div><div class="h">LEVEL</div><div class="h">WHAT IT DOES</div>
-                ${BANK_ASSETS.map(([key, label, col, desc, names]) => {
-                  const tier = Math.min(Math.max(Number(corp[col]) || 0, 0), 5);
-                  const lvl = tier === 0 ? 'Not built' : `${BANK_ASSET_TIER_ROMAN[tier - 1]} · ${esc(names[tier - 1] || `Level ${tier}`)}`;
-                  return `<div class="c nm">${esc(label)}</div><div class="c">${lvl}</div><div class="c">${esc(desc)}</div>`;
-                }).join('')}
-              </div>
-            </div>`;
+          // Banks have no blueprints/models — their five assets render as
+          // dp-cards in the DEPARTMENTS section above (same format as
+          // automotive, 20270896), so this slot stays empty.
+          document.getElementById('bc-blueprints').innerHTML = '';
         } else {
           document.getElementById('bc-blueprints').innerHTML = `
             <div class="rl-panel">
