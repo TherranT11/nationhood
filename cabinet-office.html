@@ -63,6 +63,7 @@
   .leader-name{font-size:14px;font-weight:600;color:#fff;}
   .leader-name .age{color:var(--mut);font-weight:400;}
   .leader-name .leader-vacant{color:var(--faint);font-weight:400;font-style:italic;}
+  .tag{font-family:monospace;font-size:9px;letter-spacing:0.04em;color:var(--mut);font-weight:400;}
 
   /* Cabinet — one roster card per major ministry: ministry · minister ·
      party tag. (HoG/HoS live in the Leadership panel up top.) */
@@ -252,6 +253,37 @@ const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign'];
 // falls back to white (mirrors first-steps / politician-nation).
 const safeHexColor = (c) => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#fff';
 
+// Player-vs-NPC: a faction a human controls has a last_seen_tick (set on
+// every app load, js/common.js) or a linked_user_id; NPCs never log in,
+// so both stay null. We build a name set of the nation's player
+// politicians once, then tag any matching name with [player].
+let playerNames = new Set();
+const normName = (first, last) =>
+  `${(first || '').trim().toLowerCase()}|${(last || '').trim().toLowerCase()}`;
+function playerTag(first, last) {
+  const k = normName(first, last);
+  return (k !== '|' && playerNames.has(k)) ? ' <span class="tag">[player]</span>' : '';
+}
+async function fetchPlayerNames(nationId) {
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('leader_first_name, leader_last_name, linked_user_id, last_seen_tick')
+      .eq('nation_id', nationId).eq('faction_type', 'politician')
+      .is('abandoned_at', null);
+    if (error) throw error;
+    const set = new Set();
+    for (const f of (data || [])) {
+      if (f.linked_user_id != null || f.last_seen_tick != null) {
+        set.add(normName(f.leader_first_name, f.leader_last_name));
+      }
+    }
+    return set;
+  } catch (e) {
+    console.warn('cabinet-office: player names fetch failed', e?.message || e);
+    return new Set();
+  }
+}
+
 async function init() {
   let ctx = null;
   try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
@@ -316,9 +348,12 @@ async function init() {
     return;
   }
 
-  // Resolve the focus first — both the focus box and the ministries'
-  // per-turn action counts read it.
-  nationalFocus = await fetchNationalFocus(nation.id);
+  // Resolve the focus and the player-name set first — the leadership,
+  // cabinet, focus box and ministries all read them.
+  [nationalFocus, playerNames] = await Promise.all([
+    fetchNationalFocus(nation.id),
+    fetchPlayerNames(nation.id),
+  ]);
   renderMinistries();
   paintFocus(nation, isPM);
   await Promise.all([
@@ -426,9 +461,11 @@ async function renderLeadership(nation) {
 
     const rows = [];
     if (nation.government_type !== 'Presidential') {
-      rows.push(leaderRow('Head of Government', 'Prime Minister', pmName, pmAge));
+      rows.push(leaderRow('Head of Government', 'Prime Minister', pmName, pmAge,
+        playerTag(hog?.first_name, hog?.last_name)));
     }
-    rows.push(leaderRow('Head of State', hosTitle, hosName, hos ? hos.head_of_state_age : null));
+    rows.push(leaderRow('Head of State', hosTitle, hosName, hos ? hos.head_of_state_age : null,
+      playerTag(hos?.head_of_state_first_name, hos?.head_of_state_last_name)));
     host.innerHTML = rows.join('');
   } catch (err) {
     console.error('cabinet-office: leadership fetch failed', err);
@@ -438,9 +475,9 @@ async function renderLeadership(nation) {
 
 // One leadership row: "{title}: {name} ({age})". Age is parenthesised only
 // when known; a missing holder reads "Vacant".
-function leaderRow(role, title, name, age) {
+function leaderRow(role, title, name, age, tag = '') {
   const detail = name
-    ? `${escapeHtml(title)}: ${escapeHtml(name)}${age != null ? ` <span class="age">(${escapeHtml(String(age))})</span>` : ''}`
+    ? `${escapeHtml(title)}: ${escapeHtml(name)}${age != null ? ` <span class="age">(${escapeHtml(String(age))})</span>` : ''}${tag}`
     : `${escapeHtml(title)}: <span class="leader-vacant">Vacant</span>`;
   return `<div class="leader-row">
     <div class="leader-role">${escapeHtml(role)}</div>
@@ -599,9 +636,16 @@ async function renderCabinet(nation) {
       return `<span class="cab-party" style="color:${color}">${escapeHtml(party.faction_name || 'Party')}</span>`;
     };
 
+    // [player] tag on a minister who is a human player.
+    const ministerPlayerTag = (key) => {
+      if (key === 'foreign_affairs' && fm) return playerTag(fm.leader_first_name, fm.leader_last_name);
+      const r = rowFor(key);
+      return r ? playerTag(r.minister_first_name, r.minister_last_name) : '';
+    };
+
     host.innerHTML = MINISTRIES.map(m => {
       const name = nameFor(m.key);
-      const nameHtml = name ? escapeHtml(name) : `<span class="cab-vacant">Vacant</span>`;
+      const nameHtml = name ? `${escapeHtml(name)}${ministerPlayerTag(m.key)}` : `<span class="cab-vacant">Vacant</span>`;
       const tag = partyTagFor(m.key);
       return `<div class="cab-card" style="border-left-color:${m.color}">
         <div class="cab-title" style="color:${m.color}">${escapeHtml(m.label)}</div>
