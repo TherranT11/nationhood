@@ -13,7 +13,12 @@
 --      'foreign' to that gate's key list so the portfolio opens the door.
 --      party_id is set from his real party membership (he sits with
 --      Partido de la Vanguardia Soberana — read off politician_party_id).
---   2. Deletes his in-flight community-organizer candidacy from
+--   2. Records the appointment in pinned_ministers (20270905) so it
+--      survives re-formation: while PVS keeps the foreign/trade portfolio
+--      the deferred trigger restores Mateo after each formation; if PVS
+--      loses the portfolio the pin retires and the new coalition's
+--      appointee stands. Requires the 20270905 migration to be applied.
+--   3. Deletes his in-flight community-organizer candidacy from
 --      politician_active_election ("auto-resign the office he's running
 --      for"). Held office is left untouched — he's a candidate, not a
 --      sitting community organizer.
@@ -21,13 +26,6 @@
 -- His politician hero / career H1 then reads "Minister of Foreign Affairs
 -- & Trade" via careerLabel() (js/utils.js), which now reads the ministries
 -- table — one source of truth with the Head Office gate.
---
--- KNOWN LIMITATION (durability): the cabinet is owned by government
--- formation. If Sierramar's government RE-FORMS (a nation-level event —
--- not anything Mateo triggers from the politician side), finalize_
--- government_formation repopulates these ministries rows from the
--- governing coalition and will overwrite this manual appointment. It
--- holds until then; re-run this script if a re-formation clears it.
 --
 -- Idempotent. Transactional.
 -- ════════════════════════════════════════════════════════════════════
@@ -98,6 +96,17 @@ BEGIN
                 COALESCE(v_pol.leader_age, 40), 50);
         END IF;
     END LOOP;
+
+    -- ── Register the pins so re-formation honours them (20270905). ──
+    INSERT INTO pinned_ministers (nation_id, ministry_key, party_id, first_name, last_name, age)
+    SELECT v_nation_id, k, v_pol.politician_party_id,
+           v_pol.leader_first_name, v_pol.leader_last_name, v_pol.leader_age
+      FROM unnest(v_keys) AS k
+    ON CONFLICT (nation_id, ministry_key) DO UPDATE
+       SET party_id   = EXCLUDED.party_id,
+           first_name = EXCLUDED.first_name,
+           last_name  = EXCLUDED.last_name,
+           age        = EXCLUDED.age;
 
     -- ── Resign the in-flight community-organizer candidacy. ──
     DELETE FROM politician_active_election
