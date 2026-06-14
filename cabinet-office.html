@@ -86,6 +86,7 @@
   .ston-name{font-size:13px;font-weight:600;color:#fff;line-height:1.25;margin-bottom:6px;}
   .ston-cat{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);
     font-family:monospace;margin-bottom:8px;}
+  .ston-desc{font-size:11px;line-height:1.45;color:var(--mut);margin-bottom:10px;}
   .ston-sev{display:inline-block;font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;
     font-family:monospace;font-weight:700;padding:2px 6px;border-radius:2px;}
   .ston-sev.sev-green { color:var(--pos); border:0.5px solid var(--pos-dim); }
@@ -147,11 +148,6 @@
       </section>
 
       <section class="section">
-        <div class="section-head">Cabinet</div>
-        <div class="cabinet-grid" id="cabinet-grid"></div>
-      </section>
-
-      <section class="section">
         <div class="section-head">State of the Nation</div>
         <div class="ston-grid" id="ston-grid"></div>
       </section>
@@ -159,6 +155,11 @@
       <section class="section">
         <div class="section-head">Domestic Economy</div>
         <div class="comm-grid" id="comm-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">Cabinet</div>
+        <div class="cabinet-grid" id="cabinet-grid"></div>
       </section>
     </div>
   </div>
@@ -464,7 +465,7 @@ async function renderModifiers(nationId) {
   const host = document.getElementById('ston-grid');
   try {
     const { data, error } = await _supabase.from('active_modifiers')
-      .select('modifier_templates ( name, category, severity )')
+      .select('modifier_templates ( name, category, severity, description )')
       .eq('nation_id', nationId);
     if (error) throw error;
     const mods = (data || [])
@@ -478,9 +479,11 @@ async function renderModifiers(nationId) {
     host.innerHTML = mods.map(m => {
       const sev = m.severity || 'green';
       const lab = SEVERITY_LABELS[sev] || sev;
+      const desc = (m.description || '').trim();
       return `<div class="ston-card sev-${escapeHtml(sev)}">
         <div class="ston-name">${escapeHtml(m.name || 'Modifier')}</div>
         <div class="ston-cat">${escapeHtml(m.category || '—')}</div>
+        ${desc ? `<div class="ston-desc">${escapeHtml(desc)}</div>` : ''}
         <span class="ston-sev sev-${escapeHtml(sev)}">${escapeHtml(lab)}</span>
       </div>`;
     }).join('');
