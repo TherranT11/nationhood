@@ -27,11 +27,6 @@
 .career-card__subtitle { font-size:12px; color:#888; line-height:1.5; }
 .career-card__subtitle .note { color:#c87a7a; }
 
-.info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px;
-  padding-top:14px; border-top:0.5px solid rgba(255,255,255,0.06); }
-.info-cell .label { font-size:9px; letter-spacing:0.13em; color:#666; margin-bottom:6px; text-transform:uppercase; }
-.info-cell .value { font-size:18px; font-weight:500; color:#fff; line-height:1.2; }
-.info-cell .sub   { font-size:11px; color:#888; margin-top:4px; line-height:1.4; }
 
 /* Ladders of Power — a section heading + a stack of collapsibles. Each summary
    carries an icon, the ladder's name, and the current rung (or "—") on the
@@ -179,13 +174,8 @@
   .career-card__top { flex-direction:column; gap:12px; }
   .career-card__portrait { width:48px; height:48px; font-size:16px; }
   .career-card__title h1 { font-size:22px; }
-  .info-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-  .info-cell .value { font-size:16px; }
   .ladder summary { padding:12px 14px; gap:8px; }
   .ladder .body { padding:0 14px 14px; }
-}
-@media (max-width:420px) {
-  .info-grid { grid-template-columns:1fr; }
 }
 
 /* ─── Election result banner — sits above the career card after a queued
@@ -672,29 +662,6 @@
         <div class="career-card__subtitle" id="cc-subtitle">—</div>
       </div>
     </div>
-
-    <div class="info-grid">
-      <div class="info-cell">
-        <div class="label">Positions Held</div>
-        <div class="value" id="cc-positions">0</div>
-        <div class="sub"   id="cc-positions-sub">—</div>
-      </div>
-      <div class="info-cell">
-        <div class="label">Affiliations</div>
-        <div class="value" id="cc-affiliations">None</div>
-        <div class="sub"   id="cc-affiliations-sub">no parties, no movements</div>
-      </div>
-      <div class="info-cell">
-        <div class="label">Career Length</div>
-        <div class="value" id="cc-length">0 Years</div>
-        <div class="sub">since founding</div>
-      </div>
-      <div class="info-cell">
-        <div class="label">Term Ends</div>
-        <div class="value" id="cc-term-end">—</div>
-        <div class="sub"   id="cc-term-end-sub">no current term</div>
-      </div>
-    </div>
   </div>
 
   <div class="ladders-heading">
@@ -901,7 +868,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
+import { officeTitle, tickToDate, ministryName, careerLabel, currentAge as ageNow, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -2432,7 +2399,6 @@ function render(politician, shard, nation, party) {
   const office = politician.politician_office || null;
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
   const age = ageNow(politician, shard?.current_tick);
-  const years = careerYears(politician, shard?.current_tick);
   const nationName = nation?.name || 'Unknown';
 
   document.getElementById('cc-portrait').textContent = ini;
@@ -2445,68 +2411,6 @@ function render(politician, shard, nation, party) {
   // gone — party-membership context lives here either way.
   const subtitleTail = party ? ` · member of ${party.faction_name}` : '';
   document.getElementById('cc-subtitle').textContent = `Age ${age} · ${nationName}${subtitleTail}`;
-
-  // Positions held — an elected office or a Foreign Service posting
-  // both count; foreignServiceTitle (utils) is the rank's one source.
-  const fsTitle = foreignServiceTitle(politician);
-  const roleTitle = office ? officeTitle(office) : fsTitle;
-  document.getElementById('cc-positions').textContent = roleTitle ? '1' : '0';
-  document.getElementById('cc-positions-sub').textContent = roleTitle || '—';
-
-  // Affiliations — office · party when office held, else party-only
-  // (or None for independents). Same source as politician-home's hero
-  // affiliation so the two surfaces never disagree. Bar admission is
-  // appended as a separate suffix once the politician passes the
-  // Bar Exam in their current nation, and reflects the HIGHEST
-  // judicial tier they currently hold (Magistrate > State Advocate
-  // > Experienced Advocate > Advocate) via the judicialTitle SoT in
-  // js/utils.js.
-  const judTitle  = judicialTitle(politician, nation?.id);
-  const barSuffix = judTitle ? ` · ${judTitle} of ${nation?.name || 'this nation'}` : '';
-  if (party) {
-    document.getElementById('cc-affiliations').textContent = (roleTitle
-      ? `${roleTitle} · ${party.faction_name}`
-      : party.faction_name) + barSuffix;
-    document.getElementById('cc-affiliations-sub').textContent = 'active affiliation';
-  } else if (judTitle) {
-    document.getElementById('cc-affiliations').textContent = `${judTitle} of ${nation?.name || 'this nation'}`;
-    document.getElementById('cc-affiliations-sub').textContent = judTitle === 'Advocate'
-      ? 'admitted to the bar'
-      : 'judiciary';
-  } else {
-    document.getElementById('cc-affiliations').textContent = 'None';
-    document.getElementById('cc-affiliations-sub').textContent = 'no parties, no movements';
-  }
-
-  document.getElementById('cc-length').textContent = `${years} Year${years === 1 ? '' : 's'}`;
-
-  // Term Ends — single source of truth is termEndTickFor() in
-  // utils.js, the same helper politician-home's affiliation card
-  // calls for its TERM ENDS pill. Pulls per-office term length from
-  // the canonical map (CO/CCM 12, CCP 36, mayor 48, MPs from
-  // nation.next_election_tick). Null endTick → no scheduled end
-  // (party-member fallback, civil service, judiciary) and we keep
-  // the placeholder copy.
-  const currentTick = Number(shard?.current_tick) || 0;
-  // An ambassadorship is a real 60-tick term (20270869) — display
-  // mirror of the server rule, same as the home card's TERM ENDS.
-  const endTick = politician.politician_ambassador_at_tick != null
-    ? Number(politician.politician_ambassador_at_tick) + 60
-    : termEndTickFor({
-        office: politician.politician_office,
-        nextGeneralElectionTick: Number(nation?.next_election_tick) || 0,
-        officeWonAtTick: politician.politician_office_won_at_tick,
-      });
-  const termEndEl = document.getElementById('cc-term-end');
-  const termEndSubEl = document.getElementById('cc-term-end-sub');
-  if (endTick != null) {
-    const remaining = Math.max(0, endTick - currentTick);
-    termEndEl.textContent = tickToDate(endTick);
-    termEndSubEl.textContent = `${remaining} tick${remaining === 1 ? '' : 's'} remaining`;
-  } else {
-    termEndEl.textContent = '—';
-    termEndSubEl.textContent = 'no current term';
-  }
 }
 
 // Pick the ladder ID for the politician's current stacked-section
