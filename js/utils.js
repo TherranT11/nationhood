@@ -457,67 +457,6 @@ export const MINISTRY_BLURBS = {
         `Administers domestic affairs, supervises sub-national government, oversees policing and the civil registry, manages internal security, and coordinates disaster response.`,
 };
 
-// Cabinet (government-formation) ministry_key → standing label for the
-// politician hero/career H1. This is the PARTY-SIDE cabinet seat held in
-// the ministries table (name-matched to the politician) — distinct from
-// the civil-service ladder, where politician_ministry renders "Civil
-// Servant of …". foreign + trade collapse to one portfolio, mirroring
-// cabinet-office.html's merged "Foreign Ministry & Trade". prime_minister
-// is owned by head_of_government, not surfaced here.
-export const CABINET_MINISTER_TITLES = {
-    foreign:        'Minister of Foreign Affairs & Trade',
-    // No 'trade' entry: on the politician side trade is NOT a standalone
-    // ministry — the Foreign Affairs & Trade portfolio covers it (mirrors
-    // MINISTRY_NAMES.foreign_affairs). The trade ministry_key exists only
-    // for the shipping system (exercised businessman-side), never as a
-    // politician-facing "Minister of Trade".
-    defense:        'Minister of Defense',
-    interior:       'Minister of the Interior',
-    finance:        'Minister of Finance',
-    education:      'Minister of Education',
-    healthcare:     'Minister of Healthcare',
-    labor:          'Minister of Labor',
-    justice:        'Minister of Justice',
-    energy:         'Minister of Energy',
-    transportation: 'Minister of Transportation',
-};
-
-// Resolve a politician's sitting cabinet title from active ministries
-// rows for their nation, name-matched exactly as the Head Office gate
-// (cabinet-office.html) matches. Returns a CABINET_MINISTER_TITLES entry
-// or null. Pass the result into careerLabel as the top-precedence
-// standing so the hero pill, the career H1, and the Head Office gate
-// never disagree about who holds a cabinet seat.
-export function cabinetMinisterTitle(politician, ministriesRows) {
-    if (!politician || !Array.isArray(ministriesRows)) return null;
-    const fn = politician.leader_first_name;
-    const ln = politician.leader_last_name;
-    if (!fn || !ln) return null;
-    const row = ministriesRows.find(m =>
-        m && m.is_active !== false &&
-        m.minister_first_name === fn &&
-        m.minister_last_name  === ln);
-    return row ? (CABINET_MINISTER_TITLES[row.ministry_key] || null) : null;
-}
-
-// Fetch-and-resolve the politician's cabinet title in one place — the
-// hero pill (politician-home) and the career H1 (politician-career) both
-// call this, so the active-ministries query + soft-fail live once.
-// Returns the "Minister of …" title or null. supabase is passed in to
-// keep utils dependency-free.
-export async function loadCabinetMinisterTitle(supabase, politician, nationId) {
-    if (!supabase || !politician || !nationId) return null;
-    try {
-        const { data } = await supabase.from('ministries')
-            .select('ministry_key, minister_first_name, minister_last_name, is_active')
-            .eq('nation_id', nationId)
-            .eq('is_active', true);
-        return cabinetMinisterTitle(politician, data || []);
-    } catch (_) {
-        return null;  // display nicety — fall back to office/party/Independent
-    }
-}
-
 // Single-line career standing for politician hero cards (the H1 on
 // politician-career, the hero-career pill on politician-home). Same
 // precedence everywhere it's read: a sitting cabinet minister beats a
@@ -526,9 +465,9 @@ export async function loadCabinetMinisterTitle(supabase, politician, nationId) {
 // on each page with subtly different fallback chains — politician-home
 // didn't even fall through to ministry, so a civil-servant card-
 // carrier would render as just the party name there. SoT here so both
-// surfaces stay locked. ministerTitle (from cabinetMinisterTitle) is
-// optional; callers that don't pass it keep the prior behaviour.
-export function careerLabel(politician, party, ministerTitle = null) {
+// surfaces stay locked. The Foreign Minister post + senior-civil-service /
+// appointed-cabinet titles flow in via appointmentTitle (apptText).
+export function careerLabel(politician, party) {
     const office       = politician?.politician_office  || null;
     const ministrySlug = politician?.politician_ministry || null;
     const officeText   = office ? officeTitle(office) : '';
@@ -539,19 +478,19 @@ export function careerLabel(politician, party, ministerTitle = null) {
     const apptText     = appointmentTitle(politician) || '';
     const judicialText = judicialTitle(politician, politician?.nation_id) || '';
     const fsText = foreignServiceTitle(politician) || '';
-    return ministerTitle || officeText || localExecText || apptText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
+    return officeText || localExecText || apptText || ministryText || judicialText || fsText || party?.faction_name || 'Independent';
 }
 
-/** Highest appointed-canopy / senior-civil-service title the politician
- *  holds, or null. Precedence mirrors the home affiliation card
- *  (politician-home.html ~3294): Deputy Minister (Tier 5) > Junior
- *  Minister (Tier 4) > Permanent Undersecretary (Tier 3) > Agency Head
- *  (Tier 2). All four sit ABOVE the plain "Civil Servant of …" (Tier 1)
- *  label that careerLabel falls through to — without this a Junior
- *  Minister whose politician_ministry is still set read as "Civil
- *  Servant" (the Mateo Paredes bug). One source — careerLabel and the
- *  faction-switcher suffix both read it. */
+/** Highest appointed cabinet / senior-civil-service title the politician
+ *  holds, or null. Precedence: Foreign Minister post (the dedicated
+ *  politician-side Foreign Affairs & Trade post, 20270868 — one per
+ *  nation) > Deputy Minister (Tier 5) > Junior Minister (Tier 4) >
+ *  Permanent Undersecretary (Tier 3) > Agency Head (Tier 2). All sit
+ *  ABOVE the plain "Civil Servant of …" (Tier 1) label careerLabel falls
+ *  through to. ONE source — the hero (careerLabel), the Current Office
+ *  card, and the faction-switcher suffix all read it. */
 export function appointmentTitle(politician) {
+    if (politician?.politician_foreign_minister_at_tick != null) return 'Minister of Foreign Affairs & Trade';
     const dm = politician?.politician_deputy_minister_ministry;
     if (dm) return `Deputy Minister of ${MAJOR_MINISTRY_LABEL[dm] || dm}`;
     const jp = politician?.politician_junior_portfolio;

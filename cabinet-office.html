@@ -205,8 +205,12 @@ async function init() {
     m.minister_first_name === faction.leader_first_name &&
     m.minister_last_name  === faction.leader_last_name
   );
+  // Foreign Minister post (politician_foreign_minister_at_tick, 20270868) —
+  // the dedicated politician-side cabinet post grants Head Office directly,
+  // no ministries-table name-match needed.
+  const isFM = faction.politician_foreign_minister_at_tick != null;
 
-  if (!isPM && !isMinister) {
+  if (!isPM && !isMinister && !isFM) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('locked').style.display = 'block';
     return;
