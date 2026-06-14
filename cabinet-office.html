@@ -64,15 +64,35 @@
   .leader-name .age{color:var(--mut);font-weight:400;}
   .leader-name .leader-vacant{color:var(--faint);font-weight:400;font-style:italic;}
 
-  /* Cabinet — one card per post (Head of Government + the four majors). */
+  /* Cabinet — one card per major ministry (HoG/HoS live in the top
+     Leadership panel). Foreign Affairs & Trade is a wide card that also
+     carries the ministry's per-turn actions. */
   .cabinet-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;}
   .cab-card{padding:12px 14px;background:var(--panel2);border:0.5px solid var(--line);
     border-left:3px solid var(--amber-dim);border-radius:4px;}
+  .cab-card.wide{grid-column:1 / -1;}
   .cab-title{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mut);
     font-family:monospace;font-weight:700;margin-bottom:8px;}
   .cab-holder{font-size:14px;font-weight:600;color:#fff;}
   .cab-holder .age{color:var(--mut);font-weight:400;font-size:12px;}
   .cab-holder .cab-vacant{color:var(--faint);font-weight:400;font-style:italic;}
+  /* Foreign Affairs & Trade — wide card head + per-turn action rows. */
+  .cab-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .cab-actions-left{flex-shrink:0;font-family:monospace;font-size:9px;letter-spacing:0.1em;
+    font-weight:700;color:var(--amber);background:var(--amber-bg);
+    border:0.5px solid var(--amber-dim);border-radius:4px;padding:5px 9px;}
+  .cab-actions{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+  .cab-action{display:flex;align-items:center;justify-content:space-between;gap:14px;
+    padding:12px 14px;background:var(--panel);border:0.5px solid var(--line);border-radius:4px;}
+  .cab-action-info{min-width:0;}
+  .cab-action-name{font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;}
+  .cab-action-desc{font-size:11px;line-height:1.55;color:var(--mut);}
+  .cab-action-meta{margin-top:5px;font-family:monospace;font-size:8.5px;letter-spacing:0.1em;
+    text-transform:uppercase;color:var(--faint);}
+  .cab-action-btn{flex-shrink:0;padding:9px 15px;background:var(--amber-bg);
+    border:0.5px solid var(--amber-dim);border-radius:4px;color:var(--amber);
+    font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
+  .cab-action-btn:hover{background:rgba(200,166,78,0.16);}
 
   /* State of the Nation — compact modifier cards, 4 across (collapses on narrow). */
   .ston-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
@@ -86,6 +106,7 @@
   .ston-name{font-size:13px;font-weight:600;color:#fff;line-height:1.25;margin-bottom:6px;}
   .ston-cat{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);
     font-family:monospace;margin-bottom:8px;}
+  .ston-desc{font-size:11px;line-height:1.45;color:var(--mut);margin-bottom:10px;}
   .ston-sev{display:inline-block;font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;
     font-family:monospace;font-weight:700;padding:2px 6px;border-radius:2px;}
   .ston-sev.sev-green { color:var(--pos); border:0.5px solid var(--pos-dim); }
@@ -147,11 +168,6 @@
       </section>
 
       <section class="section">
-        <div class="section-head">Cabinet</div>
-        <div class="cabinet-grid" id="cabinet-grid"></div>
-      </section>
-
-      <section class="section">
         <div class="section-head">State of the Nation</div>
         <div class="ston-grid" id="ston-grid"></div>
       </section>
@@ -159,6 +175,11 @@
       <section class="section">
         <div class="section-head">Domestic Economy</div>
         <div class="comm-grid" id="comm-grid"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">Cabinet</div>
+        <div class="cabinet-grid" id="cabinet-grid"></div>
       </section>
     </div>
   </div>
@@ -377,29 +398,50 @@ function leaderRow(role, title, name, age) {
   </div>`;
 }
 
-// Cabinet roster — one card per post. Head of Government comes from
-// head_of_government (age off the linked faction). Foreign Affairs & Trade
-// reads the dedicated Foreign Minister post (politician_foreign_minister_at_tick,
-// the single source on the politician side), falling back to the ministries
-// 'foreign'/'foreign_affairs' row for nations where an NPC holds it. The
-// other three majors read the ministries table directly (minister_age
-// stored there). A missing holder reads "Vacant".
+// Cabinet roster — one card per major ministry. The Head of Government
+// and Head of State sit in the Leadership panel up top, not here.
+// Foreign Affairs & Trade reads the dedicated Foreign Minister post
+// (politician_foreign_minister_at_tick, the single source on the
+// politician side), falling back to the ministries 'foreign'/
+// 'foreign_affairs' row for nations where an NPC holds it. The other
+// three majors read the ministries table directly (minister_age stored
+// there). A missing holder reads "Vacant".
 const CABINET_POSTS = [
-  { key: 'head_of_government',   label: 'Head of Government' },
   { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade' },
   { key: 'interior',             label: 'Interior' },
   { key: 'economic_development', label: 'Economic Development' },
   { key: 'defense',              label: 'Defense' },
 ];
 
+// Ministry action containers — a ministry listed here renders as a wide
+// card carrying its per-turn tools. `chip` is the head's top-right status
+// (e.g. the foreign minister's one action per turn); an action's `meta`
+// is a small note (e.g. a cooldown). All display-only for now — none of
+// these are wired.
+const MINISTRY_ACTIONS = {
+  foreign_affairs: {
+    chip: '1 Action Remaining',
+    actions: [{
+      name: 'Trade Mission', btn: 'SET UP',
+      desc: 'Set up a trade mission, determine who will be involved, how long it will take, and who will be discussed.',
+    }],
+  },
+  economic_development: {
+    actions: [{
+      name: 'Produce', btn: 'PRODUCE', meta: '12-tick cooldown',
+      desc: 'Your nation’s major primary industries produce, adding the current production value to their on-hand number.',
+    }, {
+      name: 'FDI', btn: 'FDI',
+      desc: 'Invest into other countries abroad, helping them to develop their national economies and hopefully get a handsome and promised return on investment in the future.',
+    }],
+  },
+};
+
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
   if (!host) return;
   try {
-    const [hogRes, minRes, fmRes] = await Promise.all([
-      _supabase.from('head_of_government')
-        .select('first_name, last_name, faction_id')
-        .eq('nation_id', nation.id).eq('active', true).maybeSingle(),
+    const [minRes, fmRes] = await Promise.all([
       _supabase.from('ministries')
         .select('ministry_key, minister_first_name, minister_last_name, minister_age')
         .eq('nation_id', nation.id).eq('is_active', true),
@@ -409,18 +451,9 @@ async function renderCabinet(nation) {
         .not('politician_foreign_minister_at_tick', 'is', null)
         .is('abandoned_at', null).maybeSingle(),
     ]);
-    const hog = hogRes.data || null;
     const fm  = fmRes.data || null;
     const minByKey = {};
     for (const m of (minRes.data || [])) minByKey[m.ministry_key] = m;
-
-    // HoG age — head_of_government stores none; read the linked faction.
-    let hogAge = null;
-    if (hog && hog.faction_id) {
-      const { data: f } = await _supabase.from('factions')
-        .select('leader_age').eq('id', hog.faction_id).maybeSingle();
-      hogAge = (f && f.leader_age != null) ? f.leader_age : null;
-    }
 
     const fromMinistry = (m) => m
       ? { name: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim(),
@@ -428,11 +461,6 @@ async function renderCabinet(nation) {
       : { name: '', age: null };
 
     const holderFor = (key) => {
-      if (key === 'head_of_government') {
-        return hog
-          ? { name: `${hog.first_name || ''} ${hog.last_name || ''}`.trim(), age: hogAge }
-          : { name: '', age: null };
-      }
       if (key === 'foreign_affairs') {
         if (fm) return { name: `${fm.leader_first_name || ''} ${fm.leader_last_name || ''}`.trim(),
                          age: (fm.leader_age != null) ? fm.leader_age : null };
@@ -446,6 +474,31 @@ async function renderCabinet(nation) {
       const holderHtml = h.name
         ? `${escapeHtml(h.name)}${h.age != null ? ` <span class="age">(${escapeHtml(String(h.age))})</span>` : ''}`
         : `<span class="cab-vacant">Vacant</span>`;
+      // A ministry with defined actions renders as a wide container that
+      // carries its per-turn tools (display-only scaffolds — not wired).
+      const act = MINISTRY_ACTIONS[p.key];
+      if (act) {
+        return `<div class="cab-card wide">
+          <div class="cab-card-head">
+            <div>
+              <div class="cab-title">${escapeHtml(p.label)}</div>
+              <div class="cab-holder">${holderHtml}</div>
+            </div>
+            ${act.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : ''}
+          </div>
+          <div class="cab-actions">
+            ${act.actions.map(a => `
+            <div class="cab-action">
+              <div class="cab-action-info">
+                <div class="cab-action-name">${escapeHtml(a.name)}</div>
+                <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
+                ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
+              </div>
+              <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
+            </div>`).join('')}
+          </div>
+        </div>`;
+      }
       return `<div class="cab-card">
         <div class="cab-title">${escapeHtml(p.label)}</div>
         <div class="cab-holder">${holderHtml}</div>
@@ -464,7 +517,7 @@ async function renderModifiers(nationId) {
   const host = document.getElementById('ston-grid');
   try {
     const { data, error } = await _supabase.from('active_modifiers')
-      .select('modifier_templates ( name, category, severity )')
+      .select('modifier_templates ( name, category, severity, description )')
       .eq('nation_id', nationId);
     if (error) throw error;
     const mods = (data || [])
@@ -478,9 +531,11 @@ async function renderModifiers(nationId) {
     host.innerHTML = mods.map(m => {
       const sev = m.severity || 'green';
       const lab = SEVERITY_LABELS[sev] || sev;
+      const desc = (m.description || '').trim();
       return `<div class="ston-card sev-${escapeHtml(sev)}">
         <div class="ston-name">${escapeHtml(m.name || 'Modifier')}</div>
         <div class="ston-cat">${escapeHtml(m.category || '—')}</div>
+        ${desc ? `<div class="ston-desc">${escapeHtml(desc)}</div>` : ''}
         <span class="ston-sev sev-${escapeHtml(sev)}">${escapeHtml(lab)}</span>
       </div>`;
     }).join('');

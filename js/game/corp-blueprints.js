@@ -529,6 +529,10 @@ export const VEHICLE_CLASS_ANCHORS = {
   luxury: 90000, ultra_luxury: 250000,
 };
 
+// NOTE: this mirrors a Model's INTRINSIC appeal only. The server scales
+// it by vehicle_freshness(age) in _resolve_sales_campaign (20270914) when
+// splitting demand — so if a campaign-modal share preview is ever wired up
+// here, it must apply the same age decay or it will misreport share.
 export function vehicleAppeal(engine, quality, packageCount) {
   const eMod = VEHICLE_ENGINES.find(e => e.value === engine)?.mod ?? 0;
   const qMod = VEHICLE_QUALITY.find(q => q.value === quality)?.mod ?? 0;
