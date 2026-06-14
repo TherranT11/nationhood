@@ -125,7 +125,7 @@ export async function fireBillEvent(supabase, triggerKey, bill, opts = {}) {
 /**
  * Broadcast a hand-written event to every nation (world news). Inserts one
  * event_log row per nation with the supplied description. Mirrors the existing
- * direct-insert pattern in issues.js (startWarFromIssue, spawnIncidentFromIssue)
+ * direct-insert pattern in issues.js (spawnIncidentFromIssue)
  * rather than the templated fire_system_event RPC, because these events are
  * fully composed at the call site and don't need placeholder substitution.
  *

@@ -13,11 +13,11 @@
 --      'foreign' to that gate's key list so the portfolio opens the door.
 --      party_id is set from his real party membership (he sits with
 --      Partido de la Vanguardia Soberana — read off politician_party_id).
---   2. Records the appointment in pinned_ministers (20270905) so it
+--   2. Records the appointment in pinned_ministers (20270911) so it
 --      survives re-formation: while PVS keeps the foreign/trade portfolio
 --      the deferred trigger restores Mateo after each formation; if PVS
 --      loses the portfolio the pin retires and the new coalition's
---      appointee stands. Requires the 20270905 migration to be applied.
+--      appointee stands. Requires the 20270911 migration to be applied.
 --   3. Deletes his in-flight community-organizer candidacy from
 --      politician_active_election ("auto-resign the office he's running
 --      for"). Held office is left untouched — he's a candidate, not a
@@ -97,7 +97,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- ── Register the pins so re-formation honours them (20270905). ──
+    -- ── Register the pins so re-formation honours them (20270911). ──
     INSERT INTO pinned_ministers (nation_id, ministry_key, party_id, first_name, last_name, age)
     SELECT v_nation_id, k, v_pol.politician_party_id,
            v_pol.leader_first_name, v_pol.leader_last_name, v_pol.leader_age

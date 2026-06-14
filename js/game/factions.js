@@ -20,7 +20,7 @@
 // officeTitle resolves a politician_office enum to its display string.
 // Shared with the career-page rungs so a new office value only lands
 // in one place (utils.js OFFICE_TITLES) to flow through both surfaces.
-import { officeTitle, foreignServiceTitle } from '../utils.js';
+import { officeTitle, foreignServiceTitle, appointmentTitle } from '../utils.js';
 
 /**
  * Returns one of 'abandoned' | 'unassigned' | 'banned' | null.
@@ -118,6 +118,13 @@ export function getPoliticianRoleLabel(faction) {
     // automatically. Falsy return ('' from unknown values) collapses to
     // null at the caller's `role ? ...` check.
     if (faction.politician_office) return officeTitle(faction.politician_office) || null;
+    // Appointed canopy / senior civil service (Deputy Minister, Junior
+    // Minister, Permanent Undersecretary, Agency Head) outranks the
+    // plain "Civil Servant" suffix — appointmentTitle (utils) is the one
+    // source shared with careerLabel. Without this an appointed minister
+    // whose politician_ministry is still set read as "Civil Servant".
+    const appt = appointmentTitle(faction);
+    if (appt) return appt;
     if (faction.politician_ministry) return 'Civil Servant';
     // Foreign Service ladder (20270759/65/66/69/70) — lowest-priority
     // suffix, shown when no office / ministry / bar career applies.

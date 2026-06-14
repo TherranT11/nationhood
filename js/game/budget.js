@@ -4,7 +4,6 @@
  */
 
 import { GAME_CONFIG } from './config.js';
-import { unitUpkeepPerTick } from './military-units.js';
 import { DIPLOMACY_CONFIG, RAW_SCALING_DIVISORS } from './diplomacy-constants.js';
 import { MINISTER_APPROVAL_CONFIG } from './stats.js';
 import { hasElectedPresident, isAbsoluteMonarchy } from './government-types.js';
@@ -203,9 +202,6 @@ export async function computeInteriorInfraAnnualCost(supabase, nation) {
 // (from combined_arms_school_spec, $2) every tick, perpetually,
 // surfaced under National Infrastructure. Keyed off the nation (not
 // the issuing faction) so it persists even if that faction is gone.
-// Single source of truth: the client mirror is the army_units-style
-// fetch in loadBudgetData + the National Infrastructure deep-dive
-// row in government.html — both must compute this identically.
 export async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
     if (!nation?.id) return { totalAnnual: 0, count: 0 };
     let perTick = 0;
@@ -240,30 +236,11 @@ export async function computeCombinedArmsSchoolUpkeepAnnual(supabase, nation) {
 // status <> 'Decommissioned' filter is the SAME committed-unit rule
 // create_unit uses for manpower (one definition).
 //
-// Single source of truth: the client mirror is the army_units fetch
-// in loadBudgetData + the Defense & Security deep-dive rows in
-// government.html — both must compute this identically or the panel
-// Balance lies (same contract as activeLawAnnual). Returns the
-// annual scalar (the only value the expenditures sum consumes).
-export async function computeUnitMaintenanceAnnual(supabase, nation) {
-    let perTick = 0;
-    try {
-        const { data: units, error } = await supabase
-            .from('army_units')
-            .select('construction_cost, army:armies(army_type)')
-            .eq('nation_id', nation.id)
-            .neq('status', 'Decommissioned');
-        if (error) {
-            console.warn(`[Budget] army_units fetch failed for ${nation.name}:`, error.message);
-        } else {
-            for (const u of (units || [])) {
-                perTick += unitUpkeepPerTick(u?.construction_cost, u?.army?.army_type);
-            }
-        }
-    } catch (err) {
-        console.warn(`[Budget] army_units threw for ${nation.name}:`, err?.message || err);
-    }
-    return perTick * GAME_CONFIG.TICKS_PER_YEAR; // per-tick → annual abstract $
+// The military faction was retired (2027xxxx): there are no army units
+// to maintain, so unit maintenance is structurally zero. Kept as a
+// function so computePanelAnnualExpenditures' shape is unchanged.
+export async function computeUnitMaintenanceAnnual() {
+    return 0;
 }
 
 /**
@@ -282,8 +259,7 @@ export async function computeUnitMaintenanceAnnual(supabase, nation) {
  *                               contracts of tier.upkeep_per_year
  *                               (small $1 / modest $2 / extravagant $4)
  *   - Public Sector Wages     = (state_apparatus × wages) / 200 × 12
- *   - Unit Maintenance        = Σ max(1, floor(construction_cost/1e6 × 0.25))
- *                               over non-Decommissioned army_units × 12
+ *   - Unit Maintenance        = 0 (army units retired — 20270905)
  *   - Combined Arms School    = (#completed schools) × upkeep_per_tick($2) × 12
  *                               (rolls up under National Infrastructure)
  *

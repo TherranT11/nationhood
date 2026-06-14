@@ -1388,7 +1388,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, loadCabinetMinisterTitle, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, loadCabinetMinisterTitle, appointmentTitle, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
@@ -1457,6 +1457,23 @@ const CAREER_EVENT_TEMPLATES = {
   founded_party: (name, target) => `The ${target || 'new political party'} was established by ${name}.`,
   joined_ngo:    (name, target) => `${name} has registered their membership in the ${target || 'a non-government organisation'}.`,
   founded_ngo:   (name, target) => `The ${target || 'new organisation'} was established by ${name}.`,
+  // 20270907: auto-resign when taking a new career (one affiliation at a
+  // time). metadata.kept_track = the track entered; resigned_tracks = the
+  // ones left behind. Track keys mirror the trigger's labels.
+  auto_resigned_affiliation: (name, target, meta = {}) => {
+    const TRACK = {
+      elected:         'elected office',
+      civil_service:   'the civil service',
+      judicial:        'the bench',
+      foreign_service: 'the foreign service',
+      fis:             'the Federal Investigations Service',
+    };
+    const kept = TRACK[meta.kept_track] || TRACK[target] || 'a new post';
+    const left = Array.isArray(meta.resigned_tracks) && meta.resigned_tracks.length
+      ? meta.resigned_tracks.map(t => TRACK[t] || t).join(' and ')
+      : 'a previous post';
+    return `${name} resigned from ${left} to take up ${kept}.`;
+  },
   // stood_for_election: written by politician_stand_for_election (20270402),
   // politician_register_for_office (20270709/20270712). metadata.race_tier
   // routes the template; falls back to a generic "ran in {target}" line
@@ -2675,10 +2692,9 @@ const AFFIL_VARIANTS = {
     eyebrow: 'CIVIL SERVICE · TIER 3',
     badge:   '⚒',
     name:    'Permanent Undersecretary',
-    nameFn:  (ctx) => {
-      const m = ctx.faction?.politician_permanent_secretary_ministry;
-      return `Permanent Undersecretary of ${MAJOR_MINISTRY_LABEL[m] || m || '—'}`;
-    },
+    // Title string is the one source in utils.appointmentTitle (shared
+    // with careerLabel + the switcher suffix); the card reads from it.
+    nameFn:  (ctx) => appointmentTitle(ctx.faction) || 'Permanent Undersecretary',
     descFn:  (ctx) => {
       const m = ctx.faction?.politician_permanent_secretary_ministry;
       const lbl = MAJOR_MINISTRY_LABEL[m] || m || '—';
@@ -2699,7 +2715,7 @@ const AFFIL_VARIANTS = {
     eyebrow: 'POLITICAL APPOINTMENT · TIER 4',
     badge:   '🏵',
     name:    'Junior Minister',
-    nameFn:  (ctx) => `Junior Minister for ${portfolioLabel(ctx.faction?.politician_junior_portfolio)}`,
+    nameFn:  (ctx) => appointmentTitle(ctx.faction) || 'Junior Minister',
     descFn:  (ctx) => `You hold the <strong>${escHtml(portfolioLabel(ctx.faction?.politician_junior_portfolio))}</strong> portfolio — sub-Cabinet rank. You carry the brief, answer for the Minister when absent, and pilot legislation through the chamber. If the government falls, so does the portfolio.`,
     actions: JUNIOR_MINISTER_ACTIONS,
     // actionsEnabled left undefined → placeholder slots render greyed.
@@ -2712,10 +2728,7 @@ const AFFIL_VARIANTS = {
     eyebrow: 'POLITICAL APPOINTMENT · TIER 5',
     badge:   '🎗',
     name:    'Deputy Minister',
-    nameFn:  (ctx) => {
-      const m = ctx.faction?.politician_deputy_minister_ministry;
-      return `Deputy Minister of ${MAJOR_MINISTRY_LABEL[m] || m || '—'}`;
-    },
+    nameFn:  (ctx) => appointmentTitle(ctx.faction) || 'Deputy Minister',
     descFn:  (ctx) => {
       const m = ctx.faction?.politician_deputy_minister_ministry;
       return `You deputise for the Minister of <strong>${escHtml(MAJOR_MINISTRY_LABEL[m] || m || '—')}</strong> — you own discrete policy areas, sit in Cabinet when they are absent, and represent the ministry externally. If the government falls, so do you.`;
