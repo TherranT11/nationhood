@@ -63,6 +63,7 @@
   .leader-name{font-size:14px;font-weight:600;color:#fff;}
   .leader-name .age{color:var(--mut);font-weight:400;}
   .leader-name .leader-vacant{color:var(--faint);font-weight:400;font-style:italic;}
+  .tag{font-family:monospace;font-size:9px;letter-spacing:0.04em;color:var(--mut);font-weight:400;}
 
   /* Cabinet — one roster card per major ministry: ministry · minister ·
      party tag. (HoG/HoS live in the Leadership panel up top.) */
@@ -97,7 +98,8 @@
   .cab-action-btn{flex-shrink:0;padding:9px 15px;background:var(--amber-bg);
     border:0.5px solid var(--amber-dim);border-radius:4px;color:var(--amber);
     font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
-  .cab-action-btn:hover{background:rgba(200,166,78,0.16);}
+  .cab-action-btn:hover:not(:disabled){background:rgba(200,166,78,0.16);}
+  .cab-action-btn:disabled{opacity:0.4;cursor:default;}
 
   /* National Focus — three exclusive posture cards with a radio circle
      top-right; only the HoG may change focus (the current one's button
@@ -252,6 +254,78 @@ const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign'];
 // falls back to white (mirrors first-steps / politician-nation).
 const safeHexColor = (c) => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#fff';
 
+// Player-vs-NPC: a faction a human controls has a last_seen_tick (stamped
+// on every app load, js/common.js); NPCs never log in, so it stays null.
+// (We read last_seen_tick rather than linked_user_id so we don't surface
+// other players' auth ids.) Build the nation's player-politician name set
+// once, then tag any matching name with [player].
+let playerNames = new Set();
+const normName = (first, last) =>
+  `${(first || '').trim().toLowerCase()}|${(last || '').trim().toLowerCase()}`;
+function playerTag(first, last) {
+  const k = normName(first, last);
+  return (k !== '|' && playerNames.has(k)) ? ' <span class="tag">[player]</span>' : '';
+}
+async function fetchPlayerNames(nationId) {
+  try {
+    const { data, error } = await _supabase.from('factions')
+      .select('leader_first_name, leader_last_name, last_seen_tick')
+      .eq('nation_id', nationId).eq('faction_type', 'politician')
+      .is('abandoned_at', null);
+    if (error) throw error;
+    const set = new Set();
+    for (const f of (data || [])) {
+      if (f.last_seen_tick != null) {
+        set.add(normName(f.leader_first_name, f.leader_last_name));
+      }
+    }
+    return set;
+  } catch (e) {
+    console.warn('cabinet-office: player names fetch failed', e?.message || e);
+    return new Set();
+  }
+}
+
+// Ministry action credits (20270918): the live per-ministry remaining,
+// read via get_ministry_credits and spent via spend_ministry_action. The
+// 7-base allowance, the focus bonus and the January refill all live
+// server-side; the page reads the count, shows it, and greys at 0.
+let ministryCredits = {};
+// Which ministry the viewer heads, so their own actions are clickable.
+// The PM may spend any; everyone else only their own portfolio.
+let viewerMinistryKey = null;
+
+async function fetchMinistryCredits(nationId) {
+  try {
+    const { data, error } = await _supabase.rpc('get_ministry_credits', { p_nation_id: nationId });
+    if (error) throw error;
+    return data || {};
+  } catch (e) {
+    console.warn('cabinet-office: ministry credits fetch failed', e?.message || e);
+    return {};
+  }
+}
+
+async function fetchViewerMinistry(nation, faction, isFM) {
+  if (isFM) return 'foreign_affairs';
+  const fn = (faction?.leader_first_name || '').trim().toLowerCase();
+  const ln = (faction?.leader_last_name || '').trim().toLowerCase();
+  if (!fn && !ln) return null;
+  try {
+    const { data, error } = await _supabase.from('ministries')
+      .select('ministry_key, minister_first_name, minister_last_name')
+      .eq('nation_id', nation.id).eq('is_active', true);
+    if (error) throw error;
+    const hit = (data || []).find(m =>
+      (m.minister_first_name || '').trim().toLowerCase() === fn &&
+      (m.minister_last_name || '').trim().toLowerCase() === ln);
+    return hit?.ministry_key || null;
+  } catch (e) {
+    console.warn('cabinet-office: viewer ministry fetch failed', e?.message || e);
+    return null;
+  }
+}
+
 async function init() {
   let ctx = null;
   try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
@@ -316,10 +390,16 @@ async function init() {
     return;
   }
 
-  // Resolve the focus first — both the focus box and the ministries'
-  // per-turn action counts read it.
-  nationalFocus = await fetchNationalFocus(nation.id);
-  renderMinistries();
+  // Resolve the focus, player-name set, ministry credits and the viewer's
+  // ministry first — the leadership, cabinet, focus box and ministries
+  // all read them.
+  [nationalFocus, playerNames, ministryCredits, viewerMinistryKey] = await Promise.all([
+    fetchNationalFocus(nation.id),
+    fetchPlayerNames(nation.id),
+    fetchMinistryCredits(nation.id),
+    fetchViewerMinistry(nation, faction, isFM),
+  ]);
+  renderMinistries(nation, isPM);
   paintFocus(nation, isPM);
   await Promise.all([
     renderCoalition(nation.id, nation.name),
@@ -426,9 +506,11 @@ async function renderLeadership(nation) {
 
     const rows = [];
     if (nation.government_type !== 'Presidential') {
-      rows.push(leaderRow('Head of Government', 'Prime Minister', pmName, pmAge));
+      rows.push(leaderRow('Head of Government', 'Prime Minister', pmName, pmAge,
+        playerTag(hog?.first_name, hog?.last_name)));
     }
-    rows.push(leaderRow('Head of State', hosTitle, hosName, hos ? hos.head_of_state_age : null));
+    rows.push(leaderRow('Head of State', hosTitle, hosName, hos ? hos.head_of_state_age : null,
+      playerTag(hos?.head_of_state_first_name, hos?.head_of_state_last_name)));
     host.innerHTML = rows.join('');
   } catch (err) {
     console.error('cabinet-office: leadership fetch failed', err);
@@ -438,9 +520,9 @@ async function renderLeadership(nation) {
 
 // One leadership row: "{title}: {name} ({age})". Age is parenthesised only
 // when known; a missing holder reads "Vacant".
-function leaderRow(role, title, name, age) {
+function leaderRow(role, title, name, age, tag = '') {
   const detail = name
-    ? `${escapeHtml(title)}: ${escapeHtml(name)}${age != null ? ` <span class="age">(${escapeHtml(String(age))})</span>` : ''}`
+    ? `${escapeHtml(title)}: ${escapeHtml(name)}${age != null ? ` <span class="age">(${escapeHtml(String(age))})</span>` : ''}${tag}`
     : `${escapeHtml(title)}: <span class="leader-vacant">Vacant</span>`;
   return `<div class="leader-row">
     <div class="leader-role">${escapeHtml(role)}</div>
@@ -538,13 +620,6 @@ const MINISTRY_ACTIONS = {
   },
 };
 
-// A ministry's per-turn action allowance: a base count plus the National
-// Focus grant (Diplomatic → Foreign Affairs, Military → Defense). Ministry
-// actions aren't wired to a real allowance yet, so this drives the
-// container's "N Actions Remaining" chip only.
-const MINISTRY_BASE_ACTIONS = { foreign_affairs: 1 };
-const FOCUS_ACTION_GRANT = { diplomatic: 'foreign_affairs', military: 'defense' };
-
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
   if (!host) return;
@@ -599,9 +674,16 @@ async function renderCabinet(nation) {
       return `<span class="cab-party" style="color:${color}">${escapeHtml(party.faction_name || 'Party')}</span>`;
     };
 
+    // [player] tag on a minister who is a human player.
+    const ministerPlayerTag = (key) => {
+      if (key === 'foreign_affairs' && fm) return playerTag(fm.leader_first_name, fm.leader_last_name);
+      const r = rowFor(key);
+      return r ? playerTag(r.minister_first_name, r.minister_last_name) : '';
+    };
+
     host.innerHTML = MINISTRIES.map(m => {
       const name = nameFor(m.key);
-      const nameHtml = name ? escapeHtml(name) : `<span class="cab-vacant">Vacant</span>`;
+      const nameHtml = name ? `${escapeHtml(name)}${ministerPlayerTag(m.key)}` : `<span class="cab-vacant">Vacant</span>`;
       const tag = partyTagFor(m.key);
       return `<div class="cab-card" style="border-left-color:${m.color}">
         <div class="cab-title" style="color:${m.color}">${escapeHtml(m.label)}</div>
@@ -619,13 +701,18 @@ async function renderCabinet(nation) {
 // per-turn actions inside (display-only scaffolds; none are wired). An
 // optional chip (e.g. the foreign minister's one action per turn) sits
 // top-right of the head.
-function renderMinistries() {
+function renderMinistries(nation, isPM) {
   const host = document.getElementById('ministry-containers');
   if (!host) return;
   host.innerHTML = MINISTRIES.map(m => {
     const act = MINISTRY_ACTIONS[m.key];
-    const acts = (MINISTRY_BASE_ACTIONS[m.key] || 0) + (FOCUS_ACTION_GRANT[nationalFocus] === m.key ? 1 : 0);
-    const chip = acts > 0 ? `<span class="cab-actions-left">${acts} Action${acts === 1 ? '' : 's'} Remaining</span>` : '';
+    const remaining = ministryCredits[m.key];
+    const chip = (remaining != null)
+      ? `<span class="cab-actions-left">${remaining} Action${remaining === 1 ? '' : 's'} Remaining</span>`
+      : '';
+    // The viewer can spend if they're the PM or this ministry's minister,
+    // and there are actions left. The server re-checks on spend.
+    const canSpend = (isPM || m.key === viewerMinistryKey) && remaining > 0;
     const body = act
       ? `<div class="cab-actions">${act.actions.map(a => `
           <div class="cab-action">
@@ -634,7 +721,7 @@ function renderMinistries() {
               <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
               ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
             </div>
-            <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
+            <button type="button" class="cab-action-btn" data-ministry="${escapeHtml(m.key)}"${canSpend ? '' : ' disabled'}>${escapeHtml(a.btn)}</button>
           </div>`).join('')}</div>`
       : `<div class="min-empty">No actions available yet.</div>`;
     return `<section class="section" style="border-left:3px solid ${m.color}">
@@ -642,6 +729,31 @@ function renderMinistries() {
       ${body}
     </section>`;
   }).join('');
+
+  // Spend wiring — clicking an enabled action decrements that ministry's
+  // credits (the action itself isn't wired to an effect yet).
+  host.querySelectorAll('.cab-action-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.ministry;
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('spend_ministry_action',
+          { p_nation_id: nation.id, p_ministry_key: key });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authorized: 'Only this ministry’s minister or the Head of Government can spend its actions.',
+            no_actions: 'No actions remaining this year for this ministry.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        ministryCredits[key] = Number(data.remaining) || 0;
+      } catch (e) {
+        alert('Could not take action: ' + (e?.message || e));
+      }
+      renderMinistries(nation, isPM);  // refresh the chip + grey at 0
+    });
+  });
 }
 
 // National Focus — the administration's posture (Domestic / Diplomatic /
@@ -649,11 +761,12 @@ function renderMinistries() {
 // set_national_focus (20270916): HoG-only, 12-tick cooldown, and a
 // Military posture costs the ruling party 2 approval.
 const FOCUS_OPTIONS = [
-  { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.' },
+  { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.',
+    perk: 'The Ministry of Economic Development and Ministry of the Interior get +1 Action per year.' },
   { key: 'diplomatic', name: 'Diplomatic Focus', desc: 'The administration has a focus on foreign policy abroad.',
-    perk: 'Foreign Affairs and Trade get +1 Action per turn.', effect: '−1% Party Approval' },
+    perk: 'The Foreign Affairs and Trade Ministry get +3 Actions per year.', effect: '−1% Party Approval' },
   { key: 'military',   name: 'Military Focus',    desc: 'The administration has turned its eyes to its military industrial complex.',
-    perk: 'Ministry of Defense gets +1 Action per turn.', effect: '−3% Party Approval' },
+    perk: 'The Ministry of Defense gets +3 Actions per year.', effect: '−3% Party Approval' },
 ];
 let nationalFocus = 'domestic';
 
