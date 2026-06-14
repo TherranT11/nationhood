@@ -544,8 +544,9 @@
   <div class="jm-modal">
     <div class="jm-head"><div class="jm-title">Production <em>Run</em></div></div>
     <div class="jm-body">
-      <div class="db-mech">The Mechanic: optionally assign a free line to a Model, then every
-        assigned line builds 50 vehicles THIS TURN — cash and materials are charged per line as
+      <div class="db-mech">The Mechanic: optionally assign a free line to a Model — a newly
+        assigned line TOOLS UP this turn (no cars) and runs the Model from next turn. Every line
+        already running builds 50 vehicles THIS TURN — cash and materials are charged per line as
         it builds, and the cars land in inventory immediately. Lines the treasury or depot can't
         cover are skipped.</div>
       <div class="jm-lab">ASSEMBLY LINES</div>
@@ -573,7 +574,7 @@
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="vp-cancel">CANCEL</button>
-      <button type="button" class="jm-btn" id="vp-confirm" disabled>ASSIGN AND BUILD</button>
+      <button type="button" class="jm-btn" id="vp-confirm" disabled>ASSIGN &amp; RUN</button>
     </div>
   </div>
 </div>
@@ -3003,13 +3004,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // This turn's plan: every assigned line + the newly picked
         // Model (if a free line can take it), 50 vehicles each.
         function vpPlan() {
-          const bps = vpAssigned.map(r => r.blueprint).filter(Boolean);
-          if (vpModel && vpFreeLines > 0) bps.push(vpModel);
-          return bps;
+          // Only the lines that BUILD this turn. A newly picked Model
+          // tools up first (20270915) — it costs nothing and produces
+          // nothing until next turn — so it's not in the build plan.
+          return vpAssigned.map(r => r.blueprint).filter(Boolean);
         }
 
         function vpRefresh() {
           const plan = vpPlan();
+          const toolingUp = !!(vpModel && vpFreeLines > 0);
           const depotCap = PARTS_DEPOT_CAPS[Math.min(Number(corp.parts_depot_tier) || 1, 5)];
           const total  = plan.reduce((s, b) => s + Math.max(1, Number(b.xp_cost) || 1) * 5000 * PRODUCTION_RATE, 0);
           const alNeed = plan.reduce((s, b) => s + aluminumPerVehicle(b.vehicle_type) * PRODUCTION_RATE, 0);
@@ -3022,12 +3025,16 @@ import { CITY_STATS } from './js/game/city-labels.js';
           document.getElementById('vp-components').innerHTML = plan.length
             ? `Needs ${esc(String(ecNeed))} <span class="${ecOk ? 'dim' : 'bad'}">· ${esc(String(vpComponents))} in the depot (cap ${esc(String(depotCap))})</span>`
             : `${esc(String(vpComponents))} in the depot (cap ${esc(String(depotCap))})`;
-          document.getElementById('vp-total').innerHTML = plan.length
+          const buildNote = plan.length
             ? `${esc(hfFmtBig(total))} for ${plan.length * PRODUCTION_RATE} vehicles across ${plan.length} line${plan.length === 1 ? '' : 's'} <span class="${total <= vpTreasury ? 'dim' : 'bad'}">· ${esc(hfFmtBig(vpTreasury))} in treasury</span>`
-            : '—';
-          // The server skips lines it can't fund, so the only hard
-          // client gate is "there is something to build".
-          document.getElementById('vp-confirm').disabled = plan.length === 0;
+            : (toolingUp ? '' : '—');
+          const toolNote = toolingUp
+            ? `${plan.length ? ' · ' : ''}<span class="dim">${esc((vpModel.name || 'Model').toUpperCase())} tools up — first cars next turn (no cost this turn)</span>`
+            : '';
+          document.getElementById('vp-total').innerHTML = buildNote + toolNote;
+          // Something to build, OR a new line to tool up — either is a
+          // valid action. The server skips lines it can't fund.
+          document.getElementById('vp-confirm').disabled = plan.length === 0 && !toolingUp;
         }
 
         document.getElementById('ea-production-run').addEventListener('click', async () => {
@@ -3156,9 +3163,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
           not_enough_components: 'no Components',
         };
         function vpLinesText(lines) {
-          return (lines || []).map(l => l.built > 0
-            ? `Line ${l.line} produced ${l.built} ${l.model}`
-            : `Line ${l.line} skipped — ${VP_SKIP_REASON[l.skipped] || l.skipped}`).join('\n');
+          return (lines || []).map(l => l.retooling
+            ? `Line ${l.line} tooling up — first cars next turn`
+            : l.built > 0
+              ? `Line ${l.line} produced ${l.built} ${l.model}`
+              : `Line ${l.line} skipped — ${VP_SKIP_REASON[l.skipped] || l.skipped}`).join('\n');
         }
         document.getElementById('vp-confirm').addEventListener('click', async () => {
           const btn = document.getElementById('vp-confirm');
@@ -3181,7 +3190,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
               };
               throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
             }
-            alert(`You built ${Number(data.total_built).toLocaleString()} cars this turn\n\n` + vpLinesText(data.lines));
+            const built = Number(data.total_built) || 0;
+            alert((built > 0
+              ? `You built ${built.toLocaleString()} cars this turn`
+              : 'Line tooled up — first cars next turn')
+              + '\n\n' + vpLinesText(data.lines));
             window.location.reload();
           } catch (e) {
             alert('Could not run production: ' + (e?.message || e));
