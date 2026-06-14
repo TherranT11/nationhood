@@ -114,8 +114,12 @@
     background:radial-gradient(var(--amber) 0 3.5px, transparent 4.5px);}
   .focus-name{font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;padding-right:26px;}
   .focus-desc{font-size:11.5px;line-height:1.55;color:var(--mut);flex:1;}
-  .focus-effect{margin-top:8px;font-family:monospace;font-size:9px;letter-spacing:0.08em;
+  .focus-perk{margin-top:8px;font-family:monospace;font-size:9px;letter-spacing:0.08em;
+    text-transform:uppercase;color:var(--pos);}
+  .focus-effect{margin-top:5px;font-family:monospace;font-size:9px;letter-spacing:0.08em;
     text-transform:uppercase;color:#c0696a;}
+  .focus-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+  .focus-cd{color:var(--faint);font-size:9px;letter-spacing:0.08em;}
   .focus-btn{margin-top:12px;align-self:flex-start;padding:8px 14px;background:var(--amber-bg);
     border:0.5px solid var(--amber-dim);border-radius:4px;color:var(--amber);
     font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
@@ -198,7 +202,7 @@
       </section>
 
       <section class="section">
-        <div class="section-head">National Focus</div>
+        <div class="section-head focus-head"><span>National Focus</span><span class="focus-cd">12-Tick Cooldown</span></div>
         <div class="focus-grid" id="focus-grid"></div>
       </section>
 
@@ -312,12 +316,15 @@ async function init() {
     return;
   }
 
+  // Resolve the focus first — both the focus box and the ministries'
+  // per-turn action counts read it.
+  nationalFocus = await fetchNationalFocus(nation.id);
   renderMinistries();
+  paintFocus(nation, isPM);
   await Promise.all([
     renderCoalition(nation.id, nation.name),
     renderLeadership(nation),
     renderCabinet(nation),
-    renderFocus(nation, isPM),
     renderModifiers(nation.id),
     renderCommodities(nation.id),
   ]);
@@ -458,10 +465,15 @@ const MINISTRIES = [
 // display-only for now — none of these are wired.
 const MINISTRY_ACTIONS = {
   foreign_affairs: {
-    chip: '1 Action Remaining',
     actions: [{
       name: 'Trade Mission', btn: 'SET UP',
       desc: 'Set up a trade mission, determine who will be involved, how long it will take, and who will be discussed.',
+    }, {
+      name: 'Diplomatic Mission', btn: 'SET UP',
+      desc: 'Send envoys abroad to build relations, open dialogue, and lay the groundwork for accords and cooperation between nations.',
+    }, {
+      name: 'Sale to the World Market', btn: 'SELL',
+      desc: 'Sell your nation’s surplus commodities and production onto the global market for hard cash at the going world price.',
     }],
   },
   economic_development: {
@@ -483,6 +495,13 @@ const MINISTRY_ACTIONS = {
     }],
   },
 };
+
+// A ministry's per-turn action allowance: a base count plus the National
+// Focus grant (Diplomatic → Foreign Affairs, Military → Defense). Ministry
+// actions aren't wired to a real allowance yet, so this drives the
+// container's "N Actions Remaining" chip only.
+const MINISTRY_BASE_ACTIONS = { foreign_affairs: 1 };
+const FOCUS_ACTION_GRANT = { diplomatic: 'foreign_affairs', military: 'defense' };
 
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
@@ -563,7 +582,8 @@ function renderMinistries() {
   if (!host) return;
   host.innerHTML = MINISTRIES.map(m => {
     const act = MINISTRY_ACTIONS[m.key];
-    const chip = act?.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : '';
+    const acts = (MINISTRY_BASE_ACTIONS[m.key] || 0) + (FOCUS_ACTION_GRANT[nationalFocus] === m.key ? 1 : 0);
+    const chip = acts > 0 ? `<span class="cab-actions-left">${acts} Action${acts === 1 ? '' : 's'} Remaining</span>` : '';
     const body = act
       ? `<div class="cab-actions">${act.actions.map(a => `
           <div class="cab-action">
@@ -588,27 +608,27 @@ function renderMinistries() {
 // Military posture costs the ruling party 2 approval.
 const FOCUS_OPTIONS = [
   { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.' },
-  { key: 'diplomatic', name: 'Diplomatic Focus', desc: 'The administration has a focus on foreign policy abroad.' },
-  { key: 'military',   name: 'Military Focus',    desc: 'The administration has turned its eyes to its military industrial complex.', effect: '−2% Party Approval' },
+  { key: 'diplomatic', name: 'Diplomatic Focus', desc: 'The administration has a focus on foreign policy abroad.',
+    perk: 'Foreign Affairs and Trade get +1 Action per turn.', effect: '−1% Party Approval' },
+  { key: 'military',   name: 'Military Focus',    desc: 'The administration has turned its eyes to its military industrial complex.',
+    perk: 'Ministry of Defense gets +1 Action per turn.', effect: '−3% Party Approval' },
 ];
 let nationalFocus = 'domestic';
 
-// Read the live focus off the active administration, then paint.
-async function renderFocus(nation, isPM) {
-  const host = document.getElementById('focus-grid');
-  if (!host) return;
+// Read the live focus off the active administration. It drives both the
+// focus box and the ministries' action counts, so init resolves it first.
+async function fetchNationalFocus(nationId) {
   try {
     const { data: adm, error } = await _supabase.from('administrations')
       .select('national_focus')
-      .eq('nation_id', nation.id).is('ended_at_tick', null)
+      .eq('nation_id', nationId).is('ended_at_tick', null)
       .order('started_at_tick', { ascending: false }).limit(1).maybeSingle();
     if (error) throw error;
-    nationalFocus = adm?.national_focus || 'domestic';
+    return adm?.national_focus || 'domestic';
   } catch (e) {
     console.warn('cabinet-office: focus fetch failed', e?.message || e);
-    nationalFocus = 'domestic';
+    return 'domestic';
   }
-  paintFocus(nation, isPM);
 }
 
 // Only the Head of Government (isPM) gets enabled buttons; the current
@@ -626,6 +646,7 @@ function paintFocus(nation, isPM) {
       <div class="focus-circle"></div>
       <div class="focus-name">${escapeHtml(o.name)}</div>
       <div class="focus-desc">${escapeHtml(o.desc)}</div>
+      ${o.perk ? `<div class="focus-perk">${escapeHtml(o.perk)}</div>` : ''}
       ${o.effect ? `<div class="focus-effect">${escapeHtml(o.effect)}</div>` : ''}
       <button type="button" class="focus-btn" data-focus="${escapeHtml(o.key)}"${disabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Change Focus</button>
     </div>`;
