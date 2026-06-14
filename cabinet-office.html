@@ -253,10 +253,11 @@ const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign'];
 // falls back to white (mirrors first-steps / politician-nation).
 const safeHexColor = (c) => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#fff';
 
-// Player-vs-NPC: a faction a human controls has a last_seen_tick (set on
-// every app load, js/common.js) or a linked_user_id; NPCs never log in,
-// so both stay null. We build a name set of the nation's player
-// politicians once, then tag any matching name with [player].
+// Player-vs-NPC: a faction a human controls has a last_seen_tick (stamped
+// on every app load, js/common.js); NPCs never log in, so it stays null.
+// (We read last_seen_tick rather than linked_user_id so we don't surface
+// other players' auth ids.) Build the nation's player-politician name set
+// once, then tag any matching name with [player].
 let playerNames = new Set();
 const normName = (first, last) =>
   `${(first || '').trim().toLowerCase()}|${(last || '').trim().toLowerCase()}`;
@@ -267,13 +268,13 @@ function playerTag(first, last) {
 async function fetchPlayerNames(nationId) {
   try {
     const { data, error } = await _supabase.from('factions')
-      .select('leader_first_name, leader_last_name, linked_user_id, last_seen_tick')
+      .select('leader_first_name, leader_last_name, last_seen_tick')
       .eq('nation_id', nationId).eq('faction_type', 'politician')
       .is('abandoned_at', null);
     if (error) throw error;
     const set = new Set();
     for (const f of (data || [])) {
-      if (f.linked_user_id != null || f.last_seen_tick != null) {
+      if (f.last_seen_tick != null) {
         set.add(normName(f.leader_first_name, f.leader_last_name));
       }
     }
