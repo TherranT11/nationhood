@@ -336,6 +336,7 @@
   <div class="crumb" id="crumb"></div>
   <div id="identity-host"></div>
   <div id="ncv-host"></div>
+  <div id="caucus-host"></div>
   <div class="body-grid" id="body-grid">
     <div class="main-col">
       <div class="panel" id="about-panel" style="display:none;">
@@ -425,6 +426,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, officeTitle, fmtMoney, displayName, isMpOffice, MP_OFFICES } from './js/utils.js';
+import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
 import { callPartyAction, LEAVE_PARTY_CONFIRM } from './js/politician-party-actions.js';
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
@@ -562,6 +564,7 @@ function render(party, members) {
 
   renderActionButton(party, isMine, isAbsMon);
   renderNoConfidence(party, isMine).catch(err => console.warn('party: no-confidence render failed', err?.message || err));
+  renderCaucusPanel(party).catch(err => console.warn('party: caucus render failed', err?.message || err));
   renderAbout(party);
   renderLeadership(party, accent);
   renderMembers(members, accent);
@@ -581,6 +584,116 @@ const NCV_REASONS = {
   insufficient_capital: 'You don’t have enough Influence to file.', window_closed: 'Voting has closed.',
   party_not_found: 'Party not found.', bad_choice: 'Invalid choice.',
 };
+
+// ── Caucus & Allies (20270920) — a Senior MP's bloc tools, shown on
+// their own party page directly under the Vote of No Confidence panel.
+const CAUCUS_REASONS = {
+  not_senior_mp:          'Only a Senior MP can do this.',
+  no_party:               'You need a party first.',
+  cooldown:               'Still rallying — try again shortly.',
+  insufficient_allies:    'Your allies must reach 10% of the party’s seats first.',
+  insufficient_influence: 'You need 10 Influence to form a caucus.',
+  invalid_name:           'Give the caucus a name (2–80 characters).',
+  no_politician:          'No politician on this account.',
+};
+
+async function renderCaucusPanel(party) {
+  const host = document.getElementById('caucus-host');
+  if (!host) return;
+  host.innerHTML = '';
+  // Only the party's own Senior MP gets the caucus tools.
+  if (_viewerOffice !== 'senior_mp' || _viewerPartyId !== party.id) return;
+
+  let me = null;
+  try {
+    const { data } = await _supabase.from('factions')
+      .select('politician_allies, politician_ally_recruit_cooldown_until_tick, politician_influence')
+      .eq('id', _viewerPolId).maybeSingle();
+    me = data;
+  } catch (_) { return; }   // column/RLS issue → just hide the panel
+  if (!me) return;
+
+  const allies    = Number(me.politician_allies) || 0;
+  const influence = Number(me.politician_influence) || 0;
+  const seats     = Number(party.seats) || 0;
+  const need      = Math.ceil(seats / 10);            // 10% of party seats
+  const canForm   = allies * 10 >= seats && influence >= 10;
+  const cdUntil   = Number(me.politician_ally_recruit_cooldown_until_tick) || 0;
+  const onCd      = cdUntil > _shardTick;
+
+  host.innerHTML = `
+    <div class="ncv-panel">
+      <div class="ncv-row">
+        <div>
+          <div class="ncv-title">Caucus &amp; Allies</div>
+          <div class="ncv-sub"><b>${allies}</b> all${allies === 1 ? 'y' : 'ies'} &middot; a caucus needs <b>${need}</b> (10% of ${seats} seats) and <b>10</b> Influence</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-shrink:0;">
+          <button class="ncv-file" type="button" id="caucus-recruit"${onCd ? ' disabled' : ''}>${onCd ? `Recruit &middot; ${cdUntil - _shardTick}t` : 'Recruit Ally'}</button>
+          <button class="ncv-file" type="button" id="caucus-form"${canForm ? '' : ' disabled'}>Form Caucus</button>
+        </div>
+      </div>
+    </div>`;
+
+  const recruitBtn = document.getElementById('caucus-recruit');
+  if (recruitBtn) recruitBtn.addEventListener('click', async () => {
+    recruitBtn.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('politician_recruit_ally', { p_faction_id: _viewerPolId });
+      if (error) throw error;
+      if (!data?.success) throw new Error(CAUCUS_REASONS[data?.reason] || data?.reason || 'failed');
+    } catch (err) { alert('Could not recruit an ally: ' + (err?.message || err)); }
+    renderCaucusPanel(party);
+  });
+
+  const formBtn = document.getElementById('caucus-form');
+  if (formBtn) formBtn.addEventListener('click', () => renderCaucusForm(party));
+}
+
+function renderCaucusForm(party) {
+  const host = document.getElementById('caucus-host');
+  if (!host) return;
+  const opts = PARTY_ARCHETYPES.map(a => `<option value="${escHtml(a)}">${escHtml(a)}</option>`).join('');
+  host.innerHTML = `
+    <div class="ncv-panel open">
+      <div class="ncv-title">Form a Caucus</div>
+      <div class="ncv-sub">Name your bloc and pick its banner. <b>+2 Allies</b> &middot; costs <b>10 Influence</b>.</div>
+      <div style="display:flex; flex-direction:column; gap:8px; margin:10px 0;">
+        <input class="biz-input" type="text" id="caucus-name" maxlength="80" placeholder="Caucus name">
+        <textarea class="biz-textarea" id="caucus-desc" maxlength="280" rows="2" placeholder="What it stands for (optional)"></textarea>
+        <select class="biz-input" id="caucus-arch">${opts}</select>
+      </div>
+      <div class="ncv-actions">
+        <button class="ncv-vote" type="button" id="caucus-cancel">Cancel</button>
+        <button class="ncv-vote chal" type="button" id="caucus-submit">Form &middot; 10 Influence</button>
+      </div>
+      <div class="ncv-result" id="caucus-msg" style="display:none;"></div>
+    </div>`;
+
+  document.getElementById('caucus-cancel')?.addEventListener('click', () => renderCaucusPanel(party));
+
+  const submit = document.getElementById('caucus-submit');
+  if (submit) submit.addEventListener('click', async () => {
+    const name = document.getElementById('caucus-name').value.trim();
+    const desc = document.getElementById('caucus-desc').value.trim();
+    const arch = document.getElementById('caucus-arch').value;
+    const msg  = document.getElementById('caucus-msg');
+    if (name.length < 2) { msg.style.display = 'block'; msg.textContent = CAUCUS_REASONS.invalid_name; return; }
+    submit.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('politician_form_caucus', {
+        p_faction_id: _viewerPolId, p_name: name, p_description: desc, p_archetype: arch });
+      if (error) throw error;
+      if (!data?.success) throw new Error(CAUCUS_REASONS[data?.reason] || data?.reason || 'failed');
+    } catch (err) {
+      submit.disabled = false;
+      msg.style.display = 'block';
+      msg.textContent = 'Could not form caucus: ' + (err?.message || err);
+      return;
+    }
+    renderCaucusPanel(party);   // back to the panel, allies refreshed
+  });
+}
 
 async function renderNoConfidence(party, isMine) {
   const host = document.getElementById('ncv-host');
