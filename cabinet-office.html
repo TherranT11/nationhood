@@ -99,6 +99,29 @@
     font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
   .cab-action-btn:hover{background:rgba(200,166,78,0.16);}
 
+  /* National Focus — three exclusive posture cards with a radio circle
+     top-right; only the HoG may change focus (the current one's button
+     is greyed). */
+  .focus-grid{display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;}
+  @media (max-width:760px){ .focus-grid{grid-template-columns:1fr;} }
+  .focus-card{position:relative;padding:14px 16px;background:var(--panel2);
+    border:0.5px solid var(--line);border-left:3px solid var(--line);border-radius:6px;
+    display:flex;flex-direction:column;}
+  .focus-card.sel{border-left-color:var(--amber);background:var(--amber-bg);}
+  .focus-circle{position:absolute;top:14px;right:14px;width:15px;height:15px;border-radius:50%;
+    border:2px solid var(--faint);box-sizing:border-box;}
+  .focus-card.sel .focus-circle{border-color:var(--amber);
+    background:radial-gradient(var(--amber) 0 3.5px, transparent 4.5px);}
+  .focus-name{font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;padding-right:26px;}
+  .focus-desc{font-size:11.5px;line-height:1.55;color:var(--mut);flex:1;}
+  .focus-effect{margin-top:8px;font-family:monospace;font-size:9px;letter-spacing:0.08em;
+    text-transform:uppercase;color:#c0696a;}
+  .focus-btn{margin-top:12px;align-self:flex-start;padding:8px 14px;background:var(--amber-bg);
+    border:0.5px solid var(--amber-dim);border-radius:4px;color:var(--amber);
+    font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
+  .focus-btn:hover:not(:disabled){background:rgba(200,166,78,0.16);}
+  .focus-btn:disabled{opacity:0.4;cursor:default;}
+
   /* State of the Nation — compact modifier cards, 4 across (collapses on narrow). */
   .ston-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
   @media (max-width: 900px){ .ston-grid{grid-template-columns:repeat(2, 1fr);} }
@@ -170,6 +193,11 @@
           </div>
           <div class="admin-leaders" id="admin-leaders"></div>
         </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">National Focus</div>
+        <div class="focus-grid" id="focus-grid"></div>
       </section>
 
       <section class="section">
@@ -283,6 +311,7 @@ async function init() {
   }
 
   renderMinistries();
+  renderFocus(isPM);
   await Promise.all([
     renderCoalition(nation.id, nation.name),
     renderLeadership(nation),
@@ -549,6 +578,47 @@ function renderMinistries() {
       ${body}
     </section>`;
   }).join('');
+}
+
+// National Focus — the administration's posture. DISPLAY SCAFFOLD: the
+// selection defaults to Domestic and is NOT persisted, the 12-tick
+// cooldown isn't enforced, and Military's −2% Party Approval isn't
+// applied — those need a server pass (column + RPC + modifier).
+const FOCUS_OPTIONS = [
+  { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.' },
+  { key: 'diplomatic', name: 'Diplomatic Focus', desc: 'The administration has a focus on foreign policy abroad.' },
+  { key: 'military',   name: 'Military Focus',    desc: 'The administration has turned its eyes to its military industrial complex.', effect: '−2% Party Approval' },
+];
+let nationalFocus = 'domestic';
+
+// Only the Head of Government (isPM) gets enabled buttons; the current
+// focus's button is greyed for everyone.
+function renderFocus(isPM) {
+  const host = document.getElementById('focus-grid');
+  if (!host) return;
+  host.innerHTML = FOCUS_OPTIONS.map(o => {
+    const sel = o.key === nationalFocus;
+    const disabled = sel || !isPM;
+    const title = !isPM ? 'Only the Head of Government can change focus'
+                : sel ? 'This is the current focus' : '';
+    return `<div class="focus-card${sel ? ' sel' : ''}">
+      <div class="focus-circle"></div>
+      <div class="focus-name">${escapeHtml(o.name)}</div>
+      <div class="focus-desc">${escapeHtml(o.desc)}</div>
+      ${o.effect ? `<div class="focus-effect">${escapeHtml(o.effect)}</div>` : ''}
+      <button type="button" class="focus-btn" data-focus="${escapeHtml(o.key)}"${disabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Change Focus</button>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('.focus-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!confirm('Are you sure? Changing Focus comes with a 12 tick cooldown.')) return;
+      // Not wired: moves the highlight client-side only (resets on
+      // reload). Persistence + cooldown + the −2% approval still need
+      // the server pass noted on FOCUS_OPTIONS above.
+      nationalFocus = btn.dataset.focus;
+      renderFocus(isPM);
+    });
+  });
 }
 
 // State of the Nation — compact 4-across modifier cards. Same data the
