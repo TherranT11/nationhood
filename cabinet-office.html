@@ -52,6 +52,18 @@
   .coalition-name{font-size:14px;font-weight:600;}
   .coalition-pop{font-size:11px;color:var(--mut);font-family:monospace;letter-spacing:0.04em;}
 
+  /* Administration: coalition on the left, leadership panel on the right. */
+  .admin-layout{display:flex;gap:24px;align-items:flex-start;}
+  .admin-main{flex:1;min-width:0;}
+  .admin-leaders{flex:0 0 260px;display:flex;flex-direction:column;gap:10px;}
+  @media (max-width:760px){ .admin-layout{flex-direction:column;} .admin-leaders{flex-basis:auto;width:100%;} }
+  .leader-row{padding:10px 12px;background:var(--panel2);border:0.5px solid var(--line);border-radius:4px;}
+  .leader-role{font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--faint);
+    font-family:monospace;margin-bottom:5px;}
+  .leader-name{font-size:14px;font-weight:600;color:#fff;}
+  .leader-name .age{color:var(--mut);font-weight:400;}
+  .leader-name .leader-vacant{color:var(--faint);font-weight:400;font-style:italic;}
+
   /* State of the Nation — compact modifier cards, 4 across (collapses on narrow). */
   .ston-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
   @media (max-width: 900px){ .ston-grid{grid-template-columns:repeat(2, 1fr);} }
@@ -115,8 +127,13 @@
 
     <div id="page" style="display:none">
       <section class="section">
-        <div class="admin-title" id="admin-title">— Administration</div>
-        <div class="coalition" id="coalition"></div>
+        <div class="admin-layout">
+          <div class="admin-main">
+            <div class="admin-title" id="admin-title">— Administration</div>
+            <div class="coalition" id="coalition"></div>
+          </div>
+          <div class="admin-leaders" id="admin-leaders"></div>
+        </div>
       </section>
 
       <section class="section">
@@ -218,6 +235,7 @@ async function init() {
 
   await Promise.all([
     renderCoalition(nation.id, nation.name),
+    renderLeadership(nation),
     renderModifiers(nation.id),
     renderCommodities(nation.id),
   ]);
@@ -282,6 +300,65 @@ async function renderCoalition(nationId, nationName) {
     title.textContent = `${nationName} Administration`;
     host.innerHTML = '<div class="empty">Could not load coalition.</div>';
   }
+}
+
+// Leadership panel (right of the administration block): Head of Government
+// (Prime Minister) + Head of State (President). The HoG name lives on
+// head_of_government (server-stamped first/last); its age is read off the
+// linked faction (head_of_government stores no age). The HoS name/title/age
+// live on nations.head_of_state_*. A Presidential nation has no separate
+// premier — HoS leads the government — so the PM row is omitted there,
+// mirroring politician-nation's patchHeadOfGov guard.
+async function renderLeadership(nation) {
+  const host = document.getElementById('admin-leaders');
+  if (!host) return;
+  try {
+    const [hogRes, hosRes] = await Promise.all([
+      _supabase.from('head_of_government')
+        .select('first_name, last_name, faction_id')
+        .eq('nation_id', nation.id).eq('active', true).maybeSingle(),
+      _supabase.from('nations')
+        .select('head_of_state_title, head_of_state_first_name, head_of_state_last_name, head_of_state_age')
+        .eq('id', nation.id).maybeSingle(),
+    ]);
+    const hog = hogRes.data || null;
+    const hos = hosRes.data || null;
+
+    // PM age — head_of_government has no age column, so read it from the
+    // linked faction's leader_age (NPC PMs without a faction just omit it).
+    let pmAge = null;
+    if (hog?.faction_id) {
+      const { data: f } = await _supabase.from('factions')
+        .select('leader_age').eq('id', hog.faction_id).maybeSingle();
+      pmAge = (f && f.leader_age != null) ? f.leader_age : null;
+    }
+
+    const pmName  = hog ? `${hog.first_name || ''} ${hog.last_name || ''}`.trim() : '';
+    const hosName = hos ? `${hos.head_of_state_first_name || ''} ${hos.head_of_state_last_name || ''}`.trim() : '';
+    const hosTitle = (hos && hos.head_of_state_title) || 'President';
+
+    const rows = [];
+    if (nation.government_type !== 'Presidential') {
+      rows.push(leaderRow('Head of Government', 'Prime Minister', pmName, pmAge));
+    }
+    rows.push(leaderRow('Head of State', hosTitle, hosName, hos ? hos.head_of_state_age : null));
+    host.innerHTML = rows.join('');
+  } catch (err) {
+    console.error('cabinet-office: leadership fetch failed', err);
+    host.innerHTML = '';
+  }
+}
+
+// One leadership row: "{title}: {name} ({age})". Age is parenthesised only
+// when known; a missing holder reads "Vacant".
+function leaderRow(role, title, name, age) {
+  const detail = name
+    ? `${escapeHtml(title)}: ${escapeHtml(name)}${age != null ? ` <span class="age">(${escapeHtml(String(age))})</span>` : ''}`
+    : `${escapeHtml(title)}: <span class="leader-vacant">Vacant</span>`;
+  return `<div class="leader-row">
+    <div class="leader-role">${escapeHtml(role)}</div>
+    <div class="leader-name">${detail}</div>
+  </div>`;
 }
 
 // State of the Nation — compact 4-across modifier cards. Same data the
