@@ -87,6 +87,8 @@
   .cab-action-info{min-width:0;}
   .cab-action-name{font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;}
   .cab-action-desc{font-size:11px;line-height:1.55;color:var(--mut);}
+  .cab-action-meta{margin-top:5px;font-family:monospace;font-size:8.5px;letter-spacing:0.1em;
+    text-transform:uppercase;color:var(--faint);}
   .cab-action-btn{flex-shrink:0;padding:9px 15px;background:var(--amber-bg);
     border:0.5px solid var(--amber-dim);border-radius:4px;color:var(--amber);
     font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
@@ -411,6 +413,27 @@ const CABINET_POSTS = [
   { key: 'defense',              label: 'Defense' },
 ];
 
+// Ministry action containers — a ministry listed here renders as a wide
+// card carrying its per-turn tools. `chip` is the head's top-right status
+// (e.g. the foreign minister's one action per turn); an action's `meta`
+// is a small note (e.g. a cooldown). All display-only for now — none of
+// these are wired.
+const MINISTRY_ACTIONS = {
+  foreign_affairs: {
+    chip: '1 Action Remaining',
+    actions: [{
+      name: 'Trade Mission', btn: 'SET UP',
+      desc: 'Set up a trade mission, determine who will be involved, how long it will take, and who will be discussed.',
+    }],
+  },
+  economic_development: {
+    actions: [{
+      name: 'Produce', btn: 'PRODUCE', meta: '12-tick cooldown',
+      desc: 'Your nation’s major primary industries produce, adding the current production value to their on-hand number.',
+    }],
+  },
+};
+
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
   if (!host) return;
@@ -448,27 +471,28 @@ async function renderCabinet(nation) {
       const holderHtml = h.name
         ? `${escapeHtml(h.name)}${h.age != null ? ` <span class="age">(${escapeHtml(String(h.age))})</span>` : ''}`
         : `<span class="cab-vacant">Vacant</span>`;
-      if (p.key === 'foreign_affairs') {
-        // The Foreign & Trade Minister's container also carries the
-        // ministry's per-turn actions — one action per turn, shown as
-        // the remaining-count chip top-right. Trade Mission is display-
-        // only for now (not wired).
+      // A ministry with defined actions renders as a wide container that
+      // carries its per-turn tools (display-only scaffolds — not wired).
+      const act = MINISTRY_ACTIONS[p.key];
+      if (act) {
         return `<div class="cab-card wide">
           <div class="cab-card-head">
             <div>
               <div class="cab-title">${escapeHtml(p.label)}</div>
               <div class="cab-holder">${holderHtml}</div>
             </div>
-            <span class="cab-actions-left">1 Action Remaining</span>
+            ${act.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : ''}
           </div>
           <div class="cab-actions">
+            ${act.actions.map(a => `
             <div class="cab-action">
               <div class="cab-action-info">
-                <div class="cab-action-name">Trade Mission</div>
-                <div class="cab-action-desc">Set up a trade mission, determine who will be involved, how long it will take, and who will be discussed.</div>
+                <div class="cab-action-name">${escapeHtml(a.name)}</div>
+                <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
+                ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
               </div>
-              <button type="button" class="cab-action-btn" id="act-trade-mission">SET UP</button>
-            </div>
+              <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
+            </div>`).join('')}
           </div>
         </div>`;
       }
