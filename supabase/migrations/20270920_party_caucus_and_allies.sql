@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.caucuses (
 );
 ALTER TABLE public.caucuses ENABLE ROW LEVEL SECURITY;
 -- Public game data (read by the party page); writes only via the RPC below.
+DROP POLICY IF EXISTS caucuses_read ON public.caucuses;
 CREATE POLICY caucuses_read ON public.caucuses FOR SELECT USING (true);
 
 -- ── politician_recruit_ally — a Senior MP grows their bloc ─────────
