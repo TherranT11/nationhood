@@ -118,6 +118,11 @@ export function getPoliticianRoleLabel(faction) {
     // automatically. Falsy return ('' from unknown values) collapses to
     // null at the caller's `role ? ...` check.
     if (faction.politician_office) return officeTitle(faction.politician_office) || null;
+    // Foreign Minister post (the dedicated FM&T cabinet post, 20270868).
+    // Concise switcher suffix; the hero + Current Office card show the
+    // full "Minister of Foreign Affairs & Trade" via appointmentTitle —
+    // both read this same column (one source).
+    if (faction.politician_foreign_minister_at_tick != null) return 'Foreign Minister';
     // Appointed canopy / senior civil service (Deputy Minister, Junior
     // Minister, Permanent Undersecretary, Agency Head) outranks the
     // plain "Civil Servant" suffix — appointmentTitle (utils) is the one

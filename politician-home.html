@@ -1316,7 +1316,7 @@
   <div class="section-heading" style="margin-top:28px;">
     <span class="roman">II.</span>
     <span class="sans">Current</span>
-    <span class="serif">Affiliation</span>
+    <span class="serif">Office</span>
   </div>
   <div id="affiliation-host"></div>
   <div id="foreign-affiliation-host"></div>
@@ -1388,7 +1388,7 @@
 
 <script type="module">
 import { _supabase } from './js/supabase-client.js';
-import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, loadCabinetMinisterTitle, appointmentTitle, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
+import { tickToDate, fmtBig, officeTitle, termEndTickFor, ministryName, careerLabel, appointmentTitle, fmtStat, currentAge, CITY_ORDINANCE_VOTE_REASONS, FS_REGIONS, MAJOR_MINISTRY_LABEL } from './js/utils.js';
 import { PAPERWORK_MINISTRIES, findAgency } from './js/paperwork-taxonomy.js';
 import { BEAT_TYPE_LABEL } from './js/courtcase-data.js';
 import { CITY_STATS, cityStatLabel } from './js/game/city-labels.js';
@@ -1655,7 +1655,6 @@ const CAREER_EVENT_TEMPLATES = {
 let politician = null;
 let nation = null;
 let party = null;
-let cabinetTitle = null;  // "Minister of …" if this politician holds a cabinet seat (ministries table)
 let currentTick = 0;
 let allEvents = [];       // event_log rows feeding the World Events panel
 let evCurrentTab = 'politics';
@@ -1698,11 +1697,6 @@ async function init() {
   nation     = ctx.nation;
   party      = ctx.party || null;
   currentTick  = Number(ctx.shard?.current_tick) || 0;
-
-  // Cabinet standing (party-side ministries table, name-matched like the
-  // Head Office gate) so a sitting minister's hero pill reads "Minister
-  // of …" instead of falling through to party/Independent. Soft-fails.
-  cabinetTitle = await loadCabinetMinisterTitle(_supabase, politician, nation?.id);
 
   // 20270719: file an auto-re-election if the mayor's 48-tick term
   // just hit. Runs before resolve_due_elections so a freshly-filed
@@ -2111,7 +2105,7 @@ function renderHero(shard) {
   // Previously read just party.faction_name || 'Independent', which
   // dropped civil-servant identity entirely and showed party for
   // any card-carrier even when they held a state role.
-  const career = careerLabel(politician, party, cabinetTitle);
+  const career = careerLabel(politician, party);
   const age = String(currentAge(politician, shard?.current_tick || 0));
 
   document.getElementById('hero-portrait').textContent = ini;
@@ -3283,6 +3277,28 @@ function renderPartyMembership(ctx) {
 function renderAffiliation(ctx) {
   const host = document.getElementById('affiliation-host');
   if (!host) return;
+
+  // The Foreign Minister post (politician_foreign_minister_at_tick — the
+  // dedicated FM&T cabinet post) is the headline Office. It takes
+  // precedence over the civil-service / appointment card so this container
+  // agrees with the hero (both read the post via appointmentTitle), and
+  // links straight to Head Office.
+  if (ctx.faction?.politician_foreign_minister_at_tick != null) {
+    host.innerHTML = `
+      <div class="affil var-civ">
+        <div class="ah-row">
+          <div class="ah-badge">🏛</div>
+          <div class="ah-info">
+            <div class="ah-eyebrow">CABINET</div>
+            <div class="ah-name">${escHtml(appointmentTitle(ctx.faction))}</div>
+            <div class="ah-desc">You hold a seat in the Cabinet — the nation's government. Head Office is open to you.</div>
+          </div>
+          <a class="ah-cta" href="cabinet-office.html" style="align-self:flex-start;">HEAD OFFICE</a>
+        </div>
+      </div>`;
+    return;
+  }
+
   const office     = ctx.faction?.politician_office       || null;
   const ministry   = ctx.faction?.politician_ministry     || null;
   const barNation  = ctx.faction?.bar_admitted_nation_id  || null;

@@ -901,7 +901,7 @@
 <script type="module">
 import { bootstrapPolitician } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, loadCabinetMinisterTitle, currentAge as ageNow, careerYears, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
+import { officeTitle, tickToDate, termEndTickFor, ministryName, careerLabel, currentAge as ageNow, careerYears, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS, foreignServiceTitle } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
 
@@ -2180,12 +2180,7 @@ async function init() {
     console.warn('politician-career: pending state advocate request lookup threw', err);
   }
 
-  // Cabinet standing (party-side ministries table, name-matched like the
-  // Head Office gate) so the H1 reads "Minister of …" when this politician
-  // holds a cabinet seat. Soft-fails — careerLabel works without it.
-  const cabinetTitle = await loadCabinetMinisterTitle(_supabase, ctx.faction, ctx.nation?.id);
-
-  render(ctx.faction, ctx.shard, ctx.nation, ctx.party, cabinetTitle);
+  render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
   renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, stateAdvocateRequestPending), ctx);
   document.getElementById('loading').style.display = 'none';
@@ -2390,13 +2385,13 @@ function buildLadderState(party, activeRace, office, ctx, stateAdvocateRequestPe
   };
 }
 
-function render(politician, shard, nation, party, cabinetTitle = null) {
-  // Career label: cabinet minister > held office > civil-service post >
-  // party affiliation > Independent. Lifted into careerLabel() in
-  // js/utils.js so this and politician-home's hero pill always agree.
-  // splitCareerTitle turns "Civil Servant of Defense" into
-  // lead="Civil Servant" + tail="of Defense" for the italic split.
-  const career = careerLabel(politician, party, cabinetTitle);
+function render(politician, shard, nation, party) {
+  // Career label: held office > appointed cabinet (incl. Foreign Minister
+  // post) > civil-service post > party affiliation > Independent. Lifted
+  // into careerLabel() in js/utils.js so this and politician-home's hero
+  // pill always agree. splitCareerTitle turns "Civil Servant of Defense"
+  // into lead="Civil Servant" + tail="of Defense" for the italic split.
+  const career = careerLabel(politician, party);
   const { lead, tail } = splitCareerTitle(career);
   const office = politician.politician_office || null;
   const ini = initials(politician.leader_first_name, politician.leader_last_name, politician.faction_name);
