@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS public.floor_vote_votes (
 );
 ALTER TABLE public.floor_vote_votes ENABLE ROW LEVEL SECURITY;
 -- Votes are public political acts (the card shows them); writes via the RPC.
+DROP POLICY IF EXISTS floor_vote_votes_read ON public.floor_vote_votes;
 CREATE POLICY floor_vote_votes_read ON public.floor_vote_votes FOR SELECT USING (true);
 
 -- ── _floor_vote_tally — one source for the division + effects ──────
