@@ -295,7 +295,7 @@
 }
 
 /* ── Vote of No Confidence (top-of-page leadership challenge) ── */
-#ncv-host:empty { display:none; }
+#ncv-host:empty, #caucus-host:empty { display:none; }
 .ncv-panel { background:#120e0e; border:0.5px solid rgba(200,122,122,0.3); border-radius:6px;
   padding:14px 16px; margin:14px 0 0; }
 .ncv-panel.open { border-color:rgba(200,122,122,0.55); }
@@ -604,12 +604,17 @@ async function renderCaucusPanel(party) {
   // Only the party's own Senior MP gets the caucus tools.
   if (_viewerOffice !== 'senior_mp' || _viewerPartyId !== party.id) return;
 
-  let me = null;
+  let me = null, caucuses = [];
   try {
-    const { data } = await _supabase.from('factions')
-      .select('politician_allies, politician_ally_recruit_cooldown_until_tick, politician_influence')
-      .eq('id', _viewerPolId).maybeSingle();
-    me = data;
+    const [meRes, cauRes] = await Promise.all([
+      _supabase.from('factions')
+        .select('politician_allies, politician_ally_recruit_cooldown_until_tick, politician_influence')
+        .eq('id', _viewerPolId).maybeSingle(),
+      _supabase.from('caucuses').select('name, archetype')
+        .eq('founder_faction_id', _viewerPolId).order('created_tick', { ascending: true }),
+    ]);
+    me = meRes.data;
+    caucuses = cauRes.data || [];
   } catch (_) { return; }   // column/RLS issue → just hide the panel
   if (!me) return;
 
@@ -620,6 +625,11 @@ async function renderCaucusPanel(party) {
   const canForm   = allies * 10 >= seats && influence >= 10;
   const cdUntil   = Number(me.politician_ally_recruit_cooldown_until_tick) || 0;
   const onCd      = cdUntil > _shardTick;
+
+  const caucusList = caucuses.length
+    ? `<div class="ncv-sub" style="margin-top:8px;">Your caucus${caucuses.length === 1 ? '' : 'es'}: ${caucuses.map(c =>
+        `<b>${escHtml(c.name)}</b>${c.archetype ? ` <span style="color:#888;">(${escHtml(c.archetype)})</span>` : ''}`).join(', ')}</div>`
+    : '';
 
   host.innerHTML = `
     <div class="ncv-panel">
@@ -633,6 +643,7 @@ async function renderCaucusPanel(party) {
           <button class="ncv-file" type="button" id="caucus-form"${canForm ? '' : ' disabled'}>Form Caucus</button>
         </div>
       </div>
+      ${caucusList}
     </div>`;
 
   const recruitBtn = document.getElementById('caucus-recruit');
