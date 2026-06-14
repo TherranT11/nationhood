@@ -98,7 +98,8 @@
   .cab-action-btn{flex-shrink:0;padding:9px 15px;background:var(--amber-bg);
     border:0.5px solid var(--amber-dim);border-radius:4px;color:var(--amber);
     font-family:monospace;font-size:9px;letter-spacing:0.1em;font-weight:700;cursor:pointer;}
-  .cab-action-btn:hover{background:rgba(200,166,78,0.16);}
+  .cab-action-btn:hover:not(:disabled){background:rgba(200,166,78,0.16);}
+  .cab-action-btn:disabled{opacity:0.4;cursor:default;}
 
   /* National Focus — three exclusive posture cards with a radio circle
      top-right; only the HoG may change focus (the current one's button
@@ -285,6 +286,46 @@ async function fetchPlayerNames(nationId) {
   }
 }
 
+// Ministry action credits (20270918): the live per-ministry remaining,
+// read via get_ministry_credits and spent via spend_ministry_action. The
+// 7-base allowance, the focus bonus and the January refill all live
+// server-side; the page reads the count, shows it, and greys at 0.
+let ministryCredits = {};
+// Which ministry the viewer heads, so their own actions are clickable.
+// The PM may spend any; everyone else only their own portfolio.
+let viewerMinistryKey = null;
+
+async function fetchMinistryCredits(nationId) {
+  try {
+    const { data, error } = await _supabase.rpc('get_ministry_credits', { p_nation_id: nationId });
+    if (error) throw error;
+    return data || {};
+  } catch (e) {
+    console.warn('cabinet-office: ministry credits fetch failed', e?.message || e);
+    return {};
+  }
+}
+
+async function fetchViewerMinistry(nation, faction, isFM) {
+  if (isFM) return 'foreign_affairs';
+  const fn = (faction?.leader_first_name || '').trim().toLowerCase();
+  const ln = (faction?.leader_last_name || '').trim().toLowerCase();
+  if (!fn && !ln) return null;
+  try {
+    const { data, error } = await _supabase.from('ministries')
+      .select('ministry_key, minister_first_name, minister_last_name')
+      .eq('nation_id', nation.id).eq('is_active', true);
+    if (error) throw error;
+    const hit = (data || []).find(m =>
+      (m.minister_first_name || '').trim().toLowerCase() === fn &&
+      (m.minister_last_name || '').trim().toLowerCase() === ln);
+    return hit?.ministry_key || null;
+  } catch (e) {
+    console.warn('cabinet-office: viewer ministry fetch failed', e?.message || e);
+    return null;
+  }
+}
+
 async function init() {
   let ctx = null;
   try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
@@ -349,13 +390,16 @@ async function init() {
     return;
   }
 
-  // Resolve the focus and the player-name set first — the leadership,
-  // cabinet, focus box and ministries all read them.
-  [nationalFocus, playerNames] = await Promise.all([
+  // Resolve the focus, player-name set, ministry credits and the viewer's
+  // ministry first — the leadership, cabinet, focus box and ministries
+  // all read them.
+  [nationalFocus, playerNames, ministryCredits, viewerMinistryKey] = await Promise.all([
     fetchNationalFocus(nation.id),
     fetchPlayerNames(nation.id),
+    fetchMinistryCredits(nation.id),
+    fetchViewerMinistry(nation, faction, isFM),
   ]);
-  renderMinistries();
+  renderMinistries(nation, isPM);
   paintFocus(nation, isPM);
   await Promise.all([
     renderCoalition(nation.id, nation.name),
@@ -576,20 +620,6 @@ const MINISTRY_ACTIONS = {
   },
 };
 
-// A ministry's YEARLY action allowance: 7 each, meant to refill to that
-// every January, plus the National Focus grant (Domestic → Econ Dev +
-// Interior +1; Diplomatic → Foreign Affairs +3; Military → Defense +3).
-// The actions aren't wired to a real counter yet, so this drives the
-// container's "N Actions Remaining" chip (the FULL allowance) only —
-// actual spend, decrement, the January refill and grey-at-0 still need
-// the actions wired to a per-ministry counter.
-const MINISTRY_BASE_ACTIONS = { foreign_affairs: 7, economic_development: 7, interior: 7, defense: 7 };
-const FOCUS_ACTION_GRANT = {
-  domestic:   { economic_development: 1, interior: 1 },
-  diplomatic: { foreign_affairs: 3 },
-  military:   { defense: 3 },
-};
-
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
   if (!host) return;
@@ -671,13 +701,18 @@ async function renderCabinet(nation) {
 // per-turn actions inside (display-only scaffolds; none are wired). An
 // optional chip (e.g. the foreign minister's one action per turn) sits
 // top-right of the head.
-function renderMinistries() {
+function renderMinistries(nation, isPM) {
   const host = document.getElementById('ministry-containers');
   if (!host) return;
   host.innerHTML = MINISTRIES.map(m => {
     const act = MINISTRY_ACTIONS[m.key];
-    const acts = (MINISTRY_BASE_ACTIONS[m.key] || 0) + ((FOCUS_ACTION_GRANT[nationalFocus] || {})[m.key] || 0);
-    const chip = acts > 0 ? `<span class="cab-actions-left">${acts} Action${acts === 1 ? '' : 's'} Remaining</span>` : '';
+    const remaining = ministryCredits[m.key];
+    const chip = (remaining != null)
+      ? `<span class="cab-actions-left">${remaining} Action${remaining === 1 ? '' : 's'} Remaining</span>`
+      : '';
+    // The viewer can spend if they're the PM or this ministry's minister,
+    // and there are actions left. The server re-checks on spend.
+    const canSpend = (isPM || m.key === viewerMinistryKey) && remaining > 0;
     const body = act
       ? `<div class="cab-actions">${act.actions.map(a => `
           <div class="cab-action">
@@ -686,7 +721,7 @@ function renderMinistries() {
               <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
               ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
             </div>
-            <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
+            <button type="button" class="cab-action-btn" data-ministry="${escapeHtml(m.key)}"${canSpend ? '' : ' disabled'}>${escapeHtml(a.btn)}</button>
           </div>`).join('')}</div>`
       : `<div class="min-empty">No actions available yet.</div>`;
     return `<section class="section" style="border-left:3px solid ${m.color}">
@@ -694,6 +729,31 @@ function renderMinistries() {
       ${body}
     </section>`;
   }).join('');
+
+  // Spend wiring — clicking an enabled action decrements that ministry's
+  // credits (the action itself isn't wired to an effect yet).
+  host.querySelectorAll('.cab-action-btn:not([disabled])').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.ministry;
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('spend_ministry_action',
+          { p_nation_id: nation.id, p_ministry_key: key });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_authorized: 'Only this ministry’s minister or the Head of Government can spend its actions.',
+            no_actions: 'No actions remaining this year for this ministry.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        ministryCredits[key] = Number(data.remaining) || 0;
+      } catch (e) {
+        alert('Could not take action: ' + (e?.message || e));
+      }
+      renderMinistries(nation, isPM);  // refresh the chip + grey at 0
+    });
+  });
 }
 
 // National Focus — the administration's posture (Domestic / Diplomatic /
