@@ -1063,11 +1063,12 @@ const PARTY_OFFICE_RUNGS = [
 // canopy (Tiers 4-6) connected by a transition row. The civil-service
 // stem is climbed by service + exams; the political tiers are
 // APPOINTED — only available to elected MPs in the governing coalition
-// whom the Prime Minister names. No mechanics today: held() returns
-// false for every rung, descIfHeld/descIfNot collapse to flavor copy,
+// whom the Prime Minister names. The canopy held() checks are live:
+// Junior Minister / Deputy / Minister / Prime Minister flip on the
+// politician's portfolio, major ministry (Foreign Affairs from the
+// faction field, the rest name-matched in init) and head_of_government.
 // actionIfNot on Tier 1 ("Sit the Exam") + actionIfHeld on Tier 3
-// ("Resign — Enter Politics") are the documented entry/exit hooks
-// that the mechanics will wire when they ship.
+// ("Resign — Enter Politics") are the civil-service entry/exit hooks.
 // Highest civil-service tier the politician currently holds, 1-4,
 // or 0 if they're not in the service. Used by actionIfHeld(state) on
 // each rung so the [Resign · Leave the Civil Service] button only
@@ -1249,8 +1250,8 @@ const GOVT_SERVICE_RUNGS = [
     tierNum: 6,
     name: 'Minister / Cabinet Member',
     trackPill:   { label: 'APPOINTED', kind: 'appointed' },
-    held:        ()  => false,
-    descIfHeld:  ()  => 'You sit in Cabinet, set policy for your portfolio, and defend your budget.',
+    held:        (s) => !!s.majorMinistry,
+    descIfHeld:  (s) => `You are the Minister of ${MAJOR_MINISTRY_LABEL[s.majorMinistry] || 'a major ministry'} — you sit in Cabinet, set policy for your portfolio, defend your budget, and answer for your sector before the legislature and the press.`,
     descIfNot:   ()  => 'Head of a ministry. You sit in Cabinet, set policy for your portfolio, defend your budget, and answer for your sector before the legislature and the press.',
     actions:     ['Direct a Ministry', 'Defend the Budget'],
   },
@@ -1258,7 +1259,7 @@ const GOVT_SERVICE_RUNGS = [
     tierNum: 7, tierName: 'APEX',
     name: 'Prime Minister',
     trackPill:   { label: 'APEX', kind: 'appointed' },
-    held:        ()  => false,
+    held:        (s) => !!s.isHeadOfGovernment,
     descIfHeld:  ()  => 'You head the government — name the Cabinet, set the agenda, face the legislature.',
     descIfNot:   ()  => 'Head of government. You name the Cabinet, set the national agenda, face the legislature on behalf of the executive, and represent the nation abroad. Held only as long as your coalition holds.',
     actions:     [
@@ -2180,9 +2181,39 @@ async function init() {
     console.warn('politician-career: pending state advocate request lookup threw', err);
   }
 
+  // Appointed-canopy detection (Tier 6 Minister, Tier 7 PM). Foreign
+  // Affairs is a faction field; the other three majors live on the
+  // ministries row (name-matched, the cabinet-page pattern), and the PM
+  // on head_of_government.
+  let majorMinistry = ctx.faction?.politician_foreign_minister_at_tick != null ? 'foreign_affairs' : null;
+  let isHog = false;
+  try {
+    const fn = (ctx.faction?.leader_first_name || '').trim().toLowerCase();
+    const ln = (ctx.faction?.leader_last_name  || '').trim().toLowerCase();
+    const [minRes, hogRes] = await Promise.all([
+      (majorMinistry || !ctx.nation?.id) ? Promise.resolve({ data: null })
+        : _supabase.from('ministries')
+            .select('ministry_key, minister_first_name, minister_last_name')
+            .eq('nation_id', ctx.nation.id).eq('is_active', true),
+      ctx.nation?.id
+        ? _supabase.from('head_of_government').select('faction_id')
+            .eq('nation_id', ctx.nation.id).eq('active', true).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    if (!majorMinistry && minRes.data && (fn || ln)) {
+      const hit = minRes.data.find(m =>
+        (m.minister_first_name || '').trim().toLowerCase() === fn &&
+        (m.minister_last_name  || '').trim().toLowerCase() === ln);
+      majorMinistry = hit?.ministry_key || null;
+    }
+    isHog = !!(hogRes.data && hogRes.data.faction_id === ctx.faction?.id);
+  } catch (err) {
+    console.warn('politician-career: minister/PM lookup failed', err?.message || err);
+  }
+
   render(ctx.faction, ctx.shard, ctx.nation, ctx.party);
   if (resolution) renderResolutionBanner(resolution);
-  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, stateAdvocateRequestPending), ctx);
+  renderLadders(buildLadderState(ctx.party, activeRace, ctx.faction?.politician_office, ctx, stateAdvocateRequestPending, majorMinistry, isHog), ctx);
   document.getElementById('loading').style.display = 'none';
   document.getElementById('content').style.display = 'block';
 }
@@ -2282,7 +2313,7 @@ function renderResolutionBanner(r) {
 //                            ticks after winning Community Organizer).
 //   currentTick            → both eligibility windows.
 //   nextGeneralElectionTick → Senior MP window (opens 3 ticks before).
-function buildLadderState(party, activeRace, office, ctx, stateAdvocateRequestPending) {
+function buildLadderState(party, activeRace, office, ctx, stateAdvocateRequestPending, majorMinistry, isHog) {
   return {
     stateAdvocateRequestPending: !!stateAdvocateRequestPending,
     partyId:                 party?.id || null,
@@ -2311,6 +2342,11 @@ function buildLadderState(party, activeRace, office, ctx, stateAdvocateRequestPe
     // Deputy Minister (Tier 5, 20270880) — major-ministry slug when
     // serving; shares the canopy application cooldown with JM.
     deputyMinisterMinistry:  ctx?.faction?.politician_deputy_minister_ministry || null,
+    // Appointed Tier 6 Minister + Tier 7 PM. majorMinistry is the major
+    // the politician heads (Foreign Affairs from the faction field, the
+    // others name-matched in init); isHeadOfGovernment drives Tier 7.
+    majorMinistry:           majorMinistry || null,
+    isHeadOfGovernment:      !!isHog,
     juniorAppointmentCooldownUntilTick: Number(ctx?.faction?.politician_seek_appointment_cooldown_until_tick) || 0,
     civilServiceCooldownUntilTick: Number(ctx?.faction?.civil_service_exam_cooldown_until_tick) || 0,
     currentTick:             Number(ctx?.shard?.current_tick) || 0,
