@@ -293,6 +293,39 @@
   .biz-grid { grid-template-columns:1fr; }
   .biz-modal { max-width:100%; }
 }
+
+/* ── Vote of No Confidence (top-of-page leadership challenge) ── */
+#ncv-host:empty { display:none; }
+.ncv-panel { background:#120e0e; border:0.5px solid rgba(200,122,122,0.3); border-radius:6px;
+  padding:14px 16px; margin:14px 0 0; }
+.ncv-panel.open { border-color:rgba(200,122,122,0.55); }
+.ncv-row { display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.ncv-title { font-size:13px; font-weight:700; color:#fff; display:flex; align-items:center; gap:10px; }
+.ncv-live { font-family:monospace; font-size:8.5px; letter-spacing:0.12em; color:#c87a7a;
+  border:0.5px solid rgba(200,122,122,0.5); border-radius:3px; padding:2px 6px; }
+.ncv-sub { font-size:10.5px; color:#999; margin-top:4px; line-height:1.5; }
+.ncv-sub b { color:#ddd; }
+.ncv-file { flex-shrink:0; font-size:10px; letter-spacing:0.07em; padding:8px 14px; border-radius:4px;
+  background:transparent; color:#c87a7a; border:0.5px solid rgba(200,122,122,0.45); cursor:pointer; }
+.ncv-file:hover:not(:disabled) { background:rgba(200,122,122,0.10); border-color:#c87a7a; }
+.ncv-file:disabled { opacity:0.5; cursor:not-allowed; }
+.ncv-versus { display:flex; align-items:stretch; gap:12px; margin:12px 0 4px; }
+.ncv-side { flex:1; min-width:0; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08);
+  border-radius:5px; padding:10px 12px; text-align:center; }
+.ncv-side.pick { border-color:#7a9aab; background:#0e1218; }
+.ncv-name { font-size:13px; color:#fff; font-weight:600; overflow-wrap:anywhere; }
+.ncv-role { font-family:monospace; font-size:8px; letter-spacing:0.12em; color:#666; text-transform:uppercase; margin-top:3px; }
+.ncv-tally { font-family:monospace; font-size:20px; color:#fff; margin-top:8px; }
+.ncv-vs { align-self:center; font-family:Georgia,serif; font-style:italic; font-size:12px; color:#666; flex-shrink:0; }
+.ncv-actions { display:flex; gap:8px; margin-top:10px; }
+.ncv-vote { flex:1; font-size:10px; letter-spacing:0.05em; padding:8px 10px; border-radius:4px;
+  background:transparent; color:#9ab; border:0.5px solid rgba(122,154,171,0.4); cursor:pointer; }
+.ncv-vote.chal { color:#c89e6e; border-color:rgba(200,158,110,0.4); }
+.ncv-vote:hover { background:rgba(255,255,255,0.04); }
+.ncv-vote.on { background:#0e1218; border-color:#7a9aab; color:#fff; }
+.ncv-vote.chal.on { background:#15110a; border-color:#c89e6e; }
+.ncv-result { font-size:11px; color:#aaa; font-style:italic; margin-top:10px;
+  padding-top:10px; border-top:0.5px dashed rgba(255,255,255,0.07); }
 </style>
 </head>
 <body>
@@ -302,6 +335,7 @@
 <div class="content" id="content" style="display:none;">
   <div class="crumb" id="crumb"></div>
   <div id="identity-host"></div>
+  <div id="ncv-host"></div>
   <div class="body-grid" id="body-grid">
     <div class="main-col">
       <div class="panel" id="about-panel" style="display:none;">
@@ -527,11 +561,137 @@ function render(party, members) {
     </div>`;
 
   renderActionButton(party, isMine, isAbsMon);
+  renderNoConfidence(party, isMine).catch(err => console.warn('party: no-confidence render failed', err?.message || err));
   renderAbout(party);
   renderLeadership(party, accent);
   renderMembers(members, accent);
   renderBusinessPanel(party, isMine);
   renderSidebar(party, isMine);
+}
+
+// ── Vote of No Confidence (20270906) ────────────────────────────────
+// Top-of-page leadership challenge. A member files against the NPC
+// leader and becomes the challenger; the motion stays open 3 ticks while
+// members vote, then resolves (NPC bloc from popularity-vs-standing +
+// the weighted member votes). Resolution is lazy + idempotent — we kick
+// it from here when an open motion's window has elapsed.
+const NCV_REASONS = {
+  not_member: 'Only party members can file.', already_open: 'A vote is already underway.',
+  on_cooldown: 'The party just held a vote — try again later.', no_leader: 'This party has no leader to challenge.',
+  insufficient_capital: 'You don’t have enough Influence to file.', window_closed: 'Voting has closed.',
+  party_not_found: 'Party not found.', bad_choice: 'Invalid choice.',
+};
+
+async function renderNoConfidence(party, isMine) {
+  const host = document.getElementById('ncv-host');
+  host.innerHTML = '';
+  let motion = null;
+  try {
+    const { data } = await _supabase.from('party_no_confidence_motions')
+      .select('*').eq('party_faction_id', party.id)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    motion = data || null;
+  } catch (_) { return; }  // table/RLS issue → just hide the panel
+
+  // Lazy resolve once the 3-tick window has elapsed (idempotent server-side).
+  if (motion && motion.status === 'open' && _shardTick > motion.resolve_tick) {
+    try {
+      await _supabase.rpc('resolve_party_no_confidence', { p_motion_id: motion.id });
+      const { data } = await _supabase.from('party_no_confidence_motions')
+        .select('*').eq('id', motion.id).maybeSingle();
+      motion = data || motion;
+    } catch (_) { /* leave the open state; next load retries */ }
+  }
+
+  if (motion && motion.status === 'open') { await renderOpenMotion(host, party, motion, isMine); return; }
+
+  // No open motion. Members get the file button (+ last result); others just see the last result.
+  const resultLine = motion ? ncvResultLine(motion) : '';
+  if (isMine && party.leader_first_name) {
+    const leaderName = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ') || 'the leader';
+    host.innerHTML = `<div class="ncv-panel">
+      <div class="ncv-row">
+        <div><div class="ncv-title">Vote of No Confidence</div>
+          <div class="ncv-sub">Challenge ${escHtml(leaderName)} for the party leadership. Every member votes; win and you become leader.</div></div>
+        <button class="ncv-file" id="ncv-file">Vote of No Confidence</button>
+      </div>${resultLine}</div>`;
+    document.getElementById('ncv-file').addEventListener('click', () => fileNoConfidence(party));
+  } else if (resultLine) {
+    host.innerHTML = `<div class="ncv-panel">${resultLine}</div>`;
+  }
+}
+
+async function renderOpenMotion(host, party, motion, isMine) {
+  let votes = [];
+  try {
+    const { data } = await _supabase.from('party_no_confidence_votes')
+      .select('choice, weight, voter_faction_id').eq('motion_id', motion.id);
+    votes = data || [];
+  } catch (_) { /* tally falls back to 0/0 */ }
+  const sum = c => votes.filter(v => v.choice === c).reduce((s, v) => s + Number(v.weight || 0), 0);
+  const leaderW = sum('leader'), chalW = sum('challenger');
+  const myVote = votes.find(v => v.voter_faction_id === _viewerPolId)?.choice || null;
+  const ticksLeft = Math.max(0, motion.resolve_tick - _shardTick);
+  const leaderName = [motion.leader_first_name, motion.leader_last_name].filter(Boolean).join(' ') || 'The leader';
+  host.innerHTML = `<div class="ncv-panel open">
+    <div class="ncv-title">Vote of No Confidence <span class="ncv-live">OPEN</span></div>
+    <div class="ncv-versus">
+      <div class="ncv-side${myVote === 'leader' ? ' pick' : ''}">
+        <div class="ncv-name">${escHtml(leaderName)}</div><div class="ncv-role">Incumbent leader</div>
+        <div class="ncv-tally">${leaderW}</div></div>
+      <div class="ncv-vs">vs</div>
+      <div class="ncv-side${myVote === 'challenger' ? ' pick' : ''}">
+        <div class="ncv-name">${escHtml(motion.challenger_name)}</div><div class="ncv-role">Challenger</div>
+        <div class="ncv-tally">${chalW}</div></div>
+    </div>
+    <div class="ncv-sub">Weighted member votes so far. The party's NPC members decide the rest from the leader's standing when this resolves in <b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'}.</div>
+    ${isMine ? `<div class="ncv-actions">
+      <button class="ncv-vote${myVote === 'leader' ? ' on' : ''}" data-choice="leader">Back the leader</button>
+      <button class="ncv-vote chal${myVote === 'challenger' ? ' on' : ''}" data-choice="challenger">Back ${escHtml(motion.challenger_name)}</button>
+    </div>` : ''}</div>`;
+  if (isMine) {
+    host.querySelectorAll('.ncv-vote').forEach(b =>
+      b.addEventListener('click', () => castNoConfidenceVote(motion, b.dataset.choice, party)));
+  }
+}
+
+function ncvResultLine(motion) {
+  if (motion.status === 'passed') {
+    return `<div class="ncv-result">${escHtml(motion.challenger_name)} won a vote of no confidence and now leads the party.</div>`;
+  }
+  if (motion.status === 'failed') {
+    const leaderName = [motion.leader_first_name, motion.leader_last_name].filter(Boolean).join(' ') || 'the leader';
+    return `<div class="ncv-result">The last vote of no confidence failed — ${escHtml(leaderName)} kept the leadership.</div>`;
+  }
+  return '';
+}
+
+async function fileNoConfidence(party) {
+  const btn = document.getElementById('ncv-file');
+  if (btn) { btn.disabled = true; btn.textContent = 'Filing…'; }  // double-fire lock (costs Influence)
+  try {
+    const { data, error } = await _supabase.rpc('file_party_no_confidence', { p_party_id: party.id });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Could not file: ' + (NCV_REASONS[data?.reason] || data?.reason || 'unknown'));
+      if (btn) { btn.disabled = false; btn.textContent = 'Vote of No Confidence'; }
+      return;
+    }
+    await renderNoConfidence(party, true);
+  } catch (e) {
+    alert('Could not file: ' + (e?.message || e));
+    if (btn) { btn.disabled = false; btn.textContent = 'Vote of No Confidence'; }
+  }
+}
+
+async function castNoConfidenceVote(motion, choice, party) {
+  try {
+    const { data, error } = await _supabase.rpc('cast_party_no_confidence_vote',
+      { p_motion_id: motion.id, p_choice: choice });
+    if (error) throw error;
+    if (!data?.success) { alert('Vote failed: ' + (NCV_REASONS[data?.reason] || data?.reason || 'unknown')); return; }
+    await renderNoConfidence(party, true);
+  } catch (e) { alert('Vote failed: ' + (e?.message || e)); }
 }
 
 // Right sidebar — Actions + Party Chat. Only shown when the viewer is a
