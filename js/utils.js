@@ -466,7 +466,11 @@ export const MINISTRY_BLURBS = {
 // is owned by head_of_government, not surfaced here.
 export const CABINET_MINISTER_TITLES = {
     foreign:        'Minister of Foreign Affairs & Trade',
-    trade:          'Minister of Foreign Affairs & Trade',
+    // No 'trade' entry: on the politician side trade is NOT a standalone
+    // ministry — the Foreign Affairs & Trade portfolio covers it (mirrors
+    // MINISTRY_NAMES.foreign_affairs). The trade ministry_key exists only
+    // for the shipping system (exercised businessman-side), never as a
+    // politician-facing "Minister of Trade".
     defense:        'Minister of Defense',
     interior:       'Minister of the Interior',
     finance:        'Minister of Finance',

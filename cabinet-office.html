@@ -144,14 +144,13 @@ import { SEVERITY_LABELS } from './js/game/modifiers.js';
 // ── Access gate ──────────────────────────────────────────────────────
 // PM (head_of_government.faction_id) OR Major Minister (ministries
 // row with a leader-name match on the player's faction in the active
-// nation). These are the REAL ministry_key values seeded for nations;
-// the foreign + trade keys collapse to one player-facing portfolio,
-// "Foreign Ministry & Trade". (Earlier this list carried the slugs
-// 'foreign_affairs' / 'economic_development', which never exist as
-// ministries rows — so foreign ministers were silently locked out.
-// 'foreign' is the live key; 'finance' is the live economic key, left
-// off here pending a separate decision on finance-minister access.)
-const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign', 'trade'];
+// nation). Live ministry_key values that are politician-facing cabinet
+// posts. 'foreign' is the Foreign Affairs & Trade portfolio (it covers
+// trade — there is NO standalone politician-side trade ministry, so the
+// 'trade' key, which exists only for the businessman-side shipping
+// system, is deliberately excluded here). 'finance' is left off pending
+// a separate decision on finance-minister access.
+const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign'];
 
 async function init() {
   let ctx = null;
