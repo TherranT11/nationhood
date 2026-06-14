@@ -581,7 +581,7 @@ function render(party, members) {
 const NCV_REASONS = {
   not_member: 'Only party members can file.', already_open: 'A vote is already underway.',
   on_cooldown: 'The party just held a vote — try again later.', no_leader: 'This party has no leader to challenge.',
-  insufficient_capital: 'You don’t have enough Influence to file.', window_closed: 'Voting has closed.',
+  insufficient_funds: 'The party needs $50K in funds to file.', window_closed: 'Voting has closed.',
   party_not_found: 'Party not found.', bad_choice: 'Invalid choice.',
 };
 
@@ -735,9 +735,9 @@ async function renderNoConfidence(party, isMine) {
     const leaderName = [party.leader_first_name, party.leader_last_name].filter(Boolean).join(' ') || 'the leader';
     host.innerHTML = `<div class="ncv-panel">
       <div class="ncv-row">
-        <div><div class="ncv-title">Vote of No Confidence</div>
-          <div class="ncv-sub">Challenge ${escHtml(leaderName)} for the party leadership. Every member votes; win and you become leader.</div></div>
-        <button class="ncv-file" id="ncv-file">Vote of No Confidence</button>
+        <div><div class="ncv-title">Challenge Party Leadership</div>
+          <div class="ncv-sub">Challenge ${escHtml(leaderName)} for the party leadership — costs the party <b>$50K</b>. Every member votes; win and you become leader.</div></div>
+        <button class="ncv-file" id="ncv-file">Challenge Party Leadership</button>
       </div>${resultLine}</div>`;
     document.getElementById('ncv-file').addEventListener('click', () => fileNoConfidence(party));
   } else if (resultLine) {
@@ -758,7 +758,7 @@ async function renderOpenMotion(host, party, motion, isMine) {
   const ticksLeft = Math.max(0, motion.resolve_tick - _shardTick);
   const leaderName = [motion.leader_first_name, motion.leader_last_name].filter(Boolean).join(' ') || 'The leader';
   host.innerHTML = `<div class="ncv-panel open">
-    <div class="ncv-title">Vote of No Confidence <span class="ncv-live">OPEN</span></div>
+    <div class="ncv-title">Challenge Party Leadership <span class="ncv-live">OPEN</span></div>
     <div class="ncv-versus">
       <div class="ncv-side${myVote === 'leader' ? ' pick' : ''}">
         <div class="ncv-name">${escHtml(leaderName)}</div><div class="ncv-role">Incumbent leader</div>
@@ -801,13 +801,13 @@ async function fileNoConfidence(party) {
     if (error) throw error;
     if (!data?.success) {
       alert('Could not file: ' + (NCV_REASONS[data?.reason] || data?.reason || 'unknown'));
-      if (btn) { btn.disabled = false; btn.textContent = 'Vote of No Confidence'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Challenge Party Leadership'; }
       return;
     }
     await renderNoConfidence(party, true);
   } catch (e) {
     alert('Could not file: ' + (e?.message || e));
-    if (btn) { btn.disabled = false; btn.textContent = 'Vote of No Confidence'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Challenge Party Leadership'; }
   }
 }
 
