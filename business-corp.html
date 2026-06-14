@@ -301,6 +301,22 @@
     .bc-wrap { flex-direction:column-reverse; }
     .bc-side { width:100%; }
   }
+  /* Dense column-tables (prominent employees, applicants, active
+     projects / assembly lines, corporate loans) can't shrink below
+     their button + multi-column min-width. Rather than let one of them
+     push the whole page sideways on a phone, let the panel that holds
+     the table scroll horizontally in place — the table keeps a readable
+     min-width and stays inside its card. Mirrors the .ent-nav / .we-tabs
+     overflow-x pattern used elsewhere. */
+  @media (max-width:640px) {
+    .rl-panel, .rl-apps { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .rl-panel > .pe-grid,
+    .rl-panel > .bp-grid,
+    .rl-apps  > .ap-grid { min-width:520px; }
+    .rl-panel > .pe-grid.manage { min-width:660px; }
+    /* A single long corp-name token shouldn't blow out the title row. */
+    .bc-title, .bc-sub { overflow-wrap:anywhere; }
+  }
   #loading { font-family:var(--font-mono); font-size:10px; color:#4a4940;
     text-align:center; padding:80px 20px; }
 </style>
