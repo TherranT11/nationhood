@@ -3001,12 +3001,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
         let vpAluminum = Number(corp.aluminum_stock) || 0;
         let vpComponents = Number(corp.components_stock) || 0;
 
-        // This turn's plan: every assigned line + the newly picked
-        // Model (if a free line can take it), 50 vehicles each.
+        // The lines that BUILD this turn. A newly picked Model tools up
+        // first (20270915) — no cost, no cars until next turn — so it's
+        // not in the build plan. The preview assumes every already-
+        // assigned line builds; the server is authoritative and will
+        // sit out any line whose tooling also started this tick.
         function vpPlan() {
-          // Only the lines that BUILD this turn. A newly picked Model
-          // tools up first (20270915) — it costs nothing and produces
-          // nothing until next turn — so it's not in the build plan.
           return vpAssigned.map(r => r.blueprint).filter(Boolean);
         }
 
