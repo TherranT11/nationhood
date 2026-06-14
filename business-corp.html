@@ -97,6 +97,15 @@
   .rl-empty { padding:24px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:4px; }
+  .rl-req { font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    padding:7px 14px; border-radius:4px; background:transparent; color:#8fd49b;
+    border:0.5px solid rgba(106,176,122,0.45); cursor:pointer; }
+  .rl-req:hover { background:rgba(106,176,122,0.10); border-color:#6ab07a; }
+  .rl-req-corner { position:absolute; top:9px; right:12px; }
+  .rq-scope-row { display:flex; gap:8px; }
+  .rq-scope { flex:1; font-family:var(--font-mono); font-size:11px; padding:9px; border-radius:4px;
+    background:transparent; color:#bbb; border:0.5px solid rgba(255,255,255,0.15); cursor:pointer; }
+  .rq-scope.on { border-color:#6ab07a; color:#8fd49b; background:rgba(106,176,122,0.10); }
   .rl-card { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.07); border-radius:4px;
     margin-bottom:7px; }
   .rl-row { display:flex; align-items:center; gap:14px; padding:11px 14px; }
@@ -780,10 +789,16 @@
              placeholder="e.g. 10000000"
              style="width:100%;padding:10px 12px;background:#0a0a0a;border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#fff;font-family:var(--font-mono);font-size:13px;box-sizing:border-box;" />
       <div class="db-static dim-line" id="rq-note" style="margin-top:10px;"></div>
+      <div class="jm-lab" style="margin-top:14px;">LENDERS</div>
+      <div class="rq-scope-row">
+        <button type="button" class="rq-scope" data-scope="local">Local</button>
+        <button type="button" class="rq-scope on" data-scope="national">National</button>
+      </div>
+      <div class="db-static dim-line" id="rq-scope-note" style="margin-top:8px;">National — banks across the Politicianverse may bid.</div>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="rq-cancel">CANCEL</button>
-      <button type="button" class="jm-btn" id="rq-confirm" disabled>FILE THE REQUEST</button>
+      <button type="button" class="jm-btn" id="rq-confirm" disabled>SUBMIT LOAN REQUEST</button>
     </div>
   </div>
 </div>
@@ -1865,10 +1880,15 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
         // Corporate Loans
         const loans = loanRes.data || [];
+        const canBorrow = corp.industry !== 'banking';   // banks lend, they don't borrow
+        const reqBtnEmpty = canBorrow
+          ? '<div style="margin-top:12px;"><button type="button" class="js-request-loan rl-req">Request Loan</button></div>'
+          : '';
         document.getElementById('bc-loans').innerHTML = `
-          <div class="rl-panel">
+          <div class="rl-panel" style="position:relative;">
             <div class="ea-head"><span class="rule"></span><span class="t">CORPORATE LOANS</span><span class="rule"></span></div>
-            ${!loans.length ? '<div class="rl-empty">No loans on the books.</div>' : `
+            ${canBorrow ? '<button type="button" class="js-request-loan rl-req rl-req-corner">Request Loan</button>' : ''}
+            ${!loans.length ? `<div class="rl-empty">No loans on the books.${reqBtnEmpty}</div>` : `
             <div class="bp-grid" style="grid-template-columns:1.3fr 0.9fr 0.6fr 1fr 0.7fr;">
               <div class="h">LENDER</div><div class="h">OUTSTANDING</div><div class="h">RATE</div><div class="h">TERM ENDS</div><div class="h">STATUS</div>
               ${loans.map(l => `
@@ -3730,7 +3750,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             return;
           }
           const { data, error: olErr } = await _supabase.from('corp_bank_loan_requests')
-            .select('id, amount, created_at_tick, corp:entrepreneur_corps!corp_id(id, name, industry, employee_count, last_tick_revenue, owner_faction_id, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier)')
+            .select('id, amount, created_at_tick, lender_scope, nation_id, corp:entrepreneur_corps!corp_id(id, name, industry, employee_count, last_tick_revenue, owner_faction_id, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, data_center_tier, parts_depot_tier, franchise_tier)')
             .eq('status', 'open')
             .order('created_at_tick', { ascending: false });
           if (olErr) {
@@ -3738,7 +3758,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
             host.innerHTML = '<div class="rl-empty">Could not load the board — try again shortly.</div>';
             return;
           }
-          const rows = (data || []).filter(r => r.corp && r.corp.owner_faction_id !== corp.owner_faction_id);
+          // Local requests only reach banks in the borrower's nation; national reach any bank.
+          const rows = (data || []).filter(r => r.corp && r.corp.owner_faction_id !== corp.owner_faction_id
+            && (r.lender_scope !== 'local' || r.nation_id === corp.hq_nation_id));
           if (!rows.length) {
             host.innerHTML = '<div class="rl-empty">No open loan requests right now.</div>';
             return;
@@ -3750,7 +3772,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div class="jm-rung" data-req="${esc(r.id)}">
               <div class="top">
                 <div>
-                  <div class="rung-no">${esc((r.corp.industry || '').toUpperCase())}</div>
+                  <div class="rung-no">${esc((r.corp.industry || '').toUpperCase())} &middot; ${r.lender_scope === 'local' ? 'LOCAL' : 'NATIONAL'}</div>
                   <div class="nm">${esc(r.corp.name)}</div>
                 </div>
                 <div class="staff">ASK: ${esc(hfFmtBig(r.amount))}</div>
@@ -4200,6 +4222,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         // ── Request modal ──
         const FIN_REASON = {
           invalid_amount: 'Ask between $100K and $100M.',
+          invalid_scope: 'Pick Local or National lenders.',
           request_already_open: 'You already have an open request.',
           banks_dont_borrow: 'Banks lend — they don\u2019t borrow.',
           not_owner: 'Only the owner can do this.',
@@ -4209,13 +4232,30 @@ import { CITY_STATS } from './js/game/city-labels.js';
           nothing_owed: 'Nothing is owed on this loan.',
           loan_settled: 'This loan is already settled.',
         };
-        document.getElementById('fin-request')?.addEventListener('click', () => {
-          const inp = document.getElementById('rq-amount');
-          inp.value = '';
+        // Lender scope (20270925): Local = banks in your nation only;
+        // National = any bank. Default National (the open market).
+        let rqScope = 'national';
+        const RQ_SCOPE_NOTE = {
+          local:    'Local — only banks in your own nation may bid.',
+          national: 'National — banks across the Politicianverse may bid.',
+        };
+        const setRqScope = (s) => {
+          rqScope = (s === 'local') ? 'local' : 'national';
+          document.querySelectorAll('.rq-scope').forEach(b => b.classList.toggle('on', b.dataset.scope === rqScope));
+          const note = document.getElementById('rq-scope-note');
+          if (note) note.textContent = RQ_SCOPE_NOTE[rqScope];
+        };
+        document.querySelectorAll('.rq-scope').forEach(b =>
+          b.addEventListener('click', () => setRqScope(b.dataset.scope)));
+        const openRequestLoan = () => {
+          document.getElementById('rq-amount').value = '';
           document.getElementById('rq-note').textContent = '';
           document.getElementById('rq-confirm').disabled = true;
+          setRqScope('national');
           document.getElementById('rq-overlay').classList.add('open');
-        });
+        };
+        document.getElementById('fin-request')?.addEventListener('click', openRequestLoan);
+        document.querySelectorAll('.js-request-loan').forEach(b => b.addEventListener('click', openRequestLoan));
         document.getElementById('rq-amount').addEventListener('input', () => {
           const v = Math.floor(Number(document.getElementById('rq-amount').value) || 0);
           const ok = v >= 100000 && v <= 100000000;
@@ -4241,8 +4281,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
         };
         document.getElementById('rq-confirm').addEventListener('click', (e) =>
           finRpc(e.currentTarget, 'corp_request_loan', {
-            p_corp_id: corp.id,
-            p_amount:  Math.floor(Number(document.getElementById('rq-amount').value) || 0),
+            p_corp_id:      corp.id,
+            p_amount:       Math.floor(Number(document.getElementById('rq-amount').value) || 0),
+            p_lender_scope: rqScope,
           }));
         wireModalClose('rq-overlay', 'rq-cancel');
 
