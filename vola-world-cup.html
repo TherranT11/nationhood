@@ -202,9 +202,16 @@ async function loadCup(usId) {
   if (myStand) {
     campaignEl.innerHTML = `Your national team finished <b>${ORD(myStand.final_position)}</b> — ${ELIM_LABEL[myStand.eliminated_at] || esc(myStand.eliminated_at)}.`;
   } else if (mine) {
-    const played = matches.filter(m => (m.team_a_nation_id === usId || m.team_b_nation_id === usId) && m.team_a_score != null && m.team_b_score != null);
-    const wins = played.filter(m => m.winner_nation_id === usId).length;
-    campaignEl.innerHTML = `Your national team is seeded <b>#${mine.seed_rank}</b> in <b>Group ${esc(mine.group_letter)}</b> (${mine.qualified_via === 'auto' ? 'automatic qualifier' : 'qualified on placement'}) — <b>${wins}</b> win${wins === 1 ? '' : 's'} from ${played.length} played. The campaign is alive.`;
+    // Pull the viewer's W/P from the single W-L-T source (computeStandings)
+    // rather than re-counting here, so the campaign line can't drift from
+    // the group table.
+    const myRow = computeStandings(
+      groups.filter(g => g.group_letter === mine.group_letter),
+      matches.filter(m => m.group_letter === mine.group_letter),
+      usId,
+    ).find(r => r.nation_id === usId);
+    const wins = myRow?.W || 0, played = myRow?.P || 0;
+    campaignEl.innerHTML = `Your national team is seeded <b>#${mine.seed_rank}</b> in <b>Group ${esc(mine.group_letter)}</b> (${mine.qualified_via === 'auto' ? 'automatic qualifier' : 'qualified on placement'}) — <b>${wins}</b> win${wins === 1 ? '' : 's'} from ${played} played. The campaign is alive.`;
   } else {
     campaignEl.innerHTML = 'Your national team did not qualify for this cup. The next cycle is the road back.';
   }
