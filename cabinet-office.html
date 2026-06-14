@@ -214,6 +214,10 @@ import { SEVERITY_LABELS } from './js/game/modifiers.js';
 // a separate decision on finance-minister access.
 const MAJOR_MINISTER_KEYS = ['defense', 'interior', 'foreign'];
 
+// Validate a party colour to #RRGGBB before inlining it; anything else
+// falls back to white (mirrors first-steps / politician-nation).
+const safeHexColor = (c) => /^#[0-9a-f]{6}$/i.test(c || '') ? c : '#fff';
+
 async function init() {
   let ctx = null;
   try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
@@ -333,9 +337,7 @@ async function renderCoalition(nationId, nationName) {
       return;
     }
     host.innerHTML = coalition.map(p => {
-      // safe-hex check before inlining the color — mirrors first-steps
-      // and politician-nation; anything non-#RRGGBB falls back to white.
-      const color = /^#[0-9a-f]{6}$/i.test(p.party_color || '') ? p.party_color : '#fff';
+      const color = safeHexColor(p.party_color);
       const pop   = (p.popularity_pct == null) ? '—' : (Math.round(Number(p.popularity_pct)) + '%');
       return `<div class="coalition-row">
         <span class="coalition-name" style="color:${color}">${escapeHtml(p.faction_name || 'Party')}</span>
@@ -492,7 +494,7 @@ async function renderCabinet(nation) {
       if (!pid) { const r = rowFor(key); pid = (r && r.party_id) ? r.party_id : null; }
       const party = pid ? partyById[pid] : null;
       if (!party) return '';
-      const color = /^#[0-9a-f]{6}$/i.test(party.party_color || '') ? party.party_color : '#fff';
+      const color = safeHexColor(party.party_color);
       return `<span class="cab-party" style="color:${color}">${escapeHtml(party.faction_name || 'Party')}</span>`;
     };
 
