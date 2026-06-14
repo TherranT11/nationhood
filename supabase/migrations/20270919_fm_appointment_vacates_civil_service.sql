@@ -4,20 +4,40 @@
 --
 -- A politician cannot hold two offices at once. Stepping up to Minister
 -- of Foreign Affairs and Trade is a political appointment that ends the
--- apolitical civil-service career — so the appointment now clears the
+-- apolitical civil-service career — so the appointment now vacates the
 -- same fields resign_from_civil_service does (politician_ministry, the
 -- Agency Head / Permanent Secretary stamps, and the Junior / Deputy
 -- Minister canopy slots). Both appointment paths are covered: the NPC-HoG
 -- dice roll in politician_seek_fm_post and the player-HoG approval in
--- politician_decide_fm_application (both re-emitted from 20270868, the
--- only change being the wider UPDATE).
+-- politician_decide_fm_application (re-emitted from 20270868, each gaining
+-- one line — the vacate call after the post is stamped).
 --
--- A backfill fixes anyone already in the impossible state — e.g. a
--- Permanent Secretary who was appointed Foreign Minister and kept the PS
--- slot.
+-- The clear lives in ONE helper (_politician_vacate_career_track) that the
+-- appointments and the backfill below all call. A backfill fixes anyone
+-- already in the impossible state — e.g. a Permanent Secretary who was
+-- appointed Foreign Minister and kept the PS slot.
 -- ════════════════════════════════════════════════════════════════════
 
 BEGIN;
+
+-- One source for vacating a politician's civil-service / sub-minister
+-- career track (the same fields resign_from_civil_service clears, 20270880).
+CREATE OR REPLACE FUNCTION public._politician_vacate_career_track(p_faction_id uuid)
+RETURNS void
+LANGUAGE sql
+AS $$
+    UPDATE factions
+       SET politician_ministry                     = NULL,
+           politician_senior_civil_servant_at_tick = NULL,
+           politician_agency_head_of               = NULL,
+           politician_permanent_secretary_at_tick  = NULL,
+           politician_permanent_secretary_ministry = NULL,
+           politician_junior_portfolio             = NULL,
+           politician_deputy_minister_ministry     = NULL,
+           politician_deputy_minister_at_tick      = NULL
+     WHERE id = p_faction_id;
+$$;
+REVOKE EXECUTE ON FUNCTION public._politician_vacate_career_track(uuid) FROM PUBLIC;
 
 -- ── politician_seek_fm_post (re-emitted from 20270868) ─────────────
 CREATE OR REPLACE FUNCTION public.politician_seek_fm_post(p_faction_id uuid)
@@ -104,22 +124,13 @@ BEGIN
 
     IF v_roll >= 28 THEN
         BEGIN
-            -- One office at a time (20270919): the appointment vacates the
-            -- civil-service / sub-minister career track.
-            UPDATE factions
-               SET politician_foreign_minister_at_tick  = v_tick,
-                   politician_ministry                     = NULL,
-                   politician_senior_civil_servant_at_tick = NULL,
-                   politician_agency_head_of               = NULL,
-                   politician_permanent_secretary_at_tick  = NULL,
-                   politician_permanent_secretary_ministry = NULL,
-                   politician_junior_portfolio             = NULL,
-                   politician_deputy_minister_ministry     = NULL,
-                   politician_deputy_minister_at_tick      = NULL
+            UPDATE factions SET politician_foreign_minister_at_tick = v_tick
              WHERE id = v_pol.id;
         EXCEPTION WHEN unique_violation THEN
             RETURN jsonb_build_object('success', false, 'reason', 'post_filled');
         END;
+        -- One office at a time (20270919): vacate the civil-service track.
+        PERFORM _politician_vacate_career_track(v_pol.id);
         INSERT INTO politician_fm_applications
             (applicant_faction_id, target_nation_id, submitted_tick,
              status, decided_by_path, decided_tick)
@@ -195,18 +206,7 @@ BEGIN
     END IF;
 
     BEGIN
-        -- One office at a time (20270919): the appointment vacates the
-        -- civil-service / sub-minister career track.
-        UPDATE factions
-           SET politician_foreign_minister_at_tick  = v_tick,
-               politician_ministry                     = NULL,
-               politician_senior_civil_servant_at_tick = NULL,
-               politician_agency_head_of               = NULL,
-               politician_permanent_secretary_at_tick  = NULL,
-               politician_permanent_secretary_ministry = NULL,
-               politician_junior_portfolio             = NULL,
-               politician_deputy_minister_ministry     = NULL,
-               politician_deputy_minister_at_tick      = NULL
+        UPDATE factions SET politician_foreign_minister_at_tick = v_tick
          WHERE id = v_app.applicant_faction_id AND abandoned_at IS NULL;
         IF NOT FOUND THEN
             RETURN jsonb_build_object('success', false, 'reason', 'applicant_gone');
@@ -214,6 +214,8 @@ BEGIN
     EXCEPTION WHEN unique_violation THEN
         RETURN jsonb_build_object('success', false, 'reason', 'post_filled');
     END;
+    -- One office at a time (20270919): vacate the civil-service track.
+    PERFORM _politician_vacate_career_track(v_app.applicant_faction_id);
 
     UPDATE politician_fm_applications
        SET status = 'approved', decided_by_path = 'player_hog', decided_tick = v_tick
@@ -228,24 +230,24 @@ END $$;
 REVOKE EXECUTE ON FUNCTION public.politician_decide_fm_application(uuid, uuid, boolean) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.politician_decide_fm_application(uuid, uuid, boolean) TO authenticated;
 
--- ── Backfill: clear the civil-service / sub-minister track for anyone
--- already holding the Foreign Minister post (the impossible two-office
--- state — e.g. a Permanent Secretary appointed FM). ─────────────────
-UPDATE factions
-   SET politician_ministry                     = NULL,
-       politician_senior_civil_servant_at_tick = NULL,
-       politician_agency_head_of               = NULL,
-       politician_permanent_secretary_at_tick  = NULL,
-       politician_permanent_secretary_ministry = NULL,
-       politician_junior_portfolio             = NULL,
-       politician_deputy_minister_ministry     = NULL,
-       politician_deputy_minister_at_tick      = NULL
- WHERE politician_foreign_minister_at_tick IS NOT NULL
-   AND (politician_ministry                     IS NOT NULL
-        OR politician_senior_civil_servant_at_tick IS NOT NULL
-        OR politician_permanent_secretary_ministry IS NOT NULL
-        OR politician_junior_portfolio             IS NOT NULL
-        OR politician_deputy_minister_ministry     IS NOT NULL);
+-- ── Backfill: anyone already holding the Foreign Minister post AND
+-- flagged in the civil-service / sub-minister track (the impossible
+-- two-office state — e.g. Mateo Paredes, PS + FM) gets the track vacated
+-- via the same helper. ─────────────────────────────────────────────
+DO $do$
+DECLARE r record;
+BEGIN
+    FOR r IN SELECT id FROM factions
+              WHERE politician_foreign_minister_at_tick IS NOT NULL
+                AND (politician_ministry                     IS NOT NULL
+                     OR politician_senior_civil_servant_at_tick IS NOT NULL
+                     OR politician_permanent_secretary_ministry IS NOT NULL
+                     OR politician_junior_portfolio             IS NOT NULL
+                     OR politician_deputy_minister_ministry     IS NOT NULL)
+    LOOP
+        PERFORM _politician_vacate_career_track(r.id);
+    END LOOP;
+END $do$;
 
 NOTIFY pgrst, 'reload schema';
 
