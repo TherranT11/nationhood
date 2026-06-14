@@ -69,7 +69,7 @@
   .cabinet-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;}
   .cab-card{padding:12px 14px;background:var(--panel2);border:0.5px solid var(--line);
     border-left:3px solid var(--amber-dim);border-radius:4px;}
-  .cab-title{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mut);
+  .cab-title{font-size:12px;letter-spacing:0.07em;text-transform:uppercase;color:var(--mut);
     font-family:monospace;font-weight:700;margin-bottom:8px;}
   .cab-holder{font-size:14px;font-weight:600;color:#fff;}
   .cab-holder .cab-vacant{color:var(--faint);font-weight:400;font-style:italic;}
@@ -80,7 +80,8 @@
 
   /* Dedicated ministry containers — full-name head (with an optional
      top-right action chip) over that ministry's per-turn action rows. */
-  .min-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .min-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+  .min-name{font-size:16px;font-weight:600;letter-spacing:0.02em;line-height:1.3;}
   .min-empty{color:var(--faint);font-size:11px;font-style:italic;}
   .cab-actions-left{flex-shrink:0;font-family:monospace;font-size:9px;letter-spacing:0.1em;
     font-weight:700;color:var(--amber);background:var(--amber-bg);
@@ -407,26 +408,21 @@ function leaderRow(role, title, name, age) {
   </div>`;
 }
 
-// Cabinet roster — one card per major ministry (ministry · minister ·
-// party tag). The Head of Government and Head of State sit in the
-// Leadership panel up top, not here. Foreign Affairs & Trade reads the
-// dedicated Foreign Minister post (politician_foreign_minister_at_tick,
-// the single source on the politician side), falling back to the
-// ministries 'foreign'/'foreign_affairs' row for nations where an NPC
-// holds it. The other three majors read the ministries table directly.
-// A missing holder reads "Vacant".
-const CABINET_POSTS = [
-  { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade' },
-  { key: 'interior',             label: 'Interior' },
-  { key: 'economic_development', label: 'Economic Development' },
-  { key: 'defense',              label: 'Defense' },
+// The four major ministries, in display order — `label` titles the
+// Cabinet roster card, `name` titles the dedicated container below.
+// (Head of Government and Head of State sit in the Leadership panel up
+// top, not in the cabinet.)
+const MINISTRIES = [
+  { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade', name: 'Foreign Affairs and Trade Ministry', color: '#5aafa5' },
+  { key: 'economic_development', label: 'Economic Development',       name: 'Ministry of Economic Development',   color: '#6ab07a' },
+  { key: 'interior',             label: 'Interior',                   name: 'Ministry of the Interior',           color: '#c8a64e' },
+  { key: 'defense',              label: 'Defense',                    name: 'Ministry of Defense',                color: '#c0696a' },
 ];
 
-// Ministry action containers — a ministry listed here renders as a wide
-// card carrying its per-turn tools. `chip` is the head's top-right status
-// (e.g. the foreign minister's one action per turn); an action's `meta`
-// is a small note (e.g. a cooldown). All display-only for now — none of
-// these are wired.
+// Per-ministry actions, keyed by ministry. `chip` is the container
+// head's top-right status (e.g. the foreign minister's one action per
+// turn); an action's `meta` is a small note (e.g. a cooldown). All
+// display-only for now — none of these are wired.
 const MINISTRY_ACTIONS = {
   foreign_affairs: {
     chip: '1 Action Remaining',
@@ -446,15 +442,6 @@ const MINISTRY_ACTIONS = {
   },
 };
 
-// The dedicated ministry containers beneath the Cabinet roster — full
-// display name + that ministry's actions (from MINISTRY_ACTIONS).
-const MINISTRY_CONTAINERS = [
-  { key: 'foreign_affairs',      name: 'Foreign Affairs and Trade Ministry' },
-  { key: 'economic_development', name: 'Ministry of Economic Development' },
-  { key: 'interior',             name: 'Ministry of the Interior' },
-  { key: 'defense',              name: 'Ministry of Defense' },
-];
-
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
   if (!host) return;
@@ -464,7 +451,7 @@ async function renderCabinet(nation) {
         .select('ministry_key, minister_first_name, minister_last_name, party_id')
         .eq('nation_id', nation.id).eq('is_active', true),
       _supabase.from('factions')
-        .select('leader_first_name, leader_last_name')
+        .select('leader_first_name, leader_last_name, politician_party_id')
         .eq('nation_id', nation.id)
         .not('politician_foreign_minister_at_tick', 'is', null)
         .is('abandoned_at', null).maybeSingle(),
@@ -495,21 +482,26 @@ async function renderCabinet(nation) {
       return m ? `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim() : '';
     };
 
-    // Party tag: the portfolio's controlling party (party_id → faction).
+    // Party tag: the minister's party. Foreign Affairs reads the
+    // post-holder's politician_party_id (covers a player minister whose
+    // ministries row carries no party); everyone else the portfolio's
+    // controlling party (ministries.party_id). Both resolve to a
+    // movement_party faction for the name + colour.
     const partyTagFor = (key) => {
-      const m = rowFor(key);
-      const party = (m && m.party_id) ? partyById[m.party_id] : null;
+      let pid = (key === 'foreign_affairs' && fm && fm.politician_party_id) ? fm.politician_party_id : null;
+      if (!pid) { const r = rowFor(key); pid = (r && r.party_id) ? r.party_id : null; }
+      const party = pid ? partyById[pid] : null;
       if (!party) return '';
       const color = /^#[0-9a-f]{6}$/i.test(party.party_color || '') ? party.party_color : '#fff';
       return `<span class="cab-party" style="color:${color}">${escapeHtml(party.faction_name || 'Party')}</span>`;
     };
 
-    host.innerHTML = CABINET_POSTS.map(p => {
-      const name = nameFor(p.key);
+    host.innerHTML = MINISTRIES.map(m => {
+      const name = nameFor(m.key);
       const nameHtml = name ? escapeHtml(name) : `<span class="cab-vacant">Vacant</span>`;
-      const tag = partyTagFor(p.key);
-      return `<div class="cab-card">
-        <div class="cab-title">${escapeHtml(p.label)}</div>
+      const tag = partyTagFor(m.key);
+      return `<div class="cab-card" style="border-left-color:${m.color}">
+        <div class="cab-title" style="color:${m.color}">${escapeHtml(m.label)}</div>
         <div class="cab-holder">${nameHtml}</div>
         ${tag ? `<div class="cab-party-row">${tag}</div>` : ''}
       </div>`;
@@ -527,7 +519,7 @@ async function renderCabinet(nation) {
 function renderMinistries() {
   const host = document.getElementById('ministry-containers');
   if (!host) return;
-  host.innerHTML = MINISTRY_CONTAINERS.map(m => {
+  host.innerHTML = MINISTRIES.map(m => {
     const act = MINISTRY_ACTIONS[m.key];
     const chip = act?.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : '';
     const body = act
@@ -541,8 +533,8 @@ function renderMinistries() {
             <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
           </div>`).join('')}</div>`
       : `<div class="min-empty">No actions available yet.</div>`;
-    return `<section class="section">
-      <div class="section-head min-head"><span>${escapeHtml(m.name)}</span>${chip}</div>
+    return `<section class="section" style="border-left:3px solid ${m.color}">
+      <div class="min-head"><span class="min-name" style="color:${m.color}">${escapeHtml(m.name)}</span>${chip}</div>
       ${body}
     </section>`;
   }).join('');
