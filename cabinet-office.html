@@ -575,12 +575,19 @@ const MINISTRY_ACTIONS = {
   },
 };
 
-// A ministry's per-turn action allowance: a base count plus the National
-// Focus grant (Diplomatic → Foreign Affairs, Military → Defense). Ministry
-// actions aren't wired to a real allowance yet, so this drives the
-// container's "N Actions Remaining" chip only.
-const MINISTRY_BASE_ACTIONS = { foreign_affairs: 1 };
-const FOCUS_ACTION_GRANT = { diplomatic: 'foreign_affairs', military: 'defense' };
+// A ministry's YEARLY action allowance: 7 each, meant to refill to that
+// every January, plus the National Focus grant (Domestic → Econ Dev +
+// Interior +1; Diplomatic → Foreign Affairs +3; Military → Defense +3).
+// The actions aren't wired to a real counter yet, so this drives the
+// container's "N Actions Remaining" chip (the FULL allowance) only —
+// actual spend, decrement, the January refill and grey-at-0 still need
+// the actions wired to a per-ministry counter.
+const MINISTRY_BASE_ACTIONS = { foreign_affairs: 7, economic_development: 7, interior: 7, defense: 7 };
+const FOCUS_ACTION_GRANT = {
+  domestic:   { economic_development: 1, interior: 1 },
+  diplomatic: { foreign_affairs: 3 },
+  military:   { defense: 3 },
+};
 
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
@@ -668,7 +675,7 @@ function renderMinistries() {
   if (!host) return;
   host.innerHTML = MINISTRIES.map(m => {
     const act = MINISTRY_ACTIONS[m.key];
-    const acts = (MINISTRY_BASE_ACTIONS[m.key] || 0) + (FOCUS_ACTION_GRANT[nationalFocus] === m.key ? 1 : 0);
+    const acts = (MINISTRY_BASE_ACTIONS[m.key] || 0) + ((FOCUS_ACTION_GRANT[nationalFocus] || {})[m.key] || 0);
     const chip = acts > 0 ? `<span class="cab-actions-left">${acts} Action${acts === 1 ? '' : 's'} Remaining</span>` : '';
     const body = act
       ? `<div class="cab-actions">${act.actions.map(a => `
@@ -693,11 +700,12 @@ function renderMinistries() {
 // set_national_focus (20270916): HoG-only, 12-tick cooldown, and a
 // Military posture costs the ruling party 2 approval.
 const FOCUS_OPTIONS = [
-  { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.' },
+  { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.',
+    perk: 'The Ministry of Economic Development and Ministry of the Interior get +1 Action per year.' },
   { key: 'diplomatic', name: 'Diplomatic Focus', desc: 'The administration has a focus on foreign policy abroad.',
-    perk: 'Foreign Affairs and Trade get +1 Action per turn.', effect: '−1% Party Approval' },
+    perk: 'The Foreign Affairs and Trade Ministry get +3 Actions per year.', effect: '−1% Party Approval' },
   { key: 'military',   name: 'Military Focus',    desc: 'The administration has turned its eyes to its military industrial complex.',
-    perk: 'Ministry of Defense gets +1 Action per turn.', effect: '−3% Party Approval' },
+    perk: 'The Ministry of Defense gets +3 Actions per year.', effect: '−3% Party Approval' },
 ];
 let nationalFocus = 'domestic';
 
