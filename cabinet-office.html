@@ -135,6 +135,8 @@
   .ston-cat{font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--faint);
     font-family:monospace;margin-bottom:8px;}
   .ston-desc{font-size:11px;line-height:1.45;color:var(--mut);margin-bottom:10px;}
+  .ston-stakes{font-family:monospace;font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;
+    color:var(--mut);margin-bottom:10px;}
   .ston-sev{display:inline-block;font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;
     font-family:monospace;font-weight:700;padding:2px 6px;border-radius:2px;}
   .ston-sev.sev-green { color:var(--pos); border:0.5px solid var(--pos-dim); }
@@ -311,11 +313,11 @@ async function init() {
   }
 
   renderMinistries();
-  renderFocus(isPM);
   await Promise.all([
     renderCoalition(nation.id, nation.name),
     renderLeadership(nation),
     renderCabinet(nation),
+    renderFocus(nation, isPM),
     renderModifiers(nation.id),
     renderCommodities(nation.id),
   ]);
@@ -580,10 +582,10 @@ function renderMinistries() {
   }).join('');
 }
 
-// National Focus — the administration's posture. DISPLAY SCAFFOLD: the
-// selection defaults to Domestic and is NOT persisted, the 12-tick
-// cooldown isn't enforced, and Military's −2% Party Approval isn't
-// applied — those need a server pass (column + RPC + modifier).
+// National Focus — the administration's posture (Domestic / Diplomatic /
+// Military), persisted on the active administration and changed via
+// set_national_focus (20270916): HoG-only, 12-tick cooldown, and a
+// Military posture costs the ruling party 2 approval.
 const FOCUS_OPTIONS = [
   { key: 'domestic',   name: 'Domestic Focus',   desc: 'The administration is focusing on matters at home.' },
   { key: 'diplomatic', name: 'Diplomatic Focus', desc: 'The administration has a focus on foreign policy abroad.' },
@@ -591,9 +593,28 @@ const FOCUS_OPTIONS = [
 ];
 let nationalFocus = 'domestic';
 
+// Read the live focus off the active administration, then paint.
+async function renderFocus(nation, isPM) {
+  const host = document.getElementById('focus-grid');
+  if (!host) return;
+  try {
+    const { data: adm, error } = await _supabase.from('administrations')
+      .select('national_focus')
+      .eq('nation_id', nation.id).is('ended_at_tick', null)
+      .order('started_at_tick', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    nationalFocus = adm?.national_focus || 'domestic';
+  } catch (e) {
+    console.warn('cabinet-office: focus fetch failed', e?.message || e);
+    nationalFocus = 'domestic';
+  }
+  paintFocus(nation, isPM);
+}
+
 // Only the Head of Government (isPM) gets enabled buttons; the current
-// focus's button is greyed for everyone.
-function renderFocus(isPM) {
+// focus's button is greyed for everyone. The button calls the HoG-gated
+// set_national_focus RPC (it re-checks everything server-side).
+function paintFocus(nation, isPM) {
   const host = document.getElementById('focus-grid');
   if (!host) return;
   host.innerHTML = FOCUS_OPTIONS.map(o => {
@@ -610,13 +631,27 @@ function renderFocus(isPM) {
     </div>`;
   }).join('');
   host.querySelectorAll('.focus-btn:not([disabled])').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (!confirm('Are you sure? Changing Focus comes with a 12 tick cooldown.')) return;
-      // Not wired: moves the highlight client-side only (resets on
-      // reload). Persistence + cooldown + the −2% approval still need
-      // the server pass noted on FOCUS_OPTIONS above.
-      nationalFocus = btn.dataset.focus;
-      renderFocus(isPM);
+      btn.disabled = true;
+      try {
+        const { data, error } = await _supabase.rpc('set_national_focus',
+          { p_nation_id: nation.id, p_focus: btn.dataset.focus });
+        if (error) throw error;
+        if (!data?.success) {
+          const REASON = {
+            not_head_of_government: 'Only the Head of Government can change focus.',
+            on_cooldown: 'Focus was changed recently — it is on a 12-tick cooldown.',
+            already_focused: 'That is already the national focus.',
+            no_administration: 'No sitting administration to set a focus for.',
+          };
+          throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+        }
+        window.location.reload();
+      } catch (e) {
+        alert('Could not change focus: ' + (e?.message || e));
+        paintFocus(nation, isPM);
+      }
     });
   });
 }
@@ -643,10 +678,16 @@ async function renderModifiers(nationId) {
       const sev = m.severity || 'green';
       const lab = SEVERITY_LABELS[sev] || sev;
       const desc = (m.description || '').trim();
+      // The party-approval stakes of the modifier's lifecycle: losing a
+      // positive one costs approval, clearing a negative one earns it.
+      const stakes = sev === 'green' ? '−3% Party Approval if lost'
+                   : sev === 'red'   ? '+2% Party Approval if removed'
+                   : '';
       return `<div class="ston-card sev-${escapeHtml(sev)}">
         <div class="ston-name">${escapeHtml(m.name || 'Modifier')}</div>
         <div class="ston-cat">${escapeHtml(m.category || '—')}</div>
         ${desc ? `<div class="ston-desc">${escapeHtml(desc)}</div>` : ''}
+        ${stakes ? `<div class="ston-stakes">${escapeHtml(stakes)}</div>` : ''}
         <span class="ston-sev sev-${escapeHtml(sev)}">${escapeHtml(lab)}</span>
       </div>`;
     }).join('');
