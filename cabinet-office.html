@@ -64,26 +64,30 @@
   .leader-name .age{color:var(--mut);font-weight:400;}
   .leader-name .leader-vacant{color:var(--faint);font-weight:400;font-style:italic;}
 
-  /* Cabinet — one card per major ministry (HoG/HoS live in the top
-     Leadership panel). Foreign Affairs & Trade is a wide card that also
-     carries the ministry's per-turn actions. */
+  /* Cabinet — one roster card per major ministry: ministry · minister ·
+     party tag. (HoG/HoS live in the Leadership panel up top.) */
   .cabinet-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;}
   .cab-card{padding:12px 14px;background:var(--panel2);border:0.5px solid var(--line);
     border-left:3px solid var(--amber-dim);border-radius:4px;}
-  .cab-card.wide{grid-column:1 / -1;}
   .cab-title{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mut);
     font-family:monospace;font-weight:700;margin-bottom:8px;}
   .cab-holder{font-size:14px;font-weight:600;color:#fff;}
-  .cab-holder .age{color:var(--mut);font-weight:400;font-size:12px;}
   .cab-holder .cab-vacant{color:var(--faint);font-weight:400;font-style:italic;}
-  /* Foreign Affairs & Trade — wide card head + per-turn action rows. */
-  .cab-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .cab-party-row{margin-top:8px;}
+  .cab-party{display:inline-block;font-family:monospace;font-size:8.5px;font-weight:700;
+    letter-spacing:0.08em;text-transform:uppercase;padding:2px 7px;border-radius:3px;
+    border:0.5px solid currentColor;}
+
+  /* Dedicated ministry containers — full-name head (with an optional
+     top-right action chip) over that ministry's per-turn action rows. */
+  .min-head{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .min-empty{color:var(--faint);font-size:11px;font-style:italic;}
   .cab-actions-left{flex-shrink:0;font-family:monospace;font-size:9px;letter-spacing:0.1em;
     font-weight:700;color:var(--amber);background:var(--amber-bg);
     border:0.5px solid var(--amber-dim);border-radius:4px;padding:5px 9px;}
-  .cab-actions{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+  .cab-actions{display:flex;flex-direction:column;gap:8px;}
   .cab-action{display:flex;align-items:center;justify-content:space-between;gap:14px;
-    padding:12px 14px;background:var(--panel);border:0.5px solid var(--line);border-radius:4px;}
+    padding:12px 14px;background:var(--panel2);border:0.5px solid var(--line);border-radius:4px;}
   .cab-action-info{min-width:0;}
   .cab-action-name{font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;}
   .cab-action-desc{font-size:11px;line-height:1.55;color:var(--mut);}
@@ -181,6 +185,10 @@
         <div class="section-head">Cabinet</div>
         <div class="cabinet-grid" id="cabinet-grid"></div>
       </section>
+
+      <!-- One dedicated container per major ministry (rendered by
+           renderMinistries) — each carries that ministry's actions. -->
+      <div id="ministry-containers"></div>
     </div>
   </div>
 </div>
@@ -269,6 +277,7 @@ async function init() {
     return;
   }
 
+  renderMinistries();
   await Promise.all([
     renderCoalition(nation.id, nation.name),
     renderLeadership(nation),
@@ -398,14 +407,14 @@ function leaderRow(role, title, name, age) {
   </div>`;
 }
 
-// Cabinet roster — one card per major ministry. The Head of Government
-// and Head of State sit in the Leadership panel up top, not here.
-// Foreign Affairs & Trade reads the dedicated Foreign Minister post
-// (politician_foreign_minister_at_tick, the single source on the
-// politician side), falling back to the ministries 'foreign'/
-// 'foreign_affairs' row for nations where an NPC holds it. The other
-// three majors read the ministries table directly (minister_age stored
-// there). A missing holder reads "Vacant".
+// Cabinet roster — one card per major ministry (ministry · minister ·
+// party tag). The Head of Government and Head of State sit in the
+// Leadership panel up top, not here. Foreign Affairs & Trade reads the
+// dedicated Foreign Minister post (politician_foreign_minister_at_tick,
+// the single source on the politician side), falling back to the
+// ministries 'foreign'/'foreign_affairs' row for nations where an NPC
+// holds it. The other three majors read the ministries table directly.
+// A missing holder reads "Vacant".
 const CABINET_POSTS = [
   { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade' },
   { key: 'interior',             label: 'Interior' },
@@ -437,77 +446,106 @@ const MINISTRY_ACTIONS = {
   },
 };
 
+// The dedicated ministry containers beneath the Cabinet roster — full
+// display name + that ministry's actions (from MINISTRY_ACTIONS).
+const MINISTRY_CONTAINERS = [
+  { key: 'foreign_affairs',      name: 'Foreign Affairs and Trade Ministry' },
+  { key: 'economic_development', name: 'Ministry of Economic Development' },
+  { key: 'interior',             name: 'Ministry of the Interior' },
+  { key: 'defense',              name: 'Ministry of Defense' },
+];
+
 async function renderCabinet(nation) {
   const host = document.getElementById('cabinet-grid');
   if (!host) return;
   try {
-    const [minRes, fmRes] = await Promise.all([
+    const [minRes, fmRes, partyRes] = await Promise.all([
       _supabase.from('ministries')
-        .select('ministry_key, minister_first_name, minister_last_name, minister_age')
+        .select('ministry_key, minister_first_name, minister_last_name, party_id')
         .eq('nation_id', nation.id).eq('is_active', true),
       _supabase.from('factions')
-        .select('leader_first_name, leader_last_name, leader_age')
+        .select('leader_first_name, leader_last_name')
         .eq('nation_id', nation.id)
         .not('politician_foreign_minister_at_tick', 'is', null)
         .is('abandoned_at', null).maybeSingle(),
+      _supabase.from('factions')
+        .select('id, faction_name, party_color')
+        .eq('nation_id', nation.id)
+        .eq('faction_type', 'movement_party')
+        .is('abandoned_at', null),
     ]);
-    const fm  = fmRes.data || null;
+    const fm = fmRes.data || null;
     const minByKey = {};
     for (const m of (minRes.data || [])) minByKey[m.ministry_key] = m;
+    const partyById = {};
+    for (const p of (partyRes.data || [])) partyById[p.id] = p;
 
-    const fromMinistry = (m) => m
-      ? { name: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim(),
-          age: (m.minister_age != null) ? m.minister_age : null }
-      : { name: '', age: null };
+    // The ministries row backing a cabinet post (foreign reads either key).
+    const rowFor = (key) => key === 'foreign_affairs'
+      ? (minByKey['foreign_affairs'] || minByKey['foreign'] || null)
+      : (minByKey[key] || null);
 
-    const holderFor = (key) => {
-      if (key === 'foreign_affairs') {
-        if (fm) return { name: `${fm.leader_first_name || ''} ${fm.leader_last_name || ''}`.trim(),
-                         age: (fm.leader_age != null) ? fm.leader_age : null };
-        return fromMinistry(minByKey['foreign_affairs'] || minByKey['foreign']);
+    // Minister name: Foreign Affairs from the dedicated post (NPC falls
+    // back to the ministries row), the rest straight from the row.
+    const nameFor = (key) => {
+      if (key === 'foreign_affairs' && fm) {
+        return `${fm.leader_first_name || ''} ${fm.leader_last_name || ''}`.trim();
       }
-      return fromMinistry(minByKey[key]);
+      const m = rowFor(key);
+      return m ? `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim() : '';
+    };
+
+    // Party tag: the portfolio's controlling party (party_id → faction).
+    const partyTagFor = (key) => {
+      const m = rowFor(key);
+      const party = (m && m.party_id) ? partyById[m.party_id] : null;
+      if (!party) return '';
+      const color = /^#[0-9a-f]{6}$/i.test(party.party_color || '') ? party.party_color : '#fff';
+      return `<span class="cab-party" style="color:${color}">${escapeHtml(party.faction_name || 'Party')}</span>`;
     };
 
     host.innerHTML = CABINET_POSTS.map(p => {
-      const h = holderFor(p.key);
-      const holderHtml = h.name
-        ? `${escapeHtml(h.name)}${h.age != null ? ` <span class="age">(${escapeHtml(String(h.age))})</span>` : ''}`
-        : `<span class="cab-vacant">Vacant</span>`;
-      // A ministry with defined actions renders as a wide container that
-      // carries its per-turn tools (display-only scaffolds — not wired).
-      const act = MINISTRY_ACTIONS[p.key];
-      if (act) {
-        return `<div class="cab-card wide">
-          <div class="cab-card-head">
-            <div>
-              <div class="cab-title">${escapeHtml(p.label)}</div>
-              <div class="cab-holder">${holderHtml}</div>
-            </div>
-            ${act.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : ''}
-          </div>
-          <div class="cab-actions">
-            ${act.actions.map(a => `
-            <div class="cab-action">
-              <div class="cab-action-info">
-                <div class="cab-action-name">${escapeHtml(a.name)}</div>
-                <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
-                ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
-              </div>
-              <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
-            </div>`).join('')}
-          </div>
-        </div>`;
-      }
+      const name = nameFor(p.key);
+      const nameHtml = name ? escapeHtml(name) : `<span class="cab-vacant">Vacant</span>`;
+      const tag = partyTagFor(p.key);
       return `<div class="cab-card">
         <div class="cab-title">${escapeHtml(p.label)}</div>
-        <div class="cab-holder">${holderHtml}</div>
+        <div class="cab-holder">${nameHtml}</div>
+        ${tag ? `<div class="cab-party-row">${tag}</div>` : ''}
       </div>`;
     }).join('');
   } catch (err) {
     console.error('cabinet-office: cabinet fetch failed', err);
     host.innerHTML = '<div class="empty">Could not load cabinet.</div>';
   }
+}
+
+// The dedicated ministry containers — one section each, the ministry's
+// per-turn actions inside (display-only scaffolds; none are wired). An
+// optional chip (e.g. the foreign minister's one action per turn) sits
+// top-right of the head.
+function renderMinistries() {
+  const host = document.getElementById('ministry-containers');
+  if (!host) return;
+  host.innerHTML = MINISTRY_CONTAINERS.map(m => {
+    const act = MINISTRY_ACTIONS[m.key];
+    const chip = act?.chip ? `<span class="cab-actions-left">${escapeHtml(act.chip)}</span>` : '';
+    const body = act
+      ? `<div class="cab-actions">${act.actions.map(a => `
+          <div class="cab-action">
+            <div class="cab-action-info">
+              <div class="cab-action-name">${escapeHtml(a.name)}</div>
+              <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
+              ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
+            </div>
+            <button type="button" class="cab-action-btn">${escapeHtml(a.btn)}</button>
+          </div>`).join('')}</div>`
+      : `<div class="min-empty">No actions available yet.</div>`;
+    return `<section class="section">
+      <div class="section-head min-head"><span>${escapeHtml(m.name)}</span>${chip}</div>
+      ${body}
+    </section>`;
+  }).join('');
 }
 
 // State of the Nation — compact 4-across modifier cards. Same data the
