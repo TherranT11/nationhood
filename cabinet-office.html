@@ -52,6 +52,28 @@
   .coalition-name{font-size:14px;font-weight:600;}
   .coalition-pop{font-size:11px;color:var(--mut);font-family:monospace;letter-spacing:0.04em;}
 
+  /* Administration: coalition on the left, leadership panel on the right. */
+  .admin-layout{display:flex;gap:24px;align-items:flex-start;}
+  .admin-main{flex:1;min-width:0;}
+  .admin-leaders{flex:0 0 260px;display:flex;flex-direction:column;gap:10px;}
+  @media (max-width:760px){ .admin-layout{flex-direction:column;} .admin-leaders{flex-basis:auto;width:100%;} }
+  .leader-row{padding:10px 12px;background:var(--panel2);border:0.5px solid var(--line);border-radius:4px;}
+  .leader-role{font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--faint);
+    font-family:monospace;margin-bottom:5px;}
+  .leader-name{font-size:14px;font-weight:600;color:#fff;}
+  .leader-name .age{color:var(--mut);font-weight:400;}
+  .leader-name .leader-vacant{color:var(--faint);font-weight:400;font-style:italic;}
+
+  /* Cabinet — one card per post (Head of Government + the four majors). */
+  .cabinet-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));gap:10px;}
+  .cab-card{padding:12px 14px;background:var(--panel2);border:0.5px solid var(--line);
+    border-left:3px solid var(--amber-dim);border-radius:4px;}
+  .cab-title{font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mut);
+    font-family:monospace;font-weight:700;margin-bottom:8px;}
+  .cab-holder{font-size:14px;font-weight:600;color:#fff;}
+  .cab-holder .age{color:var(--mut);font-weight:400;font-size:12px;}
+  .cab-holder .cab-vacant{color:var(--faint);font-weight:400;font-style:italic;}
+
   /* State of the Nation — compact modifier cards, 4 across (collapses on narrow). */
   .ston-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
   @media (max-width: 900px){ .ston-grid{grid-template-columns:repeat(2, 1fr);} }
@@ -115,8 +137,18 @@
 
     <div id="page" style="display:none">
       <section class="section">
-        <div class="admin-title" id="admin-title">— Administration</div>
-        <div class="coalition" id="coalition"></div>
+        <div class="admin-layout">
+          <div class="admin-main">
+            <div class="admin-title" id="admin-title">— Administration</div>
+            <div class="coalition" id="coalition"></div>
+          </div>
+          <div class="admin-leaders" id="admin-leaders"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">Cabinet</div>
+        <div class="cabinet-grid" id="cabinet-grid"></div>
       </section>
 
       <section class="section">
@@ -218,6 +250,8 @@ async function init() {
 
   await Promise.all([
     renderCoalition(nation.id, nation.name),
+    renderLeadership(nation),
+    renderCabinet(nation),
     renderModifiers(nation.id),
     renderCommodities(nation.id),
   ]);
@@ -281,6 +315,145 @@ async function renderCoalition(nationId, nationName) {
     console.error('cabinet-office: coalition fetch failed', err);
     title.textContent = `${nationName} Administration`;
     host.innerHTML = '<div class="empty">Could not load coalition.</div>';
+  }
+}
+
+// Leadership panel (right of the administration block): Head of Government
+// (Prime Minister) + Head of State (President). The HoG name lives on
+// head_of_government (server-stamped first/last); its age is read off the
+// linked faction (head_of_government stores no age). The HoS name/title/age
+// live on nations.head_of_state_*. A Presidential nation has no separate
+// premier — HoS leads the government — so the PM row is omitted there,
+// mirroring politician-nation's patchHeadOfGov guard.
+async function renderLeadership(nation) {
+  const host = document.getElementById('admin-leaders');
+  if (!host) return;
+  try {
+    const [hogRes, hosRes] = await Promise.all([
+      _supabase.from('head_of_government')
+        .select('first_name, last_name, faction_id')
+        .eq('nation_id', nation.id).eq('active', true).maybeSingle(),
+      _supabase.from('nations')
+        .select('head_of_state_title, head_of_state_first_name, head_of_state_last_name, head_of_state_age')
+        .eq('id', nation.id).maybeSingle(),
+    ]);
+    const hog = hogRes.data || null;
+    const hos = hosRes.data || null;
+
+    // PM age — head_of_government has no age column, so read it from the
+    // linked faction's leader_age (NPC PMs without a faction just omit it).
+    let pmAge = null;
+    if (hog?.faction_id) {
+      const { data: f } = await _supabase.from('factions')
+        .select('leader_age').eq('id', hog.faction_id).maybeSingle();
+      pmAge = (f && f.leader_age != null) ? f.leader_age : null;
+    }
+
+    const pmName  = hog ? `${hog.first_name || ''} ${hog.last_name || ''}`.trim() : '';
+    const hosName = hos ? `${hos.head_of_state_first_name || ''} ${hos.head_of_state_last_name || ''}`.trim() : '';
+    const hosTitle = (hos && hos.head_of_state_title) || 'President';
+
+    const rows = [];
+    if (nation.government_type !== 'Presidential') {
+      rows.push(leaderRow('Head of Government', 'Prime Minister', pmName, pmAge));
+    }
+    rows.push(leaderRow('Head of State', hosTitle, hosName, hos ? hos.head_of_state_age : null));
+    host.innerHTML = rows.join('');
+  } catch (err) {
+    console.error('cabinet-office: leadership fetch failed', err);
+    host.innerHTML = '';
+  }
+}
+
+// One leadership row: "{title}: {name} ({age})". Age is parenthesised only
+// when known; a missing holder reads "Vacant".
+function leaderRow(role, title, name, age) {
+  const detail = name
+    ? `${escapeHtml(title)}: ${escapeHtml(name)}${age != null ? ` <span class="age">(${escapeHtml(String(age))})</span>` : ''}`
+    : `${escapeHtml(title)}: <span class="leader-vacant">Vacant</span>`;
+  return `<div class="leader-row">
+    <div class="leader-role">${escapeHtml(role)}</div>
+    <div class="leader-name">${detail}</div>
+  </div>`;
+}
+
+// Cabinet roster — one card per post. Head of Government comes from
+// head_of_government (age off the linked faction). Foreign Affairs & Trade
+// reads the dedicated Foreign Minister post (politician_foreign_minister_at_tick,
+// the single source on the politician side), falling back to the ministries
+// 'foreign'/'foreign_affairs' row for nations where an NPC holds it. The
+// other three majors read the ministries table directly (minister_age
+// stored there). A missing holder reads "Vacant".
+const CABINET_POSTS = [
+  { key: 'head_of_government',   label: 'Head of Government' },
+  { key: 'foreign_affairs',      label: 'Foreign Affairs and Trade' },
+  { key: 'interior',             label: 'Interior' },
+  { key: 'economic_development', label: 'Economic Development' },
+  { key: 'defense',              label: 'Defense' },
+];
+
+async function renderCabinet(nation) {
+  const host = document.getElementById('cabinet-grid');
+  if (!host) return;
+  try {
+    const [hogRes, minRes, fmRes] = await Promise.all([
+      _supabase.from('head_of_government')
+        .select('first_name, last_name, faction_id')
+        .eq('nation_id', nation.id).eq('active', true).maybeSingle(),
+      _supabase.from('ministries')
+        .select('ministry_key, minister_first_name, minister_last_name, minister_age')
+        .eq('nation_id', nation.id).eq('is_active', true),
+      _supabase.from('factions')
+        .select('leader_first_name, leader_last_name, leader_age')
+        .eq('nation_id', nation.id)
+        .not('politician_foreign_minister_at_tick', 'is', null)
+        .is('abandoned_at', null).maybeSingle(),
+    ]);
+    const hog = hogRes.data || null;
+    const fm  = fmRes.data || null;
+    const minByKey = {};
+    for (const m of (minRes.data || [])) minByKey[m.ministry_key] = m;
+
+    // HoG age — head_of_government stores none; read the linked faction.
+    let hogAge = null;
+    if (hog && hog.faction_id) {
+      const { data: f } = await _supabase.from('factions')
+        .select('leader_age').eq('id', hog.faction_id).maybeSingle();
+      hogAge = (f && f.leader_age != null) ? f.leader_age : null;
+    }
+
+    const fromMinistry = (m) => m
+      ? { name: `${m.minister_first_name || ''} ${m.minister_last_name || ''}`.trim(),
+          age: (m.minister_age != null) ? m.minister_age : null }
+      : { name: '', age: null };
+
+    const holderFor = (key) => {
+      if (key === 'head_of_government') {
+        return hog
+          ? { name: `${hog.first_name || ''} ${hog.last_name || ''}`.trim(), age: hogAge }
+          : { name: '', age: null };
+      }
+      if (key === 'foreign_affairs') {
+        if (fm) return { name: `${fm.leader_first_name || ''} ${fm.leader_last_name || ''}`.trim(),
+                         age: (fm.leader_age != null) ? fm.leader_age : null };
+        return fromMinistry(minByKey['foreign_affairs'] || minByKey['foreign']);
+      }
+      return fromMinistry(minByKey[key]);
+    };
+
+    host.innerHTML = CABINET_POSTS.map(p => {
+      const h = holderFor(p.key);
+      const holderHtml = h.name
+        ? `${escapeHtml(h.name)}${h.age != null ? ` <span class="age">(${escapeHtml(String(h.age))})</span>` : ''}`
+        : `<span class="cab-vacant">Vacant</span>`;
+      return `<div class="cab-card">
+        <div class="cab-title">${escapeHtml(p.label)}</div>
+        <div class="cab-holder">${holderHtml}</div>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.error('cabinet-office: cabinet fetch failed', err);
+    host.innerHTML = '<div class="empty">Could not load cabinet.</div>';
   }
 }
 
