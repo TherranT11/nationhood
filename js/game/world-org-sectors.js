@@ -11,11 +11,11 @@
  * page must carry the .wo-cat CSS.
  */
 export const WORLD_ORG_SECTORS = [
-  { key: 'universal_political',  name: 'Universal & Political',  icon: '☰', accent: '#5b8def' },
-  { key: 'economic_financial',   name: 'Economic & Financial',   icon: '▦', accent: '#c79a3a' },
-  { key: 'trade_commerce',       name: 'Trade & Commerce',       icon: '⇄', accent: '#4f9d5a' },
-  { key: 'security_defense',     name: 'Security & Defense',     icon: '⚔', accent: '#b5564a' },
-  { key: 'technical_functional', name: 'Technical & Functional', icon: '⚙', accent: '#3a9d9d' },
+  { key: 'diplomatic_political', name: 'Diplomatic & Political', icon: '♔', accent: '#5b8def', desc: 'Consultation, mediation, alignment among states.' },
+  { key: 'economic_financial',   name: 'Economic & Financial',   icon: '$', accent: '#c79a3a', desc: 'Monetary, fiscal, development, lending bodies.' },
+  { key: 'trade_commerce',       name: 'Trade & Commerce',       icon: '⇄', accent: '#4f9d5a', desc: 'Tariffs, customs, market access, supply chains.' },
+  { key: 'security_defense',     name: 'Security & Defense',     icon: '⚔', accent: '#b5564a', desc: 'Mutual defense pacts, intelligence-sharing, joint command.' },
+  { key: 'technical_functional', name: 'Technical & Functional', icon: '⚙', accent: '#3a9d9d', desc: 'Standards, regulation, science, health, transport.' },
 ];
 
 const _esc = (s) => String(s == null ? '' : s)
