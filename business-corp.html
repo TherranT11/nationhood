@@ -1605,10 +1605,11 @@ import { CITY_STATS } from './js/game/city-labels.js';
           ? (Number(corp.expenses_ytd) || 0) : 0;
         const revenueMonth = Number(corp.last_revenue_tick) === currentTick
           ? (Number(corp.last_tick_revenue) || 0) : 0;
-        // Display mirror of file_corporate_tax (20270872/73): the 0-10
-        // Corporate Taxation policy scale pays ×5 as a real percent,
-        // and an active Tax Holiday Act discounts covered filings.
-        let taxRate = Math.max(0, Math.min(100, (Number(corp.nation?.corporate_tax) || 0) * 5));
+        // Display mirror of file_corporate_tax (20270934): corporate_tax
+        // is a direct 0-100 percent (the Corporate Taxation codebook —
+        // Tax Haven 5 … Heavy 45), and an active Tax Holiday Act discounts
+        // covered filings.
+        let taxRate = Math.max(0, Math.min(100, Number(corp.nation?.corporate_tax) || 0));
         let holidayNote = '';
         try {
           const year = 2000 + Math.floor(currentTick / 12);

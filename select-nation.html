@@ -936,17 +936,17 @@ function getGovTypeLabel(govTypeOrNation) {
   return 'PARLIAMENTARY';
 }
 
-// Map nations.corporate_tax (0–100, anchored at 0/10/30/50/70/90 per
-// the canonical policy options in supabase/migrations/20270117) to
-// the policy-name label. Intermediate values bucket to nearest band.
+// Map nations.corporate_tax (0–100, anchored at 5/15/25/35/45 per the
+// canonical policy options in supabase/migrations/20270934) to the
+// policy-name label. Buckets at the anchor midpoints (10/20/30/40).
 function corporateTaxPolicyLabel(rate) {
   const r = Number(rate);
   if (rate == null || isNaN(r))     return '—';
   if (r === 0)                       return 'No Corporate Tax';
-  if (r <= 20)                       return 'Tax Haven';
-  if (r <= 40)                       return 'Pro-Business Low Tax';
-  if (r <= 60)                       return 'Standard Rate';
-  if (r <= 80)                       return 'Progressive';
+  if (r <= 10)                       return 'Tax Haven';
+  if (r <= 20)                       return 'Pro-Business Low Tax';
+  if (r <= 30)                       return 'Standard Rate';
+  if (r <= 40)                       return 'Progressive';
   return 'Heavy Taxation';
 }
 
