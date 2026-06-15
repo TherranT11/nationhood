@@ -330,43 +330,6 @@ async function checkRecentElection(nation, shard) {
     }];
 }
 
-// Prompt every party to use the Form Coalition action when the most
-// recent election is recent AND there's no government in place. Fires
-// for every nation party (not just the largest) since anyone can now
-// propose. Runs alongside checkRecentElection — election notice tells
-// the player something happened, this tells them what to do next.
-async function checkPostElectionFormation(nation, shard) {
-    const tick = Number(shard?.current_tick) || 0;
-    if (tick <= 0) return [];
-    const [{ data: elRows }, { data: gfRows }] = await Promise.all([
-        _supabase.from('elections')
-            .select('election_tick')
-            .eq('nation_id', nation.id)
-            .eq('status', 'completed')
-            .order('election_tick', { ascending: false })
-            .limit(1),
-        _supabase.from('government_formations')
-            .select('id, status')
-            .eq('nation_id', nation.id)
-            .in('status', ['formed', 'active', 'caretaker'])
-            .limit(1),
-    ]);
-    const el = (elRows || [])[0];
-    if (!el) return [];
-    const completed = Number(el.election_tick) || 0;
-    if (!completed || completed > tick || tick - completed > ELECTION_RECENCY_TICKS) return [];
-    if ((gfRows || []).length > 0) return []; // Government already in place.
-    return [{
-        title: 'Form Coalition',
-        sub: "Use 'Form Coalition' to create a government.",
-        href: 'politics.html',
-        // Per-occurrence dismissal so a player who dismisses this
-        // for the current vacancy still gets the prompt after the
-        // next election creates a fresh vacancy.
-        dismissId: `form_coalition:${completed}`,
-    }];
-}
-
 async function checkCoalitionInvites(faction, nation) {
     // Active formations where this faction is in party_ids (invited)
     // and hasn't yet recorded a row in government_formation_support
@@ -793,7 +756,6 @@ async function refreshNotifications() {
             checkBills(faction, nation),
             checkCentralBankLoanRequests(faction, nation, shard),
             checkRecentElection(nation, shard),
-            checkPostElectionFormation(nation, shard),
             checkCoalitionInvites(faction, nation),
             checkChatUnread(faction),
             checkTradeNegotiationMessages(faction, nation, isPM, isTradeMin),

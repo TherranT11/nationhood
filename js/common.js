@@ -487,7 +487,6 @@ export function renderTopBar(activeTab) {
         mobileNav.className = 'mobile-bottom-nav';
         mobileNav.innerHTML = [
             { id: 'dashboard', label: 'Home',  icon: '\uD83C\uDFE0', href: 'dashboard.html' },
-            { id: 'politics',  label: 'Actions', icon: '\u2694\uFE0F', href: 'politics.html' },
         ].map(tab => `<a href="${tab.href}${suffix}" class="mobile-bottom-nav__item ${tab.id === activeTab ? 'active' : ''}" data-tab="${tab.id}">
             <span class="mobile-bottom-nav__icon">${tab.icon}</span>
             <span class="mobile-bottom-nav__label">${tab.label}</span>
@@ -512,7 +511,6 @@ export function renderTopBar(activeTab) {
 export function renderNavTabs(activeTab) {
     const tabs = [
         { id: 'dashboard', label: 'Home', href: 'dashboard.html' },
-        { id: 'politics', label: 'Actions', href: 'politics.html' },
     ];
 
     // Preserve admin overrides in nav links so clicking tabs
@@ -1043,18 +1041,17 @@ export async function initPage(activeTab, onReady, requireFaction = true) {
     const state = await loadGameState(requireFaction);
     if (!state) return;
 
-    // Non-party faction on a party page — bounce to its own dashboard
-    // (corp → corp-dashboard, army → army-dashboard, …) via the
-    // single-source router. Party factions resolve to politics.html —
-    // their home inside this very page suite — so they stay. Shared
-    // pages (news, wiki) are usable by every type.
+    // Bounce any faction off these legacy party pages to its own home
+    // (corp → corp-dashboard, politician → politician-home, party →
+    // faction-select since the party UI is culled), via the single-source
+    // router. Shared pages (news, wiki) are usable by every type.
     // Preserve window.location.search so admin-inspector overrides
     // (?nation_id= and ?faction_id=) survive the redirect — otherwise
     // the target falls back to the admin's own faction instead of the
     // inspected one.
     const SHARED_TABS = ['news', 'wiki'];
     const factionHome = getFactionDashboardUrl(state.faction);
-    if (factionHome && factionHome !== 'politics.html' && !SHARED_TABS.includes(activeTab)) {
+    if (factionHome && !SHARED_TABS.includes(activeTab)) {
         window.location.href = factionHome + window.location.search;
         return;
     }

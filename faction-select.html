@@ -156,22 +156,8 @@ async function init() {
 
   const pendingType = sessionStorage.getItem('pending_faction_type');
 
-  // Check if user already has an active party. Skip the auto-redirect when
-  // the user is explicitly here to add a different faction type
-  // (entrepreneur or politician).
-  if (pendingType !== 'entrepreneur' && pendingType !== 'politician') {
-    const { data: faction, error: partyErr } = await _supabase
-      .from('factions').select('id, faction_type, nation_id, abandoned_at, is_banned').eq('id', user.id).eq('faction_type', 'party').maybeSingle();
-    if (partyErr) console.warn('Party check failed:', partyErr.message);
-    if (faction && !isFactionInactive(faction)) {
-      // Route through the single-source router (party → politics.html).
-      // This used to hardcode dashboard.html, which 20270767 turned
-      // into a thin redirect back to THIS page — every party login
-      // ping-ponged dashboard ↔ faction-select forever.
-      window.location.href = getFactionDashboardUrl(faction) || 'politics.html';
-      return;
-    }
-  }
+  // Legacy 'party' factions are culled — no auto-redirect. A stray party
+  // login simply lands on this chooser to pick a live faction type.
 
   // No nation selected (or wrong flow) — show faction type chooser
   document.getElementById('loading').style.display = 'none';
