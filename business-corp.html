@@ -4172,7 +4172,42 @@ import { CITY_STATS } from './js/game/city-labels.js';
           awaiting = awRows || [];
         }
 
-        if (isBank && !loans.length && !depo) { panel.style.display = 'none'; return; }
+        // Personal-loan desk (20270937): requests this bank may offer on
+        // (the borrower's nation must hold one of our completed Banking
+        // Offices) and the personal loans we already carry.
+        let pReqsEligible = [];
+        let pLoans = [];
+        if (isBank) {
+          try {
+            const [offRes, preqRes, plRes] = await Promise.all([
+              _supabase.from('corp_buildings')
+                .select('nation_id').eq('owner_corp_id', corp.id)
+                .eq('building_type', 'banking_office').eq('status', 'completed'),
+              _supabase.from('personal_loan_requests')
+                .select('id, principal, term_ticks, expires_at_tick, collateral_name, '
+                      + 'borrower:factions!borrower_faction_id(faction_name, leader_first_name, leader_last_name, nation_id), '
+                      + 'offers:personal_loan_offers!request_id(id, bank_corp_id, apr, status)')
+                .eq('status', 'pending'),
+              _supabase.from('personal_loans')
+                .select('id, principal_remaining, accrued_interest, apr_pct, last_accrual_tick, due_tick, collateral_name, collateral_value, '
+                      + 'borrower:factions!borrower_faction_id(faction_name, leader_first_name, leader_last_name)')
+                .eq('lender_corp_id', corp.id).eq('status', 'active'),
+            ]);
+            if (offRes.error) throw offRes.error;
+            if (preqRes.error) throw preqRes.error;
+            if (plRes.error) throw plRes.error;
+            const officeNations = new Set((offRes.data || []).map(o => o.nation_id));
+            pReqsEligible = (preqRes.data || []).filter(r =>
+              r.borrower?.nation_id && officeNations.has(r.borrower.nation_id));
+            pLoans = plRes.data || [];
+          } catch (e) {
+            console.warn('[business-corp] personal loan desk fetch failed:', e?.message || e);
+          }
+        }
+
+        if (isBank && !loans.length && !depo && !pLoans.length && !pReqsEligible.length) {
+          panel.style.display = 'none'; return;
+        }
         panel.style.display = 'block';
 
         // Live payoff estimate — display mirror of corp_pay_loan's
@@ -4180,6 +4215,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
         const payoffOf = (l) => Math.round(Number(l.balance) + Number(l.accrued_interest)
           + Number(l.balance) * l.rate_bps / 10000 / 12
             * Math.max(0, currentTick - l.last_accrual_tick));
+        // Personal loans accrue on 144 ticks/year (20270937), not 12 —
+        // separate mirror so the display can't borrow the corp formula.
+        const personalPayoffOf = (l) => Math.round(Number(l.principal_remaining) + Number(l.accrued_interest)
+          + Number(l.principal_remaining) * Number(l.apr_pct) / 100 / 144
+            * Math.max(0, currentTick - l.last_accrual_tick));
+        const personName = (b) => [b?.leader_first_name, b?.leader_last_name].filter(Boolean).join(' ').trim()
+          || b?.faction_name || 'Someone';
 
         const borrowed = loans.filter(l => l.borrower_corp_id === corp.id);
         const lent     = loans.filter(l => l.bank_corp_id === corp.id);
@@ -4248,6 +4290,43 @@ import { CITY_STATS } from './js/game/city-labels.js';
             <div class="ds">${l.rate_bps / 100}% &middot; due tick ${l.due_tick} &middot; collateral: ${esc(COLLATERAL_LABEL[l.collateral_asset] || l.collateral_asset || '—')}</div>
           </div>`).join('');
 
+        // Personal loan requests this bank may bid on (residence-secured).
+        if (pReqsEligible.length) {
+          html += `<div class="jm-lab" style="margin:10px 0 6px;">PERSONAL LOAN REQUESTS</div>`;
+          html += pReqsEligible.map(r => {
+            const who = personName(r.borrower);
+            const myOffer = (r.offers || []).find(o => o.bank_corp_id === corp.id && o.status === 'pending');
+            const action = myOffer
+              ? `<button type="button" class="jm-btn secondary pl-withdraw" data-oid="${esc(myOffer.id)}" style="padding:6px 12px;font-size:10px;">WITHDRAW</button>`
+              : `<button type="button" class="jm-btn pl-offer" data-rid="${esc(r.id)}" style="padding:6px 12px;font-size:10px;">OFFER</button>`;
+            return `
+              <div class="jm-rung" style="margin-bottom:8px;">
+                <div class="top">
+                  <div class="nm">${esc(who)} requests ${esc(hfFmtBig(Number(r.principal)))}</div>
+                  ${action}
+                </div>
+                <div class="ds">${r.term_ticks}t term &middot; expires T${r.expires_at_tick} &middot; secured by ${esc(r.collateral_name || 'residence')}${myOffer ? ` &middot; your offer: ${(Number(myOffer.apr) * 100).toFixed(2)}%` : ` &middot; funds at your ${(Number(corp.bank_prime_rate_bps) || 0) / 100}% prime`}</div>
+              </div>`;
+          }).join('');
+        }
+
+        // Personal loans this bank holds — Foreclose surfaces only on an
+        // overdue secured loan (the server enforces both again).
+        html += pLoans.map(l => {
+          const owed     = personalPayoffOf(l);
+          const overdue  = l.due_tick != null && currentTick > l.due_tick;
+          const secured  = l.collateral_value != null;
+          return `
+            <div class="jm-rung" style="margin-bottom:8px;">
+              <div class="top">
+                <div class="nm">Lent to ${esc(personName(l.borrower))}${overdue ? ' <span style="color:#c66;font-size:10px;font-weight:700;">OVERDUE</span>' : ''}</div>
+                <div class="staff">${esc(hfFmtBig(owed))} outstanding</div>
+              </div>
+              <div class="ds">${Number(l.apr_pct).toFixed(1)}% &middot; due tick ${l.due_tick} &middot; ${secured ? 'secured by ' + esc(l.collateral_name || 'residence') : 'unsecured'}</div>
+              ${overdue && secured ? `<div class="resp"><button type="button" class="jm-btn pl-foreclose" data-loan="${esc(l.id)}" style="padding:6px 14px;font-size:10px;">FORECLOSE</button></div>` : ''}
+            </div>`;
+        }).join('');
+
         body.innerHTML = html || '<div class="rl-empty">Nothing on the books.</div>';
 
         // ── Request modal ──
@@ -4262,6 +4341,23 @@ import { CITY_STATS } from './js/game/city-labels.js';
           insufficient_treasury: 'The treasury can\u2019t cover that payment.',
           nothing_owed: 'Nothing is owed on this loan.',
           loan_settled: 'This loan is already settled.',
+          // Personal-loan desk (20270937).
+          no_rate_sheet: 'Set your prime rate before offering.',
+          no_banking_office: 'You need a completed Banking Office in the borrower\u2019s nation.',
+          nation_mismatch: 'The borrower isn\u2019t in a nation where you have a Banking Office.',
+          self_dealing: 'You can\u2019t lend to a borrower you control.',
+          no_actions_remaining: 'No executive actions left this tick.',
+          prime_rate_too_high: 'Your prime rate exceeds the 50% offer cap.',
+          request_not_pending: 'That request is no longer open.',
+          request_expired: 'That request has expired.',
+          offer_not_pending: 'That offer is no longer pending.',
+          offer_not_found: 'That offer no longer exists.',
+          bank_corp_not_found: 'Bank lookup failed \u2014 reload.',
+          under_collateralized: 'The residence no longer covers the principal.',
+          not_secured: 'This loan isn\u2019t secured \u2014 nothing to foreclose.',
+          not_overdue: 'This loan isn\u2019t overdue yet.',
+          loan_not_active: 'This loan is already settled.',
+          loan_not_found: 'Loan not found \u2014 reload.',
         };
         // Lender scope (20270925): Local = banks in your nation only;
         // National = any bank. Default National (the open market).
@@ -4349,6 +4445,21 @@ import { CITY_STATS } from './js/game/city-labels.js';
             p_amount:  Math.floor(Number(document.getElementById('pay-amount').value) || 0),
           }));
         wireModalClose('pay-overlay', 'pay-cancel');
+
+        // ── Personal-loan desk actions (reuse the finRpc lock) ──
+        body.querySelectorAll('.pl-offer').forEach(btn =>
+          btn.addEventListener('click', () => {
+            if (!confirm('Offer a personal loan at your posted prime, funded from treasury? Posting spends one executive action.')) return;
+            finRpc(btn, 'offer_personal_loan', { p_request_id: btn.dataset.rid, p_bank_corp_id: corp.id });
+          }));
+        body.querySelectorAll('.pl-withdraw').forEach(btn =>
+          btn.addEventListener('click', () =>
+            finRpc(btn, 'withdraw_personal_loan_offer', { p_offer_id: btn.dataset.oid })));
+        body.querySelectorAll('.pl-foreclose').forEach(btn =>
+          btn.addEventListener('click', () => {
+            if (!confirm('Foreclose this overdue loan? The borrower’s residence is liquidated to recover the debt, and any surplus is returned to them.')) return;
+            finRpc(btn, 'foreclose_personal_loan', { p_loan_id: btn.dataset.loan, p_bank_corp_id: corp.id });
+          }));
       }
     }
 
