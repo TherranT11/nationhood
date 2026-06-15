@@ -2618,7 +2618,9 @@ export const DANWEI_LAST_NAMES = [
     'Po-yu', 'Chih-hao', 'Yi-feng', 'Chih-hung', 'Wei-jen', 'Cheng-ming',
     'Po-chen', 'Hsing-kuo', 'Wen-fan', 'Po-hsiung', 'Tsung-hsien', 'Chao-ming',
     'Yi-chun', 'Chang-ting',
-    // Female (also added to FEMALE_NAMES set above)
+    // Female (these Danwei given names are NOT in the FEMALE_NAMES set in
+    // names.js — see the Danwei note there: isFemaleName tests the
+    // first-name slot, which for family-first cultures holds the surname)
     'Mei-ling', 'Hsiu-lien', 'Wen-chi', 'Yu-hua', 'Su-chen', 'Yi-fang', 'Hsin-yi',
     'Yu-ling', 'Chia-ling', 'Pei-ling', 'Mei-feng', 'Hsiao-mei', 'Yu-chen',
     'Wen-ling', 'Mei-yu', 'Chia-hsuan', 'Pei-yi', 'Hsin-mei', 'Chia-jung',
