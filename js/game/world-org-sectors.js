@@ -19,7 +19,7 @@ export const WORLD_ORG_SECTORS = [
 ];
 
 const _esc = (s) => String(s == null ? '' : s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /**
  * Shared access gate for the world-organization surfaces (management page and
@@ -44,18 +44,22 @@ export async function worldOrgAccess(supabase, nation, faction) {
  */
 export async function fetchNationOrgs(supabase, nationId) {
   if (!nationId) return { bySector: {}, error: null };
-  const { data, error } = await supabase.from('world_organizations')
-    .select('category, name, abbreviation, status, member_nation_ids')
-    .contains('member_nation_ids', [nationId]);
-  if (error) return { bySector: {}, error };
-  const bySector = {};
-  for (const o of (data || [])) {
-    (bySector[o.category] ||= []).push({
-      name: o.name, abbreviation: o.abbreviation, status: o.status,
-      member_count: (o.member_nation_ids || []).length,
-    });
+  try {
+    const { data, error } = await supabase.from('world_organizations')
+      .select('category, name, abbreviation, purpose, status, member_nation_ids')
+      .contains('member_nation_ids', [nationId]);
+    if (error) return { bySector: {}, error };
+    const bySector = {};
+    for (const o of (data || [])) {
+      (bySector[o.category] ||= []).push({
+        name: o.name, abbreviation: o.abbreviation, purpose: o.purpose, status: o.status,
+        member_count: (o.member_nation_ids || []).length,
+      });
+    }
+    return { bySector, error: null };
+  } catch (error) {
+    return { bySector: {}, error };
   }
-  return { bySector, error: null };
 }
 
 /**
@@ -68,7 +72,7 @@ export function worldOrgSectorsHtml(bySector = {}) {
     const orgs    = bySector[s.key] || [];
     const nations = orgs.reduce((n, o) => n + (Number(o.member_count) || 0), 0);
     const body = orgs.length
-      ? orgs.map((o) => `<div class="wo-org"><span class="wo-org-nm">${_esc(o.name)}`
+      ? orgs.map((o) => `<div class="wo-org"${o.purpose ? ` title="${_esc(o.purpose)}"` : ''}><span class="wo-org-nm">${_esc(o.name)}`
           + `${o.abbreviation ? ` <span class="wo-org-ab">${_esc(o.abbreviation)}</span>` : ''}</span>`
           + `${o.status === 'forming' ? '<span class="wo-org-st">Forming</span>' : ''}</div>`).join('')
       : '<div class="sec-empty">No organizations in this sector yet.</div>';

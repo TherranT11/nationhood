@@ -869,7 +869,7 @@ async function init() {
       if (error) { console.warn('politician-nation: world orgs fetch failed', error); return; }
       const host = document.getElementById('wo-cats');
       if (host) host.innerHTML = worldOrgSectorsHtml(bySector);
-    });
+    }).catch((err) => console.warn('politician-nation: world orgs render failed', err));
   }
 
   // PM ministry lookup is for the DISPLAYED nation (which may
