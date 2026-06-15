@@ -132,6 +132,14 @@
   .ston-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
   @media (max-width: 900px){ .ston-grid{grid-template-columns:repeat(2, 1fr);} }
   @media (max-width: 520px){ .ston-grid{grid-template-columns:1fr;} }
+  /* National Standing — the four governance pillars */
+  .pillar-grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;}
+  .pillar{background:#0d0d0c;border:0.5px solid rgba(255,255,255,0.07);border-left:3px solid #888;
+    border-radius:6px;padding:13px 15px;}
+  .pillar-name{font-family:monospace;font-size:11px;letter-spacing:0.13em;font-weight:700;margin-bottom:7px;}
+  .pillar-desc{font-size:11.5px;color:#9a9a9a;line-height:1.55;}
+  @media (max-width: 900px){ .pillar-grid{grid-template-columns:repeat(2, 1fr);} }
+  @media (max-width: 520px){ .pillar-grid{grid-template-columns:1fr;} }
   .ston-card{padding:10px 12px;border:0.5px solid var(--line);border-radius:4px;
     background:var(--panel2);border-left-width:3px;}
   .ston-card.sev-green { border-left-color:var(--pos); background:linear-gradient(90deg, var(--pos-bg) 0%, var(--panel2) 50%); }
@@ -200,6 +208,28 @@
             <div class="coalition" id="coalition"></div>
           </div>
           <div class="admin-leaders" id="admin-leaders"></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">National Standing</div>
+        <div class="pillar-grid">
+          <div class="pillar" style="border-left-color:#6ab07a;">
+            <div class="pillar-name" style="color:#6ab07a;">PROSPERITY</div>
+            <div class="pillar-desc">The strength of the economy — growth, industry, trade, and the wealth in citizens’ pockets.</div>
+          </div>
+          <div class="pillar" style="border-left-color:#5aafa5;">
+            <div class="pillar-name" style="color:#5aafa5;">WELFARE</div>
+            <div class="pillar-desc">The wellbeing of the people — health, schooling, and the quality of everyday life.</div>
+          </div>
+          <div class="pillar" style="border-left-color:#8a9ad4;">
+            <div class="pillar-name" style="color:#8a9ad4;">GLOBAL IMAGE</div>
+            <div class="pillar-desc">The nation’s standing abroad — its reputation, alliances, and weight on the world stage.</div>
+          </div>
+          <div class="pillar" style="border-left-color:#c8a64e;">
+            <div class="pillar-name" style="color:#c8a64e;">ORDER</div>
+            <div class="pillar-desc">Law and stability at home — public safety, the rule of law, and freedom from corruption.</div>
+          </div>
         </div>
       </section>
 
