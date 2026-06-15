@@ -64,6 +64,40 @@
   .fld-input.abbr{max-width:180px;letter-spacing:0.08em;}
   textarea.fld-input{resize:vertical;min-height:84px;font-style:italic;line-height:1.5;}
 
+  /* Step 3 — Type of Body (full-width rows, founding cost on the right) */
+  .type-intro{font-size:12px;color:var(--mut);font-style:italic;line-height:1.6;margin-bottom:14px;}
+  .type-row{display:flex;justify-content:space-between;gap:18px;background:#0a0a09;
+    border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px 18px;margin-bottom:10px;cursor:pointer;}
+  .type-row:last-child{margin-bottom:0;}
+  .type-row:hover:not(.disabled){border-color:rgba(255,255,255,0.22);}
+  .type-row.sel{border-color:var(--blue);background:#0e1018;}
+  .type-row.disabled{opacity:0.45;cursor:not-allowed;}
+  .type-main{min-width:0;}
+  .type-name{font-size:14px;font-weight:600;color:#e6e6e6;}
+  .type-style{font-size:9px;letter-spacing:0.06em;color:var(--blue);font-family:monospace;
+    border:0.5px solid rgba(138,154,212,0.35);border-radius:3px;padding:2px 6px;margin-left:8px;white-space:nowrap;}
+  .type-desc{font-size:12px;color:#888;line-height:1.5;margin-top:8px;}
+  .type-cost{flex-shrink:0;text-align:right;}
+  .type-cost-lbl{font-size:9px;letter-spacing:0.1em;color:#666;text-transform:uppercase;font-family:monospace;}
+  .type-cost-val{font-size:18px;color:#c87a7a;font-weight:600;font-family:Georgia,serif;font-style:italic;margin-top:3px;}
+  .type-cost-sub{font-size:9px;color:#666;font-style:italic;margin-top:1px;}
+
+  /* Step 4 — Scope + the regional picker it reveals */
+  .scope-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+  .scope-card{background:#0a0a09;border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;cursor:pointer;}
+  .scope-card:hover{border-color:rgba(255,255,255,0.22);}
+  .scope-card.sel{border-color:var(--blue);background:#0e1018;}
+  .scope-name{font-size:13px;font-weight:600;color:#e6e6e6;margin-bottom:8px;}
+  .scope-desc{font-size:11px;color:#888;line-height:1.5;}
+  .region-wrap{margin-top:14px;border-top:0.5px solid rgba(255,255,255,0.08);padding-top:14px;}
+  .region-lbl{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mut);font-family:monospace;margin-bottom:10px;}
+  .region-chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .region-chip{font-size:12px;padding:7px 12px;background:#0a0a09;border:1px solid rgba(255,255,255,0.1);
+    border-radius:5px;cursor:pointer;color:#d4d4d4;}
+  .region-chip:hover:not(.disabled){border-color:rgba(255,255,255,0.28);}
+  .region-chip.sel{border-color:var(--blue);background:#0e1018;color:#fff;}
+  .region-chip.disabled{opacity:0.35;cursor:not-allowed;}
+
   .form-foot{display:flex;justify-content:flex-end;gap:12px;margin-top:8px;}
   .convene-btn{padding:12px 22px;background:var(--amber-bg);border:0.5px solid var(--amber-dim);
     border-radius:5px;color:var(--amber);font-size:11px;font-weight:700;letter-spacing:0.08em;
@@ -76,6 +110,7 @@
 
   @media (max-width:720px){
     .cat-grid{grid-template-columns:1fr 1fr;}
+    .scope-grid{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -129,6 +164,26 @@
         </div>
       </div>
 
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">3</div>
+          <div class="step-title">Type of Body</div>
+          <div class="step-set" id="set-3">SET</div>
+        </div>
+        <div class="type-intro" id="type-intro"></div>
+        <div id="type-list"></div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">4</div>
+          <div class="step-title">Scope</div>
+          <div class="step-set" id="set-4">SET</div>
+        </div>
+        <div class="scope-grid" id="scope-grid"></div>
+        <div id="region-host"></div>
+      </div>
+
       <div class="form-foot">
         <button type="button" class="convene-btn" id="convene" disabled title="Pick a category and name the body">Found Organization</button>
       </div>
@@ -142,15 +197,21 @@
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { WORLD_ORG_SECTORS, worldOrgAccess } from './js/game/world-org-sectors.js';
+import { WORLD_ORG_SECTORS, ORG_TYPES_BY_CATEGORY, ORG_SCOPES, ORG_REGIONS, worldOrgAccess }
+  from './js/game/world-org-sectors.js';
 
-let selectedCategory = null;
+let selectedCategory = null, selectedType = null, selectedScope = null, selectedRegion = null;
 
 function refreshState() {
   const name = document.getElementById('org-name').value.trim();
+  // A regional body isn't complete until a region is picked.
+  const scopeOk = !!selectedScope && (selectedScope !== 'regional' || !!selectedRegion);
   document.getElementById('set-1').classList.toggle('done', !!selectedCategory);
   document.getElementById('set-2').classList.toggle('done', !!name);
-  document.getElementById('convene').disabled = !(selectedCategory && name);
+  document.getElementById('set-3').classList.toggle('done', !!selectedType);
+  document.getElementById('set-4').classList.toggle('done', scopeOk);
+  document.getElementById('convene').disabled =
+    !(selectedCategory && name && selectedType && scopeOk);
 }
 
 function renderCategories() {
@@ -164,7 +225,79 @@ function renderCategories() {
   host.querySelectorAll('.cat-card').forEach((card) => {
     card.addEventListener('click', () => {
       selectedCategory = card.dataset.key;
+      selectedType = null;   // institutional types are per-category
       host.querySelectorAll('.cat-card').forEach((c) => c.classList.toggle('sel', c === card));
+      renderTypes();
+      refreshState();
+    });
+  });
+}
+
+// Step 3 — the institutional forms available within the chosen category.
+function renderTypes() {
+  const cat   = WORLD_ORG_SECTORS.find((s) => s.key === selectedCategory);
+  const intro = document.getElementById('type-intro');
+  const host  = document.getElementById('type-list');
+  if (!selectedCategory) {
+    intro.textContent = 'Pick a category first.';
+    host.innerHTML = '';
+    return;
+  }
+  intro.innerHTML = `Within <b style="color:#cdd6f4;">${escapeHtml(cat?.name || '')}</b>, `
+    + 'select the institutional form your body will take. Each type carries different '
+    + 'obligations and a one-time founding cost from the Treasury.';
+  const types = ORG_TYPES_BY_CATEGORY[selectedCategory] || [];
+  host.innerHTML = types.length ? types.map((t) => `
+    <div class="type-row${t.enabled ? '' : ' disabled'}" data-key="${escapeHtml(t.key)}">
+      <div class="type-main">
+        <div><span class="type-name">${escapeHtml(t.name)}</span><span class="type-style">${escapeHtml(t.style)}</span></div>
+        <div class="type-desc">${escapeHtml(t.desc)}</div>
+      </div>
+      <div class="type-cost">
+        <div class="type-cost-lbl">Founding Cost</div>
+        <div class="type-cost-val">&minus;$${t.cost}</div>
+        <div class="type-cost-sub">from Treasury</div>
+      </div>
+    </div>`).join('')
+    : '<div class="sec-empty">Institutional types for this category are coming soon.</div>';
+  host.querySelectorAll('.type-row:not(.disabled)').forEach((row) => {
+    row.addEventListener('click', () => {
+      selectedType = row.dataset.key;
+      host.querySelectorAll('.type-row').forEach((r) => r.classList.toggle('sel', r === row));
+      refreshState();
+    });
+  });
+}
+
+// Step 4 — membership scope; 'regional' reveals the region picker.
+function renderScopes() {
+  const grid = document.getElementById('scope-grid');
+  grid.innerHTML = ORG_SCOPES.map((s) => `
+    <div class="scope-card" data-key="${escapeHtml(s.key)}">
+      <div class="scope-name">${escapeHtml(s.name)}</div>
+      <div class="scope-desc">${escapeHtml(s.desc)}</div>
+    </div>`).join('');
+  grid.querySelectorAll('.scope-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      selectedScope = card.dataset.key;
+      selectedRegion = null;
+      grid.querySelectorAll('.scope-card').forEach((c) => c.classList.toggle('sel', c === card));
+      renderRegionPicker();
+      refreshState();
+    });
+  });
+}
+
+function renderRegionPicker() {
+  const host = document.getElementById('region-host');
+  if (selectedScope !== 'regional') { host.innerHTML = ''; return; }
+  host.innerHTML = '<div class="region-wrap"><div class="region-lbl">Region</div><div class="region-chips">'
+    + ORG_REGIONS.map((r) => `<div class="region-chip${r.enabled ? '' : ' disabled'}" data-key="${escapeHtml(r.key)}">${escapeHtml(r.name)}</div>`).join('')
+    + '</div></div>';
+  host.querySelectorAll('.region-chip:not(.disabled)').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      selectedRegion = chip.dataset.key;
+      host.querySelectorAll('.region-chip').forEach((c) => c.classList.toggle('sel', c === chip));
       refreshState();
     });
   });
@@ -210,14 +343,16 @@ async function init() {
   }
 
   renderCategories();
+  renderTypes();    // "Pick a category first." until Step 1 is set
+  renderScopes();
   document.getElementById('org-name').addEventListener('input', refreshState);
   document.getElementById('page').style.display = 'block';
 
-  // Found the body from the chosen category + identity (20270950). The richer
-  // charter mechanic (type of body, scope, founders signing on) lands later.
+  // Found the body from the chosen category, identity, type and scope
+  // (20270950/20270951). The founding cost shown in Step 3 isn't deducted yet.
   const convBtn = document.getElementById('convene');
   convBtn.addEventListener('click', async () => {
-    if (!selectedCategory || convBtn.disabled) return;
+    if (convBtn.disabled) return;
     convBtn.disabled = true;
     try {
       const { data, error } = await _supabase.rpc('found_organization', {
@@ -225,6 +360,9 @@ async function init() {
         p_name:         document.getElementById('org-name').value.trim(),
         p_abbreviation: document.getElementById('org-abbr').value.trim(),
         p_purpose:      document.getElementById('org-purpose').value.trim(),
+        p_type:         selectedType,
+        p_scope:        selectedScope,
+        p_region:       selectedRegion,
       });
       if (error) throw error;
       if (!data?.success) {
@@ -232,6 +370,9 @@ async function init() {
           not_authorized:   'Only the Foreign Minister or Head of Government can found an organization.',
           invalid_name:     'Give the body a proper name (at least 3 characters).',
           invalid_category: 'Pick a category first.',
+          invalid_type:     'That institutional type isn’t available yet.',
+          invalid_scope:    'Choose a membership scope.',
+          invalid_region:   'Pick an available region for a regional body.',
         };
         throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
       }

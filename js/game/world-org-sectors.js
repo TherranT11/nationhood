@@ -18,6 +18,40 @@ export const WORLD_ORG_SECTORS = [
   { key: 'technical_functional', name: 'Technical & Functional', icon: '⚙', accent: '#3a9d9d', desc: 'Standards, regulation, science, health, transport.' },
 ];
 
+// Institutional forms per category (founding form Step 3). Only enabled types
+// can be founded; the rest are greyed "coming soon". cost is shown as −$N from
+// Treasury (display only for now — no deduction yet). Mirror the enabled keys
+// in found_organization()'s server validation. Only Diplomatic & Political is
+// specified so far; other categories get their forms later.
+export const ORG_TYPES_BY_CATEGORY = {
+  diplomatic_political: [
+    { key: 'law_enforcement', name: 'Law Enforcement', style: 'INTERPOL-style', cost: 2, enabled: false,
+      desc: "A multinational policing body. Members share intelligence, coordinate cross-border investigations, and issue international arrest warrants. Members aren't bound to surrender suspects but the body's notices carry weight." },
+    { key: 'judiciary', name: 'Judiciary', style: 'ICJ-style', cost: 3, enabled: false,
+      desc: 'A standing international court that hears disputes between members and renders binding judgments. Members agree in advance to abide by rulings, though enforcement depends on political will.' },
+    { key: 'diplomatic_convention', name: 'Diplomatic Convention', style: 'UN-General-Assembly-style', cost: 4, enabled: true,
+      desc: 'A consultative forum for member states to negotiate joint positions on political matters. Issues declarations, hosts summits, coordinates diplomatic action.' },
+  ],
+};
+
+// Scope of membership (Step 4). 'regional' reveals ORG_REGIONS to pick from.
+export const ORG_SCOPES = [
+  { key: 'universal',    name: 'Universal',    desc: 'Open to all recognized states without geographic restriction.' },
+  { key: 'regional',     name: 'Regional',     desc: 'Open to states of the southern continent and adjoining islands only.' },
+  { key: 'invitational', name: 'Invitational', desc: 'Closed to non-founders absent a unanimous vote of the existing members.' },
+];
+
+// Regions a Regional body can be anchored to. Only enabled ones are pickable.
+export const ORG_REGIONS = [
+  { key: 'crucera',    name: 'Crucera',    enabled: true },
+  { key: 'al_makir',   name: 'Al-Makir',   enabled: false },
+  { key: 'serranthia', name: 'Serranthia', enabled: false },
+  { key: 'nexir',      name: 'Nexir',      enabled: false },
+  { key: 'faresia',    name: 'Faresia',    enabled: false },
+  { key: 'meridian',   name: 'Meridian',   enabled: false },
+  { key: 'vesperia',   name: 'Vesperia',   enabled: false },
+];
+
 const _esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
