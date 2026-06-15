@@ -3307,6 +3307,25 @@ async function advanceTick(supabase, { force = false, reprocess = false } = {}) 
             current_date: newDate
         }).eq('name', 'Alpha Shard');
         console.log(`[advanceTick] Tick ${newTick} committed. Next tick at ${nextTickAt.toISOString()}`);
+
+        // Resolve any party Vote-of-No-Confidence motions whose 3-tick window
+        // has closed (20270947). MUST run after the shard commit above — the
+        // resolver reads shard.current_tick for its own readiness guard. The
+        // lazy party-page kick stays as an instant fast-path; this guarantees
+        // a motion finalizes without anyone visiting the party page. The RPC
+        // is idempotent and a no-op when nothing is due.
+        try {
+            const { data: ncv, error: ncvErr } =
+                await supabase.rpc('resolve_due_party_no_confidence_motions');
+            if (ncvErr) {
+                console.error('[advanceTick] resolve_due_party_no_confidence_motions failed (non-fatal):', ncvErr.message);
+            } else if (ncv?.processed > 0) {
+                summary.resolvedNoConfidence = ncv.processed;
+                console.log(`[advanceTick] Resolved ${ncv.processed} no-confidence motion(s)`);
+            }
+        } catch (ncvE) {
+            console.error('[advanceTick] resolve_due_party_no_confidence_motions threw (non-fatal):', ncvE?.message || ncvE);
+        }
     }
 
     return summary;

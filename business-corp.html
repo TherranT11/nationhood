@@ -209,12 +209,12 @@
   /* ── Post Job Opening / Draft Blueprint / Pay Taxes / Public Bid modals (shared chrome) ── */
   #jm-overlay, #db-overlay, #px-overlay, #pb-overlay, #pr-overlay, #lo-overlay, #av-overlay,
   #vp-overlay, #am-overlay, #sl-overlay, #ao-overlay, #dt-overlay, #ir-overlay,
-  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay, #sp-overlay, #bo-overlay { position:fixed;
+  #ol-overlay, #il-overlay, #rq-overlay, #pay-overlay, #sp-overlay, #bo-overlay, #rl-overlay { position:fixed;
     inset:0; background:rgba(0,0,0,0.78); display:none; align-items:center;
     justify-content:center; padding:20px; z-index:1000; }
   #jm-overlay.open, #db-overlay.open, #px-overlay.open, #pb-overlay.open, #pr-overlay.open,
   #lo-overlay.open, #av-overlay.open, #vp-overlay.open, #am-overlay.open, #sl-overlay.open, #ao-overlay.open, #dt-overlay.open, #ir-overlay.open,
-  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open, #sp-overlay.open, #bo-overlay.open { display:flex; }
+  #ol-overlay.open, #il-overlay.open, #rq-overlay.open, #pay-overlay.open, #sp-overlay.open, #bo-overlay.open, #rl-overlay.open { display:flex; }
   .pb-grid { display:grid; grid-template-columns:1.4fr 1fr 0.9fr 1fr auto;
     gap:6px 12px; align-items:center; }
   .pb-grid .h { font-family:var(--font-mono); font-size:8px; letter-spacing:0.12em;
@@ -386,6 +386,7 @@
           <button type="button" class="bc-btn" id="fin-invest">INVEST</button>
           <button type="button" class="bc-btn" id="fin-withdraw" style="margin-top:8px;">WITHDRAW</button>
           <button type="button" class="bc-btn" id="fin-paytaxes" style="margin-top:8px;">PAY TAXES</button>
+          <button type="button" class="bc-btn" id="fin-relocate" style="margin-top:8px;">RELOCATE</button>
           <button type="button" class="bc-btn" id="fin-bankrupt" style="margin-top:8px;border-color:#5a3a3a;color:#c88;background:rgba(217,83,79,0.06);">DECLARE BANKRUPTCY</button>
           <div class="err" id="fin-err"></div>
         </div>
@@ -405,6 +406,25 @@
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="px-cancel">CANCEL</button>
       <button type="button" class="jm-btn" id="px-confirm" disabled title="Pick a disclosure tier">FILE TAXES</button>
+    </div>
+  </div>
+</div>
+
+<div id="rl-overlay">
+  <div class="jm-modal">
+    <div class="jm-head"><div class="jm-title">Relocate <em>HQ</em></div></div>
+    <div class="jm-body">
+      <div class="db-mech" id="rl-summary">—</div>
+      <div class="jm-lab">NATION</div>
+      <div class="jm-pills db-cats" id="rl-nations"></div>
+      <div class="jm-lab" style="margin-top:10px;">CITY</div>
+      <div class="jm-pills db-cats" id="rl-cities"><span class="dim">Select a nation first.</span></div>
+      <div class="db-mech" id="rl-cost" style="margin-top:10px;"></div>
+      <div class="err" id="rl-err"></div>
+    </div>
+    <div class="jm-foot">
+      <button type="button" class="jm-btn secondary" id="rl-cancel">CANCEL</button>
+      <button type="button" class="jm-btn" id="rl-confirm" disabled title="Pick a destination city">RELOCATE</button>
     </div>
   </div>
 </div>
@@ -432,6 +452,7 @@
       <div class="jm-pills db-cats" id="sp-bps"></div>
       <div class="jm-lab">PROJECT MANAGER</div>
       <select class="jm-select" id="sp-pm"></select>
+      <div class="db-mech" id="sp-profit" style="margin-top:10px;"></div>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="pb-cancel">CLOSE</button>
@@ -860,7 +881,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
     }
 
     const { data: corp, error } = await _supabase.from('entrepreneur_corps')
-      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, bank_deposit_rate_bps, bank_prime_rate_bps, bank_branch_tier, bank_vault_tier, bank_underwriting_tier, bank_trading_tier, bank_clearing_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
+      .select(`id, name, industry, listing, hq_city, hq_nation_id, logo_url, employee_count, owner_faction_id, exec_action_tick, founded_tick, relocate_cooldown_until_tick, supply_tier, pm_tier, materials_tier, reg_tier, design_tier, design_studio_tier, assembly_tier, bonus_assembly_lines, data_center_tier, parts_depot_tier, franchise_tier, bank_deposit_rate_bps, bank_prime_rate_bps, bank_branch_tier, bank_vault_tier, bank_underwriting_tier, bank_trading_tier, bank_clearing_tier, aluminum_stock, prod_buff_output, prod_buff_cost, prod_buff_aluminum, sales_buff_units, sales_buff_appeal, sales_buff_price, design_buff_appeal, components_stock, materials_stock, experience, pillar_speed, pillar_efficiency, pillar_quality,
                treasury_cash, last_tick_revenue, last_revenue_tick, payroll_ytd, payroll_ytd_year, expenses_ytd, expenses_ytd_year,
                nation:nations!hq_nation_id(name, wages, standard_of_living, corporate_tax, market_heat, market_heat_updated_tick, crash_lamps),
                owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name, nickname)`)
@@ -1915,6 +1936,119 @@ import { CITY_STATS } from './js/game/city-labels.js';
               btn.disabled = false;
             }
           });
+
+          // ── Relocate HQ (20270948) — move to a new nation + city.
+          // RELOCATE_ASSET_COLS, the cost, and the unemployment drop here
+          // are display mirrors of relocate_corp (the authoritative source —
+          // it recomputes the sum, cost, and drop server-side).
+          const RELOCATE_ASSET_COLS = {
+            construction: ['supply_tier', 'pm_tier', 'materials_tier', 'reg_tier', 'design_tier'],
+            automotive:   ['design_studio_tier', 'assembly_tier', 'data_center_tier', 'parts_depot_tier', 'franchise_tier'],
+            banking:      ['bank_branch_tier', 'bank_vault_tier', 'bank_underwriting_tier', 'bank_trading_tier', 'bank_clearing_tier'],
+          };
+          const rlAssetSum = (RELOCATE_ASSET_COLS[corp.industry] || [])
+            .reduce((s, c) => s + (Number(corp[c]) || 0), 0);
+          const rlDrop = Math.floor(rlAssetSum / 3) + 1;   // mirror of (sum/3)+1
+          const rlOnCooldown = (Number(corp.relocate_cooldown_until_tick) || 0) > currentTick;
+          let rlNation = null, rlCity = null;   // {id, sol} / {name, unemp}
+          const rlTreasury = () => Number(corp.treasury_cash) || 0;
+
+          const rlPreview = () => {
+            const confirmBtn = document.getElementById('rl-confirm');
+            const costEl = document.getElementById('rl-cost');
+            if (!rlNation || !rlCity) { costEl.textContent = ''; confirmBtn.disabled = true; return; }
+            const cost = Math.round(1000000 * (rlAssetSum + 1) * (rlNation.sol / 50)
+              * Math.max(0.5, 1 - rlCity.unemp / 20));
+            const broke = cost > rlTreasury();
+            costEl.innerHTML = `Move cost: <b>${hfFmtBig(cost)}</b> from the treasury (${hfFmtBig(rlTreasury())} on hand). `
+              + `${esc(rlCity.name)}'s unemployment drops ${rlDrop}; your old city rises ${rlDrop}.`
+              + (broke ? ` <span style="color:#c88;">Treasury can’t cover it.</span>` : '');
+            // Stays disabled on cooldown — relocate_corp would just reject it.
+            confirmBtn.disabled = broke || rlOnCooldown;
+          };
+
+          document.getElementById('fin-relocate').addEventListener('click', async () => {
+            rlNation = null; rlCity = null;
+            document.getElementById('rl-err').textContent = '';
+            document.getElementById('rl-cost').textContent = '';
+            document.getElementById('rl-confirm').disabled = true;
+            document.getElementById('rl-cities').innerHTML = '<span class="dim">Select a nation first.</span>';
+            const cdUntil = Number(corp.relocate_cooldown_until_tick) || 0;
+            document.getElementById('rl-summary').innerHTML = cdUntil > currentTick
+              ? `<span style="color:#c88;">On cooldown — ${cdUntil - currentTick} more tick(s) before this corporation can relocate again.</span>`
+              : `Pick a destination nation, then a city. Bigger firms and richer nations cost more; a high-unemployment city is cheaper to enter.`;
+            const natHost = document.getElementById('rl-nations');
+            natHost.innerHTML = '<span class="dim">Loading…</span>';
+            document.getElementById('rl-overlay').classList.add('open');
+            try {
+              const { data: nations, error: nErr } = await _supabase.from('nations')
+                .select('id, name, standard_of_living').order('name');
+              if (nErr) throw nErr;
+              natHost.innerHTML = (nations || []).map(n => `
+                <div class="jm-pill" data-id="${esc(n.id)}" data-sol="${esc(String(Number(n.standard_of_living) || 50))}">${esc((n.name || '').toUpperCase())}${n.id === corp.hq_nation_id ? ' · HOME' : ''}</div>`).join('');
+              natHost.querySelectorAll('.jm-pill').forEach(p => {
+                p.addEventListener('click', async () => {
+                  natHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === p));
+                  rlNation = { id: p.dataset.id, sol: Number(p.dataset.sol) || 50 };
+                  rlCity = null; rlPreview();
+                  const cityHost = document.getElementById('rl-cities');
+                  cityHost.innerHTML = '<span class="dim">Loading…</span>';
+                  try {
+                    const { data: cities, error: cErr } = await _supabase.from('cities')
+                      .select('city_name, unemployment').eq('nation_id', rlNation.id).order('city_name');
+                    if (cErr) throw cErr;
+                    // Exclude the corp's current city (can't relocate to where it already is).
+                    const list = (cities || []).filter(c =>
+                      !(rlNation.id === corp.hq_nation_id &&
+                        (c.city_name || '').toLowerCase() === (corp.hq_city || '').toLowerCase()));
+                    cityHost.innerHTML = list.length ? list.map(c => `
+                      <div class="jm-pill" data-name="${esc(c.city_name)}" data-unemp="${esc(String(Number(c.unemployment) || 5))}">${esc((c.city_name || '').toUpperCase())} <span class="dim">· unemp ${esc(String(Number(c.unemployment) || 5))}/10</span></div>`).join('')
+                      : '<span class="dim">No other city available here.</span>';
+                    cityHost.querySelectorAll('.jm-pill').forEach(cp => {
+                      cp.addEventListener('click', () => {
+                        cityHost.querySelectorAll('.jm-pill').forEach(x => x.classList.toggle('sel', x === cp));
+                        rlCity = { name: cp.dataset.name, unemp: Number(cp.dataset.unemp) || 5 };
+                        rlPreview();
+                      });
+                    });
+                  } catch (e) {
+                    cityHost.innerHTML = `<span class="dim">Could not load cities: ${esc(e?.message || String(e))}</span>`;
+                  }
+                });
+              });
+            } catch (e) {
+              natHost.innerHTML = `<span class="dim">Could not load nations: ${esc(e?.message || String(e))}</span>`;
+            }
+          });
+
+          wireModalClose('rl-overlay', 'rl-cancel');
+          document.getElementById('rl-confirm').addEventListener('click', async () => {
+            const btn = document.getElementById('rl-confirm');
+            const errEl = document.getElementById('rl-err');
+            if (!rlNation || !rlCity || btn.disabled) return;
+            errEl.textContent = '';
+            btn.disabled = true;
+            try {
+              const { data, error } = await _supabase.rpc('relocate_corp',
+                { p_corp_id: corp.id, p_nation_id: rlNation.id, p_city_name: rlCity.name });
+              if (error) throw error;
+              if (!data?.success) {
+                const REASON = {
+                  not_owner: 'Only the owner can relocate the corporation.',
+                  on_cooldown: 'The corporation relocated recently — wait for the cooldown.',
+                  insufficient_treasury: 'The treasury can’t cover the move — invest cash or pick a cheaper destination.',
+                  already_there: 'The HQ is already in that city.',
+                  city_not_found: 'That city no longer exists.',
+                  nation_not_found: 'That nation no longer exists.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              window.location.reload();
+            } catch (e) {
+              errEl.textContent = 'Could not relocate: ' + (e?.message || e);
+              btn.disabled = false;
+            }
+          });
         }
       } catch (e) {
         console.warn('[business-corp] employees load failed:', e?.message || e);
@@ -2522,7 +2656,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               .eq('status', 'open')
               .order('created_at_tick', { ascending: false }),
             _supabase.from('corp_blueprints')
-              .select('id, name, building_type')
+              .select('id, name, building_type, category')
               .eq('corp_id', corp.id)
               .order('created_at', { ascending: false }),
             _supabase.from('construction_project_bids')
@@ -2613,15 +2747,40 @@ import { CITY_STATS } from './js/game/city-labels.js';
       // show every city stat; pick city + blueprint + PM and START
       // PROJECT spends the tick's executive action. The project
       // surfaces on the PM's and owner's Pressing Issues tracker.
-      let spCity = null, spBp = null;
+      let spCity = null, spBp = null, spCitiesData = [], spBpsData = [];
+
+      // Residential build profit (20270949) — display mirror of
+      // start_construction_project: profit is high where housing is scarce
+      // (low Affordability) and low where it's already cheap, by building type.
+      const RESI_PROFIT = {
+        single_story_home:  [5000, 60000],
+        double_story:       [10000, 100000],
+        multitenant_living: [25000, 200000],
+      };
+      const residentialProfit = (buildingType, affordability) => {
+        const r = RESI_PROFIT[buildingType];
+        if (!r) return 0;
+        const f = Math.max(0, Math.min(1, (10 - (Number(affordability) || 5)) / 9));
+        return Math.round(r[0] + (r[1] - r[0]) * f);
+      };
 
       function spRefreshStart() {
         document.getElementById('sp-start').disabled =
           !(spCity && spBp && document.getElementById('sp-pm').value);
+        const profEl = document.getElementById('sp-profit');
+        if (!profEl) return;
+        const city = spCitiesData.find(c => String(c.id) === String(spCity));
+        const bp   = spBpsData.find(b => String(b.id) === String(spBp));
+        if (!city || !bp) { profEl.textContent = ''; return; }
+        const profit = residentialProfit(bp.building_type, city.affordability);
+        profEl.innerHTML = `Projected profit on completion: <b>${hfFmtBig(profit)}</b>`
+          + ` — ${esc(city.city_name)} sits at affordability ${esc(String(city.affordability ?? '—'))}/10`
+          + ` (lower pays more). The finished build raises it +0.5.`;
       }
 
       function renderStartProject(cities, bps, pms) {
         spCity = null; spBp = null;
+        spCitiesData = cities; spBpsData = bps;
         const cityHost = document.getElementById('sp-cities');
         cityHost.innerHTML = cities.length ? cities.map(c => `
           <div class="sp-city" data-city="${esc(c.id)}">
@@ -2639,9 +2798,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
         });
 
         const bpHost = document.getElementById('sp-bps');
-        bpHost.innerHTML = bps.length ? bps.map(bp => `
+        // Only Residential blueprints can be self-started — start_construction_project
+        // charters residential only, so don't offer infrastructure/bid-only ones here
+        // (picking one triggered the confusing "Only Residential projects can start" reject).
+        const startable = bps.filter(bp => bp.category === 'residential');
+        bpHost.innerHTML = startable.length ? startable.map(bp => `
           <div class="jm-pill" data-bp="${esc(bp.id)}">${esc(bp.name || BUILDING_TYPE_LABELS[bp.building_type] || '—')}</div>`).join('')
-          : '<div class="rl-empty" style="flex:1;">No blueprints yet — draft one first.</div>';
+          : '<div class="rl-empty" style="flex:1;">No residential blueprints yet — draft one first.</div>';
         bpHost.querySelectorAll('.jm-pill').forEach(p => {
           p.addEventListener('click', () => {
             spBp = p.dataset.bp;

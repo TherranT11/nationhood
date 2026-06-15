@@ -1669,6 +1669,7 @@ let stateAdvocateRequests = []; // pending state_advocate_appointment_requests w
 let juniorMinisterApplications = []; // pending politician_junior_appointments where this politician is the active HoG of the application's nation. Surfaces as Pressing Issues cards (20270669/20270670).
 let constructionBidRequests = []; // open construction requests in the mayor's city with pending bids (20270807). Surfaces as Pressing Issues cards opening the award modal; lowest bid auto-accepts after 3 ticks.
 let openOrdinanceProposals = []; // in-flight city ordinance proposals where the caller holds an unvoted council seat (20270747). Surfaces as Pressing Issues cards with VOTE YES / VOTE NO.
+let openNcvMotion = null;        // open party leadership challenge (NCV, 20270912) in my party that I haven't voted on yet. Surfaces a Pressing Issues card linking to party.html.
 let consulateCases = [];   // pending consulate docket cases (20270865) — Pressing Issues cards; handling one stamps the rest.
 let backchannelInbox = []; // burn-after-reading consul messages addressed to this faction (20270865).
 let summitInvites = [];    // pending Regional Summit invites for this officer (20270867).
@@ -1870,6 +1871,25 @@ async function init() {
     consultancyOffers = (consultancyRes.data?.success ? consultancyRes.data.offers : []) || [];
     openOrdinanceProposals = (openPropsRes.data?.success ? openPropsRes.data.proposals : []) || [];
 
+    // Party leadership challenge (20270912): if my party has an open
+    // no-confidence motion and I haven't voted yet, surface a card so I
+    // know to go cast. Two small reads, the second only when a motion
+    // exists (rare) — both authenticated-readable.
+    openNcvMotion = null;
+    const _ncvPartyId = ctx.party?.id, _ncvPolId = ctx.faction?.id;
+    if (_ncvPartyId && _ncvPolId) {
+      const { data: ncvM, error: ncvErr } = await _supabase.from('party_no_confidence_motions')
+        .select('id, challenger_name, leader_first_name, leader_last_name')
+        .eq('party_faction_id', _ncvPartyId).eq('status', 'open').limit(1);
+      if (ncvErr) console.error('politician-home: NCV motion fetch failed', ncvErr);
+      const _ncvM = ncvM?.[0];
+      if (_ncvM) {
+        const { data: _myNcvVote } = await _supabase.from('party_no_confidence_votes')
+          .select('choice').eq('motion_id', _ncvM.id).eq('voter_faction_id', _ncvPolId).maybeSingle();
+        if (!_myNcvVote) openNcvMotion = _ncvM;
+      }
+    }
+
     // Mayor's award desk (20270807): open construction requests in
     // their city with pending bids. One Pressing Issues card per
     // request; the modal lists the bids with [ACCEPT]. The lowest
@@ -1987,6 +2007,7 @@ async function init() {
     stateAdvocateRequests = [];
     juniorMinisterApplications = [];
     openOrdinanceProposals = [];
+    openNcvMotion = null;
     consulateCases = [];
     backchannelInbox = [];
     summitInvites = [];
@@ -5871,6 +5892,8 @@ function renderPressingIssues(ctx) {
   // Open city ordinance proposals where this council seat hasn't
   // voted yet (20270747). One card per proposal/seat row.
   openOrdinanceProposals.forEach(p => blocks.push(renderOrdinanceProposalCard(p, ctx)));
+  // Open party leadership challenge in my party I haven't voted on (20270912).
+  if (openNcvMotion) blocks.push(renderNcvLeadershipCard(openNcvMotion, ctx));
   // Construction bids awaiting the mayor's award (20270807).
   constructionBidRequests.forEach(r => blocks.push(renderConstructionBidCard(r)));
   if (!blocks.length) {
@@ -6451,6 +6474,27 @@ function renderOrdinanceProposalCard(p, ctx) {
         <button type="button" class="offer-reject-btn op-vote-no"  data-vote="no">&#10005; VOTE NO</button>
       </div>
     </div>`;
+}
+// Party leadership challenge (20270912) — a link card to the party page,
+// where the full vote UI (weighted tallies, NPC-bloc context) lives. No
+// inline vote here: one source for casting, on party.html.
+function renderNcvLeadershipCard(m, ctx) {
+  const leader     = [m.leader_first_name, m.leader_last_name].filter(Boolean).join(' ') || 'the leader';
+  const challenger = m.challenger_name || 'a challenger';
+  const partyId    = ctx.party?.id || '';
+  return `
+    <a class="offer-card" href="party.html?id=${encodeURIComponent(partyId)}"
+       style="text-decoration:none; color:inherit; cursor:pointer;">
+      <div class="offer-icon-wrap"><div class="offer-icon">&#128499;</div></div>
+      <div class="offer-info">
+        <div class="oi-eyebrow">PARTY &middot; LEADERSHIP CHALLENGE</div>
+        <div class="oi-headline"><strong>${escHtml(challenger)}</strong> is challenging <strong>${escHtml(leader)}</strong> for the party leadership.</div>
+        <div class="oi-meta"><span>Cast your vote before it resolves.</span></div>
+      </div>
+      <div class="offer-right">
+        <span class="offer-accept-btn" style="cursor:pointer;">VOTE &rsaquo;</span>
+      </div>
+    </a>`;
 }
 async function castOrdinanceVote(proposalId, vote, ctx, card) {
   const btns = card.querySelectorAll('button');
