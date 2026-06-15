@@ -142,7 +142,7 @@
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { WORLD_ORG_SECTORS } from './js/game/world-org-sectors.js';
+import { WORLD_ORG_SECTORS, worldOrgAccess } from './js/game/world-org-sectors.js';
 
 let selectedCategory = null;
 
@@ -193,15 +193,12 @@ async function init() {
     ` <span class="sep">·</span> <a href="world-organizations.html">WORLD ORGANIZATIONS</a>` +
     ` <span class="sep">·</span> FOUND A NEW BODY`;
 
-  // Gate matches the management page: the Foreign Minister post or the HoG.
-  const isFM = faction.politician_foreign_minister_at_tick != null;
-  const { data: hog, error: hogErr } = await _supabase.from('head_of_government')
-    .select('faction_id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+  // Gate: Foreign Minister or HoG (one source — worldOrgAccess).
+  const { allowed, hogErr } = await worldOrgAccess(_supabase, nation, faction);
   if (hogErr) console.warn('world-org-found: head_of_government fetch failed', hogErr);
-  const isPM = !!hog && hog.faction_id === faction.id;
 
   document.getElementById('loading').style.display = 'none';
-  if (!isFM && !isPM) {
+  if (!allowed) {
     if (hogErr) {
       const l = document.getElementById('loading');
       l.textContent = 'Could not verify access. Please reload.';

@@ -21,6 +21,22 @@ export const WORLD_ORG_SECTORS = [
 const _esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/**
+ * Shared access gate for the world-organization surfaces (management page and
+ * the founding form): the dedicated Foreign Minister post
+ * (politician_foreign_minister_at_tick) or the nation's Head of Government may
+ * manage/found. ONE place the rule lives; pages own their locked/error UI.
+ * Nothing is written client-side yet — when a founding RPC lands it must
+ * re-check this server-side.
+ */
+export async function worldOrgAccess(supabase, nation, faction) {
+  const isFM = faction?.politician_foreign_minister_at_tick != null;
+  const { data: hog, error: hogErr } = await supabase.from('head_of_government')
+    .select('faction_id').eq('nation_id', nation?.id).eq('active', true).maybeSingle();
+  const isPM = !!hog && hog.faction_id === faction?.id;
+  return { isFM, isPM, allowed: isFM || isPM, hogErr };
+}
+
 /** Render the five sectors as collapsible .wo-cat cards — empty (0/0) for now. */
 export function worldOrgSectorsHtml() {
   return WORLD_ORG_SECTORS.map((s) => `

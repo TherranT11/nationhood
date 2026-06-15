@@ -99,7 +99,7 @@
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { worldOrgSectorsHtml } from './js/game/world-org-sectors.js';
+import { worldOrgSectorsHtml, worldOrgAccess } from './js/game/world-org-sectors.js';
 
 async function init() {
   let ctx = null;
@@ -124,16 +124,12 @@ async function init() {
     `<a href="politician-nation.html">${escapeHtml((nation.name || 'NATION').toUpperCase())}</a>` +
     ` <span class="sep">·</span> WORLD ORGANIZATIONS`;
 
-  // Gate: the dedicated Foreign Minister post (politician_foreign_minister_at_tick,
-  // 20270868) or the Head of Government. Matches the Cabinet Office's entry.
-  const isFM = faction.politician_foreign_minister_at_tick != null;
-  const { data: hog, error: hogErr } = await _supabase.from('head_of_government')
-    .select('faction_id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+  // Gate: Foreign Minister or HoG (one source — worldOrgAccess).
+  const { allowed, hogErr } = await worldOrgAccess(_supabase, nation, faction);
   if (hogErr) console.warn('world-organizations: head_of_government fetch failed', hogErr);
-  const isPM = !!hog && hog.faction_id === faction.id;
 
   document.getElementById('loading').style.display = 'none';
-  if (!isFM && !isPM) {
+  if (!allowed) {
     // Don't falsely lock out a PM whose head_of_government lookup just failed
     // (the FM path needs no query, so an FM is never affected).
     if (hogErr) {
