@@ -91,8 +91,8 @@ function ensureStyles() {
   .ent-bottom-nav a.active .label { color:#8aaa6a; }
 
   /* ── Mobile (≤700px): wrap the topbar onto two visual rows
-     (brand+right on top, meta below) and let the nav scroll
-     horizontally if it overflows. */
+     (brand+right on top, meta below) and swap the horizontal .ent-nav
+     for the fixed .ent-bottom-nav toolbar. */
   @media (max-width:700px) {
     .ent-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
     .ent-topbar .brand { flex:1 1 auto; min-width:0; }
@@ -111,17 +111,8 @@ function ensureStyles() {
     .ent-pill { font-size:10px; padding:4px 8px; }
     .ent-util { font-size:10px; }
     .ent-dd { min-width:200px; max-width:calc(100vw - 24px); }
-    .ent-nav {
-      padding:0 12px;
-      gap:18px;
-      overflow-x:auto;
-      -webkit-overflow-scrolling:touch;
-      scrollbar-width:none;          /* Firefox */
-    }
-    .ent-nav::-webkit-scrollbar { display:none; }   /* WebKit */
-    .ent-nav a { padding:12px 0; white-space:nowrap; }
     .ent-content { padding:18px 12px; }
-    /* Top tab nav hidden — fixed bottom nav replaces it. */
+    /* Top tab nav hidden — the fixed bottom nav replaces it. */
     .ent-nav { display:none; }
     .ent-bottom-nav { display:flex; }
     /* Clear space under page content so the fixed bottom nav doesn't cover it. */
@@ -134,7 +125,6 @@ function ensureStyles() {
      entrepreneur page that wraps content in .ent-content. */
   @media (max-width:360px) {
     .ent-topbar { padding:8px 10px; gap:8px; }
-    .ent-nav { padding:0 10px; }
     .ent-content { padding:14px 10px; }
     .ent-bottom-nav .icon { font-size:16px; }
     .ent-bottom-nav .label { font-size:7px; }
