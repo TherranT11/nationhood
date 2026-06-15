@@ -138,6 +138,9 @@ export const NATION_STAT_COLUMNS = [
     'consumer_goods', 'goods_generation',
     'luxury_goods', 'luxury_generation',
     'population_growth',
+    // 20270944 — restored as real columns so Politicianverse policies can
+    // target them. Pure state (nothing but policies moves them yet).
+    'inflation', 'unemployment',
 ];
 
 export const NATION_STAT_COLUMN_SET = new Set(NATION_STAT_COLUMNS);
@@ -212,11 +215,6 @@ export const STAT_KEY_ALIASES = {
     goods:                      'service_sector',
     crime_rate:                 'crime',
 
-    // ── Inverted (rename + flip direction; also see INVERTED_ALIAS_KEYS) ──
-    // unemployment is the only direction-flipped alias today: bills that
-    // pushed unemployment UP are pushing the unskilled_workers tier DOWN.
-    unemployment:               'unskilled_workers',
-
     // ── DELETED stats — Phase 9 drops the column. Apply path skips. ──
     // Phase 8.5.2 restored income_tax / corporate_tax / corruption /
     // crime to the live alpha menu, so they're no longer in this list.
@@ -227,7 +225,8 @@ export const STAT_KEY_ALIASES = {
     polarization:               null,
     freedom_index:              null,
     GDP:                        'gdp',   // legacy uppercase key → canonical gdp column
-    inflation:                  null,
+    // inflation & unemployment — restored as real columns (20270944); their
+    // alias entries are removed so the keys resolve to themselves.
     foreign_investment:         null,
     tariffs:                    null,
     credit:                     null,
@@ -276,9 +275,10 @@ export const STAT_KEY_ALIASES = {
 // they map to. e.g. unemployment → workforce: a bill that pushes
 // unemployment UP is pushing workforce DOWN. The Phase 4 apply path
 // flips `direction` (up↔down) and negates `delta` for these keys.
-export const INVERTED_ALIAS_KEYS = new Set([
-    'unemployment',
-]);
+// Empty since 20270944 restored `unemployment` to a real (uninverted)
+// column. Kept as the single hook for any future rename that needs the
+// apply path to flip up↔down / negate delta.
+export const INVERTED_ALIAS_KEYS = new Set([]);
 
 export function normalizeNationStatKey(statKey) {
     if (!statKey || typeof statKey !== 'string') return null;
@@ -348,6 +348,7 @@ export const STATS_HIGHER_IS_BETTER = [
  */
 export const STATS_LOWER_IS_BETTER = [
     'debt', 'unrest', 'cost_of_living', 'crime', 'corruption',
+    'inflation', 'unemployment',
 ];
 
 // ==================== STAT DECAY CONFIGURATION ====================

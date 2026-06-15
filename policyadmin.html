@@ -176,6 +176,7 @@
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { PARTY_ARCHETYPES } from './js/game/party-archetypes.js';
+import { normalizeNationStatKey, NATION_STAT_COLUMN_SET } from './js/game/stats.js';
 // ==================== CONFIG ====================
 const ADMIN_PW_HASH = 'dd5e5d55d1f108d2d4706f35672acf7eef98156c70101dd07279c1aa436de3b4';
 async function hashPassword(pw) {
@@ -201,14 +202,28 @@ const RAW_SCALING_INFO = {
 // into `unskilled_workers` + `skilled_workers`, and `power` was
 // renamed to `global_image`. `wages` is the Phase 2 successor to
 // `minimum_wage` and lives with the labor stats.
+// Display labels for stat keys whose Politicianverse name differs from the
+// auto title-case of the column key. Read by fmtStat (the single labeller).
+const STAT_LABELS = {
+    state_apparatus:    'Stability',
+    gdp_growth:         'GDP Growth',
+    industry:           'Manufacturing Sector',
+    skilled_workers:    'Skilled Worker',
+    cost_of_living:     'Cost of Living',
+    standard_of_living: 'Standard of Living',
+    population_growth:  'Population Growth',
+};
+
+// Politicianverse policy-target menu. Each entry is a real nations column
+// (NATION_STAT_COLUMNS in stats.js); the picker offers exactly this set, but
+// any real stat saved on an existing policy still round-trips (see
+// renderStatTargets + the save-time validity check against
+// NATION_STAT_COLUMN_SET). Display labels live in STAT_LABELS / fmtStat.
 const STAT_GROUPS = [
-    { label: '💰 Fiscal', stats: ['budget','debt','gdp_growth','income_tax','corporate_tax'] },
-    { label: '🏛️ Governance', stats: ['state_apparatus','public_approval','crown_authority','corruption'] },
-    { label: '🔥 Stability', stats: ['unrest','crime'] },
-    { label: '👥 Population', stats: ['population','immigration'] },
-    { label: '🏥 Wellbeing', stats: ['health','education','standard_of_living','cost_of_living','inequality'] },
-    { label: '🏗️ Productive base', stats: ['infrastructure','industry','farmland','service_sector','unskilled_workers','skilled_workers','wages','energy'] },
-    { label: '🌐 International', stats: ['global_image'] }
+    { label: '🏛️ Governance', stats: ['state_apparatus'] },
+    { label: '💰 Economy', stats: ['gdp_growth','inflation','income_tax','corporate_tax','wages','cost_of_living','standard_of_living'] },
+    { label: '🏗️ Production', stats: ['industry','service_sector','skilled_workers','infrastructure'] },
+    { label: '👥 Society', stats: ['civil_liberties','health','education','crime','corruption','unemployment','population_growth'] },
 ];
 
 // Flatten for dropdown building
@@ -220,71 +235,24 @@ function buildStatOptions() {
 const STAT_OPTIONS_HTML = buildStatOptions();
 const CANONICAL_STAT_KEYS = new Set(STAT_GROUPS.flatMap(group => group.stats));
 
-// Phase 9: stale stat keys from pre-alpha policies are normalized to the
-// alpha-23 canonical name on edit. Keys mapped to null are silently
-// dropped from the policy on save (the underlying stat is gone).
-const POLICY_STAT_KEY_ALIASES = {
-    // Renames into alpha-23
-    authority: 'public_approval',
-    legitimacy: 'public_approval',
-    judicial_independence: 'public_approval',
-    goods: 'service_sector',
-    crime_rate: 'crime',
-    stability: 'state_apparatus',
-    civil_unrest: 'unrest',
-    terrorism: 'unrest',
-    political_violence: 'unrest',
-    healthcare_quality: 'health',
-    healthcare_accessibility: 'health',
-    beds_per_100k: 'health',
-    lifespan: 'health',
-    hospital_beds: 'health',
-    higher_education: 'education',
-    education_quality: 'education',
-    physical_infrastructure: 'infrastructure',
-    digital_infrastructure: 'infrastructure',
-    rail_network: 'infrastructure',
-    technology: 'infrastructure',
-    urbanization: 'workforce',
-    labor_force_participation: 'workforce',
-    arable_land: 'farmland',
-    manufacturing_output: 'industry',
-    international_reputation: 'power',
-    intl_reputation: 'power',
-    diplomatic_standing: 'power',
-    tourism: 'power',
-    trade_agreements: 'power',
-    sanctions: 'power',
-    military_strength: 'state_apparatus',
-    // Inverted alias: unemployment → workforce (direction flipped at apply)
-    unemployment: 'workforce',
-    // Deleted with no replacement — caller decides whether to drop
-    religious: null, religiosity: null, efficiency: null, happiness: null,
-    polarization: null, freedom_index: null, gdp: null, GDP: null,
-    inflation: null, foreign_investment: null, tariffs: null, credit: null,
-    credit_rating: null, credit_score: null, literacy: null, literacy_rate: null,
-    academic_immigration: null, oil_and_gas: null, rare_minerals: null,
-    energy_generation: null, fuel_prices: null, pollution: null,
-    social_mobility: null, benefits: null, population_growth: null,
-    debt_growth: null, minimum_wage: null, union_strength: null,
-    illegal_immigration: null, emigration: null, sales_tax: null,
-    interest_rates: null, poverty_rate: null, income_inequality: null,
-    trade_balance: null, trade: null, trade_volume: null,
-    currency_strength: null, birth_rate: null, death_rate: null,
-    median_age: null, carbon_emissions: null,
-    renewable_energy_percentage: null, press_freedom: null,
-    incarceration_rate: null, drug_use: null, ethnic_diversity: null,
-    education_accessibility: null, service_output: null,
-    housing_affordability: null
-};
-
-function normalizePolicyStatKey(statKey) {
-    if (!statKey || typeof statKey !== 'string') return null;
-    if (statKey in POLICY_STAT_KEY_ALIASES) {
-        return POLICY_STAT_KEY_ALIASES[statKey];  // may be null (drop)
+// Stat <option> list with `selectedKey` marked selected. If selectedKey is a
+// real column outside the Politicianverse menu (an existing target authored
+// before the menu was trimmed), it's injected as an "(other)" option so
+// editing round-trips it instead of the <select> silently snapping to the
+// first entry and dropping it on save. ONE source for both stat dropdowns.
+function statSelectOptions(selectedKey) {
+    const key = selectedKey || '';
+    let html = STAT_OPTIONS_HTML;
+    if (key && !CANONICAL_STAT_KEYS.has(key)) {
+        const label = fmtStat(key) + (NATION_STAT_COLUMN_SET.has(key) ? ' (other)' : ' (unknown)');
+        html = `<optgroup label="↳ Existing"><option value="${key}">${escapeHtml(label)}</option></optgroup>` + html;
     }
-    return statKey;
+    return html.replace(`value="${key}"`, `value="${key}" selected`);
 }
+
+// Stat-key normalization is the canonical one from js/game/stats.js
+// (normalizeNationStatKey): alias → live column, deleted stat → null.
+// policyadmin no longer keeps its own (previously-stale) copy.
 
 // ==================== STATE ====================
 let allPolicies = [];
@@ -736,7 +704,7 @@ async function loadPolicyIntoBuilder(p) {
             const rawTargets = Array.isArray(row.stat_targets) ? row.stat_targets : [];
             opt.stat_targets = rawTargets
                 .map(r => ({
-                    stat_key: normalizePolicyStatKey(r.stat_key),
+                    stat_key: normalizeNationStatKey(r.stat_key),
                     target: Math.max(0, Math.min(100, Number(r.target) || 0)),
                     pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
                 }))
@@ -797,8 +765,7 @@ function renderOptionCard(idx) {
     ).join('');
 
     const scalingStatSelect = (selectedStat) =>
-        '<option value="">None (flat cost)</option>' +
-        STAT_OPTIONS_HTML.replace(`value="${selectedStat}"`, `value="${selectedStat}" selected`);
+        '<option value="">None (flat cost)</option>' + statSelectOptions(selectedStat);
 
     const subTitle = (emoji, text) =>
         `<div style="font-size:0.78rem; color:#d48a3c; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:10px; font-weight:bold;">${emoji} ${text}</div>`;
@@ -1149,8 +1116,7 @@ function renderStatTargets(optIdx) {
     const removeStyle = 'background:#3a1f1f; border:1px solid #5c2929; color:#e57373; cursor:pointer; padding:4px 8px; border-radius:3px;';
 
     container.innerHTML = opt.stat_targets.map((row, idx) => {
-        const statSel = '<option value="">-- pick stat --</option>' +
-            STAT_OPTIONS_HTML.replace(`value="${row.stat_key}"`, `value="${row.stat_key}" selected`);
+        const statSel = '<option value="">-- pick stat --</option>' + statSelectOptions(row.stat_key);
         const target = Number(row.target ?? 50);
         const pull = Number(row.pull ?? 0.5);
         return `
@@ -1278,7 +1244,7 @@ async function savePolicy() {
             const validTargets = o.stat_targets
                 .filter(r => r.stat_key)
                 .map(r => ({
-                    stat_key: normalizePolicyStatKey(r.stat_key),
+                    stat_key: normalizeNationStatKey(r.stat_key),
                     target: Math.max(0, Math.min(100, Math.round(Number(r.target) || 0))),
                     pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
                 }))
@@ -1287,7 +1253,10 @@ async function savePolicy() {
                 alert(`Option ${i + 1} ("${optionName}"): add at least 1 stat target.`);
                 return;
             }
-            const unknownT = [...new Set(validTargets.map(r => r.stat_key).filter(k => !CANONICAL_STAT_KEYS.has(k)))];
+            // Validity is "is it a real nation column" (NATION_STAT_COLUMN_SET),
+            // not "is it in the picker" — an existing off-menu target stays
+            // saveable. normalizeNationStatKey already dropped deleted keys.
+            const unknownT = [...new Set(validTargets.map(r => r.stat_key).filter(k => !NATION_STAT_COLUMN_SET.has(k)))];
             if (unknownT.length > 0) {
                 alert(`Option ${i + 1} ("${optionName}"): unknown stat key(s): ${unknownT.join(', ')}.`);
                 return;
@@ -1522,7 +1491,7 @@ function resetBuilder() {
 // ==================== UTILITIES ====================
 function fmtStat(stat) {
     if (!stat) return '—';
-    if (stat === 'state_apparatus' || stat === 'control') return 'State Apparatus';
+    if (STAT_LABELS[stat]) return STAT_LABELS[stat];
     return stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 }
     function fmtCost(m) {
