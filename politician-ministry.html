@@ -257,6 +257,7 @@ async function renderFmStrip(slug, ctx) {
             post_filled: 'Someone holds the portfolio already.',
             application_pending: 'Your application is already on the desk.',
             already_fm: 'You hold the portfolio already.',
+            cabinet_banned: 'You’re barred from cabinet after a failed leadership challenge.',
             arrested: 'You are under arrest.',
           };
           throw new Error(REASON[data?.reason] || data?.reason || 'unknown');

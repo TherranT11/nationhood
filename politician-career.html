@@ -871,6 +871,7 @@ import { _supabase } from './js/supabase-client.js';
 import { officeTitle, tickToDate, ministryName, careerLabel, currentAge as ageNow, CIVIL_SERVICE_THRESHOLDS, JUNIOR_PORTFOLIO_LABEL, MAJOR_MINISTRY_LABEL, fmtStat, judicialTitle, FS_REGIONS } from './js/utils.js';
 import { PAPERWORK_MINISTRIES } from './js/paperwork-taxonomy.js';
 import { CITY_STATS, cityStatLabel, cityDisplayData } from './js/game/city-labels.js';
+import { isPoliticianHoG } from './js/game/factions.js';
 
 
 // Career ladders. `branch: true` ladders render as a two-column pair
@@ -2163,7 +2164,7 @@ async function init() {
             .select('ministry_key, minister_first_name, minister_last_name')
             .eq('nation_id', ctx.nation.id).eq('is_active', true),
       ctx.nation?.id
-        ? _supabase.from('head_of_government').select('faction_id')
+        ? _supabase.from('head_of_government').select('faction_id, first_name, last_name')
             .eq('nation_id', ctx.nation.id).eq('active', true).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
@@ -2173,7 +2174,8 @@ async function init() {
         (m.minister_last_name  || '').trim().toLowerCase() === ln);
       majorMinistry = hit?.ministry_key || null;
     }
-    isHog = !!(hogRes.data && hogRes.data.faction_id === ctx.faction?.id);
+    // PM = leader of the governing party (one source: factions.js, 20270928).
+    isHog = isPoliticianHoG(hogRes.data, ctx.faction);
   } catch (err) {
     console.warn('politician-career: minister/PM lookup failed', err?.message || err);
   }

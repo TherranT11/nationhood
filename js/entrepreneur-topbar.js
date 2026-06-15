@@ -10,21 +10,21 @@ import { hfFmtBig, currentAge, flagUrlFor } from './utils.js';
 import { getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, addCharacterSlot, activateAddCharacter } from './game/factions.js';
 
 const ENT_TABS = [
-  { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html' },
-  { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-corporations.html' },
-  { id: 'markets',      label: 'MARKETS',      href: 'entrepreneur-markets.html' },
-  { id: 'assets',       label: 'CHARACTER',    href: 'entrepreneur-assets.html' },
-  { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
+  { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html',     icon: '🏠' },
+  { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-corporations.html',  icon: '🏢' },
+  { id: 'markets',      label: 'MARKETS',      href: 'entrepreneur-markets.html',        icon: '📈' },
+  { id: 'assets',       label: 'CHARACTER',    href: 'entrepreneur-assets.html',         icon: '👤' },
+  { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html',          icon: '💬' },
 ];
 
 // Businessman (alpha) shares this chrome with its own tab set.
 const BIZ_TABS = [
-  { id: 'home',         label: 'HOME',         href: 'businessman-home.html' },
-  { id: 'career',       label: 'CAREER',       href: 'businessman-career.html' },
-  { id: 'corporations', label: 'CORPORATIONS', href: 'entrepreneur-markets.html' },
-  { id: 'market',       label: 'MARKET',       href: 'businessman-market.html' },
-  { id: 'nation',       label: 'NATION',       href: 'politician-nation.html' },
-  { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html' },
+  { id: 'home',         label: 'HOME',         href: 'businessman-home.html',     icon: '🏠' },
+  { id: 'career',       label: 'CAREER',       href: 'businessman-career.html',   icon: '💼' },
+  { id: 'corporations', label: 'CORPS',        href: 'entrepreneur-markets.html', icon: '🏢' },
+  { id: 'market',       label: 'MARKET',       href: 'businessman-market.html',   icon: '📈' },
+  { id: 'nation',       label: 'NATION',       href: 'politician-nation.html',    icon: '🌍' },
+  { id: 'forum',        label: 'FORUM',        href: 'entrepreneur-forum.html',   icon: '💬' },
 ];
 
 const STYLE_ID = 'ent-topbar-styles';
@@ -74,9 +74,25 @@ function ensureStyles() {
   .ent-nav a.active { color:#8aaa6a; border-bottom:1px solid #8aaa6a; }
   .ent-content { padding:28px; }
 
+  /* Mobile bottom navigation — mirrors the politician .pol-bottom-nav
+     pattern with the entrepreneur green accent. Replaces the horizontal
+     .ent-nav on narrow screens (toggled in the 700px block below). */
+  .ent-bottom-nav { display:none; position:fixed; bottom:0; left:0; right:0; z-index:500;
+    background:#050505; border-top:0.5px solid rgba(255,255,255,0.12);
+    padding:4px 0 env(safe-area-inset-bottom, 0);
+    justify-content:space-around; align-items:center; }
+  .ent-bottom-nav a { display:flex; flex-direction:column; align-items:center; gap:1px;
+    padding:6px 0; text-decoration:none; flex:1; min-width:0; transition:color 0.15s; }
+  .ent-bottom-nav .icon { font-size:18px; line-height:1;
+    filter:grayscale(100%) brightness(0.6); transition:filter 0.15s; }
+  .ent-bottom-nav .label { font-family:monospace; font-size:8px; font-weight:600;
+    letter-spacing:0.04em; text-transform:uppercase; color:#888; transition:color 0.15s; }
+  .ent-bottom-nav a.active .icon { filter:none; }
+  .ent-bottom-nav a.active .label { color:#8aaa6a; }
+
   /* ── Mobile (≤700px): wrap the topbar onto two visual rows
-     (brand+right on top, meta below) and let the nav scroll
-     horizontally if it overflows. */
+     (brand+right on top, meta below) and swap the horizontal .ent-nav
+     for the fixed .ent-bottom-nav toolbar. */
   @media (max-width:700px) {
     .ent-topbar { flex-wrap:wrap; row-gap:8px; gap:10px; padding:10px 12px; }
     .ent-topbar .brand { flex:1 1 auto; min-width:0; }
@@ -95,16 +111,12 @@ function ensureStyles() {
     .ent-pill { font-size:10px; padding:4px 8px; }
     .ent-util { font-size:10px; }
     .ent-dd { min-width:200px; max-width:calc(100vw - 24px); }
-    .ent-nav {
-      padding:0 12px;
-      gap:18px;
-      overflow-x:auto;
-      -webkit-overflow-scrolling:touch;
-      scrollbar-width:none;          /* Firefox */
-    }
-    .ent-nav::-webkit-scrollbar { display:none; }   /* WebKit */
-    .ent-nav a { padding:12px 0; white-space:nowrap; }
     .ent-content { padding:18px 12px; }
+    /* Top tab nav hidden — the fixed bottom nav replaces it. */
+    .ent-nav { display:none; }
+    .ent-bottom-nav { display:flex; }
+    /* Clear space under page content so the fixed bottom nav doesn't cover it. */
+    body { padding-bottom:56px; }
   }
 
   /* Mobile refresh — phone-class viewport (~375px primary, 360px safe).
@@ -113,8 +125,10 @@ function ensureStyles() {
      entrepreneur page that wraps content in .ent-content. */
   @media (max-width:360px) {
     .ent-topbar { padding:8px 10px; gap:8px; }
-    .ent-nav { padding:0 10px; }
     .ent-content { padding:14px 10px; }
+    .ent-bottom-nav .icon { font-size:16px; }
+    .ent-bottom-nav .label { font-size:7px; }
+    .ent-bottom-nav a { padding:5px 0; }
   }
   `;
   document.head.appendChild(s);
@@ -314,6 +328,23 @@ export function renderEntrepreneurTopbar(container, { faction, shard, allUserFac
       ${tabs.map(t =>
         `<a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">${t.label}</a>`).join('')}
     </nav>`;
+
+  // Mobile bottom nav — appended to body (not the container) so its fixed
+  // positioning isn't trapped by the topbar's stacking context. Idempotent:
+  // re-renders replace any prior instance so switching pages can't stack
+  // copies. Mirrors the politician .pol-bottom-nav. Tabs without an icon
+  // (none today) fall back to a bullet so the row never renders empty.
+  let bottom = document.getElementById('ent-bottom-nav');
+  if (bottom) bottom.remove();
+  bottom = document.createElement('nav');
+  bottom.id = 'ent-bottom-nav';
+  bottom.className = 'ent-bottom-nav';
+  bottom.innerHTML = tabs.map(t => `
+    <a class="${t.id === activeTab ? 'active' : ''}" href="${t.href}">
+      <span class="icon">${t.icon || '•'}</span>
+      <span class="label">${esc(t.label)}</span>
+    </a>`).join('');
+  document.body.appendChild(bottom);
 
   buildSwitcher((allUserFactions || []).filter(x => !isFactionInactive(x) && !isHiddenFromSwitcher(x)));
   startCountdown(s.next_tick_at);

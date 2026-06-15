@@ -140,6 +140,21 @@ export function getPoliticianRoleLabel(faction) {
 }
 
 /**
+ * Is this politician the Head of Government (PM)? head_of_government holds
+ * the governing PARTY (faction_id) + the PM's name, so a politician is PM
+ * iff their party governs AND they are its named leader. One source for the
+ * cabinet page + the career ladder (20270928). Pass the active HoG row and
+ * the politician's faction (needs politician_party_id + leader_first/last).
+ */
+export function isPoliticianHoG(hog, faction) {
+    if (!hog || !faction) return false;
+    const norm = (s) => (s || '').trim().toLowerCase();
+    return hog.faction_id === faction.politician_party_id
+        && norm(hog.first_name) === norm(faction.leader_first_name)
+        && norm(hog.last_name)  === norm(faction.leader_last_name);
+}
+
+/**
  * Dashboard URL for a faction the player is switching INTO from a faction
  * switcher dropdown. Returns null for unknown types so each caller can
  * apply its own home-page fallback. Military factions whose branch has

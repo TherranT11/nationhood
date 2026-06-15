@@ -175,12 +175,12 @@
   #don-from { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.15); color:#fff; border-radius:4px;
     padding:6px 10px; font-size:12px; }
   .don-bal { font-family:var(--font-mono); font-size:11px; color:#888; }
-  .don-pg { display:grid; grid-template-columns:1.5fr 0.6fr 0.8fr 1.2fr auto; gap:8px 12px; align-items:center; }
-  .don-pg .h { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.12em; color:#666;
-    border-bottom:0.5px solid rgba(255,255,255,0.07); padding-bottom:4px; }
-  .don-pg .c { font-size:12px; color:#cfcfcf; }
-  .don-pg .c.nm { color:#fff; }
-  .don-tiers { display:flex; gap:5px; }
+  .don-party { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 12px;
+    padding:10px 12px; border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; margin-bottom:8px; }
+  .don-party-info { min-width:0; }
+  .don-party-nm { font-size:13px; color:#fff; }
+  .don-party-meta { font-size:11px; color:#888; margin-top:2px; }
+  .don-tiers { display:flex; gap:5px; flex-wrap:wrap; }
   .don-tier { font-family:var(--font-mono); font-size:10px; padding:5px 9px; border-radius:4px; cursor:pointer;
     background:transparent; color:#8fd49b; border:0.5px solid rgba(106,176,122,0.4); white-space:nowrap; }
   .don-tier:hover:not(:disabled) { background:rgba(106,176,122,0.12); border-color:#6ab07a; }
@@ -198,6 +198,15 @@
   .don-close-btn { font-family:var(--font-mono); font-size:10px; letter-spacing:0.06em; padding:8px 16px; border-radius:4px;
     background:transparent; color:#bbb; border:0.5px solid rgba(255,255,255,0.2); cursor:pointer; }
   .don-close-btn:hover { border-color:#fff; color:#fff; }
+  /* Mobile: full-screen modal, stacked race candidates, no overflow. */
+  @media (max-width: 600px) {
+    #don-overlay { padding:0; }
+    .don-modal { max-width:100%; max-height:100vh; border-radius:0; border:none; }
+    .don-body { padding:14px; }
+    .don-from-row { flex-wrap:wrap; }
+    .don-race-cands { flex-direction:column; gap:14px; }
+    .don-vs { align-self:flex-start; }
+  }
 </style>
 </head>
 <body>
@@ -503,7 +512,7 @@ async function openDonationModal() {
         .eq('faction_type', 'movement_party').eq('nation_id', donNationId).is('abandoned_at', null)
         .order('seats', { ascending: false, nullsFirst: false }),
       _supabase.from('politician_active_election')
-        .select('politician_id, race_tier, opp_first, opp_last, opp_party_name, polling_you_pct, polling_opp_pct, pol:factions!politician_id(leader_first_name, leader_last_name, nation_id, party:factions!politician_party_id(faction_name, archetype))'),
+        .select('politician_id, race_tier, opp_first, opp_last, opp_party_name, polling_you_pct, polling_opp_pct, pol:factions!politician_id(leader_first_name, leader_last_name, nation_id, politician_party_id)'),
     ]);
     if (pRes.error) throw pRes.error;
     parties = pRes.data || [];
@@ -520,25 +529,29 @@ async function openDonationModal() {
   }
 
   const archByName = new Map(parties.map(p => [p.faction_name, p.archetype]));
+  const partyById  = new Map(parties.map(p => [p.id, p]));   // resolve a candidate's party
   const tiers = (attrs) => DON_TIERS.map(([amt, lab]) =>
     `<button type="button" class="don-tier" data-amt="${amt}" ${attrs}>${lab}</button>`).join('');
+  const partyLabel = (party) => party ? `${esc(party.faction_name)} · ${esc(archLabel(party.archetype))}` : 'Independent';
 
-  document.getElementById('don-parties').innerHTML = parties.length ? `
-    <div class="don-pg">
-      <div class="h">PARTY</div><div class="h">SEATS</div><div class="h">APPROVAL</div><div class="h">ARCHETYPE</div><div class="h">DONATE</div>
-      ${parties.map(p => `
-        <div class="c nm">${esc(p.faction_name)}</div>
-        <div class="c">${Number(p.seats) || 0}</div>
-        <div class="c">${p.popularity_pct != null ? Math.round(Number(p.popularity_pct)) + '%' : '—'}</div>
-        <div class="c">${esc(archLabel(p.archetype))}</div>
-        <div class="c don-tiers">${tiers(`data-kind="party" data-id="${esc(p.id)}" data-label="${esc(p.faction_name)}"`)}</div>`).join('')}
-    </div>` : '<div class="biz-pi-empty">No parties in your nation.</div>';
+  document.getElementById('don-parties').innerHTML = parties.length
+    ? parties.map(p => `
+      <div class="don-party">
+        <div class="don-party-info">
+          <div class="don-party-nm">${esc(p.faction_name)}</div>
+          <div class="don-party-meta">${Number(p.seats) || 0} seats &middot; ${p.popularity_pct != null ? Math.round(Number(p.popularity_pct)) + '%' : '—'} approval &middot; ${esc(archLabel(p.archetype))}</div>
+        </div>
+        <div class="don-tiers">${tiers(`data-kind="party" data-id="${esc(p.id)}" data-label="${esc(p.faction_name)}"`)}</div>
+      </div>`).join('')
+    : '<div class="biz-pi-empty">No parties in your nation.</div>';
 
   document.getElementById('don-races').innerHTML = races.length ? races.map(r => {
     const c1 = (`${r.pol?.leader_first_name || ''} ${r.pol?.leader_last_name || ''}`).trim() || '—';
-    const p1 = r.pol?.party?.faction_name ? `${esc(r.pol.party.faction_name)} · ${esc(archLabel(r.pol.party.archetype))}` : 'Independent';
+    const p1 = partyLabel(partyById.get(r.pol?.politician_party_id));
     const c2 = (`${r.opp_first || ''} ${r.opp_last || ''}`).trim() || '—';
-    const p2 = r.opp_party_name ? `${esc(r.opp_party_name)} · ${esc(archLabel(archByName.get(r.opp_party_name)))}` : 'Independent';
+    const p2 = r.opp_party_name
+      ? `${esc(r.opp_party_name)} · ${esc(archLabel(archByName.get(r.opp_party_name)))}`
+      : 'Independent';
     return `
       <div class="don-race">
         <div class="don-race-type">${esc((r.race_tier || '').toUpperCase())}</div>
