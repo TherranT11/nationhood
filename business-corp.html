@@ -1937,8 +1937,9 @@ import { CITY_STATS } from './js/game/city-labels.js';
           });
 
           // ── Relocate HQ (20270948) — move to a new nation + city.
-          // The cost and the unemployment drop shown here are display
-          // mirrors of relocate_corp, which recomputes both server-side.
+          // RELOCATE_ASSET_COLS, the cost, and the unemployment drop here
+          // are display mirrors of relocate_corp (the authoritative source —
+          // it recomputes the sum, cost, and drop server-side).
           const RELOCATE_ASSET_COLS = {
             construction: ['supply_tier', 'pm_tier', 'materials_tier', 'reg_tier', 'design_tier'],
             automotive:   ['design_studio_tier', 'assembly_tier', 'data_center_tier', 'parts_depot_tier', 'franchise_tier'],
@@ -1947,6 +1948,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
           const rlAssetSum = (RELOCATE_ASSET_COLS[corp.industry] || [])
             .reduce((s, c) => s + (Number(corp[c]) || 0), 0);
           const rlDrop = Math.floor(rlAssetSum / 3) + 1;   // mirror of (sum/3)+1
+          const rlOnCooldown = (Number(corp.relocate_cooldown_until_tick) || 0) > currentTick;
           let rlNation = null, rlCity = null;   // {id, sol} / {name, unemp}
           const rlTreasury = () => Number(corp.treasury_cash) || 0;
 
@@ -1960,7 +1962,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
             costEl.innerHTML = `Move cost: <b>${hfFmtBig(cost)}</b> from the treasury (${hfFmtBig(rlTreasury())} on hand). `
               + `${esc(rlCity.name)}'s unemployment drops ${rlDrop}; your old city rises ${rlDrop}.`
               + (broke ? ` <span style="color:#c88;">Treasury can’t cover it.</span>` : '');
-            confirmBtn.disabled = broke;
+            // Stays disabled on cooldown — relocate_corp would just reject it.
+            confirmBtn.disabled = broke || rlOnCooldown;
           };
 
           document.getElementById('fin-relocate').addEventListener('click', async () => {
