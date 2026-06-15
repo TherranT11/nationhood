@@ -97,6 +97,22 @@
   .rl-empty { padding:24px 16px; text-align:center; color:#555; font-size:11.5px;
     font-style:italic; background:#0d0d0d; border:0.5px dashed rgba(255,255,255,0.08);
     border-radius:4px; }
+  /* Company Chat (20270940) */
+  .cc-list { display:flex; flex-direction:column; gap:8px; max-height:300px; overflow-y:auto; padding:2px; }
+  .cc-msg { background:#0d0f0c; border:0.5px solid rgba(255,255,255,0.06); border-radius:5px; padding:8px 11px; }
+  .cc-meta { display:flex; align-items:baseline; gap:8px; margin-bottom:3px; }
+  .cc-who { font-size:11.5px; color:#8aaa6a; font-weight:700; }
+  .cc-when { font-family:var(--font-mono); font-size:8.5px; color:#555; letter-spacing:0.04em; }
+  .cc-body { font-size:12.5px; color:#cfcabf; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .cc-input { display:flex; gap:8px; margin-top:12px; }
+  .cc-input input { flex:1; min-width:0; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.15);
+    color:#cfcabf; padding:9px 11px; font-size:12.5px; border-radius:4px; font-family:inherit; }
+  .cc-input input:focus { outline:none; border-color:#4a6a4a; }
+  .cc-input button { flex-shrink:0; padding:9px 16px; background:rgba(138,170,106,0.08);
+    border:0.5px solid #4a6a4a; border-radius:4px; color:#8aaa6a; font-family:var(--font-mono);
+    font-size:9.5px; letter-spacing:0.13em; font-weight:700; cursor:pointer; }
+  .cc-input button:hover:not(:disabled) { background:rgba(138,170,106,0.18); color:#aac88a; }
+  .cc-input button:disabled { opacity:0.4; cursor:not-allowed; }
   .rl-req { font-family:var(--font-mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
     padding:7px 14px; border-radius:4px; background:transparent; color:#8fd49b;
     border:0.5px solid rgba(106,176,122,0.45); cursor:pointer; }
@@ -340,6 +356,7 @@
       <div class="bc-sub" id="bc-tagline">—</div>
       <div id="bc-ops"></div>
       <div class="pl-section" id="bc-pillars"></div>
+      <div class="rl-section" id="bc-chat"></div>
       <div class="rl-section" id="bc-roles"></div>
       <div class="rl-section" id="bc-employees"></div>
       <div class="dp-section" id="bc-departments"></div>
@@ -1141,6 +1158,90 @@ import { CITY_STATS } from './js/game/city-labels.js';
         <div class="ea-head"><span class="rule"></span><span class="t">ROLES</span><span class="rule"></span>${isOwner ? `<button type="button" class="rl-post" id="rl-post-btn"${canPost ? '' : ' disabled title="Coming soon"'}>POST JOB OPENING</button>` : ''}</div>
         <div id="rl-list"><div class="rl-empty">Loading…</div></div>
       </div>`;
+
+    // Company Chat (20270940) — a per-corp board for the owner and the
+    // hired staff. Members read + post; non-members never see it. The
+    // server (send_corp_chat_message + RLS) is the real gate.
+    (async function setupCompanyChat() {
+      const wrap = document.getElementById('bc-chat');
+      if (!wrap) return;
+      let isMember = isOwner;
+      if (!isMember) {
+        try {
+          const { data: emp } = await _supabase.from('job_applicants')
+            .select('id').eq('corp_id', corp.id).eq('status', 'hired')
+            .eq('applicant_faction_id', ctx.faction.id).limit(1);
+          isMember = !!(emp && emp.length);
+        } catch (_) { /* default: not a member */ }
+      }
+      if (!isMember) { wrap.style.display = 'none'; return; }
+
+      wrap.innerHTML = `
+        <div class="rl-panel">
+          <div class="ea-head"><span class="rule"></span><span class="t">COMPANY CHAT</span><span class="rule"></span></div>
+          <div id="cc-list" class="cc-list"><div class="rl-empty">Loading…</div></div>
+          <div class="cc-input">
+            <input type="text" id="cc-text" maxlength="2000" placeholder="Message your company…" autocomplete="off" />
+            <button type="button" id="cc-send">SEND</button>
+          </div>
+        </div>`;
+
+      const ccList = document.getElementById('cc-list');
+      const ccTime = (iso) => {
+        try { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+        catch (_) { return ''; }
+      };
+
+      async function ccLoad() {
+        const { data, error } = await _supabase.from('corp_chat_messages')
+          .select('id, body, created_at, sender:factions!sender_faction_id(leader_first_name, leader_last_name, faction_name)')
+          .eq('corp_id', corp.id).order('created_at', { ascending: true }).limit(100);
+        if (!ccList) return;
+        if (error) { ccList.innerHTML = '<div class="rl-empty">Could not load chat.</div>'; return; }
+        if (!data || !data.length) { ccList.innerHTML = '<div class="rl-empty">No messages yet — say hello.</div>'; return; }
+        const nearBottom = ccList.scrollHeight - ccList.scrollTop - ccList.clientHeight < 60;
+        ccList.innerHTML = data.map(m => {
+          const who = [m.sender?.leader_first_name, m.sender?.leader_last_name].filter(Boolean).join(' ').trim()
+                    || m.sender?.faction_name || 'Someone';
+          return `<div class="cc-msg"><div class="cc-meta"><span class="cc-who">${esc(who)}</span><span class="cc-when">${esc(ccTime(m.created_at))}</span></div><div class="cc-body">${esc(m.body)}</div></div>`;
+        }).join('');
+        if (nearBottom) ccList.scrollTop = ccList.scrollHeight;
+      }
+
+      let ccSending = false;
+      async function ccSend() {
+        const input = document.getElementById('cc-text');
+        const btn = document.getElementById('cc-send');
+        const body = (input.value || '').trim();
+        if (!body || ccSending) return;
+        ccSending = true; btn.disabled = true;
+        try {
+          const { data, error } = await _supabase.rpc('send_corp_chat_message', { p_corp_id: corp.id, p_body: body });
+          if (error) throw error;
+          if (!data?.success) {
+            const R = { not_member: 'Only the owner and staff can post here.', empty: 'Say something first.',
+                        too_long: 'Message too long (2000 max).', not_authenticated: 'Sign in to post.' };
+            alert(R[data?.reason] || ('Could not send: ' + (data?.reason || 'unknown')));
+            return;
+          }
+          input.value = '';
+          await ccLoad();
+          ccList.scrollTop = ccList.scrollHeight;
+        } catch (e) {
+          alert('Could not send: ' + (e?.message || e));
+        } finally {
+          ccSending = false; btn.disabled = false;
+        }
+      }
+
+      document.getElementById('cc-send').addEventListener('click', ccSend);
+      document.getElementById('cc-text').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); ccSend(); }
+      });
+      await ccLoad();
+      ccList.scrollTop = ccList.scrollHeight;
+      setInterval(ccLoad, 12000);
+    })();
 
     // Applicant name cell: players carry their live nickname in
     // parens — or a [player] tag when they haven't set one — so the
