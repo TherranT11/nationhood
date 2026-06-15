@@ -37,14 +37,47 @@ export async function worldOrgAccess(supabase, nation, faction) {
   return { isFM, isPM, allowed: isFM || isPM, hogErr };
 }
 
-/** Render the five sectors as collapsible .wo-cat cards — empty (0/0) for now. */
-export function worldOrgSectorsHtml() {
-  return WORLD_ORG_SECTORS.map((s) => `
-    <details class="wo-cat" style="--wo-accent:${s.accent};">
+/**
+ * Fetch the world organizations a nation belongs to and group them by sector
+ * key. ONE place the read query + shaping live, so the management page and the
+ * nations page can't drift. Returns { bySector, error }.
+ */
+export async function fetchNationOrgs(supabase, nationId) {
+  if (!nationId) return { bySector: {}, error: null };
+  const { data, error } = await supabase.from('world_organizations')
+    .select('category, name, abbreviation, status, member_nation_ids')
+    .contains('member_nation_ids', [nationId]);
+  if (error) return { bySector: {}, error };
+  const bySector = {};
+  for (const o of (data || [])) {
+    (bySector[o.category] ||= []).push({
+      name: o.name, abbreviation: o.abbreviation, status: o.status,
+      member_count: (o.member_nation_ids || []).length,
+    });
+  }
+  return { bySector, error: null };
+}
+
+/**
+ * Render the five sectors as collapsible .wo-cat cards. `bySector` maps a
+ * sector key → its orgs (from fetchNationOrgs); absent/empty ⇒ 0/0 and an
+ * empty body. The consuming page must carry the .wo-cat and .wo-org CSS.
+ */
+export function worldOrgSectorsHtml(bySector = {}) {
+  return WORLD_ORG_SECTORS.map((s) => {
+    const orgs    = bySector[s.key] || [];
+    const nations = orgs.reduce((n, o) => n + (Number(o.member_count) || 0), 0);
+    const body = orgs.length
+      ? orgs.map((o) => `<div class="wo-org"><span class="wo-org-nm">${_esc(o.name)}`
+          + `${o.abbreviation ? ` <span class="wo-org-ab">${_esc(o.abbreviation)}</span>` : ''}</span>`
+          + `${o.status === 'forming' ? '<span class="wo-org-st">Forming</span>' : ''}</div>`).join('')
+      : '<div class="sec-empty">No organizations in this sector yet.</div>';
+    return `<details class="wo-cat" style="--wo-accent:${s.accent};">
       <summary>
         <span class="wo-cat-left"><span class="wo-cat-ico">${s.icon}</span><span class="wo-cat-name">${_esc(s.name)}</span></span>
-        <span class="wo-cat-meta"><b>0 Organizations</b> representing 0 nations</span>
+        <span class="wo-cat-meta"><b>${orgs.length} Organization${orgs.length === 1 ? '' : 's'}</b> representing ${nations} nation${nations === 1 ? '' : 's'}</span>
       </summary>
-      <div class="wo-cat-body"><div class="sec-empty">No organizations in this sector yet.</div></div>
-    </details>`).join('');
+      <div class="wo-cat-body">${body}</div>
+    </details>`;
+  }).join('');
 }

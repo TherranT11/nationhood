@@ -130,7 +130,7 @@
       </div>
 
       <div class="form-foot">
-        <button type="button" class="convene-btn" id="convene" disabled title="Pick a category and name the body">Continue</button>
+        <button type="button" class="convene-btn" id="convene" disabled title="Pick a category and name the body">Found Organization</button>
       </div>
     </div>
   </div>
@@ -213,10 +213,33 @@ async function init() {
   document.getElementById('org-name').addEventListener('input', refreshState);
   document.getElementById('page').style.display = 'block';
 
-  // The founders + inaugural-summit steps and the actual charter persist
-  // aren't built yet — this front of the form gathers the category + identity.
-  document.getElementById('convene').addEventListener('click', () => {
-    alert('Charter drafted. Inviting founders and hosting the inaugural summit are coming next — nothing is created yet.');
+  // Found the body from the chosen category + identity (20270950). The richer
+  // charter mechanic (type of body, scope, founders signing on) lands later.
+  const convBtn = document.getElementById('convene');
+  convBtn.addEventListener('click', async () => {
+    if (!selectedCategory || convBtn.disabled) return;
+    convBtn.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('found_organization', {
+        p_category:     selectedCategory,
+        p_name:         document.getElementById('org-name').value.trim(),
+        p_abbreviation: document.getElementById('org-abbr').value.trim(),
+        p_purpose:      document.getElementById('org-purpose').value.trim(),
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_authorized:   'Only the Foreign Minister or Head of Government can found an organization.',
+          invalid_name:     'Give the body a proper name (at least 3 characters).',
+          invalid_category: 'Pick a category first.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      window.location.href = 'world-organizations.html';
+    } catch (e) {
+      alert('Could not found the organization: ' + (e?.message || e));
+      convBtn.disabled = false;
+    }
   });
 }
 
