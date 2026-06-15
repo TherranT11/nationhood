@@ -507,7 +507,11 @@ async function openDonationModal() {
     ]);
     if (pRes.error) throw pRes.error;
     parties = pRes.data || [];
-    races = (rRes.data || []).filter(r => r.pol && r.pol.nation_id === donNationId);
+    if (rRes.error) {
+      console.warn('[businessman-home] races fetch failed:', rRes.error.message);
+    } else {
+      races = (rRes.data || []).filter(r => r.pol && r.pol.nation_id === donNationId);
+    }
   } catch (e) {
     document.getElementById('don-parties').innerHTML = '<div class="biz-pi-empty">Could not load targets.</div>';
     document.getElementById('don-races').innerHTML = '';
