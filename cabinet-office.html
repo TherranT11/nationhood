@@ -268,6 +268,7 @@ import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
 import { COMMODITIES } from './js/game/commodities.js';
 import { SEVERITY_LABELS } from './js/game/modifiers.js';
+import { isPoliticianHoG } from './js/game/factions.js';
 
 // ── Access gate ──────────────────────────────────────────────────────
 // PM (head_of_government.faction_id) OR Major Minister (ministries
@@ -404,13 +405,8 @@ async function init() {
   }
 
   const hog = hogRes.data || null;
-  // PM = the leader of the governing party. head_of_government holds the
-  // governing PARTY (faction_id) + the leader's name, so a politician is PM
-  // iff their party governs AND they are its named leader (20270928).
-  const isPM = !!(hog
-    && hog.faction_id === faction.politician_party_id
-    && (hog.first_name || '').toLowerCase() === (faction.leader_first_name || '').toLowerCase()
-    && (hog.last_name  || '').toLowerCase() === (faction.leader_last_name  || '').toLowerCase());
+  // PM = the leader of the governing party (one source: factions.js, 20270928).
+  const isPM = isPoliticianHoG(hog, faction);
   const isMinister = (minRes.data || []).some(m =>
     m.minister_first_name === faction.leader_first_name &&
     m.minister_last_name  === faction.leader_last_name
