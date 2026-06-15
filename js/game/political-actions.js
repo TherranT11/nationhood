@@ -2565,38 +2565,11 @@ export const VOSTIA_LAST_NAMES = [
 
 const VOSTIA_NATIONS = ['Vostia'];
 
-// Female first names from both name pools (used for gendered title selection)
-const FEMALE_NAMES = new Set([
-    // Crucera
-    'Camila', 'Valentina', 'Isabela', 'Mariana', 'Catalina', 'Renata',
-    // Avelia
-    'Luciana', 'Sofía', 'Elena', 'Rosario', 'Carolina', 'Paloma', 'Inés',
-    'Marisol', 'Florencia', 'Celeste',
-    // Calveth
-    'Alma', 'Ida', 'Clara', 'Ella', 'Olivia', 'Freja', 'Sofie', 'Astrid',
-    'Maja', 'Agnes',
-    // Flandis
-    'Anneliese', 'Bregje', 'Clasien', 'Dymphna', 'Elske', 'Fenna', 'Grietje',
-    'Hanneke', 'Ilse', 'Jobke', 'Karlijn', 'Lieselotte', 'Maaike', 'Nienke', 'Roos',
-    // Vostia
-    'Dragana', 'Svetlana', 'Jelena', 'Milica', 'Danica', 'Zora', 'Radmila',
-    'Snežana', 'Vesna',
-    // Dravka
-    'Afërdita', 'Bora', 'Era', 'Luljeta', 'Teuta'
-    // Danwei: intentionally NO entries. Family-first convention stores
-    // surnames (Chen, Lin, Han) in the FIRST_NAMES slot and given names
-    // (Mei-ling, Kuo-yu) in LAST_NAMES — but isFemaleName() tests the
-    // FIRST_NAMES slot only, so adding female given names here would
-    // never match. Gender-aware titles (Queen/King in bills.js:4480 and
-    // 4579) only fire for monarchies, which Danwei isn't, so the gap
-    // is currently inert. If a future change wants gendered titles for
-    // Danwei, the fix is to make isFemaleName nation-aware (check the
-    // last-name slot for family-first cultures), not to add entries here.
-]);
-
-export function isFemaleName(firstName) {
-    return FEMALE_NAMES.has(firstName);
-}
+// Female first-name lookup lives in the leaf names.js so lighter
+// surfaces (topbars, factions.js) can use it without this module's
+// graph. Re-exported here for existing importers (first-steps,
+// select-nation, bills).
+export { isFemaleName } from './names.js';
 
 // Al-Makir (Arabic) name pools
 const ALMAKIR_NATIONS = ['Hajjara'];
@@ -2645,7 +2618,9 @@ export const DANWEI_LAST_NAMES = [
     'Po-yu', 'Chih-hao', 'Yi-feng', 'Chih-hung', 'Wei-jen', 'Cheng-ming',
     'Po-chen', 'Hsing-kuo', 'Wen-fan', 'Po-hsiung', 'Tsung-hsien', 'Chao-ming',
     'Yi-chun', 'Chang-ting',
-    // Female (also added to FEMALE_NAMES set above)
+    // Female (these Danwei given names are NOT in the FEMALE_NAMES set in
+    // names.js — see the Danwei note there: isFemaleName tests the
+    // first-name slot, which for family-first cultures holds the surname)
     'Mei-ling', 'Hsiu-lien', 'Wen-chi', 'Yu-hua', 'Su-chen', 'Yi-fang', 'Hsin-yi',
     'Yu-ling', 'Chia-ling', 'Pei-ling', 'Mei-feng', 'Hsiao-mei', 'Yu-chen',
     'Wen-ling', 'Mei-yu', 'Chia-hsuan', 'Pei-yi', 'Hsin-mei', 'Chia-jung',

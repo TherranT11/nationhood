@@ -5,7 +5,7 @@
 // just teal where entrepreneur uses green.
 import { _supabase } from './supabase-client.js';
 import { displayName, currentAge, flagUrlFor } from './utils.js';
-import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getPoliticianRoleLabel, addCharacterSlot, activateAddCharacter } from './game/factions.js';
+import { isFactionInactive, isHiddenFromSwitcher, getFactionDashboardUrl, getSwitcherRoleLabel, addCharacterSlot, activateAddCharacter } from './game/factions.js';
 import { bootstrapBusinessman } from './entrepreneur-topbar.js';
 
 const POL_TABS = [
@@ -134,7 +134,7 @@ function buildSwitcher(facs) {
   const list = facs || [];
   // Existing rows — every active, non-hidden faction the user owns.
   const items = list.map(f => {
-    const role = getPoliticianRoleLabel(f);
+    const role = getSwitcherRoleLabel(f);
     const name = (f.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
     // Nation flag replaces the legacy POL/ENTR/CORP text badge. Falls
     // back to display:none on missing image so an unmapped nation

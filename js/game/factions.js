@@ -21,6 +21,7 @@
 // Shared with the career-page rungs so a new office value only lands
 // in one place (utils.js OFFICE_TITLES) to flow through both surfaces.
 import { officeTitle, foreignServiceTitle, appointmentTitle } from '../utils.js';
+import { isFemaleName } from './names.js';
 
 /**
  * Returns one of 'abandoned' | 'unassigned' | 'banned' | null.
@@ -137,6 +138,29 @@ export function getPoliticianRoleLabel(faction) {
     // labels; topbars that don't select the FS columns simply fall
     // through to null here, same as office / ministry behave.
     return foreignServiceTitle(faction);
+}
+
+/**
+ * Businessman switcher label, gendered by the leader's first name —
+ * "Businessman" or "Businesswoman". Gender isn't stored on the faction
+ * (create_businessman, 20270783, only keeps the name), so it's derived
+ * from leader_first_name, which the name modal generated for the chosen
+ * gender. Needs leader_first_name selected on the faction; returns null
+ * for non-businessmen so callers can chain it.
+ */
+export function getBusinessmanLabel(faction) {
+    if (!faction || faction.faction_type !== 'businessman') return null;
+    return isFemaleName(faction.leader_first_name) ? 'Businesswoman' : 'Businessman';
+}
+
+/**
+ * The role suffix shown in every faction-switcher dropdown — politician
+ * office/rung, or a gendered Businessman/Businesswoman. One source so the
+ * entrepreneur and politician topbars can't drift. Null when there's no
+ * suffix (e.g. entrepreneurs), which the dropdowns collapse away.
+ */
+export function getSwitcherRoleLabel(faction) {
+    return getPoliticianRoleLabel(faction) || getBusinessmanLabel(faction);
 }
 
 /**

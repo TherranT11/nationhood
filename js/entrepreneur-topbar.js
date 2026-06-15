@@ -7,7 +7,7 @@
 // extraction — that larger consolidation is tracked separately).
 import { _supabase } from './supabase-client.js';
 import { hfFmtBig, currentAge, flagUrlFor } from './utils.js';
-import { getFactionDashboardUrl, getPoliticianRoleLabel, isFactionInactive, isHiddenFromSwitcher, addCharacterSlot, activateAddCharacter } from './game/factions.js';
+import { getFactionDashboardUrl, getSwitcherRoleLabel, isFactionInactive, isHiddenFromSwitcher, addCharacterSlot, activateAddCharacter } from './game/factions.js';
 
 const ENT_TABS = [
   { id: 'home',         label: 'HOME',         href: 'entrepreneur-dashboard.html',     icon: '🏠' },
@@ -181,7 +181,7 @@ function buildSwitcher(facs) {
     dd.appendChild(row);
   };
   for (const fac of facs) {
-    const role = getPoliticianRoleLabel(fac);
+    const role = getSwitcherRoleLabel(fac);
     const name = (fac.faction_name || 'Unnamed') + (role ? ` (${role})` : '');
     addRow('', flagUrlFor(fac.nation), '', name, () => {
       sessionStorage.setItem('active_faction_id', fac.id);
@@ -383,7 +383,7 @@ async function getAdminFactionOverride() {
 // Column list for the faction-switcher dropdown — shared by both
 // bootstraps so the role-label fields can't drift between them.
 const SWITCHER_FACTION_COLS =
-  'id, faction_type, faction_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_foreign_minister_at_tick, politician_deputy_minister_ministry, politician_junior_portfolio, politician_permanent_secretary_ministry, politician_senior_civil_servant_at_tick, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_foreign_service_nation_id, politician_consul_nation_id, politician_dcm_region, politician_ambassador_nation_id, politician_special_envoy_at_tick';
+  'id, faction_type, faction_name, leader_first_name, abbreviation, branch, nation, nation_id, abandoned_at, is_banned, linked_user_id, bar_admitted_nation_id, politician_office, politician_ministry, politician_foreign_minister_at_tick, politician_deputy_minister_ministry, politician_junior_portfolio, politician_permanent_secretary_ministry, politician_senior_civil_servant_at_tick, politician_experienced_advocate_at_tick, politician_magistrate_at_tick, politician_state_prosecutor_at_tick, politician_foreign_service_nation_id, politician_consul_nation_id, politician_dcm_region, politician_ambassador_nation_id, politician_special_envoy_at_tick';
 
 const ENT_FACTION_COLS =
   'id, faction_type, faction_name, leader_first_name, leader_last_name, leader_age, founded_tick, nation, nation_id, biz_residence_name, biz_residence_worth, biz_career_history, biz_home_city, ent_origin_nation, ' +
