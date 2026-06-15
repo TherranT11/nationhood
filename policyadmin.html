@@ -318,9 +318,6 @@ function createEmptyOption() {
         // legacy stat_effects/sector_effects model was removed.
         spectrum_position: null,
         stat_targets: [],     // [{ stat_key, target 0-100, pull 0-1 }]
-        sector_rapport_targets: [], // [{ sector_key, rapport -10..+10 }]
-        sector_turnout_targets: [], // [{ sector_key, delta -1.00..+0.30 }]
-        sector_weight_targets: [],  // [{ sector_key, delta -5..+5 }]
         // Party reception: which archetypes' seated parties vote YES /
         // NO when this option is proposed as a policy change. Names are
         // drawn from PARTY_ARCHETYPES; the two lists are disjoint. An
@@ -427,7 +424,7 @@ async function checkAuth() {
 
 // ==================== INIT ====================
 async function init() {
-    await Promise.all([loadPolicies(), loadNations(), loadSectorOptions(), loadSectorRapportKeys()]);
+    await Promise.all([loadPolicies(), loadNations(), loadSectorOptions()]);
     populateFilterDropdowns();
     renderAllOptions();
     renderPolicyTable();
@@ -756,20 +753,6 @@ async function loadPolicyIntoBuilder(p) {
                     pull: Math.max(0, Math.min(1, Number(r.pull) || 0))
                 }))
                 .filter(r => r.stat_key);
-            const rawRapport = Array.isArray(row.sector_rapport_targets) ? row.sector_rapport_targets : [];
-            opt.sector_rapport_targets = rawRapport
-                .filter(r => r && typeof r.sector_key === 'string' && Number.isFinite(Number(r.rapport)))
-                .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
-            const rawTurnout = Array.isArray(row.sector_turnout_targets) ? row.sector_turnout_targets : [];
-            opt.sector_turnout_targets = rawTurnout
-                .filter(r => r && typeof r.sector_key === 'string')
-                .map(r => ({ sector_key: r.sector_key, delta: normalizeTurnoutDelta(r.delta) }))
-                .filter(r => r.delta !== 0);
-            const rawWeight = Array.isArray(row.sector_weight_targets) ? row.sector_weight_targets : [];
-            opt.sector_weight_targets = rawWeight
-                .filter(r => r && typeof r.sector_key === 'string')
-                .map(r => ({ sector_key: r.sector_key, delta: normalizeWeightDelta(r.delta) }))
-                .filter(r => r.delta !== 0);
 
             // Party reception. Keep only catalog names; enforce disjointness
             // on load (Support wins) so a hand-edited row can't show a name
@@ -806,9 +789,6 @@ function renderAllOptions() {
         renderNationChecks(idx);
         updateCostPreview(idx);
         renderStatTargets(idx);
-        renderSectorRapportTargets(idx);
-        renderSectorTurnoutTargets(idx);
-        renderSectorWeightTargets(idx);
         renderEquilibriumPreview(idx);
     });
 }
@@ -871,33 +851,6 @@ function renderOptionCard(idx) {
                 <div style="margin-top:10px; font-size:0.72rem; color:#888;">
                     <strong>Pull:</strong> 0.1–0.2 minor effect · 0.3–0.5 moderate · 0.6–0.8 strong · 0.9–1.0 primary driver
                 </div>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('🗳️', 'Voter Bloc Standing')}
-                <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    Where this option places voters' feelings about the policy on a <strong>−10 to +10</strong> scale, per sector. When a passing bill enacts (or switches to) this option, every <strong>YES</strong> voter takes <code>Standing(this option) − Standing(previously-active option)</code> against their popularity in each listed sector — <strong>once</strong>. Values are on the displayed 0–10 popularity scale.
-                </p>
-                <p style="color:#888; font-size:0.78rem; margin-bottom:10px;">
-                    Worked example for Pensions: if Retirees stand at +8 under "Generous" and +2 under "Means-Tested", switching from Generous → Means-Tested applies <strong>−6</strong> to YES voters' popularity with Retirees; the reverse switch applies <strong>+6</strong>. First-time enactment uses 0 as the prior level, so it behaves like an absolute apply.
-                </p>
-                <div id="sector-rapport-container-${idx}"></div>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('📈', 'Voter Turnout Modifiers')}
-                <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    When this option is active, each sector's election-time turnout is <code>base_turnout + delta</code>. Range −1.00 to +0.30 (a strong negative delta can fully suppress a bloc; +0.10 means that sector turns out 10 percentage points higher). Stacks with other active options. Leave a slider at 0 for no effect.
-                </p>
-                <div id="sector-turnout-container-${idx}"></div>
-            </div>
-
-            <div style="${subDivider}">
-                ${subTitle('⚖️', 'Voter Bloc Weight Modifiers')}
-                <p style="color:#888; font-size:0.82rem; margin-bottom:10px;">
-                    When this option is active, each sector's election-time weight is <code>weight + delta</code> (integer, floored at 1). Range −5 to +5. Higher weight = that sector pushes harder on TWP / seat allocation. Stacks with other active options. Leave a slider at 0 for no effect.
-                </p>
-                <div id="sector-weight-container-${idx}"></div>
             </div>
 
             <div style="${subDivider}">
@@ -1230,243 +1183,6 @@ function renderStatTargets(optIdx) {
     document.getElementById(`add-target-btn-${optIdx}`).disabled = opt.stat_targets.length >= MAX_STAT_TARGETS_PER_OPTION;
 }
 
-// ==================== SECTOR RAPPORT TARGETS (target-based policies) ====================
-// Twelve fixed rows per nation by default — populated from the DB so
-// nation-specific custom sectors (e.g. Avelia's bespoke blocs) show up
-// alongside the universal defaults. Custom sectors carry a "[NationName]"
-// suffix so authors know the rapport/turnout target only fires for that
-// nation. Stored as integer −10..+10 (rapport) / float −0.30..+0.30
-// (turnout). State holds only non-zero entries — re-render hydrates 0
-// for missing keys so the UI always shows every option.
-let SECTOR_RAPPORT_KEYS = [
-    { key: 'CAPITAL_OWNERS_EXECUTIVES',     label: 'Capital Owners' },
-    { key: 'RELIGIOUS_CONSERVATIVES',       label: 'Religious Conservatives' },
-    { key: 'STUDENTS_YOUNG_PRECARIAT',      label: 'Students & Young' },
-    { key: 'SERVICE_GIG_WORKERS',           label: 'Service & Gig Workers' },
-    { key: 'SKILLED_TRADES_MANUFACTURING',  label: 'Skilled Trades' },
-    { key: 'SMALL_BUSINESS_OWNERS',         label: 'Small Business Owners' },
-    { key: 'TECH_ENGINEERING_CLASS',        label: 'Tech & Engineering' },
-    { key: 'URBAN_PROFESSIONALS',           label: 'Urban Professionals' },
-    { key: 'CULTURAL_PRODUCERS',            label: 'Cultural Producers' },
-    { key: 'IMMIGRANT_MINORITY_COMMUNITIES', label: 'Immigrant & Minority' },
-    { key: 'RETIREES_PENSIONERS',           label: 'Retirees & Pensioners' },
-    { key: 'RURAL_AGRICULTURAL',            label: 'Rural & Agricultural' }
-];
-
-// Refresh SECTOR_RAPPORT_KEYS from the live sectors table. Default sectors
-// share their sector_key across every nation (e.g. STUDENTS_YOUNG_PRECARIAT
-// exists in every nation that's been seeded), so they collapse to one row
-// using the canonical name. Custom sectors are keyed per-nation —
-// AVELIAN_NOBILITY only exists in Avelia — so they appear with a
-// "[NationName]" suffix to make the scope explicit.
-async function loadSectorRapportKeys() {
-    try {
-        const { data, error } = await _supabase
-            .from('sectors')
-            .select('sector_key, name, is_default, is_active, display_order, nation_id, nations(name)')
-            .eq('is_active', true);
-        if (error) throw error;
-        const defaults = new Map();   // sector_key → { key, label, order }
-        const customs  = [];          // [{ key, label }]
-        for (const s of (data || [])) {
-            if (!s.sector_key) continue;
-            if (s.is_default) {
-                if (!defaults.has(s.sector_key)) {
-                    defaults.set(s.sector_key, {
-                        key: s.sector_key,
-                        label: s.name || s.sector_key,
-                        order: Number(s.display_order) || 0
-                    });
-                }
-            } else {
-                const nationName = s.nations?.name || 'Unknown';
-                customs.push({
-                    key: s.sector_key,
-                    label: `${s.name || s.sector_key} [${nationName}]`
-                });
-            }
-        }
-        const defaultsArr = Array.from(defaults.values())
-            .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
-            .map(({ key, label }) => ({ key, label }));
-        customs.sort((a, b) => a.label.localeCompare(b.label));
-        if (defaultsArr.length > 0 || customs.length > 0) {
-            SECTOR_RAPPORT_KEYS = [...defaultsArr, ...customs];
-        }
-    } catch (err) {
-        console.warn('loadSectorRapportKeys failed; falling back to hardcoded defaults:', err.message);
-    }
-}
-
-function syncSectorRapport(optIdx, sectorKey, value) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const v = Math.round(Number(value) || 0);
-    const clamped = Math.max(-10, Math.min(10, v));
-    const idx = opt.sector_rapport_targets.findIndex(r => r.sector_key === sectorKey);
-    if (clamped === 0) {
-        if (idx !== -1) opt.sector_rapport_targets.splice(idx, 1);
-    } else if (idx === -1) {
-        opt.sector_rapport_targets.push({ sector_key: sectorKey, rapport: clamped });
-    } else {
-        opt.sector_rapport_targets[idx].rapport = clamped;
-    }
-    const display = document.getElementById(`b-rapport-val-${optIdx}-${sectorKey}`);
-    if (display) display.textContent = clamped > 0 ? `+${clamped}` : String(clamped);
-}
-
-function renderSectorRapportTargets(optIdx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const container = document.getElementById(`sector-rapport-container-${optIdx}`);
-    if (!container) return;
-
-    const lookup = new Map(opt.sector_rapport_targets.map(r => [r.sector_key, Number(r.rapport) || 0]));
-    const rowStyle = 'display:grid; grid-template-columns:1fr 80px 36px; gap:8px; align-items:center; padding:6px 10px;';
-
-    container.innerHTML = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">${
-        SECTOR_RAPPORT_KEYS.map(s => {
-            const val = lookup.get(s.key) || 0;
-            const valColor = val > 0 ? '#7fc97f' : (val < 0 ? '#e57373' : '#888');
-            return `
-                <div style="${rowStyle} background:#1a1a1a; border:1px solid #2a2a2a; border-radius:3px;">
-                    <span style="color:#bbb; font-size:0.82rem;">${escapeHtml(s.label)}</span>
-                    <input type="range" min="-10" max="10" step="1" value="${val}" oninput="syncSectorRapport(${optIdx}, '${s.key}', this.value)">
-                    <span id="b-rapport-val-${optIdx}-${s.key}" style="font-family:var(--font-mono,monospace); font-size:0.85rem; font-weight:bold; text-align:right; color:${valColor};">${val > 0 ? '+' + val : val}</span>
-                </div>
-            `;
-        }).join('')
-    }</div>`;
-}
-
-// ==================== SECTOR TURNOUT MODIFIERS (target-based policies) ====================
-// Twelve fixed rows, one per sector_key. Stored as float in 0.05 steps,
-// range −0.30..+0.30. State holds only non-zero entries — re-render
-// hydrates 0 for missing keys so the UI always shows all twelve.
-// Single source of truth for the turnout-delta domain: snap to the 0.05
-// grid the slider exposes, clamp to [TURNOUT_DELTA_MIN, TURNOUT_DELTA_MAX],
-// round-trip through hundredths to kill floating-point dust. Returns 0
-// for blank / NaN inputs so callers can use that as the "drop entry"
-// sentinel. The negative leg goes deeper than the positive leg because
-// "fully suppress this bloc" is a stronger lever than "boost it" — a
-// base 0.65 turnout sector can be driven near zero with delta=-1.00 but
-// realistically can't move much above 100%.
-const TURNOUT_DELTA_STEP = 0.05;
-const TURNOUT_DELTA_MIN = -1.00;
-const TURNOUT_DELTA_MAX =  0.30;
-function normalizeTurnoutDelta(value) {
-    const raw = Number(value);
-    if (!Number.isFinite(raw)) return 0;
-    const snapped = Math.round(raw / TURNOUT_DELTA_STEP) * TURNOUT_DELTA_STEP;
-    return Math.max(TURNOUT_DELTA_MIN, Math.min(TURNOUT_DELTA_MAX, Math.round(snapped * 100) / 100));
-}
-
-function syncSectorTurnout(optIdx, sectorKey, value) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const clamped = normalizeTurnoutDelta(value);
-    if (!Array.isArray(opt.sector_turnout_targets)) opt.sector_turnout_targets = [];
-    const idx = opt.sector_turnout_targets.findIndex(r => r.sector_key === sectorKey);
-    if (clamped === 0) {
-        if (idx !== -1) opt.sector_turnout_targets.splice(idx, 1);
-    } else if (idx === -1) {
-        opt.sector_turnout_targets.push({ sector_key: sectorKey, delta: clamped });
-    } else {
-        opt.sector_turnout_targets[idx].delta = clamped;
-    }
-    const display = document.getElementById(`b-turnout-val-${optIdx}-${sectorKey}`);
-    if (display) display.textContent = formatTurnoutDelta(clamped);
-}
-
-function formatTurnoutDelta(v) {
-    if (v === 0) return '0.00';
-    const abs = Math.abs(v).toFixed(2);
-    return v > 0 ? `+${abs}` : `−${abs}`;
-}
-
-function renderSectorTurnoutTargets(optIdx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const container = document.getElementById(`sector-turnout-container-${optIdx}`);
-    if (!container) return;
-    if (!Array.isArray(opt.sector_turnout_targets)) opt.sector_turnout_targets = [];
-
-    const lookup = new Map(opt.sector_turnout_targets.map(r => [r.sector_key, Number(r.delta) || 0]));
-    const rowStyle = 'display:grid; grid-template-columns:1fr 80px 50px; gap:8px; align-items:center; padding:6px 10px;';
-
-    container.innerHTML = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">${
-        SECTOR_RAPPORT_KEYS.map(s => {
-            const val = lookup.get(s.key) || 0;
-            const valColor = val > 0 ? '#7fc97f' : (val < 0 ? '#e57373' : '#888');
-            return `
-                <div style="${rowStyle} background:#1a1a1a; border:1px solid #2a2a2a; border-radius:3px;">
-                    <span style="color:#bbb; font-size:0.82rem;">${escapeHtml(s.label)}</span>
-                    <input type="range" min="${TURNOUT_DELTA_MIN}" max="${TURNOUT_DELTA_MAX}" step="${TURNOUT_DELTA_STEP}" value="${val}" oninput="syncSectorTurnout(${optIdx}, '${s.key}', this.value)">
-                    <span id="b-turnout-val-${optIdx}-${s.key}" style="font-family:var(--font-mono,monospace); font-size:0.85rem; font-weight:bold; text-align:right; color:${valColor};">${formatTurnoutDelta(val)}</span>
-                </div>
-            `;
-        }).join('')
-    }</div>`;
-}
-
-// ==================== SECTOR WEIGHT MODIFIERS (target-based policies) ====================
-// Integer ±5 per sector. Engine floors at 1 at apply time, so a delta of
-// −10 against a base weight of 1 still yields effective_weight 1.
-const WEIGHT_DELTA_MAX = 5;
-function normalizeWeightDelta(value) {
-    const raw = Number(value);
-    if (!Number.isFinite(raw)) return 0;
-    const rounded = Math.round(raw);
-    return Math.max(-WEIGHT_DELTA_MAX, Math.min(WEIGHT_DELTA_MAX, rounded));
-}
-
-function syncSectorWeight(optIdx, sectorKey, value) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const clamped = normalizeWeightDelta(value);
-    if (!Array.isArray(opt.sector_weight_targets)) opt.sector_weight_targets = [];
-    const idx = opt.sector_weight_targets.findIndex(r => r.sector_key === sectorKey);
-    if (clamped === 0) {
-        if (idx !== -1) opt.sector_weight_targets.splice(idx, 1);
-    } else if (idx === -1) {
-        opt.sector_weight_targets.push({ sector_key: sectorKey, delta: clamped });
-    } else {
-        opt.sector_weight_targets[idx].delta = clamped;
-    }
-    const display = document.getElementById(`b-weight-val-${optIdx}-${sectorKey}`);
-    if (display) display.textContent = formatWeightDelta(clamped);
-}
-
-function formatWeightDelta(v) {
-    if (v === 0) return '0';
-    return v > 0 ? `+${v}` : String(v);
-}
-
-function renderSectorWeightTargets(optIdx) {
-    const opt = options[optIdx];
-    if (!opt) return;
-    const container = document.getElementById(`sector-weight-container-${optIdx}`);
-    if (!container) return;
-    if (!Array.isArray(opt.sector_weight_targets)) opt.sector_weight_targets = [];
-
-    const lookup = new Map(opt.sector_weight_targets.map(r => [r.sector_key, Number(r.delta) || 0]));
-    const rowStyle = 'display:grid; grid-template-columns:1fr 80px 50px; gap:8px; align-items:center; padding:6px 10px;';
-
-    container.innerHTML = `<div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;">${
-        SECTOR_RAPPORT_KEYS.map(s => {
-            const val = lookup.get(s.key) || 0;
-            const valColor = val > 0 ? '#7fc97f' : (val < 0 ? '#e57373' : '#888');
-            return `
-                <div style="${rowStyle} background:#1a1a1a; border:1px solid #2a2a2a; border-radius:3px;">
-                    <span style="color:#bbb; font-size:0.82rem;">${escapeHtml(s.label)}</span>
-                    <input type="range" min="-${WEIGHT_DELTA_MAX}" max="${WEIGHT_DELTA_MAX}" step="1" value="${val}" oninput="syncSectorWeight(${optIdx}, '${s.key}', this.value)">
-                    <span id="b-weight-val-${optIdx}-${s.key}" style="font-family:var(--font-mono,monospace); font-size:0.85rem; font-weight:bold; text-align:right; color:${valColor};">${formatWeightDelta(val)}</span>
-                </div>
-            `;
-        }).join('')
-    }</div>`;
-}
-
 // Equilibrium preview shows where each stat would settle if this option
 // were the ONLY policy targeting that stat (the in-isolation case). With
 // no other pulls in the math, equilibrium = target — pull strength is
@@ -1568,31 +1284,6 @@ async function savePolicy() {
                 alert(`Option ${i + 1} ("${optionName}"): unknown stat key(s): ${unknownT.join(', ')}.`);
                 return;
             }
-            // L-1: drop entries whose sector_key no longer maps to a live
-            // sector (e.g. a custom sector deleted in admin.html). Without
-            // this, orphaned values stay in JSONB across re-saves while
-            // being invisible in the renderer that iterates the live list.
-            const knownSectorKeys = new Set(SECTOR_RAPPORT_KEYS.map(k => k.key));
-            const validRapport = o.sector_rapport_targets
-                // Number.isFinite guards against NaN slipping past the UI
-                // sync path — Number(NaN) !== 0 is true, so a NaN row
-                // would otherwise pass and be persisted as rapport:0,
-                // contradicting "zero values aren't persisted".
-                .filter(r => r.sector_key && knownSectorKeys.has(r.sector_key) && Number.isFinite(Number(r.rapport)) && Number(r.rapport) !== 0)
-                .map(r => ({ sector_key: r.sector_key, rapport: Math.max(-10, Math.min(10, parseInt(r.rapport, 10) || 0)) }));
-            // L-1: same orphan-key filter as validRapport above —
-            // knownSectorKeys is built once and reused.
-            const rawTurnout = Array.isArray(o.sector_turnout_targets) ? o.sector_turnout_targets : [];
-            const validTurnout = rawTurnout
-                .filter(r => r && typeof r.sector_key === 'string' && knownSectorKeys.has(r.sector_key))
-                .map(r => ({ sector_key: r.sector_key, delta: normalizeTurnoutDelta(r.delta) }))
-                .filter(r => r.delta !== 0);
-            const rawWeight = Array.isArray(o.sector_weight_targets) ? o.sector_weight_targets : [];
-            const validWeight = rawWeight
-                .filter(r => r && typeof r.sector_key === 'string' && knownSectorKeys.has(r.sector_key))
-                .map(r => ({ sector_key: r.sector_key, delta: normalizeWeightDelta(r.delta) }))
-                .filter(r => r.delta !== 0);
-
             optionPayloads.push({
                 stateRef: o,
                 optionData: {
@@ -1612,9 +1303,12 @@ async function savePolicy() {
                     // New target-based shape.
                     spectrum_position: Number.isFinite(Number(o.spectrum_position)) ? parseInt(o.spectrum_position, 10) : null,
                     stat_targets: validTargets,
-                    sector_rapport_targets: validRapport,
-                    sector_turnout_targets: validTurnout,
-                    sector_weight_targets: validWeight,
+                    // Voter-bloc standing/turnout/weight authoring was
+                    // removed from the builder; persist empty so the
+                    // columns stay valid and the builder stops setting them.
+                    sector_rapport_targets: [],
+                    sector_turnout_targets: [],
+                    sector_weight_targets: [],
                     // Party reception. Null when empty (matches the
                     // committee_proposals convention + the NULL-OK CHECK).
                     // The UI keeps the lists disjoint; the DB CHECK is the
@@ -1858,9 +1552,6 @@ window.onPolicyTypeChange = onPolicyTypeChange;
 window.addStatTarget = addStatTarget;
 window.removeStatTarget = removeStatTarget;
 window.syncStatTarget = syncStatTarget;
-window.syncSectorRapport = syncSectorRapport;
-window.syncSectorTurnout = syncSectorTurnout;
-window.syncSectorWeight = syncSectorWeight;
 window.renderEquilibriumPreview = renderEquilibriumPreview;
 </script>
 </body>
