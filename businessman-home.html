@@ -86,6 +86,9 @@
     letter-spacing:0; font-weight:400; }
   .biz-pi-card .go { margin-left:auto; font-family:var(--font-mono); font-size:9px;
     color:#7a9ac8; white-space:nowrap; flex-shrink:0; }
+  .biz-pi-card .pi-new { display:inline-block; margin-left:8px; padding:1px 6px; border-radius:3px;
+    background:#d9534f; color:#fff; font-size:8.5px; font-weight:700; letter-spacing:0.05em;
+    vertical-align:middle; }
 
   /* Construction project tracker (7 stages, horizontal) */
   .biz-proj-card { padding:14px 16px; margin-bottom:8px; background:#0b0d0a;
@@ -1034,15 +1037,46 @@ async function handleMakePayment() {
         .or(`owner_faction_id.eq.${f.id},applicant_faction_id.eq.${f.id}`)
         .eq('status', 'open');
       if (ivErr) throw ivErr;
+      // New-message badge: count the other party's messages that landed
+      // after my last reply (all of theirs if I haven't replied). Clears
+      // when I respond — no interview read-state table exists, so this
+      // "awaiting your reply" proxy is the stateless stand-in.
+      const newByInterview = new Map();
+      const ivIds = (ivs || []).map(iv => iv.id);
+      if (ivIds.length) {
+        const { data: msgs, error: msgErr } = await _supabase.from('job_interview_messages')
+          .select('interview_id, sender_faction_id, created_at')
+          .in('interview_id', ivIds)
+          .order('created_at', { ascending: true });
+        // Soft-fail: a count error drops the badges, never the cards.
+        if (msgErr) console.warn('[businessman-home] interview messages fetch failed:', msgErr.message);
+        const byIv = new Map();
+        for (const m of (msgs || [])) {
+          if (!byIv.has(m.interview_id)) byIv.set(m.interview_id, []);
+          byIv.get(m.interview_id).push(m);
+        }
+        for (const [ivId, list] of byIv) {
+          let lastMine = '';
+          for (const m of list) {
+            if (m.sender_faction_id === f.id && m.created_at > lastMine) lastMine = m.created_at;
+          }
+          const n = list.filter(m => m.sender_faction_id !== f.id && (!lastMine || m.created_at > lastMine)).length;
+          if (n > 0) newByInterview.set(ivId, n);
+        }
+      }
       for (const iv of (ivs || [])) {
         const interviewer = iv.owner_faction_id === f.id;
         const href = interviewer
           ? `business-corp.html?id=${encodeURIComponent(iv.corp_id)}`
           : 'businessman-career.html';
+        const newCount = newByInterview.get(iv.id) || 0;
+        const newTag = newCount > 0
+          ? `<span class="pi-new">${newCount} New Message${newCount === 1 ? '' : 's'}</span>`
+          : '';
         piCards.push(`
           <a class="biz-pi-card" href="${esc(href)}">
             <div>
-              <div class="t">JOB INTERVIEW — ${esc(iv.opening?.title || 'Role')} for ${esc(iv.corp?.name || '—')}</div>
+              <div class="t">JOB INTERVIEW — ${esc(iv.opening?.title || 'Role')} for ${esc(iv.corp?.name || '—')}${newTag}</div>
               <div class="sub">${interviewer
                 ? 'You are interviewing a candidate. Open the chat from your applicant board.'
                 : 'An employer wants to talk to you. Open the chat from your Career page.'}</div>
