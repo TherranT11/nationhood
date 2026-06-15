@@ -101,7 +101,6 @@
     padding:7px 14px; border-radius:4px; background:transparent; color:#8fd49b;
     border:0.5px solid rgba(106,176,122,0.45); cursor:pointer; }
   .rl-req:hover { background:rgba(106,176,122,0.10); border-color:#6ab07a; }
-  .rl-req-corner { position:absolute; top:9px; right:12px; }
   .rq-scope-row { display:flex; gap:8px; }
   .rq-scope { flex:1; font-family:var(--font-mono); font-size:11px; padding:9px; border-radius:4px;
     background:transparent; color:#bbb; border:0.5px solid rgba(255,255,255,0.15); cursor:pointer; }
@@ -1886,9 +1885,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
           ? '<div style="margin-top:12px;"><button type="button" class="js-request-loan rl-req">Request Loan</button></div>'
           : '';
         document.getElementById('bc-loans').innerHTML = `
-          <div class="rl-panel" style="position:relative;">
+          <div class="rl-panel">
             <div class="ea-head"><span class="rule"></span><span class="t">CORPORATE LOANS</span><span class="rule"></span></div>
-            ${canBorrow ? '<button type="button" class="js-request-loan rl-req rl-req-corner">Request Loan</button>' : ''}
             ${!loans.length ? `<div class="rl-empty">No loans on the books.${reqBtnEmpty}</div>` : `
             <div class="bp-grid" style="grid-template-columns:1.3fr 0.9fr 0.6fr 1fr 0.7fr;">
               <div class="h">LENDER</div><div class="h">OUTSTANDING</div><div class="h">RATE</div><div class="h">TERM ENDS</div><div class="h">STATUS</div>
