@@ -1319,7 +1319,7 @@ async function savePolicy() {
                     sector_weight_targets: [],
                     // Party reception. Null when no archetype is rated;
                     // otherwise { archetype: int 1..6 }. Per-policy
-                    // distinctness is validated below before this loop.
+                    // distinctness is validated above, before this loop.
                     archetype_values: (o.archetype_values && Object.keys(o.archetype_values).length)
                         ? o.archetype_values : null,
                     is_target_based: true,
