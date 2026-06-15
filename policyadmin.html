@@ -615,9 +615,10 @@ async function deletePolicy(id, name) {
     if (!confirm(`Delete policy "${name}"?\n\nThis also removes its options and any bill articles, active laws, and nation-policy rows referencing it.`)) return;
     try {
         // Server-side cascade (admin_delete_policy, 20270931): one atomic,
-        // RLS-proof, admin-gated transaction. Replaces the old client chain
-        // of unchecked child deletes that silently no-op'd under RLS and
-        // then tripped active_laws_policy_id_fkey.
+        // RLS-proof transaction. Replaces the old client chain of unchecked
+        // child deletes that silently no-op'd under active_laws RLS and then
+        // tripped active_laws_policy_id_fkey. (Access gate is this page's
+        // own password, same as every other write here.)
         const { data, error } = await _supabase.rpc('admin_delete_policy', { p_policy_id: id });
         if (error) throw error;
         if (!data || data.success === false) throw new Error(data?.reason || 'delete_failed');

@@ -12,9 +12,17 @@
 -- policy), so the block is real, not stale data.
 --
 -- Fix: one SECURITY DEFINER RPC (mirrors admin_delete_party) that clears
--- every FK child in order, then policy_options, then the policy — atomic,
--- RLS-proof, admin-gated. The client calls this instead of chaining
--- unchecked deletes.
+-- every FK child in order, then policy_options, then the policy — atomic
+-- and RLS-proof. The client calls this instead of chaining unchecked
+-- deletes.
+--
+-- Access: policyadmin.html gates entry with its own client-side password
+-- (no Supabase auth session), and already writes policies / options /
+-- active_laws / nation_policies directly under permissive RLS via the
+-- anon key. This RPC matches that exact reachability (granted to anon +
+-- authenticated) — the page password is the access gate, same as the
+-- rest of this admin surface. No is_admin() check: there's no admin JWT
+-- on this page for it to read.
 --
 -- FK map into policies(id):        active_laws, nation_policies,
 --   bill_articles, amendment_requests, bill_amendment_requests, policy_options
@@ -41,10 +49,6 @@ DECLARE
         'amendment_requests', 'bill_amendment_requests'
     ];
 BEGIN
-    IF NOT is_admin() THEN
-        RETURN jsonb_build_object('success', false, 'reason', 'not_admin');
-    END IF;
-
     SELECT policy_name INTO v_name FROM policies WHERE id = p_policy_id;
     IF v_name IS NULL THEN
         RETURN jsonb_build_object('success', false, 'reason', 'policy_not_found');
@@ -84,7 +88,7 @@ BEGIN
 END $$;
 
 REVOKE EXECUTE ON FUNCTION public.admin_delete_policy(uuid) FROM PUBLIC;
-GRANT  EXECUTE ON FUNCTION public.admin_delete_policy(uuid) TO authenticated;
+GRANT  EXECUTE ON FUNCTION public.admin_delete_policy(uuid) TO anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
