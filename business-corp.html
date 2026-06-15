@@ -17,6 +17,7 @@
   /* ── Executive Actions panel ── */
   .ea-panel { background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
     border-radius:6px; padding:16px 18px 18px; }
+  .ea-panel + .ea-panel { margin-top:16px; }
   .ea-head { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
   .ea-head .rule { flex:1; height:1px; background:rgba(138,170,106,0.25); }
   .ea-head .t { font-family:var(--font-mono); font-size:11px; letter-spacing:0.3em;
@@ -872,6 +873,21 @@ import { CITY_STATS } from './js/game/city-labels.js';
 
     const isOwner = corp.owner_faction_id === ctx.faction.id;
     const currentTick = Number(ctx.shard?.current_tick) || 0;
+
+    // Executive actions bank +1 per tick up to a cap of 3 (server:
+    // _corp_exec_spend, 20270946). Availability is derived from
+    // exec_action_tick — a "consumed-through" pointer — exactly as the
+    // server gate does; the cap of 3 is mirrored here for display.
+    const EXEC_ACTION_CAP = 3;
+    const execActionsLeft = (c) =>
+      Math.max(0, Math.min(EXEC_ACTION_CAP, currentTick - (c?.exec_action_tick ?? -1)));
+    // Mirror the server pointer advance after an action so the badge updates
+    // without a refetch, then re-render the count.
+    const markExecActionSpent = (c) => {
+      c.exec_action_tick = currentTick - execActionsLeft(c) + 1;
+      const el = document.getElementById('ea-remaining');
+      if (el) el.textContent = `${execActionsLeft(c)} of ${EXEC_ACTION_CAP} remaining`;
+    };
 
     // Tax package (20270890): an HQ city holding discount charges
     // takes 10% off asset upgrades here. Display mirror only — the
@@ -2251,12 +2267,12 @@ import { CITY_STATS } from './js/game/city-labels.js';
     // (Set Interest Rate, 20270893) with four still being designed;
     // other industries show five coming-soon slots. Every backing
     // RPC gates on the industry. The allowance pill derives from
-    // exec_action_tick (20270800): one action per tick.
+    // exec_action_tick (20270946): +1 banked per tick, capped at 3.
     if (isOwner) {
       const eaConstruction = corp.industry === 'construction';
       const eaAutomotive = corp.industry === 'automotive';
       const eaBanking = corp.industry === 'banking';
-      const actionsLeft = currentTick > (corp.exec_action_tick ?? -1) ? 1 : 0;
+      const actionsLeft = execActionsLeft(corp);
       const eaComingSoon = n => Array.from({ length: n }, () => `
             <div class="ea-card" title="Coming soon">
               <div class="ic">—</div>
@@ -2346,7 +2362,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
         : eaComingSoon(5);
       document.getElementById('bc-ops').innerHTML = `
         <div class="ea-panel">
-          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} remaining</span></div>
+          <div class="ea-head"><span class="rule"></span><span class="t">EXECUTIVE ACTIONS</span><span class="rule"></span><span class="ea-remaining" id="ea-remaining">${actionsLeft} of ${EXEC_ACTION_CAP} remaining</span></div>
           <div class="ea-grid">${eaCards}
           </div>
         </div>
@@ -2572,8 +2588,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
                   };
                   throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
                 }
-                corp.exec_action_tick = currentTick;
-                document.getElementById('ea-remaining').textContent = '0 remaining';
+                markExecActionSpent(corp);
                 openBidModal();
               } catch (e) {
                 alert('Could not bid: ' + (e?.message || e));
@@ -3437,8 +3452,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               <div class="jm-lab">FOR SALE IN NATION — ${esc(typeLabel.toUpperCase())}</div>
               <div class="db-static">${esc(Number(data.for_sale_units).toLocaleString())} vehicles in corporate inventories</div>`;
             // The action is spent — reflect it without losing the report.
-            const remEl = document.getElementById('ea-remaining');
-            if (remEl) remEl.textContent = '0 remaining';
+            markExecActionSpent(corp);
           } catch (e) {
             alert('Could not analyze: ' + (e?.message || e));
           } finally {
