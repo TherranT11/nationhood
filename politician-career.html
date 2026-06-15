@@ -4705,7 +4705,7 @@ async function openCityCouncilModal(ctx, targetOffice) {
       id, city_type, city_name, description, population_pct,
       mayor_first_name, mayor_last_name, mayor_archetype,
       mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
-      budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+      budget, infrastructure, pollution, crime, appeal, growth, unemployment, services, affordability
     `)
     .eq('nation_id', nationId)
     .order('city_type', { ascending: true });
@@ -4808,7 +4808,7 @@ async function openMayorPickerModal(ctx) {
       id, city_type, city_name, description, population_pct,
       mayor_first_name, mayor_last_name, mayor_archetype, mayor_term_end_tick,
       mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
-      budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+      budget, infrastructure, pollution, crime, appeal, growth, unemployment, services, affordability
     `)
     .eq('nation_id', nationId)
     .neq('city_type', 'capital')

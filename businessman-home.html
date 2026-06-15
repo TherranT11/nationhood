@@ -1228,7 +1228,7 @@ async function handleMakePayment() {
       if (ownedCorps.length) {
         const { data: pxs, error: pxErr } = await _supabase.from('plant_expansion_proposals')
           .select(`id, cost,
-                   city:cities!city_id(city_name, jobs, nation:nations!nation_id(name)),
+                   city:cities!city_id(city_name, unemployment, nation:nations!nation_id(name)),
                    corp:entrepreneur_corps!corp_id(name, treasury_cash),
                    proposer:factions!proposer_faction_id(leader_first_name, leader_last_name, nickname)`)
           .in('corp_id', ownedCorps.map(c => c.id))
