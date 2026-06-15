@@ -366,6 +366,7 @@
         <div class="bc-foot" id="fin-foot" style="display:none;">
           <input type="number" min="1" id="fin-invest-amt" class="fin-amt" placeholder="Amount ($)">
           <button type="button" class="bc-btn" id="fin-invest">INVEST</button>
+          <button type="button" class="bc-btn" id="fin-withdraw" style="margin-top:8px;">WITHDRAW</button>
           <button type="button" class="bc-btn" id="fin-paytaxes" style="margin-top:8px;">PAY TAXES</button>
           <button type="button" class="bc-btn" id="fin-bankrupt" style="margin-top:8px;border-color:#5a3a3a;color:#c88;background:rgba(217,83,79,0.06);">DECLARE BANKRUPTCY</button>
           <div class="err" id="fin-err"></div>
@@ -1689,6 +1690,36 @@ import { CITY_STATS } from './js/game/city-labels.js';
               window.location.reload();
             } catch (e) {
               finErr.textContent = 'Invest failed: ' + (e?.message || e);
+              btn.disabled = false;
+            }
+          });
+
+          // Withdraw equity → personal Cash on Hand (20270935). Shares the
+          // amount field with Invest. Gated server-side to withdrawable
+          // equity = treasury − debt − bank deposits, so borrowed money and
+          // depositors' cash can't be pocketed.
+          document.getElementById('fin-withdraw').addEventListener('click', async () => {
+            const btn = document.getElementById('fin-withdraw');
+            const amt = Math.floor(Number(document.getElementById('fin-invest-amt').value));
+            finErr.textContent = '';
+            if (!(amt > 0)) { finErr.textContent = 'Enter an amount to withdraw.'; return; }
+            btn.disabled = true;
+            try {
+              const { data, error: wErr } = await _supabase.rpc('withdraw_corp_treasury',
+                { p_corp_id: corp.id, p_amount: amt });
+              if (wErr) throw wErr;
+              if (!data?.success) {
+                const REASON = {
+                  exceeds_withdrawable: `Only ${hfFmtBig(data?.have ?? 0)} is withdrawable (treasury ${hfFmtBig(data?.treasury ?? 0)} − debt ${hfFmtBig(data?.debt ?? 0)}${(data?.deposits ?? 0) ? ` − deposits ${hfFmtBig(data?.deposits)}` : ''}).`,
+                  use_dividend: 'Public corps pay shareholders via dividends, not direct withdrawals.',
+                  not_owner: 'Only the owner can withdraw from this corporation.',
+                  no_entrepreneur: 'No owner faction found.',
+                };
+                throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+              }
+              window.location.reload();
+            } catch (e) {
+              finErr.textContent = 'Withdraw failed: ' + (e?.message || e);
               btn.disabled = false;
             }
           });
