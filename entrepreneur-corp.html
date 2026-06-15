@@ -5910,11 +5910,19 @@ function initials(s, n) {
       }
 
       // Personal loan requests — pending bids on personal_loan_requests
-      // from entrepreneurs whose home nation matches one of this bank's
-      // completed banking_office locations (20270448). Bank-corps only,
-      // owner-visible. Make Offer opens a small modal that calls
-      // offer_personal_loan; the panel also surfaces any pending offers
-      // this bank already has on a request, with a Withdraw button.
+      // from entrepreneurs OR businessmen whose home nation matches one of
+      // this bank's completed banking_office locations (20270448, treasury-
+      // converged in 20270937). Bank-corps only, owner-visible. Make Offer
+      // calls offer_personal_loan (now at posted prime); the panel also
+      // surfaces any pending offers this bank has, with a Withdraw button.
+      //
+      // KNOWN GAP (follow-up): this page does NOT yet surface the personal
+      // loans this bank HOLDS, nor a Foreclose button for an overdue
+      // residence-secured one. The foreclose_personal_loan RPC exists and
+      // business-corp.html (the businessman-owned bank surface) already
+      // wires it; an entrepreneur-owned bank can offer here but can't
+      // foreclose from the UI. Mirror business-corp's financing-panel
+      // held-loans + FORECLOSE block here to close it.
       let personalLoanReqsHtml = '';
       if (c.industry === 'banking' && canView) {
         // Lazy expiry sweep so we don't display stale pending rows.
