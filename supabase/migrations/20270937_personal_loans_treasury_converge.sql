@@ -72,6 +72,18 @@ AS $$
 $$;
 REVOKE EXECUTE ON FUNCTION public._personal_loan_borrower(uuid) FROM PUBLIC;
 
+-- The accrual — one immutable definition every read / paydown / foreclose
+-- shares. Simple interest on the remaining principal, 144 ticks/year.
+-- Returns total interest owed now (already-accrued + since last accrual).
+CREATE OR REPLACE FUNCTION public._personal_loan_owed_interest(p_loan public.personal_loans, p_tick int)
+RETURNS numeric
+LANGUAGE sql IMMUTABLE
+AS $$
+    SELECT p_loan.accrued_interest_unpaid
+         + p_loan.principal_remaining * p_loan.apr_pct / 100.0 / 144.0
+           * GREATEST(0, p_tick - p_loan.last_accrual_tick)
+$$;
+
 -- ── 3. get_my_personal_loan — generalize borrower; surface collateral ─
 CREATE OR REPLACE FUNCTION public.get_my_personal_loan()
 RETURNS jsonb
@@ -82,8 +94,6 @@ DECLARE
     v_fac            factions%ROWTYPE;
     v_loan           personal_loans%ROWTYPE;
     v_tick           int;
-    v_ticks_passed   int;
-    v_new_interest   numeric;
     v_total_interest numeric;
     v_lender_name    text;
 BEGIN
@@ -105,9 +115,7 @@ BEGIN
 
     SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
     v_tick := COALESCE(v_tick, v_loan.last_accrual_tick);
-    v_ticks_passed := GREATEST(0, v_tick - v_loan.last_accrual_tick);
-    v_new_interest := v_loan.principal_remaining * v_loan.apr_pct / 100.0 / 144.0 * v_ticks_passed;
-    v_total_interest := v_loan.accrued_interest_unpaid + v_new_interest;
+    v_total_interest := _personal_loan_owed_interest(v_loan, v_tick);
 
     SELECT name INTO v_lender_name FROM entrepreneur_corps WHERE id = v_loan.lender_corp_id;
 
@@ -451,8 +459,6 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 AS $$
 DECLARE
     v_loan           personal_loans%ROWTYPE;
-    v_ticks_passed   int;
-    v_new_interest   numeric;
     v_total_interest numeric;
     v_int_due_bigint bigint;
     v_cap            bigint;
@@ -468,9 +474,7 @@ BEGIN
         RETURN jsonb_build_object('total_applied', 0, 'no_active_loan', true);
     END IF;
 
-    v_ticks_passed   := GREATEST(0, p_tick - v_loan.last_accrual_tick);
-    v_new_interest   := v_loan.principal_remaining * v_loan.apr_pct / 100.0 / 144.0 * v_ticks_passed;
-    v_total_interest := v_loan.accrued_interest_unpaid + v_new_interest;
+    v_total_interest := _personal_loan_owed_interest(v_loan, p_tick);
     v_int_due_bigint := ROUND(v_total_interest)::bigint;
 
     v_cap            := LEAST(GREATEST(0, p_amount), v_int_due_bigint + v_loan.principal_remaining);
@@ -619,7 +623,6 @@ DECLARE
     v_bank        entrepreneur_corps%ROWTYPE;
     v_fac         factions%ROWTYPE;
     v_tick        int;
-    v_ticks       int;
     v_interest    numeric;
     v_outstanding bigint;
     v_worth       bigint;
@@ -664,10 +667,8 @@ BEGIN
             'due_tick', v_loan.due_tick, 'tick', v_tick);
     END IF;
 
-    -- Bring interest current to size the claim (same /144 accrual).
-    v_ticks      := GREATEST(0, v_tick - v_loan.last_accrual_tick);
-    v_interest   := v_loan.accrued_interest_unpaid
-                  + v_loan.principal_remaining * v_loan.apr_pct / 100.0 / 144.0 * v_ticks;
+    -- Bring interest current to size the claim.
+    v_interest    := _personal_loan_owed_interest(v_loan, v_tick);
     v_outstanding := GREATEST(0, v_loan.principal_remaining + ROUND(v_interest))::bigint;
 
     v_worth     := FLOOR(GREATEST(0, COALESCE(v_borrower.biz_residence_worth, 0)))::bigint;
