@@ -98,6 +98,22 @@
   .region-chip.sel{border-color:var(--blue);background:#0e1018;color:#fff;}
   .region-chip.disabled{opacity:0.35;cursor:not-allowed;}
 
+  /* Step 5 — Invitees (one row per nation, stats + invite cost) */
+  .inv-row{display:flex;justify-content:space-between;align-items:center;gap:14px;background:#0a0a09;
+    border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px 16px;margin-bottom:8px;cursor:pointer;}
+  .inv-row:last-child{margin-bottom:0;}
+  .inv-row:hover{border-color:rgba(255,255,255,0.22);}
+  .inv-row.sel{border-color:var(--blue);background:#0e1018;}
+  .inv-main{min-width:0;}
+  .inv-name{font-size:14px;font-weight:600;color:#e6e6e6;}
+  .inv-stats{font-size:10px;letter-spacing:0.03em;color:#888;font-family:monospace;margin-top:6px;}
+  .inv-stats b{color:#bbb;font-weight:600;}
+  .inv-cost{flex-shrink:0;font-size:15px;color:#c87a7a;font-family:Georgia,serif;font-style:italic;}
+
+  .cost-summary{font-size:12px;color:var(--mut);margin-bottom:14px;text-align:right;line-height:1.6;}
+  .cost-summary b{color:#e6e6e6;}
+  .cost-summary .over{color:#c87a7a;}
+
   .form-foot{display:flex;justify-content:flex-end;gap:12px;margin-top:8px;}
   .convene-btn{padding:12px 22px;background:var(--amber-bg);border:0.5px solid var(--amber-dim);
     border-radius:5px;color:var(--amber);font-size:11px;font-weight:700;letter-spacing:0.08em;
@@ -184,6 +200,18 @@
         <div id="region-host"></div>
       </div>
 
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">5</div>
+          <div class="step-title">Invitees</div>
+          <div class="step-set" id="set-5">OPTIONAL</div>
+        </div>
+        <div class="type-intro">Invite founding members — each adds <b style="color:#cdd6f4;">$1</b> to the cost
+          and joins as a founding member. A body needs enough signatories to become legitimate.</div>
+        <div id="invitee-list"></div>
+      </div>
+
+      <div class="cost-summary" id="cost-summary"></div>
       <div class="form-foot">
         <button type="button" class="convene-btn" id="convene" disabled title="Pick a category and name the body">Found Organization</button>
       </div>
@@ -196,22 +224,76 @@
 <script type="module">
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
-import { escapeHtml } from './js/utils.js';
+import { escapeHtml, fmtMoney, fmtStat } from './js/utils.js';
 import { WORLD_ORG_SECTORS, ORG_TYPES_BY_CATEGORY, ORG_SCOPES, ORG_REGIONS, worldOrgAccess }
   from './js/game/world-org-sectors.js';
 
 let selectedCategory = null, selectedType = null, selectedScope = null, selectedRegion = null;
+let selectedInvites = new Set(), nationsData = [], founderBudget = 0, budgetKnown = false;
+
+// Founding cost (in $B): the type's cost + $1 per invited nation. Mirrors the
+// server's deduction in found_organization (20270952) — the server is the
+// source of truth; this drives the live summary + affordability gate.
+function typeCost() {
+  const t = (ORG_TYPES_BY_CATEGORY[selectedCategory] || []).find((x) => x.key === selectedType);
+  return t ? t.cost : 0;
+}
 
 function refreshState() {
-  const name = document.getElementById('org-name').value.trim();
+  const name    = document.getElementById('org-name').value.trim();
   // A regional body isn't complete until a region is picked.
   const scopeOk = !!selectedScope && (selectedScope !== 'regional' || !!selectedRegion);
+  const tc      = typeCost();
+  const invited = selectedInvites.size;
+  const total   = tc + invited;                 // $B
+  const budgetB = founderBudget / 1e9;
+  // Only gate on affordability when the budget is actually known — a failed
+  // fetch shouldn't falsely block (the server enforces the real check anyway).
+  const ok      = !budgetKnown || total <= budgetB;
+
   document.getElementById('set-1').classList.toggle('done', !!selectedCategory);
   document.getElementById('set-2').classList.toggle('done', !!name);
   document.getElementById('set-3').classList.toggle('done', !!selectedType);
   document.getElementById('set-4').classList.toggle('done', scopeOk);
+  document.getElementById('set-5').textContent = invited ? `${invited} INVITED` : 'OPTIONAL';
+
+  document.getElementById('cost-summary').innerHTML =
+    `Founding cost <b>&minus;$${total}</b> &mdash; type $${tc}`
+    + `${invited ? ` + ${invited} invited &times; $1` : ''}. `
+    + `Budget: <b class="${ok ? '' : 'over'}">${budgetKnown ? '$' + Math.round(budgetB) : '&mdash;'}</b>`
+    + `${ok ? '' : ' &mdash; <span class="over">not enough</span>'}.`;
+
   document.getElementById('convene').disabled =
-    !(selectedCategory && name && selectedType && scopeOk);
+    !(selectedCategory && name && selectedType && scopeOk && ok);
+}
+
+// Step 5 — invite founding members. Every nation but the founder's, with a few
+// stats; each invite adds $1B to the cost.
+function renderInvitees() {
+  const host = document.getElementById('invitee-list');
+  if (!nationsData.length) {
+    host.innerHTML = '<div class="sec-empty">No other nations to invite.</div>';
+    return;
+  }
+  host.innerHTML = nationsData.map((n) => `
+    <div class="inv-row" data-id="${escapeHtml(n.id)}">
+      <div class="inv-main">
+        <div class="inv-name">${escapeHtml(n.name)}</div>
+        <div class="inv-stats">STABILITY <b>${escapeHtml(fmtStat(n.politician_stability))}</b>`
+        + ` &middot; GDP <b>${escapeHtml(fmtMoney(n.politician_gdp))}</b>`
+        + ` &middot; CIVIC FREEDOMS <b>${escapeHtml(fmtStat(n.politician_civil_freedoms))}</b>`
+        + ` &middot; DEBT <b>${escapeHtml(fmtMoney(n.politician_debt))}</b></div>
+      </div>
+      <div class="inv-cost">&minus;$1</div>
+    </div>`).join('');
+  host.querySelectorAll('.inv-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const id = row.dataset.id;
+      if (selectedInvites.has(id)) selectedInvites.delete(id); else selectedInvites.add(id);
+      row.classList.toggle('sel', selectedInvites.has(id));
+      refreshState();
+    });
+  });
 }
 
 function renderCategories() {
@@ -342,37 +424,58 @@ async function init() {
     return;
   }
 
+  // Every nation but the founder's — the Invitees pool — plus the founder's
+  // budget for the affordability gate. Soft-fail: an error just leaves an empty
+  // pool and a $0 budget (the server still enforces both).
+  try {
+    const { data: nats, error: natErr } = await _supabase.from('nations')
+      .select('id, name, politician_stability, politician_gdp, politician_civil_freedoms, politician_debt, politician_budget')
+      .order('name');
+    if (natErr) throw natErr;
+    nationsData = (nats || []).filter((n) => n.id !== nation.id);
+    founderBudget = Number((nats || []).find((n) => n.id === nation.id)?.politician_budget
+      ?? nation.politician_budget) || 0;
+    budgetKnown = true;
+  } catch (e) {
+    console.warn('world-org-found: nations fetch failed', e?.message || e);
+  }
+
   renderCategories();
   renderTypes();    // "Pick a category first." until Step 1 is set
   renderScopes();
+  renderInvitees();
   document.getElementById('org-name').addEventListener('input', refreshState);
+  refreshState();   // seed the cost summary + button state
   document.getElementById('page').style.display = 'block';
 
-  // Found the body from the chosen category, identity, type and scope
-  // (20270950/20270951). The founding cost shown in Step 3 isn't deducted yet.
+  // Found the body — category, identity, type, scope and invited founders.
+  // The founding cost (type + $1 per invite, in $B) is deducted server-side
+  // from the nation's budget (20270952).
   const convBtn = document.getElementById('convene');
   convBtn.addEventListener('click', async () => {
     if (convBtn.disabled) return;
     convBtn.disabled = true;
     try {
       const { data, error } = await _supabase.rpc('found_organization', {
-        p_category:     selectedCategory,
-        p_name:         document.getElementById('org-name').value.trim(),
-        p_abbreviation: document.getElementById('org-abbr').value.trim(),
-        p_purpose:      document.getElementById('org-purpose').value.trim(),
-        p_type:         selectedType,
-        p_scope:        selectedScope,
-        p_region:       selectedRegion,
+        p_category:          selectedCategory,
+        p_name:              document.getElementById('org-name').value.trim(),
+        p_abbreviation:      document.getElementById('org-abbr').value.trim(),
+        p_purpose:           document.getElementById('org-purpose').value.trim(),
+        p_type:              selectedType,
+        p_scope:             selectedScope,
+        p_region:            selectedRegion,
+        p_invited_nation_ids: [...selectedInvites],
       });
       if (error) throw error;
       if (!data?.success) {
         const REASON = {
-          not_authorized:   'Only the Foreign Minister or Head of Government can found an organization.',
-          invalid_name:     'Give the body a proper name (at least 3 characters).',
-          invalid_category: 'Pick a category first.',
-          invalid_type:     'That institutional type isn’t available yet.',
-          invalid_scope:    'Choose a membership scope.',
-          invalid_region:   'Pick an available region for a regional body.',
+          not_authorized:     'Only the Foreign Minister or Head of Government can found an organization.',
+          invalid_name:       'Give the body a proper name (at least 3 characters).',
+          invalid_category:   'Pick a category first.',
+          invalid_type:       'That institutional type isn’t available yet.',
+          invalid_scope:      'Choose a membership scope.',
+          invalid_region:     'Pick an available region for a regional body.',
+          insufficient_budget:'Your nation’s budget can’t cover the founding cost.',
         };
         throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
       }
