@@ -589,7 +589,7 @@ const MINISTRY_ACTIONS = {
       name: 'Sale to the World Market', btn: 'SELL',
       desc: 'Sell your nation’s surplus commodities and production onto the global market for hard cash at the going world price.',
     }, {
-      name: 'World Organization Management', btn: 'MANAGE',
+      name: 'World Organization Management', btn: 'MANAGE', route: 'world-organizations.html',
       desc: 'Manage your nation’s seats, votes, and standing in the world’s international organizations — join blocs, shape resolutions, and trade influence on the global stage.',
     }, {
       name: 'Embargo / Sanction / Tariff', btn: 'IMPOSE',
@@ -744,7 +744,8 @@ function renderMinistries(nation, isPM) {
       : '';
     // The viewer can spend if they're the PM or this ministry's minister,
     // and there are actions left. The server re-checks on spend.
-    const canSpend = (isPM || m.key === viewerMinistryKey) && remaining > 0;
+    const canManage = isPM || m.key === viewerMinistryKey;
+    const canSpend = canManage && remaining > 0;
     const body = act
       ? `<div class="cab-actions">${act.actions.map(a => `
           <div class="cab-action">
@@ -753,7 +754,7 @@ function renderMinistries(nation, isPM) {
               <div class="cab-action-desc">${escapeHtml(a.desc)}</div>
               ${a.meta ? `<div class="cab-action-meta">${escapeHtml(a.meta)}</div>` : ''}
             </div>
-            <button type="button" class="cab-action-btn" data-ministry="${escapeHtml(m.key)}"${canSpend ? '' : ' disabled'}>${escapeHtml(a.btn)}</button>
+            <button type="button" class="cab-action-btn" ${a.route ? `data-route="${escapeHtml(a.route)}"` : `data-ministry="${escapeHtml(m.key)}"`}${(a.route ? canManage : canSpend) ? '' : ' disabled'}>${escapeHtml(a.btn)}</button>
           </div>`).join('')}</div>`
       : `<div class="min-empty">No actions available yet.</div>`;
     return `<section class="section" style="border-left:3px solid ${m.color}">
@@ -765,6 +766,12 @@ function renderMinistries(nation, isPM) {
   // Spend wiring — clicking an enabled action decrements that ministry's
   // credits (the action itself isn't wired to an effect yet).
   host.querySelectorAll('.cab-action-btn:not([disabled])').forEach(btn => {
+    // Routed actions (e.g. World Organization Management → MANAGE) navigate
+    // to their own page instead of spending a ministry action.
+    if (btn.dataset.route) {
+      btn.addEventListener('click', () => { window.location.href = btn.dataset.route; });
+      return;
+    }
     btn.addEventListener('click', async () => {
       const key = btn.dataset.ministry;
       btn.disabled = true;

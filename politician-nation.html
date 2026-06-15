@@ -110,16 +110,33 @@
    land flush against the viewport edge. */
 .sec { background:#0d0d0c; border:0.5px solid rgba(255,255,255,0.08);
   border-radius:6px; margin-bottom:10px; scroll-margin-top:18px; }
-.sec summary { padding:14px 18px; cursor:pointer; list-style:none;
+.sec > summary { padding:14px 18px; cursor:pointer; list-style:none;
   font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
   color:#888; font-weight:600;
   display:flex; align-items:center; justify-content:space-between; }
-.sec summary::-webkit-details-marker { display:none; }
-.sec summary::after { content:'+'; color:#555; font-size:16px; font-weight:400; }
-.sec[open] summary { color:#d4d4d4; border-bottom:0.5px solid rgba(255,255,255,0.06); }
-.sec[open] summary::after { content:'−'; }
+.sec > summary::-webkit-details-marker { display:none; }
+.sec > summary::after { content:'+'; color:#555; font-size:16px; font-weight:400; }
+.sec[open] > summary { color:#d4d4d4; border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.sec[open] > summary::after { content:'−'; }
 .sec-body  { padding:18px; }
 .sec-empty { color:#555; font-size:12px; font-style:italic; text-align:center; padding:24px 0; }
+
+/* World Organizations → five collapsible category sectors (placeholder).
+   Each carries an accent colour (--wo-accent), an icon, and a 0/0 count.
+   Empty bodies for now — orgs get listed here later. */
+.wo-cat { background:#0a0a09; border:0.5px solid rgba(255,255,255,0.08);
+  border-left:2px solid var(--wo-accent,#555); border-radius:6px; margin-bottom:8px; }
+.wo-cat:last-child { margin-bottom:0; }
+.wo-cat summary { padding:12px 16px; cursor:pointer; list-style:none;
+  display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.wo-cat summary::-webkit-details-marker { display:none; }
+.wo-cat-left { display:flex; align-items:center; gap:10px; min-width:0; }
+.wo-cat-ico  { width:22px; text-align:center; color:var(--wo-accent,#888); font-size:14px; flex-shrink:0; }
+.wo-cat-name { font-size:13px; font-weight:600; color:#e2e2e2; letter-spacing:0.02em; }
+.wo-cat-meta { font-size:11px; color:#777; white-space:nowrap; }
+.wo-cat-meta b { color:#aaa; font-weight:600; }
+.wo-cat[open] summary { border-bottom:0.5px solid rgba(255,255,255,0.06); }
+.wo-cat-body { padding:14px 16px; }
 
 /* Geography → city cards (20270660 + 20270707). One card per city
    in the nation. Coat-of-arms placeholder (left), name + description
@@ -432,7 +449,7 @@
   .stat-cell.money .value { font-size:20px; }
   .jump-nav { gap:4px; margin-bottom:12px; }
   .jump-nav button { font-size:9px; padding:6px 10px; letter-spacing:0.06em; }
-  .sec summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
+  .sec > summary { padding:12px 14px; font-size:11px; letter-spacing:0.06em; }
   .sec-body { padding:14px; }
   .gov-strip { grid-template-columns:1fr; gap:8px; }
   .party-row { flex-wrap:wrap; }
@@ -668,7 +685,9 @@
   <details id="sec-world" class="sec">
     <summary>World Organizations</summary>
     <div class="sec-body">
-      <div class="sec-empty">No international memberships recorded yet.</div>
+      <!-- Five category sectors rendered from js/game/world-org-sectors.js
+           (one source, shared with world-organizations.html). 0/0 for now. -->
+      <div id="wo-cats"></div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -696,6 +715,7 @@ import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
+import { worldOrgSectorsHtml } from './js/game/world-org-sectors.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -705,6 +725,11 @@ import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-label
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+
+// World Organization category sectors — static placeholder (0/0), rendered
+// from the one shared source so the management page can't drift from this.
+const _woCats = document.getElementById('wo-cats');
+if (_woCats) _woCats.innerHTML = worldOrgSectorsHtml();
 
 // One source for "who is the current PM and which party do they head?"
 // Same lookup shape used by the hero HoG cell and the parliament's
