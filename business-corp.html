@@ -452,6 +452,7 @@
       <div class="jm-pills db-cats" id="sp-bps"></div>
       <div class="jm-lab">PROJECT MANAGER</div>
       <select class="jm-select" id="sp-pm"></select>
+      <div class="db-mech" id="sp-profit" style="margin-top:10px;"></div>
     </div>
     <div class="jm-foot">
       <button type="button" class="jm-btn secondary" id="pb-cancel">CLOSE</button>
@@ -2746,15 +2747,40 @@ import { CITY_STATS } from './js/game/city-labels.js';
       // show every city stat; pick city + blueprint + PM and START
       // PROJECT spends the tick's executive action. The project
       // surfaces on the PM's and owner's Pressing Issues tracker.
-      let spCity = null, spBp = null;
+      let spCity = null, spBp = null, spCitiesData = [], spBpsData = [];
+
+      // Residential build profit (20270949) — display mirror of
+      // start_construction_project: profit is high where housing is scarce
+      // (low Affordability) and low where it's already cheap, by building type.
+      const RESI_PROFIT = {
+        single_story_home:  [5000, 60000],
+        double_story:       [10000, 100000],
+        multitenant_living: [25000, 200000],
+      };
+      const residentialProfit = (buildingType, affordability) => {
+        const r = RESI_PROFIT[buildingType];
+        if (!r) return 0;
+        const f = Math.max(0, Math.min(1, (10 - (Number(affordability) || 5)) / 9));
+        return Math.round(r[0] + (r[1] - r[0]) * f);
+      };
 
       function spRefreshStart() {
         document.getElementById('sp-start').disabled =
           !(spCity && spBp && document.getElementById('sp-pm').value);
+        const profEl = document.getElementById('sp-profit');
+        if (!profEl) return;
+        const city = spCitiesData.find(c => String(c.id) === String(spCity));
+        const bp   = spBpsData.find(b => String(b.id) === String(spBp));
+        if (!city || !bp) { profEl.textContent = ''; return; }
+        const profit = residentialProfit(bp.building_type, city.affordability);
+        profEl.innerHTML = `Projected profit on completion: <b>${hfFmtBig(profit)}</b>`
+          + ` — ${esc(city.city_name)} sits at affordability ${esc(String(city.affordability ?? '—'))}/10`
+          + ` (lower pays more). The finished build raises it +0.5.`;
       }
 
       function renderStartProject(cities, bps, pms) {
         spCity = null; spBp = null;
+        spCitiesData = cities; spBpsData = bps;
         const cityHost = document.getElementById('sp-cities');
         cityHost.innerHTML = cities.length ? cities.map(c => `
           <div class="sp-city" data-city="${esc(c.id)}">
