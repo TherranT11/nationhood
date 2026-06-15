@@ -685,41 +685,9 @@
   <details id="sec-world" class="sec">
     <summary>World Organizations</summary>
     <div class="sec-body">
-      <details class="wo-cat" style="--wo-accent:#5b8def;">
-        <summary>
-          <span class="wo-cat-left"><span class="wo-cat-ico">&#9776;</span><span class="wo-cat-name">Universal &amp; Political</span></span>
-          <span class="wo-cat-meta"><b>0 Organizations</b> representing 0 nations</span>
-        </summary>
-        <div class="wo-cat-body"><div class="sec-empty">No organizations in this sector yet.</div></div>
-      </details>
-      <details class="wo-cat" style="--wo-accent:#c79a3a;">
-        <summary>
-          <span class="wo-cat-left"><span class="wo-cat-ico">&#9638;</span><span class="wo-cat-name">Economic &amp; Financial</span></span>
-          <span class="wo-cat-meta"><b>0 Organizations</b> representing 0 nations</span>
-        </summary>
-        <div class="wo-cat-body"><div class="sec-empty">No organizations in this sector yet.</div></div>
-      </details>
-      <details class="wo-cat" style="--wo-accent:#4f9d5a;">
-        <summary>
-          <span class="wo-cat-left"><span class="wo-cat-ico">&#8644;</span><span class="wo-cat-name">Trade &amp; Commerce</span></span>
-          <span class="wo-cat-meta"><b>0 Organizations</b> representing 0 nations</span>
-        </summary>
-        <div class="wo-cat-body"><div class="sec-empty">No organizations in this sector yet.</div></div>
-      </details>
-      <details class="wo-cat" style="--wo-accent:#b5564a;">
-        <summary>
-          <span class="wo-cat-left"><span class="wo-cat-ico">&#9876;</span><span class="wo-cat-name">Security &amp; Defense</span></span>
-          <span class="wo-cat-meta"><b>0 Organizations</b> representing 0 nations</span>
-        </summary>
-        <div class="wo-cat-body"><div class="sec-empty">No organizations in this sector yet.</div></div>
-      </details>
-      <details class="wo-cat" style="--wo-accent:#3a9d9d;">
-        <summary>
-          <span class="wo-cat-left"><span class="wo-cat-ico">&#9881;</span><span class="wo-cat-name">Technical &amp; Functional</span></span>
-          <span class="wo-cat-meta"><b>0 Organizations</b> representing 0 nations</span>
-        </summary>
-        <div class="wo-cat-body"><div class="sec-empty">No organizations in this sector yet.</div></div>
-      </details>
+      <!-- Five category sectors rendered from js/game/world-org-sectors.js
+           (one source, shared with world-organizations.html). 0/0 for now. -->
+      <div id="wo-cats"></div>
       <div class="sec-foot"><button class="back-to-top" data-target="jump-nav">↑ Back to Top</button></div>
     </div>
   </details>
@@ -747,6 +715,7 @@ import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
+import { worldOrgSectorsHtml } from './js/game/world-org-sectors.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -756,6 +725,11 @@ import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-label
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 function escAttr(s) { return String(s == null ? '' : s).replace(/"/g, '&quot;'); }
+
+// World Organization category sectors — static placeholder (0/0), rendered
+// from the one shared source so the management page can't drift from this.
+const _woCats = document.getElementById('wo-cats');
+if (_woCats) _woCats.innerHTML = worldOrgSectorsHtml();
 
 // One source for "who is the current PM and which party do they head?"
 // Same lookup shape used by the hero HoG cell and the parliament's
