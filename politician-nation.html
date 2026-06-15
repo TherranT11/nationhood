@@ -137,6 +137,12 @@
 .wo-cat-meta b { color:#aaa; font-weight:600; }
 .wo-cat[open] summary { border-bottom:0.5px solid rgba(255,255,255,0.06); }
 .wo-cat-body { padding:14px 16px; }
+.wo-org { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px;
+  color:#d4d4d4; padding:9px 11px; background:#101010; border:0.5px solid rgba(255,255,255,0.07);
+  border-radius:4px; margin-bottom:6px; }
+.wo-org:last-child { margin-bottom:0; }
+.wo-org-ab { color:#888; font-size:11px; }
+.wo-org-st { font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#c79a3a; font-family:monospace; }
 
 /* Geography → city cards (20270660 + 20270707). One card per city
    in the nation. Coat-of-arms placeholder (left), name + description
@@ -715,7 +721,7 @@ import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { safeHexColor, factionInitials, tickToYear, tickToDate, fmtMoney, MINISTRY_NAMES, MINISTRY_BLURBS, CHAIR_BID_THRESHOLDS, fmtStat } from './js/utils.js';
 import { STABILITY_TIERS, CIVIL_FREEDOMS_TIERS, pickTier } from './js/game/national-characteristics.js';
 import { cityStatLabel, CITY_STATS, cityDisplayData } from './js/game/city-labels.js';
-import { worldOrgSectorsHtml } from './js/game/world-org-sectors.js';
+import { worldOrgSectorsHtml, fetchNationOrgs } from './js/game/world-org-sectors.js';
 
 // pickTier + the tier arrays live in js/game/national-characteristics.js
 // (kept under that filename for now — the stat-strip on this page is its
@@ -853,6 +859,17 @@ async function init() {
     } catch (err) {
       console.warn('politician-nation: URL-override nation fetch failed', err);
     }
+  }
+
+  // World Organizations the displayed nation belongs to (20270950) — re-render
+  // the sector cards (seeded 0/0 at load) with real memberships once the
+  // nation is known. Soft-fail: a fetch error just leaves the 0/0 placeholder.
+  if (nation?.id) {
+    fetchNationOrgs(_supabase, nation.id).then(({ bySector, error }) => {
+      if (error) { console.warn('politician-nation: world orgs fetch failed', error); return; }
+      const host = document.getElementById('wo-cats');
+      if (host) host.innerHTML = worldOrgSectorsHtml(bySector);
+    });
   }
 
   // PM ministry lookup is for the DISPLAYED nation (which may

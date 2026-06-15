@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Found a New Organization</title>
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  :root{
+    --bg:#080808; --panel:#0d0d0d; --panel2:#101010;
+    --line:rgba(255,255,255,0.07); --txt:#d4d4d4; --mut:#888; --faint:#666;
+    --amber:#c8a64e; --amber-bg:#161208; --amber-dim:rgba(200,166,78,0.4);
+    --teal:#5aafa5; --neu:#d4b87a; --blue:#8a9ad4;
+  }
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,system-ui,sans-serif;min-height:100vh;}
+  .content{padding:30px 22px;}
+  .wrap{max-width:980px;margin:0 auto;}
+
+  .crumb{font-size:9px;letter-spacing:0.13em;color:var(--faint);margin-bottom:16px;text-transform:uppercase;}
+  .crumb a{color:var(--mut);text-decoration:none;}
+  .crumb a:hover{color:var(--amber);}
+  .crumb .sep{margin:0 7px;color:#3a3a3a;}
+
+  .page-header{margin-bottom:24px;}
+  .ph-eyebrow{font-size:10px;letter-spacing:0.18em;color:var(--blue);text-transform:uppercase;
+    font-family:monospace;margin-bottom:10px;}
+  .ph-title{font-size:28px;font-weight:500;letter-spacing:-0.01em;color:#fff;
+    font-family:Georgia,'Times New Roman',serif;}
+  .ph-title em{font-style:italic;color:var(--blue);}
+  .ph-blurb{font-size:13px;color:var(--mut);margin-top:12px;line-height:1.6;max-width:760px;}
+
+  .locked{margin-top:60px;text-align:center;color:var(--neu);font-size:14px;
+    font-family:Georgia,serif;font-style:italic;}
+
+  /* Step blocks (1 Select Category · 2 Identity) with a SET indicator. */
+  .step{background:var(--panel);border:0.5px solid var(--line);border-left:2px solid #2a3550;
+    border-radius:8px;padding:20px;margin-bottom:16px;}
+  .step-head{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
+  .step-num{width:24px;height:24px;border-radius:50%;background:#2a3550;color:#cdd6f4;
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0;}
+  .step-title{font-size:14px;font-weight:600;color:#fff;flex:1;}
+  .step-set{font-size:10px;letter-spacing:0.14em;color:#555;font-family:monospace;}
+  .step-set.done{color:var(--teal);}
+
+  /* Category picker */
+  .cat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+  .cat-card{background:#0a0a09;border:1px solid rgba(255,255,255,0.08);border-radius:8px;
+    padding:18px 13px;text-align:center;cursor:pointer;transition:border-color .12s,background .12s;}
+  .cat-card:hover{border-color:rgba(255,255,255,0.22);}
+  .cat-card.sel{border-color:var(--cat-accent);background:#101016;}
+  .cat-ico{width:44px;height:44px;border-radius:50%;background:#15151a;margin:0 auto 12px;
+    display:flex;align-items:center;justify-content:center;color:var(--cat-accent);font-size:18px;}
+  .cat-name{font-size:13px;font-weight:600;color:#e6e6e6;margin-bottom:8px;}
+  .cat-desc{font-size:11px;color:#888;font-style:italic;line-height:1.5;}
+
+  /* Identity fields */
+  .fld{margin-bottom:16px;}
+  .fld:last-child{margin-bottom:0;}
+  .fld-label{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mut);
+    font-family:monospace;margin-bottom:8px;}
+  .fld-input{width:100%;background:#0a0a09;border:0.5px solid rgba(255,255,255,0.12);border-radius:5px;
+    padding:12px 14px;color:#e6e6e6;font-size:14px;font-family:inherit;}
+  .fld-input:focus{outline:none;border-color:var(--blue);}
+  .fld-input.abbr{max-width:180px;letter-spacing:0.08em;}
+  textarea.fld-input{resize:vertical;min-height:84px;font-style:italic;line-height:1.5;}
+
+  .form-foot{display:flex;justify-content:flex-end;gap:12px;margin-top:8px;}
+  .convene-btn{padding:12px 22px;background:var(--amber-bg);border:0.5px solid var(--amber-dim);
+    border-radius:5px;color:var(--amber);font-size:11px;font-weight:700;letter-spacing:0.08em;
+    text-transform:uppercase;cursor:pointer;font-family:monospace;}
+  .convene-btn:hover:not(:disabled){background:rgba(200,166,78,0.16);}
+  .convene-btn:disabled{opacity:0.4;cursor:default;}
+
+  .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);color:var(--mut);font-size:12px;letter-spacing:0.1em;z-index:50;}
+
+  @media (max-width:720px){
+    .cat-grid{grid-template-columns:1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+<div id="pol-topbar-container"></div>
+<div id="ent-topbar"></div>
+
+<div class="content">
+  <div class="wrap">
+    <div class="crumb" id="crumb"></div>
+    <div class="page-header">
+      <div class="ph-eyebrow">— FOUND A NEW ORGANIZATION —</div>
+      <h1 class="ph-title">Convene a New <em>International Body</em></h1>
+      <div class="ph-blurb">A new international body comes into being when its founding charter is signed by
+        enough states to make it legitimate. As the convening state, you draft the charter, invite the
+        founders, and host the inaugural summit. Done well, you create a lasting framework where your
+        country sits at the center. Done badly, you stage a public humiliation no one will let you forget.</div>
+    </div>
+
+    <div id="locked" class="locked" style="display:none">
+      Only the Foreign Affairs &amp; Trade Minister or the Head of Government can convene an organization.
+    </div>
+
+    <div id="page" style="display:none">
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">1</div>
+          <div class="step-title">Select Category</div>
+          <div class="step-set" id="set-1">SET</div>
+        </div>
+        <div class="cat-grid" id="cat-grid"></div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <div class="step-num">2</div>
+          <div class="step-title">Identity</div>
+          <div class="step-set" id="set-2">SET</div>
+        </div>
+        <div class="fld">
+          <div class="fld-label">Formal Name</div>
+          <input type="text" class="fld-input" id="org-name" maxlength="80" placeholder="e.g. Southern Consultative Council">
+        </div>
+        <div class="fld">
+          <div class="fld-label">Abbreviation</div>
+          <input type="text" class="fld-input abbr" id="org-abbr" maxlength="8" placeholder="e.g. SCC">
+        </div>
+        <div class="fld">
+          <div class="fld-label">Stated Purpose</div>
+          <textarea class="fld-input" id="org-purpose" maxlength="400" placeholder="What this body exists to do…"></textarea>
+        </div>
+      </div>
+
+      <div class="form-foot">
+        <button type="button" class="convene-btn" id="convene" disabled title="Pick a category and name the body">Found Organization</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="loading" class="loading">LOADING...</div>
+
+<script type="module">
+import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
+import { _supabase } from './js/supabase-client.js';
+import { escapeHtml } from './js/utils.js';
+import { WORLD_ORG_SECTORS, worldOrgAccess } from './js/game/world-org-sectors.js';
+
+let selectedCategory = null;
+
+function refreshState() {
+  const name = document.getElementById('org-name').value.trim();
+  document.getElementById('set-1').classList.toggle('done', !!selectedCategory);
+  document.getElementById('set-2').classList.toggle('done', !!name);
+  document.getElementById('convene').disabled = !(selectedCategory && name);
+}
+
+function renderCategories() {
+  const host = document.getElementById('cat-grid');
+  host.innerHTML = WORLD_ORG_SECTORS.map((s) => `
+    <div class="cat-card" data-key="${escapeHtml(s.key)}" style="--cat-accent:${s.accent};">
+      <div class="cat-ico">${s.icon}</div>
+      <div class="cat-name">${escapeHtml(s.name)}</div>
+      <div class="cat-desc">${escapeHtml(s.desc || '')}</div>
+    </div>`).join('');
+  host.querySelectorAll('.cat-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      selectedCategory = card.dataset.key;
+      host.querySelectorAll('.cat-card').forEach((c) => c.classList.toggle('sel', c === card));
+      refreshState();
+    });
+  });
+}
+
+async function init() {
+  let ctx = null;
+  try { ctx = await bootstrapPoliticianOrBusinessman('nation', 'nation'); }
+  catch (err) {
+    console.error('world-org-found: bootstrap failed', err);
+    document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
+    return;
+  }
+  if (!ctx) return;
+
+  const nation  = ctx.nation;
+  const faction = ctx.faction;
+  if (!nation || !faction) {
+    document.getElementById('loading').textContent = 'No nation associated with this politician.';
+    return;
+  }
+
+  document.title = `${nation.name} — Found a New Organization`;
+  document.getElementById('crumb').innerHTML =
+    `<a href="politician-nation.html">${escapeHtml((nation.name || 'NATION').toUpperCase())}</a>` +
+    ` <span class="sep">·</span> <a href="world-organizations.html">WORLD ORGANIZATIONS</a>` +
+    ` <span class="sep">·</span> FOUND A NEW BODY`;
+
+  // Gate: Foreign Minister or HoG (one source — worldOrgAccess).
+  const { allowed, hogErr } = await worldOrgAccess(_supabase, nation, faction);
+  if (hogErr) console.warn('world-org-found: head_of_government fetch failed', hogErr);
+
+  document.getElementById('loading').style.display = 'none';
+  if (!allowed) {
+    if (hogErr) {
+      const l = document.getElementById('loading');
+      l.textContent = 'Could not verify access. Please reload.';
+      l.style.display = 'flex';
+      return;
+    }
+    document.getElementById('locked').style.display = 'block';
+    return;
+  }
+
+  renderCategories();
+  document.getElementById('org-name').addEventListener('input', refreshState);
+  document.getElementById('page').style.display = 'block';
+
+  // Found the body from the chosen category + identity (20270950). The richer
+  // charter mechanic (type of body, scope, founders signing on) lands later.
+  const convBtn = document.getElementById('convene');
+  convBtn.addEventListener('click', async () => {
+    if (!selectedCategory || convBtn.disabled) return;
+    convBtn.disabled = true;
+    try {
+      const { data, error } = await _supabase.rpc('found_organization', {
+        p_category:     selectedCategory,
+        p_name:         document.getElementById('org-name').value.trim(),
+        p_abbreviation: document.getElementById('org-abbr').value.trim(),
+        p_purpose:      document.getElementById('org-purpose').value.trim(),
+      });
+      if (error) throw error;
+      if (!data?.success) {
+        const REASON = {
+          not_authorized:   'Only the Foreign Minister or Head of Government can found an organization.',
+          invalid_name:     'Give the body a proper name (at least 3 characters).',
+          invalid_category: 'Pick a category first.',
+        };
+        throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
+      }
+      window.location.href = 'world-organizations.html';
+    } catch (e) {
+      alert('Could not found the organization: ' + (e?.message || e));
+      convBtn.disabled = false;
+    }
+  });
+}
+
+init();
+</script>
+</body>
+</html>

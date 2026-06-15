@@ -59,9 +59,12 @@
   .wo-cat-meta b{color:#aaa;font-weight:600;}
   .wo-cat[open] summary{border-bottom:0.5px solid rgba(255,255,255,0.06);}
   .wo-cat-body{padding:14px 16px;}
-  .wo-org{font-size:13px;color:#d4d4d4;padding:8px 10px;background:var(--panel2);
-    border:0.5px solid var(--line);border-radius:4px;margin-bottom:6px;}
+  .wo-org{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;
+    color:#d4d4d4;padding:9px 11px;background:#101010;border:0.5px solid rgba(255,255,255,0.07);
+    border-radius:4px;margin-bottom:6px;}
   .wo-org:last-child{margin-bottom:0;}
+  .wo-org-ab{color:#888;font-size:11px;}
+  .wo-org-st{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:#c79a3a;font-family:monospace;}
 
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:var(--bg);color:var(--mut);font-size:12px;letter-spacing:0.1em;z-index:50;}
@@ -102,7 +105,7 @@
 import { bootstrapPoliticianOrBusinessman } from './js/politician-topbar.js';
 import { _supabase } from './js/supabase-client.js';
 import { escapeHtml } from './js/utils.js';
-import { worldOrgSectorsHtml } from './js/game/world-org-sectors.js';
+import { worldOrgSectorsHtml, worldOrgAccess, fetchNationOrgs } from './js/game/world-org-sectors.js';
 
 async function init() {
   let ctx = null;
@@ -127,28 +130,33 @@ async function init() {
     `<a href="politician-nation.html">${escapeHtml((nation.name || 'NATION').toUpperCase())}</a>` +
     ` <span class="sep">·</span> WORLD ORGANIZATIONS`;
 
-  // Gate: the dedicated Foreign Minister post (politician_foreign_minister_at_tick,
-  // 20270868) or the Head of Government. Matches the Cabinet Office's entry.
-  const isFM = faction.politician_foreign_minister_at_tick != null;
-  const { data: hog, error: hogErr } = await _supabase.from('head_of_government')
-    .select('faction_id').eq('nation_id', nation.id).eq('active', true).maybeSingle();
+  // Gate: Foreign Minister or HoG (one source — worldOrgAccess).
+  const { allowed, hogErr } = await worldOrgAccess(_supabase, nation, faction);
   if (hogErr) console.warn('world-organizations: head_of_government fetch failed', hogErr);
-  const isPM = !!hog && hog.faction_id === faction.id;
 
   document.getElementById('loading').style.display = 'none';
-  if (!isFM && !isPM) {
+  if (!allowed) {
+    // Don't falsely lock out a PM whose head_of_government lookup just failed
+    // (the FM path needs no query, so an FM is never affected).
+    if (hogErr) {
+      const l = document.getElementById('loading');
+      l.textContent = 'Could not verify access. Please reload.';
+      l.style.display = 'flex';
+      return;
+    }
     document.getElementById('locked').style.display = 'block';
     document.getElementById('found-org').style.display = 'none';
     return;
   }
 
-  // No organizations exist yet — the five sectors render 0/0 until the
-  // founding flow + an organizations table land. One source for the cards.
-  document.getElementById('wo-cats').innerHTML = worldOrgSectorsHtml();
+  // The organizations this nation belongs to, grouped by sector (20270950).
+  const { bySector, error: orgErr } = await fetchNationOrgs(_supabase, nation.id);
+  if (orgErr) console.warn('world-organizations: orgs fetch failed', orgErr);
+  document.getElementById('wo-cats').innerHTML = worldOrgSectorsHtml(bySector);
   document.getElementById('page').style.display = 'block';
 
   document.getElementById('found-org').addEventListener('click', () => {
-    alert('Founding a new organization is coming soon.');
+    window.location.href = 'world-org-found.html';
   });
 }
 
