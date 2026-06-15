@@ -2163,7 +2163,7 @@ async function init() {
             .select('ministry_key, minister_first_name, minister_last_name')
             .eq('nation_id', ctx.nation.id).eq('is_active', true),
       ctx.nation?.id
-        ? _supabase.from('head_of_government').select('faction_id')
+        ? _supabase.from('head_of_government').select('faction_id, first_name, last_name')
             .eq('nation_id', ctx.nation.id).eq('active', true).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
@@ -2173,7 +2173,12 @@ async function init() {
         (m.minister_last_name  || '').trim().toLowerCase() === ln);
       majorMinistry = hit?.ministry_key || null;
     }
-    isHog = !!(hogRes.data && hogRes.data.faction_id === ctx.faction?.id);
+    // PM = leader of the governing party: their party governs AND the
+    // head_of_government name matches them (20270928).
+    isHog = !!(hogRes.data
+      && hogRes.data.faction_id === ctx.faction?.politician_party_id
+      && (hogRes.data.first_name || '').trim().toLowerCase() === fn
+      && (hogRes.data.last_name  || '').trim().toLowerCase() === ln);
   } catch (err) {
     console.warn('politician-career: minister/PM lookup failed', err?.message || err);
   }

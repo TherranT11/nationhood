@@ -386,7 +386,7 @@ async function init() {
   // a genuinely-authorised user of lacking access).
   const [hogRes, minRes] = await Promise.all([
     _supabase.from('head_of_government')
-      .select('faction_id')
+      .select('faction_id, first_name, last_name')
       .eq('nation_id', nation.id)
       .eq('active', true)
       .maybeSingle(),
@@ -404,7 +404,13 @@ async function init() {
   }
 
   const hog = hogRes.data || null;
-  const isPM = !!(hog && hog.faction_id === faction.id);
+  // PM = the leader of the governing party. head_of_government holds the
+  // governing PARTY (faction_id) + the leader's name, so a politician is PM
+  // iff their party governs AND they are its named leader (20270928).
+  const isPM = !!(hog
+    && hog.faction_id === faction.politician_party_id
+    && (hog.first_name || '').toLowerCase() === (faction.leader_first_name || '').toLowerCase()
+    && (hog.last_name  || '').toLowerCase() === (faction.leader_last_name  || '').toLowerCase());
   const isMinister = (minRes.data || []).some(m =>
     m.minister_first_name === faction.leader_first_name &&
     m.minister_last_name  === faction.leader_last_name
