@@ -8536,9 +8536,10 @@ const openBidModal = (contractId, label, yourCost) => {
     const closeMakeOfferModal = () => document.getElementById('mo-overlay').classList.remove('open');
     document.getElementById('mo-close').addEventListener('click', closeMakeOfferModal);
 
-    // Personal loan offers (20270448) — simpler than corp loans: prompt
-    // for APR, validate, fire offer_personal_loan against THIS corp.
-    // No remote-lender penalty modal because the personal-loan flow
+    // Personal loan offers (20270937) — converged on the treasury model:
+    // the loan is funded from this bank's treasury and priced at the
+    // posted prime rate (no per-offer APR bid), and posting spends one
+    // executive action. No remote-lender penalty modal because the flow
     // gates on the bank's banking_office being IN the borrower's nation
     // (no cross-nation offers exist by design).
     async function openMakePersonalOfferModal(btn) {
@@ -8546,39 +8547,38 @@ const openBidModal = (contractId, label, yourCost) => {
       const principal = Number(btn.dataset.principal) || 0;
       const term      = Number(btn.dataset.term) || 0;
       const who       = btn.dataset.who || 'borrower';
-      const raw = prompt(
-        `Make personal loan offer to ${who}\n`
+      if (!confirm(
+        `Offer a personal loan to ${who}?\n`
         + `Principal ${fmtUsd(principal)} · ${term}t term.\n\n`
-        + `Enter APR % (e.g. 6.5)`,
-        '8'
-      );
-      if (raw == null) return;
-      const aprPct = Number(raw);
-      if (!Number.isFinite(aprPct) || aprPct < 0 || aprPct > 50) {
-        alert('APR must be between 0% and 50%.');
-        return;
-      }
+        + `Funded from this bank's treasury at your posted prime rate. `
+        + `Posting an offer spends one executive action.`
+      )) return;
       btn.disabled = true;
       const original = btn.textContent;
       btn.textContent = 'OFFERING…';
       try {
         const { data, error } = await _supabase.rpc('offer_personal_loan', {
-          p_request_id: requestId, p_bank_corp_id: id, p_apr: aprPct / 100,
+          p_request_id: requestId, p_bank_corp_id: id,
         });
         if (error) throw error;
         if (!data?.success) {
           const R = {
-            not_authenticated:       'Sign in to offer.',
-            invalid_apr:             'APR must be 0–50%.',
-            bank_corp_not_found:     'Bank corp lookup failed — reload.',
-            not_banking_corp:        'This corp is not a banking corp.',
-            not_owner:               'Only the CEO can post offers.',
-            request_not_found:       'Request no longer exists — reload.',
-            request_not_pending:     'Request is no longer pending.',
-            request_expired:         'Request has expired.',
-            nation_mismatch:         "Borrower's home nation doesn't match this bank's HQ.",
-            no_banking_office:       'This bank has no completed Banking Office in the borrower nation.',
-            bank_insufficient_funds: `Your party_funds can't cover the principal (need ${fmtUsd(data.need)}, have ${fmtUsd(data.have)}).`,
+            not_authenticated:     'Sign in to offer.',
+            invalid_arguments:     'Request lookup failed — reload.',
+            bank_corp_not_found:   'Bank corp lookup failed — reload.',
+            not_banking_corp:      'This corp is not a banking corp.',
+            not_owner:             'Only the CEO can post offers.',
+            arrested:              'Arrested CEOs cannot post offers.',
+            no_rate_sheet:         "Set this bank's prime rate before offering.",
+            prime_rate_too_high:   'Your prime rate exceeds the 50% offer cap.',
+            request_not_found:     'Request no longer exists — reload.',
+            request_not_pending:   'Request is no longer pending.',
+            request_expired:       'Request has expired.',
+            nation_mismatch:       "Borrower's home nation doesn't match this bank's HQ.",
+            no_banking_office:     'This bank has no completed Banking Office in the borrower nation.',
+            self_dealing:          'You cannot lend to a borrower you control.',
+            insufficient_treasury: `Treasury can't cover the principal (need ${fmtUsd(data.need)}, have ${fmtUsd(data.have)}).`,
+            no_actions_remaining:  'This bank has no executive actions left this tick.',
           };
           alert(R[data?.reason] || ('Offer failed: ' + (data?.reason || 'unknown')));
           btn.disabled = false; btn.textContent = original;
