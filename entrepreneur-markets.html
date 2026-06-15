@@ -428,7 +428,7 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
     // totals and the viewer's stake are aggregated client-side.
     const [corpRes, holdRes] = await Promise.all([
       _supabase.from('entrepreneur_corps')
-        .select('id, name, custom_logo_url, industry, listing, starting_capital, treasury_cash, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
+        .select('id, name, custom_logo_url, logo_url, industry, listing, starting_capital, treasury_cash, share_price, shares_outstanding, owner_faction_id, for_sale, sale_price, owner:factions!owner_faction_id(faction_name, leader_first_name, leader_last_name), hq:nations!hq_nation_id(name)')
         .order('name'),
       _supabase.from('corp_shareholdings')
         .select('corp_id, holder_faction_id, shares')
@@ -511,12 +511,16 @@ const TIER_LABEL = { small: 'Small', medium: 'Medium', large: 'Large', major: 'M
       const nameCell = document.createElement('div');
       nameCell.className = 'c-cell';
       // Logo: custom image (covers) over the monogram fallback; on image
-      // error the img is removed and the initials show through.
+      // error the img is removed and the initials show through. Corps store
+      // their logo in one of two columns depending on the founding flow —
+      // entrepreneur corps use custom_logo_url (rebrand), businessman corps
+      // use logo_url (founding) — so this cross-type list reads either.
       const logo = document.createElement('div'); logo.className = 'c-logo';
       logo.textContent = corpInitials(c.name);
-      if (c.custom_logo_url) {
+      const logoSrc = c.custom_logo_url || c.logo_url;
+      if (logoSrc) {
         const img = document.createElement('img');
-        img.src = c.custom_logo_url; img.alt = '';
+        img.src = logoSrc; img.alt = '';
         img.onerror = () => img.remove();
         logo.appendChild(img);
       }
