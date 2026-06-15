@@ -144,6 +144,60 @@
 
   #loading { font-family: var(--font-mono); font-size: 10px; color: #4a4940;
     text-align: center; padding: 80px 20px; }
+
+  /* Corporate Donations (III) */
+  .don-panel { position:relative; background:#0b0d0a; border:0.5px solid rgba(138,170,106,0.25);
+    border-radius:6px; padding:16px; }
+  .don-open-btn { position:absolute; top:11px; right:12px; font-family:var(--font-mono); font-size:10px;
+    letter-spacing:0.08em; text-transform:uppercase; padding:7px 14px; border-radius:4px; cursor:pointer;
+    background:transparent; color:#8fd49b; border:0.5px solid rgba(106,176,122,0.45); }
+  .don-open-btn:hover { background:rgba(106,176,122,0.10); border-color:#6ab07a; }
+  .don-grid { display:grid; grid-template-columns:1fr 1.6fr 1fr; gap:6px 14px; }
+  .don-grid .h { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.13em; color:#666; padding-bottom:4px;
+    border-bottom:0.5px solid rgba(255,255,255,0.07); }
+  .don-grid .c { font-size:12px; color:#cfcfcf; }
+  .don-grid .c.money { font-family:var(--font-mono); color:#8fd49b; }
+
+  #don-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.78); display:none;
+    align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  #don-overlay.open { display:flex; }
+  .don-modal { width:100%; max-width:760px; background:#0d0d0d; border:0.5px solid rgba(138,170,106,0.45);
+    border-radius:8px; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; }
+  .don-head { padding:14px 18px 12px; border-bottom:0.5px solid rgba(138,170,106,0.3);
+    font-family:Georgia,serif; font-size:17px; color:#fff; position:relative; }
+  .don-head em { color:#aac88a; }
+  .don-x { position:absolute; top:10px; right:14px; background:none; border:none; color:#666; font-size:22px; cursor:pointer; }
+  .don-x:hover { color:#fff; }
+  .don-body { padding:16px 18px; overflow-y:auto; }
+  .don-from-row { display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .don-lab, .don-sec-lab { font-family:var(--font-mono); font-size:9px; letter-spacing:0.14em; color:#888; }
+  .don-sec-lab { display:block; margin-bottom:8px; color:#8aaa6a; font-weight:700; }
+  #don-from { background:#0a0a0a; border:0.5px solid rgba(255,255,255,0.15); color:#fff; border-radius:4px;
+    padding:6px 10px; font-size:12px; }
+  .don-bal { font-family:var(--font-mono); font-size:11px; color:#888; }
+  .don-pg { display:grid; grid-template-columns:1.5fr 0.6fr 0.8fr 1.2fr auto; gap:8px 12px; align-items:center; }
+  .don-pg .h { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.12em; color:#666;
+    border-bottom:0.5px solid rgba(255,255,255,0.07); padding-bottom:4px; }
+  .don-pg .c { font-size:12px; color:#cfcfcf; }
+  .don-pg .c.nm { color:#fff; }
+  .don-tiers { display:flex; gap:5px; }
+  .don-tier { font-family:var(--font-mono); font-size:10px; padding:5px 9px; border-radius:4px; cursor:pointer;
+    background:transparent; color:#8fd49b; border:0.5px solid rgba(106,176,122,0.4); white-space:nowrap; }
+  .don-tier:hover:not(:disabled) { background:rgba(106,176,122,0.12); border-color:#6ab07a; }
+  .don-tier:disabled { opacity:0.4; cursor:default; }
+  .don-race { border:0.5px solid rgba(255,255,255,0.08); border-radius:5px; padding:11px 13px; margin-bottom:9px; }
+  .don-race-type { font-family:var(--font-mono); font-size:8.5px; letter-spacing:0.14em; color:#8aaa6a; margin-bottom:8px; }
+  .don-race-cands { display:flex; align-items:flex-start; gap:12px; }
+  .don-cand { flex:1; min-width:0; }
+  .don-cand-nm { font-size:13px; color:#fff; }
+  .don-cand-pty { font-size:11px; color:#888; margin:2px 0 6px; }
+  .don-cand-poll { font-family:var(--font-mono); font-size:11px; color:#aac88a; margin-bottom:7px; }
+  .don-vs { align-self:center; font-family:Georgia,serif; font-style:italic; color:#666; font-size:12px; }
+  .don-msg { font-size:11.5px; color:#aac88a; font-style:italic; margin-top:12px; min-height:14px; }
+  .don-foot { padding:12px 18px; border-top:0.5px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; }
+  .don-close-btn { font-family:var(--font-mono); font-size:10px; letter-spacing:0.06em; padding:8px 16px; border-radius:4px;
+    background:transparent; color:#bbb; border:0.5px solid rgba(255,255,255,0.2); cursor:pointer; }
+  .don-close-btn:hover { border-color:#fff; color:#fff; }
 </style>
 </head>
 <body>
@@ -176,6 +230,42 @@
     </div>
     <div id="biz-current-role">
       <div class="biz-pi-empty">No Current Role right now. Go to Careers and apply.</div>
+    </div>
+  </div>
+
+  <!-- Corporate Donations (III, 20270927) -->
+  <div class="biz-section">
+    <div class="section-heading">
+      <span class="roman">III.</span>
+      <span class="sans">Corporate</span>
+      <span class="serif">Donations</span>
+    </div>
+    <div class="don-panel">
+      <button type="button" id="don-open" class="don-open-btn">Donation</button>
+      <div id="biz-donations"><div class="biz-pi-empty">No donations yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="don-overlay">
+  <div class="don-modal">
+    <div class="don-head">Make a <em>Donation</em>
+      <button type="button" id="don-close" class="don-x" aria-label="Close">&times;</button>
+    </div>
+    <div class="don-body">
+      <div class="don-from-row">
+        <span class="don-lab">FROM</span>
+        <select id="don-from"></select>
+        <span id="don-from-bal" class="don-bal"></span>
+      </div>
+      <div class="don-sec-lab">PARTIES</div>
+      <div id="don-parties"><div class="biz-pi-empty">Loading…</div></div>
+      <div class="don-sec-lab" style="margin-top:18px;">ONGOING RACES</div>
+      <div id="don-races"><div class="biz-pi-empty">Loading…</div></div>
+      <div id="don-msg" class="don-msg"></div>
+    </div>
+    <div class="don-foot">
+      <button type="button" class="don-close-btn" id="don-close2">CLOSE</button>
     </div>
   </div>
 </div>
@@ -329,6 +419,173 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
   ? Math.round(7000000 * Math.max(1, Number(sol) || 50) / 50)
   : 10000000;
 
+// ── Corporate Donations (III, 20270927) ──────────────────────────
+const DON_TIERS = [[100000, '$100K'], [500000, '$500K'], [1000000, '$1M']];
+const DON_REASON = {
+  insufficient_treasury: 'That corp can’t cover the donation.',
+  not_owner: 'Only the corp owner can donate.',
+  arrested: 'You are under arrest — assets frozen.',
+  party_not_found: 'That party is gone.',
+  race_not_found: 'That race has closed.',
+};
+const archLabel = (a) => a || '—';
+let donCorps = [];        // [{id, name, treasury_cash}]
+let donFromId = null;     // the paying corp
+let donNationId = null;   // the businessman's nation
+let donInFlight = false;
+
+function donFromBalance() {
+  return Math.floor(Number(donCorps.find(c => c.id === donFromId)?.treasury_cash) || 0);
+}
+function updateDonBal() {
+  const el = document.getElementById('don-from-bal');
+  if (el) el.textContent = 'Treasury: ' + hfFmtBig(donFromBalance());
+}
+function closeDonationModal() { document.getElementById('don-overlay')?.classList.remove('open'); }
+
+async function loadDonationsTable() {
+  const host = document.getElementById('biz-donations');
+  if (!host || !donCorps.length) return;
+  let rows = [];
+  try {
+    const { data, error } = await _supabase.from('corp_donations')
+      .select('amount, target_label, sent_tick, created_at')
+      .in('corp_id', donCorps.map(c => c.id))
+      .order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    rows = data || [];
+  } catch (e) { console.warn('[businessman-home] donations fetch failed:', e?.message || e); }
+  host.innerHTML = rows.length ? `
+    <div class="don-grid">
+      <div class="h">AMOUNT</div><div class="h">PARTY</div><div class="h">DATE SENT</div>
+      ${rows.map(r => `
+        <div class="c money">${esc(hfFmtBig(Number(r.amount) || 0))}</div>
+        <div class="c">${esc(r.target_label)}</div>
+        <div class="c">${esc(tickToDate(Number(r.sent_tick) || 0))}</div>`).join('')}
+    </div>` : '<div class="biz-pi-empty">No donations yet.</div>';
+}
+
+async function renderDonations(f, corps) {
+  donCorps = corps || [];
+  donFromId = donCorps[0]?.id || null;
+  donNationId = f?.nation_id || null;
+  const openBtn = document.getElementById('don-open');
+  if (!donCorps.length) {
+    if (openBtn) openBtn.style.display = 'none';
+    const host = document.getElementById('biz-donations');
+    if (host) host.innerHTML = '<div class="biz-pi-empty">Found a corporation to start donating.</div>';
+    return;
+  }
+  if (openBtn) openBtn.onclick = openDonationModal;
+  document.getElementById('don-close')?.addEventListener('click', closeDonationModal);
+  document.getElementById('don-close2')?.addEventListener('click', closeDonationModal);
+  await loadDonationsTable();
+}
+
+async function openDonationModal() {
+  const overlay = document.getElementById('don-overlay');
+  if (!overlay) return;
+  const sel = document.getElementById('don-from');
+  sel.innerHTML = donCorps.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  sel.value = donFromId;
+  sel.onchange = () => { donFromId = sel.value; updateDonBal(); };
+  updateDonBal();
+  document.getElementById('don-msg').textContent = '';
+  document.getElementById('don-parties').innerHTML = '<div class="biz-pi-empty">Loading…</div>';
+  document.getElementById('don-races').innerHTML = '<div class="biz-pi-empty">Loading…</div>';
+  overlay.classList.add('open');
+
+  let parties = [], races = [];
+  try {
+    const [pRes, rRes] = await Promise.all([
+      _supabase.from('factions')
+        .select('id, faction_name, seats, popularity_pct, archetype')
+        .eq('faction_type', 'movement_party').eq('nation_id', donNationId).is('abandoned_at', null)
+        .order('seats', { ascending: false, nullsFirst: false }),
+      _supabase.from('politician_active_election')
+        .select('politician_id, race_tier, opp_first, opp_last, opp_party_name, polling_you_pct, polling_opp_pct, pol:factions!politician_id(leader_first_name, leader_last_name, nation_id, party:factions!politician_party_id(faction_name, archetype))'),
+    ]);
+    if (pRes.error) throw pRes.error;
+    parties = pRes.data || [];
+    races = (rRes.data || []).filter(r => r.pol && r.pol.nation_id === donNationId);
+  } catch (e) {
+    document.getElementById('don-parties').innerHTML = '<div class="biz-pi-empty">Could not load targets.</div>';
+    document.getElementById('don-races').innerHTML = '';
+    console.warn('[businessman-home] donation targets fetch failed:', e?.message || e);
+    return;
+  }
+
+  const archByName = new Map(parties.map(p => [p.faction_name, p.archetype]));
+  const tiers = (attrs) => DON_TIERS.map(([amt, lab]) =>
+    `<button type="button" class="don-tier" data-amt="${amt}" ${attrs}>${lab}</button>`).join('');
+
+  document.getElementById('don-parties').innerHTML = parties.length ? `
+    <div class="don-pg">
+      <div class="h">PARTY</div><div class="h">SEATS</div><div class="h">APPROVAL</div><div class="h">ARCHETYPE</div><div class="h">DONATE</div>
+      ${parties.map(p => `
+        <div class="c nm">${esc(p.faction_name)}</div>
+        <div class="c">${Number(p.seats) || 0}</div>
+        <div class="c">${p.popularity_pct != null ? Math.round(Number(p.popularity_pct)) + '%' : '—'}</div>
+        <div class="c">${esc(archLabel(p.archetype))}</div>
+        <div class="c don-tiers">${tiers(`data-kind="party" data-id="${esc(p.id)}" data-label="${esc(p.faction_name)}"`)}</div>`).join('')}
+    </div>` : '<div class="biz-pi-empty">No parties in your nation.</div>';
+
+  document.getElementById('don-races').innerHTML = races.length ? races.map(r => {
+    const c1 = (`${r.pol?.leader_first_name || ''} ${r.pol?.leader_last_name || ''}`).trim() || '—';
+    const p1 = r.pol?.party?.faction_name ? `${esc(r.pol.party.faction_name)} · ${esc(archLabel(r.pol.party.archetype))}` : 'Independent';
+    const c2 = (`${r.opp_first || ''} ${r.opp_last || ''}`).trim() || '—';
+    const p2 = r.opp_party_name ? `${esc(r.opp_party_name)} · ${esc(archLabel(archByName.get(r.opp_party_name)))}` : 'Independent';
+    return `
+      <div class="don-race">
+        <div class="don-race-type">${esc((r.race_tier || '').toUpperCase())}</div>
+        <div class="don-race-cands">
+          <div class="don-cand">
+            <div class="don-cand-nm">${esc(c1)}</div><div class="don-cand-pty">${p1}</div>
+            <div class="don-cand-poll">Polling ${Number(r.polling_you_pct) || 0}%</div>
+            <div class="don-tiers">${tiers(`data-kind="race" data-id="${esc(r.politician_id)}" data-side="you" data-label="${esc(c1)}"`)}</div>
+          </div>
+          <div class="don-vs">vs</div>
+          <div class="don-cand">
+            <div class="don-cand-nm">${esc(c2)}</div><div class="don-cand-pty">${p2}</div>
+            <div class="don-cand-poll">Polling ${Number(r.polling_opp_pct) || 0}%</div>
+            <div class="don-tiers">${tiers(`data-kind="race" data-id="${esc(r.politician_id)}" data-side="opp" data-label="${esc(c2)}"`)}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('') : '<div class="biz-pi-empty">No ongoing races in your nation.</div>';
+
+  overlay.querySelectorAll('.don-tier').forEach(b => b.addEventListener('click', () => donate(b)));
+}
+
+async function donate(btn) {
+  if (donInFlight) return;
+  const amt = Number(btn.dataset.amt) || 0;
+  const label = btn.dataset.label || 'this target';
+  const msg = document.getElementById('don-msg');
+  if (amt > donFromBalance()) { msg.textContent = `That corp's treasury can't cover ${hfFmtBig(amt)}.`; return; }
+  if (!confirm(`Donate ${hfFmtBig(amt)} to ${label}?`)) return;
+  donInFlight = true;
+  document.getElementById('don-overlay').querySelectorAll('.don-tier').forEach(b => { b.disabled = true; });
+  try {
+    const res = btn.dataset.kind === 'party'
+      ? await _supabase.rpc('corp_donate_to_party', { p_corp_id: donFromId, p_party_id: btn.dataset.id, p_amount: amt })
+      : await _supabase.rpc('corp_donate_to_race', { p_corp_id: donFromId, p_politician_id: btn.dataset.id, p_side: btn.dataset.side, p_amount: amt });
+    if (res.error) throw res.error;
+    if (!res.data?.success) throw new Error(DON_REASON[res.data?.reason] || res.data?.reason || 'failed');
+    const c = donCorps.find(x => x.id === donFromId);
+    if (c) c.treasury_cash = (Number(c.treasury_cash) || 0) - amt;
+    msg.textContent = btn.dataset.kind === 'race'
+      ? `Donated ${hfFmtBig(amt)} — ${res.data?.rolls || 0} roll(s), +${res.data?.polling_gain || 0} polling.`
+      : `Donated ${hfFmtBig(amt)} to ${label}.`;
+    updateDonBal();
+    await loadDonationsTable();
+  } catch (e) {
+    msg.textContent = 'Could not donate: ' + (e?.message || e);
+  }
+  donInFlight = false;
+  document.getElementById('don-overlay').querySelectorAll('.don-tier').forEach(b => { b.disabled = false; });
+}
+
 (async () => {
   try {
     const ctx = await bootstrapBusinessman('home');
@@ -376,7 +633,7 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
     try {
       const [{ data: corps, error: ownErr }, employerRes] = await Promise.all([
         _supabase.from('entrepreneur_corps')
-          .select('id, name').eq('owner_faction_id', f.id).order('created_at'),
+          .select('id, name, treasury_cash').eq('owner_faction_id', f.id).order('created_at'),
         f.biz_employer_corp_id
           ? _supabase.from('entrepreneur_corps')
               .select('name, experience, hq_nation_id, aluminum_stock, components_stock').eq('id', f.biz_employer_corp_id).maybeSingle()
@@ -402,6 +659,10 @@ const marketEntryFee = (kind, sol) => kind === 'subsidiary'
     } catch (e) {
       console.warn('[businessman-home] occupation fetch failed:', e?.message || e);
     }
+
+    // Corporate Donations (III) — own ledger + the donation modal.
+    renderDonations(f, ownedCorps).catch(e =>
+      console.warn('[businessman-home] donations render failed:', e?.message || e));
 
     const arrested  = String(f.status || '').toLowerCase() === 'arrested';
     const statusHtml = arrested
