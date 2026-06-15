@@ -34,8 +34,8 @@
 
   /* Personal Debt panel (IV, 20270937) — residence-secured loans. */
   .pd-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08);
-    border-left:2px solid #c8a64e; border-radius:4px; padding:16px 18px; }
-  .pd-head { font-size:11px; letter-spacing:0.12em; color:#c8a64e;
+    border-left:2px solid #6ab07a; border-radius:4px; padding:16px 18px; }
+  .pd-head { font-size:11px; letter-spacing:0.12em; color:#8aaa6a;
     text-transform:uppercase; margin-bottom:10px; }
   .pd-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:14px; }
   .pd-cell .k { font-size:9px; letter-spacing:0.13em; color:#555;
@@ -50,9 +50,9 @@
     color:#cfcabf; padding:8px 10px; font-size:12px; border-radius:3px;
     width:140px; font-family:inherit; font-variant-numeric:tabular-nums; }
   .pd-form button { font-family:monospace; font-size:9px; letter-spacing:0.13em;
-    background:transparent; border:0.5px solid rgba(200,166,78,0.5); color:#c8a64e;
+    background:transparent; border:0.5px solid rgba(138,170,106,0.5); color:#8aaa6a;
     padding:8px 14px; border-radius:3px; cursor:pointer; text-transform:uppercase; }
-  .pd-form button:hover:not(:disabled) { background:rgba(200,166,78,0.12); }
+  .pd-form button:hover:not(:disabled) { background:rgba(138,170,106,0.12); }
   .pd-form button:disabled { opacity:0.4; cursor:default; }
   .pd-form .hint { font-size:10px; color:#666; }
   .pd-hint { font-size:11px; color:#666; line-height:1.55; margin-top:10px; }
@@ -698,7 +698,7 @@ function renderLoanRequestForm(host, f) {
   host.innerHTML = `
     <div class="pd-card">
       <div class="pd-head">No Active Loan</div>
-      <div class="pd-hint">Open a request secured against <b>${esc(resName)}</b> (worth <b>$${esc(hfFmtBig(worth))}</b>). Banking corps in your home nation with a completed Banking Office compete at their posted prime rate; pick the offer you like. Borrow up to your residence's value, repaid from Cash on Hand. <b>Miss the due date and the lender can foreclose</b> — the home is the collateral.</div>
+      <div class="pd-hint">Open a request secured against <b>${esc(resName)}</b> (worth <b>${esc(hfFmtBig(worth))}</b>). Banking corps in your home nation with a completed Banking Office compete at their posted prime rate; pick the offer you like. Borrow up to your residence's value, repaid from Cash on Hand. <b>Miss the due date and the lender can foreclose</b> — the home is the collateral.</div>
       <div class="pd-form" style="margin-top:14px;">
         <span class="hint">Principal (USD)</span>
         <input type="number" id="pd-req-amt"  min="100000" max="${worth}" step="100000" value="${defAmt}" />
@@ -713,7 +713,7 @@ function renderLoanRequestForm(host, f) {
 }
 
 function renderPendingRequest(host, req, offers) {
-  const fmt = (n) => '$' + hfFmtBig(Number(n) || 0);
+  const fmt = (n) => hfFmtBig(Number(n) || 0);
   const offersHtml = offers.length
     ? offers.map(o => {
         const bankName = o.bank?.name || 'Unknown bank';
@@ -742,7 +742,7 @@ function renderPendingRequest(host, req, offers) {
 }
 
 function renderActiveLoan(host, loan) {
-  const fmt = (n) => '$' + hfFmtBig(Number(n) || 0);
+  const fmt = (n) => hfFmtBig(Number(n) || 0);
   const overdue = loan.due_tick != null && Number(loan.current_tick) > Number(loan.due_tick);
   const dueHtml = loan.due_tick != null
     ? `<div class="pd-cell"><div class="k">Due</div><div class="v${overdue ? ' bad' : ''}">T${loan.due_tick}</div><div class="sub${overdue ? ' bad' : ''}">${overdue ? 'overdue — foreclosure risk' : 'now T' + loan.current_tick}</div></div>`
@@ -772,7 +772,7 @@ async function handleOpenRequest(maxWorth) {
   const term = parseInt(document.getElementById('pd-req-term').value, 10);
   const bid  = parseInt(document.getElementById('pd-req-bid').value,  10);
   if (!Number.isFinite(amt) || amt < 100000 || amt > 25000000) { alert('Principal must be $100K–$25M.'); return; }
-  if (Number.isFinite(maxWorth) && amt > maxWorth) { alert("You can't borrow more than your residence is worth ($" + hfFmtBig(maxWorth) + ').'); return; }
+  if (Number.isFinite(maxWorth) && amt > maxWorth) { alert("You can't borrow more than your residence is worth (" + hfFmtBig(maxWorth) + ').'); return; }
   if (!Number.isFinite(term) || term < 12 || term > 240) { alert('Term must be 12–240 ticks.'); return; }
   if (!Number.isFinite(bid)  || bid  < 1  || bid  > 48)  { alert('Bidding window must be 1–48 ticks.'); return; }
   const prev = btn.textContent; btn.disabled = true; btn.textContent = 'OPENING…';
@@ -790,7 +790,7 @@ async function handleOpenRequest(maxWorth) {
         invalid_term:            'Term must be 12–240 ticks.',
         invalid_bidding_window:  'Bidding window must be 1–48 ticks.',
         no_collateral:           "Your residence isn't worth enough to borrow against.",
-        exceeds_collateral:      'You can borrow at most $' + hfFmtBig(Number(data.cap) || 0) + ' against your residence.',
+        exceeds_collateral:      'You can borrow at most ' + hfFmtBig(Number(data.cap) || 0) + ' against your residence.',
         loan_already_active:     'You already have an active loan.',
         request_already_pending: 'You already have a pending request.',
       };
@@ -822,7 +822,7 @@ async function handleAcceptOffer(e) {
         not_borrower:               'You are not the borrower on this request.',
         bank_corp_not_found:        'Bank corp no longer exists — reload.',
         bank_insufficient_treasury: "The bank's treasury no longer covers this loan. Wait for another offer or cancel.",
-        under_collateralized:       'Your residence (worth $' + hfFmtBig(Number(data.cap) || 0) + ') no longer covers this loan.',
+        under_collateralized:       'Your residence (worth ' + hfFmtBig(Number(data.cap) || 0) + ') no longer covers this loan.',
       };
       alert(R[data?.reason] || ('Accept failed: ' + (data?.reason || 'unknown')));
       btn.disabled = false; btn.textContent = prev;
@@ -872,7 +872,7 @@ async function handleMakePayment() {
         invalid_amount:    'Payment must be at least $1.',
         loan_not_found:    'Loan not found — reload.',
         loan_not_active:   'This loan is already settled.',
-        insufficient_funds: 'Your Cash on Hand can\'t cover that (need $' + hfFmtBig(Number(data.need) || 0) + ', have $' + hfFmtBig(Number(data.have) || 0) + ').',
+        insufficient_funds: 'Your Cash on Hand can\'t cover that (need ' + hfFmtBig(Number(data.need) || 0) + ', have ' + hfFmtBig(Number(data.have) || 0) + ').',
       };
       alert(R[data?.reason] || ('Payment failed: ' + (data?.reason || 'unknown')));
       btn.disabled = false; btn.textContent = prev;
