@@ -52,6 +52,23 @@ export const ORG_REGIONS = [
   { key: 'vesperia',   name: 'Vesperia',   enabled: false },
 ];
 
+// Stored key → display name, so a founded org's type/scope/region read back
+// as labels (not raw keys).
+const _TYPE_NAMES = {};
+for (const list of Object.values(ORG_TYPES_BY_CATEGORY)) for (const t of list) _TYPE_NAMES[t.key] = t.name;
+const _SCOPE_NAMES  = Object.fromEntries(ORG_SCOPES.map((s) => [s.key, s.name]));
+const _REGION_NAMES = Object.fromEntries(ORG_REGIONS.map((r) => [r.key, r.name]));
+
+// One-line descriptor for an org row's tooltip: "Type · Scope (Region) — Purpose".
+function _orgTitle(o) {
+  const bits = [];
+  if (o.type)  bits.push(_TYPE_NAMES[o.type] || o.type);
+  if (o.scope) bits.push((_SCOPE_NAMES[o.scope] || o.scope) + (o.region ? ` (${_REGION_NAMES[o.region] || o.region})` : ''));
+  let t = bits.join(' · ');
+  if (o.purpose) t += (t ? ' — ' : '') + o.purpose;
+  return t;
+}
+
 const _esc = (s) => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -80,13 +97,14 @@ export async function fetchNationOrgs(supabase, nationId) {
   if (!nationId) return { bySector: {}, error: null };
   try {
     const { data, error } = await supabase.from('world_organizations')
-      .select('category, name, abbreviation, purpose, status, member_nation_ids')
+      .select('category, name, abbreviation, purpose, type, scope, region, status, member_nation_ids')
       .contains('member_nation_ids', [nationId]);
     if (error) return { bySector: {}, error };
     const bySector = {};
     for (const o of (data || [])) {
       (bySector[o.category] ||= []).push({
-        name: o.name, abbreviation: o.abbreviation, purpose: o.purpose, status: o.status,
+        name: o.name, abbreviation: o.abbreviation, purpose: o.purpose,
+        type: o.type, scope: o.scope, region: o.region, status: o.status,
         member_count: (o.member_nation_ids || []).length,
       });
     }
@@ -106,9 +124,12 @@ export function worldOrgSectorsHtml(bySector = {}) {
     const orgs    = bySector[s.key] || [];
     const nations = orgs.reduce((n, o) => n + (Number(o.member_count) || 0), 0);
     const body = orgs.length
-      ? orgs.map((o) => `<div class="wo-org"${o.purpose ? ` title="${_esc(o.purpose)}"` : ''}><span class="wo-org-nm">${_esc(o.name)}`
-          + `${o.abbreviation ? ` <span class="wo-org-ab">${_esc(o.abbreviation)}</span>` : ''}</span>`
-          + `${o.status === 'forming' ? '<span class="wo-org-st">Forming</span>' : ''}</div>`).join('')
+      ? orgs.map((o) => {
+          const title = _orgTitle(o);
+          return `<div class="wo-org"${title ? ` title="${_esc(title)}"` : ''}><span class="wo-org-nm">${_esc(o.name)}`
+            + `${o.abbreviation ? ` <span class="wo-org-ab">${_esc(o.abbreviation)}</span>` : ''}</span>`
+            + `${o.status === 'forming' ? '<span class="wo-org-st">Forming</span>' : ''}</div>`;
+        }).join('')
       : '<div class="sec-empty">No organizations in this sector yet.</div>';
     return `<details class="wo-cat" style="--wo-accent:${s.accent};">
       <summary>
