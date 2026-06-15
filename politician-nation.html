@@ -1171,7 +1171,7 @@ async function loadLegalCases(nationId) {
 // Fetch the nation's cities and render a card per city in the
 // Geography section. Population is computed (11% of nation population)
 // rather than stored, so it reflects current nation.population. Stats
-// (infrastructure, pollution, crime, appeal, growth, jobs, services,
+// (infrastructure, pollution, crime, appeal, growth, unemployment, services,
 // affordability) display as 5-band labels via cityStatLabel — the
 // raw 0..100 number is intentionally never surfaced.
 async function loadGeographyCities(nation) {
@@ -1184,7 +1184,7 @@ async function loadGeographyCities(nation) {
       id, city_type, city_name, description, population_pct,
       mayor_first_name, mayor_last_name, mayor_age, mayor_archetype, mayor_party_id,
       mayor_party:factions!cities_mayor_party_id_fkey(faction_name, abbreviation, archetype),
-      budget, infrastructure, pollution, crime, appeal, growth, jobs, services, affordability
+      budget, infrastructure, pollution, crime, appeal, growth, unemployment, services, affordability
     `)
     .eq('nation_id', nation.id)
     .order('city_type', { ascending: true });

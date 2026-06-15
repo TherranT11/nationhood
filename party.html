@@ -316,6 +316,9 @@
 .ncv-name { font-size:13px; color:#fff; font-weight:600; overflow-wrap:anywhere; }
 .ncv-role { font-family:monospace; font-size:8px; letter-spacing:0.12em; color:#666; text-transform:uppercase; margin-top:3px; }
 .ncv-tally { font-family:monospace; font-size:20px; color:#fff; margin-top:8px; }
+.ncv-cap { font-family:monospace; font-size:7.5px; letter-spacing:0.1em; color:#555; text-transform:uppercase; margin-top:3px; }
+.ncv-bloc { font-size:9px; color:#8a9aa8; margin-top:7px; line-height:1.4;
+  border-top:0.5px dashed rgba(255,255,255,0.08); padding-top:6px; }
 .ncv-vs { align-self:center; font-family:Georgia,serif; font-style:italic; font-size:12px; color:#666; flex-shrink:0; }
 .ncv-actions { display:flex; gap:8px; margin-top:10px; }
 .ncv-vote { flex:1; font-size:10px; letter-spacing:0.05em; padding:8px 10px; border-radius:4px;
@@ -757,18 +760,22 @@ async function renderOpenMotion(host, party, motion, isMine) {
   const myVote = votes.find(v => v.voter_faction_id === _viewerPolId)?.choice || null;
   const ticksLeft = Math.max(0, motion.resolve_tick - _shardTick);
   const leaderName = [motion.leader_first_name, motion.leader_last_name].filter(Boolean).join(' ') || 'The leader';
+  const pop = (party && party.popularity_pct != null) ? Math.round(Number(party.popularity_pct)) + '%' : null;
   host.innerHTML = `<div class="ncv-panel open">
     <div class="ncv-title">Challenge Party Leadership <span class="ncv-live">OPEN</span></div>
     <div class="ncv-versus">
       <div class="ncv-side${myVote === 'leader' ? ' pick' : ''}">
         <div class="ncv-name">${escHtml(leaderName)}</div><div class="ncv-role">Incumbent leader</div>
-        <div class="ncv-tally">${leaderW}</div></div>
+        <div class="ncv-tally">${leaderW}</div>
+        <div class="ncv-cap">member votes cast</div>
+        <div class="ncv-bloc">+ NPC incumbency bloc${pop ? ` (party at ${pop})` : ''} is added at resolution &mdash; not shown here</div></div>
       <div class="ncv-vs">vs</div>
       <div class="ncv-side${myVote === 'challenger' ? ' pick' : ''}">
         <div class="ncv-name">${escHtml(motion.challenger_name)}</div><div class="ncv-role">Challenger</div>
-        <div class="ncv-tally">${chalW}</div></div>
+        <div class="ncv-tally">${chalW}</div>
+        <div class="ncv-cap">member votes cast</div></div>
     </div>
-    <div class="ncv-sub">Weighted member votes so far. The party's NPC members decide the rest from the leader's standing when this resolves ${ticksLeft === 0 ? '<b>imminently</b>' : `in <b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'}`}.</div>
+    <div class="ncv-sub">These are the <b>weighted member votes cast so far</b> — not the leader's standing. The party's NPC members split their bloc from the leader's standing when this resolves ${ticksLeft === 0 ? '<b>imminently</b>' : `in <b>${ticksLeft}</b> tick${ticksLeft === 1 ? '' : 's'}`}, so a low number here doesn't mean the incumbent is losing.</div>
     ${isMine ? `<div class="ncv-actions">
       <button class="ncv-vote${myVote === 'leader' ? ' on' : ''}" data-choice="leader">Back the leader</button>
       <button class="ncv-vote chal${myVote === 'challenger' ? ' on' : ''}" data-choice="challenger">Back ${escHtml(motion.challenger_name)}</button>

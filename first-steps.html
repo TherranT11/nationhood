@@ -92,6 +92,15 @@ body { background: var(--bg-0); color: var(--text-primary); font-family: var(--f
 .tier-c { background: rgba(255,180,60,0.10); color: #ffb43c; border: 1px solid rgba(255,180,60,0.22); }
 .empty { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); padding: 40px 0; text-align: center; }
 
+/* Politician-present chip — one politician per nation, so a nation where
+   the caller already has one is flagged red and not selectable. */
+.pol-chip { display: inline-block; font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; margin-bottom: 9px; }
+.pol-chip.present { background: rgba(217,83,79,0.15); color: #e98b88; border: 1px solid rgba(217,83,79,0.5); }
+.pol-chip.absent  { background: rgba(95,174,95,0.13); color: #7fc97f; border: 1px solid rgba(95,174,95,0.45); }
+.nation-card.present { opacity: 0.62; cursor: not-allowed; }
+.nation-card.present:hover { border-color: var(--border-1); }
+
 .gender-row { display: flex; gap: 12px; max-width: 420px; margin: 0 auto; }
 .gender-btn { flex: 1; padding: 18px; background: var(--bg-2); border: 1px solid var(--border-1);
   font-family: var(--font-mono); font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
@@ -203,6 +212,7 @@ import { NATION_DESCRIPTIONS } from './js/game/nation-descriptions.js';
 let allNations = [];
 let politiciansByNation = {};  // nation_id → count of active politicians
 let partiesByNation = {};      // nation_id → [{name, archetype, seats, popularity_pct}], sorted seats DESC
+let myPoliticianNations = new Set(); // nation_ids where the caller already has a politician (one per nation)
 
 // Pre-20270725 a hard-coded POLITICIAN_ALLOWED_NATIONS Set lived
 // here. The column-driven nations.foundable_for_politician filter
@@ -227,6 +237,7 @@ async function init() {
       { data: nations, error: natErr },
       { data: pols,    error: polErr },
       { data: parties, error: partyErr },
+      { data: mine,    error: mineErr },
     ] = await Promise.all([
       _supabase.from('nations').select('id, name, continent, government_type, population, politician_gdp, flag_url, foundable_for_politician, nation_profiles(flag_url)').order('name'),
       _supabase.from('factions').select('nation_id').eq('faction_type', 'politician').is('abandoned_at', null),
@@ -237,10 +248,16 @@ async function init() {
         .select('nation_id, faction_name, archetype, seats, popularity_pct, party_color')
         .eq('faction_type', 'movement_party')
         .is('abandoned_at', null),
+      // The caller's own politicians — one politician per nation, so any
+      // nation where they already hold one is off-limits for a new one.
+      _supabase.from('factions').select('nation_id')
+        .eq('faction_type', 'politician').is('abandoned_at', null)
+        .or(`id.eq.${user.id},linked_user_id.eq.${user.id}`),
     ]);
     if (natErr) throw natErr;
     if (polErr) throw polErr;
     if (partyErr) throw partyErr;
+    if (mineErr) throw mineErr;
     // 20270725: only foundable nations land in allNations from here on
     // out — the picker, the tier algorithm, and every downstream read
     // all see the same filtered set. Adds a new nation = admin flips
@@ -259,6 +276,7 @@ async function init() {
     for (const arr of Object.values(partiesByNation)) {
       arr.sort((a, b) => (Number(b.seats) || 0) - (Number(a.seats) || 0));
     }
+    myPoliticianNations = new Set((mine || []).map(m => m.nation_id).filter(Boolean));
   } catch (err) {
     console.error('first-steps: failed to load nations/politicians/parties', err);
     document.getElementById('loading').textContent = 'Failed to load. Please reload the page.';
@@ -383,13 +401,15 @@ function renderNations() {
           </div>`;
         }).join('')
       : `<div class="parties-section__empty">None yet.</div>`;
-    return `<div class="nation-card${sel}" data-id="${n.id}">
+    const mineHere = myPoliticianNations.has(n.id);
+    return `<div class="nation-card${sel}${mineHere ? ' present' : ''}" data-id="${n.id}">
       <div class="nation-card__header">
         <img class="nation-card__flag" src="${escAttr(flagFor(n))}" alt="" onerror="this.style.visibility='hidden'">
         <span class="nation-card__name">${escHtml(n.name)}</span>
         <span class="nation-card__gov-type ${cls}">${label}</span>
       </div>
       <div class="nation-card__body">
+        <div class="pol-chip ${mineHere ? 'present' : 'absent'}">${mineHere ? 'Politician Present' : 'No Politician Present'}</div>
         ${desc ? `<div class="nation-card__desc">${escHtml(desc)}</div>` : ''}
         <div class="stat-row"><span class="stat-row__label">GDP</span><span class="stat-row__value">${hfFmtBig(Number(n.politician_gdp) || 0)}</span></div>
         <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value">${fmtBig(n.population)}</span></div>
@@ -409,6 +429,8 @@ function renderNations() {
   }).join('');
   grid.querySelectorAll('.nation-card').forEach(card => {
     card.addEventListener('click', () => {
+      // One politician per nation — a nation you already hold is locked.
+      if (myPoliticianNations.has(card.dataset.id)) return;
       const n = allNations.find(x => x.id === card.dataset.id);
       // Different nation → different name pool, so any prior name pick is stale.
       if (selectedNation && n && selectedNation.id !== n.id) {

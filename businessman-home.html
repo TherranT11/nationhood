@@ -1228,7 +1228,7 @@ async function handleMakePayment() {
       if (ownedCorps.length) {
         const { data: pxs, error: pxErr } = await _supabase.from('plant_expansion_proposals')
           .select(`id, cost,
-                   city:cities!city_id(city_name, jobs, nation:nations!nation_id(name)),
+                   city:cities!city_id(city_name, unemployment, nation:nations!nation_id(name)),
                    corp:entrepreneur_corps!corp_id(name, treasury_cash),
                    proposer:factions!proposer_faction_id(leader_first_name, leader_last_name, nickname)`)
           .in('corp_id', ownedCorps.map(c => c.id))
@@ -1432,6 +1432,17 @@ async function handleMakePayment() {
               ds: 'Structure the deal so the next campaign&rsquo;s demand math reads your price 10% lower than the full sticker buyers actually pay.' },
           ],
         },
+        'Branch Manager': {
+          rpc: 'branch_manager_action', rides: 'it rides the next deposit settlement',
+          actions: [
+            { key: 'deposit_drive', nm: 'DEPOSIT DRIVE',
+              ds: 'Work the neighborhood &mdash; the next deposit settlement pulls in an extra 10% of the gap to equilibrium. Savers walk in faster.' },
+            { key: 'trim_carry', nm: 'TRIM THE CARRY',
+              ds: 'Keep the savers without overpaying them &mdash; the next settlement&rsquo;s deposit-interest cost drops 10% for one tick.' },
+            { key: 'work_branch', nm: 'WORK THE BRANCH',
+              ds: 'Put in the hours at the counter &mdash; the bank pays you a half-tick salary bonus on top of your wage (1.5&times; pay this turn).' },
+          ],
+        },
       };
       const KIT = KITS[f.biz_job_title];
       document.getElementById('biz-current-role').innerHTML = `
@@ -1513,13 +1524,18 @@ async function handleMakePayment() {
                   experience_at_cap: 'The Studio is at its Experience ceiling — spend some or upgrade it.',
                   not_cmo: 'This desk belongs to the Chief Manufacturing Officer.',
                   shift_already_scheduled: 'The plant is already on overtime — it rides the next run.',
+                  not_branch_manager: 'This kit belongs to the rung-1 Branch Manager.',
+                  not_a_bank: 'This kit only works at a banking corp.',
+                  already_maxed: `Every branch already carries that charge (${data?.pending ?? '?'}/${data?.cap ?? '?'}).`,
+                  no_salary: 'You have no salary set to draw a bonus against.',
+                  insufficient_treasury: `The bank's vault can't cover the bonus (need ${hfFmtBig(Number(data?.need) || 0)}).`,
                   not_employed: 'You are not on a payroll.',
                   arrested: 'You are under arrest.',
                 };
                 throw new Error(REASON[data?.reason] || data?.reason || 'unknown');
               }
               peSetSpent();
-              peNote.textContent = `Charge queued (${data.pending}/${data.cap}) — ${KIT.rides}. Back next tick.`;
+              peNote.textContent = data.note || `Charge queued (${data.pending}/${data.cap}) — ${KIT.rides}. Back next tick.`;
             } catch (e) {
               alert('Could not act: ' + (e?.message || e));
             } finally {
