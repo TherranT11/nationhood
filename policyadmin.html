@@ -612,19 +612,20 @@ function renderPolicyTable() {
 
 // ==================== DELETE / DUPLICATE ====================
 async function deletePolicy(id, name) {
-    if (!confirm(`Delete policy "${name}"?\n\nThis will also remove any bill articles and active laws referencing it.`)) return;
+    if (!confirm(`Delete policy "${name}"?\n\nThis also removes its options and any bill articles, active laws, and nation-policy rows referencing it.`)) return;
     try {
-        // Cascade: delete child rows that hold a foreign key to this policy
-        await _supabase.from('bill_articles').delete().eq('policy_id', id);
-        await _supabase.from('active_laws').delete().eq('policy_id', id);
-        try { await _supabase.from('nation_policies').delete().eq('policy_id', id); } catch {}
-
-        const { error } = await _supabase.from('policies').delete().eq('id', id);
+        // Server-side cascade (admin_delete_policy, 20270931): one atomic,
+        // RLS-proof transaction. Replaces the old client chain of unchecked
+        // child deletes that silently no-op'd under active_laws RLS and then
+        // tripped active_laws_policy_id_fkey. (Access gate is this page's
+        // own password, same as every other write here.)
+        const { data, error } = await _supabase.rpc('admin_delete_policy', { p_policy_id: id });
         if (error) throw error;
+        if (!data || data.success === false) throw new Error(data?.reason || 'delete_failed');
         showStatus(`"${name}" deleted.`, 'success');
     } catch (err) {
         showStatus('Error: ' + err.message, 'error');
-        console.error('Cascade delete failed:', err);
+        console.error('Policy delete failed:', err);
     }
     await loadPolicies(); populateFilterDropdowns(); filterPolicies();
 }
