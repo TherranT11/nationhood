@@ -722,7 +722,6 @@ body {
     <div class="modal__body">
       <div class="modal__text">Your businessman is from:</div>
       <div class="modal__nation-name" id="entrepreneur-modal-name"></div>
-      <div id="ent-modal-step1">
       <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Gender</div>
       <div style="display:flex;gap:8px;margin-top:6px;">
         <button type="button" id="ent-gender-male" onclick="setEntrepreneurGender('male')" style="flex:1;padding:8px;font-family:var(--font-mono);font-size:11px;background:var(--bg-3);border:1px solid var(--purple,#8b5cf6);color:var(--text-bright);cursor:pointer;">Male</button>
@@ -730,13 +729,6 @@ body {
       </div>
       <div style="margin-top:14px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">Name</div>
       <select id="entrepreneur-modal-name-select" style="width:100%;margin-top:6px;padding:10px;font-family:var(--font-mono);font-size:12px;background:var(--bg-1);border:1px solid var(--border-1);color:var(--text-bright);outline:none;"></select>
-      </div>
-      <!-- Businessman step 2 — archetype pick (20270785). Hidden for the
-           entrepreneur flow, which keeps its single-step modal. -->
-      <div id="biz-modal-step2" style="display:none;">
-        <div style="margin-top:4px;font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;">And remind me of who you are:</div>
-        <div id="biz-archetype-list" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
-      </div>
       <div id="entrepreneur-modal-error" style="display:none;font-family:var(--font-mono);font-size:10px;color:var(--red);margin-top:8px;line-height:1.5;"></div>
       <div class="modal__actions">
         <button class="modal__btn modal__btn--cancel" onclick="closeEntrepreneurModal()">CANCEL</button>
@@ -787,6 +779,13 @@ let cachedEntrepreneursByNation = {};
 // counted from entrepreneur_corps.hq_nation_id (disbanded corps are
 // hard-DELETEd, so a plain count is live).
 let cachedCorpCountsByNation = {};
+// Businessman picker only: { nation_id: count } of active businessmen, and
+// the derived tier { nation_id: 'A'|'B'|'C' } previewed on the card. The
+// authoritative tier is assigned server-side in create_businessman
+// (20270942) with a deterministic name tiebreak the mirror below matches,
+// so this preview is exact (modulo a count changing between fetch + pick).
+let cachedBusinessmenByNation = {};
+let cachedBusinessmanTierByNation = {};
 let pendingFactionType = null;
 let pendingEntrepreneurNationId = null;
 let userOccupiedNationIds = new Set();   // nations where this user holds a party/military (entrepreneur hard lock)
@@ -906,6 +905,8 @@ async function loadNations() {
   // render the rows. Disbanded corps are hard-DELETEd (20270427), so a
   // plain count is live.
   cachedCorpCountsByNation = {};
+  cachedBusinessmenByNation = {};
+  cachedBusinessmanTierByNation = {};
   if (pendingFactionType === 'businessman') {
     const { data: corps, error: corpsErr } = await _supabase
       .from('entrepreneur_corps').select('industry, hq_nation_id');
@@ -917,11 +918,62 @@ async function loadNations() {
       if (c.industry === 'construction') bucket.construction += 1;
       else if (c.industry === 'automotive') bucket.automotive += 1;
     }
+
+    // Active-businessman counts per nation drive the tier preview.
+    const { data: biz, error: bizErr } = await _supabase
+      .from('factions')
+      .select('nation_id')
+      .eq('faction_type', 'businessman')
+      .is('abandoned_at', null);
+    if (bizErr) console.warn('[select-nation] businessman counts fetch failed:', bizErr.message);
+    for (const b of (biz || [])) {
+      if (!b.nation_id) continue;
+      cachedBusinessmenByNation[b.nation_id] = (cachedBusinessmenByNation[b.nation_id] || 0) + 1;
+    }
+    cachedBusinessmanTierByNation = computeBusinessmanTierMap(nations);
   }
 
   allNations = nations;
   renderNations(nations, cachedPartiesByNation);
 }
+
+// The four nations a businessman can be founded in (mirrors the server's
+// hardcoded list in create_businessman, 20270942).
+const BUSINESSMAN_NATIONS = ['Melizea', 'Avelia', 'Montequilla', 'Sierramar'];
+
+// Mirror of the server tier algorithm (20270942): rank the four
+// businessman nations by active-businessman count DESC; top third → A,
+// bottom third → C, middle → B. Returns { nation_id: 'A'|'B'|'C' }.
+// Ties break on nation name ascending — identical to the server's
+// deterministic ORDER BY, so this preview always matches what
+// create_businessman will assign.
+function computeBusinessmanTierMap(nations) {
+  const pool = nations
+    .filter(n => BUSINESSMAN_NATIONS.includes(n.name))
+    .map(n => ({ id: n.id, name: n.name, count: cachedBusinessmenByNation[n.id] || 0 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const out = {};
+  const total = pool.length;
+  if (total === 0) return out;
+  const third = Math.max(1, Math.floor(total / 3));
+  pool.forEach((row, pos) => {
+    let tier;
+    if (total <= 1)      tier = 'A';
+    else if (total === 2) tier = pos === 0 ? 'A' : 'C';
+    else if (pos < third)              tier = 'A';
+    else if (pos >= total - third)     tier = 'C';
+    else                               tier = 'B';
+    out[row.id] = tier;
+  });
+  return out;
+}
+
+// Tier → display label + accent for the businessman picker card chip.
+const BUSINESSMAN_TIER_META = {
+  A: { label: 'A · Salaryman',    color: 'var(--green)' },
+  B: { label: 'B · Executive',    color: 'var(--amber)' },
+  C: { label: 'C · Entrepreneur', color: 'var(--purple,#8b5cf6)' },
+};
 
 function getGovTypeClass(govType) {
   if (govType === 'Presidential') return 'gov-presidential';
@@ -1023,13 +1075,15 @@ function renderNations(nations, partiesByNation) {
     if (pendingFactionType === 'entrepreneur' || pendingFactionType === 'businessman') {
       // Businessman (alpha) shares the entrepreneur card shape plus
       // per-nation corp counts, and opens the same gender + generated-
-      // name modal in businessman mode (create_businessman, 20270783).
+      // name modal in businessman mode (create_businessman, 20270942).
       // The entrepreneur origin hard-lock doesn't apply — the standing
       // one-non-politician-per-nation rule is enforced server-side and
       // surfaced as 'nation_occupied'.
       const isBusinessman = pendingFactionType === 'businessman';
       const locked = !isBusinessman && userOccupiedNationIds.has(nation.id);
       const corpCounts = cachedCorpCountsByNation[nation.id] || { construction: 0, automotive: 0 };
+      const bizTier = isBusinessman ? cachedBusinessmanTierByNation[nation.id] : null;
+      const tierMeta = bizTier ? BUSINESSMAN_TIER_META[bizTier] : null;
       const ctaLine = locked
         ? `<div style="font-family:var(--font-mono);font-size:9.5px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:0.08em;margin-top:6px;">Locked — you hold a Party here</div>`
         : isBusinessman
@@ -1048,9 +1102,11 @@ function renderNations(nations, partiesByNation) {
             <div class="stat-row"><span class="stat-row__label">Population</span><span class="stat-row__value" style="color:var(--text-secondary);">${fmtBig(nation.population)}</span></div>
             <div class="stat-row"><span class="stat-row__label">Active Entrepreneurs</span><span class="stat-row__value" style="color:var(--text-secondary);">${cachedEntrepreneursByNation[nation.name] || 0}</span></div>
             ${isBusinessman ? `
+            <div class="stat-row"><span class="stat-row__label">Active Businessmen</span><span class="stat-row__value" style="color:var(--text-secondary);">${cachedBusinessmenByNation[nation.id] || 0}</span></div>
             <div class="stat-row"><span class="stat-row__label">Construction Corporations</span><span class="stat-row__value" style="color:var(--text-secondary);">${corpCounts.construction}</span></div>
             <div class="stat-row"><span class="stat-row__label">Automotive Corporations</span><span class="stat-row__value" style="color:var(--text-secondary);">${corpCounts.automotive}</span></div>` : ''}
             <div class="stat-row"><span class="stat-row__label">Corporate Tax Law</span><span class="stat-row__value" style="color:var(--text-secondary);">${escapeHtml(corporateTaxPolicyLabel(nation.corporate_tax))}</span></div>
+            ${tierMeta ? `<div class="stat-row"><span class="stat-row__label">Starting Tier</span><span class="stat-row__value" style="font-family:var(--font-mono);font-size:10px;font-weight:700;color:${tierMeta.color};text-transform:uppercase;letter-spacing:0.05em;">${tierMeta.label}</span></div>` : ''}
             ${ctaLine}
           </div>
         </div>
@@ -1138,62 +1194,15 @@ function selectNation(nationId) {
 // ── Entrepreneur (nation-agnostic; nation = origin/name-pool only) ──
 // The same modal serves the Businessman (alpha) flow: businessmanMode
 // switches the title and routes confirm to create_businessman instead
-// of the entrepreneur archetype page. Two steps: gender + name, then
-// the archetype pick. Wealth/age numbers below are DISPLAY copy —
-// the authoritative values live in create_businessman (20270785).
+// of the entrepreneur archetype page. The businessman tier (and so the
+// starting wealth/age) is auto-assigned server-side from nation
+// businessman-count — there is no archetype pick, just gender + name.
 let businessmanMode = false;
 let businessmanJoinInFlight = false;
-let businessmanStep = 1;
-let businessmanArchetype = null;
-let businessmanChosenName = '';
-
-const BUSINESSMAN_ARCHETYPES = [
-  { key: 'wealthy_entrepreneur', name: 'Wealthy Entrepreneur', wealth: '$65M',  age: 60,
-    blurb: 'You\u2019ve had a long history of successful business dealings, but you are a bit long in the tooth.' },
-  { key: 'seasoned_executive',   name: 'Seasoned Executive',   wealth: '$2M',   age: 50,
-    blurb: 'You\u2019ve been an accomplished leader at several major corporations and now you\u2019re ready for the next chapter.' },
-  { key: 'youthful_salaryman',   name: 'Youthful Salaryman',   wealth: '$150k', age: 25,
-    blurb: 'Fresh out of school or your first major role, you turn your sights to the next big move.' },
-];
-
-function renderBusinessmanArchetypes() {
-  const host = document.getElementById('biz-archetype-list');
-  if (!host) return;
-  host.innerHTML = BUSINESSMAN_ARCHETYPES.map(a => {
-    const sel = businessmanArchetype === a.key;
-    return `
-      <div data-archetype="${a.key}" onclick="selectBusinessmanArchetype('${a.key}')"
-           style="background:${sel ? 'var(--bg-3)' : 'var(--bg-1)'};border:1px solid ${sel ? 'var(--green)' : 'var(--border-1)'};padding:12px 14px;cursor:pointer;">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;">
-          <span style="font-family:var(--font-mono);font-size:12px;font-weight:700;color:${sel ? 'var(--green)' : 'var(--text-bright)'};text-transform:uppercase;letter-spacing:0.05em;">${a.name}</span>
-          <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);white-space:nowrap;">Wealth: ${a.wealth} &middot; Age: ${a.age}</span>
-        </div>
-        <div style="font-family:var(--font-ui);font-size:11px;color:var(--text-muted);line-height:1.5;margin-top:5px;">${a.blurb}</div>
-      </div>`;
-  }).join('');
-}
-
-function selectBusinessmanArchetype(key) {
-  businessmanArchetype = key;
-  renderBusinessmanArchetypes();
-}
-window.selectBusinessmanArchetype = selectBusinessmanArchetype;
-
-function setBusinessmanStep(step) {
-  businessmanStep = step;
-  const s1 = document.getElementById('ent-modal-step1');
-  const s2 = document.getElementById('biz-modal-step2');
-  if (s1) s1.style.display = step === 1 ? '' : 'none';
-  if (s2) s2.style.display = step === 2 ? '' : 'none';
-  if (step === 2) renderBusinessmanArchetypes();
-}
 
 function openBusinessmanModal(nationId) {
   businessmanMode = true;
-  businessmanArchetype = null;
-  businessmanChosenName = '';
   openEntrepreneurModal(nationId);
-  setBusinessmanStep(1);
   const title = document.getElementById('entrepreneur-modal-title');
   if (title) title.textContent = 'Begin Your Career';
 }
@@ -1250,9 +1259,6 @@ function closeEntrepreneurModal() {
   document.getElementById('entrepreneur-modal-overlay').classList.remove('active');
   pendingEntrepreneurNationId = null;
   businessmanMode = false;
-  businessmanArchetype = null;
-  businessmanChosenName = '';
-  setBusinessmanStep(1);
   const title = document.getElementById('entrepreneur-modal-title');
   if (title) title.textContent = 'Found Your Business';
 }
@@ -1271,17 +1277,7 @@ function confirmEntrepreneurJoin() {
   }
   errEl.style.display = 'none';
   if (businessmanMode) {
-    if (businessmanStep === 1) {
-      businessmanChosenName = fullName;
-      setBusinessmanStep(2);
-      return;
-    }
-    if (!businessmanArchetype) {
-      errEl.textContent = 'Choose who you are.';
-      errEl.style.display = 'block';
-      return;
-    }
-    confirmBusinessmanJoin(nation, businessmanChosenName, errEl);
+    confirmBusinessmanJoin(nation, fullName, errEl);
     return;
   }
   // Origin nation + gender + name collected. The archetype page is the
@@ -1294,7 +1290,7 @@ function confirmEntrepreneurJoin() {
   window.location.href = 'entrepreneur-archetype.html';
 }
 
-// Businessman creation — server-side via create_businessman (20270783).
+// Businessman creation — server-side via create_businessman (20270942).
 async function confirmBusinessmanJoin(nation, fullName, errEl) {
   if (businessmanJoinInFlight) return;
   businessmanJoinInFlight = true;
@@ -1312,7 +1308,6 @@ async function confirmBusinessmanJoin(nation, fullName, errEl) {
       p_nation_id:  nation.id,
       p_first_name: first,
       p_last_name:  last,
-      p_archetype:  businessmanArchetype,
     });
     if (error) throw error;
     if (!data?.success) {
@@ -1321,7 +1316,6 @@ async function confirmBusinessmanJoin(nation, fullName, errEl) {
         invalid_name:      'Please choose a name.',
         nation_not_found:  'That nation no longer exists.',
         not_foundable:     'Businessmen cannot start in this nation.',
-        invalid_archetype: 'Choose who you are.',
         already_in_nation: 'You already have a Businessman in this nation.',
         banned_in_nation:  'Your Businessman in this nation was banned by an administrator.',
         nation_occupied:   'You already hold a faction in this nation.',
