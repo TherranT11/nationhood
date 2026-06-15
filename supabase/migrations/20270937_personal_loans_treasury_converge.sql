@@ -701,6 +701,99 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.foreclose_personal_loan(uuid, uuid) FROM PUBLIC;
 GRANT  EXECUTE ON FUNCTION public.foreclose_personal_loan(uuid, uuid) TO authenticated;
 
+-- ── 9b. cancel_personal_loan_request — generalize the borrower check ──
+-- Was entrepreneur-only; a businessman must be able to cancel his own
+-- request. Match the request's borrower faction directly.
+CREATE OR REPLACE FUNCTION public.cancel_personal_loan_request(p_request_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_uid  uuid := auth.uid();
+    v_fac  factions%ROWTYPE;
+    v_req  personal_loan_requests%ROWTYPE;
+    v_tick int;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+
+    SELECT * INTO v_req FROM personal_loan_requests WHERE id = p_request_id FOR UPDATE;
+    IF v_req.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'request_not_found');
+    END IF;
+    IF v_req.status <> 'pending' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'request_not_pending');
+    END IF;
+
+    SELECT * INTO v_fac FROM factions
+     WHERE id = v_req.borrower_faction_id
+       AND abandoned_at IS NULL
+       AND (id = v_uid OR linked_user_id = v_uid)
+       AND faction_type IN ('entrepreneur', 'businessman');
+    IF v_fac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_borrower');
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    UPDATE personal_loan_requests SET status = 'cancelled', finalized_at_tick = v_tick
+     WHERE id = p_request_id;
+    UPDATE personal_loan_offers SET status = 'auto_declined', finalized_at_tick = v_tick
+     WHERE request_id = p_request_id AND status = 'pending';
+
+    RETURN jsonb_build_object('success', true);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.cancel_personal_loan_request(uuid) TO authenticated;
+
+-- ── 9c. withdraw_personal_loan_offer — owner check via _corp_owner ────
+-- Was entrepreneur-only; a businessman-owned bank's CEO must be able to
+-- pull a pending offer. Resolve the bank owner with _corp_owner_faction.
+CREATE OR REPLACE FUNCTION public.withdraw_personal_loan_offer(p_offer_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+    v_uid   uuid := auth.uid();
+    v_fac   factions%ROWTYPE;
+    v_offer personal_loan_offers%ROWTYPE;
+    v_bank  entrepreneur_corps%ROWTYPE;
+    v_tick  int;
+BEGIN
+    IF v_uid IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_authenticated');
+    END IF;
+
+    SELECT * INTO v_offer FROM personal_loan_offers WHERE id = p_offer_id FOR UPDATE;
+    IF v_offer.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'offer_not_found');
+    END IF;
+    IF v_offer.status <> 'pending' THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'offer_not_pending');
+    END IF;
+
+    SELECT * INTO v_bank FROM entrepreneur_corps WHERE id = v_offer.bank_corp_id;
+    IF v_bank.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'bank_corp_not_found');
+    END IF;
+    v_fac := _corp_owner_faction(v_bank.owner_faction_id, v_uid);
+    IF v_fac.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'reason', 'not_owner');
+    END IF;
+
+    SELECT current_tick INTO v_tick FROM shard WHERE name = 'Alpha Shard' LIMIT 1;
+    v_tick := COALESCE(v_tick, 0);
+
+    UPDATE personal_loan_offers SET status = 'withdrawn', finalized_at_tick = v_tick
+     WHERE id = p_offer_id;
+
+    RETURN jsonb_build_object('success', true);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.withdraw_personal_loan_offer(uuid) TO authenticated;
+
 -- ── 10. Retire the legacy owner-funds auto-accept path ────────────────
 -- Superseded by the offer market; no UI caller. Dropping it removes the
 -- last fixed-rate, owner-funded origination path.
