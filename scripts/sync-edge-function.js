@@ -49,6 +49,7 @@ const MODULE_FILES = [
     'corp-valuation.js',
     'tax-articles.js',
     'sectors.js',
+    'names.js',
     'bills.js',
     'elections.js',
     'presidential.js',
