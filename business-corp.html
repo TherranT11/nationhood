@@ -2655,7 +2655,7 @@ import { CITY_STATS } from './js/game/city-labels.js';
               .eq('status', 'open')
               .order('created_at_tick', { ascending: false }),
             _supabase.from('corp_blueprints')
-              .select('id, name, building_type')
+              .select('id, name, building_type, category')
               .eq('corp_id', corp.id)
               .order('created_at', { ascending: false }),
             _supabase.from('construction_project_bids')
@@ -2772,9 +2772,13 @@ import { CITY_STATS } from './js/game/city-labels.js';
         });
 
         const bpHost = document.getElementById('sp-bps');
-        bpHost.innerHTML = bps.length ? bps.map(bp => `
+        // Only Residential blueprints can be self-started — start_construction_project
+        // charters residential only, so don't offer infrastructure/bid-only ones here
+        // (picking one triggered the confusing "Only Residential projects can start" reject).
+        const startable = bps.filter(bp => bp.category === 'residential');
+        bpHost.innerHTML = startable.length ? startable.map(bp => `
           <div class="jm-pill" data-bp="${esc(bp.id)}">${esc(bp.name || BUILDING_TYPE_LABELS[bp.building_type] || '—')}</div>`).join('')
-          : '<div class="rl-empty" style="flex:1;">No blueprints yet — draft one first.</div>';
+          : '<div class="rl-empty" style="flex:1;">No residential blueprints yet — draft one first.</div>';
         bpHost.querySelectorAll('.jm-pill').forEach(p => {
           p.addEventListener('click', () => {
             spBp = p.dataset.bp;
