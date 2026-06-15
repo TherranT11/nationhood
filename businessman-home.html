@@ -31,6 +31,43 @@
   .biz-status-line.bad { color:#d9534f; }
 
   .biz-section { max-width:1280px; margin:26px auto 0; }
+
+  /* Personal Debt panel (IV, 20270937) — residence-secured loans. */
+  .pd-card { background:#121212; border:0.5px solid rgba(255,255,255,0.08);
+    border-left:2px solid #c8a64e; border-radius:4px; padding:16px 18px; }
+  .pd-head { font-size:11px; letter-spacing:0.12em; color:#c8a64e;
+    text-transform:uppercase; margin-bottom:10px; }
+  .pd-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:14px; margin-bottom:14px; }
+  .pd-cell .k { font-size:9px; letter-spacing:0.13em; color:#555;
+    text-transform:uppercase; margin-bottom:5px; }
+  .pd-cell .v { font-size:18px; color:#fff; font-variant-numeric:tabular-nums; }
+  .pd-cell .v.bad { color:#d9534f; }
+  .pd-cell .sub { font-size:10px; color:#666; margin-top:2px; }
+  .pd-cell .sub.bad { color:#d9534f; }
+  .pd-form { display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    border-top:0.5px solid rgba(255,255,255,0.06); padding-top:12px; }
+  .pd-form input { background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.15);
+    color:#cfcabf; padding:8px 10px; font-size:12px; border-radius:3px;
+    width:140px; font-family:inherit; font-variant-numeric:tabular-nums; }
+  .pd-form button { font-family:monospace; font-size:9px; letter-spacing:0.13em;
+    background:transparent; border:0.5px solid rgba(200,166,78,0.5); color:#c8a64e;
+    padding:8px 14px; border-radius:3px; cursor:pointer; text-transform:uppercase; }
+  .pd-form button:hover:not(:disabled) { background:rgba(200,166,78,0.12); }
+  .pd-form button:disabled { opacity:0.4; cursor:default; }
+  .pd-form .hint { font-size:10px; color:#666; }
+  .pd-hint { font-size:11px; color:#666; line-height:1.55; margin-top:10px; }
+  .pd-offers { display:flex; flex-direction:column; gap:6px; }
+  .pd-offer { display:flex; justify-content:space-between; align-items:center;
+    padding:8px 12px; background:#0d0d0d; border:0.5px solid rgba(255,255,255,0.08); border-radius:4px; }
+  .pd-offer-bank { font-size:12px; color:#cfcabf; font-weight:600; }
+  .pd-offer-apr  { font-size:10px; color:#888; letter-spacing:0.04em; margin-top:2px; }
+  .pd-offer-accept { font-family:monospace; font-size:9px; letter-spacing:0.13em;
+    padding:6px 14px; background:transparent; color:#8aaa6a;
+    border:0.5px solid #6a8a4a; border-radius:3px; cursor:pointer; text-transform:uppercase; }
+  .pd-offer-accept:hover:not(:disabled) { background:rgba(138,170,106,0.12); }
+  .pd-offer-accept:disabled { opacity:0.4; cursor:default; }
+  .pd-empty { font-size:11px; color:#666; font-style:italic; padding:8px 0; }
+  @media (max-width:700px) { .pd-grid { grid-template-columns:1fr; } }
   .section-heading { display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
   .section-heading .roman { color:#555; font-size:11px; letter-spacing:0.1em; }
   .section-heading .sans { font-size:22px; font-weight:500; color:#fff; }
@@ -253,6 +290,16 @@
       <button type="button" id="don-open" class="don-open-btn">Donation</button>
       <div id="biz-donations"><div class="biz-pi-empty">No donations yet.</div></div>
     </div>
+  </div>
+
+  <!-- Personal Debt (IV, 20270937) — residence-secured personal loans. -->
+  <div class="biz-section">
+    <div class="section-heading">
+      <span class="roman">IV.</span>
+      <span class="sans">Personal</span>
+      <span class="serif">Debt</span>
+    </div>
+    <div id="biz-personal-debt"><div class="biz-pi-empty">Loading…</div></div>
   </div>
 </div>
 
@@ -603,6 +650,241 @@ async function donate(btn) {
   document.getElementById('don-overlay').querySelectorAll('.don-tier').forEach(b => { b.disabled = false; });
 }
 
+// ── Personal Debt (IV) — residence-secured personal loans (20270937) ──
+// Businessmen borrow against their residence: open a request capped at
+// the home's worth, banks in the home nation compete at their posted
+// prime, accept one, and repay from Cash on Hand. All money math is
+// server-side (get_my_personal_loan / open_personal_loan_request /
+// accept_personal_loan_offer / make_personal_loan_payment). An overdue
+// loan can be foreclosed by the lender — the residence is the collateral.
+async function renderPersonalDebt(f, activeLoan) {
+  const host = document.getElementById('biz-personal-debt');
+  if (!host) return;
+  if (activeLoan) { renderActiveLoan(host, activeLoan); return; }
+
+  // No active loan — sweep stale requests, then look for a pending one.
+  try { await _supabase.rpc('expire_stale_personal_loan_requests'); } catch (_) {}
+  try {
+    const { data: req, error: reqErr } = await _supabase.from('personal_loan_requests')
+      .select('id, principal, term_ticks, expires_at_tick, collateral_name')
+      .eq('borrower_faction_id', f.id).eq('status', 'pending').maybeSingle();
+    if (reqErr) throw reqErr;
+    if (req) {
+      const { data: offers, error: offersErr } = await _supabase.from('personal_loan_offers')
+        .select('id, apr, placed_at_tick, bank:entrepreneur_corps!bank_corp_id(id, name)')
+        .eq('request_id', req.id).eq('status', 'pending').order('apr', { ascending: true });
+      if (offersErr) throw offersErr;
+      renderPendingRequest(host, req, offers || []);
+      return;
+    }
+  } catch (e) {
+    console.warn('[businessman-home] pending request fetch:', e?.message || e);
+  }
+  renderLoanRequestForm(host, f);
+}
+
+function renderLoanRequestForm(host, f) {
+  const worth   = Math.floor(Number(f.biz_residence_worth) || 0);
+  const resName = f.biz_residence_name || 'your residence';
+  if (worth < 100000) {
+    host.innerHTML = `
+      <div class="pd-card">
+        <div class="pd-head">No Active Loan</div>
+        <div class="pd-hint">Personal loans are secured against your residence, and ${esc(resName)} isn't worth enough to borrow against (at least $100K of value is required).</div>
+      </div>`;
+    return;
+  }
+  const defAmt = Math.min(1000000, worth);
+  host.innerHTML = `
+    <div class="pd-card">
+      <div class="pd-head">No Active Loan</div>
+      <div class="pd-hint">Open a request secured against <b>${esc(resName)}</b> (worth <b>$${esc(hfFmtBig(worth))}</b>). Banking corps in your home nation with a completed Banking Office compete at their posted prime rate; pick the offer you like. Borrow up to your residence's value, repaid from Cash on Hand. <b>Miss the due date and the lender can foreclose</b> — the home is the collateral.</div>
+      <div class="pd-form" style="margin-top:14px;">
+        <span class="hint">Principal (USD)</span>
+        <input type="number" id="pd-req-amt"  min="100000" max="${worth}" step="100000" value="${defAmt}" />
+        <span class="hint">Term (ticks)</span>
+        <input type="number" id="pd-req-term" min="12" max="240" step="1" value="48" />
+        <span class="hint">Bidding window (ticks)</span>
+        <input type="number" id="pd-req-bid"  min="1" max="48" step="1" value="6" />
+        <button id="pd-req-btn" type="button">Open Loan Request</button>
+      </div>
+    </div>`;
+  document.getElementById('pd-req-btn').onclick = () => handleOpenRequest(worth);
+}
+
+function renderPendingRequest(host, req, offers) {
+  const fmt = (n) => '$' + hfFmtBig(Number(n) || 0);
+  const offersHtml = offers.length
+    ? offers.map(o => {
+        const bankName = o.bank?.name || 'Unknown bank';
+        const aprPct  = (Number(o.apr) * 100).toFixed(2);
+        return `
+          <div class="pd-offer">
+            <div class="pd-offer-info">
+              <div class="pd-offer-bank">${esc(bankName)}</div>
+              <div class="pd-offer-apr">${aprPct}% APR &middot; placed T${o.placed_at_tick}</div>
+            </div>
+            <button class="pd-offer-accept" type="button" data-oid="${esc(String(o.id))}">Accept</button>
+          </div>`;
+      }).join('')
+    : '<div class="pd-empty">No offers yet — banks have until expiry to post.</div>';
+  host.innerHTML = `
+    <div class="pd-card">
+      <div class="pd-head">Open Request &middot; ${fmt(req.principal)} over ${req.term_ticks} ticks</div>
+      <div class="pd-hint">Secured against ${esc(req.collateral_name || 'your residence')}. Bidding closes at T${req.expires_at_tick}; lowest APR is on top.</div>
+      <div class="pd-offers" style="margin-top:12px;">${offersHtml}</div>
+      <div class="pd-form" style="margin-top:14px;">
+        <button id="pd-req-cancel" type="button" data-rid="${esc(String(req.id))}">Cancel Request</button>
+      </div>
+    </div>`;
+  document.querySelectorAll('.pd-offer-accept').forEach(btn => btn.addEventListener('click', handleAcceptOffer));
+  document.getElementById('pd-req-cancel').onclick = handleCancelRequest;
+}
+
+function renderActiveLoan(host, loan) {
+  const fmt = (n) => '$' + hfFmtBig(Number(n) || 0);
+  const overdue = loan.due_tick != null && Number(loan.current_tick) > Number(loan.due_tick);
+  const dueHtml = loan.due_tick != null
+    ? `<div class="pd-cell"><div class="k">Due</div><div class="v${overdue ? ' bad' : ''}">T${loan.due_tick}</div><div class="sub${overdue ? ' bad' : ''}">${overdue ? 'overdue — foreclosure risk' : 'now T' + loan.current_tick}</div></div>`
+    : '';
+  const collNote = loan.collateral_name ? 'secured by ' + esc(loan.collateral_name) : 'unsecured';
+  host.innerHTML = `
+    <div class="pd-card">
+      <div class="pd-head">Active Loan${loan.lender_corp_name ? ' &middot; from ' + esc(loan.lender_corp_name) : ''}</div>
+      <div class="pd-grid">
+        <div class="pd-cell"><div class="k">Principal Remaining</div><div class="v">${fmt(loan.principal_remaining)}</div><div class="sub">of ${fmt(loan.principal)} borrowed</div></div>
+        <div class="pd-cell"><div class="k">Accrued Interest</div><div class="v">${fmt(loan.accrued_interest)}</div><div class="sub">${Number(loan.apr_pct).toFixed(1)}% APR</div></div>
+        <div class="pd-cell"><div class="k">Total Owed</div><div class="v">${fmt(loan.total_owed)}</div><div class="sub">${collNote}</div></div>
+        ${dueHtml}
+      </div>
+      <div class="pd-form">
+        <span class="hint">Payment (USD)</span>
+        <input type="number" id="pd-pay-amt" min="1" step="10000" value="${Math.max(1, Number(loan.total_owed) || 0)}" />
+        <button id="pd-pay-btn" type="button" data-loan-id="${esc(String(loan.loan_id))}">Make Debt Payment</button>
+      </div>
+    </div>`;
+  document.getElementById('pd-pay-btn').onclick = handleMakePayment;
+}
+
+async function handleOpenRequest(maxWorth) {
+  const btn  = document.getElementById('pd-req-btn');
+  const amt  = parseInt(document.getElementById('pd-req-amt').value,  10);
+  const term = parseInt(document.getElementById('pd-req-term').value, 10);
+  const bid  = parseInt(document.getElementById('pd-req-bid').value,  10);
+  if (!Number.isFinite(amt) || amt < 100000 || amt > 25000000) { alert('Principal must be $100K–$25M.'); return; }
+  if (Number.isFinite(maxWorth) && amt > maxWorth) { alert("You can't borrow more than your residence is worth ($" + hfFmtBig(maxWorth) + ').'); return; }
+  if (!Number.isFinite(term) || term < 12 || term > 240) { alert('Term must be 12–240 ticks.'); return; }
+  if (!Number.isFinite(bid)  || bid  < 1  || bid  > 48)  { alert('Bidding window must be 1–48 ticks.'); return; }
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'OPENING…';
+  try {
+    const { data, error } = await _supabase.rpc('open_personal_loan_request', {
+      p_principal: amt, p_term_ticks: term, p_bidding_ticks: bid,
+    });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = {
+        not_authenticated:       'Sign in to open a request.',
+        no_borrower:             'No businessman faction on this account.',
+        no_nation:               'You have no home nation.',
+        invalid_principal:       'Principal must be $100K–$25M.',
+        invalid_term:            'Term must be 12–240 ticks.',
+        invalid_bidding_window:  'Bidding window must be 1–48 ticks.',
+        no_collateral:           "Your residence isn't worth enough to borrow against.",
+        exceeds_collateral:      'You can borrow at most $' + hfFmtBig(Number(data.cap) || 0) + ' against your residence.',
+        loan_already_active:     'You already have an active loan.',
+        request_already_pending: 'You already have a pending request.',
+      };
+      alert(R[data?.reason] || ('Open failed: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function handleAcceptOffer(e) {
+  const btn = e.currentTarget;
+  const oid = btn.dataset.oid;
+  if (!oid) return;
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'ACCEPTING…';
+  try {
+    const { data, error } = await _supabase.rpc('accept_personal_loan_offer', { p_offer_id: oid });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = {
+        not_authenticated:          'Sign in to accept.',
+        offer_not_found:            'Offer no longer exists — reload.',
+        offer_not_pending:          'Offer is no longer pending.',
+        request_not_pending:        'Request is no longer pending.',
+        not_borrower:               'You are not the borrower on this request.',
+        bank_corp_not_found:        'Bank corp no longer exists — reload.',
+        bank_insufficient_treasury: "The bank's treasury no longer covers this loan. Wait for another offer or cancel.",
+        under_collateralized:       'Your residence (worth $' + hfFmtBig(Number(data.cap) || 0) + ') no longer covers this loan.',
+      };
+      alert(R[data?.reason] || ('Accept failed: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e2) {
+    alert('Failed: ' + (e2?.message || e2));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function handleCancelRequest(e) {
+  const btn = e.currentTarget;
+  const rid = btn.dataset.rid;
+  if (!rid) return;
+  if (!confirm('Cancel this loan request? Any pending offers will be declined.')) return;
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'CANCELLING…';
+  try {
+    const { data, error } = await _supabase.rpc('cancel_personal_loan_request', { p_request_id: rid });
+    if (error) throw error;
+    if (!data?.success) {
+      alert('Cancel failed: ' + (data?.reason || 'unknown'));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e2) {
+    alert('Failed: ' + (e2?.message || e2));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+async function handleMakePayment() {
+  const btn = document.getElementById('pd-pay-btn');
+  const loanId = btn.dataset.loanId;
+  const amt = parseInt(document.getElementById('pd-pay-amt').value, 10);
+  if (!Number.isFinite(amt) || amt <= 0) { alert('Payment must be at least $1.'); return; }
+  const prev = btn.textContent; btn.disabled = true; btn.textContent = 'PAYING…';
+  try {
+    const { data, error } = await _supabase.rpc('make_personal_loan_payment', { p_loan_id: loanId, p_amount: amt });
+    if (error) throw error;
+    if (!data?.success) {
+      const R = {
+        not_authenticated: 'Sign in to make a payment.',
+        not_borrower:      'You are not the borrower on this loan.',
+        invalid_amount:    'Payment must be at least $1.',
+        loan_not_found:    'Loan not found — reload.',
+        loan_not_active:   'This loan is already settled.',
+        insufficient_funds: 'Your Cash on Hand can\'t cover that (need $' + hfFmtBig(Number(data.need) || 0) + ', have $' + hfFmtBig(Number(data.have) || 0) + ').',
+      };
+      alert(R[data?.reason] || ('Payment failed: ' + (data?.reason || 'unknown')));
+      btn.disabled = false; btn.textContent = prev;
+      return;
+    }
+    location.reload();
+  } catch (e) {
+    alert('Failed: ' + (e?.message || e));
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
 (async () => {
   try {
     const ctx = await bootstrapBusinessman('home');
@@ -626,10 +908,18 @@ async function donate(btn) {
     const cash      = Number(f.party_funds) || 0;
     const resName   = f.biz_residence_name || '—';
     const resWorth  = Number(f.biz_residence_worth) || 0;
-    // Debt: no businessman debt instruments exist yet — when loans
-    // land, sum them here. Net worth = cash on hand + residence,
-    // minus that (currently zero) debt.
-    const debt      = 0;
+    // Personal debt: the live total owed on an active personal loan
+    // (20270937; server computes the accrual). One fetch, reused by the
+    // DEBT card and the Personal Debt panel below.
+    let activeLoan = null;
+    try {
+      const { data: ld, error: le } = await _supabase.rpc('get_my_personal_loan');
+      if (le) throw le;
+      if (ld?.has_loan) activeLoan = ld;
+    } catch (e) {
+      console.warn('[businessman-home] get_my_personal_loan failed:', e?.message || e);
+    }
+    const debt      = activeLoan ? Number(activeLoan.total_owed) || 0 : 0;
     const netWorth  = cash + resWorth - debt;
     const place     = `${city}, ${f.nation || '—'}`;
 
@@ -726,6 +1016,10 @@ async function donate(btn) {
         <div class="val money">${esc(hfFmtBig(Math.round(salaryYearly / 12)))}</div>
         <div class="sub">per tick${salaryYearly ? ` &middot; ${esc(hfFmtBig(salaryYearly))}/yr` : ''}</div>
       </div>`;
+
+    // Personal Debt panel (IV) — reuses the loan already fetched above.
+    renderPersonalDebt(f, activeLoan).catch(e =>
+      console.warn('[businessman-home] personal debt render failed:', e?.message || e));
 
     // Pressing Issues — two sources share the container: open job
     // interviews (both sides of the table) and construction projects

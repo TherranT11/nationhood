@@ -693,7 +693,7 @@ async function handleOpenRequest() {
     if (!data?.success) {
       const R = {
         not_authenticated:       'Sign in to open a request.',
-        no_entrepreneur:         'No entrepreneur faction on this account.',
+        no_borrower:             'No entrepreneur faction on this account.',
         no_nation:               'Your entrepreneur has no home nation.',
         invalid_principal:       'Principal must be $100K–$25M.',
         invalid_term:            'Term must be 12–240 ticks.',
@@ -727,10 +727,9 @@ async function handleAcceptOffer(e) {
         offer_not_found:         'Offer no longer exists — reload.',
         offer_not_pending:       'Offer is no longer pending.',
         request_not_pending:     'Request is no longer pending.',
-        not_borrower:            'You are not the borrower on this request.',
-        bank_insufficient_funds: "The bank's owner no longer has the cash to fund this loan. Wait for another offer or cancel.",
-        bank_corp_not_found:     'Bank corp no longer exists — reload.',
-        bank_owner_not_found:    'Bank owner no longer exists — reload.',
+        not_borrower:              'You are not the borrower on this request.',
+        bank_insufficient_treasury: "The bank's treasury no longer covers this loan. Wait for another offer or cancel.",
+        bank_corp_not_found:       'Bank corp no longer exists — reload.',
       };
       alert(R[data?.reason] || ('Accept failed: ' + (data?.reason || 'unknown')));
       btn.disabled = false; btn.textContent = prev;
@@ -778,7 +777,6 @@ async function handleMakePayment(e) {
     if (!data?.success) {
       const R = {
         not_authenticated:  'Sign in to make a payment.',
-        no_entrepreneur:    'No entrepreneur faction on this account.',
         not_borrower:       'You are not the borrower on this loan.',
         invalid_amount:     'Payment must be at least $1.',
         loan_not_found:     'Loan not found — reload the page.',
