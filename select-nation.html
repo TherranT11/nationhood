@@ -782,7 +782,8 @@ let cachedCorpCountsByNation = {};
 // Businessman picker only: { nation_id: count } of active businessmen, and
 // the derived tier { nation_id: 'A'|'B'|'C' } previewed on the card. The
 // authoritative tier is assigned server-side in create_businessman
-// (20270942); ties there break on random() so a live preview may differ.
+// (20270942) with a deterministic name tiebreak the mirror below matches,
+// so this preview is exact (modulo a count changing between fetch + pick).
 let cachedBusinessmenByNation = {};
 let cachedBusinessmanTierByNation = {};
 let pendingFactionType = null;
@@ -943,13 +944,14 @@ const BUSINESSMAN_NATIONS = ['Melizea', 'Avelia', 'Montequilla', 'Sierramar'];
 // Mirror of the server tier algorithm (20270942): rank the four
 // businessman nations by active-businessman count DESC; top third → A,
 // bottom third → C, middle → B. Returns { nation_id: 'A'|'B'|'C' }.
-// Ties here resolve by the fetched order; the server breaks them on
-// random(), so a live preview can differ from the assigned tier.
+// Ties break on nation name ascending — identical to the server's
+// deterministic ORDER BY, so this preview always matches what
+// create_businessman will assign.
 function computeBusinessmanTierMap(nations) {
   const pool = nations
     .filter(n => BUSINESSMAN_NATIONS.includes(n.name))
-    .map(n => ({ id: n.id, count: cachedBusinessmenByNation[n.id] || 0 }))
-    .sort((a, b) => b.count - a.count);
+    .map(n => ({ id: n.id, name: n.name, count: cachedBusinessmenByNation[n.id] || 0 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   const out = {};
   const total = pool.length;
   if (total === 0) return out;

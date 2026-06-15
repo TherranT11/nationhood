@@ -74,11 +74,14 @@ BEGIN
 
     -- Tier algorithm (mirrors politicians, 20270782): rank the four
     -- businessman nations by active-businessman count DESC; top third → A,
-    -- bottom third → C, middle → B. random() tiebreak so a flat field
-    -- doesn't always slot the same nation. Fewest businessmen → C.
-    -- Mirrored client-side in select-nation.html.
+    -- bottom third → C, middle → B. Fewest businessmen → C. Ties break on
+    -- nation name (ascending) — DETERMINISTIC, not random(): the card in
+    -- select-nation.html previews the tier, and a stable tiebreak is the
+    -- only way that preview can be truthful at a flat field (e.g. every
+    -- nation at 0 on launch day). The mirror there sorts the same way.
     WITH counts AS (
         SELECT n.id AS nation_id,
+               n.name AS nation_name,
                COUNT(f.id) FILTER (
                    WHERE f.faction_type = 'businessman'
                      AND f.abandoned_at IS NULL
@@ -86,12 +89,12 @@ BEGIN
           FROM nations n
           LEFT JOIN factions f ON f.nation_id = n.id
          WHERE n.name IN ('Melizea', 'Avelia', 'Montequilla', 'Sierramar')
-         GROUP BY n.id
+         GROUP BY n.id, n.name
     ),
     ranked AS (
         SELECT nation_id,
-               ROW_NUMBER() OVER (ORDER BY biz_count DESC, random()) - 1 AS pos,
-               COUNT(*)    OVER ()                                      AS total
+               ROW_NUMBER() OVER (ORDER BY biz_count DESC, nation_name) - 1 AS pos,
+               COUNT(*)    OVER ()                                         AS total
           FROM counts
     )
     SELECT pos, total INTO v_pos, v_n
