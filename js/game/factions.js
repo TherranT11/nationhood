@@ -152,11 +152,10 @@ export function getFactionDashboardUrl(faction) {
     // the neutral faction chooser rather than a deleted dashboard.
     if (faction.faction_type === 'corporation') return 'faction-select.html';
     // Party home is the Actions page. It used to be dashboard.html (the
-    // newspaper landing), but 20270767 culled that into a thin redirect
-    // back to faction-select.html, which made party logins loop forever
-    // (login → dashboard → faction-select → dashboard → …). initPage's
-    // party-page guard in js/common.js keys on this exact value.
-    if (faction.faction_type === 'party')       return 'politics.html';
+    // Legacy 'party' faction UI culled — route any stray login to the
+    // neutral faction chooser, exactly as the corporation/military culls
+    // do for their retired types.
+    if (faction.faction_type === 'party')       return 'faction-select.html';
     // Military faction UI retired (army pages culled) — route any stray
     // military login to the neutral chooser rather than a deleted dashboard.
     if (faction.faction_type === 'military') return 'faction-select.html';
