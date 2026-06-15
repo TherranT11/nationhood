@@ -59,9 +59,6 @@
   .wo-cat-meta b{color:#aaa;font-weight:600;}
   .wo-cat[open] summary{border-bottom:0.5px solid rgba(255,255,255,0.06);}
   .wo-cat-body{padding:14px 16px;}
-  .wo-org{font-size:13px;color:#d4d4d4;padding:8px 10px;background:var(--panel2);
-    border:0.5px solid var(--line);border-radius:4px;margin-bottom:6px;}
-  .wo-org:last-child{margin-bottom:0;}
 
   .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
     background:var(--bg);color:var(--mut);font-size:12px;letter-spacing:0.1em;z-index:50;}
@@ -137,6 +134,14 @@ async function init() {
 
   document.getElementById('loading').style.display = 'none';
   if (!isFM && !isPM) {
+    // Don't falsely lock out a PM whose head_of_government lookup just failed
+    // (the FM path needs no query, so an FM is never affected).
+    if (hogErr) {
+      const l = document.getElementById('loading');
+      l.textContent = 'Could not verify access. Please reload.';
+      l.style.display = 'flex';
+      return;
+    }
     document.getElementById('locked').style.display = 'block';
     document.getElementById('found-org').style.display = 'none';
     return;
