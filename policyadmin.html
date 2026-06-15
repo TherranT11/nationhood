@@ -318,13 +318,13 @@ function createEmptyOption() {
         // legacy stat_effects/sector_effects model was removed.
         spectrum_position: null,
         stat_targets: [],     // [{ stat_key, target 0-100, pull 0-1 }]
-        // Party reception: which archetypes' seated parties vote YES /
-        // NO when this option is proposed as a policy change. Names are
-        // drawn from PARTY_ARCHETYPES; the two lists are disjoint. An
-        // archetype on neither list rolls 1D2 server-side. Stored as
-        // NULL when empty (see savePolicy).
-        support_archetypes: [],
-        oppose_archetypes: [],
+        // Party reception: how each archetype VALUES this option on a 1–6
+        // scale, as { archetypeName: int 1..6 }. A seated party votes for
+        // whichever option — current law or proposed — it values higher.
+        // Across one policy's options an archetype's values must be DISTINCT
+        // (validated on save), so votes never tie. An unset archetype is
+        // neutral (3.5) server-side. Stored as NULL when empty (see savePolicy).
+        archetype_values: {},
     };
 }
 
@@ -379,37 +379,25 @@ const FISCAL_CATEGORY_OPTIONS = [
 
 const MAX_OPTIONS_PER_POLICY = 10;
 
-// Toggle an archetype's Support/Oppose membership for one option. The two
-// lists are mutually exclusive: checking a box on one side drops the name
-// from the other (and unchecks its sibling box in the DOM). State is the
-// source of truth; savePolicy reads support_archetypes / oppose_archetypes.
+// Set how one archetype values one option, on the 1–6 scale. '' clears it
+// back to unset (neutral 3.5 server-side). State is the source of truth;
+// savePolicy reads archetype_values and enforces per-policy distinctness.
 // Archetype labels come from the canonical PARTY_ARCHETYPES catalog, which
-// mirrors the server's _archetype_catalog_names() that derive_bill_stance
-// keys the policy-vote division off.
-function toggleArchetypePosition(optIdx, archIdx, side, checked) {
+// mirrors the server's _archetype_catalog_names() that the policy-vote
+// division keys off.
+const ARCHETYPE_VALUE_SCALE = [1, 2, 3, 4, 5, 6];
+function setArchetypeValue(optIdx, archIdx, rawValue) {
     const opt = options[optIdx];
     if (!opt) return;
     const arch = PARTY_ARCHETYPES[archIdx];
     if (!arch) return;
-    if (!Array.isArray(opt.support_archetypes)) opt.support_archetypes = [];
-    if (!Array.isArray(opt.oppose_archetypes))  opt.oppose_archetypes = [];
+    if (!opt.archetype_values || typeof opt.archetype_values !== 'object') opt.archetype_values = {};
 
-    const thisList  = side === 'support' ? opt.support_archetypes : opt.oppose_archetypes;
-    const otherList = side === 'support' ? opt.oppose_archetypes  : opt.support_archetypes;
-
-    if (checked) {
-        if (!thisList.includes(arch)) thisList.push(arch);
-        // Enforce disjointness — drop from the other side + uncheck its box.
-        const oi = otherList.indexOf(arch);
-        if (oi !== -1) {
-            otherList.splice(oi, 1);
-            const otherSide = side === 'support' ? 'oppose' : 'support';
-            const sibling = document.getElementById(`b-arch-${otherSide}-${optIdx}-${archIdx}`);
-            if (sibling) sibling.checked = false;
-        }
+    const v = parseInt(rawValue, 10);
+    if (ARCHETYPE_VALUE_SCALE.includes(v)) {
+        opt.archetype_values[arch] = v;
     } else {
-        const i = thisList.indexOf(arch);
-        if (i !== -1) thisList.splice(i, 1);
+        delete opt.archetype_values[arch];
     }
 }
 
@@ -754,14 +742,15 @@ async function loadPolicyIntoBuilder(p) {
                 }))
                 .filter(r => r.stat_key);
 
-            // Party reception. Keep only catalog names; enforce disjointness
-            // on load (Support wins) so a hand-edited row can't show a name
-            // ticked on both sides.
-            const sup = Array.isArray(row.support_archetypes)
-                ? row.support_archetypes.filter(a => PARTY_ARCHETYPES.includes(a)) : [];
-            opt.support_archetypes = sup;
-            opt.oppose_archetypes = Array.isArray(row.oppose_archetypes)
-                ? row.oppose_archetypes.filter(a => PARTY_ARCHETYPES.includes(a) && !sup.includes(a)) : [];
+            // Party reception. Keep only catalog names mapped to an integer
+            // in the 1–6 scale; anything else is dropped (treated as unset).
+            opt.archetype_values = {};
+            const rawVals = (row.archetype_values && typeof row.archetype_values === 'object'
+                             && !Array.isArray(row.archetype_values)) ? row.archetype_values : {};
+            for (const arch of PARTY_ARCHETYPES) {
+                const v = parseInt(rawVals[arch], 10);
+                if (ARCHETYPE_VALUE_SCALE.includes(v)) opt.archetype_values[arch] = v;
+            }
 
             const startingSet = startingByOption.get(row.id);
             if (startingSet) opt.starting_nations = startingSet;
@@ -856,19 +845,20 @@ function renderOptionCard(idx) {
             <div style="${subDivider}">
                 ${subTitle('🗳️', 'Party Reception')}
                 <p style="color:#888; font-size:0.82rem; margin-bottom:12px;">
-                    When this option is proposed as a policy change, each seated party's archetype decides its vote: a <strong style="color:#5fae5f;">Supporting</strong> archetype votes <strong>YES</strong>, an <strong style="color:#cf6b6b;">Opposing</strong> one votes <strong>NO</strong>, and any archetype on neither list rolls <strong>1D2</strong> (1 = YES, 2 = NO). An archetype can't be on both lists.
+                    Rate how each archetype <strong>values</strong> this option on a <strong>1–6</strong> scale (1 = least, 6 = most). When a policy change is proposed, a seated party votes <strong style="color:#5fae5f;">YES</strong> if it values the proposed option higher than the current law, <strong style="color:#cf6b6b;">NO</strong> if lower. Within this policy, each archetype's values across the options must be <strong>distinct</strong> (a ranking) — leave one as <em>“—”</em> for no opinion (neutral).
                 </p>
-                <div style="display:grid; grid-template-columns:1fr auto auto; gap:6px 18px; align-items:center; max-width:480px;">
-                    <div></div>
-                    <div style="font-size:0.72rem; color:#5fae5f; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Support</div>
-                    <div style="font-size:0.72rem; color:#cf6b6b; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Oppose</div>
+                <div style="display:grid; grid-template-columns:1fr auto; gap:6px 18px; align-items:center; max-width:360px;">
+                    <div style="font-size:0.72rem; color:#888; text-transform:uppercase; letter-spacing:1px; font-weight:bold;">Archetype</div>
+                    <div style="font-size:0.72rem; color:#888; text-transform:uppercase; letter-spacing:1px; font-weight:bold; text-align:center;">Value</div>
                     ${PARTY_ARCHETYPES.map((arch, ai) => {
-                        const sup = Array.isArray(opt.support_archetypes) && opt.support_archetypes.includes(arch);
-                        const opp = Array.isArray(opt.oppose_archetypes)  && opt.oppose_archetypes.includes(arch);
+                        const cur = (opt.archetype_values && ARCHETYPE_VALUE_SCALE.includes(opt.archetype_values[arch]))
+                                    ? opt.archetype_values[arch] : '';
+                        const opts = ['<option value=""' + (cur === '' ? ' selected' : '') + '>—</option>']
+                            .concat(ARCHETYPE_VALUE_SCALE.map(v =>
+                                `<option value="${v}"${cur === v ? ' selected' : ''}>${v}</option>`)).join('');
                         return `
                         <div style="font-size:0.85rem; color:#ccc;">${escapeHtml(arch)}</div>
-                        <div style="text-align:center;"><input type="checkbox" id="b-arch-support-${idx}-${ai}"${sup ? ' checked' : ''} onchange="toggleArchetypePosition(${idx}, ${ai}, 'support', this.checked)"></div>
-                        <div style="text-align:center;"><input type="checkbox" id="b-arch-oppose-${idx}-${ai}"${opp ? ' checked' : ''} onchange="toggleArchetypePosition(${idx}, ${ai}, 'oppose', this.checked)"></div>`;
+                        <div style="text-align:center;"><select id="b-arch-value-${idx}-${ai}" onchange="setArchetypeValue(${idx}, ${ai}, this.value)" style="width:64px;">${opts}</select></div>`;
                     }).join('')}
                 </div>
             </div>
@@ -1259,6 +1249,24 @@ async function savePolicy() {
 
     const isTB = isTargetBasedPolicy();
 
+    // Party Reception: within this policy each archetype's option values must
+    // be distinct (a ranking) so a current-vs-proposed vote can never tie.
+    // Catch a repeated value across the sibling options before any write.
+    for (const arch of PARTY_ARCHETYPES) {
+        const seen = new Map(); // value -> first option index using it
+        for (let i = 0; i < options.length; i++) {
+            const v = options[i].archetype_values ? options[i].archetype_values[arch] : undefined;
+            if (!ARCHETYPE_VALUE_SCALE.includes(v)) continue;
+            if (seen.has(v)) {
+                const a = (options[seen.get(v)].option_name || `Option ${seen.get(v) + 1}`).trim();
+                const b = (options[i].option_name || `Option ${i + 1}`).trim();
+                alert(`Party Reception: "${arch}" gives the value ${v} to both "${a}" and "${b}". Each archetype's values across a policy's options must be distinct.`);
+                return;
+            }
+            seen.set(v, i);
+        }
+    }
+
     const optionPayloads = []; // [{ stateRef, optionData }]
     for (let i = 0; i < options.length; i++) {
         const o = options[i];
@@ -1309,12 +1317,11 @@ async function savePolicy() {
                     sector_rapport_targets: [],
                     sector_turnout_targets: [],
                     sector_weight_targets: [],
-                    // Party reception. Null when empty (matches the
-                    // committee_proposals convention + the NULL-OK CHECK).
-                    // The UI keeps the lists disjoint; the DB CHECK is the
-                    // backstop.
-                    support_archetypes: Array.isArray(o.support_archetypes) && o.support_archetypes.length ? o.support_archetypes : null,
-                    oppose_archetypes: Array.isArray(o.oppose_archetypes) && o.oppose_archetypes.length ? o.oppose_archetypes : null,
+                    // Party reception. Null when no archetype is rated;
+                    // otherwise { archetype: int 1..6 }. Per-policy
+                    // distinctness is validated below before this loop.
+                    archetype_values: (o.archetype_values && Object.keys(o.archetype_values).length)
+                        ? o.archetype_values : null,
                     is_target_based: true,
                 }
             });
@@ -1534,7 +1541,7 @@ function showStatus(msg, type) {
 // Expose functions for HTML onclick/onchange handlers
 window.checkAuth = checkAuth;
 window.syncOptionField = syncOptionField;
-window.toggleArchetypePosition = toggleArchetypePosition;
+window.setArchetypeValue = setArchetypeValue;
 window.switchView = switchView;
 window.filterPolicies = filterPolicies;
 window.populateLawCategories = populateLawCategories;
