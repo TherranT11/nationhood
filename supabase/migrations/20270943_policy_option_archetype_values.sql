@@ -72,6 +72,10 @@ BEGIN
     RETURN true;
 END $$;
 
+-- Idempotent: a prior partial apply may have left this constraint, so
+-- drop-then-add rather than a bare ADD (which throws 42710 on re-run).
+ALTER TABLE public.policy_options
+    DROP CONSTRAINT IF EXISTS policy_options_archetype_values_valid;
 ALTER TABLE public.policy_options
     ADD CONSTRAINT policy_options_archetype_values_valid
     CHECK (_validate_policy_archetype_values(archetype_values));
