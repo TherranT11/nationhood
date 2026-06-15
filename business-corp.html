@@ -1165,15 +1165,8 @@ import { CITY_STATS } from './js/game/city-labels.js';
     (async function setupCompanyChat() {
       const wrap = document.getElementById('bc-chat');
       if (!wrap) return;
-      let isMember = isOwner;
-      if (!isMember) {
-        try {
-          const { data: emp } = await _supabase.from('job_applicants')
-            .select('id').eq('corp_id', corp.id).eq('status', 'hired')
-            .eq('applicant_faction_id', ctx.faction.id).limit(1);
-          isMember = !!(emp && emp.length);
-        } catch (_) { /* default: not a member */ }
-      }
+      // Owner, or a hired employee whose current employer is this corp.
+      const isMember = isOwner || ctx.faction.biz_employer_corp_id === corp.id;
       if (!isMember) { wrap.style.display = 'none'; return; }
 
       wrap.innerHTML = `

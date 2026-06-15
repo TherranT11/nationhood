@@ -33,10 +33,8 @@ AS $$
                AND (f.id = p_uid OR f.linked_user_id = p_uid)
         )
         OR EXISTS (
-            SELECT 1 FROM job_applicants a
-              JOIN factions f ON f.id = a.applicant_faction_id
-             WHERE a.corp_id = p_corp_id
-               AND a.status = 'hired'
+            SELECT 1 FROM factions f
+             WHERE f.biz_employer_corp_id = p_corp_id
                AND (f.id = p_uid OR f.linked_user_id = p_uid)
         )
     );
@@ -84,9 +82,7 @@ BEGIN
        AND f.abandoned_at IS NULL
        AND (
          f.id = (SELECT owner_faction_id FROM entrepreneur_corps WHERE id = p_corp_id)
-         OR EXISTS (SELECT 1 FROM job_applicants a
-                     WHERE a.corp_id = p_corp_id AND a.status = 'hired'
-                       AND a.applicant_faction_id = f.id)
+         OR f.biz_employer_corp_id = p_corp_id
        )
      ORDER BY f.created_at ASC
      LIMIT 1;
