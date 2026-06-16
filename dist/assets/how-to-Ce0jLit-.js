@@ -1,1 +1,0 @@
-import"./supabase-client-BXEzLDpS.js";/* empty css                  */import{i}from"./common-D2-5e1SV.js";import"./preload-helper-BXl3LOEh.js";import"./government-structure-DBjJ7E-l.js";import"./government-types-BeJIFjWQ.js";import"./factions-C2s734Ze.js";import"./utils-CzgKGX6o.js";i("howto",function(){});
