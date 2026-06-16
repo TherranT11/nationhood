@@ -15,52 +15,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm install
-      - run: npx vite build
-      - name: Generate static wiki pages
-        run: node scripts/generate-wiki-pages.js
-      - name: Copy CNAME to dist
-        run: cp CNAME dist/CNAME
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the holding page + domain binding
+        run: mkdir -p dist && cp index.html CNAME .nojekyll dist/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
       - id: deployment
         uses: actions/deploy-pages@v4
-
-  deploy-functions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with:
-          # Pin an explicit version so setup-cli downloads it directly and
-          # never makes the unauthenticated "resolve latest release" GitHub
-          # API call that was failing on shared runners ("Failed to resolve
-          # latest Supabase CLI release: rate limit exceeded"). Bump as needed.
-          version: 2.101.0
-      - run: supabase functions deploy advance-tick --no-verify-jwt --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # JWT verification ON for this one — only authenticated users
-      # (anyone with a valid Supabase session) can trigger a static
-      # wiki rebuild. The wiki_pages RLS policy already gates who can
-      # actually edit pages, so any authenticated user reaching this
-      # endpoint is by definition allowed to fire it.
-      - run: supabase functions deploy trigger-wiki-rebuild --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

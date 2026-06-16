@@ -1,8 +1,0 @@
-node_modules/
-dist/
-supabase/.temp/
-.env
-.env.main
-.env.work
-.env.local
-snapshots/
