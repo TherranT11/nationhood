@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Legislature · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--chip:#F4F3EF;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
+  .app{display:flex;min-height:100vh}
+
+  /* sidebar (shared layout with the other in-game screens) */
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .brand__txt .party{font-weight:700}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .nav__i.active svg{color:var(--indigo)}
+  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
+  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+  .me b{color:var(--ink);font-weight:700}
+  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
+  .logout:hover{color:var(--red)}
+  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* main */
+  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1000px}
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .phead{margin-bottom:18px}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(26px,4vw,36px);letter-spacing:-.03em;margin-top:4px}
+  .summary{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+  .scell{border:1px solid var(--line);border-radius:11px;padding:10px 14px;background:var(--surface);min-width:120px;flex:1}
+  .scell .k{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .scell .v{font-weight:800;font-size:18px;letter-spacing:-.02em;margin-top:3px}
+  .scell .v.ind{color:var(--indigo)}
+
+  .secthd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:24px 4px 12px;display:flex;align-items:center;gap:8px}
+  .secthd .ct{background:var(--ink);color:#fff;border-radius:20px;font-size:10px;padding:1px 8px}
+
+  /* bill card */
+  .bill{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
+  .bill__hd{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+  .bill__hd h2{font-weight:900;font-size:20px;letter-spacing:-.02em;line-height:1.1;flex:1;min-width:200px}
+  .status{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:20px;flex:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .status.pass{color:var(--green);background:var(--green-soft)}
+  .status.open{color:var(--amber);background:var(--amber-soft)}
+  .status.you{color:var(--indigo);background:var(--indigo-soft)}
+  .status.fail{color:var(--red);background:var(--red-soft)}
+  .status .dotp{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .meta{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:10px}
+  .author{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted);background:var(--chip);padding:5px 11px;border-radius:20px}
+  .author .dot{width:9px;height:9px;border-radius:50%;background:var(--c)}
+  .eff{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:4px 9px;border-radius:20px}
+  .eff.good{color:var(--green);background:var(--green-soft)} .eff.bad{color:var(--red);background:var(--red-soft)}
+
+  /* your vote */
+  .yourvote{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px;padding:13px 16px;background:var(--bg);border:1px solid var(--line);border-radius:12px}
+  .yv-label{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .yv-label b{color:var(--ink)}
+  .yv-btns{display:flex;gap:9px;margin-left:auto;flex-wrap:wrap}
+  .vb{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:9px 15px;border-radius:9px;cursor:pointer;border:1.5px solid;background:var(--surface);transition:transform .12s,background .15s,color .15s}
+  .vb:hover{transform:translateY(-1px)}
+  .vb.yes{color:var(--green);border-color:var(--green)} .vb.yes:hover{background:var(--green-soft)} .vb.yes.active{background:var(--green);color:#fff}
+  .vb.no{color:var(--red);border-color:var(--red)} .vb.no:hover{background:var(--red-soft)} .vb.no.active{background:var(--red);color:#fff}
+  .vb.abs{color:var(--muted);border-color:var(--line)} .vb.abs:hover{background:var(--chip)} .vb.abs.active{background:#A8A39A;border-color:#A8A39A;color:#fff}
+
+  /* tally */
+  .tally{margin:30px 0 6px}
+  .tbar{position:relative;height:26px}
+  .tbar .clip{display:flex;width:100%;height:100%;border-radius:7px;overflow:hidden;background:#EEECE7}
+  .seg{height:100%;transition:width .35s ease}
+  .seg.aye{background:var(--green)} .seg.nay{background:var(--red)} .seg.abs{background:#A8A39A} .seg.pend{background:#E4E2DD}
+  .maj{position:absolute;top:-24px;bottom:-6px;width:2px;background:var(--ink);z-index:2}
+  .maj::after{content:"141 ▾";position:absolute;top:0;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.04em;color:var(--ink);background:var(--surface);padding:0 4px;white-space:nowrap}
+  .tlegend{display:flex;flex-wrap:wrap;gap:14px;margin-top:11px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--muted)}
+  .tlegend span{display:inline-flex;align-items:center;gap:6px}
+  .tlegend b{color:var(--ink)}
+  .tlegend i{width:9px;height:9px;border-radius:2px;display:block}
+  .tlegend i.aye{background:var(--green)} .tlegend i.nay{background:var(--red)} .tlegend i.abs{background:#A8A39A} .tlegend i.pend{background:#E4E2DD;border:1px solid var(--line)}
+  .tlegend .thr{margin-left:auto;color:var(--soft)}
+
+  /* party positions */
+  .plabel{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-top:18px}
+  .parties{list-style:none;margin:8px 0 0;border-top:1px solid var(--line)}
+  .prow{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .prow:last-child{border-bottom:none}
+  .prow .dot{width:10px;height:10px;border-radius:50%;background:var(--c);flex:none}
+  .prow .pn{font-weight:700;font-size:14px;flex:1;min-width:0}
+  .prow .ps{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);width:42px;text-align:right;flex:none}
+  .pos{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:4px 11px;border-radius:20px;flex:none;width:74px;text-align:center}
+  .pos.aye{color:var(--green);background:var(--green-soft)}
+  .pos.nay{color:var(--red);background:var(--red-soft)}
+  .pos.abs{color:var(--soft);background:var(--chip)}
+  .pos.pend{color:var(--soft);background:transparent;border:1px dashed var(--line)}
+
+  /* collapsible articles */
+  details.arts{margin-top:14px;border-top:1px solid var(--line);padding-top:6px}
+  details.arts summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:10px 0;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  details.arts summary::-webkit-details-marker{display:none}
+  details.arts summary .ch{width:16px;height:16px;stroke:var(--soft);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s;margin-left:auto}
+  details.arts[open] summary .ch{transform:rotate(90deg)}
+  details.arts summary .cnt{background:var(--chip);color:var(--muted);border-radius:20px;padding:1px 8px;font-size:10px}
+  .art{display:flex;gap:13px;padding:11px 0;border-top:1px dashed var(--line)}
+  .art__n{flex:none;width:26px;height:26px;border-radius:7px;background:var(--indigo-soft);color:var(--indigo);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:11px;font-weight:700}
+  .art__b{flex:1;min-width:0}
+  .art__b b{font-weight:700;font-size:14px}
+  .art__b p{font-size:13px;color:var(--muted);margin-top:2px;line-height:1.5}
+  .art__b .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+
+  /* upcoming agenda */
+  .agenda{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:6px 22px}
+  .arow{display:flex;align-items:center;gap:14px;padding:15px 0;border-bottom:1px solid var(--line)}
+  .arow:last-child{border-bottom:none}
+  .when{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:5px 10px;border-radius:8px;flex:none;width:78px;text-align:center}
+  .ab{flex:1;min-width:0}
+  .ab b{font-weight:700;font-size:15px;letter-spacing:-.01em}
+  .ab p{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .arow .author{flex:none}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast b{color:#a99dff}
+
+  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}.arow{flex-wrap:wrap}.yv-btns{margin-left:0}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front Sessau"><div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div></div>
+    <nav class="nav">
+      <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i" href="/test/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/test/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i active" href="/test/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
+    </nav>
+    <div class="side__foot"><div class="me"><span class="me__dot"></span><span class="label">Leader · <b>Allen Droulez</b></span></div><button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button></div>
+  </aside>
+
+  <main class="main">
+    <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Government</span>
+
+    <div class="phead">
+      <span class="eye">Legislature</span>
+      <h1>The National Assembly</h1>
+      <div class="summary">
+        <div class="scell"><div class="k">Session</div><div class="v">Spring 1980</div></div>
+        <div class="scell"><div class="k">Seats</div><div class="v">280</div></div>
+        <div class="scell"><div class="k">Majority needed</div><div class="v">141</div></div>
+        <div class="scell"><div class="k">Government bloc</div><div class="v ind">154</div></div>
+      </div>
+    </div>
+
+    <!-- ON THE FLOOR -->
+    <div class="secthd">On the Floor <span class="ct">2</span></div>
+
+    <!-- BILL 1 -->
+    <article class="bill" id="b1">
+      <div class="bill__hd">
+        <h2>Energy Independence Act</h2>
+        <span class="status"></span>
+      </div>
+      <div class="meta">
+        <span class="author" style="--c:#5546E8"><span class="dot"></span>Front Sessau</span>
+        <span class="eff good">Oil ▲ slow</span>
+        <span class="eff bad">Debt ▲</span>
+      </div>
+
+      <div class="yourvote">
+        <span class="yv-label">Your vote · <b>Front Sessau</b> · 114 seats</span>
+        <div class="yv-btns">
+          <button class="vb yes" data-vote="aye">Vote Yes</button>
+          <button class="vb no" data-vote="nay">Vote No</button>
+          <button class="vb abs" data-vote="abs">Abstain</button>
+        </div>
+      </div>
+
+      <div class="tally">
+        <div class="tbar">
+          <div class="clip">
+            <span class="seg aye"></span><span class="seg abs"></span><span class="seg pend"></span><span class="seg nay"></span>
+          </div>
+          <span class="maj" style="left:50.36%"></span>
+        </div>
+        <div class="tlegend">
+          <span><i class="aye"></i>Aye <b class="n-aye">0</b></span>
+          <span><i class="nay"></i>Nay <b class="n-nay">0</b></span>
+          <span><i class="abs"></i>Abstain <b class="n-abs">0</b></span>
+          <span><i class="pend"></i>Pending <b class="n-pend">0</b></span>
+          <span class="thr">141 to pass</span>
+        </div>
+      </div>
+
+      <div class="plabel">Other parties</div>
+      <ul class="parties">
+        <li class="prow" style="--c:#C42B2B"><span class="dot"></span><span class="pn">Workers' Party</span><span class="ps">40</span><span class="pos aye">Aye</span></li>
+        <li class="prow" style="--c:#16915a"><span class="dot"></span><span class="pn">Centre Union</span><span class="ps">50</span><span class="pos nay">Nay</span></li>
+        <li class="prow" style="--c:#1f86d6"><span class="dot"></span><span class="pn">Liberal Alliance</span><span class="ps">44</span><span class="pos nay">Nay</span></li>
+        <li class="prow" style="--c:#2b3a7a"><span class="dot"></span><span class="pn">National Rally</span><span class="ps">32</span><span class="pos abs">Abstain</span></li>
+      </ul>
+
+      <details class="arts">
+        <summary>Articles <span class="cnt">3</span><svg class="ch" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>
+        <div class="art"><span class="art__n">I</span><div class="art__b"><b>Strategic Refineries</b><p>Bring the nation's three largest refineries under state control to secure supply.</p><div class="pills"><span class="eff bad">Image ▼</span></div></div></div>
+        <div class="art"><span class="art__n">II</span><div class="art__b"><b>National Reserve</b><p>Establish a ninety-day strategic oil reserve, funded from the Treasury.</p><div class="pills"><span class="eff bad">Debt ▲</span></div></div></div>
+        <div class="art"><span class="art__n">III</span><div class="art__b"><b>Nuclear Programme</b><p>Commission four new reactors to cut import dependence over the coming decade.</p><div class="pills"><span class="eff good">Oil ▲ (slow)</span></div></div></div>
+      </details>
+    </article>
+
+    <!-- BILL 2 -->
+    <article class="bill" id="b2">
+      <div class="bill__hd">
+        <h2>Thirty-Five Hour Week Act</h2>
+        <span class="status"></span>
+      </div>
+      <div class="meta">
+        <span class="author" style="--c:#C42B2B"><span class="dot"></span>Workers' Party</span>
+        <span class="eff good">Welfare ▲</span>
+        <span class="eff bad">Prosperity ▼</span>
+      </div>
+
+      <div class="yourvote">
+        <span class="yv-label">Your vote · <b>Front Sessau</b> · 114 seats</span>
+        <div class="yv-btns">
+          <button class="vb yes" data-vote="aye">Vote Yes</button>
+          <button class="vb no" data-vote="nay">Vote No</button>
+          <button class="vb abs" data-vote="abs">Abstain</button>
+        </div>
+      </div>
+
+      <div class="tally">
+        <div class="tbar">
+          <div class="clip">
+            <span class="seg aye"></span><span class="seg abs"></span><span class="seg pend"></span><span class="seg nay"></span>
+          </div>
+          <span class="maj" style="left:50.36%"></span>
+        </div>
+        <div class="tlegend">
+          <span><i class="aye"></i>Aye <b class="n-aye">0</b></span>
+          <span><i class="nay"></i>Nay <b class="n-nay">0</b></span>
+          <span><i class="abs"></i>Abstain <b class="n-abs">0</b></span>
+          <span><i class="pend"></i>Pending <b class="n-pend">0</b></span>
+          <span class="thr">141 to pass</span>
+        </div>
+      </div>
+
+      <div class="plabel">Other parties</div>
+      <ul class="parties">
+        <li class="prow" style="--c:#C42B2B"><span class="dot"></span><span class="pn">Workers' Party</span><span class="ps">40</span><span class="pos aye">Aye</span></li>
+        <li class="prow" style="--c:#16915a"><span class="dot"></span><span class="pn">Centre Union</span><span class="ps">50</span><span class="pos nay">Nay</span></li>
+        <li class="prow" style="--c:#1f86d6"><span class="dot"></span><span class="pn">Liberal Alliance</span><span class="ps">44</span><span class="pos pend">Pending</span></li>
+        <li class="prow" style="--c:#2b3a7a"><span class="dot"></span><span class="pn">National Rally</span><span class="ps">32</span><span class="pos pend">Pending</span></li>
+      </ul>
+
+      <details class="arts">
+        <summary>Articles <span class="cnt">3</span><svg class="ch" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></summary>
+        <div class="art"><span class="art__n">I</span><div class="art__b"><b>Statutory Week</b><p>Cap the standard working week at thirty-five hours nationwide.</p></div></div>
+        <div class="art"><span class="art__n">II</span><div class="art__b"><b>Overtime &amp; Pay</b><p>Mandate premium pay beyond the cap and protect workers' take-home wages.</p><div class="pills"><span class="eff good">Welfare ▲</span></div></div></div>
+        <div class="art"><span class="art__n">III</span><div class="art__b"><b>Enforcement</b><p>Create a labour inspectorate to police the limit across industry.</p><div class="pills"><span class="eff bad">Prosperity ▼</span></div></div></div>
+      </details>
+    </article>
+
+    <!-- UPCOMING AGENDA -->
+    <div class="secthd">Upcoming Agenda <span class="ct">4</span></div>
+    <div class="agenda">
+      <div class="arow">
+        <span class="when">Wk 24</span>
+        <div class="ab"><b>Industrial Modernisation Bill</b><p>Grants and retooling for the failing factories of the north.</p></div>
+        <span class="author" style="--c:#5546E8"><span class="dot"></span>Front Sessau</span>
+      </div>
+      <div class="arow">
+        <span class="when">Wk 25</span>
+        <div class="ab"><b>Civil Liberties Charter</b><p>Coalition policy — expands civil protections. Image ▲, Order ▼.</p></div>
+        <span class="author" style="--c:#1f86d6"><span class="dot"></span>Liberal Alliance</span>
+      </div>
+      <div class="arow">
+        <span class="when">Wk 26</span>
+        <div class="ab"><b>Deficit Cap Amendment</b><p>Binds the government to a deficit below 3% of GDP.</p></div>
+        <span class="author" style="--c:#16915a"><span class="dot"></span>Centre Union</span>
+      </div>
+      <div class="arow">
+        <span class="when">Spring</span>
+        <div class="ab"><b>Border Security Act</b><p>Tightens the borders and immigration controls. Order ▲, Image ▼.</p></div>
+        <span class="author" style="--c:#2b3a7a"><span class="dot"></span>National Rally</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  var bills={
+    b1:{base:{aye:40,nay:94,abs:32}, otherPending:0, front:114, vote:null, name:"Energy Independence Act"},
+    b2:{base:{aye:40,nay:50,abs:0},  otherPending:76, front:114, vote:null, name:"Thirty-Five Hour Week Act"}
+  };
+  function pct(n){return (n/280*100)+'%';}
+  function render(id){
+    var b=bills[id], el=document.getElementById(id);
+    var aye=b.base.aye+(b.vote==='aye'?b.front:0);
+    var nay=b.base.nay+(b.vote==='nay'?b.front:0);
+    var abs=b.base.abs+(b.vote==='abs'?b.front:0);
+    var pending=b.otherPending+(b.vote?0:b.front);
+    el.querySelector('.seg.aye').style.width=pct(aye);
+    el.querySelector('.seg.abs').style.width=pct(abs);
+    el.querySelector('.seg.pend').style.width=pct(pending);
+    el.querySelector('.seg.nay').style.width=pct(nay);
+    el.querySelector('.n-aye').textContent=aye;
+    el.querySelector('.n-nay').textContent=nay;
+    el.querySelector('.n-abs').textContent=abs;
+    el.querySelector('.n-pend').textContent=pending;
+    var cls,txt;
+    if(aye>=141){cls='pass';txt='Passing';}
+    else if(aye+pending<141){cls='fail';txt='Failing';}
+    else if(b.vote===null){cls='you';txt='Your vote decides';}
+    else {cls='open';txt='Voting open';}
+    var s=el.querySelector('.status');
+    s.className='status '+cls;
+    s.innerHTML='<span class="dotp"></span>'+txt;
+    el.querySelectorAll('.vb').forEach(function(btn){btn.classList.toggle('active', btn.dataset.vote===b.vote);});
+  }
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3200);}
+  var WORD={aye:'votes <b>Yes</b>',nay:'votes <b>No</b>',abs:'<b>abstains</b>'};
+  Object.keys(bills).forEach(function(id){
+    var el=document.getElementById(id);
+    el.querySelectorAll('.vb').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        var v=btn.dataset.vote;
+        if(bills[id].vote===v){bills[id].vote=null;ping('Front Sessau withdraws its vote on '+bills[id].name+'.');}
+        else{bills[id].vote=v;ping('Front Sessau '+WORD[v]+' on '+bills[id].name+' — 114 seats cast.');}
+        render(id);
+      });
+    });
+    render(id);
+  });
+  document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
+  // sidebar nav: linked items navigate; the rest just highlight (not wired)
+  document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
+    if(!i.getAttribute('href')){e.preventDefault();document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')});i.classList.add('active');}
+  });});
+</script>
+
+<script type="module">
+  import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
+  mountTopbar();
+  var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
+  initSidebar();
+</script>
+</body>
+</html>
