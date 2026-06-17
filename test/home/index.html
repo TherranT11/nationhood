@@ -52,8 +52,8 @@
   .card .go{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-top:16px;display:inline-flex;align-items:center;gap:6px}
   .tag{position:absolute;top:18px;right:18px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:4px 11px;border-radius:20px;font-weight:700}
   .tag.start{color:#fff;background:var(--accent)}
-  .tag.live{color:var(--accent);border:1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);display:flex;align-items:center;gap:6px;font-weight:700}
-  .tag.live .pd{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.8s infinite}
+  .tag.live,.tag.progress{color:var(--accent);border:1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);display:flex;align-items:center;gap:6px;font-weight:700}
+  .tag.live .pd,.tag.progress .pd{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.8s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   .card.sub{padding:20px}
   .card.sub h2{font-size:19px}
@@ -117,11 +117,11 @@
 
     <div class="menu">
       <button class="card" id="tutorial" style="--accent:#5546E8;--tint:#ECE9FD">
-        <span class="tag start">Start Here</span>
+        <span class="tag start" id="tutorialTag">Start Here</span>
         <span class="card__ico"><svg viewBox="0 0 24 24"><path d="M5 3v18M5 4h11l-2 4 2 4H5"/></svg></span>
         <h2>Tutorial</h2>
         <p>Take power as the Front Sessau in 1980. Form a government, weather the oil shock, and learn to rule.</p>
-        <span class="go">Begin &rarr;</span>
+        <span class="go" id="tutorialGo">Begin &rarr;</span>
       </button>
 
       <button class="card" style="--accent:#1f9d57;--tint:#E5F6EC" disabled>
@@ -152,7 +152,7 @@
 
   <div class="confirm-bar" id="confirm-bar">
     <div class="confirm-in">
-      <span class="confirm-label">Start the <b>Tutorial</b>?</span>
+      <span class="confirm-label" id="confirmLabel">Start the <b>Tutorial</b>?</span>
       <div class="confirm-btns">
         <button class="confirm-cancel" id="confirm-cancel" type="button">Cancel</button>
         <button class="confirm-btn" id="confirm-btn" type="button">Confirm?</button>
@@ -160,10 +160,21 @@
     </div>
   </div>
 <script type="module">
-  import { requireUser, logout } from '/test/tutorial/shell.js';
+  import { requireUser, getTutorialProgress, logout } from '/test/tutorial/shell.js';
 
-  // Guard: only signed-in players can see this page.
-  requireUser();
+  // Guard + resume state: only signed-in players see this page, and the
+  // Tutorial card shows "In Progress" once they've chosen a party.
+  (async () => {
+    const user = await requireUser();
+    if (!user) return; // not signed in (redirected) or keys not configured
+    const progress = await getTutorialProgress(user.id);
+    if (!progress || !progress.party) return; // not started yet: leave defaults
+    const tag = document.getElementById('tutorialTag');
+    tag.className = 'tag progress';
+    tag.innerHTML = '<span class="pd"></span>In Progress';
+    document.getElementById('tutorialGo').innerHTML = 'Continue &rarr;';
+    document.getElementById('confirmLabel').innerHTML = 'Continue the <b>Tutorial</b>?';
+  })();
 
   // Tutorial: choosing it reveals the confirm bar; Confirm enters the tutorial.
   const tutorial = document.getElementById('tutorial');

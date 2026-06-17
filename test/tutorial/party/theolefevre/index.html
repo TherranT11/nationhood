@@ -52,6 +52,22 @@
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
   .mod__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:16px}
 
+  /* tutorial coach bubble (matches the Party + Government screens) */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .coach::after{content:"";position:absolute;left:36px;bottom:-8px;width:17px;height:17px;background:#6a5cec;transform:rotate(45deg);border-radius:3px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0 0 11px;max-width:64ch}
+  .coach p:last-child{margin-bottom:0}
+  .coach b{font-weight:800}
+
+  /* current task */
+  .task{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .task__v{font-weight:800;font-size:18px;letter-spacing:-.01em;color:var(--soft)}
+  .task__v.set{color:var(--ink)}
+  .task__btn{font-family:'Space Mono',monospace;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:10px;padding:11px 18px;cursor:pointer;transition:transform .12s,filter .15s}
+  .task__btn:hover{transform:translateY(-1px);filter:brightness(1.07)}
+
   /* hero */
   .hero{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
   .hero__pic{width:62px;height:62px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;background:var(--indigo-soft);color:var(--indigo);font-family:'Space Mono',monospace}
@@ -100,9 +116,6 @@
   .act.promote{border-color:var(--indigo);background:var(--indigo);color:#fff}
   .act.promote .act__d{color:rgba(255,255,255,.85)}
   .act.promote:hover{filter:brightness(1.06)}
-  .act.assign{border-color:var(--indigo);color:var(--indigo)}
-  .act.assign:hover{background:var(--indigo-soft)}
-  .act.assign .act__d{color:var(--muted)}
 
   /* political modifiers */
   .modf{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:11px;padding:13px 15px;margin-bottom:10px}
@@ -163,6 +176,12 @@
   <main class="main">
     <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Your Party</span>
 
+    <div class="coach">
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>This is your Politician page. Each Politician has one. You can see Théo's history, his skills, and his current task. Remember, getting things done takes your entire party. As Minister of the Interior, Théo has several unique actions that other party members and other ministers do not have.</p>
+      <p>Let's assign Théo a task now. Since Théo is a member of your party, you can assign him a task to carry out in his post as Interior Minister. <b>Assign him the task of Labor Talks now.</b></p>
+    </div>
+
     <!-- hero + stats -->
     <section class="mod">
       <div class="hero">
@@ -173,7 +192,6 @@
           <div class="role">Interior Minister · Front Sessau</div>
           <div class="htags">
             <span class="tag party">Front Sessau</span>
-            <span class="tag busy">● Occupied — Labour Unrest</span>
             <span class="tag scandal">⚑ Scandal</span>
           </div>
         </div>
@@ -189,6 +207,15 @@
       </div>
     </section>
 
+    <!-- current task -->
+    <section class="mod">
+      <div class="mod__hd">Current Task</div>
+      <div class="task">
+        <span class="task__v" id="taskVal">None Assigned</span>
+        <button class="task__btn" id="assignBtn" type="button">Assign</button>
+      </div>
+    </section>
+
     <!-- actions -->
     <section class="mod">
       <div class="mod__hd">Actions</div>
@@ -200,10 +227,6 @@
         <button class="act promote" data-t="Promote Théo — give him a higher office or party rank.">
           <div class="act__t"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Promote</div>
           <div class="act__d">Elevate him to a higher office or party rank.</div>
-        </button>
-        <button class="act assign" data-t="Assign Théo — he is currently working the Labour Unrest crisis.">
-          <div class="act__t"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Assign</div>
-          <div class="act__d">Set his action this week (now on Labour Unrest).</div>
         </button>
       </div>
     </section>
@@ -250,6 +273,16 @@
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},4000);}
   document.querySelectorAll('.act').forEach(function(b){b.addEventListener('click',function(){ping(b.dataset.t.replace(/^(\w+)/,'<b>$1</b>'));});});
+
+  // Current task: the tutorial assigns Théo to Labor Talks in his Interior post.
+  var assignBtn=document.getElementById('assignBtn'),taskVal=document.getElementById('taskVal');
+  assignBtn.addEventListener('click',function(){
+    taskVal.textContent='Labor Talks';
+    taskVal.classList.add('set');
+    assignBtn.textContent='Reassign';
+    ping('<b>Assigned</b>: Théo Lefèvre → Labor Talks.');
+  });
+
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/party/';});
   // sidebar nav: linked items navigate; the rest just highlight (not wired)
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
