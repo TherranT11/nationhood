@@ -144,7 +144,7 @@
   let tt;
   function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => toast.classList.remove('show'), 3400); }
   document.querySelectorAll('.card').forEach((c) => {
-    c.addEventListener('click', () => ping(c.dataset.t.replace(/^(\w+)/, '<b>$1</b>')));
+    c.addEventListener('click', () => ping((c.dataset.t || '').replace(/^(\w+)/, '<b>$1</b>')));
   });
 
   // Log out: Supabase sign out, then back to the landing page.
