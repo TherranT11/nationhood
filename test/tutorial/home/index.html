@@ -28,6 +28,7 @@
   .brand .who{min-width:0}
   .brand .name{font-weight:800;font-size:15px;letter-spacing:-.01em;line-height:1.1}
   .brand .sub{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-top:3px}
+  .brand .party{font-weight:700}
   .brand .date{margin-top:13px;font-weight:800;font-size:13.5px;letter-spacing:-.01em;color:var(--ink)}
 
   .nav{display:flex;flex-direction:column;gap:2px;margin-top:14px}
@@ -64,7 +65,7 @@
           <img class="flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front de Sessau">
           <div class="who">
             <div class="name">Front de Sessau</div>
-            <div class="sub">Governing · Sessau</div>
+            <div class="sub"><span class="party" id="party">Governing</span> · Sessau</div>
           </div>
         </div>
         <div class="date">1st Week of May, 1980</div>
@@ -114,14 +115,42 @@
     <main class="main"></main>
   </div>
 
-  <script>
+  <script type="module">
+    import { supabase, isConfigured } from '/test/supabase.js';
+
     // Hide the flag gracefully if the image is ever missing.
-    var flag = document.getElementById('flag');
+    const flag = document.getElementById('flag');
     if (flag) {
-      var hide = function(){ flag.style.display = 'none'; };
+      const hide = () => { flag.style.display = 'none'; };
       flag.addEventListener('error', hide);
       if (flag.complete && flag.naturalWidth === 0) hide();
     }
+
+    // Show the party the player chose in the tutorial, in its colour.
+    // (Liberal is presented as "Centrist" here.)
+    const PARTY = {
+      Nationalist: { label: 'Nationalist', color: '#243b6b' }, // blue
+      Labour:      { label: 'Labour',      color: '#c42b2b' }, // red
+      Liberal:     { label: 'Centrist',    color: '#c2890b' }, // yellow
+    };
+    const partyEl = document.getElementById('party');
+    (async () => {
+      if (!isConfigured) return; // keep the default label until keys are set
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { window.location.href = '/test/login/'; return; }
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('tutorial_party')
+          .eq('id', session.user.id)
+          .single();
+        if (error) return; // keep the default label
+        const p = PARTY[data && data.tutorial_party];
+        if (p) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+      } catch (err) {
+        // keep the default label
+      }
+    })();
   </script>
 </body>
 </html>
