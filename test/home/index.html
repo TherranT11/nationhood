@@ -59,6 +59,11 @@
   .card.sub h2{font-size:19px}
   .card.sub .card__ico{width:40px;height:40px;margin-bottom:13px}
 
+  /* disabled card: greyed out, not yet playable */
+  .card:disabled{opacity:.45;cursor:not-allowed}
+  .card:disabled:hover{transform:none;border-color:var(--line);box-shadow:none}
+  .card:disabled:hover::before{opacity:0}
+
   .foot{margin-top:auto;padding-top:28px;text-align:center;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;color:var(--soft)}
   .foot a{color:var(--ink);text-decoration:none}.foot a:hover{text-decoration:underline}
 
@@ -98,7 +103,7 @@
         <span class="go">Begin &rarr;</span>
       </button>
 
-      <button class="card" style="--accent:#1f9d57;--tint:#E5F6EC" data-t="Entering the live persistent world…">
+      <button class="card" style="--accent:#1f9d57;--tint:#E5F6EC" disabled>
         <span class="tag live"><span class="pd"></span>Live</span>
         <span class="card__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span>
         <h2>Join the Online Game</h2>
@@ -106,14 +111,14 @@
         <span class="go">Enter the world &rarr;</span>
       </button>
 
-      <button class="card sub" style="--accent:#E8820E;--tint:#FCEFDD" data-t="About Nationhood.">
+      <button class="card sub" style="--accent:#E8820E;--tint:#FCEFDD" disabled>
         <span class="card__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></span>
         <h2>About</h2>
         <p>What Nationhood is, who's behind it, and how it all works.</p>
         <span class="go">Learn more &rarr;</span>
       </button>
 
-      <button class="card sub" style="--accent:#1f86d6;--tint:#E3F1FB" data-t="Opening the Wiki.">
+      <button class="card sub" style="--accent:#1f86d6;--tint:#E3F1FB" disabled>
         <span class="card__ico"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg></span>
         <h2>Wiki</h2>
         <p>Every system, nation, and mechanic, documented.</p>
