@@ -338,6 +338,12 @@
 
 <script type="module">
   import { initSidebar } from '/test/tutorial/shell.js';
+
+  // If no government has been formed yet, this view doesn't apply: go form one.
+  window.addEventListener('nationhood:gov', (e) => {
+    if (!e.detail) window.location.replace('/test/tutorial/government/');
+  });
+
   initSidebar();
 </script>
 </body>

@@ -21,6 +21,11 @@ alter table public.profiles
   add column if not exists tutorial_party text
   check (tutorial_party in ('Labour', 'Nationalist', 'Liberal'));
 
+-- Whether the player has formed their government in the tutorial. Once true,
+-- the Government screen shows the standard view instead of the formation UI.
+alter table public.profiles
+  add column if not exists tutorial_government_formed boolean not null default false;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 
