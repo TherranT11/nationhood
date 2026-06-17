@@ -132,8 +132,8 @@
   </div></div>
 
 <script type="module">
-  import { supabase, isConfigured } from '/test/supabase.js';
-  import { requireUser, getTutorialProgress } from '/test/tutorial/shell.js';
+  import { isConfigured } from '/test/supabase.js';
+  import { requireUser, getTutorialProgress, updateProfile } from '/test/tutorial/shell.js';
 
   const begin = document.getElementById('begin');
   const chosen = document.getElementById('chosen');
@@ -196,12 +196,9 @@
     begin.style.pointerEvents = 'none';
     chosen.innerHTML = 'Saving your choice&hellip;';
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ tutorial_party: sel })
-        .eq('id', user.id);
-      if (error) {
-        chosen.textContent = 'Could not save: ' + error.message;
+      const ok = await updateProfile({ tutorial_party: sel }); // → tutorial_state.party via the merge RPC
+      if (!ok) {
+        chosen.textContent = 'Could not save. Please try again.';
         saving = false;
         begin.style.pointerEvents = 'auto';
         return;

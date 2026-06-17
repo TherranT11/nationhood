@@ -37,27 +37,28 @@ export async function requireUser() {
 // callers keep their defaults rather than act on bad data.
 export async function getTutorialProgress(userId) {
   try {
-    // select('*') so a not-yet-migrated tutorial column degrades gracefully
-    // (the field is simply absent) instead of erroring the whole read.
+    // select('*') so a not-yet-migrated DB degrades gracefully: if tutorial_state
+    // is absent, `s` falls back to {} and every field uses its default.
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
     if (error || !data) return null;
+    const s = data.tutorial_state || {}; // all tutorial fields live in one jsonb blob
     return {
-      party: data.tutorial_party,
-      governmentFormed: !!data.tutorial_government_formed,
-      theoTask: data.tutorial_theo_task || null,
-      actions: data.tutorial_party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
-      coalition: data.tutorial_coalition || null,
-      billVotes: data.tutorial_bill_votes || {},
-      week: data.tutorial_week ?? 22, // tutorial opens on week 22
-      crisis: data.tutorial_crisis || null,
-      floorBill: data.tutorial_floor_bill || null,
-      legislation: data.tutorial_legislation || null,
-      partyPopularity: data.tutorial_party_popularity ?? 38,
-      confidenceAdj: data.tutorial_confidence_adj ?? 0,
+      party: s.party,
+      governmentFormed: !!s.government_formed,
+      theoTask: s.theo_task || null,
+      actions: s.party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
+      coalition: s.coalition || null,
+      billVotes: s.bill_votes || {},
+      week: s.week ?? 22, // tutorial opens on week 22
+      crisis: s.crisis || null,
+      floorBill: s.floor_bill || null,
+      legislation: s.legislation || null,
+      partyPopularity: s.party_popularity ?? 38,
+      confidenceAdj: s.confidence_adj ?? 0,
     };
   } catch (err) {
     return null;
@@ -134,44 +135,25 @@ export function renderPartyActions(n) {
   if (chip) chip.textContent = label;
 }
 
-// The single write path for the tutorial's per-player profile flags. Applies a
-// partial patch to the signed-in player's row and returns true on success (or
-// with no keys, so local dev still flows). Returns false — rather than
-// redirecting — when there's no session, so a caller mid-action can offer a
-// retry instead of throwing the player to login.
-//
-// Resilient to an un-migrated column: if the database rejects the update because
-// a column doesn't exist, that column is dropped and the rest retried — so a
-// partially-migrated DB degrades a single feature (its field isn't saved)
-// instead of failing the whole write (and blocking Next Week / forming / etc.).
+// The single write path for the tutorial's per-player state. Callers pass a
+// partial patch keyed by the legacy tutorial_* names (e.g. tutorial_party_actions);
+// this strips the prefix and merges the fields into the player's tutorial_state
+// jsonb atomically (the tutorial_merge RPC). Returns true on success (or with no
+// keys / local dev). Returns false — rather than redirecting — when there's no
+// session, so a caller mid-action can offer a retry instead of bouncing to login.
+// One column → a write can never fail on a missing column.
 export async function updateProfile(patch) {
   if (!isConfigured) return true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
-    const p = { ...patch };
-    while (Object.keys(p).length) {
-      const { error } = await supabase.from('profiles').update(p).eq('id', session.user.id);
-      if (!error) return true;
-      const col = missingColumn(error, p);
-      if (!col) return false;                     // a real error, not a missing column
-      delete p[col];                              // skip the un-migrated column, retry the rest
-      console.warn('updateProfile: skipping un-migrated column "' + col + '" — run supabase/schema.sql');
-    }
-    return false;
+    const merged = {};
+    Object.keys(patch).forEach((k) => { merged[k.replace(/^tutorial_/, '')] = patch[k]; });
+    const { error } = await supabase.rpc('tutorial_merge', { patch: merged });
+    return !error;
   } catch (err) {
     return false;
   }
-}
-
-// Find the first quoted identifier in a DB error that is also a key in the patch
-// (PostgREST: "Could not find the 'x' column…"; Postgres: column "x" does not
-// exist). Returns null when the error isn't about a column we sent.
-function missingColumn(error, patch) {
-  const msg = (error && error.message) || '';
-  const quoted = msg.match(/['"]([a-zA-Z0-9_]+)['"]/g) || [];
-  for (const q of quoted) { const name = q.slice(1, -1); if (name in patch) return name; }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
