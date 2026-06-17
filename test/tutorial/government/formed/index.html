@@ -101,6 +101,8 @@
   .mood.good{color:var(--green)}
   .coal__sum{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;color:var(--muted);margin-top:14px;text-align:center;text-transform:uppercase}
   .coal__sum b{color:var(--green);font-weight:700}
+  .party__arch{font-weight:800;font-size:12.5px;letter-spacing:-.01em;color:var(--ink);margin-top:3px}
+  .opp-title{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:700;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
 
   /* cabinet */
   .post{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
@@ -200,6 +202,7 @@
           <span class="party__bar" style="--c:#5546E8"></span>
           <div class="party__b">
             <div class="party__top"><b>Front de Sessau</b><span class="seats">114</span></div>
+            <div class="party__arch" id="frontArch">Nationalist</div>
             <div class="party__role">Leading party · holds the premiership</div>
             <div class="mood good">● Yours</div>
           </div>
@@ -208,12 +211,36 @@
           <span class="party__bar" style="--c:#C42B2B"></span>
           <div class="party__b">
             <div class="party__top"><b>Workers' Party</b><span class="seats">40</span></div>
+            <div class="party__arch">Communist</div>
             <div class="party__role">Junior partner</div>
             <div class="terms"><span class="t">Labour ministry</span><span class="t">Expand welfare spending</span></div>
             <div class="mood good">● Content · terms are being kept</div>
           </div>
         </div>
         <div class="coal__sum">Government <b>154</b> / 280 · opposition 126</div>
+
+        <div class="opp-title">Opposition</div>
+        <div class="party">
+          <span class="party__bar" style="--c:#16915a"></span>
+          <div class="party__b">
+            <div class="party__top"><b>Centre Union</b><span class="seats">50</span></div>
+            <div class="party__arch">Centrist</div>
+          </div>
+        </div>
+        <div class="party">
+          <span class="party__bar" style="--c:#1f86d6"></span>
+          <div class="party__b">
+            <div class="party__top"><b>Liberal Alliance</b><span class="seats">44</span></div>
+            <div class="party__arch">Liberal</div>
+          </div>
+        </div>
+        <div class="party">
+          <span class="party__bar" style="--c:#2b3a7a"></span>
+          <div class="party__b">
+            <div class="party__top"><b>National Rally</b><span class="seats">32</span></div>
+            <div class="party__arch">Nationalist</div>
+          </div>
+        </div>
       </section>
 
       <!-- Cabinet -->
@@ -337,11 +364,18 @@
 </script>
 
 <script type="module">
-  import { initSidebar } from '/test/tutorial/shell.js';
+  import { initSidebar, PARTY } from '/test/tutorial/shell.js';
 
   // If no government has been formed yet, this view doesn't apply: go form one.
   window.addEventListener('nationhood:gov', (e) => {
     if (!e.detail) window.location.replace('/test/tutorial/government/');
+  });
+
+  // Front de Sessau's archetype is the player's tutorial choice.
+  window.addEventListener('nationhood:party', (e) => {
+    const p = PARTY[e.detail];
+    const el = document.getElementById('frontArch');
+    if (p && el) el.textContent = p.label;
   });
 
   initSidebar();

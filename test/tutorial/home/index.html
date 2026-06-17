@@ -113,6 +113,8 @@
   .formation__badge{display:inline-flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);border-radius:30px;padding:7px 13px;flex:none}
   .formation__badge i{width:8px;height:8px;border-radius:50%;background:var(--amber);animation:pulse 1.6s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .formation__badge.formed{color:#1f7a4d;background:#E6F4EC;border-color:#bfe3cd}
+  .formation__badge.formed i{background:var(--green);animation:none}
   .formation__body{flex:1;min-width:240px}
   .formation__body b{display:block;font-weight:900;font-size:clamp(22px,3.4vw,30px);letter-spacing:-.025em;line-height:1.05}
   .formation__body p{font-size:14px;color:var(--muted);margin-top:8px;max-width:60ch}
@@ -166,7 +168,7 @@
         <b>May 1980</b>
       </div>
       <div class="top__right">
-        <div class="standing">Standing<i>#<span class="dash"></span></i><small>new government</small></div>
+        <div class="standing">Standing<i>#<span class="dash"></span></i><small id="standingLabel">new government</small></div>
         <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
       </div>
     </header>
@@ -179,12 +181,12 @@
 
     <!-- Government formation (pre-confidence state) -->
     <section class="mod">
-      <div class="mod__hd"><span>Government</span><span class="coal">114 / 280 seats · no majority</span></div>
+      <div class="mod__hd"><span>Government</span><span class="coal" id="govSeats">114 / 280 seats · no majority</span></div>
       <div class="formation">
-        <span class="formation__badge"><i></i>Pending</span>
+        <span class="formation__badge" id="govBadge"><i></i>Pending</span>
         <div class="formation__body">
-          <b>Government Formation requested.</b>
-          <p>You won 114 of 280 seats, short of the 141 needed for a majority. Form a coalition to take office. Your Confidence meter appears here once the government is sworn in.</p>
+          <b id="govHeading">Government Formation requested.</b>
+          <p id="govBody">You won 114 of 280 seats, short of the 141 needed for a majority. Form a coalition to take office. Your Confidence meter appears here once the government is sworn in.</p>
         </div>
         <button class="formation__cta" id="toGov2" type="button">Form a Government &rarr;</button>
       </div>
@@ -257,6 +259,20 @@
 
 <script type="module">
   import { initSidebar } from '/test/tutorial/shell.js';
+
+  // Once the government is formed, flip the formation card to the active state.
+  window.addEventListener('nationhood:gov', (e) => {
+    if (!e.detail) return;
+    document.getElementById('govSeats').textContent = '154 / 280 seats · majority';
+    const badge = document.getElementById('govBadge');
+    badge.classList.add('formed');
+    badge.innerHTML = '<i></i>In power';
+    document.getElementById('govHeading').textContent = 'Government sworn in.';
+    document.getElementById('govBody').textContent = "Your coalition with the Workers' Party holds 154 of 280 seats. Head to the Government page to run the cabinet.";
+    document.getElementById('toGov2').innerHTML = 'View Government →';
+    document.getElementById('standingLabel').textContent = 'governing';
+  });
+
   initSidebar();
 
   // Placeholder interactions (destinations not built yet).
