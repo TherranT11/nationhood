@@ -77,7 +77,7 @@ export function formedConfidence(party) {
   const base = 50;
   const crises = -6;                                // three crises at -2
   const contra = party === 'Nationalist' ? -4 : 0;  // clash with the Communist partner
-  const bonus = ((154 / 280) * 100 - 50) / 2;       // seats over 50%, halved (2.5)
+  const bonus = Math.round((((154 / 280) * 100 - 50) / 2) * 10) / 10; // seats over 50%, halved (2.5)
   const value = Math.round(base + crises + contra + bonus);
   return { value, base, crises, contra, bonus };
 }

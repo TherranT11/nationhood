@@ -28,7 +28,6 @@
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
   .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .brand__txt .party{font-weight:700}
-  .brand__date{font-weight:700;font-size:12px;letter-spacing:-.005em;color:var(--ink);white-space:nowrap;margin-top:3px}
   .nav{display:flex;flex-direction:column;gap:2px}
   .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
   .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -160,10 +159,11 @@
   <aside class="side">
     <div class="brand">
       <img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front Sessau">
-      <div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span><div class="brand__date">Week 22 · May 1980</div></div>
+      <div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div>
     </div>
     <nav class="nav">
       <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i" href="/test/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
       <a class="nav__i active" href="/test/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
