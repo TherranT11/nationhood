@@ -305,7 +305,7 @@
   items.forEach((i) => i.addEventListener('click', (e) => {
     if (!i.getAttribute('href')) e.preventDefault(); // only Home navigates; rest not wired
   }));
-  function goGov(){ ping('Heading to the <b>Government</b> page to form your coalition&hellip;'); }
+  function goGov(){ window.location.href = '/test/tutorial/government/'; }
   const g1 = document.getElementById('toGov'); if (g1) g1.addEventListener('click', goGov);
   const g2 = document.getElementById('toGov2'); if (g2) g2.addEventListener('click', goGov);
 </script>
