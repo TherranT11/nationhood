@@ -67,9 +67,18 @@
   .foot{margin-top:auto;padding-top:28px;text-align:center;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;color:var(--soft)}
   .foot a{color:var(--ink);text-decoration:none}.foot a:hover{text-decoration:underline}
 
-  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(18px);background:var(--ink);color:#fff;font-size:14px;font-weight:500;padding:14px 20px;border-radius:12px;box-shadow:0 16px 40px -14px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  .toast b{color:#fff;font-weight:700}
+  /* selected tutorial card */
+  .card.sel{border-color:var(--accent)}
+
+  /* confirm bar: slides up once Tutorial is chosen */
+  .confirm-bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);transform:translateY(100%);pointer-events:none;transition:transform .28s}
+  .confirm-bar.show{transform:translateY(0);pointer-events:auto}
+  .confirm-in{max-width:900px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;gap:14px}
+  .confirm-label{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.04em;color:var(--muted)}
+  .confirm-label b{color:var(--ink);font-weight:700}
+  .confirm-btn{background:var(--ink);color:#fff;font-weight:700;font-size:15px;border:1.5px solid transparent;border-radius:11px;padding:11px 22px;cursor:pointer;font-family:inherit;transition:filter .15s,transform .12s,opacity .15s}
+  .confirm-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
+  .confirm-btn[disabled]{opacity:.55;cursor:default}
   @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -95,7 +104,7 @@
     </div>
 
     <div class="menu">
-      <button class="card" style="--accent:#5546E8;--tint:#ECE9FD" data-t="Starting the tutorial: the Front de Sessau, 1980.">
+      <button class="card" id="tutorial" style="--accent:#5546E8;--tint:#ECE9FD">
         <span class="tag start">Start Here</span>
         <span class="card__ico"><svg viewBox="0 0 24 24"><path d="M5 3v18M5 4h11l-2 4 2 4H5"/></svg></span>
         <h2>Tutorial</h2>
@@ -129,7 +138,12 @@
     <div class="foot">NATIONHOOD · nationhoodgame.com · <a href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener">Join the Discord</a></div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div class="confirm-bar" id="confirm-bar">
+    <div class="confirm-in">
+      <span class="confirm-label">Start the <b>Tutorial</b>?</span>
+      <button class="confirm-btn" id="confirm-btn" type="button">Confirm?</button>
+    </div>
+  </div>
 <script type="module">
   import { supabase, isConfigured } from '/test/supabase.js';
 
@@ -144,12 +158,20 @@
     }
   })();
 
-  // Card toasts (placeholders until each destination is built).
-  const toast = document.getElementById('toast');
-  let tt;
-  function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => toast.classList.remove('show'), 3400); }
-  document.querySelectorAll('.card').forEach((c) => {
-    c.addEventListener('click', () => ping((c.dataset.t || '').replace(/^(\w+)/, '<b>$1</b>')));
+  // Tutorial: choosing it reveals the confirm bar; Confirm enters the tutorial.
+  const tutorial = document.getElementById('tutorial');
+  const confirmBar = document.getElementById('confirm-bar');
+  const confirmBtn = document.getElementById('confirm-btn');
+  tutorial.addEventListener('click', () => {
+    tutorial.classList.add('sel');
+    confirmBar.classList.add('show');
+  });
+  let starting = false; // loading lock: blocks double-fire
+  confirmBtn.addEventListener('click', () => {
+    if (starting) return;
+    starting = true;
+    confirmBtn.disabled = true;
+    window.location.href = '/test/tutorial/';
   });
 
   // Log out: Supabase sign out, then back to the landing page.
