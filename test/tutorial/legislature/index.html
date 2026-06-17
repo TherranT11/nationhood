@@ -386,6 +386,8 @@
     render(id);
   });
   // Restore saved votes once the profile loads (dispatched by initSidebar).
+  // Keys not in `bills` are ignored here; since saveBillVote only ever writes
+  // ids from this set, a stale key can't arise unless the bill set later changes.
   window.applyBillVotes=function(map){
     Object.keys(bills).forEach(function(id){
       if(map && Object.prototype.hasOwnProperty.call(map,id)) bills[id].vote=map[id];
@@ -405,6 +407,10 @@
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
   // Persist floor votes. initSidebar dispatches the saved map; we hold it here
   // and write the whole jsonb back on each vote (one source of truth: the map).
+  // No double-fire lock by design: voting spends no AP and is last-write-wins,
+  // so a rapid re-vote must be allowed to save (a lock would drop it). Writes
+  // are fire-and-forget — updateProfile swallows its own errors and never
+  // rejects; a failed save just means the vote won't restore on reload.
   var votes={};
   window.addEventListener('nationhood:bills',function(e){ votes=e.detail||{}; if(window.applyBillVotes) window.applyBillVotes(votes); });
   window.saveBillVote=function(id,v){
