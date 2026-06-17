@@ -318,13 +318,13 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, formedConfidence, logout, advanceWeek } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence, logout, wireNextWeek } from '/test/tutorial/shell.js';
 
   // The week label and Party Actions count are both filled by initSidebar from
   // the player's profile (one source), so this header and every other screen's
-  // topbar always agree. The Next Week button advances the shared week.
+  // topbar always agree. wireNextWeek adds the confirm-then-advance flow.
   const nw = document.getElementById('nextweek');
-  if (nw) { nw.disabled = false; nw.removeAttribute('title'); nw.addEventListener('click', async () => { nw.disabled = true; if (!(await advanceWeek())) nw.disabled = false; }); }
+  if (nw) { nw.disabled = false; nw.removeAttribute('title'); wireNextWeek(nw); }
 
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {
