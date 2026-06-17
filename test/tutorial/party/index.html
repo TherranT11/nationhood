@@ -42,11 +42,12 @@
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* main */
-  .main{flex:1;padding:22px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1340px}
+  .main{flex:1;padding:22px clamp(16px,3vw,40px) 56px;min-width:0}
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
 
-  /* two-column body: party content on the left, a full-height Party Modifiers rail on the right */
-  .paircols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:stretch}
+  /* two-column body: party content stays a comfortable width on the left, the
+     Party Modifiers rail fills the remaining width and the column's full height */
+  .paircols{display:grid;grid-template-columns:minmax(0,960px) minmax(0,1fr);gap:16px;align-items:stretch}
   .pcol{min-width:0}
   .prail{min-width:0}
   .prail .mod{margin-bottom:0;height:100%}
@@ -188,8 +189,6 @@
   </aside>
 
   <main class="main">
-    <div class="paircols">
-    <div class="pcol">
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>Welcome to your Party page. This is you. You are the party. Your Party Approval has a floor, built by local politics, and a ceiling that can be raised by winning in national politics. We can get into that later. Below that you have your Prominent Politicians. On a given turn, these are your assets that you can put to work. Having a Prominent Politician as Prime Minister is very powerful, but you only have 3 actions per week, and your Prime Minister cannot do everything.</p>
@@ -198,6 +197,8 @@
 
     <div class="kicker" style="margin-bottom:14px">Your Party</div>
 
+    <div class="paircols">
+    <div class="pcol">
     <!-- identity -->
     <section class="mod">
       <div class="hero">
@@ -257,7 +258,7 @@
     </div><!-- /pcol -->
 
     <aside class="prail">
-      <section class="mod pmpanel">
+      <section class="mod">
         <div class="mod__hd"><span>Party Modifiers</span></div>
       </section>
     </aside>
