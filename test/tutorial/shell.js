@@ -11,6 +11,44 @@ export const PARTY = {
   Liberal:     { label: 'Centrist',    color: '#C2890B' }, // yellow
 };
 
+// ---------------------------------------------------------------------------
+// Auth + profile helpers (the single source of truth for "who is signed in"
+// and "what is their tutorial progress", shared by every gated screen)
+// ---------------------------------------------------------------------------
+
+// Resolve the signed-in player. Returns the auth user, or null when Supabase
+// isn't configured yet (local dev) so callers can fall back to their defaults.
+// Redirects to /test/login/ — and returns null — when there is no valid
+// session, so a logged-out player never reaches a gated page.
+export async function requireUser() {
+  if (!isConfigured) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { window.location.href = '/test/login/'; return null; }
+    return session.user;
+  } catch (err) {
+    window.location.href = '/test/login/';
+    return null;
+  }
+}
+
+// Read a player's tutorial progress in one place: the party they chose and
+// whether they've formed their government. Returns null on any failure, so
+// callers keep their defaults rather than act on bad data.
+export async function getTutorialProgress(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('tutorial_party, tutorial_government_formed')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return null;
+    return { party: data.tutorial_party, governmentFormed: !!data.tutorial_government_formed };
+  } catch (err) {
+    return null;
+  }
+}
+
 // Wire up the shared sidebar: hide the flag if it is missing, require a
 // signed-in player, and show their party in its colour. Call once per page.
 // Expects a #flag image and a #party label in the markup.
@@ -28,28 +66,23 @@ export async function initSidebar() {
   const reveal = () => { if (partyEl && partyEl.parentElement) partyEl.parentElement.style.visibility = 'visible'; };
 
   if (!isConfigured) { reveal(); return; } // keep defaults until keys are set
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { window.location.href = '/test/login/'; return; }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('tutorial_party, tutorial_government_formed')
-      .eq('id', session.user.id)
-      .single();
-    if (error) { reveal(); return; }
-    const tp = data && data.tutorial_party;
-    const p = PARTY[tp];
-    if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
-    reveal();
-    // Let the page react to the player's state (archetype contradictions,
-    // whether the government is already formed).
-    window.nationhoodParty = tp;
-    window.nationhoodGovernmentFormed = !!(data && data.tutorial_government_formed);
-    window.dispatchEvent(new CustomEvent('nationhood:party', { detail: tp }));
-    window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: window.nationhoodGovernmentFormed }));
-  } catch (err) {
-    reveal();
-  }
+
+  const user = await requireUser();
+  if (!user) return; // not signed in: requireUser has redirected to login
+
+  const progress = await getTutorialProgress(user.id);
+  if (!progress) { reveal(); return; } // lookup failed: keep defaults
+
+  const p = PARTY[progress.party];
+  if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+  reveal();
+
+  // Let the page react to the player's state (archetype contradictions,
+  // whether the government is already formed).
+  window.nationhoodParty = progress.party;
+  window.nationhoodGovernmentFormed = progress.governmentFormed;
+  window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
+  window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
 }
 
 // Record that the player has formed their government. Returns true on success
@@ -92,7 +125,8 @@ function ensureTopbarStyles() {
   .gw-topbar .gw-week{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .gw-topbar .gw-next{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:12px 20px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
   .gw-topbar .gw-next:hover{transform:translateY(-1px);filter:brightness(1.07)}
-  .gw-topbar .gw-next:focus-visible{outline:2px solid var(--ink);outline-offset:3px}`;
+  .gw-topbar .gw-next:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+  .gw-topbar .gw-next[disabled]{background:#cfcdc7;cursor:default;pointer-events:none}`;
   const style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
@@ -100,8 +134,8 @@ function ensureTopbarStyles() {
 
 // Render the actions-remaining chip, current week, and Next Week button into
 // the top-right of <main>. Safe to call once per page; a no-op if there is no
-// <main> or a bar is already present. The button advances the week (a tutorial
-// placeholder for now): it surfaces a toast if the page has one.
+// <main> or a bar is already present. Next Week is disabled during the tutorial,
+// matching the home screen — the week only advances once that flow is built.
 export function mountTopbar() {
   const main = document.querySelector('.main');
   if (!main || main.querySelector('.gw-topbar')) return;
@@ -112,17 +146,8 @@ export function mountTopbar() {
   bar.innerHTML =
     '<span class="gw-actions">Party Actions: ' + PARTY_ACTIONS + ' Available</span>' +
     '<span class="gw-week">' + GAME_WEEK + '</span>' +
-    '<button class="gw-next" type="button">Next Week &#9656;</button>';
+    '<button class="gw-next" type="button" disabled title="Not yet available">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
-
-  bar.querySelector('.gw-next').addEventListener('click', () => {
-    const toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.innerHTML = 'Week advanced. <b>3 modifiers unresolved</b>.';
-    toast.classList.add('show');
-    clearTimeout(window.__gwToast);
-    window.__gwToast = setTimeout(() => toast.classList.remove('show'), 3400);
-  });
 }
 
 // Sign the player out and return to the test landing page. Redirects even if

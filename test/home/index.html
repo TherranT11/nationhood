@@ -160,18 +160,10 @@
     </div>
   </div>
 <script type="module">
-  import { supabase, isConfigured } from '/test/supabase.js';
+  import { requireUser, logout } from '/test/tutorial/shell.js';
 
   // Guard: only signed-in players can see this page.
-  (async () => {
-    if (!isConfigured) return; // nothing to verify until keys are set
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) window.location.href = '/test/login/';
-    } catch (err) {
-      window.location.href = '/test/login/';
-    }
-  })();
+  requireUser();
 
   // Tutorial: choosing it reveals the confirm bar; Confirm enters the tutorial.
   const tutorial = document.getElementById('tutorial');
@@ -193,16 +185,8 @@
     window.location.href = '/test/tutorial/';
   });
 
-  // Log out: Supabase sign out, then back to the landing page.
-  const logoutBtn = document.getElementById('logout');
-  let loggingOut = false; // loading lock: blocks double-fire
-  logoutBtn.addEventListener('click', async () => {
-    if (loggingOut) return;
-    loggingOut = true;
-    logoutBtn.disabled = true;
-    try { await supabase.auth.signOut(); } catch (err) { /* best-effort */ }
-    window.location.href = '/test/';
-  });
+  // Log out (shared logic in shell.js).
+  document.getElementById('logout').addEventListener('click', logout);
 </script>
 </body>
 </html>
