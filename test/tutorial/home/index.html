@@ -13,7 +13,7 @@
     --line:#E7E5E0; --line-2:#EFEEEA; --chip:#F4F3EF;
     --indigo:#5546E8; --indigo-soft:#ECE9FD;
     --red:#D1342B; --red-soft:#FBEAE9; --amber:#E0820E; --amber-soft:#FBF0DD;
-    --crimson:#A01E3C; --green:#1f9d57;
+    --crimson:#A01E3C; --green:#1f9d57; --green-soft:#E5F4EC;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -71,6 +71,14 @@
   .mod__hd a:hover{text-decoration:underline}
   .mod__hd .coal{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);text-transform:none}
   .empty{color:var(--muted);font-size:15px;line-height:1.5}
+  /* Pressing Issues: resolved-bill entries */
+  .pi{padding:12px 0;border-top:1px solid var(--line)}
+  .pi:first-of-type{border-top:none;padding-top:2px}
+  .pi__top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .pi__top b{font-weight:800;font-size:14.5px;letter-spacing:-.01em;text-transform:uppercase}
+  .pi__res{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:20px;flex:none}
+  .pi__res.pass{color:var(--green);background:var(--green-soft)} .pi__res.fail{color:var(--red);background:var(--red-soft)}
+  .pi__eff{font-size:13px;color:var(--muted);margin-top:5px}
 
   /* snapshot strip */
   .snap{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
@@ -344,11 +352,26 @@
     if (sl) sl.textContent = 'governing';
   });
 
-  // Confidence from the actual coalition (single source: shell.formedConfidence).
+  // Confidence from the actual coalition (single source: shell.formedConfidence)
+  // plus the legislation adjustment (window.nationhoodConfidenceAdj, set by initSidebar).
   window.addEventListener('nationhood:coalition', (e) => {
     if (!e.detail) return;
     const confVal = document.getElementById('confVal');
-    if (confVal) confVal.textContent = formedConfidence(e.detail.total, e.detail.contra).value + '%';
+    if (confVal) confVal.textContent = (formedConfidence(e.detail.total, e.detail.contra).value + (window.nationhoodConfidenceAdj || 0)) + '%';
+  });
+
+  // Resolved bills populate Pressing Issues (the formation card became this panel
+  // once the government formed). Passed bills show their effect; failed ones don't.
+  function esc(s){return String(s).replace(/[&<>]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+  window.addEventListener('nationhood:legislation', (e) => {
+    if (!e.detail || !e.detail.length) return;
+    const gov = document.getElementById('govSection'); if (!gov) return;
+    gov.innerHTML = '<div class="mod__hd"><span>Pressing Issues</span></div>' +
+      e.detail.map((it) =>
+        '<div class="pi"><div class="pi__top"><b>' + esc(it.name) + '</b>' +
+        '<span class="pi__res ' + (it.passed ? 'pass' : 'fail') + '">' + (it.passed ? 'Passes' : 'Fails') + '</span></div>' +
+        '<div class="pi__eff">Effect: ' + (it.passed ? esc(it.effect || '—') : 'None — did not pass') + '</div></div>'
+      ).join('');
   });
 
   // Once Théo is assigned to Labour Talks, his talks show up in the feed and the

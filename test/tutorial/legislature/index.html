@@ -407,12 +407,15 @@
   // Coach bubble swaps to the "propose a bill" prompt once the player has cast a
   // vote (and back if they withdraw it). Welcome text is read from the DOM so it
   // lives in one place (the markup).
+  var legResolved=false;
   var coachP=document.getElementById('coachP'), COACH_WELCOME=coachP?coachP.innerHTML:'';
   var COACH_VOTED="Okay, now you've voted. Let's go ahead and propose a new bill to start our government off. Click <b>Propose New Law</b>.";
   var COACH_PROPOSED="Okay, here's your bill. Go ahead and cast your vote. That's about the most we can do this week, as we are out of actions. So go ahead and cast your vote and then hit <b>Next Week</b>.";
+  var COACH_RESOLVED="The week has turned and your bills have been resolved. See how each one landed — and what it did to your party — in <b>Legislative History</b> on the right.";
   function updateCoach(){
     if(!coachP) return;
-    if(bills.bp) coachP.innerHTML=COACH_PROPOSED;                                                    // a bill is on the floor
+    if(legResolved) coachP.innerHTML=COACH_RESOLVED;                                                 // bills resolved into history
+    else if(bills.bp) coachP.innerHTML=COACH_PROPOSED;                                               // a bill is on the floor
     else if(Object.keys(bills).some(function(id){return bills[id].vote;})) coachP.innerHTML=COACH_VOTED; // voted, not yet proposed
     else coachP.innerHTML=COACH_WELCOME;
   }
@@ -499,6 +502,7 @@
   // left the floor: hide the static floor bills and zero the On the Floor count.
   window.renderLegHistory=function(items){
     if(!items||!items.length) return;
+    legResolved=true; updateCoach(); // bills have left the floor → advance the coach copy
     ['b1','b2'].forEach(function(id){var el=document.getElementById(id); if(el) el.style.display='none';});
     var fh=document.querySelector('.secthd'), ct=fh&&fh.querySelector('.ct'); if(ct) ct.textContent='0';
     var POP={'1':'+1 Party Popularity','-1':'−1 Party Popularity','0':'No popularity change'};
