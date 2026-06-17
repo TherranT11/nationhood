@@ -78,7 +78,7 @@
   .pop__floor{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--green)}
   .pop__floor::after{content:"FLOOR 14%";position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:var(--green);white-space:nowrap}
   .pop__ceil{position:absolute;top:-5px;bottom:-5px;width:0;border-left:2px dashed var(--ink);opacity:.5}
-  .pop__ceil::after{content:"CEILING 40%";position:absolute;top:100%;right:0;margin-top:4px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:var(--ink);white-space:nowrap}
+  .pop__ceil::after{content:"CEILING 45%";position:absolute;top:100%;right:0;margin-top:4px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;color:var(--ink);white-space:nowrap}
   .pop__cap{margin-top:30px;font-size:13.5px;color:var(--muted);max-width:70ch}
   .pop__cap b{color:var(--ink);font-weight:700}
 
@@ -109,6 +109,13 @@
   .pstat .sbar{display:block;height:3px;border-radius:2px;background:#E2E0DB;overflow:hidden;margin-top:5px;max-width:42px;margin-left:auto;margin-right:auto}
   .pstat .sbar i{display:block;height:100%;background:var(--soft)}
   .pstat.max .num{color:var(--indigo)} .pstat.max .sbar i{background:var(--indigo)}
+
+  /* scandal callout (under an affected politician) */
+  .scandal{background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 28%,transparent);border-radius:12px;padding:14px 16px;margin:10px 0}
+  .scandal__tag{display:inline-block;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:var(--red);border-radius:6px;padding:4px 9px;margin-right:10px;vertical-align:middle}
+  .scandal__wk{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--red);vertical-align:middle}
+  .scandal p{margin-top:9px;font-size:13.5px;line-height:1.45;color:#9b2c2c}
+
   @media(max-width:760px){
     .phead{display:none}
     .prow{grid-template-columns:repeat(5,1fr);gap:8px 6px;padding:15px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:10px}
@@ -189,13 +196,13 @@
       <div class="pop">
         <div class="pop__num">38<span>%</span></div>
         <div class="pop__mid">
-          <div class="pop__scale0"><span>0%</span><span>10</span><span>20</span><span>30</span><span>40%</span></div>
+          <div class="pop__scale0"><span>0%</span><span>15</span><span>30</span><span>45%</span></div>
           <div class="pop__bar">
-            <div class="pop__fill" style="width:95%"></div>
-            <div class="pop__floor" style="left:35%"></div>
+            <div class="pop__fill" style="width:84%"></div>
+            <div class="pop__floor" style="left:31%"></div>
             <div class="pop__ceil" style="left:100%"></div>
           </div>
-          <p class="pop__cap"><b>Local organising</b> builds your floor, the base that never abandons you, which attacks can't push below. <b>National politics</b> raises your ceiling, your reach. You're pressed against your <b>40% ceiling</b>; to climb further, lift the ceiling on the national stage.</p>
+          <p class="pop__cap"><b>Local organising</b> builds your floor, the base that never abandons you, which attacks can't push below. <b>National politics</b> raises your ceiling, your reach. You're approaching your <b>45% ceiling</b>; to climb further, lift the ceiling on the national stage.</p>
         </div>
       </div>
     </section>
@@ -235,7 +242,7 @@
   var pols=[
     {name:'Allen Droulez',age:49,role:'Prime Minister',free:false,busy:'the premiership',stats:[4,3,2,4,3]},
     {name:'Margot Sève',age:56,role:'Deputy Leader',free:false,busy:'Economic Development',stats:[3,5,2,3,4]},
-    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',stats:[2,3,4,4,4]},
+    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',stats:[2,3,4,4,4],scandal:{week:'Week 18, 1980',text:'This politician said something in front of the cameras that he now, at least privately, regrets. It dropped Party Approval. Removing him may bring Party Approval back, and it may not.'}},
     {name:'Claire Bonnet',age:43,role:'Trade Minister',free:false,busy:'Industrial Decline',stats:[4,4,2,2,3]},
     {name:'Aurélie Brun',age:40,role:'Foreign Minister',free:true,stats:[5,3,3,2,2]},
     {name:'Armand Roux',age:54,role:'Defense Minister',free:true,stats:[2,3,2,5,4]}
@@ -255,6 +262,11 @@
       ping('<b>'+p.name+'</b>: '+(p.free?'available for one action this week.':'occupied: '+p.busy+'.'));
     });
     tbl.appendChild(row);
+    if(p.scandal){
+      var sc=document.createElement('div'); sc.className='scandal';
+      sc.innerHTML='<span class="scandal__tag">Scandal</span><b class="scandal__wk">'+p.scandal.week+'</b><p>'+p.scandal.text+'</p>';
+      tbl.appendChild(sc);
+    }
   });
   document.getElementById('recruitBtn').addEventListener('click',function(){ping('<b>RECRUIT</b>: spend to bring a new politician onto the roster.');});
 
