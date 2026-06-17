@@ -295,8 +295,8 @@
 
   function recompute(){
     // seats
-    var total=FRONT, members=['front'];
-    parties.forEach(function(p){if(state[p.id].in){total+=p.seats;members.push(p.id);}});
+    var total=FRONT;
+    parties.forEach(function(p){if(state[p.id].in){total+=p.seats;}});
     // rebuild seat bar
     [].slice.call(seatbar.querySelectorAll('.seatbar__seg')).forEach(function(s){s.remove();});
     var ref=seatbar.querySelector('.seatbar__line');
