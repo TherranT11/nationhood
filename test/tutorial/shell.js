@@ -240,7 +240,9 @@ export function resolveLegislation(billVotes, floorBill, week, doneIds) {
   const done = doneIds || new Set();
   const raw = [];
   SCRIPTED_BILLS.forEach((b) => {
-    if (b.week > week || done.has(b.id)) return; // not on the floor yet, or already resolved
+    // Skip if not on the floor yet, or already resolved. Match by id OR name so
+    // legislation saved before bills carried ids (older sessions) still dedupes.
+    if (b.week > week || done.has(b.id) || done.has(b.name)) return;
     const vote = v[b.id] || 'abs';
     const passed = (b.aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
     raw.push({ id: b.id, name: b.name, passed, vote, effect: b.effect, welfare: b.welfare, prosperity: b.prosperity });
@@ -294,7 +296,8 @@ export async function advanceWeek() {
     // trigger resolution by advancing the week from elsewhere.
     const engaged = progress.floorBill || (progress.legislation && progress.legislation.length);
     if (engaged) {
-      const done = new Set((progress.legislation || []).map((it) => it.id));
+      const done = new Set();
+      (progress.legislation || []).forEach((it) => { if (it.id) done.add(it.id); if (it.name) done.add(it.name); });
       const leg = resolveLegislation(progress.billVotes, progress.floorBill, progress.week || DEFAULT_WEEK, done);
       if (leg) {
         patch.tutorial_legislation = (progress.legislation || []).concat(leg.history);

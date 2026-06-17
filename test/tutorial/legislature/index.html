@@ -519,8 +519,9 @@
   // floor; then re-count and re-sync the coach.
   window.renderLegHistory=function(items){
     if(!items||!items.length) return;
-    var done={}; items.forEach(function(it){ done[it.id]=true; });
-    Object.keys(done).forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
+    var done={}; items.forEach(function(it){ if(it.id) done[it.id]=true; });
+    // b1/b2 are round-1 bills — any resolved history means they've left the floor.
+    ['b1','b2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
     var POP={'1':'+1 Party Popularity','-1':'−1 Party Popularity','0':'No popularity change'};
     document.getElementById('legHistory').innerHTML=items.map(function(it){
       var cls=it.pop>0?'up':it.pop<0?'down':'flat';
