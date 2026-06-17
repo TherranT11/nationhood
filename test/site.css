@@ -73,3 +73,13 @@ header {
 .btn-solid:hover { background: #2a2a2a; }
 .btn-discord { background: var(--discord); color: #fff; }
 .btn-discord:hover { background: #4752c4; }
+
+/* ---------- Mobile ---------- */
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px; }
+  .nav { height: 56px; }
+  .nav-actions { gap: 8px; }
+  .btn { padding: 8px 14px; font-size: 13px; }
+  /* the in-bar Login is redundant on small screens (still in the page + footer) */
+  .nav-actions .login { display: none; }
+}

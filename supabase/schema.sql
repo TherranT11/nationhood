@@ -1,4 +1,4 @@
--- Nationhood Game — auth + profiles schema
+-- Nationhood Game: auth + profiles schema
 -- Run this in the Supabase SQL Editor (Dashboard > SQL Editor > New query).
 --
 -- Passwords are NOT stored here. Supabase Auth manages credentials in the
@@ -13,6 +13,13 @@ create table if not exists public.profiles (
   email      text not null,
   created_at timestamptz not null default now()
 );
+
+-- The party a player chose during the tutorial. One source of truth for that
+-- choice: exactly one value (or null if not done yet), never a contradiction.
+-- Idempotent so this file is safe to re-run on an existing database.
+alter table public.profiles
+  add column if not exists tutorial_party text
+  check (tutorial_party in ('Labour', 'Nationalist', 'Liberal'));
 
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
