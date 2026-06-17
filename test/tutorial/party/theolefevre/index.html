@@ -179,7 +179,7 @@
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>This is your Politician page. Each Politician has one. You can see Théo's history, his skills, and his current task. Remember, getting things done takes your entire party. As Minister of the Interior, Théo has several unique actions that other party members and other ministers do not have.</p>
-      <p>Let's assign Théo a task now. Since Théo is a member of your party, you can assign him a task to carry out in his post as Interior Minister. <b>Assign him the task of Labor Talks now.</b></p>
+      <p>Let's assign Théo a task now. Since Théo is a member of your party, you can assign him a task to carry out in his post as Interior Minister. <b>Assign him the task of Labour Talks now.</b></p>
     </div>
 
     <!-- hero + stats -->
@@ -269,18 +269,35 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+  import { initSidebar, logout, mountTopbar, setTheoTask } from '/test/tutorial/shell.js';
+
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},4000);}
+
+  // Placeholder action buttons (Dismiss / Promote).
   document.querySelectorAll('.act').forEach(function(b){b.addEventListener('click',function(){ping(b.dataset.t.replace(/^(\w+)/,'<b>$1</b>'));});});
 
-  // Current task: the tutorial assigns Théo to Labor Talks in his Interior post.
+  // Current task. The assignment is persisted to the player's profile (one
+  // source, via shell.setTheoTask) and reflected back on load by initSidebar's
+  // nationhood:task event — so it sticks across reloads.
   var assignBtn=document.getElementById('assignBtn'),taskVal=document.getElementById('taskVal');
-  assignBtn.addEventListener('click',function(){
-    taskVal.textContent='Labor Talks';
+  function showTask(task){
+    if(!task) return;
+    taskVal.textContent=task;
     taskVal.classList.add('set');
     assignBtn.textContent='Reassign';
-    ping('<b>Assigned</b>: Théo Lefèvre → Labor Talks.');
+  }
+  window.addEventListener('nationhood:task',function(e){ showTask(e.detail); });
+
+  var assigning=false; // loading lock: blocks double-fire on a DB write
+  assignBtn.addEventListener('click',async function(){
+    if(assigning) return;
+    assigning=true; assignBtn.disabled=true;
+    var ok=await setTheoTask('Labour Talks');
+    assignBtn.disabled=false; assigning=false;
+    if(ok){ showTask('Labour Talks'); ping('<b>Assigned</b>: Théo Lefèvre → Labour Talks.'); }
+    else { ping('Could not save the assignment — please try again.'); }
   });
 
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/party/';});
@@ -288,10 +305,7 @@
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
     if(!i.getAttribute('href')){e.preventDefault();document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')});i.classList.add('active');}
   });});
-</script>
 
-<script type="module">
-  import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
   mountTopbar();
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
   initSidebar();

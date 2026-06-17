@@ -26,6 +26,12 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_government_formed boolean not null default false;
 
+-- The task the player assigns to Théo Lefèvre (Interior Minister) in the
+-- tutorial. Null until they assign one. One value per player; idempotent so
+-- this file is safe to re-run on an existing database.
+alter table public.profiles
+  add column if not exists tutorial_theo_task text;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 

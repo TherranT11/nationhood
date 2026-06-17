@@ -39,11 +39,15 @@ export async function getTutorialProgress(userId) {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('tutorial_party, tutorial_government_formed')
+      .select('tutorial_party, tutorial_government_formed, tutorial_theo_task')
       .eq('id', userId)
       .single();
     if (error || !data) return null;
-    return { party: data.tutorial_party, governmentFormed: !!data.tutorial_government_formed };
+    return {
+      party: data.tutorial_party,
+      governmentFormed: !!data.tutorial_government_formed,
+      theoTask: data.tutorial_theo_task || null,
+    };
   } catch (err) {
     return null;
   }
@@ -83,24 +87,31 @@ export async function initSidebar() {
   window.nationhoodGovernmentFormed = progress.governmentFormed;
   window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
+  window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
 }
 
-// Record that the player has formed their government. Returns true on success
-// (or when there are no keys, so local dev still flows through).
-export async function markGovernmentFormed() {
+// The single write path for the tutorial's per-player profile flags. Applies a
+// partial patch to the signed-in player's row and returns true on success (or
+// with no keys, so local dev still flows). Returns false — rather than
+// redirecting — when there's no session, so a caller mid-action can offer a
+// retry instead of throwing the player to login.
+export async function updateProfile(patch) {
   if (!isConfigured) return true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
-    const { error } = await supabase
-      .from('profiles')
-      .update({ tutorial_government_formed: true })
-      .eq('id', session.user.id);
+    const { error } = await supabase.from('profiles').update(patch).eq('id', session.user.id);
     return !error;
   } catch (err) {
     return false;
   }
 }
+
+// Record that the player has formed their government.
+export const markGovernmentFormed = () => updateProfile({ tutorial_government_formed: true });
+
+// Persist the task the player assigns to Théo Lefèvre in his Interior post.
+export const setTheoTask = (task) => updateProfile({ tutorial_theo_task: task });
 
 // ---------------------------------------------------------------------------
 // Shared game-clock + weekly-action widget (top-right on every in-game screen)
