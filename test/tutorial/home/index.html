@@ -27,7 +27,7 @@
   .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
   .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
-  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .brand__txt .party{font-weight:700}
 
   .nav{display:flex;flex-direction:column;gap:2px}
@@ -64,6 +64,7 @@
   .mod__hd a,.mod__hd .link{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);text-decoration:none;cursor:pointer;font-weight:700}
   .mod__hd a:hover{text-decoration:underline}
   .mod__hd .coal{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);text-transform:none}
+  .empty{color:var(--muted);font-size:15px;line-height:1.5}
 
   /* snapshot strip */
   .snap{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
@@ -143,7 +144,7 @@
   <aside class="side">
     <div class="brand">
       <img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front de Sessau">
-      <div class="brand__txt"><b>Front de Sessau</b><span><span class="party" id="party">Governing</span> · Sessau</span></div>
+      <div class="brand__txt"><b>Front de Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div>
     </div>
     <nav class="nav">
       <a class="nav__i active" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
@@ -168,7 +169,7 @@
         <b>May 1980</b>
       </div>
       <div class="top__right">
-        <div class="standing">Standing<i>#<span class="dash"></span></i><small id="standingLabel">new government</small></div>
+        <div class="standing">Confidence<i id="confVal"><span class="dash"></span></i><small id="standingLabel">no government</small></div>
         <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
       </div>
     </header>
@@ -180,13 +181,13 @@
     </div>
 
     <!-- Government formation (pre-confidence state) -->
-    <section class="mod">
-      <div class="mod__hd"><span>Government</span><span class="coal" id="govSeats">114 / 280 seats · no majority</span></div>
+    <section class="mod" id="govSection">
+      <div class="mod__hd"><span>Government</span><span class="coal">114 / 280 seats · no majority</span></div>
       <div class="formation">
-        <span class="formation__badge" id="govBadge"><i></i>Pending</span>
+        <span class="formation__badge"><i></i>Pending</span>
         <div class="formation__body">
-          <b id="govHeading">Government Formation requested.</b>
-          <p id="govBody">You won 114 of 280 seats, short of the 141 needed for a majority. Form a coalition to take office. Your Confidence meter appears here once the government is sworn in.</p>
+          <b>Government Formation requested.</b>
+          <p>You won 114 of 280 seats, short of the 141 needed for a majority. Form a coalition to take office. Your Confidence meter appears here once the government is sworn in.</p>
         </div>
         <button class="formation__cta" id="toGov2" type="button">Form a Government &rarr;</button>
       </div>
@@ -265,14 +266,16 @@
     if (!e.detail) return;
     const coach = document.querySelector('.coach');
     if (coach) coach.remove(); // its "form a government" prompt is done
-    document.getElementById('govSeats').textContent = '154 / 280 seats · majority';
-    const badge = document.getElementById('govBadge');
-    badge.classList.add('formed');
-    badge.innerHTML = '<i></i>In power';
-    document.getElementById('govHeading').textContent = 'Government sworn in.';
-    document.getElementById('govBody').textContent = "Your coalition with the Workers' Party holds 154 of 280 seats. Head to the Government page to run the cabinet.";
-    document.getElementById('toGov2').innerHTML = 'View Government →';
-    document.getElementById('standingLabel').textContent = 'governing';
+    // The formation card is replaced by the standing Pressing Issues panel.
+    const gov = document.getElementById('govSection');
+    if (gov) gov.innerHTML =
+      '<div class="mod__hd"><span>Pressing Issues</span></div>' +
+      '<p class="empty">When issues affect your government, they will appear here.</p>';
+    // Confidence mirrors the formed government (see /test/tutorial/government/formed).
+    const confVal = document.getElementById('confVal');
+    if (confVal) confVal.textContent = '47%';
+    const sl = document.getElementById('standingLabel');
+    if (sl) sl.textContent = 'governing';
   });
 
   initSidebar();

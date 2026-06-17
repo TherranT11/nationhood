@@ -22,7 +22,12 @@ export async function initSidebar() {
     if (flag.complete && flag.naturalWidth === 0) hide();
   }
 
-  if (!isConfigured) return; // keep defaults until keys are set
+  // The subtitle starts hidden so the player never sees a placeholder before
+  // their archetype loads; reveal it once we know (or cannot know) the party.
+  const partyEl = document.getElementById('party');
+  const reveal = () => { if (partyEl && partyEl.parentElement) partyEl.parentElement.style.visibility = 'visible'; };
+
+  if (!isConfigured) { reveal(); return; } // keep defaults until keys are set
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { window.location.href = '/test/login/'; return; }
@@ -31,11 +36,11 @@ export async function initSidebar() {
       .select('tutorial_party, tutorial_government_formed')
       .eq('id', session.user.id)
       .single();
-    if (error) return;
+    if (error) { reveal(); return; }
     const tp = data && data.tutorial_party;
-    const partyEl = document.getElementById('party');
-    const p = partyEl && PARTY[tp];
-    if (p) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+    const p = PARTY[tp];
+    if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+    reveal();
     // Let the page react to the player's state (archetype contradictions,
     // whether the government is already formed).
     window.nationhoodParty = tp;
@@ -43,7 +48,7 @@ export async function initSidebar() {
     window.dispatchEvent(new CustomEvent('nationhood:party', { detail: tp }));
     window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: window.nationhoodGovernmentFormed }));
   } catch (err) {
-    // keep defaults
+    reveal();
   }
 }
 
