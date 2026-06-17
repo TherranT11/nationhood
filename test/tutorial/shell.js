@@ -11,6 +11,44 @@ export const PARTY = {
   Liberal:     { label: 'Centrist',    color: '#C2890B' }, // yellow
 };
 
+// ---------------------------------------------------------------------------
+// Auth + profile helpers (the single source of truth for "who is signed in"
+// and "what is their tutorial progress", shared by every gated screen)
+// ---------------------------------------------------------------------------
+
+// Resolve the signed-in player. Returns the auth user, or null when Supabase
+// isn't configured yet (local dev) so callers can fall back to their defaults.
+// Redirects to /test/login/ — and returns null — when there is no valid
+// session, so a logged-out player never reaches a gated page.
+export async function requireUser() {
+  if (!isConfigured) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { window.location.href = '/test/login/'; return null; }
+    return session.user;
+  } catch (err) {
+    window.location.href = '/test/login/';
+    return null;
+  }
+}
+
+// Read a player's tutorial progress in one place: the party they chose and
+// whether they've formed their government. Returns null on any failure, so
+// callers keep their defaults rather than act on bad data.
+export async function getTutorialProgress(userId) {
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('tutorial_party, tutorial_government_formed')
+      .eq('id', userId)
+      .single();
+    if (error || !data) return null;
+    return { party: data.tutorial_party, governmentFormed: !!data.tutorial_government_formed };
+  } catch (err) {
+    return null;
+  }
+}
+
 // Wire up the shared sidebar: hide the flag if it is missing, require a
 // signed-in player, and show their party in its colour. Call once per page.
 // Expects a #flag image and a #party label in the markup.
@@ -28,28 +66,23 @@ export async function initSidebar() {
   const reveal = () => { if (partyEl && partyEl.parentElement) partyEl.parentElement.style.visibility = 'visible'; };
 
   if (!isConfigured) { reveal(); return; } // keep defaults until keys are set
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { window.location.href = '/test/login/'; return; }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('tutorial_party, tutorial_government_formed')
-      .eq('id', session.user.id)
-      .single();
-    if (error) { reveal(); return; }
-    const tp = data && data.tutorial_party;
-    const p = PARTY[tp];
-    if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
-    reveal();
-    // Let the page react to the player's state (archetype contradictions,
-    // whether the government is already formed).
-    window.nationhoodParty = tp;
-    window.nationhoodGovernmentFormed = !!(data && data.tutorial_government_formed);
-    window.dispatchEvent(new CustomEvent('nationhood:party', { detail: tp }));
-    window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: window.nationhoodGovernmentFormed }));
-  } catch (err) {
-    reveal();
-  }
+
+  const user = await requireUser();
+  if (!user) return; // not signed in: requireUser has redirected to login
+
+  const progress = await getTutorialProgress(user.id);
+  if (!progress) { reveal(); return; } // lookup failed: keep defaults
+
+  const p = PARTY[progress.party];
+  if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+  reveal();
+
+  // Let the page react to the player's state (archetype contradictions,
+  // whether the government is already formed).
+  window.nationhoodParty = progress.party;
+  window.nationhoodGovernmentFormed = progress.governmentFormed;
+  window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
+  window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
 }
 
 // Record that the player has formed their government. Returns true on success

@@ -133,6 +133,7 @@
 
 <script type="module">
   import { supabase, isConfigured } from '/test/supabase.js';
+  import { requireUser, getTutorialProgress } from '/test/tutorial/shell.js';
 
   const begin = document.getElementById('begin');
   const chosen = document.getElementById('chosen');
@@ -161,23 +162,14 @@
   let user = null;
   (async () => {
     if (!isConfigured) { reveal(); return; } // local dev: show the choice
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { window.location.href = '/test/login/'; return; }
-      user = session.user;
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('tutorial_party')
-        .eq('id', user.id)
-        .single();
-      if (!error && data && data.tutorial_party) {
-        window.location.replace('/test/tutorial/home/'); // already chosen: skip ahead
-        return;
-      }
-      reveal(); // no party yet (or lookup failed): let them choose
-    } catch (err) {
-      window.location.href = '/test/login/';
+    user = await requireUser();
+    if (!user) return; // not signed in: requireUser has redirected to login
+    const progress = await getTutorialProgress(user.id);
+    if (progress && progress.party) {
+      window.location.replace('/test/tutorial/home/'); // already chosen: skip ahead
+      return;
     }
+    reveal(); // no party yet (or lookup failed): let them choose
   })();
 
   document.querySelectorAll('.choice').forEach((c) => {
