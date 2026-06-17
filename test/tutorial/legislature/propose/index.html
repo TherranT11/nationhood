@@ -233,7 +233,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  var BASE=8; // the economy's current Growth level (Slowdown); a bill pushes it up
+  var BASE=9; // the economy's current Growth level (Stalling); mirrors the home Growth tile. a bill pushes it up
   var MINISTRIES=['Treasury','Trade','Welfare','Economic Development'];
   // Indicators projected from a bill's net effect. dir: +1 = higher is good
   // (green when up), -1 = higher is bad (Inflation, Unemployment). Prosperity has
@@ -324,7 +324,8 @@
       var k=s[0], dir=s[1], u=s[2]||'', v=deltas[k];
       if(k==='Growth'){ // shown as an absolute level so the "over 10" goal is checkable
         var gp=BASE+v;
-        return '<div class="projrow"><span class="pk">Projected Growth</span><span class="pv '+(gp>10?'good':'')+'">'+BASE+' → '+gp+'</span></div>';
+        var word=window.statLabel?(' · '+window.statLabel('growth',gp)):''; // ladder word (shared with home tiles)
+        return '<div class="projrow"><span class="pk">Projected Growth</span><span class="pv '+(gp>10?'good':'')+'">'+BASE+' → '+gp+word+'</span></div>';
       }
       if(!v) return '<div class="projrow"><span class="pk">Projected '+k+'</span><span class="pv flat">No change</span></div>';
       var good=(dir>0)?(v>0):(v<0);
@@ -409,8 +410,12 @@
 </script>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar, updateProfile } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar, updateProfile, statLabel } from '/test/tutorial/shell.js';
   mountTopbar();
+  // Share the stat ladders with the classic script (which can't import). It runs
+  // first, so refresh the projection once this module has supplied statLabel.
+  window.statLabel = statLabel;
+  if (window.renderPreview) window.renderPreview();
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
   // Persist the drafted bill + the spent action together (one write).
   window.saveFloorBill=function(snap, actionsLeft){ return updateProfile({ tutorial_floor_bill: snap, tutorial_party_actions: actionsLeft }); };
