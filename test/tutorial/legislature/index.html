@@ -383,8 +383,10 @@
   var coachP=document.getElementById('coachP'), COACH_WELCOME=coachP?coachP.innerHTML:'';
   var COACH_VOTED="Okay, now you've voted. Let's go ahead and propose a new bill to start our government off. Click <b>Propose New Law</b>.";
   function updateCoach(){ if(coachP) coachP.innerHTML = Object.keys(bills).some(function(id){return bills[id].vote;}) ? COACH_VOTED : COACH_WELCOME; }
-  Object.keys(bills).forEach(function(id){
-    var el=document.getElementById(id);
+  // Wire one bill's vote buttons + initial render. Used for the static floor
+  // bills and the player's proposed bill alike (one source for vote behaviour).
+  function wireBill(id){
+    var el=document.getElementById(id); if(!el) return;
     el.querySelectorAll('.vb').forEach(function(btn){
       btn.addEventListener('click',function(){
         var v=btn.dataset.vote;
@@ -396,7 +398,8 @@
       });
     });
     render(id);
-  });
+  }
+  Object.keys(bills).forEach(wireBill);
   // Restore saved votes once the profile loads (dispatched by initSidebar).
   // Keys not in `bills` are ignored here; since saveBillVote only ever writes
   // ids from this set, a stale key can't arise unless the bill set later changes.
@@ -408,25 +411,41 @@
     updateCoach();
   };
   // Render the bill the player drafted on the Propose page onto the floor (from
-  // its saved snapshot), and bump the On the Floor count. Called once on load.
+  // its saved snapshot) as a votable bill, and bump the On the Floor count.
+  // The four other parties start Pending (166 seats); the player's 114 decide
+  // nothing alone, so it opens on "Your vote decides". Called once on load.
   function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
   window.renderFloorBill=function(b){
-    if(!b||!b.title) return;
+    if(!b||!b.title||document.getElementById('bp')) return;
     var roman=['I','II','III','IV','V','VI','VII','VIII'];
     var arts=(b.arts||[]).map(function(a,i){
       var pills=(a.pills||[]).map(function(p){return '<span class="eff '+p.kind+'">'+esc(p.txt)+'</span>';}).join('');
       return '<div class="art"><span class="art__n">'+(roman[i]||(i+1))+'</span><div class="art__b"><b>'+esc(a.name)+'</b>'+(pills?'<div class="pills">'+pills+'</div>':'')+'</div></div>';
     }).join('');
-    var d=document.createElement('details'); d.className='bill'; d.open=true;
-    d.innerHTML='<summary><div class="bill__hd"><h2>'+esc(b.title)+'</h2>'+
-      '<span class="status open"><span class="dotp"></span>Proposed</span>'+
+    var d=document.createElement('details'); d.className='bill'; d.id='bp'; d.open=true;
+    d.innerHTML='<summary><div class="bill__hd"><h2>'+esc(b.title)+'</h2><span class="status"></span>'+
       '<svg class="bill__ch" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>'+
       '<div class="meta"><span class="author" style="--c:#5546E8"><span class="dot"></span>Front Sessau</span></div></summary>'+
+      '<div class="yourvote"><span class="yv-label">Your vote · <b>Front Sessau</b> · 114 seats</span>'+
+      '<div class="yv-btns"><button class="vb yes" data-vote="aye">Vote Yes</button>'+
+      '<button class="vb no" data-vote="nay">Vote No</button><button class="vb abs" data-vote="abs">Abstain</button></div></div>'+
+      '<div class="tally"><div class="tbar"><div class="clip"><span class="seg aye"></span><span class="seg abs"></span><span class="seg pend"></span><span class="seg nay"></span></div>'+
+      '<span class="maj" style="left:50.36%"></span></div>'+
+      '<div class="tlegend"><span><i class="aye"></i>Aye <b class="n-aye">0</b></span>'+
+      '<span><i class="nay"></i>Nay <b class="n-nay">0</b></span><span><i class="abs"></i>Abstain <b class="n-abs">0</b></span>'+
+      '<span><i class="pend"></i>Pending <b class="n-pend">0</b></span><span class="thr">141 to pass</span></div></div>'+
+      '<div class="plabel">Other parties</div><ul class="parties">'+
+      '<li class="prow" style="--c:#C42B2B"><span class="dot"></span><span class="pn">Workers\' Party</span><span class="ps">40</span><span class="pos pend">Pending</span></li>'+
+      '<li class="prow" style="--c:#16915a"><span class="dot"></span><span class="pn">Centre Union</span><span class="ps">50</span><span class="pos pend">Pending</span></li>'+
+      '<li class="prow" style="--c:#1f86d6"><span class="dot"></span><span class="pn">Liberal Alliance</span><span class="ps">44</span><span class="pos pend">Pending</span></li>'+
+      '<li class="prow" style="--c:#2b3a7a"><span class="dot"></span><span class="pn">National Rally</span><span class="ps">32</span><span class="pos pend">Pending</span></li></ul>'+
       '<div class="plabel">Articles</div>'+arts+
       (b.budgetText?'<div class="art-total">Total <b>'+esc(b.budgetText)+'</b></div>':'');
     var secthd=document.querySelector('.secthd'); // first secthd = On the Floor
     if(secthd){ secthd.parentNode.insertBefore(d, secthd.nextSibling);
       var ct=secthd.querySelector('.ct'); if(ct) ct.textContent=(parseInt(ct.textContent,10)||2)+1; }
+    bills.bp={base:{aye:0,nay:0,abs:0}, otherPending:166, front:114, vote:null, name:b.title};
+    wireBill('bp');
   };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
   document.getElementById('propose').addEventListener('click',function(){window.location.href='/test/tutorial/legislature/propose/';});
@@ -452,7 +471,7 @@
     if(v===null) delete votes[id]; else votes[id]=v;
     updateProfile({ tutorial_bill_votes: votes });
   };
-  window.addEventListener('nationhood:floorbill',function(e){ if(window.renderFloorBill) window.renderFloorBill(e.detail); });
+  window.addEventListener('nationhood:floorbill',function(e){ if(e.detail&&window.renderFloorBill){ window.renderFloorBill(e.detail); window.applyBillVotes(votes); } });
   initSidebar();
 </script>
 </body>

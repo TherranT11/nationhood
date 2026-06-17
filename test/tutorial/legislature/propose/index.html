@@ -260,10 +260,10 @@
     var good = BADUP[k] ? (v<0) : (v>0);
     return {txt:txt, kind: good?'good':'bad'};
   }
-  function popPill(party,v){
-    var sign=v>0?'+':'−';
-    return '<span class="eff '+(v>0?'good':'bad')+'">'+sign+Math.abs(v)+'% Party Popularity ['+party+']</span>';
-  }
+  // One source for a party-popularity effect's text + good/bad kind, used by the
+  // article editor pills and the saved-bill snapshot.
+  function popFmt(party,v){ return {txt:(v>0?'+':'−')+Math.abs(v)+'% Party Popularity ['+party+']', kind:v>0?'good':'bad'}; }
+  function popPill(party,v){ var f=popFmt(party,v); return '<span class="eff '+f.kind+'">'+f.txt+'</span>'; }
 
   var state={title:'', arts:[{min:'', pol:null}]};
 
@@ -359,18 +359,25 @@
     var chosen=state.arts.map(function(a){return a.pol?polById(a.pol):null;}).filter(Boolean);
     var arts=chosen.map(function(p){
       var pills=p.costs.map(function(c){var f=fmtCost(c[0],c[1],c[2]);return {txt:f.txt,kind:f.kind};});
-      (p.pop||[]).forEach(function(pp){pills.push({txt:(pp[1]>0?'+':'−')+Math.abs(pp[1])+'% Party Popularity ['+pp[0]+']',kind:pp[1]>0?'good':'bad'});});
+      (p.pop||[]).forEach(function(pp){pills.push(popFmt(pp[0],pp[1]));});
       return {name:p.name, min:p.min, growth:p.growth, pills:pills};
     });
     var net=0, hasBudget=false;
     chosen.forEach(function(p){p.costs.forEach(function(c){if(c[0]==='Budget'){net+=c[1];hasBudget=true;}});});
     return {title:state.title.trim(), arts:arts, budgetText: hasBudget?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):''};
   }
-  // Bring to the floor: save the bill, then go to the Legislature where it shows.
+  // Party Actions available this week (from the profile via initSidebar).
+  var currentActions=3;
+  window.addEventListener('nationhood:actions',function(e){ if(typeof e.detail==='number') currentActions=e.detail; });
+
+  // Bring to the floor: spend 1 action, save the bill + new count together, then
+  // go to the Legislature where it's ready to vote on.
   document.getElementById('floor').addEventListener('click',async function(){
     if(!validate()) return;
+    if(currentActions<1){ ping('No <b>Party Actions</b> remaining this week.'); return; }
     var btn=this; if(btn.disabled) return; btn.disabled=true;
-    var ok = window.saveFloorBill ? await window.saveFloorBill(buildSnapshot()) : true;
+    var left=currentActions-1;
+    var ok = window.saveFloorBill ? await window.saveFloorBill(buildSnapshot(), left) : true;
     if(!ok){ ping('Could not submit — please try again.'); btn.disabled=false; return; }
     var coach=document.getElementById('coach'); if(coach) coach.style.display='none';
     window.location.href='/test/tutorial/legislature/';
@@ -388,8 +395,8 @@
   import { initSidebar, logout, mountTopbar, updateProfile } from '/test/tutorial/shell.js';
   mountTopbar();
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
-  // Persist the drafted bill so the Legislature page can show it on the floor.
-  window.saveFloorBill=function(snap){ return updateProfile({ tutorial_floor_bill: snap }); };
+  // Persist the drafted bill + the spent action together (one write).
+  window.saveFloorBill=function(snap, actionsLeft){ return updateProfile({ tutorial_floor_bill: snap, tutorial_party_actions: actionsLeft }); };
   // If a bill was already proposed, the tutorial prompt is done.
   window.addEventListener('nationhood:floorbill',function(e){ if(e.detail){var c=document.getElementById('coach'); if(c) c.style.display='none';} });
   initSidebar();
