@@ -363,29 +363,28 @@
     if (confVal) confVal.textContent = (formedConfidence(e.detail.total, e.detail.contra).value + (window.nationhoodConfidenceAdj || 0)) + '%';
   });
 
-  // Live Nation stats: base value + the accumulated delta from passed bills.
-  // `up` marks whether a rise is good (green) or bad (red) for the change badge.
-  const STATS = {
-    prosperity: { base: 14, up: 'good' }, welfare: { base: 14, up: 'good' },
-    growth: { base: 11, up: 'good' }, order: { base: 11, up: 'good' },
-    image: { base: 17, up: 'good' }, inflation: { base: 13, up: 'bad' },
-    unemployment: { base: 9, up: 'bad' }, budget: { base: 12.4, up: 'good' },
-    debt: { base: 31, up: 'bad' },
+  // Live Nation stats: tile value = its markup base + the accumulated delta from
+  // passed bills. Base comes from the markup (one source); this map only records
+  // whether a rise is good (green badge) or bad (red badge).
+  const STAT_UP = {
+    prosperity: 'good', welfare: 'good', growth: 'good', order: 'good', image: 'good',
+    inflation: 'bad', unemployment: 'bad', budget: 'good', debt: 'bad',
   };
+  const statBase = {};
   window.addEventListener('nationhood:nation', (e) => {
     const d = e.detail || {};
-    Object.keys(STATS).forEach((k) => {
-      const meta = STATS[k], delta = d[k] || 0;
-      const ns = document.getElementById('ns-' + k);
-      if (ns) ns.textContent = Math.round((meta.base + delta) * 10) / 10; // 1 dp for budget; ints stay ints
+    Object.keys(STAT_UP).forEach((k) => {
+      const ns = document.getElementById('ns-' + k); if (!ns) return;
+      if (statBase[k] === undefined) statBase[k] = parseFloat(ns.textContent) || 0; // capture the markup base once
+      const delta = d[k] || 0;
+      ns.textContent = Math.round((statBase[k] + delta) * 10) / 10; // 1 dp for budget; ints stay ints
       const nd = document.getElementById('nd-' + k);
-      if (nd) {
-        if (delta) {
-          const good = meta.up === 'good' ? delta > 0 : delta < 0;
-          nd.textContent = (delta > 0 ? '▲' : '▼') + Math.abs(delta);
-          nd.className = 'chip__d ' + (good ? 'good' : 'bad');
-        } else { nd.textContent = ''; nd.className = 'chip__d'; }
-      }
+      if (!nd) return;
+      if (delta) {
+        const good = STAT_UP[k] === 'good' ? delta > 0 : delta < 0;
+        nd.textContent = (delta > 0 ? '▲' : '▼') + Math.abs(delta);
+        nd.className = 'chip__d ' + (good ? 'good' : 'bad');
+      } else { nd.textContent = ''; nd.className = 'chip__d'; }
     });
   });
 
