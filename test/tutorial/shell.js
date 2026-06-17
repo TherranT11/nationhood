@@ -312,6 +312,22 @@ function confidenceFromStats(welfare, prosperity) {
 // { history, popDelta, confAdj, bpResolved } of the NEW results, or null.
 // Party popularity per bill: +1 when the outcome matches your vote (Aye+passed or
 // Nay+failed), -1 when it contradicts it, 0 if you abstained.
+// Bills currently awaiting a vote on the floor: scripted bills that are due this
+// week and not yet resolved, plus the player's proposed bill if it is still live.
+// Same dedup (id OR name) as resolveLegislation. Returns [{name, effect}].
+export function onFloorBills(week, floorBill, legislation) {
+  const done = new Set();
+  (legislation || []).forEach((it) => { if (it.id) done.add(it.id); if (it.name) done.add(it.name); });
+  const out = [];
+  SCRIPTED_BILLS.forEach((b) => {
+    if (b.week <= (week || DEFAULT_WEEK) && !(done.has(b.id) || done.has(b.name))) out.push({ name: b.name, effect: b.effect });
+  });
+  if (floorBill && floorBill.title && !(done.has('bp') || done.has(floorBill.title))) {
+    out.push({ name: floorBill.title, effect: floorBill.effect || '' });
+  }
+  return out;
+}
+
 export function resolveLegislation(billVotes, floorBill, week, doneIds) {
   const v = billVotes || {};
   const done = doneIds || new Set();
