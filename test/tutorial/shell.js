@@ -114,6 +114,7 @@ export async function initSidebar() {
   window.nationhoodWeek = progress.week || DEFAULT_WEEK;        // current week, read by the Legislature to load scheduled bills
   window.nationhoodNation = progress.nation || {};             // accumulated stat deltas, read by liveStat consumers
   setBudget(progress.nation);                                  // topbar/home Budget = live Treasury figure
+  mountWeekNudge(progress.week);                               // Week 24+ "back to the Party Page" nudge (skipped where no #weekNudge)
   window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
@@ -217,6 +218,35 @@ export function setWeekLabel(n) {
 export function setBudget(nation) {
   const txt = '₣' + liveStat('budget', nation) + 'B';
   document.querySelectorAll('[data-budget]').forEach((el) => { el.textContent = txt; });
+}
+
+// From Week 24, every in-game page (except the Party page) shows a nudge steering
+// the player back to the Party page to recruit. Self-styled (gw- prefix) so it
+// looks the same everywhere; mounts only where a #weekNudge container exists, so
+// the Party page — which has none — is excluded with no per-page branching.
+let nudgeStyled = false;
+function ensureNudgeStyles() {
+  if (nudgeStyled) return;
+  nudgeStyled = true;
+  const css = `
+  .gw-nudge{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:18px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .gw-nudge__ey{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:10px}
+  .gw-nudge p{font-size:15px;line-height:1.55;margin:0 0 13px;max-width:64ch;color:#fff}
+  .gw-nudge b{font-weight:800}
+  .gw-nudge__btn{display:inline-block;font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;background:#fff;color:#5546E8;border-radius:11px;padding:11px 18px;text-decoration:none}
+  .gw-nudge__btn:hover{filter:brightness(.96)}`;
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+export function mountWeekNudge(week) {
+  const host = document.getElementById('weekNudge');
+  if (!host || (week || DEFAULT_WEEK) < 24) return;
+  ensureNudgeStyles();
+  host.innerHTML =
+    '<div class="gw-nudge"><div class="gw-nudge__ey">Tutorial</div>' +
+    "<p>Okay, there's a new bill. Feel free to vote on it. However, we have to look toward the future of the party. Let's navigate back to the <b>Party Page</b>.</p>" +
+    '<a class="gw-nudge__btn" href="/test/tutorial/party/">Go to Party Page &#9656;</a></div>';
 }
 
 // Théo Lefèvre's Charisma, used for the Labour Unrest negotiation roll.
