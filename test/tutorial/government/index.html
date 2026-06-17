@@ -46,6 +46,15 @@
   h1{font-weight:900;font-size:clamp(28px,5vw,40px);letter-spacing:-.03em;margin-top:6px;line-height:1.02}
   .sub{color:var(--muted);font-size:15px;margin-top:10px;max-width:60ch}
 
+  /* tutorial coach bubble */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:24px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:720px}
+  .coach::after{content:"";position:absolute;left:36px;bottom:-8px;width:17px;height:17px;background:#6a5cec;transform:rotate(45deg);border-radius:3px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0 0 11px;max-width:64ch}
+  .coach p:last-child{margin-bottom:0}
+  .coach p.cta{font-weight:800}
+
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:18px}
   .mod__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
   .mod__hd > span:first-child{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
@@ -166,6 +175,14 @@
   </aside>
 
   <main class="main">
+    <div class="coach">
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>This is the Government screen. It generally looks different, but because there is currently no government, it shows the Government Formation UI instead. As you are the largest party, you have an opportunity to form a coalition first.</p>
+      <p>A coalition is when two or more parties join together to form a coalition. You can see that Government Confidence has already taken a hit because of 3 crises affecting the nation. We will address those shortly. For now, look at the different options to form a coalition.</p>
+      <p>Forming larger coalitions make a more sturdier coalition, but parties that are not aligned to your own Archetype bring Confidence down. Each party has it's own demands in order to join your coalition.</p>
+      <p class="cta">Form a coalition now.</p>
+    </div>
+
     <div class="kicker">Government · Formation</div>
     <h1>Form a Government</h1>
     <p class="sub">Build a coalition holding at least <b>141 of 280</b> seats. Each partner brings demands: ministries, policy commitments, and red lines, which you can accept, or challenge to waive at the risk of their trust.</p>
@@ -288,7 +305,7 @@
       }else{
         act='<div class="dact" data-idx="'+idx+'">'+
               '<span class="dstate accepted">&#9679; Accepted</span>'+
-              '<button class="chbtn" data-act="challenge">Challenge · ~'+oddsPct(p,d)+'%</button>'+
+              '<button class="chbtn" data-act="challenge" disabled title="Not yet available">Challenge · ~'+oddsPct(p,d)+'%</button>'+
             '</div>';
       }
       dem+='<div class="demand">'+
