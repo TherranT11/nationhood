@@ -43,13 +43,14 @@
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* main */
-  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1340px}
+  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0}
   /* two-column body: the assembly + bills on the left, Legislative History rail on the right */
-  .legcols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+  .legcols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:stretch}
   .legmain{min-width:0}
-  .legrail{min-width:0}
+  .legrail{min-width:0;display:flex}
   @media(max-width:1000px){.legcols{grid-template-columns:1fr}}
-  .leghist{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .leghist{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;flex:1;display:flex;flex-direction:column}
+  #legHistory{flex:1;min-height:0;overflow:auto}
   .leghist__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
   .leghist__empty{color:var(--soft);font-style:italic;font-size:13px}
   .lh{padding:12px 0;border-top:1px solid var(--line)}
