@@ -29,7 +29,6 @@
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
   .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .brand__txt .party{font-weight:700}
-  .brand__date{font-weight:700;font-size:12px;letter-spacing:-.005em;color:var(--ink);white-space:nowrap;margin-top:3px}
 
   .nav{display:flex;flex-direction:column;gap:2px}
   .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
@@ -58,6 +57,8 @@
   .nextweek:hover{transform:translateY(-1px);filter:brightness(1.07)}
   .nextweek:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
   .nextweek[disabled]{background:#cfcdc7;cursor:default;pointer-events:none}
+  .nw{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
+  .nw__date{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
 
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
   .mod__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
@@ -145,7 +146,7 @@
   <aside class="side">
     <div class="brand">
       <img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front Sessau">
-      <div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span><div class="brand__date">Week 22 · May 1980</div></div>
+      <div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div>
     </div>
     <nav class="nav">
       <a class="nav__i active" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
@@ -171,7 +172,10 @@
       </div>
       <div class="top__right">
         <div class="standing">Confidence<i id="confVal"><span class="dash"></span></i><small id="standingLabel">no government</small></div>
-        <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
+        <div class="nw">
+          <span class="nw__date">Week 22 · May 1980</span>
+          <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
+        </div>
       </div>
     </header>
     <div class="coach">
