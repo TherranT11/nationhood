@@ -78,6 +78,7 @@
   .propose{margin-left:auto;font-family:'Space Mono',monospace;font-weight:700;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:9px;padding:8px 14px;cursor:pointer;transition:transform .12s,filter .15s}
   .propose:hover{transform:translateY(-1px);filter:brightness(.97)}
   .propose:focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
+  .propose:disabled{opacity:.45;cursor:default;pointer-events:none;transform:none}
 
   /* bill card */
   .bill{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
@@ -500,10 +501,13 @@
   }
   // Re-count the bills currently on the floor (visible) into the section header.
   function recount(){ var n=0; document.querySelectorAll('.legmain details.bill').forEach(function(b){ if(b.style.display!=='none') n++; }); var ct=document.querySelector('.secthd .ct'); if(ct) ct.textContent=n; }
+  // One bill per session: lock the Propose New Law button once the player's bill
+  // is on the floor or already resolved.
+  function lockPropose(){ var p=document.getElementById('propose'); if(p){ p.disabled=true; p.title='You have already proposed a bill this session'; } }
   // The player's proposed bill (Propose-page snapshot) onto the floor.
   window.renderFloorBill=function(snap){
     renderBill({id:'bp', title:snap.title, author:{name:'Front Sessau',color:'#5546E8'}, arts:snap.arts, partyVotes:snap.partyVotes, budgetText:snap.budgetText});
-    recount(); updateCoach();
+    recount(); updateCoach(); lockPropose();
   };
   // Scripted agenda bill that reaches the floor at its week (drafted for the
   // tutorial; resolution data lives in shell SCRIPTED_BILLS 'img').
@@ -520,6 +524,7 @@
   window.renderLegHistory=function(items){
     if(!items||!items.length) return;
     var done={}; items.forEach(function(it){ if(it.id) done[it.id]=true; });
+    if(done.bp) lockPropose(); // the player's bill is already resolved → no re-propose
     // b1/b2 are round-1 bills — any resolved history means they've left the floor.
     ['b1','b2'].forEach(function(id){ var el=document.getElementById(id); if(el) el.style.display='none'; });
     var POP={'1':'+1 Party Popularity','-1':'−1 Party Popularity','0':'No popularity change'};

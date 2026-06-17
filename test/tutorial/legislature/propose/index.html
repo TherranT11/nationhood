@@ -138,6 +138,7 @@
   .btn.ghost{color:var(--indigo);background:var(--surface)} .btn.ghost:hover{background:var(--indigo-soft)}
   .btn.ghost .ac{color:var(--soft)}
   .btn:disabled{border-color:var(--line);background:var(--chip);color:var(--soft);cursor:default;pointer-events:none}
+  .proposed-note{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);text-align:center;margin-top:2px}
   .btn:disabled .ac{color:var(--soft)}
 
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
@@ -221,6 +222,7 @@
           <div class="actions">
             <button class="btn primary" id="floor">Bring to the Floor Now <span class="ac">1 Action</span></button>
             <button class="btn ghost" id="agenda" disabled>Add to Upcoming Agenda <span class="ac">Free Action</span></button>
+            <div class="proposed-note" id="proposedNote" hidden>You've already brought a bill to the floor this session.</div>
           </div>
         </div>
       </div>
@@ -385,6 +387,7 @@
   // Bring to the floor: spend 1 action, save the bill + new count together, then
   // go to the Legislature where it's ready to vote on.
   document.getElementById('floor').addEventListener('click',async function(){
+    if(window.tutorialProposed){ ping('You’ve already proposed a bill this session.'); return; }
     if(!validate()) return;
     if(currentActions<1){ ping('No <b>Party Actions</b> remaining this week.'); return; }
     var btn=this; if(btn.disabled) return; btn.disabled=true;
@@ -409,8 +412,17 @@
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
   // Persist the drafted bill + the spent action together (one write).
   window.saveFloorBill=function(snap, actionsLeft){ return updateProfile({ tutorial_floor_bill: snap, tutorial_party_actions: actionsLeft }); };
-  // If a bill was already proposed, the tutorial prompt is done.
-  window.addEventListener('nationhood:floorbill',function(e){ if(e.detail){var c=document.getElementById('coach'); if(c) c.style.display='none';} });
+  // One bill per session: once a bill is on the floor (floorbill) or already
+  // resolved (a 'bp' in legislation), the prompt is done and re-proposing is
+  // blocked — hide the coach, disable the Floor button, set the guard flag.
+  function markProposed(){
+    window.tutorialProposed=true;
+    var c=document.getElementById('coach'); if(c) c.style.display='none';
+    var f=document.getElementById('floor'); if(f) f.disabled=true;
+    var n=document.getElementById('proposedNote'); if(n) n.hidden=false;
+  }
+  window.addEventListener('nationhood:floorbill',function(e){ if(e.detail) markProposed(); });
+  window.addEventListener('nationhood:legislation',function(e){ if(e.detail&&e.detail.some(function(it){return it.id==='bp';})) markProposed(); });
   initSidebar();
 </script>
 </body>
