@@ -106,7 +106,7 @@
   .recruitbtn:hover{background:var(--indigo);color:#fff;border-color:var(--indigo)}
   .recruitbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
   .ptable{display:flex;flex-direction:column}
-  .phead,.prow{display:grid;grid-template-columns:1.5fr .55fr 1.25fr repeat(5,minmax(48px,.7fr));gap:12px;align-items:center}
+  .phead,.prow{display:grid;grid-template-columns:1.5fr .55fr 1.25fr .6fr repeat(5,minmax(48px,.7fr));gap:12px;align-items:center}
   .phead{padding:0 12px 10px;border-bottom:1px solid var(--line)}
   .phead span{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .phead .sc{text-align:center}
@@ -120,6 +120,8 @@
   .page{font-weight:700;font-size:14px;color:var(--ink);letter-spacing:-.01em}
   .page .al{display:none;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--soft);text-transform:uppercase;margin-right:5px}
   .pstatus{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.03em;color:var(--muted)}
+  .pexp{font-weight:800;font-size:14px;color:var(--ink);letter-spacing:-.01em}
+  .pexp .el{display:none;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--soft);text-transform:uppercase;margin-right:5px}
   .pstat{text-align:center}
   .pstat .sl{display:none;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--soft)}
   .pstat .num{font-weight:800;font-size:16px;letter-spacing:-.02em;display:block}
@@ -127,18 +129,18 @@
   .pstat .sbar i{display:block;height:100%;background:var(--soft)}
   .pstat.max .num{color:var(--indigo)} .pstat.max .sbar i{background:var(--indigo)}
 
-  /* scandal callout (under an affected politician) */
-  .scandal{background:var(--red-soft);border:1px solid color-mix(in srgb,var(--red) 28%,transparent);border-radius:12px;padding:14px 16px;margin:10px 0}
-  .scandal__tag{display:inline-block;font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#fff;background:var(--red);border-radius:6px;padding:4px 9px;margin-right:10px;vertical-align:middle}
-  .scandal__wk{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--red);vertical-align:middle}
-  .scandal p{margin-top:9px;font-size:13.5px;line-height:1.45;color:#9b2c2c}
+  /* prominent name + inline scandal tag (under the name) */
+  .pn-id{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .ntag{align-self:flex-start;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#fff;background:var(--red);border-radius:5px;padding:2px 7px}
 
   @media(max-width:760px){
     .phead{display:none}
     .prow{grid-template-columns:repeat(5,1fr);gap:8px 6px;padding:15px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:10px}
     .pname{grid-column:1/-1}
-    .page{grid-column:1/3;margin-bottom:5px}
+    .page{grid-column:1/2;margin-bottom:5px}
     .page .al{display:inline}
+    .pexp{grid-column:2/3;margin-bottom:5px}
+    .pexp .el{display:inline}
     .pstatus{grid-column:3/-1;margin-bottom:5px}
     .pstat .sl{display:block;margin-bottom:2px}
   }
@@ -241,7 +243,7 @@
         </div>
       </div>
       <div class="ptable" id="ptable">
-        <div class="phead"><span>Name</span><span>Age</span><span>Status</span><span class="sc">CHA</span><span class="sc">ACU</span><span class="sc">GUI</span><span class="sc">RES</span><span class="sc">COM</span></div>
+        <div class="phead"><span>Name</span><span>Age</span><span>Status</span><span>EXP</span><span class="sc">CHA</span><span class="sc">ACU</span><span class="sc">GUI</span><span class="sc">RES</span><span class="sc">COM</span></div>
       </div>
     </section>
 
@@ -274,12 +276,12 @@
 
   // ---- prominent politicians (stats 1-5: Charisma, Acumen, Guile, Resolve, Command) ----
   var pols=[
-    {name:'Allen Droulez',age:49,role:'Prime Minister',free:false,busy:'the premiership',stats:[4,3,2,4,3]},
-    {name:'Margot Sève',age:56,role:'Deputy Leader',free:false,busy:'Economic Development',stats:[3,5,2,3,4]},
-    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',page:'/test/tutorial/party/theolefevre/',stats:[2,3,4,4,4],scandal:{week:'Week 18, 1980',text:'This politician said something in front of the cameras that he now, at least privately, regrets. It dropped Party Approval. Removing him may bring Party Approval back, and it may not.'}},
-    {name:'Claire Bonnet',age:43,role:'Trade Minister',free:false,busy:'Industrial Decline',stats:[4,4,2,2,3]},
-    {name:'Aurélie Brun',age:40,role:'Foreign Minister',free:true,stats:[5,3,3,2,2]},
-    {name:'Armand Roux',age:54,role:'Defense Minister',free:true,stats:[2,3,2,5,4]}
+    {name:'Allen Droulez',age:49,role:'Prime Minister',free:false,busy:'the premiership',exp:9,stats:[4,3,2,4,3]},
+    {name:'Margot Sève',age:56,role:'Deputy Leader',free:false,busy:'Economic Development',exp:6,stats:[3,5,2,3,4]},
+    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',page:'/test/tutorial/party/theolefevre/',exp:1,stats:[2,3,4,4,4],scandal:true},
+    {name:'Claire Bonnet',age:43,role:'Trade Minister',free:false,busy:'Industrial Decline',exp:3,stats:[4,4,2,2,3]},
+    {name:'Aurélie Brun',age:40,role:'Foreign Minister',free:true,exp:0,stats:[5,3,3,2,2]},
+    {name:'Armand Roux',age:54,role:'Defense Minister',free:true,exp:4,stats:[2,3,2,5,4]}
   ];
   var SL=['CHA','ACU','GUI','RES','COM'];
   var tbl=document.getElementById('ptable');
@@ -289,19 +291,15 @@
       return '<div class="pstat'+(v===max?' max':'')+'"><span class="sl">'+SL[i]+'</span><span class="num">'+v+'</span><span class="sbar"><i style="width:'+(v/5*100)+'%"></i></span></div>';
     }).join('');
     var row=document.createElement('div'); row.className='prow';
-    row.innerHTML='<div class="pname"><span class="dot '+(p.free?'free':'busy')+'"></span><b>'+p.name+'</b></div>'+
+    row.innerHTML='<div class="pname"><span class="dot '+(p.free?'free':'busy')+'"></span><div class="pn-id"><b>'+p.name+'</b>'+(p.scandal?'<span class="ntag">Scandal</span>':'')+'</div></div>'+
       '<div class="page"><span class="al">Age</span>'+p.age+'</div>'+
-      '<div class="pstatus">'+p.role+'</div>'+cells;
+      '<div class="pstatus">'+p.role+'</div>'+
+      '<div class="pexp"><span class="el">EXP</span>'+p.exp+'</div>'+cells;
     row.addEventListener('click',function(){
       if(p.page){window.location.href=p.page;return;} // a politician with a profile page opens it
       ping('<b>'+p.name+'</b>: '+(p.free?'available for one action this week.':'occupied: '+p.busy+'.'));
     });
     tbl.appendChild(row);
-    if(p.scandal){
-      var sc=document.createElement('div'); sc.className='scandal';
-      sc.innerHTML='<span class="scandal__tag">Scandal</span><b class="scandal__wk">'+p.scandal.week+'</b><p>'+p.scandal.text+'</p>';
-      tbl.appendChild(sc);
-    }
   });
   document.getElementById('recruitBtn').addEventListener('click',function(){ping('<b>RECRUIT</b>: spend to bring a new politician onto the roster.');});
 
