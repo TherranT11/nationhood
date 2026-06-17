@@ -69,6 +69,17 @@ export async function markGovernmentFormed() {
   }
 }
 
+// Sign the player out and return to the test landing page. Redirects even if
+// the sign-out call fails so a stuck session never traps the player. Guards
+// against a double-click firing two sign-outs before the redirect lands.
+let loggingOut = false;
+export async function logout() {
+  if (loggingOut) return;
+  loggingOut = true;
+  try { if (isConfigured) await supabase.auth.signOut(); } catch (err) { /* fall through to redirect */ }
+  window.location.href = '/test/';
+}
+
 // Confidence of the formed tutorial government (Front 114 + Workers' 40 = 154
 // of 280) under the three standing crises. Single source of truth so the home
 // screen and the Government page always agree. Depends on the player's
