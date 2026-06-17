@@ -140,8 +140,13 @@
   const flag = document.getElementById('flag');
   let sel = null;
 
-  // Hide the flag gracefully if the image isn't present yet.
-  if (flag) flag.addEventListener('error', () => flag.remove());
+  // Hide the flag gracefully if the image isn't present yet. The error may
+  // have already fired before this deferred module ran, so check for that too.
+  if (flag) {
+    const hideFlag = () => flag.remove();
+    flag.addEventListener('error', hideFlag);
+    if (flag.complete && flag.naturalWidth === 0) hideFlag();
+  }
 
   // Guard: saving a per-player choice needs a signed-in player.
   let user = null;
