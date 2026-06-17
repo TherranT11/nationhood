@@ -261,7 +261,7 @@
   var CONTRA_OF={ Nationalist:'Communist', Labour:'Nationalist' };
   var PLAYER_PARTY=window.nationhoodParty||null;
   window.addEventListener('nationhood:party',function(e){ PLAYER_PARTY=e.detail; recompute(); });
-  var CRISES=[{name:'Oil Shock',pct:-2},{name:'Industrial Decline',pct:-2},{name:'Labour Unrest',pct:-2}];
+  var CRISES=[{name:'Energy Shock',pct:-2},{name:'Industrial Decline',pct:-2},{name:'Labour Unrest',pct:-2}];
   function renderConfidence(total,contraCount){
     var rows=[{label:'Base',pct:CONF_BASE,cls:'base'}];
     CRISES.forEach(function(c){rows.push({label:c.name,pct:c.pct,cls:'neg'});});
