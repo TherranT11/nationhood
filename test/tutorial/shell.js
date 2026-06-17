@@ -54,6 +54,7 @@ export async function getTutorialProgress(userId) {
       billVotes: data.tutorial_bill_votes || {},
       week: data.tutorial_week ?? 22, // tutorial opens on week 22
       crisis: data.tutorial_crisis || null,
+      floorBill: data.tutorial_floor_bill || null,
     };
   } catch (err) {
     return null;
@@ -110,6 +111,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:actions', { detail: progress.actions }));
   window.dispatchEvent(new CustomEvent('nationhood:bills', { detail: progress.billVotes }));
   window.dispatchEvent(new CustomEvent('nationhood:crisis', { detail: progress.crisis }));
+  window.dispatchEvent(new CustomEvent('nationhood:floorbill', { detail: progress.floorBill }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }

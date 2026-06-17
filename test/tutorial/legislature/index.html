@@ -407,6 +407,27 @@
     });
     updateCoach();
   };
+  // Render the bill the player drafted on the Propose page onto the floor (from
+  // its saved snapshot), and bump the On the Floor count. Called once on load.
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  window.renderFloorBill=function(b){
+    if(!b||!b.title) return;
+    var roman=['I','II','III','IV','V','VI','VII','VIII'];
+    var arts=(b.arts||[]).map(function(a,i){
+      var pills=(a.pills||[]).map(function(p){return '<span class="eff '+p.kind+'">'+esc(p.txt)+'</span>';}).join('');
+      return '<div class="art"><span class="art__n">'+(roman[i]||(i+1))+'</span><div class="art__b"><b>'+esc(a.name)+'</b>'+(pills?'<div class="pills">'+pills+'</div>':'')+'</div></div>';
+    }).join('');
+    var d=document.createElement('details'); d.className='bill'; d.open=true;
+    d.innerHTML='<summary><div class="bill__hd"><h2>'+esc(b.title)+'</h2>'+
+      '<span class="status open"><span class="dotp"></span>Proposed</span>'+
+      '<svg class="bill__ch" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></div>'+
+      '<div class="meta"><span class="author" style="--c:#5546E8"><span class="dot"></span>Front Sessau</span></div></summary>'+
+      '<div class="plabel">Articles</div>'+arts+
+      (b.budgetText?'<div class="art-total">Total <b>'+esc(b.budgetText)+'</b></div>':'');
+    var secthd=document.querySelector('.secthd'); // first secthd = On the Floor
+    if(secthd){ secthd.parentNode.insertBefore(d, secthd.nextSibling);
+      var ct=secthd.querySelector('.ct'); if(ct) ct.textContent=(parseInt(ct.textContent,10)||2)+1; }
+  };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
   document.getElementById('propose').addEventListener('click',function(){window.location.href='/test/tutorial/legislature/propose/';});
   // sidebar nav: linked items navigate; the rest just highlight (not wired)
@@ -431,6 +452,7 @@
     if(v===null) delete votes[id]; else votes[id]=v;
     updateProfile({ tutorial_bill_votes: votes });
   };
+  window.addEventListener('nationhood:floorbill',function(e){ if(window.renderFloorBill) window.renderFloorBill(e.detail); });
   initSidebar();
 </script>
 </body>
