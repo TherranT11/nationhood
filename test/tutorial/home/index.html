@@ -264,13 +264,13 @@
       <div class="mod__hd"><span>The Nation at a Glance</span><a>Nation &#9656;</a></div>
       <div class="snap">
         <div class="chip"><span class="chip__k">Prosperity</span><span class="chip__t" style="color:#1f9d57"><span id="ns-prosperity">14</span><span class="chip__d" id="nd-prosperity"></span> &mdash; <span id="nl-prosperity">Thriving economy</span></span></div>
-        <div class="chip"><span class="chip__k">Welfare <span class="down">&#9660;</span></span><span class="chip__t" style="color:#5fbf86"><span id="ns-welfare">14</span><span class="chip__d" id="nd-welfare"></span> &mdash; <span id="nl-welfare">Comprehensive care</span></span></div>
-        <div class="chip"><span class="chip__k">Growth <span class="down">&#9660;</span></span><span class="chip__t" style="color:#e08a8a"><span id="ns-growth">9</span><span class="chip__d" id="nd-growth"></span> &mdash; <span id="nl-growth">Stalling</span></span></div>
-        <div class="chip"><span class="chip__k">Order <span class="down">&#9660;</span></span><span class="chip__t" style="color:#C99A06"><span id="ns-order">8</span><span class="chip__d" id="nd-order"></span> &mdash; <span id="nl-order">Mostly calm</span></span></div>
+        <div class="chip"><span class="chip__k">Welfare <span class="down" id="na-welfare">&#9660;</span></span><span class="chip__t" style="color:#5fbf86"><span id="ns-welfare">14</span><span class="chip__d" id="nd-welfare"></span> &mdash; <span id="nl-welfare">Comprehensive care</span></span></div>
+        <div class="chip"><span class="chip__k">Growth <span class="down" id="na-growth">&#9660;</span></span><span class="chip__t" style="color:#e08a8a"><span id="ns-growth">9</span><span class="chip__d" id="nd-growth"></span> &mdash; <span id="nl-growth">Stalling</span></span></div>
+        <div class="chip"><span class="chip__k">Order <span class="down" id="na-order">&#9660;</span></span><span class="chip__t" style="color:#C99A06"><span id="ns-order">8</span><span class="chip__d" id="nd-order"></span> &mdash; <span id="nl-order">Mostly calm</span></span></div>
         <div class="chip"><span class="chip__k">Image</span><span class="chip__t" style="color:#1f9d57"><span id="ns-image">17</span><span class="chip__d" id="nd-image"></span> &mdash; <span id="nl-image">Cultural beacon</span></span></div>
         <div class="chip"><span class="chip__k">Regime</span><span class="chip__t">Electoral Democracy. 45% Ceiling.</span></div>
-        <div class="chip"><span class="chip__k">Inflation <span class="up">&#9650;</span></span><span class="chip__v"><span id="ns-inflation">13</span>%<span class="chip__d" id="nd-inflation"></span></span></div>
-        <div class="chip"><span class="chip__k">Unemployment <span class="up">&#9650;</span></span><span class="chip__v"><span id="ns-unemployment">9</span>%<span class="chip__d" id="nd-unemployment"></span></span></div>
+        <div class="chip"><span class="chip__k">Inflation <span class="up" id="na-inflation">&#9650;</span></span><span class="chip__v"><span id="ns-inflation">13</span>%<span class="chip__d" id="nd-inflation"></span></span></div>
+        <div class="chip"><span class="chip__k">Unemployment <span class="up" id="na-unemployment">&#9650;</span></span><span class="chip__v"><span id="ns-unemployment">9</span>%<span class="chip__d" id="nd-unemployment"></span></span></div>
         <div class="chip"><span class="chip__k">Budget</span><span class="chip__v">&#8355;<span id="ns-budget">12.4</span>B<span class="chip__d" id="nd-budget"></span></span></div>
         <div class="chip"><span class="chip__k">Debt</span><span class="chip__v">&#8355;<span id="ns-debt">31</span>B<span class="chip__d" id="nd-debt"></span></span></div>
       </div>
@@ -329,7 +329,7 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, formedConfidence, logout, wireNextWeek } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence, logout, wireNextWeek, statLabel } from '/test/tutorial/shell.js';
 
   // The week label and Party Actions count are both filled by initSidebar from
   // the player's profile (one source), so this header and every other screen's
@@ -383,22 +383,10 @@
     prosperity: 'good', welfare: 'good', growth: 'good', order: 'good', image: 'good',
     inflation: 'bad', unemployment: 'bad', budget: 'good', debt: 'bad',
   };
-  // Qualitative ladders: the tile's word label is derived from its value (index 0
-  // = value 1). Prosperity/Welfare/Order/Image run 1–20; Growth runs 1–19 (10 is
-  // the flat, zero-growth midpoint). The number is the one source; the word follows.
-  const LADDERS = {
-    prosperity: ['Famine and ruin','Crushing poverty','Widespread destitution','Struggling and poor','Barely scraping by','Hard times','Making ends meet','Modest comfort','Steady livelihoods','Comfortable enough','Rising standards','Growing prosperity','Broad affluence','Thriving economy','Widespread wealth','Booming nation','Roaring prosperity','Lavish abundance','Gilded opulence','Boundless riches'],
-    welfare: ['Total neglect','The sick abandoned','No safety net','Bare survival','Patchy support','Minimal services','Basic provision','Modest care','Decent services','Reliable support','Solid safety net','Well looked after','Strong public services','Comprehensive care','Generous welfare','Cradle-to-grave care','Flourishing wellbeing','Universal abundance','Every need met','A model to the world'],
-    order: ['Total anarchy','Open rebellion','Lawless chaos','Rampant unrest','Crime and disorder','Fragile peace','Shaky stability','Mostly calm','Settled and stable','Law and order','Firm control','A tight grip','Strong authority','Rigid discipline','Heavy enforcement','Iron rule','Watchful state','Surveillance state','Absolute obedience','Total police state'],
-    image: ['Global pariah','Despised abroad','Disgraced reputation','Widely distrusted','Poor standing','A forgotten nobody','Quietly overlooked','Mildly regarded','Fair reputation','Respected enough','Well regarded','Rising influence','Admired abroad','Real prestige','Soft-power player','Globally admired','Cultural beacon','World-renowned','A revered power','Icon of the age'],
-    growth: ['Massive recession','Deep recession','Severe recession','Sharp recession','Recession','Mild recession','Downturn','Slowdown','Stalling','Stagnant','Stirring','Slow growth','Modest growth','Steady growth','Strong growth','Rapid growth','Booming','Surging','Explosive growth'],
-  };
-  function ladderLabel(stat, value) {
-    const rung = LADDERS[stat]; if (!rung) return null;
-    const i = Math.min(rung.length, Math.max(1, Math.round(value))) - 1; // clamp into range
-    return rung[i];
-  }
+  // The qualitative word label (statLabel) and its 1–20/1–19 ladders live in
+  // shell.js — one source, shared with the Draft-a-Bill projection.
   const statBase = {};
+  const arrowDefault = {}; // each header arrow's authored glyph/colour, captured once
   window.addEventListener('nationhood:nation', (e) => {
     const d = e.detail || {};
     Object.keys(STAT_UP).forEach((k) => {
@@ -407,15 +395,26 @@
       const delta = d[k] || 0;
       const value = Math.round((statBase[k] + delta) * 10) / 10; // 1 dp for budget; ints stay ints
       ns.textContent = value;
+      const good = STAT_UP[k] === 'good' ? delta > 0 : delta < 0; // only meaningful when delta != 0
+
       const nl = document.getElementById('nl-' + k); // word label follows the number
-      if (nl) { const lbl = ladderLabel(k, value); if (lbl) nl.textContent = lbl; }
-      const nd = document.getElementById('nd-' + k);
-      if (!nd) return;
-      if (delta) {
-        const good = STAT_UP[k] === 'good' ? delta > 0 : delta < 0;
-        nd.textContent = (delta > 0 ? '▲' : '▼') + Math.abs(delta);
-        nd.className = 'chip__d ' + (good ? 'good' : 'bad');
-      } else { nd.textContent = ''; nd.className = 'chip__d'; }
+      if (nl) { const lbl = statLabel(k, value); if (lbl) nl.textContent = lbl; }
+
+      const nd = document.getElementById('nd-' + k); // delta badge beside the number
+      if (nd) {
+        if (delta) { nd.textContent = (delta > 0 ? '▲' : '▼') + Math.abs(delta); nd.className = 'chip__d ' + (good ? 'good' : 'bad'); }
+        else { nd.textContent = ''; nd.className = 'chip__d'; }
+      }
+
+      // Header trend arrow: tracks the net change direction once a bill moves the
+      // stat (▲ up, ▼ down; green if the move is good, red if bad). Before any
+      // movement it keeps the scenario's authored starting trend.
+      const na = document.getElementById('na-' + k);
+      if (na) {
+        if (arrowDefault[k] === undefined) arrowDefault[k] = { glyph: na.textContent, color: na.style.color };
+        if (delta) { na.textContent = delta > 0 ? '▲' : '▼'; na.style.color = good ? 'var(--green)' : 'var(--red)'; }
+        else { na.textContent = arrowDefault[k].glyph; na.style.color = arrowDefault[k].color; }
+      }
     });
   });
 
