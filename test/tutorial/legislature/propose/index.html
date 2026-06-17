@@ -106,21 +106,13 @@
   /* projection */
   .proj{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-top:16px}
   .proj__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
-  .gread{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-  .gread .big{font-weight:900;font-size:30px;letter-spacing:-.03em}
-  .gread .big .arr{color:var(--soft);margin:0 4px}
-  .gread .big .to{color:var(--green)}
-  .gread .glabel{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--green)}
-  .gdelta{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;padding:4px 9px;border-radius:20px;color:var(--indigo);background:var(--indigo-soft);margin-left:auto}
-
-  .ladder{display:flex;gap:2px;margin:14px 0 4px}
-  .lc{flex:1;height:22px;border-radius:3px;position:relative;background:var(--chip)}
-  .lc.rec{background:#F7E3E3} .lc.flat{background:#ECEAE4} .lc.gro{background:#E1F0E7}
-  .lc.now{box-shadow:inset 0 0 0 2px var(--green)} .lc.now.recnow{box-shadow:inset 0 0 0 2px var(--red)} .lc.now.flatnow{box-shadow:inset 0 0 0 2px var(--soft)}
-  .lc.now b{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--green)}
-  .lc.now.recnow b{color:var(--red)} .lc.now.flatnow b{color:var(--ink)}
-  .lc.base::after{content:"";position:absolute;left:50%;top:-7px;transform:translateX(-50%);width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--ink)}
-  .laxis{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:4px}
+  .projlist{display:flex;flex-direction:column}
+  .projrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .projrow:last-child{border-bottom:none}
+  .projrow .pk{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .projrow .pv{font-family:'Archivo',sans-serif;font-weight:800;font-size:16px;letter-spacing:-.01em}
+  .projrow .pv.good{color:var(--green)} .projrow .pv.bad{color:var(--red)}
+  .projrow .pv.flat{color:var(--soft);font-family:'Space Mono',monospace;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
 
   .costs{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
   .costs .cl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:9px}
@@ -202,13 +194,7 @@
 
         <div class="proj">
           <div class="proj__hd">Projected Effect</div>
-          <div class="gread">
-            <span class="big">Growth <span id="g-from">8</span><span class="arr">→</span><span class="to" id="g-to">8</span></span>
-            <span class="glabel" id="g-label">Slowdown</span>
-            <span class="gdelta" id="g-delta">+0</span>
-          </div>
-          <div class="ladder" id="ladder"></div>
-          <div class="laxis"><span>1 · Recession</span><span>10 · Stagnant</span><span>19 · Explosive</span></div>
+          <div class="projlist" id="projlist"></div>
 
           <div class="costs">
             <div class="cl">Cost</div>
@@ -229,9 +215,11 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  var BASE=8;
-  var LADDER=[null,'Massive recession','Deep recession','Severe recession','Sharp recession','Recession','Mild recession','Downturn','Slowdown','Stalling','Stagnant','Stirring','Slow growth','Modest growth','Steady growth','Strong growth','Rapid growth','Booming','Surging','Explosive growth'];
   var MINISTRIES=['Treasury','Trade','Welfare','Economic Development'];
+  // Indicators projected from a bill's net effect. dir: +1 = higher is good
+  // (green when up), -1 = higher is bad (Inflation, Unemployment). Prosperity has
+  // no policy inputs yet, so it always reads "No change".
+  var PROJ=[['Growth',1],['Prosperity',1],['Welfare',1],['Image',1],['Order',1],['Inflation',-1,'%'],['Unemployment',-1,'%']];
   // pop: party-popularity effects (party label, +/- value). Shown on ~a third of
   // policies, green when positive, red when negative.
   var POLICIES=[
@@ -308,22 +296,15 @@
       totalGrowth+=p.growth;
       p.costs.forEach(function(c){agg[c[0]]=(agg[c[0]]||0)+c[1]; unit[c[0]]=c[2]; if(c[0]==='Budget')hasBudget=true;});
     });
-    var proj=Math.min(19, BASE+totalGrowth);
-    document.getElementById('g-from').textContent=BASE;
-    document.getElementById('g-to').textContent=proj;
-    document.getElementById('g-label').textContent=LADDER[proj];
-    var gd=document.getElementById('g-delta'); gd.textContent=(totalGrowth>0?'+':'')+totalGrowth+' Growth';
-    var lab=document.getElementById('g-label'); lab.style.color = proj>10?'var(--green)':proj<10?'var(--red)':'var(--soft)';
-    document.querySelector('.gread .to').style.color = proj>10?'var(--green)':proj<10?'var(--red)':'var(--ink)';
-
-    // ladder
-    var lad=document.getElementById('ladder'); lad.innerHTML='';
-    for(var i=1;i<=19;i++){
-      var c=document.createElement('span'); c.className='lc '+(i<10?'rec':i>10?'gro':'flat');
-      if(i===BASE)c.classList.add('base');
-      if(i===proj){c.classList.add('now'); if(proj<10)c.classList.add('recnow'); else if(proj===10)c.classList.add('flatnow'); c.innerHTML='<b>'+proj+'</b>';}
-      lad.appendChild(c);
-    }
+    // Projected indicators: the bill's net effect on each. Growth comes from the
+    // policies' growth, the rest from aggregated costs; Prosperity has no inputs.
+    var deltas={Growth:totalGrowth, Prosperity:0, Welfare:agg.Welfare||0, Image:agg.Image||0, Order:agg.Order||0, Inflation:agg.Inflation||0, Unemployment:agg.Unemployment||0};
+    document.getElementById('projlist').innerHTML=PROJ.map(function(s){
+      var k=s[0], dir=s[1], u=s[2]||'', v=deltas[k];
+      if(!v) return '<div class="projrow"><span class="pk">Projected '+k+'</span><span class="pv flat">No change</span></div>';
+      var good=(dir>0)?(v>0):(v<0);
+      return '<div class="projrow"><span class="pk">Projected '+k+'</span><span class="pv '+(good?'good':'bad')+'">'+(v>0?'+':'−')+Math.abs(v)+u+'</span></div>';
+    }).join('');
 
     // costs (aggregate, in a fixed order; party popularity stays per-article)
     var order=['Budget','Welfare','Order','Image','Inflation','Unemployment'];

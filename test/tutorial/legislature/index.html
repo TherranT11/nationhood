@@ -187,7 +187,7 @@
 
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
-      <p>Welcome to the Legislature page. This is where things get done — here you can vote on and propose new bills. Let's take a look at the first bill, the <b>Energy Independence Act</b>. This may very well end the Energy Shock crisis that Sessau is dealing with, and it would very likely turn the Labour Unrest into a General Strike. Why don't you vote the way you'd like, and we'll go from there.</p>
+      <p id="coachP">Welcome to the Legislature page. This is where things get done — here you can vote on and propose new bills. Let's take a look at the first bill, the <b>Energy Independence Act</b>. This may very well end the Energy Shock crisis that Sessau is dealing with, and it would very likely turn the Labour Unrest into a General Strike. Why don't you vote the way you'd like, and we'll go from there.</p>
     </div>
 
     <div class="phead">
@@ -377,6 +377,12 @@
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3200);}
   var WORD={aye:'votes <b>Yes</b>',nay:'votes <b>No</b>',abs:'<b>abstains</b>'};
+  // Coach bubble swaps to the "propose a bill" prompt once the player has cast a
+  // vote (and back if they withdraw it). Welcome text is read from the DOM so it
+  // lives in one place (the markup).
+  var coachP=document.getElementById('coachP'), COACH_WELCOME=coachP?coachP.innerHTML:'';
+  var COACH_VOTED="Okay, now you've voted. Let's go ahead and propose a new bill to start our government off. Click <b>Propose New Law</b>.";
+  function updateCoach(){ if(coachP) coachP.innerHTML = Object.keys(bills).some(function(id){return bills[id].vote;}) ? COACH_VOTED : COACH_WELCOME; }
   Object.keys(bills).forEach(function(id){
     var el=document.getElementById(id);
     el.querySelectorAll('.vb').forEach(function(btn){
@@ -385,6 +391,7 @@
         if(bills[id].vote===v){bills[id].vote=null;ping('Front Sessau withdraws its vote on '+bills[id].name+'.');}
         else{bills[id].vote=v;ping('Front Sessau '+WORD[v]+' on '+bills[id].name+' — 114 seats cast.');}
         render(id);
+        updateCoach();
         if(window.saveBillVote) window.saveBillVote(id, bills[id].vote); // persist
       });
     });
@@ -398,6 +405,7 @@
       if(map && Object.prototype.hasOwnProperty.call(map,id)) bills[id].vote=map[id];
       render(id);
     });
+    updateCoach();
   };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
   document.getElementById('propose').addEventListener('click',function(){window.location.href='/test/tutorial/legislature/propose/';});

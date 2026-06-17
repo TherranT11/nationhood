@@ -225,6 +225,70 @@ export async function advanceWeek() {
   }
 }
 
+// Confirmation modal for advancing the week, injected once per page. Resolves
+// true on Confirm, false on Cancel / backdrop / Escape. Themed from the page's
+// own CSS variables (with fallbacks) so it matches every screen.
+let weekModalReady = false;
+function ensureWeekModal() {
+  if (weekModalReady) return;
+  weekModalReady = true;
+  const css = `
+  .gw-modal{position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(21,21,27,.45);padding:20px}
+  .gw-modal.show{display:flex}
+  .gw-modal__box{background:var(--surface,#fff);border:1px solid var(--line,#E7E5E0);border-radius:16px;padding:24px;max-width:380px;width:100%;box-shadow:0 30px 60px -20px rgba(0,0,0,.4)}
+  .gw-modal__t{font-family:'Archivo',sans-serif;font-weight:800;font-size:18px;letter-spacing:-.01em;color:var(--ink,#15151B)}
+  .gw-modal__btns{display:flex;gap:10px;margin-top:20px}
+  .gw-modal__btns button{flex:1;font-family:'Space Mono',monospace;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:12px;border-radius:11px;cursor:pointer;transition:filter .15s,background .15s}
+  .gw-modal__cancel{background:var(--surface,#fff);border:1.5px solid var(--line,#E7E5E0);color:var(--muted,#5b5b63)}
+  .gw-modal__cancel:hover{background:var(--chip,#F4F3EF)}
+  .gw-modal__confirm{background:var(--indigo,#5546E8);border:1.5px solid var(--indigo,#5546E8);color:#fff}
+  .gw-modal__confirm:hover{filter:brightness(1.07)}`;
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+  const modal = document.createElement('div');
+  modal.className = 'gw-modal';
+  modal.id = 'gw-modal';
+  modal.innerHTML =
+    '<div class="gw-modal__box" role="dialog" aria-modal="true">' +
+    '<div class="gw-modal__t">Confirm advance to next week?</div>' +
+    '<div class="gw-modal__btns"><button class="gw-modal__cancel" type="button">Cancel</button>' +
+    '<button class="gw-modal__confirm" type="button">Confirm</button></div></div>';
+  document.body.appendChild(modal);
+}
+function confirmAdvance() {
+  ensureWeekModal();
+  const modal = document.getElementById('gw-modal');
+  return new Promise((resolve) => {
+    const onKey = (e) => { if (e.key === 'Escape') close(false); };
+    function close(val) {
+      modal.classList.remove('show');
+      modal.querySelector('.gw-modal__confirm').onclick = null;
+      modal.querySelector('.gw-modal__cancel').onclick = null;
+      modal.onclick = null;
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    }
+    modal.querySelector('.gw-modal__confirm').onclick = () => close(true);
+    modal.querySelector('.gw-modal__cancel').onclick = () => close(false);
+    modal.onclick = (e) => { if (e.target === modal) close(false); }; // backdrop cancels
+    document.addEventListener('keydown', onKey);
+    modal.classList.add('show');
+  });
+}
+
+// Wire a Next Week button: confirm first, then advance (disabling the button
+// during the write, re-enabling if it fails). One place, used by the home
+// header and the shared topbar.
+export function wireNextWeek(btn) {
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    if (!(await confirmAdvance())) return;       // cancelled
+    btn.disabled = true;
+    if (!(await advanceWeek())) btn.disabled = false; // failed: allow retry
+  });
+}
+
 // Inject the topbar's styles once per page. Uses the same CSS variables the
 // pages already define (--indigo, --soft, --ink, ...), so it inherits each
 // screen's palette. Class names are prefixed `gw-` to never collide with a
@@ -267,8 +331,7 @@ export function mountTopbar() {
     '<span class="gw-week">' + weekLabel(DEFAULT_WEEK) + '</span>' +
     '<button class="gw-next" type="button">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
-  const next = bar.querySelector('.gw-next');
-  if (next) next.addEventListener('click', async () => { next.disabled = true; if (!(await advanceWeek())) next.disabled = false; });
+  wireNextWeek(bar.querySelector('.gw-next'));
   renderPartyActions(PARTY_ACTIONS); // default until initSidebar fills the live count
 }
 
