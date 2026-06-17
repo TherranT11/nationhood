@@ -37,9 +37,11 @@ export async function requireUser() {
 // callers keep their defaults rather than act on bad data.
 export async function getTutorialProgress(userId) {
   try {
+    // select('*') so a not-yet-migrated tutorial column degrades gracefully
+    // (the field is simply absent) instead of erroring the whole read.
     const { data, error } = await supabase
       .from('profiles')
-      .select('tutorial_party, tutorial_government_formed, tutorial_theo_task')
+      .select('*')
       .eq('id', userId)
       .single();
     if (error || !data) return null;
@@ -47,6 +49,7 @@ export async function getTutorialProgress(userId) {
       party: data.tutorial_party,
       governmentFormed: !!data.tutorial_government_formed,
       theoTask: data.tutorial_theo_task || null,
+      actions: data.tutorial_party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
     };
   } catch (err) {
     return null;
@@ -83,11 +86,25 @@ export async function initSidebar() {
 
   // Let the page react to the player's state (archetype contradictions,
   // whether the government is already formed).
+  renderPartyActions(progress.actions);
+
   window.nationhoodParty = progress.party;
   window.nationhoodGovernmentFormed = progress.governmentFormed;
   window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
+  window.dispatchEvent(new CustomEvent('nationhood:actions', { detail: progress.actions }));
+}
+
+// One place that formats the "party actions remaining" label and writes it to
+// every display on the page: the dashboard's #pa and the shared topbar chip.
+// Call on load (initSidebar) and after spending, so all pages agree.
+export function renderPartyActions(n) {
+  const label = 'Party Actions: ' + n + ' Available';
+  const pa = document.getElementById('pa');
+  if (pa) pa.textContent = label;
+  const chip = document.querySelector('.gw-actions');
+  if (chip) chip.textContent = label;
 }
 
 // The single write path for the tutorial's per-player profile flags. Applies a
@@ -109,9 +126,6 @@ export async function updateProfile(patch) {
 
 // Record that the player has formed their government.
 export const markGovernmentFormed = () => updateProfile({ tutorial_government_formed: true });
-
-// Persist the task the player assigns to Théo Lefèvre in his Interior post.
-export const setTheoTask = (task) => updateProfile({ tutorial_theo_task: task });
 
 // ---------------------------------------------------------------------------
 // Shared game-clock + weekly-action widget (top-right on every in-game screen)
