@@ -262,7 +262,10 @@ export async function advanceWeek() {
       const crisis = computeCrisis((progress.billVotes && progress.billVotes.b1) || null);
       if (crisis) patch.tutorial_crisis = crisis;
     }
-    if (!progress.legislation && progress.floorBill) { // resolve the floor bills once the player has proposed one
+    // Resolve the floor bills once the player has proposed one. TUTORIAL LIMIT:
+    // this fires a single time (guarded by !legislation), so a bill proposed in a
+    // later week would not re-resolve — fine for the one-round tutorial flow.
+    if (!progress.legislation && progress.floorBill) {
       const leg = resolveLegislation(progress.billVotes, progress.floorBill);
       if (leg) {
         patch.tutorial_legislation = leg.history;
