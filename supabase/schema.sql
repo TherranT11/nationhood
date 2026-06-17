@@ -51,6 +51,19 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_bill_votes jsonb;
 
+-- The tutorial game-week counter. Starts at 22 (the week the tutorial opens on);
+-- the shared [Next Week] button advances it. Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_week integer not null default 22;
+
+-- A snapshot of the Labour Unrest crisis after the first week-advance that
+-- follows the Energy Independence Act vote: the vote, the step it moved to, the
+-- tick tally, the Growth/tick rate, the outcome flavour, and the one-time
+-- 1d6 + Charisma roll (persisted so a reload never re-rolls). Null until then.
+-- Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_crisis jsonb;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 

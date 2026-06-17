@@ -107,6 +107,17 @@
   .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
   .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0;max-width:64ch}
 
+  /* tick tally readout (shown once the week has advanced) */
+  .tickline{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--crimson);font-weight:700;margin-bottom:14px}
+  .tickline b{font-size:15px;letter-spacing:-.01em}
+
+  /* outcome effect boxes: nationalized stays crimson (default .effect); the
+     "refused" / de-escalating outcome reads green */
+  .effect#outcomeEffect{margin-top:10px}
+  .effect.good{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,transparent);border-left-color:var(--green)}
+  .effect.good .eff-body b{color:var(--ink)}
+  .effect.good .eff-body p{color:#2f6b4f}
+
   /* labour-talks effect (amber) */
   .effect.talks{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 25%,transparent);border-left-color:var(--amber);margin-top:10px}
   .effect.talks .eff-body b{color:var(--ink)}
@@ -178,17 +189,18 @@
     <!-- status track -->
     <section class="mod">
       <div class="mod__hd">Status</div>
+      <div class="tickline" id="tickline" hidden>Ticks to General Strike <b id="tickTotal"></b></div>
       <div class="caps"><span class="res">◂ Issue Resolved</span><span class="gs">General Strike ▸</span></div>
       <div class="track-wrap">
         <div class="track" id="track">
-          <div class="ms done"><span class="c">1</span><span class="lab">Labour<br>Discontent</span></div>
-          <div class="gap" data-on="1"></div>
-          <div class="ms done"><span class="c">2</span><span class="lab">Labour Vocal<br>in the Media</span></div>
-          <div class="gap" data-on="1"></div>
-          <div class="ms done now"><span class="nowpill">Now</span><span class="c">3</span><span class="lab">Minor Strikes<br>in the Country</span></div>
-          <div class="gap" data-on="0"></div>
+          <div class="ms"><span class="c">1</span><span class="lab">Labour<br>Discontent</span></div>
+          <div class="gap"></div>
+          <div class="ms"><span class="c">2</span><span class="lab">Labour Vocal<br>in the Media</span></div>
+          <div class="gap"></div>
+          <div class="ms"><span class="c">3</span><span class="lab">Minor Strikes<br>in the Country</span></div>
+          <div class="gap"></div>
           <div class="ms"><span class="c">4</span><span class="lab">Select Industries<br>Refuse to Work</span></div>
-          <div class="gap" data-on="0"></div>
+          <div class="gap"></div>
           <div class="ms"><span class="c">5</span><span class="lab">General Strike<br>Called</span></div>
         </div>
       </div>
@@ -198,8 +210,11 @@
     <section class="mod">
       <div class="mod__hd">Effect</div>
       <div class="effect">
-        <span class="eff-val">+1</span>
+        <span class="eff-val" id="growthVal">+1</span>
         <div class="eff-body"><b>Growth / tick</b><p>Left unaddressed, the unrest advances one step toward General Strike each week.</p></div>
+      </div>
+      <div class="effect" id="outcomeEffect" hidden>
+        <div class="eff-body"><b></b><p></p></div>
       </div>
       <div class="effect talks" id="talksEffect" hidden>
         <div class="eff-body"><b>Labour Talks</b><p>Minister of the Interior Théo Lefèvre has initiated talks with local labour leaders. Their effects have not taken hold yet.</p></div>
@@ -246,11 +261,56 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  // fill the 15 small dots in each gap
-  document.querySelectorAll('.gap').forEach(function(g){
-    var on=g.dataset.on==='1';
-    for(var i=0;i<15;i++){var d=document.createElement('span');d.className='d'+(on?' on':'');g.appendChild(d);}
-  });
+  // Render the status track for a given "now" step (1-5): mark milestones done,
+  // place the Now pill, and fill the 15 dots in each gap before the now step.
+  var track=document.getElementById('track');
+  function renderTrack(step){
+    track.querySelectorAll('.ms').forEach(function(el,idx){
+      var i=idx+1;
+      el.classList.toggle('done', i<=step);
+      el.classList.toggle('now', i===step);
+      var pill=el.querySelector('.nowpill');
+      if(i===step){ if(!pill){pill=document.createElement('span');pill.className='nowpill';pill.textContent='Now';el.insertBefore(pill,el.firstChild);} }
+      else if(pill){ pill.remove(); }
+    });
+    track.querySelectorAll('.gap').forEach(function(g,idx){
+      var on=(idx+1)<step;
+      g.innerHTML='';
+      for(var k=0;k<15;k++){var d=document.createElement('span');d.className='d'+(on?' on':'');g.appendChild(d);}
+    });
+  }
+  renderTrack(3); // default: Minor Strikes in the Country
+
+  // Apply the persisted post-vote crisis snapshot (from shell.computeCrisis):
+  // move the step, show the tick tally + Growth rate, reveal the outcome effect,
+  // and set the Labour Talks line from the one-time roll. Called by the module
+  // script on the nationhood:crisis event.
+  window.applyCrisis=function(c){
+    if(!c) return;
+    renderTrack(c.step);
+    var tl=document.getElementById('tickline'), tt2=document.getElementById('tickTotal');
+    if(tl&&tt2){ tt2.textContent=(c.tick>=0?'+':'')+c.tick; tl.hidden=false; }
+    var gv=document.getElementById('growthVal'); if(gv) gv.textContent=(c.growth>=0?'+':'')+c.growth;
+    var box=document.getElementById('outcomeEffect');
+    if(box){
+      var nat=c.outcome==='nationalized';
+      box.className='effect'+(nat?'':' good');
+      box.querySelector('b').textContent = nat ? 'Refineries Nationalized' : 'Nationalization Refused';
+      box.querySelector('p').textContent = nat
+        ? 'With the announcement of several major refineries being nationalized, workers are now concerned their jobs are at risk, their pay could become less competitive, or be resolved immediately.'
+        : 'Labour leaders celebrated in the media a recent bill to reject nationalization. This has helped to defuse tensions and strengthened the labour leaders’ incentive to get a deal done.';
+      box.hidden=false;
+    }
+    var talks=document.getElementById('talksEffect');
+    if(talks){
+      talks.hidden=false;
+      var tp=talks.querySelector('p');
+      if(tp) tp.textContent = c.roll&&c.roll.good
+        ? 'After meeting with some of the local labour leaders, Théo has begun negotiations to discuss the leaders’ most prominent issues.'
+        : 'After meeting with some of the local labour leaders, Théo admitted that there was no plan in place, and the conversation worsens.';
+    }
+  };
+
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3200);}
   // option buttons (Labour Talks is handled separately; the rest are placeholders)
@@ -274,6 +334,10 @@
     ['talksEvt', 'talksEffect', 'talksOngoing'].forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = false; });
     const ot = document.getElementById('optTalks'); if (ot) ot.disabled = true;
   });
+
+  // Once a week has advanced past the Energy Act vote, render the saved crisis
+  // snapshot (step move, tick tally, outcome effect, negotiation roll).
+  window.addEventListener('nationhood:crisis', (e) => { if (window.applyCrisis) window.applyCrisis(e.detail); });
 
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
   initSidebar();

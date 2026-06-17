@@ -52,6 +52,8 @@ export async function getTutorialProgress(userId) {
       actions: data.tutorial_party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
       coalition: data.tutorial_coalition || null,
       billVotes: data.tutorial_bill_votes || {},
+      week: data.tutorial_week ?? 22, // tutorial opens on week 22
+      crisis: data.tutorial_crisis || null,
     };
   } catch (err) {
     return null;
@@ -74,6 +76,8 @@ export async function initSidebar() {
   const partyEl = document.getElementById('party');
   const reveal = () => { if (partyEl && partyEl.parentElement) partyEl.parentElement.style.visibility = 'visible'; };
 
+  setWeekLabel(DEFAULT_WEEK); // show a week immediately; corrected once progress loads
+
   if (!isConfigured) { reveal(); return; } // keep defaults until keys are set
 
   const user = await requireUser();
@@ -84,6 +88,14 @@ export async function initSidebar() {
 
   const p = PARTY[progress.party];
   if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+  setWeekLabel(progress.week);
+  // Fill the shared topbar's Confidence (other pages only — home renders its own
+  // inline). Same source as home: formedConfidence from the coalition snapshot.
+  const confV = document.querySelector('.gw-conf__v');
+  if (confV && progress.coalition) {
+    confV.textContent = formedConfidence(progress.coalition.total, progress.coalition.contra).value + '%';
+    const confS = document.querySelector('.gw-conf__s'); if (confS) confS.textContent = 'governing';
+  }
   reveal();
 
   // Let the page react to the player's state (archetype contradictions,
@@ -97,6 +109,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
   window.dispatchEvent(new CustomEvent('nationhood:actions', { detail: progress.actions }));
   window.dispatchEvent(new CustomEvent('nationhood:bills', { detail: progress.billVotes }));
+  window.dispatchEvent(new CustomEvent('nationhood:crisis', { detail: progress.crisis }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
@@ -135,8 +148,78 @@ export async function updateProfile(patch) {
 // One source of truth for the current week and the actions a player has left,
 // so every page agrees. The home screen renders these inline in its own header;
 // every other in-game screen gets them from mountTopbar() below.
-export const GAME_WEEK = 'Week 22 · May 1980';
+export const DEFAULT_WEEK = 22; // the tutorial opens on week 22
 export const PARTY_ACTIONS = 3;
+
+// One formatter for the week chip. The tutorial spans only a handful of weeks,
+// all within May 1980, so the month is fixed here rather than computed.
+export function weekLabel(n) { return 'Week ' + (n || DEFAULT_WEEK) + ' · May 1980'; }
+
+// Write the current week into both displays that exist: the shared topbar chip
+// (.gw-week) and the home screen's own header date (#weekDate). One source.
+export function setWeekLabel(n) {
+  const label = weekLabel(n);
+  const chip = document.querySelector('.gw-week');
+  if (chip) chip.textContent = label;
+  const home = document.getElementById('weekDate');
+  if (home) home.textContent = label;
+}
+
+// Théo Lefèvre's Charisma, used for the Labour Unrest negotiation roll.
+// KNOWN DUPLICATION: the party roster (party/index.html) is the canonical place
+// this stat is defined; it is mirrored here because there is no shared
+// politician-stats module yet. Keep the two in sync until one is introduced.
+const THEO_CHARISMA = 2;
+
+// Compute the one-time Labour Unrest outcome from the player's Energy
+// Independence Act vote. Only a decisive Yes/Nay drives the crisis; an abstain
+// or no vote returns null (the week still advances, the crisis is untouched).
+// Pure except for the single d6 roll, which is captured in the result so it is
+// rolled exactly once and then persisted.
+export function computeCrisis(vote) {
+  if (vote !== 'aye' && vote !== 'nay') return null;
+  const pass = vote === 'aye';
+  const base = pass ? 18 : -16;            // ticks: + toward General Strike, − toward resolution
+  const die = 1 + Math.floor(Math.random() * 6);
+  const total = die + THEO_CHARISMA;       // 1d6 + Théo's Charisma
+  const good = total >= 7;                  // 7+ : talks progress; 6 or less : they sour
+  const tick = base + (good ? -2 : 1);      // the roll only nudges the tally, not the step
+  return {
+    vote, pass,
+    step: pass ? 4 : 2,                     // Select Industries Refuse to Work / Labour Vocal in the Media
+    tick,
+    growth: pass ? 2 : 1,                   // Growth per tick
+    outcome: pass ? 'nationalized' : 'refused',
+    roll: { die, cha: THEO_CHARISMA, total, good },
+  };
+}
+
+// Advance the tutorial one week. Persists the new week and — on the first
+// advance after a decisive Energy Act vote — the scripted Labour Unrest
+// outcome, then reloads so every page re-renders from the saved state.
+// Guarded against double-fire; a no-op in local dev (no keys).
+let advancing = false;
+export async function advanceWeek() {
+  if (advancing) return;
+  advancing = true;
+  if (!isConfigured) { advancing = false; return; } // nothing to persist locally
+  try {
+    const user = await requireUser();
+    if (!user) return; // requireUser has redirected to login
+    const progress = await getTutorialProgress(user.id);
+    if (!progress) { advancing = false; return; } // lookup failed: leave state, allow retry
+    const patch = { tutorial_week: (progress.week || DEFAULT_WEEK) + 1 };
+    if (!progress.crisis) { // apply the scripted crisis exactly once
+      const crisis = computeCrisis((progress.billVotes && progress.billVotes.b1) || null);
+      if (crisis) patch.tutorial_crisis = crisis;
+    }
+    const ok = await updateProfile(patch);
+    if (!ok) { advancing = false; return; } // write failed: leave UI, allow retry
+    window.location.reload();               // success: re-render every display from saved state
+  } catch (err) {
+    advancing = false;
+  }
+}
 
 // Inject the topbar's styles once per page. Uses the same CSS variables the
 // pages already define (--indigo, --soft, --ink, ...), so it inherits each
@@ -149,6 +232,10 @@ function ensureTopbarStyles() {
   const css = `
   .gw-topbar{display:flex;align-items:center;justify-content:flex-end;gap:13px;flex-wrap:wrap;margin-bottom:20px}
   .gw-topbar .gw-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
+  .gw-topbar .gw-conf{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);text-align:right;line-height:1.3;display:flex;flex-direction:column;align-items:flex-end}
+  .gw-topbar .gw-conf__v{color:var(--ink);font-size:18px;font-weight:800;font-family:'Archivo',sans-serif;display:flex;align-items:center;gap:2px}
+  .gw-topbar .gw-conf__dash{display:inline-block;width:11px;height:2px;background:currentColor;border-radius:1px}
+  .gw-topbar .gw-conf__s{color:var(--soft);font-size:9px}
   .gw-topbar .gw-week{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .gw-topbar .gw-next{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:12px 20px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
   .gw-topbar .gw-next:hover{transform:translateY(-1px);filter:brightness(1.07)}
@@ -172,9 +259,12 @@ export function mountTopbar() {
   bar.className = 'gw-topbar';
   bar.innerHTML =
     '<span class="gw-actions"></span>' +
-    '<span class="gw-week">' + GAME_WEEK + '</span>' +
-    '<button class="gw-next" type="button" disabled title="Not yet available">Next Week &#9656;</button>';
+    '<span class="gw-conf"><span>Confidence</span><span class="gw-conf__v"><span class="gw-conf__dash"></span></span><span class="gw-conf__s">no government</span></span>' +
+    '<span class="gw-week">' + weekLabel(DEFAULT_WEEK) + '</span>' +
+    '<button class="gw-next" type="button">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
+  const next = bar.querySelector('.gw-next');
+  if (next) next.addEventListener('click', () => { next.disabled = true; advanceWeek(); });
   renderPartyActions(PARTY_ACTIONS); // default until initSidebar fills the live count
 }
 
