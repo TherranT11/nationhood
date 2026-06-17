@@ -59,6 +59,7 @@ export async function getTutorialProgress(userId) {
       legislation: s.legislation || null,
       partyPopularity: s.party_popularity ?? 38,
       confidenceAdj: s.confidence_adj ?? 0,
+      nation: s.nation || {}, // accumulated stat deltas from passed bills
     };
   } catch (err) {
     return null;
@@ -120,6 +121,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:floorbill', { detail: progress.floorBill }));
   window.dispatchEvent(new CustomEvent('nationhood:legislation', { detail: progress.legislation }));
   window.dispatchEvent(new CustomEvent('nationhood:popularity', { detail: progress.partyPopularity }));
+  window.dispatchEvent(new CustomEvent('nationhood:nation', { detail: progress.nation }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
@@ -213,14 +215,14 @@ export function computeCrisis(vote) {
 // page; keep in sync until there's a shared bills module. (bp, the player's bill,
 // is resolved from its saved snapshot.)
 // Scripted bills, each with the week it reaches the floor, its non-player Aye
-// base, a concise effect string, and the net Welfare/Prosperity it applies if it
-// passes (feeds the confidence rules). KNOWN DUPLICATION: name/Aye/effect/seats
-// mirror the rendered bills on the Legislature page; keep in sync until there's a
-// shared bills module.
+// base, a concise effect string, and the numeric stat deltas it applies if it
+// passes (which both feed the confidence rules and move the live Nation stats).
+// KNOWN DUPLICATION: name/Aye/effect/seats mirror the rendered bills on the
+// Legislature page; keep in sync until there's a shared bills module.
 const SCRIPTED_BILLS = [
-  { id: 'b1', week: DEFAULT_WEEK, name: 'Energy Independence Act', aye: 40, effect: 'Energy ▲, Debt ▲', welfare: 0, prosperity: 0 },
-  { id: 'b2', week: DEFAULT_WEEK, name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', welfare: 2, prosperity: -1 },
-  { id: 'img', week: 24, name: 'Industrial Modernisation Bill', aye: 122, effect: 'Growth ▲, Unemployment ▼, Welfare ▲, Budget −₣23B', welfare: 1, prosperity: 0 },
+  { id: 'b1', week: DEFAULT_WEEK, name: 'Energy Independence Act', aye: 40, effect: 'Energy ▲, Debt ▲', delta: { debt: 5 } },
+  { id: 'b2', week: DEFAULT_WEEK, name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', delta: { welfare: 2, prosperity: -1, growth: -1 } },
+  { id: 'img', week: 24, name: 'Industrial Modernisation Bill', aye: 122, effect: 'Growth ▲, Unemployment ▼, Welfare ▲, Budget −₣23B', delta: { growth: 1, unemployment: -1, welfare: 1, budget: -23 } },
 ];
 const ASSEMBLY_SEATS = { wp: 40, cu: 50, la: 44, nr: 32 }; // other-party seats (also mirrored on the Legislature page)
 const FRONT_SEATS = 114, MAJORITY = 141;
@@ -250,7 +252,7 @@ export function resolveLegislation(billVotes, floorBill, week, doneIds) {
     if (b.week > week || done.has(b.id) || done.has(b.name)) return;
     const vote = v[b.id] || 'abs';
     const passed = (b.aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
-    raw.push({ id: b.id, name: b.name, passed, vote, effect: b.effect, welfare: b.welfare, prosperity: b.prosperity });
+    raw.push({ id: b.id, name: b.name, passed, vote, effect: b.effect, delta: b.delta || {} });
   });
   let bpResolved = false;
   if (floorBill && floorBill.title) {
@@ -259,19 +261,26 @@ export function resolveLegislation(billVotes, floorBill, week, doneIds) {
     Object.keys(ASSEMBLY_SEATS).forEach((k) => { if (pv[k] === 'aye') aye += ASSEMBLY_SEATS[k]; });
     const vote = v.bp || 'abs';
     const passed = (aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
-    raw.push({ id: 'bp', name: floorBill.title, passed, vote, effect: floorBill.effect || '', welfare: floorBill.welfare || 0, prosperity: 0 });
+    raw.push({ id: 'bp', name: floorBill.title, passed, vote, effect: floorBill.effect || '', delta: floorBill.delta || {} });
     bpResolved = true;
   }
   if (!raw.length) return null;
-  let welfare = 0, prosperity = 0;
-  raw.forEach((r) => { if (r.passed) { welfare += r.welfare; prosperity += r.prosperity; } });
-  // Store only what the UI reads (id/name/passed/vote/pop/effect); welfare/
-  // prosperity are only needed here to compute the confidence shift.
+  // Accumulate the passed bills' stat deltas; confidence reads welfare/prosperity
+  // from the same source (one place).
+  const nationDelta = {};
+  raw.forEach((r) => { if (r.passed) Object.keys(r.delta).forEach((k) => { nationDelta[k] = (nationDelta[k] || 0) + r.delta[k]; }); });
+  // Store only what the UI reads (id/name/passed/vote/pop/effect).
   const history = raw.map((r) => ({
     id: r.id, name: r.name, passed: r.passed, vote: r.vote, effect: r.effect,
     pop: r.vote === 'abs' ? 0 : ((r.passed === (r.vote === 'aye')) ? 1 : -1),
   }));
-  return { history, popDelta: history.reduce((s, it) => s + it.pop, 0), confAdj: confidenceFromStats(welfare, prosperity), bpResolved };
+  return {
+    history,
+    popDelta: history.reduce((s, it) => s + it.pop, 0),
+    confAdj: confidenceFromStats(nationDelta.welfare || 0, nationDelta.prosperity || 0),
+    nationDelta,
+    bpResolved,
+  };
 }
 
 // Advance the tutorial one week. Persists the new week and — on the first
@@ -308,6 +317,10 @@ export async function advanceWeek() {
         patch.tutorial_legislation = (progress.legislation || []).concat(leg.history);
         patch.tutorial_party_popularity = (progress.partyPopularity ?? 38) + leg.popDelta;
         patch.tutorial_confidence_adj = (progress.confidenceAdj || 0) + leg.confAdj;
+        // Apply passed bills' stat changes to the live Nation stats (accumulated deltas).
+        const nation = { ...(progress.nation || {}) };
+        Object.keys(leg.nationDelta).forEach((k) => { nation[k] = (nation[k] || 0) + leg.nationDelta[k]; });
+        patch.tutorial_nation = nation;
         if (leg.bpResolved) patch.tutorial_floor_bill = null; // consumed into history
       }
     }
