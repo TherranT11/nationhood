@@ -28,7 +28,7 @@ export async function initSidebar() {
     if (!session) { window.location.href = '/test/login/'; return; }
     const { data, error } = await supabase
       .from('profiles')
-      .select('tutorial_party')
+      .select('tutorial_party, tutorial_government_formed')
       .eq('id', session.user.id)
       .single();
     if (error) return;
@@ -36,10 +36,30 @@ export async function initSidebar() {
     const partyEl = document.getElementById('party');
     const p = partyEl && PARTY[tp];
     if (p) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
-    // Let the page react to the player's archetype (e.g. confidence contradictions).
+    // Let the page react to the player's state (archetype contradictions,
+    // whether the government is already formed).
     window.nationhoodParty = tp;
+    window.nationhoodGovernmentFormed = !!(data && data.tutorial_government_formed);
     window.dispatchEvent(new CustomEvent('nationhood:party', { detail: tp }));
+    window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: window.nationhoodGovernmentFormed }));
   } catch (err) {
     // keep defaults
+  }
+}
+
+// Record that the player has formed their government. Returns true on success
+// (or when there are no keys, so local dev still flows through).
+export async function markGovernmentFormed() {
+  if (!isConfigured) return true;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ tutorial_government_formed: true })
+      .eq('id', session.user.id);
+    return !error;
+  } catch (err) {
+    return false;
   }
 }

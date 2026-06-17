@@ -416,10 +416,7 @@
     renderConfidence(total,contraCount);
   }
 
-  document.getElementById('formBtn').addEventListener('click',function(){
-    var names=['Front de Sessau'];parties.forEach(function(p){if(state[p.id].in)names.push(p.name);});
-    ping('Government formed: <b>'+names.join(' + ')+'</b>. Heading to the cabinet&hellip;');
-  });
+  // (Form Government + the formed-state redirect are handled in the module below.)
 
   // sidebar nav: Home navigates; the rest just highlight (not wired yet)
   var items=document.querySelectorAll('.nav__i');
@@ -431,7 +428,23 @@
 </script>
 
 <script type="module">
-  import { initSidebar } from '/test/tutorial/shell.js';
+  import { initSidebar, markGovernmentFormed } from '/test/tutorial/shell.js';
+
+  // If the government is already formed, this screen becomes the standard view.
+  window.addEventListener('nationhood:gov', (e) => {
+    if (e.detail) window.location.replace('/test/tutorial/government/formed/');
+  });
+
+  // Form Government: persist, then go to the standard Government view.
+  let forming = false; // loading lock: blocks double-fire
+  document.getElementById('formBtn').addEventListener('click', async () => {
+    if (forming) return;
+    forming = true;
+    const ok = await markGovernmentFormed();
+    if (ok) window.location.href = '/test/tutorial/government/formed/';
+    else forming = false; // allow a retry if the save failed
+  });
+
   initSidebar();
 </script>
 </body>
