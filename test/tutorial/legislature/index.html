@@ -138,6 +138,20 @@
   .ab p{font-size:12.5px;color:var(--muted);margin-top:2px}
   .arow .author{flex:none}
 
+  /* tutorial coach bubble */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:18px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .coach::after{content:"";position:absolute;left:36px;bottom:-8px;width:17px;height:17px;background:#6a5cec;transform:rotate(45deg);border-radius:3px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0;max-width:64ch}
+  .coach b{font-weight:800}
+
+  /* article costs */
+  .art__cost{flex:none;font-family:'Space Mono',monospace;font-weight:700;font-size:13px;color:var(--ink);text-align:right;white-space:nowrap}
+  .art__cost small{display:block;font-size:8px;font-weight:400;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:3px}
+  .art-total{display:flex;justify-content:flex-end;align-items:baseline;gap:10px;padding:13px 0 2px;margin-top:4px;border-top:1px solid var(--line);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700}
+  .art-total b{font-family:'Archivo',sans-serif;font-size:17px;color:var(--ink);letter-spacing:-.02em}
+
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast b{color:#a99dff}
@@ -167,6 +181,11 @@
 
   <main class="main">
     <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Government</span>
+
+    <div class="coach">
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>Welcome to the Legislature page. This is where things get done — here you can vote on and propose new bills. Let's take a look at the first bill, the <b>Energy Independence Act</b>. This may very well end the Energy Shock crisis that Sessau is dealing with, and it would very likely turn the Labour Unrest into a General Strike. Why don't you vote the way you'd like, and we'll go from there.</p>
+    </div>
 
     <div class="phead">
       <span class="eye">Legislature</span>
@@ -231,9 +250,12 @@
       </ul>
 
       <div class="plabel">Articles</div>
-      <div class="art"><span class="art__n">I</span><div class="art__b"><b>Strategic Refineries</b><p>Bring the nation's three largest refineries under state control to secure supply.</p><div class="pills"><span class="eff bad">Image ▼</span><span class="eff bad">Labour Unrest ▼</span></div></div></div>
-      <div class="art"><span class="art__n">II</span><div class="art__b"><b>National Reserve</b><p>Establish a ninety-day strategic energy reserve, funded from the Treasury.</p><div class="pills"><span class="eff bad">Debt ▲</span><span class="eff good">Energy Strike ▲</span></div></div></div>
-      <div class="art"><span class="art__n">III</span><div class="art__b"><b>Nuclear Programme</b><p>Commission four new reactors to cut import dependence over the coming decade.</p><div class="pills"><span class="eff good">Energy ▲ (slow)</span></div></div></div>
+      <div class="art"><span class="art__n">I</span><div class="art__b"><b>Strategic Refineries</b><p>Bring the nation's three largest refineries under state control to secure supply.</p><div class="pills"><span class="eff bad">Image ▼</span><span class="eff bad">Labour Unrest ▼</span><span class="eff good">+2% Party Popularity [Labour]</span><span class="eff bad">−2% Party Popularity [Nationalist]</span><span class="eff bad">−1% Party Popularity [Centrist]</span></div></div><span class="art__cost">₣30B</span></div>
+      <div class="art"><span class="art__n">II</span><div class="art__b"><b>National Reserve</b><p>Establish a ninety-day strategic energy reserve, funded from the Treasury.</p><div class="pills"><span class="eff bad">Debt ▲</span><span class="eff good">Energy Strike ▲</span></div></div><span class="art__cost">₣21B</span></div>
+      <div class="art"><span class="art__n">III</span><div class="art__b"><b>Nuclear Programme</b><p>Commission four new reactors to cut import dependence over the coming decade.</p><div class="pills"><span class="eff good">Energy ▲ (slow)</span></div></div><span class="art__cost">₣16B<small>future hidden costs</small></span></div>
+      <!-- KNOWN ISSUE (awaiting confirmation): the line items sum to ₣67B (30+21+16),
+           not ₣63B. Showing the total as specified until the intended figure is confirmed. -->
+      <div class="art-total">Total <b>₣63B</b></div>
     </details>
 
     <!-- BILL 2 -->
