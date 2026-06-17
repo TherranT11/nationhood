@@ -248,7 +248,10 @@
 <script>
   var FRONT=114, MAJORITY=141, TOTAL=280, CHA=3;
   // Expected Government Confidence: base, the active crises, contradictory-party
-  // penalty, and a seat-majority bonus. One computation, rendered live.
+  // penalty, and a seat-majority bonus, rendered live as partners are added.
+  // KNOWN DUPLICATION: this is the same formula as shell.formedConfidence (which
+  // computes the formed value for the Government screen + dashboard). Keep both
+  // in sync until this classic script is modularised to import that function.
   var CONF_BASE=50, CONTRA=-4;
   // A coalition partner is "contradictory" when its archetype is the opposite
   // pole of the player's on the Nationalist <-> Communist axis. The player's

@@ -189,8 +189,12 @@ export async function logout() {
 
 // Confidence of the formed government from the actual coalition: base, the
 // three standing crises, a penalty per contradictory partner, and the seat
-// majority bonus. Single source of truth, read by the formed Government screen
-// and the home dashboard (both pass the snapshot's seat total + contra count).
+// majority bonus. Read by the formed Government screen and the home dashboard
+// (both pass the snapshot's seat total + contra count).
+// KNOWN DUPLICATION: the formation screen's live "Expected Confidence" preview
+// (renderConfidence in government/index.html) reimplements this same formula in
+// its classic script. Keep the two in sync until that page is modularised to
+// import this function.
 export function formedConfidence(totalSeats, contraCount) {
   const base = 50;
   const crises = -6;                          // three crises at -2
