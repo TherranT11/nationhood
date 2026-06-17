@@ -301,9 +301,10 @@
         : 'Labour leaders celebrated in the media a recent bill to reject nationalization. This has helped to defuse tensions and strengthened the labour leaders’ incentive to get a deal done.';
       box.hidden=false;
     }
+    // Only narrate the negotiation roll when Théo is actually on Labour Talks
+    // (the task event, which reveals this box, fires before this one).
     var talks=document.getElementById('talksEffect');
-    if(talks){
-      talks.hidden=false;
+    if(talks && !talks.hidden){
       var tp=talks.querySelector('p');
       if(tp) tp.textContent = c.roll&&c.roll.good
         ? 'After meeting with some of the local labour leaders, Théo has begun negotiations to discuss the leaders’ most prominent issues.'

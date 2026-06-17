@@ -185,7 +185,7 @@ export function computeCrisis(vote) {
   const good = total >= 7;                  // 7+ : talks progress; 6 or less : they sour
   const tick = base + (good ? -2 : 1);      // the roll only nudges the tally, not the step
   return {
-    vote, pass,
+    vote,                                   // the decisive vote, kept for record/traceability
     step: pass ? 4 : 2,                     // Select Industries Refuse to Work / Labour Vocal in the Media
     tick,
     growth: pass ? 2 : 1,                   // Growth per tick
@@ -197,27 +197,31 @@ export function computeCrisis(vote) {
 // Advance the tutorial one week. Persists the new week and — on the first
 // advance after a decisive Energy Act vote — the scripted Labour Unrest
 // outcome, then reloads so every page re-renders from the saved state.
-// Guarded against double-fire; a no-op in local dev (no keys).
+// Guarded against double-fire; a no-op in local dev (no keys). Returns false
+// when nothing was advanced (so the caller can re-enable its button); on
+// success the page reloads, so the resolved value never matters.
 let advancing = false;
 export async function advanceWeek() {
-  if (advancing) return;
+  if (advancing) return false;
   advancing = true;
-  if (!isConfigured) { advancing = false; return; } // nothing to persist locally
+  if (!isConfigured) { advancing = false; return false; } // nothing to persist locally
   try {
     const user = await requireUser();
-    if (!user) return; // requireUser has redirected to login
+    if (!user) return false; // requireUser has redirected to login
     const progress = await getTutorialProgress(user.id);
-    if (!progress) { advancing = false; return; } // lookup failed: leave state, allow retry
+    if (!progress) { advancing = false; return false; } // lookup failed: leave state, allow retry
     const patch = { tutorial_week: (progress.week || DEFAULT_WEEK) + 1 };
     if (!progress.crisis) { // apply the scripted crisis exactly once
       const crisis = computeCrisis((progress.billVotes && progress.billVotes.b1) || null);
       if (crisis) patch.tutorial_crisis = crisis;
     }
     const ok = await updateProfile(patch);
-    if (!ok) { advancing = false; return; } // write failed: leave UI, allow retry
+    if (!ok) { advancing = false; return false; } // write failed: leave UI, allow retry
     window.location.reload();               // success: re-render every display from saved state
+    return true;
   } catch (err) {
     advancing = false;
+    return false;
   }
 }
 
@@ -264,7 +268,7 @@ export function mountTopbar() {
     '<button class="gw-next" type="button">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
   const next = bar.querySelector('.gw-next');
-  if (next) next.addEventListener('click', () => { next.disabled = true; advanceWeek(); });
+  if (next) next.addEventListener('click', async () => { next.disabled = true; if (!(await advanceWeek())) next.disabled = false; });
   renderPartyActions(PARTY_ACTIONS); // default until initSidebar fills the live count
 }
 
