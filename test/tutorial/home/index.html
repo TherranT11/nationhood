@@ -264,7 +264,7 @@
           </div>
         </button>
 
-        <button class="crisis" style="--c:var(--crimson)" data-route="Government &rarr; Interior &amp; Welfare" type="button">
+        <button class="crisis" style="--c:var(--crimson)" data-href="/test/tutorial/nation/labour-unrest/" data-route="Government &rarr; Interior &amp; Welfare" type="button">
           <span class="crisis__rail"></span>
           <div class="crisis__main">
             <div class="crisis__top"><b>Labour Unrest</b><span class="tag">&minus;2% confidence</span></div>
@@ -352,7 +352,10 @@
   function ping(html){ toast.innerHTML = html; toast.classList.add('show'); clearTimeout(timer); timer = setTimeout(() => toast.classList.remove('show'), 3400); }
 
   document.querySelectorAll('.crisis').forEach((c) => {
-    c.addEventListener('click', () => ping('Opens <b>' + c.dataset.route + '</b> to respond.'));
+    c.addEventListener('click', () => {
+      if (c.dataset.href) { window.location.href = c.dataset.href; return; } // crises with a detail page open it
+      ping('Opens <b>' + c.dataset.route + '</b> to respond.');
+    });
   });
   document.getElementById('nextweek').addEventListener('click', () => ping('Week advanced. <b>3 modifiers unresolved</b>.'));
 
