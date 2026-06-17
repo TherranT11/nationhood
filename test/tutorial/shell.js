@@ -169,10 +169,11 @@ export function mountTopbar() {
   const bar = document.createElement('div');
   bar.className = 'gw-topbar';
   bar.innerHTML =
-    '<span class="gw-actions">Party Actions: ' + PARTY_ACTIONS + ' Available</span>' +
+    '<span class="gw-actions"></span>' +
     '<span class="gw-week">' + GAME_WEEK + '</span>' +
     '<button class="gw-next" type="button" disabled title="Not yet available">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
+  renderPartyActions(PARTY_ACTIONS); // default until initSidebar fills the live count
 }
 
 // Sign the player out and return to the test landing page. Redirects even if
