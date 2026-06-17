@@ -433,7 +433,8 @@
 </script>
 
 <script type="module">
-  import { initSidebar, markGovernmentFormed, logout } from '/test/tutorial/shell.js';
+  import { initSidebar, markGovernmentFormed, logout, mountTopbar } from '/test/tutorial/shell.js';
+  mountTopbar();
 
   // If the government is already formed, this screen becomes the standard view.
   window.addEventListener('nationhood:gov', (e) => {

@@ -242,7 +242,7 @@
   var pols=[
     {name:'Allen Droulez',age:49,role:'Prime Minister',free:false,busy:'the premiership',stats:[4,3,2,4,3]},
     {name:'Margot Sève',age:56,role:'Deputy Leader',free:false,busy:'Economic Development',stats:[3,5,2,3,4]},
-    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',stats:[2,3,4,4,4],scandal:{week:'Week 18, 1980',text:'This politician said something in front of the cameras that he now, at least privately, regrets. It dropped Party Approval. Removing him may bring Party Approval back, and it may not.'}},
+    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',page:'/test/tutorial/party/theolefevre/',stats:[2,3,4,4,4],scandal:{week:'Week 18, 1980',text:'This politician said something in front of the cameras that he now, at least privately, regrets. It dropped Party Approval. Removing him may bring Party Approval back, and it may not.'}},
     {name:'Claire Bonnet',age:43,role:'Trade Minister',free:false,busy:'Industrial Decline',stats:[4,4,2,2,3]},
     {name:'Aurélie Brun',age:40,role:'Foreign Minister',free:true,stats:[5,3,3,2,2]},
     {name:'Armand Roux',age:54,role:'Defense Minister',free:true,stats:[2,3,2,5,4]}
@@ -259,6 +259,7 @@
       '<div class="page"><span class="al">Age</span>'+p.age+'</div>'+
       '<div class="pstatus">'+p.role+'</div>'+cells;
     row.addEventListener('click',function(){
+      if(p.page){window.location.href=p.page;return;} // a politician with a profile page opens it
       ping('<b>'+p.name+'</b>: '+(p.free?'available for one action this week.':'occupied: '+p.busy+'.'));
     });
     tbl.appendChild(row);
@@ -301,7 +302,8 @@
 </script>
 
 <script type="module">
-  import { initSidebar, logout } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
+  mountTopbar();
   // Hide the hero flag too if the asset is missing, matching the sidebar flag.
   var hf=document.getElementById('heroFlag');
   if(hf){hf.addEventListener('error',function(){hf.style.display='none';});}

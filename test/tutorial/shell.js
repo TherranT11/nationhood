@@ -69,6 +69,62 @@ export async function markGovernmentFormed() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Shared game-clock + weekly-action widget (top-right on every in-game screen)
+// ---------------------------------------------------------------------------
+// One source of truth for the current week and the actions a player has left,
+// so every page agrees. The home screen renders these inline in its own header;
+// every other in-game screen gets them from mountTopbar() below.
+export const GAME_WEEK = 'Week 22 · May 1980';
+export const PARTY_ACTIONS = 3;
+
+// Inject the topbar's styles once per page. Uses the same CSS variables the
+// pages already define (--indigo, --soft, --ink, ...), so it inherits each
+// screen's palette. Class names are prefixed `gw-` to never collide with a
+// page's own markup (e.g. the home screen's .pa / .nextweek).
+let topbarStyled = false;
+function ensureTopbarStyles() {
+  if (topbarStyled) return;
+  topbarStyled = true;
+  const css = `
+  .gw-topbar{display:flex;align-items:center;justify-content:flex-end;gap:13px;flex-wrap:wrap;margin-bottom:20px}
+  .gw-topbar .gw-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
+  .gw-topbar .gw-week{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .gw-topbar .gw-next{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:12px 20px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
+  .gw-topbar .gw-next:hover{transform:translateY(-1px);filter:brightness(1.07)}
+  .gw-topbar .gw-next:focus-visible{outline:2px solid var(--ink);outline-offset:3px}`;
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+// Render the actions-remaining chip, current week, and Next Week button into
+// the top-right of <main>. Safe to call once per page; a no-op if there is no
+// <main> or a bar is already present. The button advances the week (a tutorial
+// placeholder for now): it surfaces a toast if the page has one.
+export function mountTopbar() {
+  const main = document.querySelector('.main');
+  if (!main || main.querySelector('.gw-topbar')) return;
+  ensureTopbarStyles();
+
+  const bar = document.createElement('div');
+  bar.className = 'gw-topbar';
+  bar.innerHTML =
+    '<span class="gw-actions">Party Actions: ' + PARTY_ACTIONS + ' Available</span>' +
+    '<span class="gw-week">' + GAME_WEEK + '</span>' +
+    '<button class="gw-next" type="button">Next Week &#9656;</button>';
+  main.insertBefore(bar, main.firstChild);
+
+  bar.querySelector('.gw-next').addEventListener('click', () => {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.innerHTML = 'Week advanced. <b>3 modifiers unresolved</b>.';
+    toast.classList.add('show');
+    clearTimeout(window.__gwToast);
+    window.__gwToast = setTimeout(() => toast.classList.remove('show'), 3400);
+  });
+}
+
 // Sign the player out and return to the test landing page. Redirects even if
 // the sign-out call fails so a stuck session never traps the player. Guards
 // against a double-click firing two sign-outs before the redirect lands.
