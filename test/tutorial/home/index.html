@@ -270,8 +270,8 @@
       </section>
     </div>
 
-    <!-- PM actions (revealed once the government is formed) -->
-    <section class="mod pmbar" id="pmbar" style="display:none">
+    <!-- PM actions -->
+    <section class="mod pmbar">
       <div class="mod__hd"><span>Prime Minister · This Week's Action</span></div>
       <div class="sub">Your leader holds the premiership. One action only. Choose where to spend it.</div>
       <div class="actions" id="actions">
@@ -308,9 +308,6 @@
     if (confVal) confVal.textContent = formedConfidence(window.nationhoodParty).value + '%';
     const sl = document.getElementById('standingLabel');
     if (sl) sl.textContent = 'governing';
-    // The premiership is now held, so the weekly PM action becomes available.
-    const pm = document.getElementById('pmbar');
-    if (pm) pm.style.display = '';
   });
 
   initSidebar();
