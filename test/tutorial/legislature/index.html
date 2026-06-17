@@ -412,8 +412,11 @@
   };
   // Render the bill the player drafted on the Propose page onto the floor (from
   // its saved snapshot) as a votable bill, and bump the On the Floor count.
-  // The four other parties start Pending (166 seats); the player's 114 decide
-  // nothing alone, so it opens on "Your vote decides". Called once on load.
+  // The other parties vote at once based on the bill's party-popularity (a party
+  // aye if the bill helps its archetype, nay if it hurts, abstain if neutral),
+  // so the player's 114 then decide. Called once on load.
+  // NOTE: the four parties' seats are duplicated across the static bills + the
+  // formation snapshot; kept here too until there's a shared party-data module.
   function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
   window.renderFloorBill=function(b){
     if(!b||!b.title||document.getElementById('bp')) return;
@@ -421,6 +424,20 @@
     var arts=(b.arts||[]).map(function(a,i){
       var pills=(a.pills||[]).map(function(p){return '<span class="eff '+p.kind+'">'+esc(p.txt)+'</span>';}).join('');
       return '<div class="art"><span class="art__n">'+(roman[i]||(i+1))+'</span><div class="art__b"><b>'+esc(a.name)+'</b>'+(pills?'<div class="pills">'+pills+'</div>':'')+'</div></div>';
+    }).join('');
+    // Other parties react to the bill's party popularity.
+    var pop=b.pop||{}, LBL={aye:'Aye',nay:'Nay',abs:'Abstain'};
+    var OTHERS=[
+      {name:"Workers' Party",c:'#C42B2B',seats:40,arch:'Labour'},
+      {name:'Centre Union',c:'#16915a',seats:50,arch:'Centrist'},
+      {name:'Liberal Alliance',c:'#1f86d6',seats:44,arch:'Centrist'},
+      {name:'National Rally',c:'#2b3a7a',seats:32,arch:'Nationalist'}
+    ];
+    var base={aye:0,nay:0,abs:0};
+    var partiesHtml=OTHERS.map(function(o){
+      var net=pop[o.arch]||0, v=net>0?'aye':net<0?'nay':'abs';
+      base[v]+=o.seats;
+      return '<li class="prow" style="--c:'+o.c+'"><span class="dot"></span><span class="pn">'+o.name+'</span><span class="ps">'+o.seats+'</span><span class="pos '+v+'">'+LBL[v]+'</span></li>';
     }).join('');
     var d=document.createElement('details'); d.className='bill'; d.id='bp'; d.open=true;
     d.innerHTML='<summary><div class="bill__hd"><h2>'+esc(b.title)+'</h2><span class="status"></span>'+
@@ -434,17 +451,13 @@
       '<div class="tlegend"><span><i class="aye"></i>Aye <b class="n-aye">0</b></span>'+
       '<span><i class="nay"></i>Nay <b class="n-nay">0</b></span><span><i class="abs"></i>Abstain <b class="n-abs">0</b></span>'+
       '<span><i class="pend"></i>Pending <b class="n-pend">0</b></span><span class="thr">141 to pass</span></div></div>'+
-      '<div class="plabel">Other parties</div><ul class="parties">'+
-      '<li class="prow" style="--c:#C42B2B"><span class="dot"></span><span class="pn">Workers\' Party</span><span class="ps">40</span><span class="pos pend">Pending</span></li>'+
-      '<li class="prow" style="--c:#16915a"><span class="dot"></span><span class="pn">Centre Union</span><span class="ps">50</span><span class="pos pend">Pending</span></li>'+
-      '<li class="prow" style="--c:#1f86d6"><span class="dot"></span><span class="pn">Liberal Alliance</span><span class="ps">44</span><span class="pos pend">Pending</span></li>'+
-      '<li class="prow" style="--c:#2b3a7a"><span class="dot"></span><span class="pn">National Rally</span><span class="ps">32</span><span class="pos pend">Pending</span></li></ul>'+
+      '<div class="plabel">Other parties</div><ul class="parties">'+partiesHtml+'</ul>'+
       '<div class="plabel">Articles</div>'+arts+
       (b.budgetText?'<div class="art-total">Total <b>'+esc(b.budgetText)+'</b></div>':'');
     var secthd=document.querySelector('.secthd'); // first secthd = On the Floor
     if(secthd){ secthd.parentNode.insertBefore(d, secthd.nextSibling);
       var ct=secthd.querySelector('.ct'); if(ct) ct.textContent=(parseInt(ct.textContent,10)||2)+1; }
-    bills.bp={base:{aye:0,nay:0,abs:0}, otherPending:166, front:114, vote:null, name:b.title};
+    bills.bp={base:base, otherPending:0, front:114, vote:null, name:b.title}; // others already voted
     wireBill('bp');
   };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
