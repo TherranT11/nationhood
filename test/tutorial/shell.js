@@ -51,6 +51,7 @@ export async function getTutorialProgress(userId) {
       theoTask: data.tutorial_theo_task || null,
       actions: data.tutorial_party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
       coalition: data.tutorial_coalition || null,
+      billVotes: data.tutorial_bill_votes || {},
     };
   } catch (err) {
     return null;
@@ -95,6 +96,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
   window.dispatchEvent(new CustomEvent('nationhood:actions', { detail: progress.actions }));
+  window.dispatchEvent(new CustomEvent('nationhood:bills', { detail: progress.billVotes }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
