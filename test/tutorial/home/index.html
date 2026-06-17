@@ -56,6 +56,7 @@
   .nextweek{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:13px 22px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
   .nextweek:hover{transform:translateY(-1px);filter:brightness(1.07)}
   .nextweek:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+  .nextweek[disabled]{background:#cfcdc7;cursor:default;pointer-events:none}
 
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
   .mod__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
@@ -159,23 +160,22 @@
 
   <!-- MAIN -->
   <main class="main">
+    <header class="top">
+      <div class="clock">
+        <span class="kicker">Week 22</span>
+        <b>May 1980</b>
+      </div>
+      <div class="top__right">
+        <div class="standing">Standing<i>#<span class="dash"></span></i><small>new government</small></div>
+        <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
+      </div>
+    </header>
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>Welcome to the Nationhood tutorial. This is the home page, and you've just won an election.</p>
       <p>The first thing you'll need to do is to form a government. Let's head to the Government page.</p>
       <button class="coach__btn" id="toGov" type="button">Government Page &rarr;</button>
     </div>
-    <header class="top">
-      <div class="clock">
-        <span class="kicker">Week 22</span>
-        <b>May 1980</b>
-        <span class="next">Next tick in 6h 12m</span>
-      </div>
-      <div class="top__right">
-        <div class="standing">Standing<i>#<span class="dash"></span></i><small>new government</small></div>
-        <button class="nextweek" id="nextweek" type="button">Next Week &#9656;</button>
-      </div>
-    </header>
 
     <!-- Government formation (pre-confidence state) -->
     <section class="mod">
