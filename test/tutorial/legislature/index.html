@@ -61,6 +61,8 @@
   .lh__res.pass{color:var(--green);background:var(--green-soft)} .lh__res.fail{color:var(--red);background:var(--red-soft)}
   .lh__pop{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;margin-top:6px}
   .lh__pop.up{color:var(--green)} .lh__pop.down{color:var(--red)} .lh__pop.flat{color:var(--soft)}
+  .lh__cost{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;margin-top:4px;color:var(--soft)}
+  .lh__cost.gain{color:var(--green)}
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px}
   .back:hover{color:var(--indigo)}
   .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -531,9 +533,16 @@
     var POP={'1':'+1 Party Popularity','-1':'−1 Party Popularity','0':'No popularity change'};
     document.getElementById('legHistory').innerHTML=items.map(function(it){
       var cls=it.pop>0?'up':it.pop<0?'down':'flat';
+      // A passed bill with a budget delta shows its price tag: a cost (₣ spent) or
+      // budget gained. Failed bills never took effect, so no figure is shown.
+      var cost='';
+      if(it.passed && it.budget){
+        var gain=it.budget>0;
+        cost='<div class="lh__cost'+(gain?' gain':'')+'">'+(gain?'Budget +₣'+it.budget+'B':'Cost ₣'+Math.abs(it.budget)+'B')+'</div>';
+      }
       return '<div class="lh"><div class="lh__top"><span class="lh__name">'+esc(it.name)+'</span>'+
         '<span class="lh__res '+(it.passed?'pass':'fail')+'">'+(it.passed?'Passed':'Failed')+'</span></div>'+
-        '<div class="lh__pop '+cls+'">'+POP[String(it.pop)]+'</div></div>';
+        '<div class="lh__pop '+cls+'">'+POP[String(it.pop)]+'</div>'+cost+'</div>';
     }).join('');
     // A scripted bill becomes due this week → load it and drop its agenda row.
     if((window.nationhoodWeek||0) >= IMG_BILL.week && !done[IMG_BILL.id]){
