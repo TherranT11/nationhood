@@ -116,6 +116,8 @@
   .post__work{font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.02em}
   .ptag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;flex:none;font-weight:700}
   .ptag.f{color:var(--front);background:var(--indigo-soft)}
+  .ptag.scandal{color:var(--red);background:var(--red-soft)}
+  .ptags{display:flex;gap:6px;flex:none;align-items:center}
 
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -201,8 +203,8 @@
 
   function render(co){
     const assembly = co.assembly || [];
-    const gov = assembly.filter((p) => p.gov);
-    const opp = assembly.filter((p) => !p.gov);
+    const gov = assembly.filter((p) => p.gov).sort((a, b) => b.seats - a.seats); // bigger party on top
+    const opp = assembly.filter((p) => !p.gov).sort((a, b) => b.seats - a.seats);
     const oppSeats = opp.reduce((s, p) => s + p.seats, 0);
 
     // Confidence (single source; from the actual coalition)
@@ -272,10 +274,10 @@
   // Théo pages are static and don't reflect that yet — a known tutorial gap.
   function renderCabinet(gov){
     const rows = [
-      { min: 'Prime Minister', name: 'Allen Droulez · Leader of the Front', work: 'Holds 1 action this week', pf: 'Prime Minister', pic: 'PM', front: true },
+      { min: 'Prime Minister', name: 'Allen Droulez · Leader of the Front', work: '', pf: 'Prime Minister', pic: 'PM', front: true },
       { min: 'Economic Development', name: 'Margot Sève', work: 'Idle', pf: 'Economic Development', pic: 'MS', front: true },
       { min: 'Trade', name: 'Claire Bonnet', work: 'Idle', pf: 'Trade', pic: 'CB', front: true },
-      { min: 'Interior', name: 'Théo Lefèvre', work: 'Idle', pf: 'Interior', pic: 'TL', front: true },
+      { min: 'Interior', name: 'Théo Lefèvre', work: 'Idle', pf: 'Interior', pic: 'TL', front: true, scandal: true },
       { min: 'Foreign Affairs', name: 'Aurélie Brun', work: 'Idle', pf: 'Foreign Affairs', pic: 'AB', front: true },
       { min: 'Defense', name: 'Armand Roux', work: 'Idle', pf: 'Defense', pic: 'AR', front: true },
     ];
@@ -287,11 +289,13 @@
       if (i >= 0) rows[i] = row; else rows.push(row);
     });
     return rows.map((r) => {
-      const tag = r.front
+      const partyTag = r.front
         ? '<span class="ptag f">Front</span>'
         : '<span class="ptag" style="color:' + r.color + ';background:#fff;border:1px solid ' + r.color + '">' + r.party + '</span>';
+      const tags = '<span class="ptags">' + (r.scandal ? '<span class="ptag scandal">Scandal</span>' : '') + partyTag + '</span>';
+      const work = r.work ? '<span class="post__work">' + r.work + '</span>' : '';
       return '<div class="post"><span class="post__pic">' + r.pic + '</span>' +
-        '<div class="post__b"><span class="min">' + r.min + '</span><b>' + r.name + '</b><span class="post__work">' + r.work + '</span></div>' + tag + '</div>';
+        '<div class="post__b"><span class="min">' + r.min + '</span><b>' + r.name + '</b>' + work + '</div>' + tags + '</div>';
     }).join('');
   }
 

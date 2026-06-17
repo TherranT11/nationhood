@@ -318,12 +318,13 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, formedConfidence, logout, GAME_WEEK } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence, logout, advanceWeek } from '/test/tutorial/shell.js';
 
-  // The week comes from shell.js (one source). Party Actions are filled by
-  // initSidebar from the player's profile (renderPartyActions), so this header
-  // and every other screen's topbar always show the same live count.
-  document.getElementById('weekDate').textContent = GAME_WEEK;
+  // The week label and Party Actions count are both filled by initSidebar from
+  // the player's profile (one source), so this header and every other screen's
+  // topbar always agree. The Next Week button advances the shared week.
+  const nw = document.getElementById('nextweek');
+  if (nw) { nw.disabled = false; nw.removeAttribute('title'); nw.addEventListener('click', () => { nw.disabled = true; advanceWeek(); }); }
 
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {
