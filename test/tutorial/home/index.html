@@ -29,6 +29,7 @@
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
   .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .brand__txt .party{font-weight:700}
+  .brand__date{font-weight:700;font-size:12px;letter-spacing:-.005em;color:var(--ink);white-space:nowrap;margin-top:3px}
 
   .nav{display:flex;flex-direction:column;gap:2px}
   .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
@@ -143,8 +144,8 @@
   <!-- SIDEBAR -->
   <aside class="side">
     <div class="brand">
-      <img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front de Sessau">
-      <div class="brand__txt"><b>Front de Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div>
+      <img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front Sessau">
+      <div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span><div class="brand__date">Week 22 · May 1980</div></div>
     </div>
     <nav class="nav">
       <a class="nav__i active" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
@@ -259,7 +260,7 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence } from '/test/tutorial/shell.js';
 
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {
@@ -271,9 +272,9 @@
     if (gov) gov.innerHTML =
       '<div class="mod__hd"><span>Pressing Issues</span></div>' +
       '<p class="empty">When issues affect your government, they will appear here.</p>';
-    // Confidence mirrors the formed government (see /test/tutorial/government/formed).
+    // Confidence: single source of truth (shell.formedConfidence).
     const confVal = document.getElementById('confVal');
-    if (confVal) confVal.textContent = '47%';
+    if (confVal) confVal.textContent = formedConfidence(window.nationhoodParty).value + '%';
     const sl = document.getElementById('standingLabel');
     if (sl) sl.textContent = 'governing';
   });

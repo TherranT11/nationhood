@@ -28,6 +28,7 @@
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
   .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .brand__txt .party{font-weight:700}
+  .brand__date{font-weight:700;font-size:12px;letter-spacing:-.005em;color:var(--ink);white-space:nowrap;margin-top:3px}
   .nav{display:flex;flex-direction:column;gap:2px}
   .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
   .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -137,7 +138,7 @@
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front de Sessau"><div class="brand__txt"><b>Front de Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div></div>
+    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front Sessau"><div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span><div class="brand__date">Week 22 · May 1980</div></div></div>
     <nav class="nav">
       <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
       <a class="nav__i active" href="/test/tutorial/government/formed/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
@@ -161,14 +162,14 @@
     <section class="mod">
       <div class="mod__hd"><span>Government Confidence</span></div>
       <div class="conf">
-        <div class="conf__num">47<span>%</span></div>
+        <div class="conf__num" id="confNum">47<span>%</span></div>
         <div class="conf__mid">
-          <div class="conf__meter"><div class="conf__fill"></div><div class="conf__tick"></div></div>
-          <div class="conf__break">
+          <div class="conf__meter"><div class="conf__fill" id="confFill"></div><div class="conf__tick"></div></div>
+          <div class="conf__break" id="confBreak">
             <span class="bk">Base 50</span>
-            <span class="bk neg">Crises −6</span>
-            <span class="bk pos">Coalition size +3</span>
-            <span class="bk">Contradictions −0</span>
+            <span class="bk neg">Crises -6</span>
+            <span class="bk pos">Coalition size +2.5</span>
+            <span class="bk">Contradictions 0</span>
           </div>
         </div>
         <div class="term"><div class="k">Mandate</div><div class="v">Spring 1985</div><div class="s">next election · ~4 game-years</div></div>
@@ -184,7 +185,7 @@
       </div>
       <div class="legend">
         <span class="lg"><span class="sw" style="background:#C42B2B"></span><b>Workers' Party</b> 40</span>
-        <span class="lg"><span class="sw" style="background:#5546E8"></span><b>Front de Sessau</b> 114</span>
+        <span class="lg"><span class="sw" style="background:#5546E8"></span><b>Front Sessau</b> 114</span>
         <span class="lg opp"><span class="sw" style="background:#16915a"></span>Centre Union 50</span>
         <span class="lg opp"><span class="sw" style="background:#1f86d6"></span>Liberal Alliance 44</span>
         <span class="lg opp"><span class="sw" style="background:#2b3a7a"></span>National Rally 32</span>
@@ -198,7 +199,7 @@
         <div class="party">
           <span class="party__bar" style="--c:#5546E8"></span>
           <div class="party__b">
-            <div class="party__top"><b>Front de Sessau</b><span class="seats">114</span></div>
+            <div class="party__top"><b>Front Sessau</b><span class="seats">114</span></div>
             <div class="party__arch" id="frontArch">Nationalist</div>
             <div class="party__role">Leading party · holds the premiership</div>
             <div class="mood good">● Yours</div>
@@ -265,7 +266,7 @@
         </div>
         <div class="post">
           <span class="post__pic">CD</span>
-          <div class="post__b"><span class="min">Labour</span><b>Camille Dorne</b><span class="post__work">Coalition partner · supports all three responses</span></div>
+          <div class="post__b"><span class="min">Labour</span><b>Camille Dorne</b><span class="post__work">Coalition partner</span></div>
           <span class="ptag w">Workers'</span>
         </div>
         <div class="post">
@@ -361,18 +362,31 @@
 </script>
 
 <script type="module">
-  import { initSidebar, PARTY } from '/test/tutorial/shell.js';
+  import { initSidebar, PARTY, formedConfidence } from '/test/tutorial/shell.js';
 
   // If no government has been formed yet, this view doesn't apply: go form one.
   window.addEventListener('nationhood:gov', (e) => {
     if (!e.detail) window.location.replace('/test/tutorial/government/');
   });
 
-  // Front de Sessau's archetype is the player's tutorial choice.
+  // Front Sessau's archetype is the player's tutorial choice; Confidence comes
+  // from the single source so the home screen always agrees.
   window.addEventListener('nationhood:party', (e) => {
     const p = PARTY[e.detail];
     const el = document.getElementById('frontArch');
     if (p && el) el.textContent = p.label;
+
+    const c = formedConfidence(e.detail);
+    const num = document.getElementById('confNum');
+    if (num) num.innerHTML = c.value + '<span>%</span>';
+    const fill = document.getElementById('confFill');
+    if (fill) fill.style.width = Math.max(0, Math.min(100, c.value)) + '%';
+    const brk = document.getElementById('confBreak');
+    if (brk) brk.innerHTML =
+      '<span class="bk">Base 50</span>' +
+      '<span class="bk neg">Crises -6</span>' +
+      '<span class="bk pos">Coalition size +' + c.bonus + '</span>' +
+      '<span class="bk' + (c.contra ? ' neg' : '') + '">Contradictions ' + c.contra + '</span>';
   });
 
   initSidebar();

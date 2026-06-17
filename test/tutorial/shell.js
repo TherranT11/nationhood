@@ -68,3 +68,16 @@ export async function markGovernmentFormed() {
     return false;
   }
 }
+
+// Confidence of the formed tutorial government (Front 114 + Workers' 40 = 154
+// of 280) under the three standing crises. Single source of truth so the home
+// screen and the Government page always agree. Depends on the player's
+// archetype: a Nationalist clashes with the Communist Workers' Party.
+export function formedConfidence(party) {
+  const base = 50;
+  const crises = -6;                                // three crises at -2
+  const contra = party === 'Nationalist' ? -4 : 0;  // clash with the Communist partner
+  const bonus = ((154 / 280) * 100 - 50) / 2;       // seats over 50%, halved (2.5)
+  const value = Math.round(base + crises + contra + bonus);
+  return { value, base, crises, contra, bonus };
+}
