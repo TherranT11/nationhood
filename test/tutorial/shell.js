@@ -139,16 +139,39 @@ export function renderPartyActions(n) {
 // with no keys, so local dev still flows). Returns false — rather than
 // redirecting — when there's no session, so a caller mid-action can offer a
 // retry instead of throwing the player to login.
+//
+// Resilient to an un-migrated column: if the database rejects the update because
+// a column doesn't exist, that column is dropped and the rest retried — so a
+// partially-migrated DB degrades a single feature (its field isn't saved)
+// instead of failing the whole write (and blocking Next Week / forming / etc.).
 export async function updateProfile(patch) {
   if (!isConfigured) return true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
-    const { error } = await supabase.from('profiles').update(patch).eq('id', session.user.id);
-    return !error;
+    const p = { ...patch };
+    while (Object.keys(p).length) {
+      const { error } = await supabase.from('profiles').update(p).eq('id', session.user.id);
+      if (!error) return true;
+      const col = missingColumn(error, p);
+      if (!col) return false;                     // a real error, not a missing column
+      delete p[col];                              // skip the un-migrated column, retry the rest
+      console.warn('updateProfile: skipping un-migrated column "' + col + '" — run supabase/schema.sql');
+    }
+    return false;
   } catch (err) {
     return false;
   }
+}
+
+// Find the first quoted identifier in a DB error that is also a key in the patch
+// (PostgREST: "Could not find the 'x' column…"; Postgres: column "x" does not
+// exist). Returns null when the error isn't about a column we sent.
+function missingColumn(error, patch) {
+  const msg = (error && error.message) || '';
+  const quoted = msg.match(/['"]([a-zA-Z0-9_]+)['"]/g) || [];
+  for (const q of quoted) { const name = q.slice(1, -1); if (name in patch) return name; }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
