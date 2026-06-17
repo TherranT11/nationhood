@@ -24,9 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Assemble the site + domain binding
         run: |
-          mkdir -p dist dist/test
+          mkdir -p dist
           cp index.html CNAME .nojekyll dist/
-          cp test/index.html dist/test/
+          cp -r test dist/test
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
