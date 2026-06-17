@@ -382,7 +382,13 @@
   // lives in one place (the markup).
   var coachP=document.getElementById('coachP'), COACH_WELCOME=coachP?coachP.innerHTML:'';
   var COACH_VOTED="Okay, now you've voted. Let's go ahead and propose a new bill to start our government off. Click <b>Propose New Law</b>.";
-  function updateCoach(){ if(coachP) coachP.innerHTML = Object.keys(bills).some(function(id){return bills[id].vote;}) ? COACH_VOTED : COACH_WELCOME; }
+  var COACH_PROPOSED="Okay, here's your bill. Go ahead and cast your vote. That's about the most we can do this week, as we are out of actions. So go ahead and cast your vote and then hit <b>Next Week</b>.";
+  function updateCoach(){
+    if(!coachP) return;
+    if(bills.bp) coachP.innerHTML=COACH_PROPOSED;                                                    // a bill is on the floor
+    else if(Object.keys(bills).some(function(id){return bills[id].vote;})) coachP.innerHTML=COACH_VOTED; // voted, not yet proposed
+    else coachP.innerHTML=COACH_WELCOME;
+  }
   // Wire one bill's vote buttons + initial render. Used for the static floor
   // bills and the player's proposed bill alike (one source for vote behaviour).
   function wireBill(id){
@@ -459,6 +465,7 @@
       var ct=secthd.querySelector('.ct'); if(ct) ct.textContent=(parseInt(ct.textContent,10)||2)+1; }
     bills.bp={base:base, otherPending:0, front:114, vote:null, name:b.title}; // others already voted
     wireBill('bp');
+    updateCoach(); // a bill is now on the floor → show the "cast your vote" prompt
   };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
   document.getElementById('propose').addEventListener('click',function(){window.location.href='/test/tutorial/legislature/propose/';});
