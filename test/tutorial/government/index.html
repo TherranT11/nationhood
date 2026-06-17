@@ -423,6 +423,27 @@
 
   // (Form Government + the formed-state redirect are handled in the module below.)
 
+  // Snapshot the formed coalition for the Government screen: the full assembly
+  // (gov partners first, then the Front, then opposition), the government seat
+  // total, and the contradictory-partner count. The formed view renders from it.
+  var MINISTERS={ wp:"Camille Dorne" }; // named coalition ministers we have
+  function buildCoalition(){
+    var contraArch=CONTRA_OF[PLAYER_PARTY], total=FRONT, contra=0, assembly=[];
+    parties.forEach(function(p){
+      if(!state[p.id].in) return;
+      total+=p.seats;
+      if(contraArch && p.arch===contraArch) contra++;
+      var md=p.demands.filter(function(d){return d.type==='ministry';})[0];
+      var pd=p.demands.filter(function(d){return d.type==='policy';})[0];
+      assembly.push({name:p.name,seats:p.seats,arch:p.arch,color:p.color,gov:true,
+        ministry:md?md.portfolio:null,policy:pd?pd.text:null,minister:MINISTERS[p.id]||null});
+    });
+    assembly.push({name:'Front Sessau',seats:FRONT,color:'#5546E8',gov:true,lead:true});
+    parties.forEach(function(p){ if(!state[p.id].in) assembly.push({name:p.name,seats:p.seats,arch:p.arch,color:p.color,gov:false}); });
+    return { playerParty:PLAYER_PARTY, total:total, contra:contra, assembly:assembly };
+  }
+  window.buildCoalition=buildCoalition;
+
   // sidebar nav: Home navigates; the rest just highlight (not wired yet)
   var items=document.querySelectorAll('.nav__i');
   items.forEach(function(i){i.addEventListener('click',function(e){
@@ -433,20 +454,21 @@
 </script>
 
 <script type="module">
-  import { initSidebar, markGovernmentFormed, logout, mountTopbar } from '/test/tutorial/shell.js';
+  import { initSidebar, updateProfile, logout, mountTopbar } from '/test/tutorial/shell.js';
   mountTopbar();
 
-  // If the government is already formed, this screen becomes the standard view.
-  window.addEventListener('nationhood:gov', (e) => {
-    if (e.detail) window.location.replace('/test/tutorial/government/formed/');
+  // If a government is already formed (a coalition snapshot exists), this screen
+  // becomes the standard view. (Coalition fires after gov; window flag is set.)
+  window.addEventListener('nationhood:coalition', (e) => {
+    if (window.nationhoodGovernmentFormed && e.detail) window.location.replace('/test/tutorial/government/formed/');
   });
 
-  // Form Government: persist, then go to the standard Government view.
+  // Form Government: persist the chosen coalition + formed flag, then show it.
   let forming = false; // loading lock: blocks double-fire
   document.getElementById('formBtn').addEventListener('click', async () => {
     if (forming) return;
     forming = true;
-    const ok = await markGovernmentFormed();
+    const ok = await updateProfile({ tutorial_government_formed: true, tutorial_coalition: window.buildCoalition() });
     if (ok) window.location.href = '/test/tutorial/government/formed/';
     else forming = false; // allow a retry if the save failed
   });
