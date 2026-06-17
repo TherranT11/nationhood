@@ -203,8 +203,7 @@
 
     <!-- ON THE FLOOR -->
     <div class="secthd">On the Floor <span class="ct">2</span>
-      <!-- visual only: not wired up yet -->
-      <button class="propose" type="button">Propose New Law</button></div>
+      <button class="propose" id="propose" type="button">Propose New Law</button></div>
 
     <!-- BILL 1 -->
     <details class="bill" id="b1">
@@ -401,6 +400,7 @@
     });
   };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
+  document.getElementById('propose').addEventListener('click',function(){window.location.href='/test/tutorial/legislature/propose/';});
   // sidebar nav: linked items navigate; the rest just highlight (not wired)
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
     if(!i.getAttribute('href')){e.preventDefault();document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')});i.classList.add('active');}

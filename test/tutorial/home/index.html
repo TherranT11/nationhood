@@ -324,7 +324,7 @@
   // the player's profile (one source), so this header and every other screen's
   // topbar always agree. The Next Week button advances the shared week.
   const nw = document.getElementById('nextweek');
-  if (nw) { nw.disabled = false; nw.removeAttribute('title'); nw.addEventListener('click', () => { nw.disabled = true; advanceWeek(); }); }
+  if (nw) { nw.disabled = false; nw.removeAttribute('title'); nw.addEventListener('click', async () => { nw.disabled = true; if (!(await advanceWeek())) nw.disabled = false; }); }
 
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {
