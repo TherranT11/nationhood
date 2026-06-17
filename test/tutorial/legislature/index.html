@@ -250,8 +250,8 @@
       </ul>
 
       <div class="plabel">Articles</div>
-      <div class="art"><span class="art__n">I</span><div class="art__b"><b>Strategic Refineries</b><p>Bring the nation's three largest refineries under state control to secure supply.</p><div class="pills"><span class="eff bad">Image ▼</span><span class="eff bad">Labour Unrest ▼</span><span class="eff good">+2% Party Popularity [Labour]</span><span class="eff bad">−2% Party Popularity [Nationalist]</span><span class="eff bad">−1% Party Popularity [Centrist]</span></div></div><span class="art__cost">₣30B</span></div>
-      <div class="art"><span class="art__n">II</span><div class="art__b"><b>National Reserve</b><p>Establish a ninety-day strategic energy reserve, funded from the Treasury.</p><div class="pills"><span class="eff bad">Debt ▲</span><span class="eff good">Energy Strike ▲</span></div></div><span class="art__cost">₣21B</span></div>
+      <div class="art"><span class="art__n">I</span><div class="art__b"><b>Strategic Refineries</b><p>Bring the nation's three largest refineries under state control to secure supply.</p><div class="pills"><span class="eff bad">Image ▼</span><span class="eff bad">Labour Unrest ▲</span><span class="eff good">+2% Party Popularity [Labour]</span><span class="eff bad">−2% Party Popularity [Nationalist]</span><span class="eff bad">−1% Party Popularity [Centrist]</span></div></div><span class="art__cost">₣30B</span></div>
+      <div class="art"><span class="art__n">II</span><div class="art__b"><b>National Reserve</b><p>Establish a ninety-day strategic energy reserve, funded from the Treasury.</p><div class="pills"><span class="eff bad">Debt ▲</span><span class="eff good">Energy Strike ▼</span></div></div><span class="art__cost">₣21B</span></div>
       <div class="art"><span class="art__n">III</span><div class="art__b"><b>Nuclear Programme</b><p>Commission four new reactors to cut import dependence over the coming decade.</p><div class="pills"><span class="eff good">Energy ▲ (slow)</span></div></div><span class="art__cost">₣16B<small>future hidden costs</small></span></div>
       <div class="art-total">Total <b>₣67B</b></div>
     </details>
@@ -380,10 +380,18 @@
         if(bills[id].vote===v){bills[id].vote=null;ping('Front Sessau withdraws its vote on '+bills[id].name+'.');}
         else{bills[id].vote=v;ping('Front Sessau '+WORD[v]+' on '+bills[id].name+' — 114 seats cast.');}
         render(id);
+        if(window.saveBillVote) window.saveBillVote(id, bills[id].vote); // persist
       });
     });
     render(id);
   });
+  // Restore saved votes once the profile loads (dispatched by initSidebar).
+  window.applyBillVotes=function(map){
+    Object.keys(bills).forEach(function(id){
+      if(map && Object.prototype.hasOwnProperty.call(map,id)) bills[id].vote=map[id];
+      render(id);
+    });
+  };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
   // sidebar nav: linked items navigate; the rest just highlight (not wired)
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
@@ -392,9 +400,17 @@
 </script>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar, updateProfile } from '/test/tutorial/shell.js';
   mountTopbar();
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
+  // Persist floor votes. initSidebar dispatches the saved map; we hold it here
+  // and write the whole jsonb back on each vote (one source of truth: the map).
+  var votes={};
+  window.addEventListener('nationhood:bills',function(e){ votes=e.detail||{}; if(window.applyBillVotes) window.applyBillVotes(votes); });
+  window.saveBillVote=function(id,v){
+    if(v===null) delete votes[id]; else votes[id]=v;
+    updateProfile({ tutorial_bill_votes: votes });
+  };
   initSidebar();
 </script>
 </body>

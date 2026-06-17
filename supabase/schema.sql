@@ -45,6 +45,12 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_coalition jsonb;
 
+-- The player's saved floor votes in the Legislature, keyed by bill id ->
+-- 'aye' | 'nay' | 'abs'. A bill is simply absent until they vote on it (and
+-- removed again if they withdraw). Null until they cast a first vote. Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_bill_votes jsonb;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 
