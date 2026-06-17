@@ -385,7 +385,11 @@
     if(currentActions<selectedCost){ ping('Not enough actions — '+selectedTask+' costs '+selectedCost+'.'); return; }
     assigning=true; confirmBtn.disabled=true;
     var task=selectedTask, cost=selectedCost, left=currentActions-cost;
-    // One write: record the task and spend the actions together.
+    // One write: record the task and spend the actions together. NOTE: the new
+    // balance is computed client-side from the cached count (not an atomic DB
+    // decrement) and the client may write any value — acceptable for this
+    // single-player tutorial, but real multiplayer spending must be enforced
+    // server-side (e.g. an RPC) so it can't be raced or forged.
     var ok=await updateProfile({ tutorial_theo_task: task, tutorial_party_actions: left });
     assigning=false;
     if(ok){
