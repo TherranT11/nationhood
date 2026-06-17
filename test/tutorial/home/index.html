@@ -335,7 +335,20 @@
   // the player's profile (one source), so this header and every other screen's
   // topbar always agree. wireNextWeek adds the confirm-then-advance flow.
   const nw = document.getElementById('nextweek');
-  if (nw) { nw.disabled = false; nw.removeAttribute('title'); wireNextWeek(nw); }
+  if (nw) {
+    wireNextWeek(nw); // confirm-then-advance flow
+    // Next Week stays locked until the player puts their first bill on the floor —
+    // the tutorial's decisive step. Once they've proposed (floorBill exists) or
+    // already advanced past the opening week (22), it stays unlocked so scripted
+    // weeks (e.g. the Week 24 agenda bill) remain reachable. floorbill fires from
+    // initSidebar, after window.nationhoodWeek is set.
+    const gateNextWeek = (hasBill) => {
+      const open = hasBill || (window.nationhoodWeek || 22) > 22;
+      nw.disabled = !open;
+      if (open) nw.removeAttribute('title'); else nw.title = 'Propose a bill first';
+    };
+    window.addEventListener('nationhood:floorbill', (e) => gateNextWeek(!!e.detail));
+  }
 
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {
