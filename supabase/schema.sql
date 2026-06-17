@@ -38,6 +38,13 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_party_actions integer not null default 3;
 
+-- A snapshot of the coalition the player formed: the full assembly (each party
+-- with seats/colour/archetype and a gov flag), the government seat total, and
+-- the contradictory-partner count. Null until a government is formed. The
+-- formed Government screen renders entirely from this. Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_coalition jsonb;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 

@@ -50,6 +50,7 @@ export async function getTutorialProgress(userId) {
       governmentFormed: !!data.tutorial_government_formed,
       theoTask: data.tutorial_theo_task || null,
       actions: data.tutorial_party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
+      coalition: data.tutorial_coalition || null,
     };
   } catch (err) {
     return null;
@@ -94,6 +95,8 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
   window.dispatchEvent(new CustomEvent('nationhood:actions', { detail: progress.actions }));
+  // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
+  window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
 
 // One place that formats the "party actions remaining" label and writes it to
@@ -123,9 +126,6 @@ export async function updateProfile(patch) {
     return false;
   }
 }
-
-// Record that the player has formed their government.
-export const markGovernmentFormed = () => updateProfile({ tutorial_government_formed: true });
 
 // ---------------------------------------------------------------------------
 // Shared game-clock + weekly-action widget (top-right on every in-game screen)
@@ -187,15 +187,16 @@ export async function logout() {
   window.location.href = '/test/';
 }
 
-// Confidence of the formed tutorial government (Front 114 + Workers' 40 = 154
-// of 280) under the three standing crises. Single source of truth so the home
-// screen and the Government page always agree. Depends on the player's
-// archetype: a Nationalist clashes with the Communist Workers' Party.
-export function formedConfidence(party) {
+// Confidence of the formed government from the actual coalition: base, the
+// three standing crises, a penalty per contradictory partner, and the seat
+// majority bonus. Single source of truth, read by the formed Government screen
+// and the home dashboard (both pass the snapshot's seat total + contra count).
+export function formedConfidence(totalSeats, contraCount) {
   const base = 50;
-  const crises = -6;                                // three crises at -2
-  const contra = party === 'Nationalist' ? -4 : 0;  // clash with the Communist partner
-  const bonus = Math.round((((154 / 280) * 100 - 50) / 2) * 10) / 10; // seats over 50%, halved (2.5)
+  const crises = -6;                          // three crises at -2
+  const contra = -4 * (contraCount || 0);     // each contradictory partner
+  const pct = (totalSeats || 0) / 280 * 100;
+  const bonus = pct > 50 ? Math.round((pct - 50) / 2 * 10) / 10 : 0; // seats over 50%, halved
   const value = Math.round(base + crises + contra + bonus);
   return { value, base, crises, contra, bonus };
 }

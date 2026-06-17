@@ -330,11 +330,15 @@
     if (gov) gov.innerHTML =
       '<div class="mod__hd"><span>Pressing Issues</span></div>' +
       '<p class="empty">When issues affect your government, they will appear here.</p>';
-    // Confidence: single source of truth (shell.formedConfidence).
-    const confVal = document.getElementById('confVal');
-    if (confVal) confVal.textContent = formedConfidence(window.nationhoodParty).value + '%';
     const sl = document.getElementById('standingLabel');
     if (sl) sl.textContent = 'governing';
+  });
+
+  // Confidence from the actual coalition (single source: shell.formedConfidence).
+  window.addEventListener('nationhood:coalition', (e) => {
+    if (!e.detail) return;
+    const confVal = document.getElementById('confVal');
+    if (confVal) confVal.textContent = formedConfidence(e.detail.total, e.detail.contra).value + '%';
   });
 
   // Once Théo is assigned to Labour Talks, his talks show up in the feed.
