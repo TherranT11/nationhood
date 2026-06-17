@@ -418,9 +418,9 @@
   };
   // Render the bill the player drafted on the Propose page onto the floor (from
   // its saved snapshot) as a votable bill, and bump the On the Floor count.
-  // The other parties vote at once based on the bill's party-popularity (a party
-  // aye if the bill helps its archetype, nay if it hurts, abstain if neutral),
-  // so the player's 114 then decide. Called once on load.
+  // The other parties' votes were decided when the bill was drafted (each party
+  // backs a bill if it supports more of its policies than it opposes); the
+  // player's 114 seats then decide. Called once on load.
   // NOTE: the four parties' seats are duplicated across the static bills + the
   // formation snapshot; kept here too until there's a shared party-data module.
   function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
@@ -431,17 +431,17 @@
       var pills=(a.pills||[]).map(function(p){return '<span class="eff '+p.kind+'">'+esc(p.txt)+'</span>';}).join('');
       return '<div class="art"><span class="art__n">'+(roman[i]||(i+1))+'</span><div class="art__b"><b>'+esc(a.name)+'</b>'+(pills?'<div class="pills">'+pills+'</div>':'')+'</div></div>';
     }).join('');
-    // Other parties react to the bill's party popularity.
-    var pop=b.pop||{}, LBL={aye:'Aye',nay:'Nay',abs:'Abstain'};
+    // Other parties' votes were computed from the bill at draft time (partyVotes).
+    var pv=b.partyVotes||{}, LBL={aye:'Aye',nay:'Nay',abs:'Abstain'};
     var OTHERS=[
-      {name:"Workers' Party",c:'#C42B2B',seats:40,arch:'Labour'},
-      {name:'Centre Union',c:'#16915a',seats:50,arch:'Centrist'},
-      {name:'Liberal Alliance',c:'#1f86d6',seats:44,arch:'Centrist'},
-      {name:'National Rally',c:'#2b3a7a',seats:32,arch:'Nationalist'}
+      {key:'wp',name:"Workers' Party",c:'#C42B2B',seats:40},
+      {key:'cu',name:'Centre Union',c:'#16915a',seats:50},
+      {key:'la',name:'Liberal Alliance',c:'#1f86d6',seats:44},
+      {key:'nr',name:'National Rally',c:'#2b3a7a',seats:32}
     ];
     var base={aye:0,nay:0,abs:0};
     var partiesHtml=OTHERS.map(function(o){
-      var net=pop[o.arch]||0, v=net>0?'aye':net<0?'nay':'abs';
+      var v=pv[o.key]||'abs'; // pre-partyVotes bills fall back to abstain
       base[v]+=o.seats;
       return '<li class="prow" style="--c:'+o.c+'"><span class="dot"></span><span class="pn">'+o.name+'</span><span class="ps">'+o.seats+'</span><span class="pos '+v+'">'+LBL[v]+'</span></li>';
     }).join('');

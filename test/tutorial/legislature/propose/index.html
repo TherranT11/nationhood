@@ -237,19 +237,21 @@
   // (green when up), -1 = higher is bad (Inflation, Unemployment). Prosperity has
   // no policy inputs yet, so it always reads "No change".
   var PROJ=[['Growth',1],['Prosperity',1],['Welfare',1],['Image',1],['Order',1],['Inflation',-1,'%'],['Unemployment',-1,'%']];
-  // pop: party-popularity effects (party label, +/- value). Shown on ~a third of
-  // policies, green when positive, red when negative.
+  // pop: party-popularity effects (party label, +/- value), shown as pills.
+  // votes: each party's stance on the policy [Workers', Centre Union, Liberal
+  // Alliance, National Rally] — 1 supports, 0 opposes. A party votes Aye on a
+  // bill if it supports more of its policies than it opposes (see buildSnapshot).
   var POLICIES=[
-    {id:1, name:'Business Tax Relief', desc:'Cut corporate tax to spur investment', min:'Treasury', growth:1, costs:[['Budget',-6,'B'],['Welfare',-1,'']]},
-    {id:2, name:'Currency Devaluation', desc:'Cheapen the franc to lift exports', min:'Treasury', growth:1, costs:[['Inflation',2,'%'],['Image',-1,'']]},
-    {id:3, name:'Apprenticeship & Skills Scheme', desc:'Train workers for industry', min:'Welfare', growth:1, costs:[['Budget',-5,'B'],['Unemployment',-1,'%']], pop:[['Labour',2]]},
-    {id:4, name:'Special Economic Zones', desc:'Low-tax export enclaves', min:'Trade', growth:2, costs:[['Budget',-5,'B'],['Image',-1,'']]},
-    {id:5, name:'Industrial Subsidies', desc:'Direct support to strategic factories', min:'Economic Development', growth:2, costs:[['Budget',-12,'B'],['Inflation',1,'%']]},
-    {id:6, name:'Deregulate Industry', desc:'Strip back rules to raise output', min:'Economic Development', growth:2, costs:[['Welfare',-1,''],['Order',-1,''],['Image',-1,'']], pop:[['Centrist',2],['Labour',-2]]},
-    {id:7, name:'Free Trade Agreement', desc:'Open markets to the world', min:'Trade', growth:2, costs:[['Unemployment',2,'%'],['Image',1,'']], pop:[['Centrist',2],['Nationalist',-2]]},
-    {id:8, name:'Privatisation Drive', desc:'Sell state assets for cash & efficiency', min:'Treasury', growth:2, costs:[['Unemployment',2,'%'],['Image',-1,''],['Budget',10,'B']]},
-    {id:9, name:'National Infrastructure Programme', desc:'Roads, rail, power', min:'Economic Development', growth:3, costs:[['Budget',-20,'B'],['Inflation',1,'%'],['Unemployment',-2,'%']], pop:[['Nationalist',2],['Labour',1]]},
-    {id:10,name:'Sweeping Market Liberalisation', desc:'Shock therapy all at once', min:'Economic Development', growth:3, costs:[['Welfare',-2,''],['Order',-1,''],['Unemployment',3,'%'],['Image',-1,'']]}
+    {id:1, name:'Business Tax Relief', desc:'Cut corporate tax to spur investment', min:'Treasury', growth:1, costs:[['Budget',-6,'B'],['Welfare',-1,'']], votes:[0,1,1,1]},
+    {id:2, name:'Currency Devaluation', desc:'Cheapen the franc to lift exports', min:'Treasury', growth:1, costs:[['Inflation',2,'%'],['Image',-1,'']], votes:[0,1,0,1]},
+    {id:3, name:'Apprenticeship & Skills Scheme', desc:'Train workers for industry', min:'Welfare', growth:1, costs:[['Budget',-5,'B'],['Unemployment',-1,'%']], pop:[['Labour',2]], votes:[1,1,0,1]},
+    {id:4, name:'Special Economic Zones', desc:'Low-tax export enclaves', min:'Trade', growth:2, costs:[['Budget',-5,'B'],['Image',-1,'']], votes:[0,1,1,0]},
+    {id:5, name:'Industrial Subsidies', desc:'Direct support to strategic factories', min:'Economic Development', growth:2, costs:[['Budget',-12,'B'],['Inflation',1,'%']], votes:[1,1,0,1]},
+    {id:6, name:'Deregulate Industry', desc:'Strip back rules to raise output', min:'Economic Development', growth:2, costs:[['Welfare',-1,''],['Order',-1,''],['Image',-1,'']], pop:[['Centrist',2],['Labour',-2]], votes:[0,0,1,0]},
+    {id:7, name:'Free Trade Agreement', desc:'Open markets to the world', min:'Trade', growth:2, costs:[['Unemployment',2,'%'],['Image',1,'']], pop:[['Centrist',2],['Nationalist',-2]], votes:[0,1,1,0]},
+    {id:8, name:'Privatisation Drive', desc:'Sell state assets for cash & efficiency', min:'Treasury', growth:2, costs:[['Unemployment',2,'%'],['Image',-1,''],['Budget',10,'B']], votes:[0,1,1,0]},
+    {id:9, name:'National Infrastructure Programme', desc:'Roads, rail, power', min:'Economic Development', growth:3, costs:[['Budget',-20,'B'],['Inflation',1,'%'],['Unemployment',-2,'%']], pop:[['Nationalist',2],['Labour',1]], votes:[1,1,0,1]},
+    {id:10,name:'Sweeping Market Liberalisation', desc:'Shock therapy all at once', min:'Economic Development', growth:3, costs:[['Welfare',-2,''],['Order',-1,''],['Unemployment',3,'%'],['Image',-1,'']], votes:[0,0,1,0]}
   ];
   // up = good for these; for inflation/unemployment, up = bad
   var BADUP={Inflation:1, Unemployment:1};
@@ -362,12 +364,14 @@
       (p.pop||[]).forEach(function(pp){pills.push(popFmt(pp[0],pp[1]));});
       return {name:p.name, min:p.min, growth:p.growth, pills:pills};
     });
-    var net=0, hasBudget=false, pop={Labour:0,Centrist:0,Nationalist:0};
-    chosen.forEach(function(p){
-      p.costs.forEach(function(c){if(c[0]==='Budget'){net+=c[1];hasBudget=true;}});
-      (p.pop||[]).forEach(function(pp){ if(pop[pp[0]]!==undefined) pop[pp[0]]+=pp[1]; }); // net party popularity by archetype
-    });
-    return {title:state.title.trim(), arts:arts, budgetText: hasBudget?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):'', pop:pop};
+    var net=0, hasBudget=false;
+    chosen.forEach(function(p){p.costs.forEach(function(c){if(c[0]==='Budget'){net+=c[1];hasBudget=true;}});});
+    // Each party (Workers', Centre Union, Liberal Alliance, National Rally) votes
+    // Aye if it supports more of the bill's policies than it opposes, else Nay.
+    var PK=['wp','cu','la','nr'], sup={wp:0,cu:0,la:0,nr:0}, opp={wp:0,cu:0,la:0,nr:0};
+    chosen.forEach(function(p){ var v=p.votes||[0,0,0,0]; PK.forEach(function(k,i){ if(v[i]) sup[k]++; else opp[k]++; }); });
+    var partyVotes={}; PK.forEach(function(k){ partyVotes[k]= sup[k]>opp[k]?'aye':'nay'; });
+    return {title:state.title.trim(), arts:arts, budgetText: hasBudget?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):'', partyVotes:partyVotes};
   }
   // Party Actions available this week (from the profile via initSidebar).
   var currentActions=3;
