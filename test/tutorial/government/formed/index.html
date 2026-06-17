@@ -26,7 +26,7 @@
   .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
   .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
-  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .brand__txt .party{font-weight:700}
   .nav{display:flex;flex-direction:column;gap:2px}
   .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
@@ -107,14 +107,11 @@
   /* cabinet */
   .post{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
   .post:last-child{border-bottom:none}
-  .post.partner{background:var(--red-soft);margin:0 -10px;padding:11px 10px;border-radius:9px;border-bottom:none}
   .post__pic{width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:11px;background:var(--indigo-soft);color:var(--indigo)}
-  .post.partner .post__pic{background:#fff;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent)}
   .post__b{flex:1;min-width:0}
   .post__b .min{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .post__b b{font-size:14.5px;display:block;line-height:1.2;font-weight:700}
   .post__work{font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;letter-spacing:.02em}
-  .post__work .crisis{color:var(--red);font-weight:700}
   .ptag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;flex:none;font-weight:700}
   .ptag.w{color:var(--workers);background:#fff;border:1px solid color-mix(in srgb,var(--workers) 35%,transparent)}
   .ptag.f{color:var(--front);background:var(--indigo-soft)}
@@ -140,7 +137,7 @@
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front de Sessau"><div class="brand__txt"><b>Front de Sessau</b><span><span class="party" id="party">Governing</span> · Sessau</span></div></div>
+    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front de Sessau"><div class="brand__txt"><b>Front de Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div></div>
     <nav class="nav">
       <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
       <a class="nav__i active" href="/test/tutorial/government/formed/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
@@ -253,20 +250,20 @@
         </div>
         <div class="post">
           <span class="post__pic">MS</span>
-          <div class="post__b"><span class="min">Economic Development</span><b>Margot Sève</b><span class="post__work">Working: <span class="crisis">Oil Shock</span></span></div>
+          <div class="post__b"><span class="min">Economic Development</span><b>Margot Sève</b><span class="post__work">Idle</span></div>
           <span class="ptag f">Front</span>
         </div>
         <div class="post">
           <span class="post__pic">CB</span>
-          <div class="post__b"><span class="min">Trade</span><b>Claire Bonnet</b><span class="post__work">Working: <span class="crisis">Industrial Decline</span></span></div>
+          <div class="post__b"><span class="min">Trade</span><b>Claire Bonnet</b><span class="post__work">Idle</span></div>
           <span class="ptag f">Front</span>
         </div>
         <div class="post">
           <span class="post__pic">TL</span>
-          <div class="post__b"><span class="min">Interior</span><b>Théo Lefèvre</b><span class="post__work">Working: <span class="crisis">Labour Unrest</span></span></div>
+          <div class="post__b"><span class="min">Interior</span><b>Théo Lefèvre</b><span class="post__work">Idle</span></div>
           <span class="ptag f">Front</span>
         </div>
-        <div class="post partner">
+        <div class="post">
           <span class="post__pic">CD</span>
           <div class="post__b"><span class="min">Labour</span><b>Camille Dorne</b><span class="post__work">Coalition partner · supports all three responses</span></div>
           <span class="ptag w">Workers'</span>
