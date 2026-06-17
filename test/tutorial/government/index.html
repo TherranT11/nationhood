@@ -467,13 +467,16 @@
     if (window.nationhoodGovernmentFormed && e.detail) window.location.replace('/test/tutorial/government/formed/');
   });
 
-  // Form Government: persist the chosen coalition + formed flag, then show it.
+  // Form Government: persist the chosen coalition + formed flag, then go Home,
+  // where the post-formation tutorial bubble (coachGov) reveals and guides the
+  // player on to the Party tab. The formed government view stays reachable via
+  // the Government tab (it redirects to /formed/ once a coalition exists).
   let forming = false; // loading lock: blocks double-fire
   document.getElementById('formBtn').addEventListener('click', async () => {
     if (forming) return;
     forming = true;
     const ok = await updateProfile({ tutorial_government_formed: true, tutorial_coalition: window.buildCoalition() });
-    if (ok) window.location.href = '/test/tutorial/government/formed/';
+    if (ok) window.location.href = '/test/tutorial/home/';
     else forming = false; // allow a retry if the save failed
   });
 
