@@ -45,7 +45,6 @@
   .top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:20px}
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
   .top h1{font-weight:900;font-size:clamp(26px,4.5vw,38px);letter-spacing:-.03em;margin-top:4px}
-  .badge{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);border:1.5px solid var(--indigo);border-radius:20px;padding:7px 14px;background:var(--indigo-soft);font-weight:700}
 
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
   .mod__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
@@ -116,20 +115,6 @@
   .ptag.w{color:var(--workers);background:#fff;border:1px solid color-mix(in srgb,var(--workers) 35%,transparent)}
   .ptag.f{color:var(--front);background:var(--indigo-soft)}
 
-  /* pm actions */
-  .pmbar .sub{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--muted);text-transform:uppercase;margin-bottom:13px}
-  .actions{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px}
-  .pmact{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:13px 14px;cursor:pointer;color:var(--ink);transition:border-color .15s,transform .12s,box-shadow .2s}
-  .pmact:hover{border-color:var(--indigo);transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(85,70,232,.5)}
-  .pmact:focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
-  .pmact b{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.08em;display:block;font-weight:700}
-  .pmact .lane{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:4px}
-  .pmact.selected{border-color:var(--indigo);background:var(--indigo-soft);box-shadow:0 0 0 1px var(--indigo)}
-
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  .toast b{color:#a99dff}
-
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label{display:none}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -155,7 +140,6 @@
   <main class="main">
     <div class="top">
       <div><span class="kicker">Government · Sessau</span><h1>The Government</h1></div>
-      <span class="badge">1 PM action available</span>
     </div>
 
     <!-- Confidence -->
@@ -281,26 +265,8 @@
         </div>
       </section>
     </div>
-
-    <!-- PM actions -->
-    <section class="mod pmbar">
-      <div class="mod__hd"><span>Prime Minister · This Week's Action</span></div>
-      <div class="sub">Your leader holds the premiership. One action only. Choose where to spend it.</div>
-      <div class="actions" id="actions">
-        <button class="pmact" data-d="ADDRESS · a national broadcast that lifts Confidence while the crises persist."><b>ADDRESS</b><span class="lane">Charisma · the public</span></button>
-        <button class="pmact" data-d="DIRECT · propose a policy to the Assembly; pass it for its effects, fail and Confidence drops."><b>DIRECT</b><span class="lane">Charisma · legislate</span></button>
-        <button class="pmact" data-d="INTERVENE · step into one crisis personally; your Command speeds that ministry's grind."><b>INTERVENE</b><span class="lane">Command · a crisis</span></button>
-        <button class="pmact" data-d="RESHUFFLE · move a minister, drawing from your party's bench, to strengthen a ministry."><b>RESHUFFLE</b><span class="lane">Acumen · the cabinet</span></button>
-        <button class="pmact" data-d="WHIP · shore up a wavering partner and lock votes, usually before a risky DIRECT."><b>WHIP</b><span class="lane">Command · coalition</span></button>
-        <button class="pmact" data-d="SUMMIT · meet a foreign power to strike a deal at the source via the World tab."><b>SUMMIT</b><span class="lane">Charisma · abroad</span></button>
-        <button class="pmact" data-d="DECREE · bypass the Assembly to force a measure through; fast, but burns legitimacy."><b>DECREE</b><span class="lane">Resolve · executive</span></button>
-        <button class="pmact" data-d="RECRUIT · spend heavily to bring a new prominent politician onto your roster."><b>RECRUIT</b><span class="lane">Charisma · high cost</span></button>
-      </div>
-    </section>
   </main>
 </div>
-
-<div class="toast" id="toast"></div>
 
 <script>
   // ---- hemicycle ----
@@ -348,14 +314,7 @@
     }
   })();
 
-  var toast=document.getElementById('toast'),tt;
-  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3800);}
-  var acts=document.querySelectorAll('.pmact');
-  acts.forEach(function(b){b.addEventListener('click',function(){
-    acts.forEach(function(x){x.classList.remove('selected')});b.classList.add('selected');
-    ping(b.dataset.d.replace(/^([A-Z]+)/,'<b>$1</b>'));
-  });});
-  // sidebar nav: Home + Government navigate; the rest just highlight (not wired)
+  // sidebar nav: Home + Party + Government navigate; the rest just highlight (not wired)
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
     if(!i.getAttribute('href')){e.preventDefault();document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')});i.classList.add('active');}
   });});
