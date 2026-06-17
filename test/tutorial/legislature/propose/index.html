@@ -321,7 +321,7 @@
     for(var i=1;i<=19;i++){
       var c=document.createElement('span'); c.className='lc '+(i<10?'rec':i>10?'gro':'flat');
       if(i===BASE)c.classList.add('base');
-      if(i===proj){c.classList.add('now'); c.classList.add(proj>10?'':proj<10?'recnow':'flatnow'); c.innerHTML='<b>'+proj+'</b>';}
+      if(i===proj){c.classList.add('now'); if(proj<10)c.classList.add('recnow'); else if(proj===10)c.classList.add('flatnow'); c.innerHTML='<b>'+proj+'</b>';}
       lad.appendChild(c);
     }
 
