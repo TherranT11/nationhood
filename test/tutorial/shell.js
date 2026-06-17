@@ -272,6 +272,7 @@ export function resolveLegislation(billVotes, floorBill, week, doneIds) {
   // Store only what the UI reads (id/name/passed/vote/pop/effect).
   const history = raw.map((r) => ({
     id: r.id, name: r.name, passed: r.passed, vote: r.vote, effect: r.effect,
+    budget: r.delta.budget || 0, // ₣B: <0 cost, >0 gained — shown on passed bills
     pop: r.vote === 'abs' ? 0 : ((r.passed === (r.vote === 'aye')) ? 1 : -1),
   }));
   return {
@@ -299,7 +300,8 @@ export async function advanceWeek() {
     if (!user) return false; // requireUser has redirected to login
     const progress = await getTutorialProgress(user.id);
     if (!progress) { advancing = false; return false; } // lookup failed: leave state, allow retry
-    const patch = { tutorial_week: (progress.week || DEFAULT_WEEK) + 1 };
+    // A new week restores the full weekly action budget.
+    const patch = { tutorial_week: (progress.week || DEFAULT_WEEK) + 1, tutorial_party_actions: PARTY_ACTIONS };
     if (!progress.crisis) { // apply the scripted crisis exactly once
       const crisis = computeCrisis((progress.billVotes && progress.billVotes.b1) || null);
       if (crisis) patch.tutorial_crisis = crisis;
