@@ -241,7 +241,7 @@
       </div>
     </section>
 
-    <!-- Demands + events -->
+    <!-- National Modifiers + events -->
     <div class="cols">
       <section class="mod">
         <div class="mod__hd"><span>National Modifiers</span><span class="cnt">3</span></div>
@@ -341,7 +341,7 @@
   document.querySelectorAll('.crisis').forEach((c) => {
     c.addEventListener('click', () => ping('Opens <b>' + c.dataset.route + '</b> to respond.'));
   });
-  document.getElementById('nextweek').addEventListener('click', () => ping('Week advanced. <b>3 demands unresolved</b>.'));
+  document.getElementById('nextweek').addEventListener('click', () => ping('Week advanced. <b>3 modifiers unresolved</b>.'));
 
   // PM weekly action: one selection at a time, with a toast describing it.
   const acts = document.querySelectorAll('.pmact');
