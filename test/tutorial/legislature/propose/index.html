@@ -362,9 +362,12 @@
       (p.pop||[]).forEach(function(pp){pills.push(popFmt(pp[0],pp[1]));});
       return {name:p.name, min:p.min, growth:p.growth, pills:pills};
     });
-    var net=0, hasBudget=false;
-    chosen.forEach(function(p){p.costs.forEach(function(c){if(c[0]==='Budget'){net+=c[1];hasBudget=true;}});});
-    return {title:state.title.trim(), arts:arts, budgetText: hasBudget?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):''};
+    var net=0, hasBudget=false, pop={Labour:0,Centrist:0,Nationalist:0};
+    chosen.forEach(function(p){
+      p.costs.forEach(function(c){if(c[0]==='Budget'){net+=c[1];hasBudget=true;}});
+      (p.pop||[]).forEach(function(pp){ if(pop[pp[0]]!==undefined) pop[pp[0]]+=pp[1]; }); // net party popularity by archetype
+    });
+    return {title:state.title.trim(), arts:arts, budgetText: hasBudget?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):'', pop:pop};
   }
   // Party Actions available this week (from the profile via initSidebar).
   var currentActions=3;
