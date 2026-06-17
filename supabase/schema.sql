@@ -71,6 +71,17 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_floor_bill jsonb;
 
+-- Resolved bills (Legislative History): on the first week-advance after a bill is
+-- proposed, the floor bills pass/fail and are recorded here as
+-- [{name, passed, vote, pop}]. Null until then. Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_legislation jsonb;
+
+-- The player's party popularity. Starts at 38; each resolved bill shifts it by
+-- the +1/-1 rule (on the winning side of your own vote). Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_party_popularity integer not null default 38;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 

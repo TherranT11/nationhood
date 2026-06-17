@@ -55,6 +55,8 @@ export async function getTutorialProgress(userId) {
       week: data.tutorial_week ?? 22, // tutorial opens on week 22
       crisis: data.tutorial_crisis || null,
       floorBill: data.tutorial_floor_bill || null,
+      legislation: data.tutorial_legislation || null,
+      partyPopularity: data.tutorial_party_popularity ?? 38,
     };
   } catch (err) {
     return null;
@@ -112,6 +114,8 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:bills', { detail: progress.billVotes }));
   window.dispatchEvent(new CustomEvent('nationhood:crisis', { detail: progress.crisis }));
   window.dispatchEvent(new CustomEvent('nationhood:floorbill', { detail: progress.floorBill }));
+  window.dispatchEvent(new CustomEvent('nationhood:legislation', { detail: progress.legislation }));
+  window.dispatchEvent(new CustomEvent('nationhood:popularity', { detail: progress.partyPopularity }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
@@ -196,6 +200,47 @@ export function computeCrisis(vote) {
   };
 }
 
+// The two standing floor bills, for end-of-week resolution. KNOWN DUPLICATION:
+// their non-player Aye base + names mirror the `bills` object on the Legislature
+// page; keep in sync until there's a shared bills module. (bp, the player's bill,
+// is resolved from its saved snapshot.)
+const STATIC_BILLS = [
+  { id: 'b1', name: 'Energy Independence Act', aye: 40 },
+  { id: 'b2', name: 'Thirty-Five Hour Week Act', aye: 40 },
+];
+const ASSEMBLY_SEATS = { wp: 40, cu: 50, la: 44, nr: 32 }; // other-party seats (also mirrored on the Legislature page)
+const FRONT_SEATS = 114, MAJORITY = 141;
+
+// Party popularity for one resolved bill: +1 when the outcome matches your vote
+// (Aye+passed or Nay+failed), -1 when it contradicts it, 0 if you abstained.
+function resolveOne(name, passed, vote) {
+  const pop = vote === 'abs' ? 0 : ((passed === (vote === 'aye')) ? 1 : -1);
+  return { name, passed, vote, pop };
+}
+
+// Resolve all floor bills from the player's votes + the proposed-bill snapshot.
+// A bill passes if its Aye seats (others + the player's 114 when they vote Aye)
+// reach the 141 majority. Returns { history, popDelta } or null when there's
+// nothing to resolve.
+export function resolveLegislation(billVotes, floorBill) {
+  const v = billVotes || {};
+  const items = STATIC_BILLS.map((b) => {
+    const vote = v[b.id] || 'abs';
+    const aye = b.aye + (vote === 'aye' ? FRONT_SEATS : 0);
+    return resolveOne(b.name, aye >= MAJORITY, vote);
+  });
+  if (floorBill && floorBill.title) {
+    const pv = floorBill.partyVotes || {};
+    let aye = 0;
+    Object.keys(ASSEMBLY_SEATS).forEach((k) => { if (pv[k] === 'aye') aye += ASSEMBLY_SEATS[k]; });
+    const vote = v.bp || 'abs';
+    aye += (vote === 'aye' ? FRONT_SEATS : 0);
+    items.push(resolveOne(floorBill.title, aye >= MAJORITY, vote));
+  }
+  if (!items.length) return null;
+  return { history: items, popDelta: items.reduce((s, it) => s + it.pop, 0) };
+}
+
 // Advance the tutorial one week. Persists the new week and — on the first
 // advance after a decisive Energy Act vote — the scripted Labour Unrest
 // outcome, then reloads so every page re-renders from the saved state.
@@ -216,6 +261,14 @@ export async function advanceWeek() {
     if (!progress.crisis) { // apply the scripted crisis exactly once
       const crisis = computeCrisis((progress.billVotes && progress.billVotes.b1) || null);
       if (crisis) patch.tutorial_crisis = crisis;
+    }
+    if (!progress.legislation && progress.floorBill) { // resolve the floor bills once the player has proposed one
+      const leg = resolveLegislation(progress.billVotes, progress.floorBill);
+      if (leg) {
+        patch.tutorial_legislation = leg.history;
+        patch.tutorial_party_popularity = (progress.partyPopularity ?? 38) + leg.popDelta;
+        patch.tutorial_floor_bill = null; // consumed into history
+      }
     }
     const ok = await updateProfile(patch);
     if (!ok) { advancing = false; return false; } // write failed: leave UI, allow retry
