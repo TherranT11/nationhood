@@ -78,7 +78,7 @@
 </style>
 </head>
 <body>
-  <div class="shell">
+  <div class="shell" id="shell" style="visibility:hidden">
     <div class="topbar">
       <div class="brand"><span class="mark"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg></span>Nationhood</div>
       <div class="step">Tutorial · Prologue</div>
@@ -123,7 +123,7 @@
     </div>
   </div>
 
-  <div class="actions"><div class="actions__in">
+  <div class="actions" id="actions" style="visibility:hidden"><div class="actions__in">
     <div class="chosen" id="chosen">Choose your party's identity to begin</div>
     <div class="abtns">
       <button class="btn ghost" id="back">Go Back</button>
@@ -138,7 +138,14 @@
   const chosen = document.getElementById('chosen');
   const dateline = document.getElementById('dateline');
   const flag = document.getElementById('flag');
+  const shell = document.getElementById('shell');
+  const actions = document.getElementById('actions');
   let sel = null;
+
+  // The prologue starts hidden so a returning player never glimpses (or can
+  // click) the party choice before we know whether they've already made it.
+  // Reveal it only when a choice is actually needed.
+  const reveal = () => { shell.style.visibility = ''; actions.style.visibility = ''; };
 
   // Hide the flag gracefully if the image isn't present yet. The error may
   // have already fired before this deferred module ran, so check for that too.
@@ -148,14 +155,26 @@
     if (flag.complete && flag.naturalWidth === 0) hideFlag();
   }
 
-  // Guard: saving a per-player choice needs a signed-in player.
+  // Guard: saving a per-player choice needs a signed-in player. And if the
+  // player has already chosen their party, the prologue is done — resume the
+  // tutorial instead of letting them re-pick and overwrite their archetype.
   let user = null;
   (async () => {
-    if (!isConfigured) return; // nothing to verify until keys are set
+    if (!isConfigured) { reveal(); return; } // local dev: show the choice
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { window.location.href = '/test/login/'; return; }
       user = session.user;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('tutorial_party')
+        .eq('id', user.id)
+        .single();
+      if (!error && data && data.tutorial_party) {
+        window.location.replace('/test/tutorial/home/'); // already chosen: skip ahead
+        return;
+      }
+      reveal(); // no party yet (or lookup failed): let them choose
     } catch (err) {
       window.location.href = '/test/login/';
     }
