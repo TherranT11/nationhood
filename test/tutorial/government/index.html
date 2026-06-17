@@ -71,6 +71,17 @@
   .concede b{color:var(--ink);font-weight:700}
   .concede .none{color:var(--soft)}
 
+  /* expected confidence */
+  .conf-num{font-weight:900;font-size:clamp(34px,6vw,46px);letter-spacing:-.03em;line-height:1;color:var(--amber)}
+  .conf-rows{margin-top:16px;display:flex;flex-direction:column}
+  .conf-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .conf-row:last-child{border-bottom:none}
+  .conf-row .cl{font-size:14px;color:var(--muted)}
+  .conf-row .cv{font-family:'Space Mono',monospace;font-size:13px;font-weight:700}
+  .conf-row .cv.base{color:var(--ink)}
+  .conf-row .cv.neg{color:var(--red)}
+  .conf-row .cv.pos{color:var(--green)}
+
   /* party cards */
   .partytitle{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:26px 2px 12px}
   .party{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:0;margin-bottom:12px;overflow:hidden;transition:border-color .18s,box-shadow .2s}
@@ -181,6 +192,13 @@
       </div>
     </section>
 
+    <!-- expected government confidence -->
+    <section class="mod">
+      <div class="mod__hd"><span>Expected Government Confidence</span></div>
+      <b class="conf-num" id="confNum">44%</b>
+      <div class="conf-rows" id="confRows"></div>
+    </section>
+
     <!-- your party -->
     <div class="partytitle">Your party</div>
     <div class="party anchor" style="--pc:var(--indigo)">
@@ -207,6 +225,24 @@
 
 <script>
   var FRONT=114, MAJORITY=141, TOTAL=280, CHA=3;
+  // Expected Government Confidence: base, the active crises, contradictory-party
+  // penalty, and a seat-majority bonus. One computation, rendered live.
+  var CONF_BASE=50, CONTRA=-4;
+  var CRISES=[{name:'Oil Shock',pct:-2},{name:'Industrial Decline',pct:-2},{name:'Labour Unrest',pct:-2}];
+  function renderConfidence(total,conflictCount){
+    var rows=[{label:'Base',pct:CONF_BASE,cls:'base'}];
+    CRISES.forEach(function(c){rows.push({label:c.name,pct:c.pct,cls:'neg'});});
+    if(conflictCount>0)rows.push({label:'Contradictory coalition',pct:CONTRA*conflictCount,cls:'neg'});
+    var pct=total/TOTAL*100;
+    var bonus=pct>50?(pct-50)/2:0;
+    if(bonus>0)rows.push({label:'Assembly majority',pct:bonus,cls:'pos'});
+    var conf=rows.reduce(function(s,r){return s+r.pct;},0);
+    document.getElementById('confNum').textContent=Math.round(conf)+'%';
+    document.getElementById('confRows').innerHTML=rows.map(function(r){
+      var val=r.cls==='base'?(r.pct+'%'):((r.pct>0?'+':'')+(Math.round(r.pct*10)/10)+'%');
+      return '<div class="conf-row"><span class="cl">'+r.label+'</span><span class="cv '+r.cls+'">'+val+'</span></div>';
+    }).join('');
+  }
   var W={soft:1,firm:2,core:3,redline:5};
   var parties=[
     {id:'cu',name:'Centre Union',seats:50,arch:'Centrist',color:'#16915a',resolve:2,demands:[
@@ -348,6 +384,9 @@
     else if(reached){as.innerHTML='Coalition: <b>'+total+' / 280</b> · majority secured.';}
     else{as.innerHTML='Coalition: <b>'+total+' / 280</b> · '+(MAJORITY-total)+' short of a majority.';}
     document.getElementById('formBtn').classList.toggle('ready',ok);
+
+    // expected government confidence (base + crises + contradictions + seat bonus)
+    renderConfidence(total,conflicts.length);
   }
 
   document.getElementById('formBtn').addEventListener('click',function(){
