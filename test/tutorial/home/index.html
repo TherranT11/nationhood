@@ -212,6 +212,12 @@
       <button class="coach__btn" id="toParty" type="button">Go to Party &rarr;</button>
     </div>
 
+    <!-- Post-assignment tutorial bubble (revealed once Théo is on Labour Talks) -->
+    <div class="coach" id="coachTalks" style="display:none">
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>Okay — we're back. Crises can't be solved quickly, but they can be solved. The Labour Unrest, if left untouched, will fester. To take a better look, scroll down and click on <b>Labour Unrest</b> so we can examine this modifier.</p>
+    </div>
+
     <!-- Government formation (pre-confidence state) -->
     <section class="mod" id="govSection">
       <div class="mod__hd"><span>Government</span><span class="coal">114 / 280 seats · no majority</span></div>
@@ -341,11 +347,13 @@
     if (confVal) confVal.textContent = formedConfidence(e.detail.total, e.detail.contra).value + '%';
   });
 
-  // Once Théo is assigned to Labour Talks, his talks show up in the feed.
+  // Once Théo is assigned to Labour Talks, his talks show up in the feed and the
+  // post-formation coach gives way to the "look at Labour Unrest" prompt.
   window.addEventListener('nationhood:task', (e) => {
     if (e.detail !== 'Labour Talks') return;
-    const evt = document.getElementById('labourTalksEvt');
-    if (evt) evt.hidden = false;
+    const evt = document.getElementById('labourTalksEvt'); if (evt) evt.hidden = false;
+    const cg = document.getElementById('coachGov'); if (cg) cg.style.display = 'none';
+    const ct = document.getElementById('coachTalks'); if (ct) ct.style.display = '';
   });
 
   initSidebar();

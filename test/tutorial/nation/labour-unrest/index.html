@@ -12,7 +12,7 @@
     --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
     --line:#E7E5E0;--chip:#F4F3EF;
     --indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--amber:#E0820E;--green:#16915a;--green-soft:#E5F4EC;
+    --red:#C42B2B;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
     --crimson:#B11A4A;--crimson-soft:#FBE7EF;
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -44,7 +44,7 @@
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* main */
-  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:940px}
+  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1040px}
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px}
   .back:hover{color:var(--indigo)}
   .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -69,8 +69,8 @@
   /* status track */
   .caps{display:flex;justify-content:space-between;align-items:center;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
   .caps .res{color:var(--green)} .caps .gs{color:var(--crimson)}
-  .track-wrap{overflow-x:auto;padding:26px 2px 72px}
-  .track{display:flex;align-items:center;min-width:700px}
+  .track-wrap{overflow-x:auto;padding:26px 60px 72px}
+  .track{display:flex;align-items:center;min-width:620px}
   .ms{position:relative;flex:none;display:flex;flex-direction:column;align-items:center}
   .ms .c{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;border:2px solid var(--line);background:#fff;color:var(--soft)}
   .ms.done .c{background:var(--crimson);border-color:var(--crimson);color:#fff}
@@ -100,6 +100,33 @@
   .tli.start .d{color:var(--crimson)} .tli.act .d{color:var(--green)}
   .tli p{font-size:13.5px;color:var(--ink);margin-top:3px;line-height:1.5}
 
+  /* tutorial coach bubble */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .coach::after{content:"";position:absolute;left:36px;bottom:-8px;width:17px;height:17px;background:#6a5cec;transform:rotate(45deg);border-radius:3px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0;max-width:64ch}
+
+  /* labour-talks effect (amber) */
+  .effect.talks{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 25%,transparent);border-left-color:var(--amber);margin-top:10px}
+  .effect.talks .eff-body b{color:var(--ink)}
+  .effect.talks .eff-body p{color:#8a6a1f}
+
+  /* options */
+  .opts{display:flex;flex-direction:column;gap:12px}
+  .opt-wrap{position:relative}
+  .ongoing{position:absolute;top:-9px;left:14px;z-index:1;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--amber);border-radius:20px;padding:3px 9px}
+  .optx{display:block;width:100%;text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s,background .15s}
+  .optx:hover:not(:disabled){border-color:var(--crimson)}
+  .optx:disabled{opacity:.6;cursor:default;background:var(--chip)}
+  .optx__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .optx__o{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:4px}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast b{color:#a99dff}
+
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -124,6 +151,11 @@
 
   <main class="main">
     <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Home</span>
+
+    <div class="coach">
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>This is the National Modifier page. Some are positive, most are negative. You'll see here under Effect that, left untouched, this situation will deteriorate in 3–4 months and get even worse. You can also see that the labour talks have begun, but their effects haven't taken effect yet. Down at the bottom, you'll see other ways you can influence this modifier.</p>
+    </div>
 
     <!-- hero -->
     <section class="mod">
@@ -168,6 +200,35 @@
         <span class="eff-val">+1</span>
         <div class="eff-body"><b>Growth / tick</b><p>Left unaddressed, the unrest advances one step toward General Strike each week.</p></div>
       </div>
+      <div class="effect talks" id="talksEffect" hidden>
+        <div class="eff-body"><b>Labour Talks</b><p>Minister of the Interior Théo Lefèvre has initiated talks with local labour leaders. Their effects have not taken hold yet.</p></div>
+      </div>
+    </section>
+
+    <!-- options -->
+    <section class="mod">
+      <div class="mod__hd">Options</div>
+      <div class="opts">
+        <div class="opt-wrap">
+          <span class="ongoing" id="talksOngoing" hidden>Ongoing</span>
+          <button class="optx" id="optTalks" type="button">
+            <div class="optx__t">Labour Talks</div>
+            <div class="optx__o">Ministry of the Interior</div>
+          </button>
+        </div>
+        <button class="optx" type="button" data-opt="Disperse Them">
+          <div class="optx__t">Disperse Them</div>
+          <div class="optx__o">Chief of National Police</div>
+        </button>
+        <button class="optx" type="button" data-opt="Arrest the Ringleaders">
+          <div class="optx__t">Arrest the Ringleaders</div>
+          <div class="optx__o">Chief of National Police</div>
+        </button>
+        <button class="optx" type="button" data-opt="Cede to Demands">
+          <div class="optx__t">Cede to Demands</div>
+          <div class="optx__o">Prime Minister</div>
+        </button>
+      </div>
     </section>
 
     <!-- event history -->
@@ -181,12 +242,18 @@
   </main>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
   // fill the 15 small dots in each gap
   document.querySelectorAll('.gap').forEach(function(g){
     var on=g.dataset.on==='1';
     for(var i=0;i<15;i++){var d=document.createElement('span');d.className='d'+(on?' on':'');g.appendChild(d);}
   });
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3200);}
+  // option buttons (Labour Talks is handled separately; the rest are placeholders)
+  document.querySelectorAll('.optx[data-opt]').forEach(function(b){b.addEventListener('click',function(){ping('<b>'+b.dataset.opt+'</b> — not available in the tutorial yet.');});});
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/home/';});
   // sidebar nav: linked items navigate; the rest just highlight (not wired)
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
@@ -198,12 +265,13 @@
   import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
   mountTopbar();
 
-  // The "Minister begins talks" entry reflects the player's action: show it only
-  // once Théo is assigned to Labour Talks (same source as the Home feed event).
+  // Reflect the player's action once Théo is assigned to Labour Talks (same
+  // source as the Home feed event): the history entry, the amber Effect line,
+  // and the Ongoing tag on the now-locked Labour Talks option.
   window.addEventListener('nationhood:task', (e) => {
     if (e.detail !== 'Labour Talks') return;
-    const ev = document.getElementById('talksEvt');
-    if (ev) ev.hidden = false;
+    ['talksEvt', 'talksEffect', 'talksOngoing'].forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = false; });
+    const ot = document.getElementById('optTalks'); if (ot) ot.disabled = true;
   });
 
   var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
