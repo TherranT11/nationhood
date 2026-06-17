@@ -71,6 +71,17 @@
   .concede b{color:var(--ink);font-weight:700}
   .concede .none{color:var(--soft)}
 
+  /* expected confidence */
+  .conf-num{font-weight:900;font-size:clamp(34px,6vw,46px);letter-spacing:-.03em;line-height:1;color:var(--amber)}
+  .conf-rows{margin-top:16px;display:flex;flex-direction:column}
+  .conf-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .conf-row:last-child{border-bottom:none}
+  .conf-row .cl{font-size:14px;color:var(--muted)}
+  .conf-row .cv{font-family:'Space Mono',monospace;font-size:13px;font-weight:700}
+  .conf-row .cv.base{color:var(--ink)}
+  .conf-row .cv.neg{color:var(--red)}
+  .conf-row .cv.pos{color:var(--green)}
+
   /* party cards */
   .partytitle{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:26px 2px 12px}
   .party{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:0;margin-bottom:12px;overflow:hidden;transition:border-color .18s,box-shadow .2s}
@@ -143,7 +154,7 @@
     </div>
     <nav class="nav">
       <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
-      <a class="nav__i active"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i active" href="/test/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
@@ -181,6 +192,13 @@
       </div>
     </section>
 
+    <!-- expected government confidence -->
+    <section class="mod">
+      <div class="mod__hd"><span>Expected Government Confidence</span></div>
+      <b class="conf-num" id="confNum">44%</b>
+      <div class="conf-rows" id="confRows"></div>
+    </section>
+
     <!-- your party -->
     <div class="partytitle">Your party</div>
     <div class="party anchor" style="--pc:var(--indigo)">
@@ -207,6 +225,24 @@
 
 <script>
   var FRONT=114, MAJORITY=141, TOTAL=280, CHA=3;
+  // Expected Government Confidence: base, the active crises, contradictory-party
+  // penalty, and a seat-majority bonus. One computation, rendered live.
+  var CONF_BASE=50, CONTRA=-4;
+  var CRISES=[{name:'Oil Shock',pct:-2},{name:'Industrial Decline',pct:-2},{name:'Labour Unrest',pct:-2}];
+  function renderConfidence(total,conflictCount){
+    var rows=[{label:'Base',pct:CONF_BASE,cls:'base'}];
+    CRISES.forEach(function(c){rows.push({label:c.name,pct:c.pct,cls:'neg'});});
+    if(conflictCount>0)rows.push({label:'Contradictory coalition',pct:CONTRA*conflictCount,cls:'neg'});
+    var pct=total/TOTAL*100;
+    var bonus=pct>50?(pct-50)/2:0;
+    if(bonus>0)rows.push({label:'Assembly majority',pct:bonus,cls:'pos'});
+    var conf=rows.reduce(function(s,r){return s+r.pct;},0);
+    document.getElementById('confNum').textContent=Math.round(conf)+'%';
+    document.getElementById('confRows').innerHTML=rows.map(function(r){
+      var val=r.cls==='base'?(r.pct+'%'):((r.pct>0?'+':'')+(Math.round(r.pct*10)/10)+'%');
+      return '<div class="conf-row"><span class="cl">'+r.label+'</span><span class="cv '+r.cls+'">'+val+'</span></div>';
+    }).join('');
+  }
   var W={soft:1,firm:2,core:3,redline:5};
   var parties=[
     {id:'cu',name:'Centre Union',seats:50,arch:'Centrist',color:'#16915a',resolve:2,demands:[
@@ -295,8 +331,8 @@
 
   function recompute(){
     // seats
-    var total=FRONT, members=['front'];
-    parties.forEach(function(p){if(state[p.id].in){total+=p.seats;members.push(p.id);}});
+    var total=FRONT;
+    parties.forEach(function(p){if(state[p.id].in){total+=p.seats;}});
     // rebuild seat bar
     [].slice.call(seatbar.querySelectorAll('.seatbar__seg')).forEach(function(s){s.remove();});
     var ref=seatbar.querySelector('.seatbar__line');
@@ -348,6 +384,9 @@
     else if(reached){as.innerHTML='Coalition: <b>'+total+' / 280</b> · majority secured.';}
     else{as.innerHTML='Coalition: <b>'+total+' / 280</b> · '+(MAJORITY-total)+' short of a majority.';}
     document.getElementById('formBtn').classList.toggle('ready',ok);
+
+    // expected government confidence (base + crises + contradictions + seat bonus)
+    renderConfidence(total,conflicts.length);
   }
 
   document.getElementById('formBtn').addEventListener('click',function(){
@@ -365,35 +404,8 @@
 </script>
 
 <script type="module">
-  import { supabase, isConfigured } from '/test/supabase.js';
-
-  // Flag fallback: hide gracefully if the image is ever missing.
-  const flag = document.getElementById('flag');
-  if (flag) {
-    const hide = () => { flag.style.display = 'none'; };
-    flag.addEventListener('error', hide);
-    if (flag.complete && flag.naturalWidth === 0) hide();
-  }
-
-  // Sidebar: show the player's chosen party (from the tutorial) in its colour.
-  const PARTY = {
-    Nationalist: { label: 'Nationalist', color: '#243b6b' },
-    Labour:      { label: 'Labour',      color: '#D1342B' },
-    Liberal:     { label: 'Centrist',    color: '#C2890B' },
-  };
-  const partyEl = document.getElementById('party');
-  (async () => {
-    if (!isConfigured) return;
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { window.location.href = '/test/login/'; return; }
-      const { data, error } = await supabase
-        .from('profiles').select('tutorial_party').eq('id', session.user.id).single();
-      if (error) return;
-      const p = PARTY[data && data.tutorial_party];
-      if (p) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
-    } catch (err) { /* keep default */ }
-  })();
+  import { initSidebar } from '/test/tutorial/shell.js';
+  initSidebar();
 </script>
 </body>
 </html>

@@ -56,6 +56,7 @@
   .nextweek{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:13px 22px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
   .nextweek:hover{transform:translateY(-1px);filter:brightness(1.07)}
   .nextweek:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+  .nextweek[disabled]{background:#cfcdc7;cursor:default;pointer-events:none}
 
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
   .mod__hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
@@ -144,7 +145,7 @@
     </div>
     <nav class="nav">
       <a class="nav__i active" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i" href="/test/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
@@ -159,23 +160,22 @@
 
   <!-- MAIN -->
   <main class="main">
+    <header class="top">
+      <div class="clock">
+        <span class="kicker">Week 22</span>
+        <b>May 1980</b>
+      </div>
+      <div class="top__right">
+        <div class="standing">Standing<i>#<span class="dash"></span></i><small>new government</small></div>
+        <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
+      </div>
+    </header>
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>Welcome to the Nationhood tutorial. This is the home page, and you've just won an election.</p>
       <p>The first thing you'll need to do is to form a government. Let's head to the Government page.</p>
       <button class="coach__btn" id="toGov" type="button">Government Page &rarr;</button>
     </div>
-    <header class="top">
-      <div class="clock">
-        <span class="kicker">Week 22</span>
-        <b>May 1980</b>
-        <span class="next">Next tick in 6h 12m</span>
-      </div>
-      <div class="top__right">
-        <div class="standing">Standing<i>#<span class="dash"></span></i><small>new government</small></div>
-        <button class="nextweek" id="nextweek" type="button">Next Week &#9656;</button>
-      </div>
-    </header>
 
     <!-- Government formation (pre-confidence state) -->
     <section class="mod">
@@ -256,40 +256,8 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { supabase, isConfigured } from '/test/supabase.js';
-
-  // Flag fallback: hide gracefully if the image is ever missing.
-  const flag = document.getElementById('flag');
-  if (flag) {
-    const hide = () => { flag.style.display = 'none'; };
-    flag.addEventListener('error', hide);
-    if (flag.complete && flag.naturalWidth === 0) hide();
-  }
-
-  // Sidebar: show the player's chosen party (from the tutorial) in its colour.
-  const PARTY = {
-    Nationalist: { label: 'Nationalist', color: '#243b6b' }, // blue
-    Labour:      { label: 'Labour',      color: '#D1342B' }, // red
-    Liberal:     { label: 'Centrist',    color: '#C2890B' }, // yellow
-  };
-  const partyEl = document.getElementById('party');
-  (async () => {
-    if (!isConfigured) return; // keep the default label until keys are set
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { window.location.href = '/test/login/'; return; }
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('tutorial_party')
-        .eq('id', session.user.id)
-        .single();
-      if (error) return;
-      const p = PARTY[data && data.tutorial_party];
-      if (p) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
-    } catch (err) {
-      // keep the default label
-    }
-  })();
+  import { initSidebar } from '/test/tutorial/shell.js';
+  initSidebar();
 
   // Placeholder interactions (destinations not built yet).
   const toast = document.getElementById('toast');
