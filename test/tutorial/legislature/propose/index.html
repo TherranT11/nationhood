@@ -364,14 +364,13 @@
       (p.pop||[]).forEach(function(pp){pills.push(popFmt(pp[0],pp[1]));});
       return {name:p.name, min:p.min, growth:p.growth, pills:pills};
     });
-    // Aggregate stat effects + total growth across the chosen policies.
-    var agg={}, growth=0;
-    chosen.forEach(function(p){ growth+=p.growth; p.costs.forEach(function(c){agg[c[0]]=(agg[c[0]]||0)+c[1];}); });
+    // Aggregate stat effects (with their units) + total growth.
+    var agg={}, unit={}, growth=0;
+    chosen.forEach(function(p){ growth+=p.growth; p.costs.forEach(function(c){agg[c[0]]=(agg[c[0]]||0)+c[1]; unit[c[0]]=c[2];}); });
     var net=agg.Budget||0, budgetText=agg.hasOwnProperty('Budget')?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):'';
-    // Concise effect summary (for Pressing Issues on the dashboard).
+    // Concise effect summary for Pressing Issues (reusing fmtCost's formatting).
     var fx=[]; if(growth) fx.push('Growth +'+growth);
-    ['Welfare','Order','Image','Inflation','Unemployment'].forEach(function(k){ if(agg[k]) fx.push(k+' '+(agg[k]>0?'+':'−')+Math.abs(agg[k])+((k==='Inflation'||k==='Unemployment')?'%':'')); });
-    if(net) fx.push('Budget '+budgetText);
+    ['Welfare','Order','Image','Inflation','Unemployment','Budget'].forEach(function(k){ if(agg[k]) fx.push(fmtCost(k,agg[k],unit[k]).txt); });
     // Each party (Workers', Centre Union, Liberal Alliance, National Rally) votes
     // Aye if it supports more of the bill's policies than it opposes, else Nay.
     var PK=['wp','cu','la','nr'], sup={wp:0,cu:0,la:0,nr:0}, opp={wp:0,cu:0,la:0,nr:0};
