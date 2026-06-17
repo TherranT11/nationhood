@@ -308,11 +308,11 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, formedConfidence, logout, GAME_WEEK, PARTY_ACTIONS } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence, logout, GAME_WEEK } from '/test/tutorial/shell.js';
 
-  // The week and actions-remaining come from shell.js (one source of truth, so
-  // this header and the other screens' topbar always agree).
-  document.getElementById('pa').textContent = 'Party Actions: ' + PARTY_ACTIONS + ' Available';
+  // The week comes from shell.js (one source). Party Actions are filled by
+  // initSidebar from the player's profile (renderPartyActions), so this header
+  // and every other screen's topbar always show the same live count.
   document.getElementById('weekDate').textContent = GAME_WEEK;
 
   // Once the government is formed, flip the formation card to the active state.

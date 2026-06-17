@@ -309,10 +309,10 @@
         <div class="opt__top"><b>Immigration Stance</b><span class="cost">1 Action</span></div>
         <p>As Minister of the Interior, have the administration change or adopt a stance on immigration into the nation.</p>
       </button>
-      <button class="opt" type="button" data-task="Labour Talks">
-        <div class="opt__top"><b>Labour Talks</b><span class="cost">1 Action</span></div>
+      <button class="opt" type="button" data-task="Labour Talks" data-cost="2">
+        <div class="opt__top"><b>Labour Talks</b><span class="cost">2 Actions</span></div>
         <p>Improving relations with labour leaders is necessary, both during and before strikes.</p>
-        <div class="opt__mod"><span class="modtag">⚑ Labour Unrest</span><span class="cost cost--extra">+1 Action Cost</span></div>
+        <div class="opt__mod"><span class="modtag">⚑ Labour Unrest</span><span class="cost cost--extra">+1 Action Cost due to Crisis</span></div>
       </button>
       <button class="opt" type="button" disabled title="Not available in the tutorial">
         <div class="opt__top"><b>National Terrorism Taskforce</b></div>
@@ -329,7 +329,7 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar, setTheoTask } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar, updateProfile, renderPartyActions } from '/test/tutorial/shell.js';
 
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},4000);}
@@ -337,9 +337,9 @@
   // Placeholder action buttons (Dismiss / Promote).
   document.querySelectorAll('.act').forEach(function(b){b.addEventListener('click',function(){ping(b.dataset.t.replace(/^(\w+)/,'<b>$1</b>'));});});
 
-  // Current task. The assignment is persisted to the player's profile (one
-  // source, via shell.setTheoTask) and reflected back on load by initSidebar's
-  // nationhood:task event — so it sticks across reloads.
+  // Current task + actions. Both persist to the player's profile (one source)
+  // and are reflected on load by initSidebar's events — so they stick across
+  // reloads and stay in sync on every page.
   var assignBtn=document.getElementById('assignBtn'),taskVal=document.getElementById('taskVal');
   function showTask(task){
     if(!task) return;
@@ -349,13 +349,16 @@
   }
   window.addEventListener('nationhood:task',function(e){ showTask(e.detail); });
 
+  var currentActions=3; // the player's remaining party actions (from the profile)
+  window.addEventListener('nationhood:actions',function(e){ if(typeof e.detail==='number') currentActions=e.detail; });
+
   // Assign modal: the Current Task button opens it; pick a task, then confirm.
   var modal=document.getElementById('assignModal');
   var confirmBtn=document.getElementById('assignConfirm');
   var opts=document.querySelectorAll('.opt');
-  var selectedTask=null;
+  var selectedTask=null,selectedCost=0;
   function openModal(){
-    selectedTask=null; confirmBtn.disabled=true;
+    selectedTask=null; selectedCost=0; confirmBtn.disabled=true;
     opts.forEach(function(o){o.classList.remove('sel');});
     modal.hidden=false;
   }
@@ -366,6 +369,7 @@
       opts.forEach(function(x){x.classList.remove('sel');});
       o.classList.add('sel');
       selectedTask=o.dataset.task;
+      selectedCost=parseInt(o.dataset.cost,10)||1;
       confirmBtn.disabled=false;
     });
   });
@@ -378,12 +382,22 @@
   var assigning=false; // loading lock: blocks double-fire on a DB write
   confirmBtn.addEventListener('click',async function(){
     if(assigning||!selectedTask) return;
+    if(currentActions<selectedCost){ ping('Not enough actions — '+selectedTask+' costs '+selectedCost+'.'); return; }
     assigning=true; confirmBtn.disabled=true;
-    var task=selectedTask;
-    var ok=await setTheoTask(task);
+    var task=selectedTask, cost=selectedCost, left=currentActions-cost;
+    // One write: record the task and spend the actions together.
+    var ok=await updateProfile({ tutorial_theo_task: task, tutorial_party_actions: left });
     assigning=false;
-    if(ok){ showTask(task); ping('<b>Assigned</b>: Théo Lefèvre → '+task+'.'); closeModal(); }
-    else { confirmBtn.disabled=false; ping('Could not save the assignment — please try again.'); }
+    if(ok){
+      currentActions=left;
+      showTask(task);
+      renderPartyActions(left); // update this page's topbar now; other pages read it on load
+      ping('<b>Assigned</b>: Théo Lefèvre → '+task+' (−'+cost+' actions).');
+      closeModal();
+    } else {
+      confirmBtn.disabled=false;
+      ping('Could not save the assignment — please try again.');
+    }
   });
 
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/party/';});

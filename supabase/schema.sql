@@ -32,6 +32,12 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_theo_task text;
 
+-- Party actions the player has left this tutorial week. Starts at 3; assigning
+-- a task spends its cost (e.g. Labour Talks costs 2 while Labour Unrest is
+-- active). Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_party_actions integer not null default 3;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 
