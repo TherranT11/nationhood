@@ -14,79 +14,54 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
--- The party a player chose during the tutorial. One source of truth for that
--- choice: exactly one value (or null if not done yet), never a contradiction.
--- Idempotent so this file is safe to re-run on an existing database.
+-- ---------------------------------------------------------------------------
+-- Tutorial state: ONE jsonb blob per player, holding every tutorial field:
+--   party, government_formed, theo_task, party_actions, coalition, bill_votes,
+--   week, crisis, floor_bill, legislation, party_popularity, confidence_adj.
+-- One column means one migration ever — adding a new tutorial field never needs a
+-- schema change, and a write can never fail on a "missing column". Idempotent.
+-- ---------------------------------------------------------------------------
 alter table public.profiles
-  add column if not exists tutorial_party text
-  check (tutorial_party in ('Labour', 'Nationalist', 'Liberal'));
+  add column if not exists tutorial_state jsonb not null default '{}'::jsonb;
 
--- Whether the player has formed their government in the tutorial. Once true,
--- the Government screen shows the standard view instead of the formation UI.
-alter table public.profiles
-  add column if not exists tutorial_government_formed boolean not null default false;
-
--- The task the player assigns to Théo Lefèvre (Interior Minister) in the
--- tutorial. Null until they assign one. One value per player; idempotent so
--- this file is safe to re-run on an existing database.
-alter table public.profiles
-  add column if not exists tutorial_theo_task text;
-
--- Party actions the player has left this tutorial week. Starts at 3; assigning
--- a task spends its cost (e.g. Labour Talks costs 2 while Labour Unrest is
--- active). Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_party_actions integer not null default 3;
-
--- A snapshot of the coalition the player formed: the full assembly (each party
--- with seats/colour/archetype and a gov flag), the government seat total, and
--- the contradictory-partner count. Null until a government is formed. The
--- formed Government screen renders entirely from this. Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_coalition jsonb;
-
--- The player's saved floor votes in the Legislature, keyed by bill id ->
--- 'aye' | 'nay' | 'abs'. A bill is simply absent until they vote on it (and
--- removed again if they withdraw). Null until they cast a first vote. Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_bill_votes jsonb;
-
--- The tutorial game-week counter. Starts at 22 (the week the tutorial opens on);
--- the shared [Next Week] button advances it. Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_week integer not null default 22;
-
--- A snapshot of the Labour Unrest crisis after the first week-advance that
--- follows the Energy Independence Act vote: the vote, the step it moved to, the
--- tick tally, the Growth/tick rate, the outcome flavour, and the one-time
--- 1d6 + Charisma roll (persisted so a reload never re-rolls). Null until then.
--- Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_crisis jsonb;
-
--- A snapshot of the bill the player drafts on the Propose a Law page and brings
--- to the floor: title plus pre-formatted articles (name, ministry, growth, effect
--- pills) and the total-budget text. The Legislature page renders it on the floor.
--- Null until they propose one. Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_floor_bill jsonb;
-
--- Resolved bills (Legislative History): on the first week-advance after a bill is
--- proposed, the floor bills pass/fail and are recorded here as
--- [{name, passed, vote, pop}]. Null until then. Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_legislation jsonb;
-
--- The player's party popularity. Starts at 38; each resolved bill shifts it by
--- the +1/-1 rule (on the winning side of your own vote). Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_party_popularity integer not null default 38;
-
--- Government Confidence adjustment from resolved legislation: passed bills' net
--- Welfare/Prosperity shift confidence by the threshold rules. Added on top of the
--- coalition-derived confidence. Starts at 0. Idempotent.
-alter table public.profiles
-  add column if not exists tutorial_confidence_adj integer not null default 0;
+-- One-time consolidation: if the old per-field tutorial_* columns still exist,
+-- copy their (non-null) values into tutorial_state, then drop them. Guarded by a
+-- column-existence check so this whole file stays safe to re-run.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'tutorial_party'
+  ) then
+    update public.profiles set tutorial_state = tutorial_state || jsonb_strip_nulls(jsonb_build_object(
+      'party',            tutorial_party,
+      'government_formed', tutorial_government_formed,
+      'theo_task',        tutorial_theo_task,
+      'party_actions',    tutorial_party_actions,
+      'coalition',        tutorial_coalition,
+      'bill_votes',       tutorial_bill_votes,
+      'week',             tutorial_week,
+      'crisis',           tutorial_crisis,
+      'floor_bill',       tutorial_floor_bill,
+      'legislation',      tutorial_legislation,
+      'party_popularity', tutorial_party_popularity,
+      'confidence_adj',   tutorial_confidence_adj
+    ));
+    alter table public.profiles
+      drop column tutorial_party,
+      drop column tutorial_government_formed,
+      drop column tutorial_theo_task,
+      drop column tutorial_party_actions,
+      drop column tutorial_coalition,
+      drop column tutorial_bill_votes,
+      drop column tutorial_week,
+      drop column tutorial_crisis,
+      drop column tutorial_floor_bill,
+      drop column tutorial_legislation,
+      drop column tutorial_party_popularity,
+      drop column tutorial_confidence_adj;
+  end if;
+end $$;
 
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
@@ -106,6 +81,26 @@ create policy "profiles_update_own"
 -- Note: there is intentionally no INSERT policy. Profiles are created only by
 -- the trigger below, which runs as the table owner (security definer) and so
 -- bypasses RLS. Clients cannot forge profile rows directly.
+
+-- ---------------------------------------------------------------------------
+-- Atomic partial-merge of a tutorial_state patch for the calling player. The
+-- client sends only the fields it changed; this merges them server-side
+-- (jsonb ||) so two writes never clobber each other's unrelated fields. Security
+-- invoker: the auth.uid() filter + the update policy restrict it to the caller's
+-- own row.
+-- ---------------------------------------------------------------------------
+create or replace function public.tutorial_merge(patch jsonb)
+returns void
+language sql
+security invoker
+set search_path = public
+as $$
+  update public.profiles
+     set tutorial_state = coalesce(tutorial_state, '{}'::jsonb) || patch
+   where id = auth.uid();
+$$;
+
+grant execute on function public.tutorial_merge(jsonb) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Auto-create a profile whenever a new auth user signs up

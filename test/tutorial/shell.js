@@ -37,27 +37,29 @@ export async function requireUser() {
 // callers keep their defaults rather than act on bad data.
 export async function getTutorialProgress(userId) {
   try {
-    // select('*') so a not-yet-migrated tutorial column degrades gracefully
-    // (the field is simply absent) instead of erroring the whole read.
+    // select('*') so a not-yet-migrated DB degrades gracefully: if tutorial_state
+    // is absent, `s` falls back to {} and every field uses its default.
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
     if (error || !data) return null;
+    const s = data.tutorial_state || {}; // all tutorial fields live in one jsonb blob
     return {
-      party: data.tutorial_party,
-      governmentFormed: !!data.tutorial_government_formed,
-      theoTask: data.tutorial_theo_task || null,
-      actions: data.tutorial_party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
-      coalition: data.tutorial_coalition || null,
-      billVotes: data.tutorial_bill_votes || {},
-      week: data.tutorial_week ?? 22, // tutorial opens on week 22
-      crisis: data.tutorial_crisis || null,
-      floorBill: data.tutorial_floor_bill || null,
-      legislation: data.tutorial_legislation || null,
-      partyPopularity: data.tutorial_party_popularity ?? 38,
-      confidenceAdj: data.tutorial_confidence_adj ?? 0,
+      party: s.party,
+      governmentFormed: !!s.government_formed,
+      theoTask: s.theo_task || null,
+      actions: s.party_actions ?? 3, // 0 stays 0; missing/null defaults to 3
+      coalition: s.coalition || null,
+      billVotes: s.bill_votes || {},
+      week: s.week ?? 22, // tutorial opens on week 22
+      crisis: s.crisis || null,
+      floorBill: s.floor_bill || null,
+      legislation: s.legislation || null,
+      partyPopularity: s.party_popularity ?? 38,
+      confidenceAdj: s.confidence_adj ?? 0,
+      nation: s.nation || {}, // accumulated stat deltas from passed bills
     };
   } catch (err) {
     return null;
@@ -109,6 +111,7 @@ export async function initSidebar() {
   window.nationhoodParty = progress.party;
   window.nationhoodGovernmentFormed = progress.governmentFormed;
   window.nationhoodConfidenceAdj = progress.confidenceAdj || 0; // bill-driven confidence, read by the confidence renderers
+  window.nationhoodWeek = progress.week || DEFAULT_WEEK;        // current week, read by the Legislature to load scheduled bills
   window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
@@ -118,6 +121,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:floorbill', { detail: progress.floorBill }));
   window.dispatchEvent(new CustomEvent('nationhood:legislation', { detail: progress.legislation }));
   window.dispatchEvent(new CustomEvent('nationhood:popularity', { detail: progress.partyPopularity }));
+  window.dispatchEvent(new CustomEvent('nationhood:nation', { detail: progress.nation }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
@@ -133,17 +137,21 @@ export function renderPartyActions(n) {
   if (chip) chip.textContent = label;
 }
 
-// The single write path for the tutorial's per-player profile flags. Applies a
-// partial patch to the signed-in player's row and returns true on success (or
-// with no keys, so local dev still flows). Returns false — rather than
-// redirecting — when there's no session, so a caller mid-action can offer a
-// retry instead of throwing the player to login.
+// The single write path for the tutorial's per-player state. Callers pass a
+// partial patch keyed by the legacy tutorial_* names (e.g. tutorial_party_actions);
+// this strips the prefix and merges the fields into the player's tutorial_state
+// jsonb atomically (the tutorial_merge RPC). Returns true on success (or with no
+// keys / local dev). Returns false — rather than redirecting — when there's no
+// session, so a caller mid-action can offer a retry instead of bouncing to login.
+// One column → a write can never fail on a missing column.
 export async function updateProfile(patch) {
   if (!isConfigured) return true;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return false;
-    const { error } = await supabase.from('profiles').update(patch).eq('id', session.user.id);
+    const merged = {};
+    Object.keys(patch).forEach((k) => { merged[k.replace(/^tutorial_/, '')] = patch[k]; });
+    const { error } = await supabase.rpc('tutorial_merge', { patch: merged });
     return !error;
   } catch (err) {
     return false;
@@ -206,11 +214,15 @@ export function computeCrisis(vote) {
 // their non-player Aye base + names mirror the `bills` object on the Legislature
 // page; keep in sync until there's a shared bills module. (bp, the player's bill,
 // is resolved from its saved snapshot.)
-// Each static bill: non-player Aye base, a concise effect string, and the net
-// Welfare/Prosperity it applies if it passes (feeds the confidence rules).
-const STATIC_BILLS = [
-  { id: 'b1', name: 'Energy Independence Act', aye: 40, effect: 'Energy ▲, Debt ▲', welfare: 0, prosperity: 0 },
-  { id: 'b2', name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', welfare: 2, prosperity: -1 },
+// Scripted bills, each with the week it reaches the floor, its non-player Aye
+// base, a concise effect string, and the numeric stat deltas it applies if it
+// passes (which both feed the confidence rules and move the live Nation stats).
+// KNOWN DUPLICATION: name/Aye/effect/seats mirror the rendered bills on the
+// Legislature page; keep in sync until there's a shared bills module.
+const SCRIPTED_BILLS = [
+  { id: 'b1', week: DEFAULT_WEEK, name: 'Energy Independence Act', aye: 40, effect: 'Energy ▲, Debt ▲', delta: { debt: 5 } },
+  { id: 'b2', week: DEFAULT_WEEK, name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', delta: { welfare: 2, prosperity: -1, growth: -1 } },
+  { id: 'img', week: 24, name: 'Industrial Modernisation Bill', aye: 122, effect: 'Growth ▲, Unemployment ▼, Welfare ▲, Budget −₣23B', delta: { growth: 1, unemployment: -1, welfare: 1, budget: -23 } },
 ];
 const ASSEMBLY_SEATS = { wp: 40, cu: 50, la: 44, nr: 32 }; // other-party seats (also mirrored on the Legislature page)
 const FRONT_SEATS = 114, MAJORITY = 141;
@@ -224,36 +236,51 @@ function confidenceFromStats(welfare, prosperity) {
   return c;
 }
 
-// Resolve all floor bills from the player's votes + the proposed-bill snapshot.
-// A bill passes if its Aye seats (others + the player's 114 when they vote Aye)
-// reach the 141 majority. Returns { history, popDelta, confAdj } or null.
+// Resolve the floor bills that are due (week reached) and not already resolved,
+// plus the player's proposed bill. A bill passes if its Aye seats (others + the
+// player's 114 when they vote Aye) reach the 141 majority. Returns
+// { history, popDelta, confAdj, bpResolved } of the NEW results, or null.
 // Party popularity per bill: +1 when the outcome matches your vote (Aye+passed or
 // Nay+failed), -1 when it contradicts it, 0 if you abstained.
-export function resolveLegislation(billVotes, floorBill) {
+export function resolveLegislation(billVotes, floorBill, week, doneIds) {
   const v = billVotes || {};
-  const raw = STATIC_BILLS.map((b) => {
+  const done = doneIds || new Set();
+  const raw = [];
+  SCRIPTED_BILLS.forEach((b) => {
+    // Skip if not on the floor yet, or already resolved. Match by id OR name so
+    // legislation saved before bills carried ids (older sessions) still dedupes.
+    if (b.week > week || done.has(b.id) || done.has(b.name)) return;
     const vote = v[b.id] || 'abs';
     const passed = (b.aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
-    return { name: b.name, passed, vote, effect: b.effect, welfare: b.welfare, prosperity: b.prosperity };
+    raw.push({ id: b.id, name: b.name, passed, vote, effect: b.effect, delta: b.delta || {} });
   });
+  let bpResolved = false;
   if (floorBill && floorBill.title) {
     const pv = floorBill.partyVotes || {};
     let aye = 0;
     Object.keys(ASSEMBLY_SEATS).forEach((k) => { if (pv[k] === 'aye') aye += ASSEMBLY_SEATS[k]; });
     const vote = v.bp || 'abs';
     const passed = (aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
-    raw.push({ name: floorBill.title, passed, vote, effect: floorBill.effect || '', welfare: floorBill.welfare || 0, prosperity: 0 });
+    raw.push({ id: 'bp', name: floorBill.title, passed, vote, effect: floorBill.effect || '', delta: floorBill.delta || {} });
+    bpResolved = true;
   }
   if (!raw.length) return null;
-  let welfare = 0, prosperity = 0;
-  raw.forEach((r) => { if (r.passed) { welfare += r.welfare; prosperity += r.prosperity; } });
-  // Store only what the UI reads (name/passed/vote/pop/effect); welfare/prosperity
-  // are only needed here to compute the confidence shift.
+  // Accumulate the passed bills' stat deltas; confidence reads welfare/prosperity
+  // from the same source (one place).
+  const nationDelta = {};
+  raw.forEach((r) => { if (r.passed) Object.keys(r.delta).forEach((k) => { nationDelta[k] = (nationDelta[k] || 0) + r.delta[k]; }); });
+  // Store only what the UI reads (id/name/passed/vote/pop/effect).
   const history = raw.map((r) => ({
-    name: r.name, passed: r.passed, vote: r.vote, effect: r.effect,
+    id: r.id, name: r.name, passed: r.passed, vote: r.vote, effect: r.effect,
     pop: r.vote === 'abs' ? 0 : ((r.passed === (r.vote === 'aye')) ? 1 : -1),
   }));
-  return { history, popDelta: history.reduce((s, it) => s + it.pop, 0), confAdj: confidenceFromStats(welfare, prosperity) };
+  return {
+    history,
+    popDelta: history.reduce((s, it) => s + it.pop, 0),
+    confAdj: confidenceFromStats(nationDelta.welfare || 0, nationDelta.prosperity || 0),
+    nationDelta,
+    bpResolved,
+  };
 }
 
 // Advance the tutorial one week. Persists the new week and — on the first
@@ -277,16 +304,24 @@ export async function advanceWeek() {
       const crisis = computeCrisis((progress.billVotes && progress.billVotes.b1) || null);
       if (crisis) patch.tutorial_crisis = crisis;
     }
-    // Resolve the floor bills once the player has proposed one. TUTORIAL LIMIT:
-    // this fires a single time (guarded by !legislation), so a bill proposed in a
-    // later week would not re-resolve — fine for the one-round tutorial flow.
-    if (!progress.legislation && progress.floorBill) {
-      const leg = resolveLegislation(progress.billVotes, progress.floorBill);
+    // Resolve due floor bills, appending to the running history (multi-round).
+    // Gated on engagement: round 1 needs a proposed bill; later rounds run once
+    // legislation exists, so a player who never visits the Legislature doesn't
+    // trigger resolution by advancing the week from elsewhere.
+    const engaged = progress.floorBill || (progress.legislation && progress.legislation.length);
+    if (engaged) {
+      const done = new Set();
+      (progress.legislation || []).forEach((it) => { if (it.id) done.add(it.id); if (it.name) done.add(it.name); });
+      const leg = resolveLegislation(progress.billVotes, progress.floorBill, progress.week || DEFAULT_WEEK, done);
       if (leg) {
-        patch.tutorial_legislation = leg.history;
+        patch.tutorial_legislation = (progress.legislation || []).concat(leg.history);
         patch.tutorial_party_popularity = (progress.partyPopularity ?? 38) + leg.popDelta;
         patch.tutorial_confidence_adj = (progress.confidenceAdj || 0) + leg.confAdj;
-        patch.tutorial_floor_bill = null; // consumed into history
+        // Apply passed bills' stat changes to the live Nation stats (accumulated deltas).
+        const nation = { ...(progress.nation || {}) };
+        Object.keys(leg.nationDelta).forEach((k) => { nation[k] = (nation[k] || 0) + leg.nationDelta[k]; });
+        patch.tutorial_nation = nation;
+        if (leg.bpResolved) patch.tutorial_floor_bill = null; // consumed into history
       }
     }
     const ok = await updateProfile(patch);
