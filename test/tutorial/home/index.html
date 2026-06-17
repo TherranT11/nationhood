@@ -188,10 +188,10 @@
         <b>Republic of Sessau</b>
       </div>
       <div class="top__right">
-        <div class="pa">Party Actions: 3 Available</div>
+        <div class="pa" id="pa"></div>
         <div class="standing">Confidence<i id="confVal"><span class="dash"></span></i><small id="standingLabel">no government</small></div>
         <div class="nw">
-          <span class="nw__date">Week 22 · May 1980</span>
+          <span class="nw__date" id="weekDate"></span>
           <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
         </div>
       </div>
@@ -308,7 +308,12 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, formedConfidence, logout } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence, logout, GAME_WEEK, PARTY_ACTIONS } from '/test/tutorial/shell.js';
+
+  // The week and actions-remaining come from shell.js (one source of truth, so
+  // this header and the other screens' topbar always agree).
+  document.getElementById('pa').textContent = 'Party Actions: ' + PARTY_ACTIONS + ' Available';
+  document.getElementById('weekDate').textContent = GAME_WEEK;
 
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {

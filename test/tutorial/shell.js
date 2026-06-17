@@ -92,7 +92,8 @@ function ensureTopbarStyles() {
   .gw-topbar .gw-week{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .gw-topbar .gw-next{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:12px 20px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
   .gw-topbar .gw-next:hover{transform:translateY(-1px);filter:brightness(1.07)}
-  .gw-topbar .gw-next:focus-visible{outline:2px solid var(--ink);outline-offset:3px}`;
+  .gw-topbar .gw-next:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+  .gw-topbar .gw-next[disabled]{background:#cfcdc7;cursor:default;pointer-events:none}`;
   const style = document.createElement('style');
   style.textContent = css;
   document.head.appendChild(style);
@@ -100,8 +101,8 @@ function ensureTopbarStyles() {
 
 // Render the actions-remaining chip, current week, and Next Week button into
 // the top-right of <main>. Safe to call once per page; a no-op if there is no
-// <main> or a bar is already present. The button advances the week (a tutorial
-// placeholder for now): it surfaces a toast if the page has one.
+// <main> or a bar is already present. Next Week is disabled during the tutorial,
+// matching the home screen — the week only advances once that flow is built.
 export function mountTopbar() {
   const main = document.querySelector('.main');
   if (!main || main.querySelector('.gw-topbar')) return;
@@ -112,17 +113,8 @@ export function mountTopbar() {
   bar.innerHTML =
     '<span class="gw-actions">Party Actions: ' + PARTY_ACTIONS + ' Available</span>' +
     '<span class="gw-week">' + GAME_WEEK + '</span>' +
-    '<button class="gw-next" type="button">Next Week &#9656;</button>';
+    '<button class="gw-next" type="button" disabled title="Not yet available">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
-
-  bar.querySelector('.gw-next').addEventListener('click', () => {
-    const toast = document.getElementById('toast');
-    if (!toast) return;
-    toast.innerHTML = 'Week advanced. <b>3 modifiers unresolved</b>.';
-    toast.classList.add('show');
-    clearTimeout(window.__gwToast);
-    window.__gwToast = setTimeout(() => toast.classList.remove('show'), 3400);
-  });
 }
 
 // Sign the player out and return to the test landing page. Redirects even if
