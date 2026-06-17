@@ -32,9 +32,13 @@ export async function initSidebar() {
       .eq('id', session.user.id)
       .single();
     if (error) return;
+    const tp = data && data.tutorial_party;
     const partyEl = document.getElementById('party');
-    const p = partyEl && PARTY[data && data.tutorial_party];
+    const p = partyEl && PARTY[tp];
     if (p) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
+    // Let the page react to the player's archetype (e.g. confidence contradictions).
+    window.nationhoodParty = tp;
+    window.dispatchEvent(new CustomEvent('nationhood:party', { detail: tp }));
   } catch (err) {
     // keep defaults
   }

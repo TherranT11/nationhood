@@ -178,7 +178,7 @@
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>This is the Government screen. It generally looks different, but because there is currently no government, it shows the Government Formation UI instead. As you are the largest party, you have an opportunity to form a coalition first.</p>
-      <p>A coalition is when two or more parties join together to form a coalition. You can see that Government Confidence has already taken a hit because of 3 crises affecting the nation. We will address those shortly. For now, look at the different options to form a coalition.</p>
+      <p>A coalition is when two or more parties join together to form a single government. You can see that Government Confidence has already taken a hit because of 3 crises affecting the nation. We will address those shortly. For now, look at the different options to form a coalition.</p>
       <p>Forming larger coalitions make a more sturdier coalition, but parties that are not aligned to your own Archetype bring Confidence down. Each party has it's own demands in order to join your coalition.</p>
       <p class="cta">Form a coalition now.</p>
     </div>
@@ -245,11 +245,18 @@
   // Expected Government Confidence: base, the active crises, contradictory-party
   // penalty, and a seat-majority bonus. One computation, rendered live.
   var CONF_BASE=50, CONTRA=-4;
+  // A coalition partner is "contradictory" when its archetype is the opposite
+  // pole of the player's on the Nationalist <-> Communist axis. The player's
+  // Labour choice is the left (Communist) pole; Liberal/Centrist clashes with
+  // no one. Each contradictory partner costs CONTRA.
+  var CONTRA_OF={ Nationalist:'Communist', Labour:'Nationalist' };
+  var PLAYER_PARTY=window.nationhoodParty||null;
+  window.addEventListener('nationhood:party',function(e){ PLAYER_PARTY=e.detail; recompute(); });
   var CRISES=[{name:'Oil Shock',pct:-2},{name:'Industrial Decline',pct:-2},{name:'Labour Unrest',pct:-2}];
-  function renderConfidence(total,conflictCount){
+  function renderConfidence(total,contraCount){
     var rows=[{label:'Base',pct:CONF_BASE,cls:'base'}];
     CRISES.forEach(function(c){rows.push({label:c.name,pct:c.pct,cls:'neg'});});
-    if(conflictCount>0)rows.push({label:'Contradictory coalition',pct:CONTRA*conflictCount,cls:'neg'});
+    if(contraCount>0)rows.push({label:'Contradictory coalition',pct:CONTRA*contraCount,cls:'neg'});
     var pct=total/TOTAL*100;
     var bonus=pct>50?(pct-50)/2:0;
     if(bonus>0)rows.push({label:'Assembly majority',pct:bonus,cls:'pos'});
@@ -402,8 +409,11 @@
     else{as.innerHTML='Coalition: <b>'+total+' / 280</b> · '+(MAJORITY-total)+' short of a majority.';}
     document.getElementById('formBtn').classList.toggle('ready',ok);
 
-    // expected government confidence (base + crises + contradictions + seat bonus)
-    renderConfidence(total,conflicts.length);
+    // expected government confidence: base, crises, archetype contradictions, seat bonus
+    var contraArch=CONTRA_OF[PLAYER_PARTY];
+    var contraCount=0;
+    parties.forEach(function(p){ if(state[p.id].in && contraArch && p.arch===contraArch) contraCount++; });
+    renderConfidence(total,contraCount);
   }
 
   document.getElementById('formBtn').addEventListener('click',function(){
