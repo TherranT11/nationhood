@@ -263,6 +263,8 @@
   // Once the government is formed, flip the formation card to the active state.
   window.addEventListener('nationhood:gov', (e) => {
     if (!e.detail) return;
+    const coach = document.querySelector('.coach');
+    if (coach) coach.remove(); // its "form a government" prompt is done
     document.getElementById('govSeats').textContent = '154 / 280 seats · majority';
     const badge = document.getElementById('govBadge');
     badge.classList.add('formed');
