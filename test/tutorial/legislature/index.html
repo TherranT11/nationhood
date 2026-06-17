@@ -43,7 +43,23 @@
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* main */
-  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1000px}
+  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1340px}
+  /* two-column body: the assembly + bills on the left, Legislative History rail on the right */
+  .legcols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+  .legmain{min-width:0}
+  .legrail{min-width:0}
+  @media(max-width:1000px){.legcols{grid-template-columns:1fr}}
+  .leghist{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .leghist__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  .leghist__empty{color:var(--soft);font-style:italic;font-size:13px}
+  .lh{padding:12px 0;border-top:1px solid var(--line)}
+  .lh:first-of-type{border-top:none;padding-top:0}
+  .lh__top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .lh__name{font-weight:700;font-size:14px;letter-spacing:-.01em;min-width:0}
+  .lh__res{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:20px;flex:none}
+  .lh__res.pass{color:var(--green);background:var(--green-soft)} .lh__res.fail{color:var(--red);background:var(--red-soft)}
+  .lh__pop{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;margin-top:6px}
+  .lh__pop.up{color:var(--green)} .lh__pop.down{color:var(--red)} .lh__pop.flat{color:var(--soft)}
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px}
   .back:hover{color:var(--indigo)}
   .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -190,6 +206,8 @@
       <p id="coachP">Welcome to the Legislature page. This is where things get done — here you can vote on and propose new bills. Let's take a look at the first bill, the <b>Energy Independence Act</b>. This may very well end the Energy Shock crisis that Sessau is dealing with, and it would very likely turn the Labour Unrest into a General Strike. Why don't you vote the way you'd like, and we'll go from there.</p>
     </div>
 
+    <div class="legcols">
+    <div class="legmain">
     <div class="phead">
       <span class="eye">Legislature</span>
       <h1>The National Assembly</h1>
@@ -339,6 +357,15 @@
         <span class="author" style="--c:#2b3a7a"><span class="dot"></span>National Rally</span>
       </div>
     </div>
+    </div><!-- /legmain -->
+
+    <aside class="legrail">
+      <section class="leghist">
+        <div class="leghist__hd">Legislative History</div>
+        <div id="legHistory"><p class="leghist__empty">No bills have been resolved yet. Pass or fail bills on the floor, then advance the week.</p></div>
+      </section>
+    </aside>
+    </div><!-- /legcols -->
   </main>
 </div>
 
@@ -418,9 +445,9 @@
   };
   // Render the bill the player drafted on the Propose page onto the floor (from
   // its saved snapshot) as a votable bill, and bump the On the Floor count.
-  // The other parties vote at once based on the bill's party-popularity (a party
-  // aye if the bill helps its archetype, nay if it hurts, abstain if neutral),
-  // so the player's 114 then decide. Called once on load.
+  // The other parties' votes were decided when the bill was drafted (each party
+  // backs a bill if it supports more of its policies than it opposes); the
+  // player's 114 seats then decide. Called once on load.
   // NOTE: the four parties' seats are duplicated across the static bills + the
   // formation snapshot; kept here too until there's a shared party-data module.
   function esc(s){return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
@@ -431,17 +458,17 @@
       var pills=(a.pills||[]).map(function(p){return '<span class="eff '+p.kind+'">'+esc(p.txt)+'</span>';}).join('');
       return '<div class="art"><span class="art__n">'+(roman[i]||(i+1))+'</span><div class="art__b"><b>'+esc(a.name)+'</b>'+(pills?'<div class="pills">'+pills+'</div>':'')+'</div></div>';
     }).join('');
-    // Other parties react to the bill's party popularity.
-    var pop=b.pop||{}, LBL={aye:'Aye',nay:'Nay',abs:'Abstain'};
+    // Other parties' votes were computed from the bill at draft time (partyVotes).
+    var pv=b.partyVotes||{}, LBL={aye:'Aye',nay:'Nay',abs:'Abstain'};
     var OTHERS=[
-      {name:"Workers' Party",c:'#C42B2B',seats:40,arch:'Labour'},
-      {name:'Centre Union',c:'#16915a',seats:50,arch:'Centrist'},
-      {name:'Liberal Alliance',c:'#1f86d6',seats:44,arch:'Centrist'},
-      {name:'National Rally',c:'#2b3a7a',seats:32,arch:'Nationalist'}
+      {key:'wp',name:"Workers' Party",c:'#C42B2B',seats:40},
+      {key:'cu',name:'Centre Union',c:'#16915a',seats:50},
+      {key:'la',name:'Liberal Alliance',c:'#1f86d6',seats:44},
+      {key:'nr',name:'National Rally',c:'#2b3a7a',seats:32}
     ];
     var base={aye:0,nay:0,abs:0};
     var partiesHtml=OTHERS.map(function(o){
-      var net=pop[o.arch]||0, v=net>0?'aye':net<0?'nay':'abs';
+      var v=pv[o.key]||'abs'; // pre-partyVotes bills fall back to abstain
       base[v]+=o.seats;
       return '<li class="prow" style="--c:'+o.c+'"><span class="dot"></span><span class="pn">'+o.name+'</span><span class="ps">'+o.seats+'</span><span class="pos '+v+'">'+LBL[v]+'</span></li>';
     }).join('');
@@ -466,6 +493,21 @@
     bills.bp={base:base, otherPending:0, front:114, vote:null, name:b.title}; // others already voted
     wireBill('bp');
     updateCoach(); // a bill is now on the floor → show the "cast your vote" prompt
+  };
+
+  // Render resolved bills into Legislative History. Once resolved, the bills have
+  // left the floor: hide the static floor bills and zero the On the Floor count.
+  window.renderLegHistory=function(items){
+    if(!items||!items.length) return;
+    ['b1','b2'].forEach(function(id){var el=document.getElementById(id); if(el) el.style.display='none';});
+    var fh=document.querySelector('.secthd'), ct=fh&&fh.querySelector('.ct'); if(ct) ct.textContent='0';
+    var POP={'1':'+1 Party Popularity','-1':'−1 Party Popularity','0':'No popularity change'};
+    document.getElementById('legHistory').innerHTML=items.map(function(it){
+      var cls=it.pop>0?'up':it.pop<0?'down':'flat';
+      return '<div class="lh"><div class="lh__top"><span class="lh__name">'+esc(it.name)+'</span>'+
+        '<span class="lh__res '+(it.passed?'pass':'fail')+'">'+(it.passed?'Passed':'Failed')+'</span></div>'+
+        '<div class="lh__pop '+cls+'">'+POP[String(it.pop)]+'</div></div>';
+    }).join('');
   };
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/government/';});
   document.getElementById('propose').addEventListener('click',function(){window.location.href='/test/tutorial/legislature/propose/';});
@@ -492,6 +534,7 @@
     updateProfile({ tutorial_bill_votes: votes });
   };
   window.addEventListener('nationhood:floorbill',function(e){ if(e.detail&&window.renderFloorBill){ window.renderFloorBill(e.detail); window.applyBillVotes(votes); } });
+  window.addEventListener('nationhood:legislation',function(e){ if(e.detail&&e.detail.length&&window.renderLegHistory) window.renderLegHistory(e.detail); });
   initSidebar();
 </script>
 </body>
