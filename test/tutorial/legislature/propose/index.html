@@ -364,14 +364,20 @@
       (p.pop||[]).forEach(function(pp){pills.push(popFmt(pp[0],pp[1]));});
       return {name:p.name, min:p.min, growth:p.growth, pills:pills};
     });
-    var net=0, hasBudget=false;
-    chosen.forEach(function(p){p.costs.forEach(function(c){if(c[0]==='Budget'){net+=c[1];hasBudget=true;}});});
+    // Aggregate stat effects + total growth across the chosen policies.
+    var agg={}, growth=0;
+    chosen.forEach(function(p){ growth+=p.growth; p.costs.forEach(function(c){agg[c[0]]=(agg[c[0]]||0)+c[1];}); });
+    var net=agg.Budget||0, budgetText=agg.hasOwnProperty('Budget')?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):'';
+    // Concise effect summary (for Pressing Issues on the dashboard).
+    var fx=[]; if(growth) fx.push('Growth +'+growth);
+    ['Welfare','Order','Image','Inflation','Unemployment'].forEach(function(k){ if(agg[k]) fx.push(k+' '+(agg[k]>0?'+':'−')+Math.abs(agg[k])+((k==='Inflation'||k==='Unemployment')?'%':'')); });
+    if(net) fx.push('Budget '+budgetText);
     // Each party (Workers', Centre Union, Liberal Alliance, National Rally) votes
     // Aye if it supports more of the bill's policies than it opposes, else Nay.
     var PK=['wp','cu','la','nr'], sup={wp:0,cu:0,la:0,nr:0}, opp={wp:0,cu:0,la:0,nr:0};
     chosen.forEach(function(p){ var v=p.votes||[0,0,0,0]; PK.forEach(function(k,i){ if(v[i]) sup[k]++; else opp[k]++; }); });
     var partyVotes={}; PK.forEach(function(k){ partyVotes[k]= sup[k]>opp[k]?'aye':'nay'; });
-    return {title:state.title.trim(), arts:arts, budgetText: hasBudget?((net<0?'−':'+')+'₣'+Math.abs(net)+'B'):'', partyVotes:partyVotes};
+    return {title:state.title.trim(), arts:arts, budgetText:budgetText, partyVotes:partyVotes, welfare:agg.Welfare||0, effect:fx.join(', ')};
   }
   // Party Actions available this week (from the profile via initSidebar).
   var currentActions=3;

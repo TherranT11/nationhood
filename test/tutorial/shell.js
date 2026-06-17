@@ -57,6 +57,7 @@ export async function getTutorialProgress(userId) {
       floorBill: data.tutorial_floor_bill || null,
       legislation: data.tutorial_legislation || null,
       partyPopularity: data.tutorial_party_popularity ?? 38,
+      confidenceAdj: data.tutorial_confidence_adj ?? 0,
     };
   } catch (err) {
     return null;
@@ -96,7 +97,7 @@ export async function initSidebar() {
   // inline). Same source as home: formedConfidence from the coalition snapshot.
   const confV = document.querySelector('.gw-conf__v');
   if (confV && progress.coalition) {
-    confV.textContent = formedConfidence(progress.coalition.total, progress.coalition.contra).value + '%';
+    confV.textContent = (formedConfidence(progress.coalition.total, progress.coalition.contra).value + (progress.confidenceAdj || 0)) + '%';
     const confS = document.querySelector('.gw-conf__s'); if (confS) confS.textContent = 'governing';
   }
   reveal();
@@ -107,6 +108,7 @@ export async function initSidebar() {
 
   window.nationhoodParty = progress.party;
   window.nationhoodGovernmentFormed = progress.governmentFormed;
+  window.nationhoodConfidenceAdj = progress.confidenceAdj || 0; // bill-driven confidence, read by the confidence renderers
   window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
@@ -204,41 +206,54 @@ export function computeCrisis(vote) {
 // their non-player Aye base + names mirror the `bills` object on the Legislature
 // page; keep in sync until there's a shared bills module. (bp, the player's bill,
 // is resolved from its saved snapshot.)
+// Each static bill: non-player Aye base, a concise effect string, and the net
+// Welfare/Prosperity it applies if it passes (feeds the confidence rules).
 const STATIC_BILLS = [
-  { id: 'b1', name: 'Energy Independence Act', aye: 40 },
-  { id: 'b2', name: 'Thirty-Five Hour Week Act', aye: 40 },
+  { id: 'b1', name: 'Energy Independence Act', aye: 40, effect: 'Energy ▲, Debt ▲', welfare: 0, prosperity: 0 },
+  { id: 'b2', name: 'Thirty-Five Hour Week Act', aye: 40, effect: 'Welfare ▲, Prosperity ▼, Growth ▼', welfare: 2, prosperity: -1 },
 ];
 const ASSEMBLY_SEATS = { wp: 40, cu: 50, la: 44, nr: 32 }; // other-party seats (also mirrored on the Legislature page)
 const FRONT_SEATS = 114, MAJORITY = 141;
 
-// Party popularity for one resolved bill: +1 when the outcome matches your vote
-// (Aye+passed or Nay+failed), -1 when it contradicts it, 0 if you abstained.
-function resolveOne(name, passed, vote) {
-  const pop = vote === 'abs' ? 0 : ((passed === (vote === 'aye')) ? 1 : -1);
-  return { name, passed, vote, pop };
+// Confidence shift from the net Welfare/Prosperity of passed bills (the rules):
+// Welfare ≤ −1 → −2, ≥ +2 → +1; Prosperity ≤ −1 → −1, ≥ +3 → +1.
+function confidenceFromStats(welfare, prosperity) {
+  let c = 0;
+  if (welfare <= -1) c -= 2; else if (welfare >= 2) c += 1;
+  if (prosperity <= -1) c -= 1; else if (prosperity >= 3) c += 1;
+  return c;
 }
 
 // Resolve all floor bills from the player's votes + the proposed-bill snapshot.
 // A bill passes if its Aye seats (others + the player's 114 when they vote Aye)
-// reach the 141 majority. Returns { history, popDelta } or null when there's
-// nothing to resolve.
+// reach the 141 majority. Returns { history, popDelta, confAdj } or null.
+// Party popularity per bill: +1 when the outcome matches your vote (Aye+passed or
+// Nay+failed), -1 when it contradicts it, 0 if you abstained.
 export function resolveLegislation(billVotes, floorBill) {
   const v = billVotes || {};
-  const items = STATIC_BILLS.map((b) => {
+  const raw = STATIC_BILLS.map((b) => {
     const vote = v[b.id] || 'abs';
-    const aye = b.aye + (vote === 'aye' ? FRONT_SEATS : 0);
-    return resolveOne(b.name, aye >= MAJORITY, vote);
+    const passed = (b.aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
+    return { name: b.name, passed, vote, effect: b.effect, welfare: b.welfare, prosperity: b.prosperity };
   });
   if (floorBill && floorBill.title) {
     const pv = floorBill.partyVotes || {};
     let aye = 0;
     Object.keys(ASSEMBLY_SEATS).forEach((k) => { if (pv[k] === 'aye') aye += ASSEMBLY_SEATS[k]; });
     const vote = v.bp || 'abs';
-    aye += (vote === 'aye' ? FRONT_SEATS : 0);
-    items.push(resolveOne(floorBill.title, aye >= MAJORITY, vote));
+    const passed = (aye + (vote === 'aye' ? FRONT_SEATS : 0)) >= MAJORITY;
+    raw.push({ name: floorBill.title, passed, vote, effect: floorBill.effect || '', welfare: floorBill.welfare || 0, prosperity: 0 });
   }
-  if (!items.length) return null;
-  return { history: items, popDelta: items.reduce((s, it) => s + it.pop, 0) };
+  if (!raw.length) return null;
+  let welfare = 0, prosperity = 0;
+  raw.forEach((r) => { if (r.passed) { welfare += r.welfare; prosperity += r.prosperity; } });
+  // Store only what the UI reads (name/passed/vote/pop/effect); welfare/prosperity
+  // are only needed here to compute the confidence shift.
+  const history = raw.map((r) => ({
+    name: r.name, passed: r.passed, vote: r.vote, effect: r.effect,
+    pop: r.vote === 'abs' ? 0 : ((r.passed === (r.vote === 'aye')) ? 1 : -1),
+  }));
+  return { history, popDelta: history.reduce((s, it) => s + it.pop, 0), confAdj: confidenceFromStats(welfare, prosperity) };
 }
 
 // Advance the tutorial one week. Persists the new week and — on the first
@@ -270,6 +285,7 @@ export async function advanceWeek() {
       if (leg) {
         patch.tutorial_legislation = leg.history;
         patch.tutorial_party_popularity = (progress.partyPopularity ?? 38) + leg.popDelta;
+        patch.tutorial_confidence_adj = (progress.confidenceAdj || 0) + leg.confAdj;
         patch.tutorial_floor_bill = null; // consumed into history
       }
     }

@@ -207,15 +207,19 @@
     const opp = assembly.filter((p) => !p.gov).sort((a, b) => b.seats - a.seats);
     const oppSeats = opp.reduce((s, p) => s + p.seats, 0);
 
-    // Confidence (single source; from the actual coalition)
+    // Confidence: coalition value (single source: formedConfidence) + the
+    // legislation adjustment from resolved bills (window.nationhoodConfidenceAdj).
     const c = formedConfidence(co.total, co.contra);
-    document.getElementById('confNum').innerHTML = c.value + '<span>%</span>';
-    const fill = document.getElementById('confFill'); if (fill) fill.style.width = Math.max(0, Math.min(100, c.value)) + '%';
+    const adj = window.nationhoodConfidenceAdj || 0;
+    const val = c.value + adj;
+    document.getElementById('confNum').innerHTML = val + '<span>%</span>';
+    const fill = document.getElementById('confFill'); if (fill) fill.style.width = Math.max(0, Math.min(100, val)) + '%';
     document.getElementById('confBreak').innerHTML =
       '<span class="bk">Base 50</span>' +
       '<span class="bk neg">Crises -6</span>' +
       '<span class="bk pos">Coalition size +' + c.bonus + '</span>' +
-      '<span class="bk' + (c.contra ? ' neg' : '') + '">Contradictions ' + c.contra + '</span>';
+      '<span class="bk' + (c.contra ? ' neg' : '') + '">Contradictions ' + c.contra + '</span>' +
+      (adj ? '<span class="bk ' + (adj > 0 ? 'pos' : 'neg') + '">Legislation ' + (adj > 0 ? '+' : '') + adj + '</span>' : '');
 
     // Seat call
     document.getElementById('govSeats').textContent = co.total;
