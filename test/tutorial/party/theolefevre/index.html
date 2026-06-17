@@ -60,6 +60,8 @@
   .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0 0 11px;max-width:64ch}
   .coach p:last-child{margin-bottom:0}
   .coach b{font-weight:800}
+  .coach__btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;background:#fff;color:var(--indigo);border:none;border-radius:11px;padding:11px 18px;cursor:pointer;margin-top:14px;transition:transform .12s,filter .15s}
+  .coach__btn:hover{transform:translateY(-1px);filter:brightness(1.02)}
 
   /* current task */
   .task{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
@@ -208,10 +210,16 @@
   <main class="main">
     <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Your Party</span>
 
-    <div class="coach">
+    <div class="coach" id="coachAssign">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>This is your Politician page. Each Politician has one. You can see Théo's history, his skills, and his current task. Remember, getting things done takes your entire party. As Minister of the Interior, Théo has several unique actions that other party members and other ministers do not have.</p>
       <p>Let's assign Théo a task now. Since Théo is a member of your party, you can assign him a task to carry out in his post as Interior Minister. <b>Assign him the task of Labour Talks now.</b></p>
+    </div>
+
+    <div class="coach" id="coachDone" hidden>
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>Great work. Théo will get to work, and if things happen during the course of those talks, those events will show up on the Home screen. For now, let's leave Théo to his work. Let's head back to the Home Page.</p>
+      <button class="coach__btn" id="toHome" type="button">Home Page</button>
     </div>
 
     <!-- hero + stats -->
@@ -358,6 +366,9 @@
     // Reveal the (empty) progress bar + status once a task is under way.
     taskStatus.textContent='Théo Lefèvre is now initiating '+task.toLowerCase()+'.';
     taskProgress.hidden=false;
+    // Swap the coaching: the "assign him" prompt is done; show the "head home" one.
+    var ca=document.getElementById('coachAssign'); if(ca) ca.hidden=true;
+    var cd=document.getElementById('coachDone'); if(cd) cd.hidden=false;
   }
   window.addEventListener('nationhood:task',function(e){ showTask(e.detail); });
 
@@ -417,6 +428,7 @@
   });
 
   document.getElementById('back').addEventListener('click',function(){window.location.href='/test/tutorial/party/';});
+  document.getElementById('toHome').addEventListener('click',function(){window.location.href='/test/tutorial/home/';});
   // sidebar nav: linked items navigate; the rest just highlight (not wired)
   document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
     if(!i.getAttribute('href')){e.preventDefault();document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')});i.classList.add('active');}

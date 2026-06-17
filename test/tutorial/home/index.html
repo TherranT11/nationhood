@@ -278,11 +278,12 @@
         <div class="mod__hd"><span>Events in Sessau</span></div>
         <ul class="feed__list">
           <li class="feed__month">May</li>
-          <li class="evt"><span class="t">Week 1</span><span>Elections held in Sessau.</span></li>
+          <li class="evt" id="labourTalksEvt" hidden><span class="t">Week 22</span><span>Minister of the Interior <b>Théo Lefèvre</b> has initiated talks with local labour groups in Sessau.</span></li>
+          <li class="evt"><span class="t">Week 22</span><span>Elections held in Sessau.</span></li>
           <li class="feed__month">April</li>
-          <li class="evt"><span class="t">Week 3</span><span>Clement de Sylvie steps down as Front Sessau, Deputy Party Leader <b>Allen Droulez</b> is sworn in.</span></li>
-          <li class="evt"><span class="t">Week 2</span><span>Oil reaches <b>$77 a barrel</b> on the World Market.</span></li>
-          <li class="evt"><span class="t">Week 1</span><span>The previous government lost a vote of confidence.</span></li>
+          <li class="evt"><span class="t">Week 21</span><span>Clement de Sylvie steps down as Front Sessau, Deputy Party Leader <b>Allen Droulez</b> is sworn in.</span></li>
+          <li class="evt"><span class="t">Week 20</span><span>Oil reaches <b>$77 a barrel</b> on the World Market.</span></li>
+          <li class="evt"><span class="t">Week 19</span><span>The previous government lost a vote of confidence.</span></li>
         </ul>
       </section>
     </div>
@@ -334,6 +335,13 @@
     if (confVal) confVal.textContent = formedConfidence(window.nationhoodParty).value + '%';
     const sl = document.getElementById('standingLabel');
     if (sl) sl.textContent = 'governing';
+  });
+
+  // Once Théo is assigned to Labour Talks, his talks show up in the feed.
+  window.addEventListener('nationhood:task', (e) => {
+    if (e.detail !== 'Labour Talks') return;
+    const evt = document.getElementById('labourTalksEvt');
+    if (evt) evt.hidden = false;
   });
 
   initSidebar();
