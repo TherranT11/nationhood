@@ -156,6 +156,17 @@
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { window.location.href = '/test/login/'; return; }
       user = session.user;
+      // If the player has already chosen their archetype, the prologue is done.
+      // Send them straight into the tutorial rather than letting them re-pick
+      // (which would silently overwrite their saved party).
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('tutorial_party')
+        .eq('id', user.id)
+        .single();
+      if (!error && data && data.tutorial_party) {
+        window.location.href = '/test/tutorial/home/';
+      }
     } catch (err) {
       window.location.href = '/test/login/';
     }
