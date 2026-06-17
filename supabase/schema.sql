@@ -64,6 +64,13 @@ alter table public.profiles
 alter table public.profiles
   add column if not exists tutorial_crisis jsonb;
 
+-- A snapshot of the bill the player drafts on the Propose a Law page and brings
+-- to the floor: title plus pre-formatted articles (name, ministry, growth, effect
+-- pills) and the total-budget text. The Legislature page renders it on the floor.
+-- Null until they propose one. Idempotent.
+alter table public.profiles
+  add column if not exists tutorial_floor_bill jsonb;
+
 -- Lock the table down: nothing is readable/writable until a policy allows it.
 alter table public.profiles enable row level security;
 
