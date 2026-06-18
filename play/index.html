@@ -120,22 +120,26 @@
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
     if (!user) return; // redirected to login
-    // The player's party (one per user). No party yet → send them to choose a nation.
-    const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
-    if (error || !party) { window.location.replace('/nation-select/'); return; }
-    const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
-    const nationName = (nation && nation.name) || party.nation_id;
+    try {
+      // The player's party (one per user). No party yet → send them to choose a nation.
+      const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
+      if (error || !party) { window.location.replace('/nation-select/'); return; }
+      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
+      const nationName = (nation && nation.name) || party.nation_id;
 
-    document.getElementById('pname').textContent = party.name;
-    document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
-    document.getElementById('kicker').textContent = nationName;
-    document.getElementById('welcome').textContent = 'Welcome to ' + nationName;
-    document.getElementById('lede').textContent = party.name + ' is now part of ' + nationName + '. The nation is yours to shape.';
-    document.title = party.name + ' · Nationhood';
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('kicker').textContent = nationName;
+      document.getElementById('welcome').textContent = 'Welcome to ' + nationName;
+      document.getElementById('lede').textContent = party.name + ' is now part of ' + nationName + '. The nation is yours to shape.';
+      document.title = party.name + ' · Nationhood';
 
-    if (nation && nation.flag) {
-      flag.onload = function () { flag.hidden = false; };
-      flag.src = nation.flag;
+      if (nation && nation.flag) {
+        flag.onload = function () { flag.hidden = false; };
+        flag.src = nation.flag;
+      }
+    } catch (e) {
+      document.getElementById('lede').textContent = 'Could not load your party right now. Refresh to try again.';
     }
   })();
 </script>

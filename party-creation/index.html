@@ -11,8 +11,6 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  .gamedate { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: #5546E8; background: #ECE9FD; border-radius: 999px; padding: 8px 13px; white-space: nowrap; }
-
   .create { max-width: 760px; margin: 0 auto; padding: 44px 24px 120px; }
   .create h1 { font-size: clamp(26px, 4.5vw, 36px); letter-spacing: -0.03em; font-weight: 800; margin: 0 0 6px; }
   .create .sub { color: var(--muted); font-size: 15px; margin: 0 0 28px; }
@@ -52,7 +50,7 @@
   .bar .btn { padding: 12px 22px; font-size: 15px; }
   .btn-solid[disabled] { opacity: .45; cursor: not-allowed; }
   .msg.error { color: var(--err); }
-  @media (max-width: 560px) { .gamedate { display: none; } .bar__in { padding: 12px 16px; } .bar .picked { flex-basis: 100%; } .bar .btns { flex: 1; } .bar .btn { flex: 1; } }
+  @media (max-width: 560px) { .bar__in { padding: 12px 16px; } .bar .picked { flex-basis: 100%; } .bar .btns { flex: 1; } .bar .btn { flex: 1; } }
 </style>
 </head>
 <body>
@@ -167,13 +165,14 @@
       try {
         // No two parties in a nation may share a name (case-insensitive) or
         // abbreviation. Pre-check for a clear message; the DB unique indexes are
-        // the real guard (a race still can't create a duplicate).
+        // the real guard (a race still can't create a duplicate). Exclude the
+        // player's own party server-side so re-creating doesn't clash with itself.
         const { data: others, error: qerr } = await supabase.from('parties')
-          .select('name, abbreviation, user_id').eq('nation_id', nationId);
+          .select('name, abbreviation').eq('nation_id', nationId).neq('user_id', user.id);
         if (qerr) throw qerr;
         var lname = name.toLowerCase();
         var clash = (others || []).some(function (p) {
-          return p.user_id !== user.id && (((p.name || '').toLowerCase() === lname) || ((p.abbreviation || '').toUpperCase() === abbr));
+          return ((p.name || '').toLowerCase() === lname) || ((p.abbreviation || '').toUpperCase() === abbr);
         });
         if (clash) { fail('A party with that name or abbreviation already exists in this nation.'); return; }
 
