@@ -124,7 +124,7 @@
         <span class="go" id="tutorialGo">Begin &rarr;</span>
       </button>
 
-      <button class="card" style="--accent:#1f9d57;--tint:#E5F6EC" disabled>
+      <button class="card" id="online" style="--accent:#1f9d57;--tint:#E5F6EC">
         <span class="tag live"><span class="pd"></span>Live</span>
         <span class="card__ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span>
         <h2>Join the Online Game</h2>
@@ -198,6 +198,11 @@
 
   // Log out (shared logic in shell.js).
   document.getElementById('logout').addEventListener('click', logout);
+
+  // Join the Online Game → the rules gate.
+  document.getElementById('online').addEventListener('click', () => {
+    window.location.href = '/startup/';
+  });
 </script>
 </body>
 </html>
