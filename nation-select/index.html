@@ -28,7 +28,9 @@
   .nation-banner .ph { color: #9a9a9a; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .nation-body { padding: 22px 22px 24px; }
   .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
-  .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 18px; }
+  .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 4px; }
+  .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
+  .nations { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 22px; }
 
   .nstats { border-top: 1px solid var(--line); margin-bottom: 20px; }
   .nstat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
@@ -75,29 +77,8 @@
       <p>Found your party or corporation in a living nation.</p>
     </div>
 
-    <article class="nation">
-      <div class="nation-banner">
-        <img id="flag" alt="Flag" hidden>
-        <span class="ph" id="flagPh">&hellip;</span>
-      </div>
-      <div class="nation-body">
-        <h2 class="nation-name" id="nName">&hellip;</h2>
-        <p class="nation-desc" id="nDesc"></p>
-        <div class="nstats">
-          <div class="nstat"><span class="k">Population</span><span class="v" id="v-pop">&hellip;</span></div>
-          <div class="nstat"><span class="k">GDP</span><span class="v" id="v-gdp">&hellip;</span></div>
-          <div class="nstat"><span class="k">Prosperity</span><span class="v tbd" id="v-prosperity">&hellip;</span></div>
-          <div class="nstat"><span class="k">Welfare</span><span class="v tbd" id="v-welfare">&hellip;</span></div>
-          <div class="nstat"><span class="k">Order</span><span class="v tbd" id="v-order">&hellip;</span></div>
-          <div class="nstat"><span class="k">Image</span><span class="v tbd" id="v-image">&hellip;</span></div>
-          <div class="nstat"><span class="k">Growth</span><span class="v tbd" id="v-growth">&hellip;</span></div>
-          <div class="nstat"><span class="k">Active Parties</span><span class="v" id="v-parties">&hellip;</span></div>
-        </div>
-        <div class="plist" id="plist"></div>
-        <button class="btn btn-solid nation-join" id="join" type="button">Join Nation</button>
-        <div class="note" id="note" role="status" aria-live="polite"></div>
-      </div>
-    </article>
+    <div class="nations" id="nations"></div>
+    <div class="note" id="note" role="status" aria-live="polite"></div>
   </main>
 
   <script type="module">
@@ -109,10 +90,10 @@
 
     var LADDER_STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
     var note = document.getElementById('note');
-    var flag = document.getElementById('flag');
-    var flagPh = document.getElementById('flagPh');
+    var nationsBox = document.getElementById('nations');
 
     function err(msg) { note.textContent = msg; note.className = 'note error'; }
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
     // Population/GDP are stored raw; format to a readable scale.
     function fmtBig(n) {
@@ -124,44 +105,45 @@
     }
     function trim(x) { return String(Math.round(x * 10) / 10); }
 
-    function render(n) {
-      document.getElementById('nName').textContent = n.name || 'Unknown';
-      document.getElementById('nDesc').textContent = n.description || '';
-      document.getElementById('v-pop').textContent = fmtBig(n.population);
-      var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
-      document.getElementById('v-gdp').textContent = currency + fmtBig(n.gdp);
-      // Active Parties (count + roster) are derived live from the parties table —
-      // see loadParties; one shared instance, so everyone sees the same list.
-
-      // The five ladder stats: the number is the source, the word is derived.
+    // One card's markup. The five ladder stats: the number is the source, the
+    // word + colour band are derived (statLabel/statBand) — never stored.
+    function statsHTML(n) {
       var stats = n.stats || {};
+      var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
+      var rows = '<div class="nstat"><span class="k">Population</span><span class="v">' + fmtBig(n.population) + '</span></div>' +
+        '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtBig(n.gdp) + '</span></div>';
       LADDER_STATS.forEach(function (k) {
-        var el = document.getElementById('v-' + k);
         var v = stats[k];
-        if (typeof v !== 'number') { el.textContent = '—'; el.className = 'v tbd'; return; }
-        el.textContent = statLabel(k, v) || '—';
-        el.className = ('v ' + statBand(k, v)).trim();
+        if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="v tbd">—</span></div>'; return; }
+        rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="' + ('v ' + statBand(k, v)).trim() + '">' + esc(statLabel(k, v) || '—') + '</span></div>';
       });
-
-      // Flag, with a text fallback if the asset is missing.
-      if (n.flag) {
-        flag.onerror = function () { flag.hidden = true; flagPh.textContent = n.name || ''; flagPh.hidden = false; };
-        flag.onload = function () { flagPh.hidden = true; flag.hidden = false; };
-        flag.src = n.flag;
-      } else {
-        flagPh.textContent = n.name || '';
-      }
+      return rows + '<div class="nstat"><span class="k">Active Parties</span><span class="v parties">…</span></div>';
     }
 
-    // The parties already founded in this nation: count toward the cap + roster.
+    function cardHTML(n) {
+      return '<article class="nation" data-id="' + esc(n.id) + '">' +
+        '<div class="nation-banner">' +
+          (n.flag ? '<img class="flag" alt="Flag" src="' + esc(n.flag) + '">' : '<span class="ph">' + esc(n.name || '') + '</span>') +
+        '</div>' +
+        '<div class="nation-body">' +
+          '<h2 class="nation-name">' + esc(n.name || 'Unknown') + '</h2>' +
+          (n.description ? '<p class="nation-desc">' + esc(n.description) + '</p>' : '') +
+          (n.analogous ? '<p class="nation-analog">' + esc(n.analogous) + '</p>' : '') +
+          '<div class="nstats">' + statsHTML(n) + '</div>' +
+          '<div class="plist"></div>' +
+          '<button class="btn btn-solid nation-join">Join Nation</button>' +
+        '</div></article>';
+    }
+
+    // The parties already founded in a nation: count toward the cap + roster.
     // Derived live from the shared parties table (this is one multiplayer world).
-    async function loadParties(nationId) {
-      var elV = document.getElementById('v-parties');
-      var elList = document.getElementById('plist');
+    async function loadParties(card, n) {
+      var elV = card.querySelector('.parties');
+      var elList = card.querySelector('.plist');
       try {
         const { data, error } = await supabase
           .from('parties').select('name, archetype')
-          .eq('nation_id', nationId).order('created_at', { ascending: true });
+          .eq('nation_id', n.id).order('created_at', { ascending: true });
         if (error) throw error;
         var list = data || [];
         elV.textContent = list.length + ' / ' + MAX_PARTIES;
@@ -172,10 +154,9 @@
             }).join('')
           : '<div class="pempty">No parties yet — be the first to found one.</div>';
         if (list.length >= MAX_PARTIES) {
-          var join = document.getElementById('join');
+          var join = card.querySelector('.nation-join');
           join.disabled = true;
           join.textContent = 'Nation Full';
-          note.textContent = 'Sessau has reached its ' + MAX_PARTIES + '-party limit.';
         }
       } catch (e) {
         elV.textContent = '— / ' + MAX_PARTIES;
@@ -190,19 +171,26 @@
       if (mine) { window.location.replace('/play/'); return; }
       if (!isConfigured) { err('Nation data isn’t connected yet.'); return; }
       try {
-        const { data, error } = await supabase.from('nations').select('*').eq('id', 'sessau').single();
-        if (error || !data) { err('Couldn’t load this nation. Try again shortly.'); return; }
-        render(data);
-        await loadParties('sessau');
+        const { data, error } = await supabase.from('nations').select('*').order('created_at', { ascending: true });
+        if (error) throw error;
+        var nations = data || [];
+        if (!nations.length) { note.textContent = 'No nations are open yet.'; note.className = 'note'; return; }
+        nationsBox.innerHTML = nations.map(cardHTML).join('');
+        nations.forEach(function (n) {
+          var card = nationsBox.querySelector('.nation[data-id="' + (window.CSS && CSS.escape ? CSS.escape(n.id) : n.id) + '"]');
+          if (!card) return;
+          // Flag fallback: if the asset 404s, swap in the name placeholder.
+          var img = card.querySelector('.flag');
+          if (img) img.onerror = function () { img.replaceWith(Object.assign(document.createElement('span'), { className: 'ph', textContent: n.name || '' })); };
+          card.querySelector('.nation-join').addEventListener('click', function () {
+            window.location.href = '/party-creation/?nation=' + encodeURIComponent(n.id);
+          });
+          loadParties(card, n);
+        });
       } catch (e) {
-        err('Couldn’t load this nation. Try again shortly.');
+        err('Couldn’t load nations. Try again shortly.');
       }
     })();
-
-    // Join Nation → create your party in this nation.
-    document.getElementById('join').addEventListener('click', function () {
-      window.location.href = '/party-creation/?nation=sessau';
-    });
   </script>
 </body>
 </html>

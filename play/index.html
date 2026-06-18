@@ -224,7 +224,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { statLabel, statBand } from '/ladders.js';
+  import { statLabel, statBand, regimeLabel } from '/ladders.js';
   import { esc, COMPETENCIES } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -250,7 +250,12 @@
       var label = statLabel(k, v) || '—';
       chips.push(chip(name, '<span class="chip__t ' + statBand(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
     });
-    if (eco.regime != null) chips.push(chip('Regime', '<span class="chip__t">' + esc(eco.regime) + '</span>'));
+    if (eco.regime != null) {
+      // Regime is stored numeric (1–20) for new nations → show its tier label;
+      // a legacy free-text regime is shown as-is.
+      var regimeTxt = typeof eco.regime === 'number' ? (regimeLabel(eco.regime) || String(eco.regime)) : eco.regime;
+      chips.push(chip('Regime', '<span class="chip__t">' + esc(regimeTxt) + '</span>'));
+    }
     if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
     if (eco.unemployment != null) chips.push(chip('Unemployment', val(eco.unemployment + '%')));
     if (eco.budget != null) chips.push(chip('Budget', val('₣' + eco.budget + 'B')));

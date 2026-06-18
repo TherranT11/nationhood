@@ -25,3 +25,24 @@ export function statBand(stat, value) {
   if (stat === 'growth') return value >= 13 ? 'good' : value >= 10 ? 'warn' : 'bad';
   return value >= 11 ? 'good' : '';
 }
+
+// Regime — a single 1–20 democracy↔autocracy scale. Unlike the ladders above it
+// has named tiers at set thresholds (not one word per number); a value takes the
+// label of the highest tier it reaches. The number is the source (stored on the
+// nation); the words follow it. Listed high→low for the admin dropdown.
+export const REGIME_TIERS = [
+  { value: 20, label: 'Full Democracy' },
+  { value: 17, label: 'Electoral Democracy' },
+  { value: 14, label: 'Flawed Democracy' },
+  { value: 11, label: 'Illiberal Democracy' },
+  { value: 9,  label: 'Competitive Autocracy' },
+  { value: 5,  label: 'Functional Autocracy' },
+  { value: 1,  label: 'One State Autocracy' },
+];
+
+export function regimeLabel(value) {
+  const n = Number(value);
+  if (isNaN(n)) return null;
+  for (const t of REGIME_TIERS) if (n >= t.value) return t.label; // tiers are high→low
+  return REGIME_TIERS[REGIME_TIERS.length - 1].label;
+}

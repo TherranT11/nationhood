@@ -11,6 +11,7 @@ create table if not exists public.nations (
   id             text primary key,
   name           text not null,
   description    text,
+  analogous      text,            -- real-world analogue, shown in italics under the description
   flag           text,            -- asset path, e.g. /assets/Sessau.png
   population     bigint,          -- raw count; formatted on the client
   gdp            bigint,          -- raw value; formatted on the client
@@ -19,6 +20,7 @@ create table if not exists public.nations (
   electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
+  production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
   created_at     timestamptz not null default now()
 );
 -- For installs created before these columns existed.
@@ -26,15 +28,42 @@ alter table public.nations add column if not exists economy jsonb not null defau
 alter table public.nations add column if not exists legislature_seats int not null default 0;
 alter table public.nations add column if not exists election_frequency_months int not null default 60;
 alter table public.nations add column if not exists electoral_threshold numeric not null default 0;
+alter table public.nations add column if not exists analogous text;
+alter table public.nations add column if not exists production jsonb not null default '{}'::jsonb;
 -- The active-party count is derived live from public.parties (one source), not
 -- stored — drop the old counter column if an earlier install still has it.
 alter table public.nations drop column if exists active_parties;
 
 alter table public.nations enable row level security;
 
--- Anyone may read the nation roster (public game data); clients never write it.
+-- Anyone may read the nation roster (public game data).
 drop policy if exists "nations_select_all" on public.nations;
 create policy "nations_select_all" on public.nations for select using (true);
+
+-- Is the signed-in user the site admin? Used to gate nation creation from the
+-- /adminsetup page. The admin is identified server-side by email (read from
+-- auth.users via a definer function) — never by anything the client can spoof.
+-- Change the address here to move the admin account.
+create or replace function public.is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from auth.users
+    where id = auth.uid() and lower(email) = 'therrant@gmail.com'
+  );
+$$;
+grant execute on function public.is_admin() to authenticated;
+
+-- Only the admin may add a nation. The base INSERT grant is harmless on its own —
+-- this WITH CHECK is the real gate, so a non-admin's insert is rejected even with
+-- a crafted request.
+grant insert on public.nations to authenticated;
+drop policy if exists "nations_insert_admin" on public.nations;
+create policy "nations_insert_admin" on public.nations for insert with check (public.is_admin());
 
 -- Seed the first nation with its starting numbers (idempotent; won't clobber a
 -- live row's values on re-run).
