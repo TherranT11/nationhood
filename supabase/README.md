@@ -15,9 +15,10 @@ schema/10_nations.sql       nations table + Sessau seed
 schema/20_parties.sql       parties table, RLS, column-level write lock
 schema/30_politicians.sql   politicians + recruit_drives tables + RLS
 schema/40_events.sql        events feed + leader-action functions (rally, recruit, …)
-schema/50_names.sql         sessau_names table (structure only)
+schema/50_names.sql         nation_names table (structure only; per-nation pools)
 
-seed/sessau_names.sql           the name pool rows (run once, after 50)
+seed/sessau_names.sql           Sessau's name pool (run once, after 50)
+seed/vesperia_names.sql         Vesperia's name pool (run after the nation exists)
 seed/backfill_party_leaders.sql one-off: give existing partyless parties a leader
 ```
 

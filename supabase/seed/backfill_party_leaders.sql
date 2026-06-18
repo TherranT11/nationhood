@@ -30,8 +30,8 @@ named as materialized (
          fn.name as first_name,
          ln.name as last_name
   from seed s
-  cross join lateral (select name from public.sessau_names where kind in ('male','female') order by random() limit 1) fn
-  cross join lateral (select name from public.sessau_names where kind = 'surname'         order by random() limit 1) ln
+  cross join lateral (select name from public.nation_names where nation_id = 'sessau' and kind in ('male','female') order by random() limit 1) fn
+  cross join lateral (select name from public.nation_names where nation_id = 'sessau' and kind = 'surname'         order by random() limit 1) ln
 ),
 points as materialized (
   -- exp random stat picks per party (one row per point)

@@ -363,7 +363,10 @@ grant execute on function public.party_platform() to authenticated;
 -- Build one candidate: a random Sessau name + p_points stat points spread
 -- randomly across the five competencies. Internal helper for the recruit RPCs
 -- (not granted to clients — only the security-definer functions below call it).
-create or replace function public._gen_candidate(p_age int, p_exp int, p_points int)
+-- Drop the earlier 3-arg signature (pre nation_names) so re-running doesn't leave
+-- an orphaned overload behind.
+drop function if exists public._gen_candidate(int, int, int);
+create or replace function public._gen_candidate(p_nation text, p_age int, p_exp int, p_points int)
 returns jsonb
 language plpgsql
 security definer
@@ -372,8 +375,8 @@ as $$
 declare
   v_first text; v_last text; s int[] := array[0, 0, 0, 0, 0]; i int; k int;
 begin
-  select name into v_first from public.sessau_names where kind in ('male', 'female') order by random() limit 1;
-  select name into v_last  from public.sessau_names where kind = 'surname'          order by random() limit 1;
+  select name into v_first from public.nation_names where nation_id = p_nation and kind in ('male', 'female') order by random() limit 1;
+  select name into v_last  from public.nation_names where nation_id = p_nation and kind = 'surname'          order by random() limit 1;
   for i in 1..greatest(p_points, 0) loop
     k := floor(random() * 5)::int + 1;
     s[k] := s[k] + 1;
@@ -421,8 +424,8 @@ begin
   v_tier := public._action_tier(v_total);
   v_exp := case v_tier when 'strong' then 7 when 'middling' then 5 else 3 end;
 
-  v_new  := public._gen_candidate(25, 0, 2);
-  v_seas := public._gen_candidate(35 + floor(random() * 11)::int, v_exp, 5);  -- age 35–45
+  v_new  := public._gen_candidate(v_p.nation_id, 25, 0, 2);
+  v_seas := public._gen_candidate(v_p.nation_id, 35 + floor(random() * 11)::int, v_exp, 5);  -- age 35–45
 
   insert into public.recruit_drives (party_id, candidates)
     values (v_p.id, jsonb_build_object('newcomer', v_new, 'seasoned', v_seas));

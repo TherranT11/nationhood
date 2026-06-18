@@ -1,21 +1,37 @@
--- 50 · Sessau name pool (structure only)
--- Depends on: nothing. Run after 40. The rows are bulk data and live in
--- supabase/seed/sessau_names.sql — run that once after this file.
+-- 50 · Nation name pools (structure only)
+-- Depends on: 10 (nations). Run after 40. The rows are bulk data and live in
+-- supabase/seed/ (one file per nation) — run those after this file.
 
 -- ---------------------------------------------------------------------------
--- Sessau name pool: the source for Sessau-flavoured names (used for generated
--- politicians/characters). One row per name, tagged by kind (male / female first
--- names, surname). Public read; clients never write it. Only the structure lives
--- here; the names are seeded from supabase/seed/sessau_names.sql.
+-- Nation name pools: the source for each nation's flavoured names (generated
+-- politicians/characters). One row per name, scoped by nation_id + kind (male /
+-- female first names, surname). Public read; clients never write it. Only the
+-- structure lives here; the names are seeded from supabase/seed/<nation>_names.sql.
+-- A party's leader + recruits draw from its own nation's rows.
 -- ---------------------------------------------------------------------------
-create table if not exists public.sessau_names (
-  id   bigint generated always as identity primary key,
-  kind text not null check (kind in ('male', 'female', 'surname')),
-  name text not null,
-  unique (kind, name)
+create table if not exists public.nation_names (
+  id        bigint generated always as identity primary key,
+  nation_id text not null references public.nations (id) on delete cascade,
+  kind      text not null check (kind in ('male', 'female', 'surname')),
+  name      text not null,
+  unique (nation_id, kind, name)
 );
 
-alter table public.sessau_names enable row level security;
+-- Migrate the original Sessau-only table (sessau_names) into the generic one,
+-- once. Idempotent: the copy is on-conflict-do-nothing and the old table is
+-- dropped only after a successful copy, so a re-run simply finds it already gone.
+do $$
+begin
+  if exists (select 1 from information_schema.tables
+             where table_schema = 'public' and table_name = 'sessau_names') then
+    insert into public.nation_names (nation_id, kind, name)
+      select 'sessau', kind, name from public.sessau_names
+      on conflict (nation_id, kind, name) do nothing;
+    drop table public.sessau_names;
+  end if;
+end $$;
 
-drop policy if exists "sessau_names_select_all" on public.sessau_names;
-create policy "sessau_names_select_all" on public.sessau_names for select using (true);
+alter table public.nation_names enable row level security;
+
+drop policy if exists "nation_names_select_all" on public.nation_names;
+create policy "nation_names_select_all" on public.nation_names for select using (true);

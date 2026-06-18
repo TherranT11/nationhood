@@ -1,12 +1,12 @@
--- Seed data: the Sessau name pool.
+-- Seed data: the Sessau name pool (nation_id = 'sessau').
 --
 -- Bulk reference data kept out of schema/ so the structure stays readable.
 -- Run this once in the Supabase SQL Editor AFTER schema/50_names.sql has created
--- public.sessau_names. Idempotent: unique (kind, name) + on-conflict-do-nothing
--- make re-runs (and edits to these lists) safe to apply again.
+-- public.nation_names. Idempotent: unique (nation_id, kind, name) + on-conflict-
+-- do-nothing make re-runs (and edits to these lists) safe to apply again.
 
-insert into public.sessau_names (kind, name)
-select 'male', n from unnest(array[
+insert into public.nation_names (nation_id, kind, name)
+select 'sessau', 'male', n from unnest(array[
   'Adrien','Alexandre','Alexis','Antoine','Arthur','Baptiste','Benjamin','Benoît',
   'Charles','Clément','Damien','David','Dorian','Édouard','Élias','Étienne','Fabien',
   'Florian','François','Gabriel','Gaspard','Gauthier','Guillaume','Hugo','Jean',
@@ -14,17 +14,17 @@ select 'male', n from unnest(array[
   'Nicolas','Olivier','Quentin','Raphaël','Romain','Samuel','Sébastien','Simon',
   'Stéphane','Tanguy','Thomas','Thibault','Valentin','Victor','Xavier'
 ]) as n
-on conflict (kind, name) do nothing;
+on conflict (nation_id, kind, name) do nothing;
 
-insert into public.sessau_names (kind, name)
-select 'female', n from unnest(array[
+insert into public.nation_names (nation_id, kind, name)
+select 'sessau', 'female', n from unnest(array[
   'Amélie','Anaïs','Audrey','Camille','Caroline','Chloé','Claire','Élodie','Émilie',
   'Emma','Estelle','Fanny','Hélène','Julie','Justine','Laura','Léa','Manon','Marine','Sophie'
 ]) as n
-on conflict (kind, name) do nothing;
+on conflict (nation_id, kind, name) do nothing;
 
-insert into public.sessau_names (kind, name)
-select 'surname', n from unnest(array[
+insert into public.nation_names (nation_id, kind, name)
+select 'sessau', 'surname', n from unnest(array[
   'Bernard','Thomas','Petit','Robert','Richard','Durand','Dubois','Moreau','Laurent',
   'Simon','Michel','Lefebvre','Leroy','Roux','David','Bertrand','Morel','Fournier',
   'Girard','Bonnet','Fontaine','Rousseau','Vincent','Muller','Faure','Lambert',
@@ -33,4 +33,4 @@ select 'surname', n from unnest(array[
   'Cohen','Payet','Pelletier','Lucas','Henry','Martinez','Vidal','Gautier','Mouton',
   'Lacroix','Denis','Carlier','Marchand','Aubert','Perrot','Boucher'
 ]) as n
-on conflict (kind, name) do nothing;
+on conflict (nation_id, kind, name) do nothing;
