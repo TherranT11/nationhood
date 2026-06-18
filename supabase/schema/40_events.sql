@@ -175,3 +175,67 @@ begin
 end $$;
 
 grant execute on function public.party_fundraise() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- party_attack(target): the ATTACK leader action. 1d6 + the attacker's Acumen vs
+-- the target's Resolve (both = the respective Party Leader's stat). Beat it and
+-- the margin ÷3 is cut from the target's popularity, down to their floor (never
+-- below). Miss (don't beat it) and it backfires: −1% the attacker's OWN
+-- popularity. A natural 1 also costs the attacker −1% (not stacked with the miss).
+-- ₣25K + 1 action. The target cut is a single atomic UPDATE (greatest(...,floor))
+-- so it's race-safe without locking the target row (no cross-row deadlock).
+-- ---------------------------------------------------------------------------
+create or replace function public.party_attack(p_target uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_acu int; v_res int; v_roll int; v_total int;
+  v_margin numeric; v_cut numeric := 0; v_self_pen int; v_p_newpop numeric;
+  v_cost bigint := 25000; v_hit boolean; v_tier text; v_body text;
+  v_tname text; v_tnation text; v_toldpop numeric; v_tnewpop numeric;
+begin
+  v_p := public._begin_action(v_cost);  -- attacker locked + checked
+  select name, nation_id, popularity into v_tname, v_tnation, v_toldpop from public.parties where id = p_target;
+  if not found then raise exception 'No such party.'; end if;
+  if p_target = v_p.id then raise exception 'You can''t attack your own party.'; end if;
+  if v_tnation <> v_p.nation_id then raise exception 'That party isn''t in your nation.'; end if;
+
+  select coalesce(acu, 0) into v_acu from public.politicians where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
+  v_acu := coalesce(v_acu, 0);
+  select coalesce(res, 0) into v_res from public.politicians where party_id = p_target and status = 'Party Leader' order by created_at limit 1;
+  v_res := coalesce(v_res, 0);
+
+  v_roll  := floor(random() * 6)::int + 1;
+  v_total := v_roll + v_acu;
+  v_margin := v_total - v_res;
+  v_hit   := v_margin > 0;
+  v_tier  := public._action_tier(v_total);
+  v_self_pen := case when (not v_hit) or v_roll = 1 then 1 else 0 end;  -- miss or nat-1 → −1% own pop (not stacked)
+
+  if v_hit then
+    v_cut := round(v_margin / 3.0, 1);
+    update public.parties set popularity = greatest(popularity - v_cut, pop_floor)
+      where id = p_target returning popularity into v_tnewpop;
+    v_cut := v_toldpop - v_tnewpop;  -- actual amount removed after the floor clamp
+  end if;
+  v_p_newpop := greatest(v_p.popularity - v_self_pen, v_p.pop_floor);
+
+  if v_hit then
+    v_body := 'The ' || v_p.name || ' went after the ' || v_tname || '''s record' || case v_tier
+      when 'strong' then ', and the hit landed clean — the press ran with it and the ' || v_tname || ' scrambled to respond.'
+      else '. The charge stuck well enough to leave a mark.'
+    end || ' ' || v_tname || ' popularity −' || trim(to_char(v_cut, 'FM990.0')) || '%.';
+  else
+    v_body := 'The ' || v_p.name || ' tried to smear the ' || v_tname || ', but the attack rebounded — the line didn''t land, and it was the ' || v_p.name || ' that looked desperate. Popularity −' || trim(to_char(v_self_pen::numeric, 'FM990.0')) || '%.';
+  end if;
+
+  update public.parties set popularity = v_p_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'attack', v_body, 'January, 1980');
+
+  return jsonb_build_object('hit', v_hit, 'cut', v_cut, 'self_penalty', v_self_pen, 'target', v_tname, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+end $$;
+
+grant execute on function public.party_attack(uuid) to authenticated;

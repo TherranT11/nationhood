@@ -93,6 +93,22 @@
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+  /* Attack target picker */
+  .amodal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(21,21,27,.45)}
+  .amodal[hidden]{display:none}
+  .amodal__panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;width:100%;max-width:480px;max-height:84vh;overflow:auto;box-shadow:0 30px 70px -30px rgba(0,0,0,.5)}
+  .amodal__hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px 13px;border-bottom:1px solid var(--line)}
+  .amodal__hd b{font-weight:900;font-size:17px;letter-spacing:-.02em}
+  .amodal__x{background:none;border:none;font-size:23px;line-height:1;color:var(--soft);cursor:pointer;padding:0 4px}
+  .amodal__x:hover{color:var(--ink)}
+  .amodal__list{padding:13px 20px 18px;display:flex;flex-direction:column;gap:8px}
+  .amodal__list .empty{color:var(--soft);font-style:italic;font-size:13.5px}
+  .atarget{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
+  .atarget:hover{border-color:var(--indigo)}
+  .atarget__id b{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
+  .atarget__id span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;color:var(--soft);margin-left:6px}
+  .atarget__st{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;text-align:right}
+
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
   .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
   .feed__evt{font-size:15.5px;color:var(--muted);line-height:1.55}
@@ -145,7 +161,7 @@
         <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: ₣25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
         <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: ₣25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
         <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×₣15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" type="button" disabled><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span></button>
+        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: ₣25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
         <button class="lead" type="button" disabled><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span></button>
         <button class="lead" type="button" disabled><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span></button>
         <button class="lead" type="button" disabled><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span></button>
@@ -172,6 +188,13 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="amodal" id="attackModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Attack a Rival</b><button class="amodal__x" id="attackClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="attackList"></div>
+  </div>
+</div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
@@ -238,7 +261,7 @@
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
-  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [];
+  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null;
   function setActions(n) {
     partyActions = n;
     document.getElementById('tbActions').textContent = 'Party Actions: ' + n + ' Available';
@@ -269,6 +292,55 @@
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +₣' + (d.funds_gain / 1000) + 'K.'; });
+
+  // ATTACK targets a rival → open a picker (all other parties, with seats +
+  // popularity), then call party_attack(targetId). Shares the action lock/budget.
+  var attackBtn = document.getElementById('act-attack');
+  var attackModal = document.getElementById('attackModal');
+  if (attackBtn) {
+    actionBtns.push(attackBtn);
+    attackBtn.addEventListener('click', openAttackModal);
+  }
+  async function openAttackModal() {
+    if (acting || attackBtn.disabled || !feedCtx) return;
+    var list = document.getElementById('attackList');
+    list.innerHTML = '<p class="empty">Loading rivals…</p>';
+    attackModal.hidden = false;
+    try {
+      const { data: rivals } = await supabase.from('parties')
+        .select('id, name, abbreviation, seats, popularity')
+        .eq('nation_id', feedCtx.nationId).neq('id', myPartyId).order('seats', { ascending: false });
+      var r = rivals || [];
+      if (!r.length) { list.innerHTML = '<p class="empty">No rival parties to attack yet.</p>'; return; }
+      list.innerHTML = r.map(function (p) {
+        return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
+          '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
+          '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% pop</span></button>';
+      }).join('');
+      list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { runAttack(b.dataset.id); }); });
+    } catch (e) { list.innerHTML = '<p class="empty">Couldn’t load rivals.</p>'; }
+  }
+  function closeAttackModal() { attackModal.hidden = true; }
+  async function runAttack(targetId) {
+    if (acting) return;
+    acting = true; attackBtn.disabled = true; closeAttackModal();
+    try {
+      const { data, error } = await supabase.rpc('party_attack', { p_target: targetId });
+      if (error) { ping(error.message || 'Attack failed.'); setActions(partyActions); return; }
+      setActions(data.actions);
+      if (feedCtx) await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
+      ping(data.hit
+        ? ('Hit — ' + data.target + ' popularity −' + data.cut + '%' + (data.self_penalty ? ' (−' + data.self_penalty + '% you)' : '') + '.')
+        : ('Backfired — your popularity −' + data.self_penalty + '%.'));
+    } catch (e) { ping('Attack failed. Try again.'); setActions(partyActions); }
+    finally { acting = false; }
+  }
+  if (attackModal) {
+    document.getElementById('attackClose').addEventListener('click', closeAttackModal);
+    attackModal.addEventListener('click', function (e) { if (e.target === attackModal) closeAttackModal(); });
+    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !attackModal.hidden) closeAttackModal(); });
+  }
+
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
@@ -295,6 +367,7 @@
       setActions(party.actions_remaining != null ? party.actions_remaining : 3);
       var gameDate = ((document.querySelector('.tb-date__v') || {}).textContent || 'January, 1980').trim();
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
+      myPartyId = party.id;  // used to exclude self from the attack target list
       await loadFeed(party.nation_id, nation, gameDate);
 
       if (nation && nation.flag) {
