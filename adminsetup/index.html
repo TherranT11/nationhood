@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Admin Setup · Nationhood</title>
+<link rel="stylesheet" href="/site.css">
+<style>
+  body{margin:0;background:#fff;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .wrap2{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+  h1{font-size:clamp(24px,4vw,32px);letter-spacing:-.03em;font-weight:800;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 28px}
+
+  /* login card */
+  .login{max-width:380px;margin:8vh auto 0;border:1px solid var(--line);border-radius:16px;padding:28px 26px}
+  .login h1{margin-bottom:6px}
+  label{display:block;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--muted);margin:14px 0 6px}
+  input,textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14.5px;font-family:inherit;background:#fff;color:var(--ink)}
+  input:focus,textarea:focus{outline:none;border-color:var(--ink)}
+  textarea{resize:vertical;min-height:64px}
+  .note{margin-top:14px;font-size:13.5px;color:var(--muted);min-height:18px}
+  .note.error{color:var(--err)}
+  .note.ok{color:#16915a}
+  .btn-full{width:100%;padding:12px;font-size:15px;margin-top:18px}
+
+  /* admin shell */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .who{font-size:13px;color:var(--muted)}
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:22px}
+  .tab{padding:10px 16px;font-size:13.5px;font-weight:700;color:var(--indigo);border-bottom:2px solid var(--indigo)}
+
+  .panel{border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-bottom:22px}
+  .panel h2{font-size:15px;font-weight:800;letter-spacing:-.01em;margin:0 0 14px}
+
+  /* existing nations */
+  .ncard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .ncard:last-child{margin-bottom:0}
+  .ncard__name{font-size:17px;font-weight:800;letter-spacing:-.01em}
+  .ncard__id{font-size:12px;color:#9a9a9a;font-weight:600;margin-left:8px}
+  .ncard__analog{font-style:italic;color:var(--muted);font-size:13px;margin-top:2px}
+  .ncard__desc{color:var(--muted);font-size:13.5px;line-height:1.5;margin:6px 0 0}
+  .ncard__stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 14px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+  .kv{font-size:12.5px}
+  .kv .k{color:#9a9a9a;display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .kv .v{font-weight:700}
+  .empty{color:#9a9a9a;font-style:italic;font-size:13.5px}
+
+  /* add form */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 16px}
+  .grid .full{grid-column:1/-1}
+  @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
+</style>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div class="login" id="loginView" hidden>
+    <h1>Admin Setup</h1>
+    <p class="sub">Sign in with the admin account to manage nations.</p>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-solid btn-full" type="submit" id="signIn">Sign In</button>
+      <div class="note" id="loginNote" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+
+  <!-- ADMIN -->
+  <div class="wrap2" id="adminView" hidden>
+    <div class="topbar">
+      <div><h1>Admin Setup</h1><p class="sub" style="margin:0">Manage the game worlds.</p></div>
+      <div style="text-align:right"><div class="who" id="who"></div><button class="btn btn-ghost" id="logout" type="button" style="margin-top:6px">Log out</button></div>
+    </div>
+    <div class="tabs"><span class="tab">Nations</span></div>
+
+    <div class="panel">
+      <h2>Existing Nations</h2>
+      <div id="nationList"><p class="empty">Loading…</p></div>
+    </div>
+
+    <div class="panel">
+      <h2>Add Nation</h2>
+      <form id="addForm">
+        <div class="grid">
+          <div class="full"><label for="f-name">Name</label><input id="f-name" type="text" required></div>
+          <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
+          <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
+          <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="1"></div>
+          <div><label for="f-gdp">Starting GDP</label><input id="f-gdp" type="number" min="0" step="1"></div>
+          <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
+          <div><label for="f-welfare">Starting Welfare</label><input id="f-welfare" type="number" step="1"></div>
+          <div><label for="f-growth">Starting Growth</label><input id="f-growth" type="number" step="1"></div>
+          <div><label for="f-image">Starting Image</label><input id="f-image" type="number" step="1"></div>
+          <div><label for="f-order">Starting Order</label><input id="f-order" type="number" step="1"></div>
+          <div><label for="f-unemployment">Starting Unemployment</label><input id="f-unemployment" type="number" step="0.1"></div>
+          <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
+          <div><label for="f-budget">Starting Budget</label><input id="f-budget" type="number" step="0.1"></div>
+          <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
+        </div>
+        <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
+        <div class="note" id="addNote" role="status" aria-live="polite"></div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase, isConfigured } from '/supabase.js';
+    import { esc } from '/util.js';
+
+    var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
+    var loginView = document.getElementById('loginView');
+    var adminView = document.getElementById('adminView');
+    var loginNote = document.getElementById('loginNote');
+    var addNote = document.getElementById('addNote');
+
+    function isAdmin(user) { return !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL; }
+    function show(view) { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; }
+
+    // Decide which view to show from the current session.
+    async function refresh() {
+      if (!isConfigured) { show('login'); loginNote.textContent = 'Auth isn’t connected yet.'; loginNote.className = 'note error'; return; }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && isAdmin(session.user)) {
+          document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
+          show('admin');
+          loadNations();
+        } else if (session) {
+          // Signed in, but not the admin account. Don't sign them out (that would
+          // silently end a normal player's game session) — just say so; signing
+          // in as the admin below will replace the session.
+          show('login');
+          loginNote.textContent = 'This account isn’t the admin — sign in with the admin account.';
+          loginNote.className = 'note error';
+        } else {
+          show('login');
+        }
+      } catch (e) { show('login'); }
+    }
+
+    document.getElementById('loginForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('signIn');
+      loginNote.textContent = ''; loginNote.className = 'note';
+      var email = document.getElementById('email').value.trim();
+      var password = document.getElementById('password').value;
+      if (!email || !password) return;
+      btn.disabled = true;
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email: email, password: password });
+        if (error) { loginNote.textContent = error.message || 'Sign-in failed.'; loginNote.className = 'note error'; return; }
+        await refresh();
+      } catch (e) { loginNote.textContent = 'Sign-in failed. Try again.'; loginNote.className = 'note error'; }
+      finally { btn.disabled = false; }
+    });
+
+    document.getElementById('logout').addEventListener('click', async function () {
+      try { await supabase.auth.signOut(); } catch (e) { /* ignore */ }
+      await refresh();
+    });
+
+    // Population/GDP shown raw-ish but compact in the existing list.
+    function fmtBig(n) {
+      n = Number(n) || 0;
+      if (n >= 1e12) return (Math.round(n / 1e11) / 10) + 'T';
+      if (n >= 1e9) return (Math.round(n / 1e8) / 10) + 'B';
+      if (n >= 1e6) return (Math.round(n / 1e5) / 10) + 'M';
+      return n.toLocaleString();
+    }
+    function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + esc(String(v)) + '</span></div>'; }
+
+    async function loadNations() {
+      var box = document.getElementById('nationList');
+      try {
+        const { data, error } = await supabase.from('nations').select('*').order('created_at', { ascending: true });
+        if (error) throw error;
+        var list = data || [];
+        if (!list.length) { box.innerHTML = '<p class="empty">No nations yet.</p>'; return; }
+        box.innerHTML = list.map(function (n) {
+          var s = n.stats || {}, e = n.economy || {};
+          var cur = e.currency || '';
+          return '<div class="ncard">' +
+            '<div class="ncard__name">' + esc(n.name || '') + '<span class="ncard__id">' + esc(n.id || '') + '</span></div>' +
+            (n.analogous ? '<div class="ncard__analog">' + esc(n.analogous) + '</div>' : '') +
+            (n.description ? '<div class="ncard__desc">' + esc(n.description) + '</div>' : '') +
+            '<div class="ncard__stats">' +
+              kv('Population', fmtBig(n.population)) + kv('GDP', cur + fmtBig(n.gdp)) +
+              kv('Prosperity', s.prosperity != null ? s.prosperity : '—') +
+              kv('Welfare', s.welfare != null ? s.welfare : '—') +
+              kv('Growth', s.growth != null ? s.growth : '—') +
+              kv('Image', s.image != null ? s.image : '—') +
+              kv('Order', s.order != null ? s.order : '—') +
+              kv('Unemployment', e.unemployment != null ? e.unemployment + '%' : '—') +
+              kv('Inflation', e.inflation != null ? e.inflation + '%' : '—') +
+              kv('Budget', e.budget != null ? e.budget : '—') +
+              kv('Debt', e.debt != null ? e.debt : '—') +
+            '</div></div>';
+        }).join('');
+      } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load nations.</p>'; }
+    }
+
+    // Build a stable id from the name: lowercase, alphanumeric, hyphenated.
+    function slugify(s) { return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+    function num(id, float) {
+      var raw = document.getElementById(id).value.trim();
+      if (raw === '') return 0;
+      var v = float ? parseFloat(raw) : parseInt(raw, 10);
+      return isNaN(v) ? 0 : v;
+    }
+
+    document.getElementById('addForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('addBtn');
+      addNote.textContent = ''; addNote.className = 'note';
+      var name = document.getElementById('f-name').value.trim();
+      var id = slugify(name);
+      if (!name || !id) { addNote.textContent = 'Enter a nation name.'; addNote.className = 'note error'; return; }
+
+      var row = {
+        id: id, name: name,
+        description: document.getElementById('f-desc').value.trim() || null,
+        analogous: document.getElementById('f-analog').value.trim() || null,
+        population: num('f-pop'), gdp: num('f-gdp'),
+        stats: {
+          prosperity: num('f-prosperity'), welfare: num('f-welfare'), growth: num('f-growth'),
+          image: num('f-image'), order: num('f-order')
+        },
+        // Currency/regime/legislature/flag aren't captured by this form yet — they
+        // take the column defaults (currency falls back to '$' for display).
+        economy: {
+          unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
+          budget: num('f-budget', true), debt: num('f-debt', true), currency: '$'
+        }
+      };
+
+      btn.disabled = true;
+      try {
+        const { error } = await supabase.from('nations').insert(row);
+        if (error) {
+          addNote.textContent = /duplicate|already exists|unique/i.test(error.message)
+            ? 'A nation with that name already exists.'
+            : (/(policy|permission|row-level)/i.test(error.message) ? 'Only the admin can add nations.' : (error.message || 'Couldn’t add the nation.'));
+          addNote.className = 'note error';
+          return;
+        }
+        addNote.textContent = 'Added “' + name + '”. It’s now joinable on the nation-select screen.';
+        addNote.className = 'note ok';
+        e.target.reset();
+        loadNations();
+      } catch (e) { addNote.textContent = 'Couldn’t add the nation. Try again.'; addNote.className = 'note error'; }
+      finally { btn.disabled = false; }
+    });
+
+    refresh();
+  </script>
+</body>
+</html>
