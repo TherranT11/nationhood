@@ -53,6 +53,13 @@
   .mod__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:16px}
   .empty{color:var(--soft);font-style:italic;font-size:13.5px}
 
+  /* tutorial coach bubble (matches the Party screen) */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0;max-width:64ch}
+  .coach b{font-weight:800}
+
   /* hero */
   .hero{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
   .hero__pic{width:62px;height:62px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;background:var(--indigo-soft);color:var(--indigo);font-family:'Space Mono',monospace}
@@ -111,6 +118,7 @@
   .modal__cancel:hover{border-color:var(--ink)}
   .modal__confirm{background:var(--indigo);color:#fff;border:none}
   .modal__confirm:disabled{background:#cfcdc7;cursor:default}
+  .modal__body{padding:18px 22px;font-size:14.5px;line-height:1.6;color:var(--muted)}
 
   /* actions */
   .acts{display:flex;gap:12px;flex-wrap:wrap}
@@ -157,6 +165,14 @@
     <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Your Party</span>
     <div id="content"><section class="mod"><p class="empty">Loading…</p></section></div>
   </main>
+</div>
+
+<div class="modal" id="endModal" hidden>
+  <div class="modal__panel" style="max-width:480px">
+    <div class="modal__hd"><div><div class="kicker">Tutorial Complete</div><h2>That's the basics</h2></div></div>
+    <div class="modal__body">Now you have a basic understanding of running a party, forming a government, using your politicians, and voting on and proposing bills.</div>
+    <div class="modal__ft"><button class="modal__confirm" id="endBtn" type="button">End Tutorial</button></div>
+  </div>
 </div>
 
 <div class="modal" id="taskModal" hidden>
@@ -212,6 +228,7 @@
       '<div class="stile age"><span class="l">Exp</span><span class="v">'+p.exp+'</span></div>'+
       p.stats.map(function(v,i){return '<div class="stile'+(v===mx?' max':'')+'"><span class="l">'+SL[i]+'</span><span class="v">'+v+'</span></div>';}).join('');
     document.getElementById('content').innerHTML=
+      '<div id="coachSlot"></div>'+
       '<section class="mod"><div class="hero">'+
         '<span class="hero__pic">'+initials(p.name)+'</span>'+
         '<div class="hero__id"><div class="kicker">Prominent Politician</div><h1>'+esc(p.name)+'</h1>'+
@@ -230,7 +247,18 @@
   // The Current Task panel: occupied ministers show their post; a free member with
   // an active task shows its (hidden-length) progress graph; otherwise an Assign
   // button opens the task picker.
+  // Advise the player to assign a task — shown for a free member with no task yet,
+  // once the saved state has loaded (so it never flashes for an already-tasked one).
+  function renderCoach(){
+    var slot=document.getElementById('coachSlot'); if(!slot||!currentPerson) return;
+    var p=currentPerson;
+    if(ready && !p.busy && !allTasks[param]){
+      slot.innerHTML='<div class="coach"><div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>'+
+        '<p>This is <b>'+esc(p.name)+'</b>\'s page. Put them to work — <b>assign them a task</b> below to start directing your party members.</p></div>';
+    } else { slot.innerHTML=''; }
+  }
   function renderTaskSection(){
+    renderCoach();
     var sec=document.getElementById('taskSection'); if(!sec||!currentPerson) return;
     var p=currentPerson;
     if(p.busy){ sec.innerHTML='<div class="task"><span class="task__v set">Occupied · '+esc(p.busy)+'</span></div>'; return; }
@@ -279,8 +307,10 @@
     if(!ok){ confirmBtn.disabled=false; ping('Could not assign — please try again.'); return; }
     allTasks=newTasks; currentActions=left;
     renderPartyActions(left); renderTaskSection(); closeModal();
-    ping('<b>'+esc(currentPerson.name)+'</b> → '+esc(def.name)+' (−'+def.cost+' Action'+(def.cost>1?'s':'')+').');
+    // Assigning a task is the final tutorial beat: wrap up with the end modal.
+    document.getElementById('endModal').hidden=false;
   });
+  document.getElementById('endBtn').addEventListener('click',function(){ window.location.href='/test/'; });
   document.getElementById('taskCancel').addEventListener('click',closeModal);
   document.getElementById('taskClose').addEventListener('click',closeModal);
   modal.addEventListener('click',function(e){ if(e.target===modal) closeModal(); });
