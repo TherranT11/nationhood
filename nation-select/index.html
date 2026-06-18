@@ -84,7 +84,7 @@
   <script type="module">
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
     import { statLabel, statBand } from '/ladders.js';
-    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES } from '/util.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -111,7 +111,7 @@
       var stats = n.stats || {};
       var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
       var rows = '<div class="nstat"><span class="k">Population</span><span class="v">' + fmtBig(n.population) + '</span></div>' +
-        '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtBig(n.gdp) + '</span></div>';
+        '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtGdp(n.gdp) + '</span></div>';
       LADDER_STATS.forEach(function (k) {
         var v = stats[k];
         if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="v tbd">—</span></div>'; return; }
@@ -128,7 +128,7 @@
         '<div class="nation-body">' +
           '<h2 class="nation-name">' + esc(n.name || 'Unknown') + '</h2>' +
           (n.description ? '<p class="nation-desc">' + esc(n.description) + '</p>' : '') +
-          (n.analogous ? '<p class="nation-analog">' + esc(n.analogous) + '</p>' : '') +
+          (n.analogous ? '<p class="nation-analog">Analogous to: ' + esc(n.analogous) + '</p>' : '') +
           '<div class="nstats">' + statsHTML(n) + '</div>' +
           '<div class="plist"></div>' +
           '<button class="btn btn-solid nation-join">Join Nation</button>' +

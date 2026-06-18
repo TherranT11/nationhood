@@ -20,3 +20,12 @@ export const COMPETENCIES = [
   { key: 'res', name: 'Resolve',  abbr: 'Res' },
   { key: 'com', name: 'Command',  abbr: 'Com' },
 ];
+
+// GDP is stored as a number of BILLIONS (one source for the scale). Show it as
+// "<n> Billion", or convert to trillions once it passes 999 billion. Display
+// only — prefix the nation's currency symbol at the call site.
+export function fmtGdp(value) {
+  var n = Number(value) || 0;
+  if (n > 999) return (Math.round(n / 1000 * 100) / 100) + ' Trillion'; // >999B → trillions, 2 dp
+  return n.toLocaleString() + ' Billion';
+}
