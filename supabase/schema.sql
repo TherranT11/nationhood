@@ -201,6 +201,8 @@ create table if not exists public.parties (
   -- logic moves these later. They live here so each page reads one source.
   seats         int     not null default 0,     -- seats held in the legislature
   popularity    int     not null default 0,     -- public support, %
+  pop_floor     int     not null default 0,     -- support floor: the base attacks can't push below, %
+  pop_ceiling   int     not null default 5,     -- support ceiling: current reach / cap on popularity, %
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
   created_at   timestamptz not null default now(),
@@ -210,6 +212,8 @@ create table if not exists public.parties (
 alter table public.parties add column if not exists abbreviation text;
 alter table public.parties add column if not exists seats int not null default 0;
 alter table public.parties add column if not exists popularity int not null default 0;
+alter table public.parties add column if not exists pop_floor int not null default 0;
+alter table public.parties add column if not exists pop_ceiling int not null default 5;
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
 
