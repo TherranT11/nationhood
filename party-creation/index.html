@@ -112,7 +112,7 @@
     // Which nation are we founding a party in? (?nation=<id>, default sessau.)
     var nationId = new URLSearchParams(location.search).get('nation') || 'sessau';
     // One-party state: set when the nation has a ruling party (you join as a faction).
-    var isOneParty = false, rulingName = '', noun = 'party';
+    var rulingName = '', noun = 'party';
 
     var selected = null;
     var pname = document.getElementById('pname');
@@ -159,7 +159,7 @@
       try {
         const { data } = await supabase.from('nations').select('name, ruling_party').eq('id', nationId).maybeSingle();
         if (!data || !data.ruling_party) return;
-        isOneParty = true; rulingName = data.ruling_party; noun = 'faction';
+        rulingName = data.ruling_party; noun = 'faction';
         var b = document.getElementById('onepartyBanner');
         b.innerHTML = 'The nation of <b>' + esc(data.name || 'this nation') + '</b> is a one-party state. New political parties are not legally viable — if you join, you do so as a <b>caucus / faction of ' + esc(rulingName) + '</b>. Name your faction and choose an archetype; its members are those who support that line.';
         b.hidden = false;
