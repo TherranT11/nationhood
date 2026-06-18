@@ -1,0 +1,76 @@
+-- 20 · Parties (a player's party within a nation) + RLS + write-scope lock
+-- Depends on: 10 (nations), auth.users. Run after 10.
+
+-- ---------------------------------------------------------------------------
+-- Parties: a player's party within a nation. One per player for now (unique
+-- user_id). Public read — the roster is shared game data, and this single
+-- multiplayer instance shows every party in a nation to everyone (the active
+-- count + list are derived from these rows). A player may write only their own
+-- row. The 8-per-nation cap is currently enforced on the client; a race-proof
+-- cap would need a server-side check (a trigger/function — deliberately not
+-- added here without sign-off, to avoid hidden automation).
+-- ---------------------------------------------------------------------------
+create table if not exists public.parties (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  nation_id    text not null references public.nations (id),
+  name         text not null,
+  abbreviation text not null,
+  archetype    text not null,
+  -- Starting standings. A brand-new party begins at zero on every count; game
+  -- logic moves these later. They live here so each page reads one source.
+  seats         int     not null default 0,     -- seats held in the legislature
+  popularity    numeric not null default 0,     -- public support, % (fractional — actions move it in tenths)
+  pop_floor     int     not null default 0,     -- support floor: the base attacks can't push below, %
+  pop_ceiling   int     not null default 5,     -- support ceiling: current reach / cap on popularity, %
+  funds         bigint  not null default 0,      -- party treasury, in the nation's currency
+  in_government boolean not null default false, -- governing vs in opposition
+  actions_remaining int not null default 3,     -- party actions left this turn (no auto-reset until the turn system exists)
+  created_at   timestamptz not null default now(),
+  unique (user_id)
+);
+-- For installs created before these columns existed.
+alter table public.parties add column if not exists abbreviation text;
+alter table public.parties add column if not exists seats int not null default 0;
+alter table public.parties add column if not exists popularity numeric not null default 0;
+alter table public.parties alter column popularity type numeric using popularity::numeric; -- widen int → numeric for fractional support
+alter table public.parties add column if not exists pop_floor int not null default 0;
+alter table public.parties add column if not exists pop_ceiling int not null default 5;
+alter table public.parties add column if not exists funds bigint not null default 0;
+alter table public.parties add column if not exists in_government boolean not null default false;
+alter table public.parties add column if not exists actions_remaining int not null default 3;
+
+-- No two parties in the same nation may share a name (case-insensitive) or an
+-- abbreviation — enforced server-side, not just in the client.
+create unique index if not exists parties_nation_name_uniq on public.parties (nation_id, lower(name));
+create unique index if not exists parties_nation_abbr_uniq on public.parties (nation_id, upper(abbreviation));
+
+alter table public.parties enable row level security;
+
+drop policy if exists "parties_select_all" on public.parties;
+create policy "parties_select_all" on public.parties for select using (true);
+
+drop policy if exists "parties_insert_own" on public.parties;
+create policy "parties_insert_own" on public.parties for insert with check (auth.uid() = user_id);
+
+-- The update policy also carries a WITH CHECK so a player can't reassign their
+-- party to someone else (user_id must stay the caller's) — needed because the
+-- founding upsert's DO UPDATE may re-set user_id.
+drop policy if exists "parties_update_own" on public.parties;
+create policy "parties_update_own" on public.parties for update
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "parties_delete_own" on public.parties;
+create policy "parties_delete_own" on public.parties for delete using (auth.uid() = user_id);
+
+-- Write-scope lock (column-level). RLS gates WHICH row a player can touch; these
+-- grants gate WHICH columns. The standings — seats, popularity, pop_floor,
+-- pop_ceiling, funds, in_government — are GAME-CONTROLLED, so they are left out
+-- of the client's insert/update privileges entirely: a crafted request can no
+-- longer set e.g. popularity = 100. Only the identity fields the founding flow
+-- writes are granted (user_id is included so the upsert's DO UPDATE works; the
+-- WITH CHECK above keeps it pinned to the caller). When standings start changing
+-- server-side, do it via a service-role path (which bypasses these grants).
+revoke insert, update on public.parties from authenticated;
+grant insert (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
+grant update (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;

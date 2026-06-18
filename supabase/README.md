@@ -1,0 +1,36 @@
+# Supabase setup
+
+All SQL lives here, split by domain so no one file grows unwieldy. Everything is
+**idempotent** — safe to re-run. Paste each file into the Supabase SQL Editor
+(Dashboard → SQL Editor → New query) and run it.
+
+## Run order
+
+Structure first (`schema/`, in numeric order — the numbers encode dependencies),
+then the seed data (`seed/`):
+
+```
+schema/00_profiles.sql      profiles, tutorial_state, tutorial_merge(), auth trigger
+schema/10_nations.sql       nations table + Sessau seed
+schema/20_parties.sql       parties table, RLS, column-level write lock
+schema/30_politicians.sql   politicians table + RLS
+schema/40_events.sql        events feed table + leader-action functions (party_rally)
+schema/50_names.sql         sessau_names table (structure only)
+
+seed/sessau_names.sql           the name pool rows (run once, after 50)
+seed/backfill_party_leaders.sql one-off: give existing partyless parties a leader
+```
+
+A fresh database: run `schema/00 → 50`, then `seed/sessau_names.sql`. The backfill
+is only needed for parties created before the leader generator existed.
+
+## Conventions
+
+- **Structure vs data.** `schema/` holds tables, policies, functions. Bulk rows
+  (name pools, future lists) go in `seed/` so the structure stays readable.
+- **One file per domain.** New domain → new numbered file (e.g. `60_legislation.sql`),
+  numbered after whatever it depends on.
+- **Idempotent.** `create table if not exists`, `drop policy if exists` then
+  `create`, `on conflict do nothing`, guarded backfills — re-running is always safe.
+- **Game-controlled columns** (standings, stats) are not client-writable: they're
+  changed only by `security definer` functions, never granted to `authenticated`.

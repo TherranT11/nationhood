@@ -1,7 +1,7 @@
 -- Seed data: the Sessau name pool.
 --
--- Bulk reference data kept out of schema.sql so the schema stays structure-only.
--- Run this once in the Supabase SQL Editor AFTER supabase/schema.sql has created
+-- Bulk reference data kept out of schema/ so the structure stays readable.
+-- Run this once in the Supabase SQL Editor AFTER schema/50_names.sql has created
 -- public.sessau_names. Idempotent: unique (kind, name) + on-conflict-do-nothing
 -- make re-runs (and edits to these lists) safe to apply again.
 
