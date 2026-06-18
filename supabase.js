@@ -61,6 +61,18 @@ export async function currentParty() {
   }
 }
 
+// The shared game clock's current tick — one source for "now" (one tick = one
+// month, tick 1 = January 1980). Defaults to 1 if unavailable.
+export async function currentTick() {
+  if (!isConfigured) return 1;
+  try {
+    const { data } = await supabase.from('game_state').select('current_tick').maybeSingle();
+    return (data && data.current_tick != null) ? data.current_tick : 1;
+  } catch (err) {
+    return 1;
+  }
+}
+
 // Delete the signed-in player's party and everything that cascades from it —
 // politicians, the recruit drive, and its events (the DB FKs handle the cascade;
 // seats/funds/popularity are columns on the party row). RLS lets a player delete
