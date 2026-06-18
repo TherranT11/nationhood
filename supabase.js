@@ -60,3 +60,19 @@ export async function currentParty() {
     return null;
   }
 }
+
+// Delete the signed-in player's party and everything that cascades from it —
+// politicians, the recruit drive, and its events (the DB FKs handle the cascade;
+// seats/funds/popularity are columns on the party row). RLS lets a player delete
+// only their own party. The session is left intact (the player stays logged in).
+export async function deleteParty() {
+  if (!isConfigured) return { error: { message: 'Not connected.' } };
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { error: { message: 'Not signed in.' } };
+    return await supabase.from('parties').delete().eq('user_id', session.user.id);
+  } catch (err) {
+    return { error: { message: 'Delete failed.' } };
+  }
+}
+
