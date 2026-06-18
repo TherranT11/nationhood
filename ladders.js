@@ -15,3 +15,13 @@ export function statLabel(stat, value) {
   const i = Math.min(rung.length, Math.max(1, Math.round(value))) - 1; // clamp into range
   return rung[i];
 }
+
+// Colour band for a stat value — the single source for how a number maps to
+// good/warn/bad, shared by every nation view. Growth has its own thresholds
+// (contracting → bad, around the flat 10 midpoint → warn, strong → good); the
+// other ladders just turn 'good' once they're in the upper half. '' = neutral.
+export function statBand(stat, value) {
+  if (typeof value !== 'number') return '';
+  if (stat === 'growth') return value >= 13 ? 'good' : value >= 10 ? 'warn' : 'bad';
+  return value >= 11 ? 'good' : '';
+}

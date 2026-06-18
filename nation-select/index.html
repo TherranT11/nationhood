@@ -93,7 +93,7 @@
 
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
-    import { statLabel } from '/ladders.js';
+    import { statLabel, statBand } from '/ladders.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -114,14 +114,6 @@
     }
     function trim(x) { return String(Math.round(x * 10) / 10); }
 
-    // Colour for a stat value. Growth has its own bands (contracting → red,
-    // around the 10 midpoint → amber, strong → green); the others just go green
-    // once they're strong (upper half).
-    function statClass(stat, v) {
-      if (stat === 'growth') return 'v ' + (v >= 13 ? 'good' : v >= 10 ? 'warn' : 'bad');
-      return 'v' + (v >= 11 ? ' good' : '');
-    }
-
     function render(n) {
       document.getElementById('nName').textContent = n.name || 'Unknown';
       document.getElementById('nDesc').textContent = n.description || '';
@@ -136,7 +128,7 @@
         var v = stats[k];
         if (typeof v !== 'number') { el.textContent = '—'; el.className = 'v tbd'; return; }
         el.textContent = statLabel(k, v) || '—';
-        el.className = statClass(k, v);
+        el.className = ('v ' + statBand(k, v)).trim();
       });
 
       // Flag, with a text fallback if the asset is missing.

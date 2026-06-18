@@ -120,7 +120,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { statLabel } from '/ladders.js';
+  import { statLabel, statBand } from '/ladders.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   // sidebar nav items aren't wired yet (online-game screens not built) — highlight only.
@@ -133,10 +133,6 @@
   // Nation at a Glance — same ladder stats + colour bands as /nation-select, so
   // the number is the one source and the word/colour are derived the same way.
   var GLANCE_STATS = ['prosperity', 'welfare', 'growth', 'order', 'image'];
-  function statClass(stat, v) {
-    if (stat === 'growth') return v >= 13 ? 'good' : v >= 10 ? 'warn' : 'bad';
-    return v >= 11 ? 'good' : '';
-  }
   function renderGlance(nation) {
     var snap = document.getElementById('snap');
     var stats = nation.stats || {};
@@ -147,7 +143,7 @@
       if (typeof v !== 'number') return;
       var name = k.charAt(0).toUpperCase() + k.slice(1);
       var label = statLabel(k, v) || '—';
-      chips.push(chip(name, '<span class="chip__t ' + statClass(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
+      chips.push(chip(name, '<span class="chip__t ' + statBand(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
     });
     if (eco.regime != null) chips.push(chip('Regime', '<span class="chip__t">' + esc(eco.regime) + '</span>'));
     if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
