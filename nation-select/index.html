@@ -12,10 +12,34 @@
     -webkit-font-smoothing: antialiased;
     min-height: 100vh; display: flex; flex-direction: column;
   }
-  .select { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 64px 24px; }
-  .select h1 { font-size: clamp(28px, 5vw, 40px); letter-spacing: -0.03em; font-weight: 800; margin: 0 0 12px; }
-  .select p { color: var(--muted); font-size: 16px; margin: 0 0 28px; max-width: 46ch; }
-  .select .btn { padding: 12px 22px; font-size: 15px; }
+  .select { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 48px 24px 72px; }
+  .select-head { text-align: center; margin-bottom: 26px; }
+  .select-head h1 { font-size: clamp(26px, 4.5vw, 36px); letter-spacing: -0.03em; font-weight: 800; margin: 0 0 8px; }
+  .select-head p { color: var(--muted); font-size: 15px; margin: 0; }
+
+  /* nation card */
+  .nation { width: 100%; max-width: 460px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
+  .nation-banner {
+    height: 132px; display: flex; align-items: center; justify-content: center;
+    background: repeating-linear-gradient(45deg, #fafafa, #fafafa 12px, #f3f3f3 12px, #f3f3f3 24px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nation-banner img { max-height: 96px; max-width: 80%; border: 1px solid var(--line); border-radius: 4px; }
+  .nation-banner .ph { color: #9a9a9a; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .nation-body { padding: 22px 22px 24px; }
+  .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+  .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 18px; }
+
+  .nstats { border-top: 1px solid var(--line); margin-bottom: 20px; }
+  .nstat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+  .nstat .k { color: var(--muted); font-size: 13.5px; }
+  .nstat .v { font-weight: 700; font-size: 14.5px; }
+  .nstat .v.tbd { color: var(--soft, #9a9a9a); font-weight: 400; }
+
+  .nation-join { width: 100%; padding: 13px; font-size: 15px; }
+  .note { margin-top: 12px; text-align: center; font-size: 13.5px; color: var(--muted); min-height: 18px; }
+
+  @media (max-width: 560px) { .select { padding: 32px 16px 56px; } }
 </style>
 </head>
 <body>
@@ -32,9 +56,46 @@
   </header>
 
   <main class="select">
-    <h1>Nation Select</h1>
-    <p>Choosing your nation isn't ready yet — this is where you'll found your party or corporation.</p>
-    <a class="btn btn-ghost" href="/home/" role="button">Back to Main Menu</a>
+    <div class="select-head">
+      <h1>Choose your nation</h1>
+      <p>Found your party or corporation in a living nation.</p>
+    </div>
+
+    <article class="nation">
+      <div class="nation-banner">
+        <img id="flag" src="/assets/Sessauflag.png" alt="Flag of Sessau">
+        <span class="ph" id="flagPh" hidden>Sessau</span>
+      </div>
+      <div class="nation-body">
+        <h2 class="nation-name">Sessau</h2>
+        <p class="nation-desc">A nation in Meridian, steeped in culture and history.</p>
+        <div class="nstats">
+          <div class="nstat"><span class="k">Population</span><span class="v">69 Million</span></div>
+          <div class="nstat"><span class="k">GDP</span><span class="v">678 Billion</span></div>
+          <div class="nstat"><span class="k">Prosperity</span><span class="v tbd">&mdash;</span></div>
+          <div class="nstat"><span class="k">Wealth</span><span class="v tbd">&mdash;</span></div>
+          <div class="nstat"><span class="k">Order</span><span class="v tbd">&mdash;</span></div>
+          <div class="nstat"><span class="k">Image</span><span class="v tbd">&mdash;</span></div>
+          <div class="nstat"><span class="k">Active Parties</span><span class="v">0</span></div>
+        </div>
+        <button class="btn btn-solid nation-join" id="join" type="button">Join Nation</button>
+        <div class="note" id="note" role="status" aria-live="polite"></div>
+      </div>
+    </article>
   </main>
+
+  <script>
+    // Flag falls back to a text placeholder if the image isn't there yet.
+    var flag = document.getElementById('flag');
+    flag.addEventListener('error', function () {
+      flag.style.display = 'none';
+      document.getElementById('flagPh').hidden = false;
+    });
+
+    // Joining a nation isn't wired yet — let the player know rather than dead-click.
+    document.getElementById('join').addEventListener('click', function () {
+      document.getElementById('note').textContent = 'Sessau opens to players soon — joining isn’t live yet.';
+    });
+  </script>
 </body>
 </html>
