@@ -18,7 +18,7 @@
   .select-head p { color: var(--muted); font-size: 15px; margin: 0; }
 
   /* nation card */
-  .nation { width: 100%; max-width: 460px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
+  .nation { flex: 1 1 340px; max-width: 440px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
   .nation-banner {
     min-height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden;
     background: repeating-linear-gradient(45deg, #fafafa, #fafafa 12px, #f3f3f3 12px, #f3f3f3 24px);
@@ -30,7 +30,7 @@
   .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
   .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 4px; }
   .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
-  .nations { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 22px; }
+  .nations { width: 100%; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 22px; }
 
   .nstats { border-top: 1px solid var(--line); margin-bottom: 20px; }
   .nstat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
@@ -84,7 +84,7 @@
   <script type="module">
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
     import { statLabel, statBand } from '/ladders.js';
-    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES } from '/util.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -111,7 +111,7 @@
       var stats = n.stats || {};
       var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
       var rows = '<div class="nstat"><span class="k">Population</span><span class="v">' + fmtBig(n.population) + '</span></div>' +
-        '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtBig(n.gdp) + '</span></div>';
+        '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtGdp(n.gdp) + '</span></div>';
       LADDER_STATS.forEach(function (k) {
         var v = stats[k];
         if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="v tbd">—</span></div>'; return; }
@@ -128,7 +128,7 @@
         '<div class="nation-body">' +
           '<h2 class="nation-name">' + esc(n.name || 'Unknown') + '</h2>' +
           (n.description ? '<p class="nation-desc">' + esc(n.description) + '</p>' : '') +
-          (n.analogous ? '<p class="nation-analog">' + esc(n.analogous) + '</p>' : '') +
+          (n.analogous ? '<p class="nation-analog">Analogous to: ' + esc(n.analogous) + '</p>' : '') +
           '<div class="nstats">' + statsHTML(n) + '</div>' +
           '<div class="plist"></div>' +
           '<button class="btn btn-solid nation-join">Join Nation</button>' +

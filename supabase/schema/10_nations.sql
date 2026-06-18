@@ -74,7 +74,7 @@ values (
   'A nation in Meridian, steeped in culture and history.',
   '/assets/Sessau.png',
   69000000,
-  678000000000,
+  678,
   280,
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
   '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"₶"}'::jsonb
@@ -90,3 +90,7 @@ update public.nations set economy = economy || '{"currency":"₶"}'::jsonb
  where id = 'sessau' and not (economy ? 'currency');
 update public.nations set legislature_seats = 280
  where id = 'sessau' and legislature_seats = 0;
+-- GDP is now stored in billions (was a raw figure). Migrate the legacy value
+-- once; the guard keeps a re-run from re-triggering after it's already 678.
+update public.nations set gdp = 678
+ where id = 'sessau' and gdp > 1000000;
