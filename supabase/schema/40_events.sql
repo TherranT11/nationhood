@@ -29,11 +29,12 @@ create policy "events_select_all" on public.events for select using (true);
 -- and the strong/middling/poor tiering live in the two helpers so each action
 -- stays thin — add the next action with the same two helpers, don't copy them.
 
--- Validate the signed-in player's party, lock it FOR UPDATE (so concurrent
--- actions can't both pass the checks and double-spend), and confirm it can afford
--- p_cost. Returns the locked row; raises on failure. Runs in the caller's
--- transaction, so the lock is held through the caller's UPDATE.
-create or replace function public._begin_action(p_cost bigint)
+-- Auth + lock the signed-in player's party FOR UPDATE (so concurrent actions on
+-- the same party serialize and can't double-spend). Returns the locked row;
+-- raises if not signed in or the player has no party. The shared first step of
+-- every party action — runs in the caller's transaction, so the lock is held
+-- through the caller's UPDATE.
+create or replace function public._lock_party()
 returns public.parties
 language plpgsql
 security definer
@@ -46,6 +47,21 @@ begin
   if v_user is null then raise exception 'Not signed in.'; end if;
   select * into v_p from public.parties where user_id = v_user for update;
   if not found then raise exception 'You have no party.'; end if;
+  return v_p;
+end $$;
+
+-- Lock the player's party (via _lock_party) and confirm it has an action to spend
+-- and can afford p_cost. Returns the locked row; raises on failure.
+create or replace function public._begin_action(p_cost bigint)
+returns public.parties
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype;
+begin
+  v_p := public._lock_party();
   if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
   if v_p.funds < p_cost then raise exception 'Not enough funds (need ₣%K).', (p_cost / 1000); end if;
   return v_p;
@@ -381,13 +397,11 @@ security definer
 set search_path = public
 as $$
 declare
-  v_user uuid := auth.uid(); v_p public.parties%rowtype;
+  v_p public.parties%rowtype;
   v_existing jsonb; v_cha int; v_roll int; v_total int; v_tier text;
   v_exp int; v_new jsonb; v_seas jsonb; v_cost bigint := 25000;
 begin
-  if v_user is null then raise exception 'Not signed in.'; end if;
-  select * into v_p from public.parties where user_id = v_user for update;
-  if not found then raise exception 'You have no party.'; end if;
+  v_p := public._lock_party();
 
   -- A drive already open → return it untouched (no re-roll, no second charge).
   select candidates into v_existing from public.recruit_drives where party_id = v_p.id;
@@ -430,13 +444,11 @@ security definer
 set search_path = public
 as $$
 declare
-  v_user uuid := auth.uid(); v_p public.parties%rowtype;
+  v_p public.parties%rowtype;
   v_cands jsonb; v_c jsonb; v_need int; v_name text; v_id uuid; v_body text;
 begin
   if p_choice not in ('newcomer', 'seasoned') then raise exception 'Pick a Newcomer or a Seasoned candidate.'; end if;
-  if v_user is null then raise exception 'Not signed in.'; end if;
-  select * into v_p from public.parties where user_id = v_user for update;
-  if not found then raise exception 'You have no party.'; end if;
+  v_p := public._lock_party();
 
   select candidates into v_cands from public.recruit_drives where party_id = v_p.id;
   if not found then raise exception 'No recruitment drive open — scout first.'; end if;
