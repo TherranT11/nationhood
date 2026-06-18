@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Negotiate · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
+    --acc:#5546E8;--acc-soft:#ECE9FD;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .nav__i.active svg{color:var(--indigo)}
+  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
+  .me b{color:var(--ink);font-weight:700}
+  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
+  .logout:hover{color:var(--red)}
+  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  .main{flex:1;padding:24px clamp(16px,3vw,38px) 56px;min-width:0;max-width:1140px}
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:14px}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
+
+  /* tabs */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  .tab{display:flex;align-items:center;gap:9px;padding:10px 14px;border:1.5px solid var(--line);border-radius:11px;cursor:pointer;background:#fff;transition:border-color .15s}
+  .tab:hover{border-color:var(--ink)}
+  .tab.on{border-color:var(--tc);background:#fff;box-shadow:inset 0 -3px 0 var(--tc)}
+  .tab .td{width:9px;height:9px;border-radius:50%;background:var(--tc);flex:none}
+  .tab b{font-weight:800;font-size:13.5px;letter-spacing:-.01em}
+  .tab .ts{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);font-weight:700}
+  .tab .st{width:8px;height:8px;border-radius:50%;flex:none}
+  .st.ok{background:var(--green)} .st.wait{background:var(--amber)}
+  .invwrap{position:relative}
+  .invbtn{padding:10px 14px;border:1.5px dashed var(--line2);border-radius:11px;cursor:pointer;background:#fff;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+  .invbtn:hover{border-color:var(--ink)}
+  .invbtn.dis{opacity:.45;cursor:not-allowed}
+  .invmenu{position:absolute;top:46px;left:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 50px -16px rgba(0,0,0,.32);padding:6px;min-width:230px;display:none}
+  .invmenu.open{display:block}
+  .invmenu .io{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:8px;cursor:pointer}
+  .invmenu .io:hover{background:var(--chip)}
+  .invmenu .io .td{width:9px;height:9px;border-radius:50%;flex:none}
+  .invmenu .io b{font-weight:700;font-size:13px;flex:1}
+  .invmenu .io span{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .invmenu .none{padding:10px 11px;font-size:12px;color:var(--soft);font-style:italic}
+
+  .grid{display:grid;grid-template-columns:1fr 318px;gap:18px;margin-top:16px;align-items:start}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--acc);border-radius:16px;padding:20px 22px}
+  .phd{display:flex;align-items:center;gap:13px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px}
+  .pemb{width:46px;height:46px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--acc-soft);color:var(--acc);font-family:'Space Mono',monospace;font-weight:700;font-size:15px}
+  .phd .pi{flex:1;min-width:160px}
+  .phd .pi b{font-weight:800;font-size:18px;letter-spacing:-.01em;display:block}
+  .phd .pi span{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.03em;color:var(--soft)}
+  .pstat{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:6px 11px;border-radius:20px}
+  .pstat.ok{color:var(--green);background:var(--green-soft)} .pstat.wait{color:var(--amber);background:var(--amber-soft)}
+  .premove{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);cursor:pointer;border:1px solid var(--line2);background:#fff;border-radius:8px;padding:7px 10px}
+  .premove:hover{color:var(--red);border-color:var(--red)}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.cols{grid-template-columns:1fr}}
+  .colhd{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:11px;display:flex;align-items:center;gap:7px}
+  .colhd .dot{width:7px;height:7px;border-radius:50%}
+  .colhd.off .dot{background:var(--green)} .colhd.req .dot{background:var(--indigo)}
+
+  .term{border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:11px;padding:12px;margin-bottom:10px;background:var(--field)}
+  .term.agreed{border-left-color:var(--green)}
+  .term.redline{border-style:dashed;border-color:#e6b3af;border-left:3px solid var(--red);background:#fdf6f5}
+  .trow1{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .trow1 .tt{flex:1;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:8px 9px;font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:600;color:var(--ink)}
+  .rltag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--red);background:var(--red-soft);padding:4px 7px;border-radius:6px}
+  .xb{width:26px;height:26px;flex:none;border:1px solid var(--line2);background:#fff;border-radius:7px;color:var(--soft);cursor:pointer;font-size:14px;line-height:1}
+  .xb:hover{color:var(--red);border-color:var(--red)}
+  .fields{display:flex;flex-direction:column;gap:7px;margin-bottom:9px}
+  .fields .f,.fields select{width:100%;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:8px 9px;font-family:'Archivo',sans-serif;font-size:12.5px;color:var(--ink)}
+  .fields .f:focus,.fields select:focus{outline:none;border-color:var(--ink)}
+  .tsum{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:11px;line-height:1.4;padding-left:2px}
+  .trow2{display:flex;align-items:center;gap:8px}
+  .seg{display:inline-flex;background:var(--chip);border-radius:8px;padding:3px;gap:3px}
+  .seg span{padding:6px 11px;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .seg.st span[data-s="agreed"].on{background:#fff;color:var(--green);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .seg.st span[data-s="no"].on{background:#fff;color:var(--muted);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .rlflag{margin-left:auto;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:7px 9px;border-radius:7px;border:1px solid var(--line2);background:#fff;color:var(--soft);cursor:pointer}
+  .rlflag.on{background:var(--red-soft);border-color:var(--red);color:var(--red)}
+  .addt{display:flex;gap:7px;margin-top:4px}
+  .addt button{flex:1;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:9px;cursor:pointer}
+  .addt button:hover{border-color:var(--ink);background:var(--field)}
+  .addt button.rl{color:var(--red);border-color:#e6b3af}
+  .addt button.rl:hover{border-color:var(--red)}
+
+  .empty{text-align:center;padding:48px 20px;color:var(--soft)}
+  .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
+  .empty a{color:var(--indigo);text-decoration:none;font-weight:700}
+
+  /* rail */
+  .rail{position:sticky;top:20px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .rail h3{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  .seatbar{position:relative;height:30px;border-radius:9px;background:var(--chip);overflow:hidden;margin-bottom:8px}
+  .seatfill{height:100%;width:0;transition:width .3s,background .3s}
+  .majmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+  .majmark::after{content:attr(data-maj);position:absolute;top:-14px;left:4px;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--ink);white-space:nowrap}
+  .seatline{font-family:'Space Mono',monospace;font-size:12px;color:var(--ink);font-weight:700;margin-bottom:3px}
+  .seatline span{font-weight:400;color:var(--soft)}
+  .seatsub{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;margin-bottom:16px}
+  .seatsub.ok{color:var(--green)} .seatsub.no{color:var(--amber)}
+  .crow{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .crow .cd{width:10px;height:10px;border-radius:50%;flex:none}
+  .crow .cn{flex:1;min-width:0;font-size:13px;font-weight:700}
+  .crow .cn small{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;color:var(--soft);font-weight:400;text-transform:uppercase}
+  .crow .csd{width:8px;height:8px;border-radius:50%}
+  .crow .cseat{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);font-weight:700}
+  .crow.anchor{opacity:1}
+  .crow .cx{font-size:13px;color:var(--soft);cursor:pointer;line-height:1}
+  .crow .cx:hover{color:var(--red)}
+  .progress{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:14px 0 4px}
+  .progress b{color:var(--ink)}
+  .formbtn{width:100%;margin-top:12px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:15px;border-radius:12px;cursor:pointer;color:#fff;background:var(--green);border:1.5px solid var(--green);transition:transform .12s,filter .15s}
+  .formbtn:hover{transform:translateY(-1px);filter:brightness(1.05)}
+  .formbtn.dis{background:#D9D6D0;border-color:#D9D6D0;cursor:not-allowed;transform:none;filter:none}
+  .formnote{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);text-align:center;margin-top:9px;line-height:1.5}
+  .formnote.bad{color:var(--red)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast b{color:#74e0a6} .toast b.bad{color:#ff9b9b}
+
+  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <img class="brand__flag" id="flag" alt="Nation flag" hidden>
+      <div class="brand__txt"><b id="sname">…</b><span id="psub"></span></div>
+    </div>
+    <nav class="nav">
+      <a class="nav__i" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
+    </nav>
+    <div class="side__foot">
+      <div class="me"><span class="me__dot"></span><span class="label">Leader · <b>You</b></span></div>
+      <button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back to Home</span>
+    <div class="phead">
+      <span class="eye">Negotiate · Coalition Talks</span>
+      <h1>Build a Coalition</h1>
+      <p>Invite parties to the table and trade promises. Each term must be marked <b>Agreed</b> by both sides — and once every term is settled, you can form the government.</p>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="grid">
+      <div id="panel"></div>
+      <aside><div class="rail" id="rail"></div></aside>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { archetypeColor } from '/archetypes.js';
+  import { getNegotiation, loadNegotiations, saveNegotiations } from '/negotiations.js';
+
+  document.getElementById('logout').addEventListener('click', logout);
+  // Real nav links navigate; only decorative (hrefless) items toggle active.
+  document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
+    i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
+  });
+
+  // ---- coalition term catalogue (game content, intentionally static) ----
+  var MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy'];
+  var NATIONS = [];  // filled from the DB at boot (mutated in place — TYPES holds this reference)
+
+  var TYPES = {
+    legislation:{label:'Pass Flagship Legislation', fields:[{k:'text',kind:'text',ph:'Describe the bill — e.g. the National Industry Act'}],
+      sum:function(p){return 'Pass flagship legislation'+(p.text?': “'+p.text+'”':' (unspecified)');}},
+    ministry:{label:'Promise a Ministry', fields:[{k:'ministry',kind:'select',opts:MINISTRIES}],
+      sum:function(p){return 'Hand over the '+(p.ministry||'…')+' Ministry';}},
+    policy:{label:'Support Policies', fields:[{k:'text',kind:'text',ph:'Which policies you’ll back'}],
+      sum:function(p){return 'Support'+(p.text?': '+p.text:' their policy agenda');}},
+    treaty:{label:'Sign / Cancel a Foreign Agreement', fields:[{k:'act',kind:'select',opts:['Sign','Cancel']},{k:'nation',kind:'select',opts:NATIONS},{k:'text',kind:'text',ph:'Agreement name (optional)'}],
+      sum:function(p){return (p.act||'Sign')+' '+(p.text?'the “'+p.text+'” ':'an ')+'agreement with '+(p.nation||'…');}},
+    threshold:{label:'Change the Electoral Threshold', fields:[{k:'pct',kind:'select',opts:['0%','3%','5%','8%','10%','15%']}],
+      sum:function(p){return 'Set the electoral threshold to '+(p.pct||'…');}},
+    regime:{label:'Shift the Regime', fields:[{k:'dir',kind:'select',opts:['Increase','Decrease']},{k:'by',kind:'stepper',min:1,max:19}],
+      sum:function(p){return (p.dir||'Increase')+' the Regime by '+(p.by||1)+' (toward '+((p.dir||'Increase')==='Increase'?'more open':'more closed')+')';}}
+  };
+
+  function defaults(type){var p={};TYPES[type].fields.forEach(function(f){p[f.k]=f.kind==='select'?f.opts[0]:f.kind==='stepper'?f.min:'';});return p;}
+
+  // ---- state (populated from the loaded negotiation + real party data) ----
+  var HOST = null, POOL = {}, CHAMBER = 280, MAJORITY = 141, MAXINV = 5, myPartyId = null;
+  var neg = null, invited = [], active = null, data = {}, tid = 1;
+
+  function popOf(p){return Number(p.popularity)||0;}
+  function opt(list,val){return list.map(function(o){return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('');}
+  function typeSelect(sel){return '<select class="tt">'+Object.keys(TYPES).map(function(k){return '<option value="'+k+'"'+(k===sel?' selected':'')+'>'+TYPES[k].label+'</option>';}).join('')+'</select>';}
+  function termsOf(id){return data[id].offering.concat(data[id].requesting);}
+  function partyReady(id){var t=termsOf(id);return t.every(function(x){return x.status==='agreed';});}
+  function seatTotal(){var s=HOST.seats;invited.forEach(function(id){s+=POOL[id].seats;});return s;}
+  function allCounts(){var ag=0,tot=0;invited.forEach(function(id){termsOf(id).forEach(function(x){tot++;if(x.status==='agreed')ag++;});});return {ag:ag,tot:tot};}
+  function redlineUnmet(){var bad=null;invited.forEach(function(id){termsOf(id).forEach(function(x){if(x.redline&&x.status!=='agreed'&&!bad)bad=POOL[id].name;});});return bad;}
+  function ready(){return invited.length>0 && allCounts().ag===allCounts().tot;}
+
+  // Persist the whole negotiation back to the client-local store after any change.
+  function persist(){
+    if(!neg||!myPartyId)return;
+    neg.invited=invited; neg.active=active; neg.data=data; neg.tid=tid;
+    var list=loadNegotiations(myPartyId), i=list.map(function(n){return n.id;}).indexOf(neg.id);
+    if(i>=0)list[i]=neg; else list.push(neg);
+    saveNegotiations(myPartyId,list);
+  }
+
+  /* ---------- tabs ---------- */
+  function renderTabs(){
+    var box=document.getElementById('tabs'); box.innerHTML='';
+    invited.forEach(function(id){
+      var p=POOL[id], on=id===active, rdy=partyReady(id);
+      var el=document.createElement('div'); el.className='tab'+(on?' on':''); el.style.setProperty('--tc',p.color);
+      el.innerHTML='<span class="td"></span><b>'+esc(p.name)+'</b><span class="ts">'+p.seats+'</span><span class="st '+(rdy?'ok':'wait')+'"></span>';
+      el.onclick=function(){active=id;render();};
+      box.appendChild(el);
+    });
+    var iw=document.createElement('div'); iw.className='invwrap';
+    var remaining=Object.keys(POOL).filter(function(id){return invited.indexOf(id)<0;});
+    var full=invited.length>=MAXINV||!remaining.length;
+    iw.innerHTML='<button class="invbtn'+(full?' dis':'')+'" id="invbtn">+ Invite party</button><div class="invmenu" id="invmenu"></div>';
+    box.appendChild(iw);
+    var menu=iw.querySelector('#invmenu');
+    if(!full){
+      menu.innerHTML=remaining.map(function(id){var p=POOL[id];return '<div class="io" data-id="'+esc(id)+'"><span class="td" style="background:'+p.color+'"></span><b>'+esc(p.name)+'</b><span>'+p.seats+' seats · '+popOf(p)+'% · '+esc(p.archetype)+'</span></div>';}).join('');
+      iw.querySelector('#invbtn').onclick=function(e){e.stopPropagation();menu.classList.toggle('open');};
+      menu.querySelectorAll('.io').forEach(function(o){o.onclick=function(){var id=o.dataset.id;invited.push(id);data[id]={offering:[],requesting:[]};active=id;render();};});
+    }
+  }
+  document.addEventListener('click',function(){var m=document.getElementById('invmenu');if(m)m.classList.remove('open');});
+
+  /* ---------- panel ---------- */
+  function buildTerm(pid,col,term){
+    var def=TYPES[term.type];
+    var card=document.createElement('div'); card.className='term'+(term.status==='agreed'?' agreed':'')+(term.redline?' redline':'');
+    var fieldsHtml=def.fields.map(function(f){
+      if(f.kind==='select') return '<select class="f" data-k="'+f.k+'">'+opt(f.opts,term.params[f.k])+'</select>';
+      if(f.kind==='stepper') return '<input class="f" type="number" data-k="'+f.k+'" min="'+f.min+'" max="'+f.max+'" value="'+(term.params[f.k]||f.min)+'">';
+      return '<input class="f" type="text" data-k="'+f.k+'" placeholder="'+esc(f.ph||'')+'" value="'+esc(term.params[f.k]||'').replace(/"/g,'&quot;')+'">';
+    }).join('');
+    card.innerHTML='<div class="trow1">'+typeSelect(term.type)+(term.redline?'<span class="rltag">Redline</span>':'')+'<button class="xb">×</button></div>'+
+      '<div class="fields">'+fieldsHtml+'</div>'+
+      '<div class="tsum">'+esc(def.sum(term.params))+'</div>'+
+      '<div class="trow2"><div class="seg st"><span class="'+(term.status==='no'?'on':'')+'" data-s="no">No agreement</span><span class="'+(term.status==='agreed'?'on':'')+'" data-s="agreed">Agreed</span></div>'+
+      '<button class="rlflag'+(term.redline?' on':'')+'">⚑ Redline</button></div>';
+    card.querySelector('.tt').onchange=function(e){term.type=e.target.value;term.params=defaults(term.type);render();};
+    card.querySelectorAll('.f').forEach(function(inp){
+      var k=inp.dataset.k, ev=inp.tagName==='SELECT'?'onchange':'oninput';
+      inp[ev]=function(){term.params[k]=inp.type==='number'?+inp.value:inp.value;card.querySelector('.tsum').textContent=TYPES[term.type].sum(term.params);persist();renderRail();renderTabs();};
+    });
+    card.querySelectorAll('.seg.st span').forEach(function(s){s.onclick=function(){term.status=s.dataset.s;render();};});
+    card.querySelector('.rlflag').onclick=function(){term.redline=!term.redline;render();};
+    card.querySelector('.xb').onclick=function(){var arr=data[pid][col];arr.splice(arr.indexOf(term),1);render();};
+    return card;
+  }
+
+  function buildColumn(pid,col,label,cls){
+    var wrap=document.createElement('div');
+    var hd=document.createElement('div'); hd.className='colhd '+cls; hd.innerHTML='<span class="dot"></span>'+label;
+    wrap.appendChild(hd);
+    data[pid][col].forEach(function(t){wrap.appendChild(buildTerm(pid,col,t));});
+    var add=document.createElement('div'); add.className='addt';
+    add.innerHTML='<button class="t">+ Add term</button><button class="rl">+ Redline</button>';
+    add.querySelector('.t').onclick=function(){data[pid][col].push({id:tid++,type:'legislation',params:defaults('legislation'),status:'no',redline:false});render();};
+    add.querySelector('.rl').onclick=function(){data[pid][col].push({id:tid++,type:'ministry',params:defaults('ministry'),status:'no',redline:true});render();};
+    wrap.appendChild(add);
+    return wrap;
+  }
+
+  function renderPanel(){
+    var box=document.getElementById('panel'); box.innerHTML='';
+    if(!active){
+      var e=document.createElement('div'); e.className='panel';
+      e.innerHTML='<div class="empty"><b>No parties at the table yet</b><span>Use “Invite party” above to bring someone into the talks.</span></div>';
+      box.appendChild(e); return;
+    }
+    var p=POOL[active];
+    document.documentElement.style.setProperty('--acc',p.color);
+    document.documentElement.style.setProperty('--acc-soft','color-mix(in srgb, '+p.color+' 14%, #fff)');
+    var panel=document.createElement('div'); panel.className='panel';
+    var rdy=partyReady(active);
+    var phd=document.createElement('div'); phd.className='phd';
+    phd.innerHTML='<span class="pemb">'+esc(p.abbr)+'</span><div class="pi"><b>'+esc(p.name)+'</b><span>'+esc(p.archetype)+' &nbsp;·&nbsp; '+p.seats+' seats &nbsp;·&nbsp; '+popOf(p)+'% support</span></div>'+
+      '<span class="pstat '+(rdy?'ok':'wait')+'">'+(rdy?'All terms agreed':'Negotiating')+'</span>'+
+      '<button class="premove">Remove</button>';
+    phd.querySelector('.premove').onclick=function(){var i=invited.indexOf(active);invited.splice(i,1);delete data[active];active=invited[0]||null;render();};
+    panel.appendChild(phd);
+    var cols=document.createElement('div'); cols.className='cols';
+    cols.appendChild(buildColumn(active,'offering','Offering — what you give',' off'));
+    cols.appendChild(buildColumn(active,'requesting','Requesting — what you want',' req'));
+    panel.appendChild(cols);
+    box.appendChild(panel);
+  }
+
+  /* ---------- rail ---------- */
+  function renderRail(){
+    var box=document.getElementById('rail');
+    var seats=seatTotal(), pct=CHAMBER?Math.round(seats/CHAMBER*100):0, maj=seats>=MAJORITY;
+    var html='<h3>Coalition</h3>'+
+      '<div class="seatbar"><div class="seatfill" style="width:'+pct+'%;background:'+(maj?'var(--green)':'var(--indigo)')+'"></div><div class="majmark" data-maj="MAJ '+MAJORITY+'" style="left:'+(CHAMBER?MAJORITY/CHAMBER*100:50)+'%"></div></div>'+
+      '<div class="seatline">'+seats+' <span>/ '+CHAMBER+' seats</span></div>'+
+      '<div class="seatsub '+(maj?'ok':'no')+'">'+(maj?'Majority secured · +'+(seats-MAJORITY)+' over the line':(MAJORITY-seats)+' short of a majority')+'</div>';
+    // anchor (you)
+    html+='<div class="crow anchor"><span class="cd" style="background:'+HOST.color+'"></span><div class="cn">'+esc(HOST.name)+'<small>You · anchor</small></div><span class="cseat">'+HOST.seats+'</span></div>';
+    invited.forEach(function(id){
+      var p=POOL[id], rdy=partyReady(id);
+      html+='<div class="crow"><span class="cd" style="background:'+p.color+'"></span><div class="cn">'+esc(p.name)+'<small>'+esc(p.archetype)+'</small></div>'+
+        '<span class="csd '+(rdy?'ok':'wait')+'" style="background:'+(rdy?'var(--green)':'var(--amber)')+'"></span><span class="cseat">'+p.seats+'</span><span class="cx" data-id="'+esc(id)+'">×</span></div>';
+    });
+    var c=allCounts();
+    html+='<div class="progress"><b>'+c.ag+'</b> of <b>'+c.tot+'</b> terms agreed</div>';
+    var rl=redlineUnmet();
+    var ok=ready();
+    html+='<button class="formbtn'+(ok?'':' dis')+'" id="formbtn">Form Coalition Agreement</button>';
+    if(!invited.length) html+='<div class="formnote">Invite at least one party to begin.</div>';
+    else if(rl) html+='<div class="formnote bad">Redline unmet — '+esc(rl)+' will walk unless it’s agreed.</div>';
+    else if(!ok) html+='<div class="formnote">'+(c.tot-c.ag)+' term'+((c.tot-c.ag)===1?'':'s')+' still unresolved.</div>';
+    else html+='<div class="formnote">Every term agreed. Ready to govern.</div>';
+    box.innerHTML=html;
+    box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){var id=x.dataset.id;var i=invited.indexOf(id);invited.splice(i,1);delete data[id];if(active===id)active=invited[0]||null;render();};});
+    var fb=box.querySelector('#formbtn');
+    if(fb)fb.onclick=function(){
+      if(!ready())return;
+      var names=[HOST.name].concat(invited.map(function(id){return POOL[id].name;}));
+      ping('<b>Coalition Agreement formed.</b> '+esc(names.join(' + '))+' · '+seatTotal()+' seats ('+(seatTotal()>=MAJORITY?'majority +'+(seatTotal()-MAJORITY):'minority')+'). All promises are now binding terms.');
+    };
+  }
+
+  function render(){persist();renderTabs();renderPanel();renderRail();}
+
+  function showMissing(msg){
+    document.getElementById('tabs').innerHTML='';
+    document.getElementById('rail').innerHTML='';
+    document.getElementById('panel').innerHTML='<div class="panel"><div class="empty"><b>'+(msg||'This negotiation isn’t here')+'</b><span>It may have been closed. <a href="/play/">Return home</a> and start a new one.</span></div></div>';
+  }
+
+  document.getElementById('back').onclick=function(){window.location.href='/play/';};
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},5200);}
+
+  (async () => {
+    if(!isConfigured){ showMissing('Supabase not configured'); return; }
+    const user = await requireUser();
+    if(!user) return; // redirected to login
+    try {
+      const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
+      if(error||!party){ window.location.replace('/nation-select/'); return; }
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
+      var nationName=(nation&&nation.name)||party.nation_id;
+
+      document.getElementById('sname').textContent=party.name;
+      document.getElementById('psub').textContent=party.archetype+' · '+nationName;
+      document.title='Negotiate · '+party.name;
+      if(nation&&nation.flag){ var f=document.getElementById('flag'); f.onload=function(){f.hidden=false;}; f.src=nation.flag; }
+
+      myPartyId=party.id;
+      HOST={abbr:(party.abbreviation||party.name.slice(0,2)).toUpperCase(), name:party.name, color:archetypeColor(party.archetype), archetype:party.archetype, seats:party.seats||0};
+      CHAMBER=(nation&&nation.legislature_seats)||280;
+      MAJORITY=Math.floor(CHAMBER/2)+1;
+
+      const { data: others } = await supabase.from('parties')
+        .select('id,name,abbreviation,seats,popularity,archetype')
+        .eq('nation_id', party.nation_id).neq('id', party.id).order('seats',{ascending:false});
+      POOL={};
+      (others||[]).forEach(function(p){ POOL[p.id]={abbr:(p.abbreviation||p.name.slice(0,2)).toUpperCase(), name:p.name, color:archetypeColor(p.archetype), archetype:p.archetype, seats:p.seats||0, popularity:Number(p.popularity)||0}; });
+
+      // Real other nations for the treaty term (mutate NATIONS in place — TYPES holds it).
+      try {
+        const { data: ns } = await supabase.from('nations').select('name').neq('id', party.nation_id).order('name');
+        (ns||[]).forEach(function(n){ NATIONS.push(n.name); });
+      } catch(e){ /* leave NATIONS empty — treaty term still usable, just no presets */ }
+      if(!NATIONS.length) NATIONS.push('(no other nations yet)');
+
+      var id=new URLSearchParams(location.search).get('id');
+      neg=id?getNegotiation(myPartyId,id):null;
+      if(!neg){ showMissing(); return; }
+
+      // Hydrate from the saved record, dropping any party that has since vanished.
+      neg.invited=(neg.invited||[]).filter(function(pid){return POOL[pid];});
+      neg.data=neg.data||{};
+      neg.invited.forEach(function(pid){ if(!neg.data[pid]) neg.data[pid]={offering:[],requesting:[]}; });
+      if(neg.active && !POOL[neg.active]) neg.active=neg.invited[0]||null;
+      invited=neg.invited; active=neg.active; data=neg.data; tid=neg.tid||1;
+      render();
+    } catch(e){ showMissing('Could not load this negotiation right now.'); }
+  })();
+</script>
+</body>
+</html>
