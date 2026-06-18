@@ -234,26 +234,31 @@
     } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
-  // topbar action budget + toast
+  // topbar action budget + toast. setActions is the one place that reflects the
+  // action count — it updates the label AND gates the Rally button (0 → disabled),
+  // so the button is correct on load and after every rally.
   var partyActions = 0, feedCtx = null;
-  function setActions(n) { partyActions = n; document.getElementById('tbActions').textContent = 'Party Actions: ' + n + ' Available'; }
+  var rallyBtn = document.getElementById('act-rally'), rallying = false;
+  function setActions(n) {
+    partyActions = n;
+    document.getElementById('tbActions').textContent = 'Party Actions: ' + n + ' Available';
+    if (rallyBtn) rallyBtn.disabled = n < 1;
+  }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
 
   // RALLY: a server-authoritative action (party_rally rolls + applies the result).
-  var rallyBtn = document.getElementById('act-rally'), rallying = false;
   if (rallyBtn) rallyBtn.addEventListener('click', async function () {
     if (rallying || rallyBtn.disabled) return;
     rallying = true; rallyBtn.disabled = true;
     try {
       const { data, error } = await supabase.rpc('party_rally');
-      if (error) { ping(error.message || 'Rally failed.'); rallying = false; rallyBtn.disabled = partyActions < 1; return; }
+      if (error) { ping(error.message || 'Rally failed.'); setActions(partyActions); return; }
       setActions(data.actions);
       if (feedCtx) await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
       ping('Rally held — popularity +' + data.delta + '%.');
-    } catch (e) { ping('Rally failed. Try again.'); }
-    rallying = false;
-    rallyBtn.disabled = partyActions < 1; // out of actions → stays disabled
+    } catch (e) { ping('Rally failed. Try again.'); setActions(partyActions); }
+    finally { rallying = false; }
   });
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }

@@ -5,7 +5,7 @@
 -- Safe to re-run: it only touches parties that currently have zero politicians,
 -- so a second run is a no-op. New parties are seeded by party-creation instead.
 --
--- Requires: supabase/schema.sql (politicians table) and
+-- Requires: supabase/schema/ (in particular 30_politicians.sql) and
 -- supabase/seed/sessau_names.sql (the name pool) already applied.
 --
 -- Matches the client generator exactly: a random Sessau first/last name, age

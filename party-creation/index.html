@@ -197,7 +197,7 @@
         // player, so if they don't already hold a slot here, theirs would be the
         // (others.length + 1)th — reject once the other parties already fill it.
         // (Client-side guard; a race-proof cap needs a server-side check — see
-        // the parties table comment in schema.sql.)
+        // the parties table comment in schema/20_parties.sql.)
         if ((others || []).length >= MAX_PARTIES) {
           fail('This nation is full — it already has its ' + MAX_PARTIES + ' parties.'); return;
         }
