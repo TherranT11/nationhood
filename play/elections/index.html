@@ -11,7 +11,7 @@
   :root{
     --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
     --line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;
-    --red:#C42B2B;--green:#16915a;
+    --red:#C42B2B;--green:#16915a;--green-soft:#E5F4EC;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -68,6 +68,12 @@
   .pc .l{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);margin-top:4px}
   .candnote{margin-top:18px;border-top:1px solid var(--line);padding-top:16px;font-size:13px;color:var(--muted);line-height:1.55}
   .candnote b{color:var(--ink)}
+
+  /* national rules (threshold, frequency) */
+  .thresh{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .thpill{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--green);background:var(--green-soft);padding:7px 13px;border-radius:20px;flex:none}
+  .thresh p{font-size:13.5px;color:var(--muted);line-height:1.5}
+  .thresh p b{color:var(--ink)}
 
   /* assembly bar (current chamber — vacant until the first election) */
   .asmbar{display:flex;height:30px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--chip);position:relative;margin-bottom:24px}
@@ -136,6 +142,16 @@
     </section>
 
     <section class="mod">
+      <div class="mod__hd"><span>Electoral Threshold</span><span class="r">National rule</span></div>
+      <div class="thresh"><span class="thpill" id="thrPill">None</span><p id="thrText"></p></div>
+    </section>
+
+    <section class="mod">
+      <div class="mod__hd"><span>Electoral Frequency</span><span class="r">National rule</span></div>
+      <div class="thresh"><span class="thpill" id="freqPill">—</span><p id="freqText"></p></div>
+    </section>
+
+    <section class="mod">
       <div class="mod__hd"><span>The Assembly</span><span class="r" id="seatNote"></span></div>
       <div class="asmbar" id="asmbar"><div class="majm" id="majm"><span></span></div></div>
       <p class="asmnote" id="asmnote"></p>
@@ -158,7 +174,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, election_frequency_months, electoral_threshold').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
       const seatsTotal = (nation && nation.legislature_seats) || 0;
       const majority = seatsTotal ? Math.floor(seatsTotal / 2) + 1 : 0;
@@ -182,6 +198,16 @@
         'At <b>' + polling + '%</b> of the national vote you would take roughly <b>' + projected + '</b> of ' +
         '<b>' + seatsTotal + '</b> seats (about <b>' + (perPoint).toFixed(1) + '</b> per 1%). ' +
         'No general election has been called yet — the schedule begins once the game’s calendar starts running.';
+
+      // National rules (from the nation row).
+      var thr = Number(nation && nation.electoral_threshold) || 0;
+      document.getElementById('thrPill').textContent = thr > 0 ? (thr + '%') : 'None';
+      document.getElementById('thrText').innerHTML = thr > 0
+        ? 'A party must win at least <b>' + thr + '%</b> of the national vote to take any seats.'
+        : 'There is currently <b>no electoral threshold</b>. Any party winning enough votes for a seat takes part.';
+      var freq = (nation && nation.election_frequency_months) || 60;
+      document.getElementById('freqPill').textContent = 'Every ' + freq + ' months';
+      document.getElementById('freqText').innerHTML = 'National elections in <b>' + nationName + '</b> are held every <b>' + freq + ' months</b>.';
 
       // The chamber: seats are allocated at an election, so until the first one
       // it is entirely vacant. Render the real held total (0 today → one Vacant bar).
