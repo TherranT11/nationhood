@@ -66,7 +66,7 @@
   .glance-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
   .glance-hd > span{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
   .glance-hd .glance-link{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);font-weight:700;cursor:pointer}
-  .snap{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:10px}
+  .snap{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
   .chip{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:var(--bg)}
   .chip__k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .chip__v{font-weight:800;font-size:18px;letter-spacing:-.02em}
@@ -144,7 +144,7 @@
       <div class="leadbar__grid">
         <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: ₣25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
         <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: ₣25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
-        <button class="lead" type="button" disabled><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span></button>
+        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×₣15K, added to your funds. Natural 1: −1 popularity. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
         <button class="lead" type="button" disabled><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span></button>
         <button class="lead" type="button" disabled><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span></button>
         <button class="lead" type="button" disabled><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span></button>
@@ -268,6 +268,7 @@
   }
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
+  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +₣' + (d.funds_gain / 1000) + 'K' + (d.pop_penalty ? ' (−1 popularity)' : '') + '.'; });
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
