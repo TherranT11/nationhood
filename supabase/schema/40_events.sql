@@ -239,3 +239,53 @@ begin
 end $$;
 
 grant execute on function public.party_attack(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- party_ad_blitz(): 1d6 + Guile, ÷3, added to popularity (capped at ceiling).
+-- A natural 6 also raises the ceiling +0.5%. A strong result raises the nation's
+-- Image stat by 1 (paid shine on the airwaves). ₣100K + 1 action.
+-- NOTE: this is the first party action that moves a shared NATION stat (Image) —
+-- every party in the nation sees that change. Flagged for sign-off.
+-- ---------------------------------------------------------------------------
+create or replace function public.party_ad_blitz()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_gui int; v_roll int; v_total int;
+  v_delta numeric; v_newpop numeric; v_ceilgain numeric := 0; v_newceil numeric;
+  v_imggain int := 0; v_cost bigint := 100000; v_tier text; v_body text;
+begin
+  v_p := public._begin_action(v_cost);
+  select coalesce(gui, 0) into v_gui from public.politicians
+    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
+  v_gui := coalesce(v_gui, 0);
+
+  v_roll  := floor(random() * 6)::int + 1;
+  v_total := v_roll + v_gui;
+  v_tier  := public._action_tier(v_total);
+  v_delta := round((v_total::numeric) / 3.0, 1);                        -- (1d6 + Guile) / 3
+  v_newpop := least(v_p.popularity + v_delta, v_p.pop_ceiling);         -- capped at the ceiling
+  v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
+  if v_roll = 6 then v_ceilgain := 0.5; end if;                         -- natural 6 → +0.5% ceiling
+  v_newceil := v_p.pop_ceiling + v_ceilgain;
+  if v_tier = 'strong' then v_imggain := 1; end if;                     -- strong → nation Image +1
+
+  v_body := 'The ' || v_p.name || case v_tier
+    when 'strong'   then ' has launched an ad blitz, and it blanketed the airwaves. The slick spots ran on every channel, the slogans stuck, and the polls jumped almost overnight.'
+    when 'middling' then ' has put its ads on the air. The campaign reached plenty of living rooms and nudged the numbers — a solid return for the money spent.'
+    else                 ' bought up airtime, but the ads fell flat. Forgettable spots in dead-air slots moved few minds, and the spend bought little more than name recognition.'
+  end || ' Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%' || case when v_imggain > 0 then ', Image +1' else '' end || '.';
+
+  update public.parties set popularity = v_newpop, pop_ceiling = v_newceil, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  if v_imggain > 0 then
+    update public.nations set stats = jsonb_set(coalesce(stats, '{}'::jsonb), '{image}', to_jsonb(coalesce((stats->>'image')::numeric, 0) + 1)) where id = v_p.nation_id;
+  end if;
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'adblitz', v_body, 'January, 1980');
+
+  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'ceiling_gain', v_ceilgain, 'image_gain', v_imggain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+end $$;
+
+grant execute on function public.party_ad_blitz() to authenticated;

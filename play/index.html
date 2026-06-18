@@ -167,7 +167,7 @@
         <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: ₣25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
         <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×₣15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
         <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: ₣25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" type="button" disabled><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span></button>
+        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: ₣100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
         <button class="lead" type="button" disabled><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span></button>
         <button class="lead" type="button" disabled><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span></button>
         <button class="lead" type="button" disabled><b>Court</b><span class="lead__lane">Guile &middot; The Backroom</span></button>
@@ -299,6 +299,7 @@
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +₣' + (d.funds_gain / 1000) + 'K.'; });
+  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.image_gain ? ', Image +1' : '') + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
 
   // ATTACK targets a rival → open a picker (all other parties, with seats +
   // popularity), then call party_attack(targetId). Shares the action lock/budget.
