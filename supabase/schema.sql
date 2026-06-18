@@ -336,7 +336,9 @@ declare
   v_body  text;
 begin
   if v_user is null then raise exception 'Not signed in.'; end if;
-  select * into v_p from public.parties where user_id = v_user;
+  -- FOR UPDATE locks the row so two concurrent rallies can't both pass the
+  -- funds/action checks and double-spend (server-side double-fire guard).
+  select * into v_p from public.parties where user_id = v_user for update;
   if not found then raise exception 'You have no party.'; end if;
   if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
   if v_p.funds < v_cost then raise exception 'Not enough funds for a rally (need ₣25K).'; end if;
