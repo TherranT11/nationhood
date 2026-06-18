@@ -41,7 +41,18 @@
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
   /* main */
-  .main{flex:1;padding:48px clamp(16px,4vw,56px);min-width:0;max-width:900px}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 48px;min-width:0;max-width:1000px}
+
+  /* instance top bar: 3 actions/turn, the date, and the (server-run) clock status.
+     No Next Week button — the online game advances monthly on its own. */
+  .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
+  .tb-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
+  .tb-date{display:flex;flex-direction:column;align-items:flex-end;line-height:1.12}
+  .tb-date__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .tb-date__v{font-family:'Archivo',sans-serif;font-size:16px;font-weight:800;color:var(--ink);letter-spacing:.01em;white-space:nowrap}
+  .tb-next{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--chip);border-radius:11px;padding:8px 15px;white-space:nowrap}
+  .tb-next__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .tb-next__v{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--soft)}
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
   .main h1{font-weight:900;font-size:clamp(30px,5vw,46px);letter-spacing:-.03em;line-height:1.05;margin:10px 0 14px}
   .main p{color:var(--muted);font-size:16px;line-height:1.6;max-width:60ch}
@@ -79,6 +90,11 @@
   </aside>
 
   <main class="main">
+    <div class="topbar">
+      <span class="tb-actions">Party Actions: 3 Available</span>
+      <span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v">January, 1980</span></span>
+      <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
+    </div>
     <div class="kicker" id="kicker">The Instance</div>
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
