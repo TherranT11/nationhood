@@ -61,7 +61,9 @@
   .nextweek:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
   .nextweek[disabled]{background:#cfcdc7;cursor:default;pointer-events:none}
   .nw{display:flex;flex-direction:column;align-items:flex-end;gap:7px}
-  .nw__date{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .nw__date{font-family:'Space Mono',monospace;text-align:right;line-height:1.12;display:flex;flex-direction:column;align-items:flex-end;white-space:nowrap}
+  .nw__date b{color:var(--ink);font-size:16px;font-weight:800;letter-spacing:.02em;font-family:'Archivo',sans-serif}
+  .nw__date small{color:var(--soft);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
   .pa{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
 
   .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
@@ -78,6 +80,7 @@
   .pi__top b{font-weight:800;font-size:14.5px;letter-spacing:-.01em;text-transform:uppercase}
   .pi__res{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:20px;flex:none}
   .pi__res.pass{color:var(--green);background:var(--green-soft)} .pi__res.fail{color:var(--red);background:var(--red-soft)}
+  .pi__res.floor{color:var(--indigo);background:var(--indigo-soft)}
   .pi__eff{font-size:13px;color:var(--muted);margin-top:5px}
 
   /* snapshot strip */
@@ -202,12 +205,14 @@
       <div class="top__right">
         <div class="pa" id="pa"></div>
         <div class="standing">Confidence<i id="confVal"><span class="dash"></span></i><small id="standingLabel">no government</small></div>
+        <div class="standing">Budget<i data-budget>&#8355;12.4B</i></div>
         <div class="nw">
-          <span class="nw__date" id="weekDate"></span>
+          <span class="nw__date"><b data-weeknum>Week 22</b><small>May 1980</small></span>
           <button class="nextweek" id="nextweek" type="button" disabled title="Not yet available">Next Week &#9656;</button>
         </div>
       </div>
     </header>
+    <div id="weekNudge"></div>
     <div class="coach">
       <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
       <p>Welcome to the Nationhood tutorial. This is the home page, and you've just won an election.</p>
@@ -329,7 +334,7 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, formedConfidence, logout, wireNextWeek, statLabel } from '/test/tutorial/shell.js';
+  import { initSidebar, formedConfidence, logout, wireNextWeek, statLabel, NATION_BASE, onFloorBills } from '/test/tutorial/shell.js';
 
   // The week label and Party Actions count are both filled by initSidebar from
   // the player's profile (one source), so this header and every other screen's
@@ -391,7 +396,7 @@
     const d = e.detail || {};
     Object.keys(STAT_UP).forEach((k) => {
       const ns = document.getElementById('ns-' + k); if (!ns) return;
-      if (statBase[k] === undefined) statBase[k] = parseFloat(ns.textContent) || 0; // capture the markup base once
+      if (statBase[k] === undefined) statBase[k] = NATION_BASE[k] ?? (parseFloat(ns.textContent) || 0); // base from shell.js (one source)
       const delta = d[k] || 0;
       const value = Math.round((statBase[k] + delta) * 10) / 10; // 1 dp for budget; ints stay ints
       ns.textContent = value;
@@ -418,19 +423,25 @@
     });
   });
 
-  // Resolved bills populate Pressing Issues (the formation card became this panel
-  // once the government formed). Passed bills show their effect; failed ones don't.
+  // Pressing Issues lists only the bills currently on the floor (awaiting a vote).
+  // Resolved bills leave this panel — they live in the Legislature's history. The
+  // formation card became this panel once the government formed.
   function esc(s){return String(s).replace(/[&<>]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
-  window.addEventListener('nationhood:legislation', (e) => {
-    if (!e.detail || !e.detail.length) return;
+  let curFloorBill = null, curLegislation = null;
+  function renderPressingIssues() {
+    if (!window.nationhoodGovernmentFormed) return; // panel is still the formation card
     const gov = document.getElementById('govSection'); if (!gov) return;
-    gov.innerHTML = '<div class="mod__hd"><span>Pressing Issues</span></div>' +
-      e.detail.map((it) =>
-        '<div class="pi"><div class="pi__top"><b>' + esc(it.name) + '</b>' +
-        '<span class="pi__res ' + (it.passed ? 'pass' : 'fail') + '">' + (it.passed ? 'Passes' : 'Fails') + '</span></div>' +
-        '<div class="pi__eff">Effect: ' + (it.passed ? esc(it.effect || '—') : 'None — did not pass') + '</div></div>'
-      ).join('');
-  });
+    const bills = onFloorBills(window.nationhoodWeek, curFloorBill, curLegislation);
+    const body = bills.length
+      ? bills.map((b) =>
+          '<div class="pi"><div class="pi__top"><b>' + esc(b.name) + '</b>' +
+          '<span class="pi__res floor">On the floor</span></div>' +
+          '<div class="pi__eff">Effect: ' + esc(b.effect || '—') + '</div></div>').join('')
+      : '<p class="empty">When issues affect your government, they will appear here.</p>';
+    gov.innerHTML = '<div class="mod__hd"><span>Pressing Issues</span></div>' + body;
+  }
+  window.addEventListener('nationhood:floorbill', (e) => { curFloorBill = e.detail || null; renderPressingIssues(); });
+  window.addEventListener('nationhood:legislation', (e) => { curLegislation = e.detail || null; renderPressingIssues(); });
 
   // Once Théo is assigned to Labour Talks, his talks show up in the feed and the
   // post-formation coach gives way to the "look at Labour Unrest" prompt.

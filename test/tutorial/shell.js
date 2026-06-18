@@ -60,6 +60,7 @@ export async function getTutorialProgress(userId) {
       partyPopularity: s.party_popularity ?? 38,
       confidenceAdj: s.confidence_adj ?? 0,
       nation: s.nation || {}, // accumulated stat deltas from passed bills
+      recruit: s.recruit || null, // the politician recruited on the Party page
     };
   } catch (err) {
     return null;
@@ -112,6 +113,9 @@ export async function initSidebar() {
   window.nationhoodGovernmentFormed = progress.governmentFormed;
   window.nationhoodConfidenceAdj = progress.confidenceAdj || 0; // bill-driven confidence, read by the confidence renderers
   window.nationhoodWeek = progress.week || DEFAULT_WEEK;        // current week, read by the Legislature to load scheduled bills
+  window.nationhoodNation = progress.nation || {};             // accumulated stat deltas, read by liveStat consumers
+  setBudget(progress.nation);                                  // topbar/home Budget = live Treasury figure
+  mountWeekNudge(progress.week);                               // Week 24+ "back to the Party Page" nudge (skipped where no #weekNudge)
   window.dispatchEvent(new CustomEvent('nationhood:party', { detail: progress.party }));
   window.dispatchEvent(new CustomEvent('nationhood:gov', { detail: progress.governmentFormed }));
   window.dispatchEvent(new CustomEvent('nationhood:task', { detail: progress.theoTask }));
@@ -122,6 +126,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:legislation', { detail: progress.legislation }));
   window.dispatchEvent(new CustomEvent('nationhood:popularity', { detail: progress.partyPopularity }));
   window.dispatchEvent(new CustomEvent('nationhood:nation', { detail: progress.nation }));
+  window.dispatchEvent(new CustomEvent('nationhood:recruit', { detail: progress.recruit }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
@@ -185,18 +190,65 @@ export function statLabel(stat, value) {
   return rung[i];
 }
 
-// One formatter for the week chip. The tutorial spans only a handful of weeks,
-// all within May 1980, so the month is fixed here rather than computed.
-export function weekLabel(n) { return 'Week ' + (n || DEFAULT_WEEK) + ' · May 1980'; }
+// Starting values of the Nation stats — the single source. The live value of any
+// stat is this base plus the accumulated delta from passed bills (tutorial_state
+// .nation). The home tiles, the topbar Budget, and the Draft-a-Bill projection all
+// read liveStat() so the number is computed in exactly one place.
+export const NATION_BASE = {
+  prosperity: 14, welfare: 14, growth: 9, order: 8, image: 17,
+  inflation: 13, unemployment: 9, budget: 12.4, debt: 31,
+};
+export function liveStat(stat, nation) {
+  const base = NATION_BASE[stat] ?? 0;
+  return Math.round((base + ((nation || {})[stat] || 0)) * 10) / 10; // 1 dp; ints stay ints
+}
 
-// Write the current week into both displays that exist: the shared topbar chip
-// (.gw-week) and the home screen's own header date (#weekDate). One source.
+// The week chip stacks the week number over the (fixed) month; the tutorial spans
+// only a handful of weeks, all within May 1980. The month lives statically in the
+// markup; this only writes the week-number line.
+export function weekLabel(n) { return 'Week ' + (n || DEFAULT_WEEK); }
+
+// Write the current week number into every display marked [data-weeknum] — the
+// shared topbar and the home header both carry one. One source.
 export function setWeekLabel(n) {
-  const label = weekLabel(n);
-  const chip = document.querySelector('.gw-week');
-  if (chip) chip.textContent = label;
-  const home = document.getElementById('weekDate');
-  if (home) home.textContent = label;
+  const num = weekLabel(n);
+  document.querySelectorAll('[data-weeknum]').forEach((el) => { el.textContent = num; });
+}
+
+// Write the live Budget (base + accumulated bill deltas) into every [data-budget]
+// display. ₣ is the domestic currency, matching the home Budget tile.
+export function setBudget(nation) {
+  const txt = '₣' + liveStat('budget', nation) + 'B';
+  document.querySelectorAll('[data-budget]').forEach((el) => { el.textContent = txt; });
+}
+
+// From Week 24, every in-game page (except the Party page) shows a nudge steering
+// the player back to the Party page to recruit. Self-styled (gw- prefix) so it
+// looks the same everywhere; mounts only where a #weekNudge container exists, so
+// the Party page — which has none — is excluded with no per-page branching.
+let nudgeStyled = false;
+function ensureNudgeStyles() {
+  if (nudgeStyled) return;
+  nudgeStyled = true;
+  const css = `
+  .gw-nudge{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:18px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .gw-nudge__ey{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:10px}
+  .gw-nudge p{font-size:15px;line-height:1.55;margin:0 0 13px;max-width:64ch;color:#fff}
+  .gw-nudge b{font-weight:800}
+  .gw-nudge__btn{display:inline-block;font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;background:#fff;color:#5546E8;border-radius:11px;padding:11px 18px;text-decoration:none}
+  .gw-nudge__btn:hover{filter:brightness(.96)}`;
+  const style = document.createElement('style');
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+export function mountWeekNudge(week) {
+  const host = document.getElementById('weekNudge');
+  if (!host || (week || DEFAULT_WEEK) < 24) return;
+  ensureNudgeStyles();
+  host.innerHTML =
+    '<div class="gw-nudge"><div class="gw-nudge__ey">Tutorial</div>' +
+    "<p>Okay, there's a new bill. Feel free to vote on it. However, we have to look toward the future of the party. Let's navigate back to the <b>Party Page</b>.</p>" +
+    '<a class="gw-nudge__btn" href="/test/tutorial/party/">Go to Party Page &#9656;</a></div>';
 }
 
 // Théo Lefèvre's Charisma, used for the Labour Unrest negotiation roll.
@@ -260,6 +312,22 @@ function confidenceFromStats(welfare, prosperity) {
 // { history, popDelta, confAdj, bpResolved } of the NEW results, or null.
 // Party popularity per bill: +1 when the outcome matches your vote (Aye+passed or
 // Nay+failed), -1 when it contradicts it, 0 if you abstained.
+// Bills currently awaiting a vote on the floor: scripted bills that are due this
+// week and not yet resolved, plus the player's proposed bill if it is still live.
+// Same dedup (id OR name) as resolveLegislation. Returns [{name, effect}].
+export function onFloorBills(week, floorBill, legislation) {
+  const done = new Set();
+  (legislation || []).forEach((it) => { if (it.id) done.add(it.id); if (it.name) done.add(it.name); });
+  const out = [];
+  SCRIPTED_BILLS.forEach((b) => {
+    if (b.week <= (week || DEFAULT_WEEK) && !(done.has(b.id) || done.has(b.name))) out.push({ name: b.name, effect: b.effect });
+  });
+  if (floorBill && floorBill.title && !(done.has('bp') || done.has(floorBill.title))) {
+    out.push({ name: floorBill.title, effect: floorBill.effect || '' });
+  }
+  return out;
+}
+
 export function resolveLegislation(billVotes, floorBill, week, doneIds) {
   const v = billVotes || {};
   const done = doneIds || new Set();
@@ -433,7 +501,11 @@ function ensureTopbarStyles() {
   .gw-topbar .gw-conf__v{color:var(--ink);font-size:18px;font-weight:800;font-family:'Archivo',sans-serif;display:flex;align-items:center;gap:2px}
   .gw-topbar .gw-conf__dash{display:inline-block;width:11px;height:2px;background:currentColor;border-radius:1px}
   .gw-topbar .gw-conf__s{color:var(--soft);font-size:9px}
-  .gw-topbar .gw-week{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .gw-topbar .gw-budget{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);text-align:right;line-height:1.3;display:flex;flex-direction:column;align-items:flex-end}
+  .gw-topbar .gw-budget__v{color:var(--ink);font-size:18px;font-weight:800;font-family:'Archivo',sans-serif}
+  .gw-topbar .gw-week{font-family:'Space Mono',monospace;text-align:center;line-height:1.12;display:flex;flex-direction:column;align-items:center;white-space:nowrap}
+  .gw-topbar .gw-week__n{color:var(--ink);font-size:16px;font-weight:800;letter-spacing:.02em;font-family:'Archivo',sans-serif}
+  .gw-topbar .gw-week__m{color:var(--soft);font-size:10px;letter-spacing:.14em;text-transform:uppercase}
   .gw-topbar .gw-next{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:11px;padding:12px 20px;cursor:pointer;white-space:nowrap;transition:transform .15s,filter .15s}
   .gw-topbar .gw-next:hover{transform:translateY(-1px);filter:brightness(1.07)}
   .gw-topbar .gw-next:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
@@ -457,7 +529,8 @@ export function mountTopbar() {
   bar.innerHTML =
     '<span class="gw-actions"></span>' +
     '<span class="gw-conf"><span>Confidence</span><span class="gw-conf__v"><span class="gw-conf__dash"></span></span><span class="gw-conf__s">no government</span></span>' +
-    '<span class="gw-week">' + weekLabel(DEFAULT_WEEK) + '</span>' +
+    '<span class="gw-budget"><span>Budget</span><span class="gw-budget__v" data-budget>₣' + NATION_BASE.budget + 'B</span></span>' +
+    '<span class="gw-week"><span class="gw-week__n" data-weeknum>' + weekLabel(DEFAULT_WEEK) + '</span><span class="gw-week__m">May 1980</span></span>' +
     '<button class="gw-next" type="button">Next Week &#9656;</button>';
   main.insertBefore(bar, main.firstChild);
   wireNextWeek(bar.querySelector('.gw-next'));

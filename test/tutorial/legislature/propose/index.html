@@ -233,7 +233,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  var BASE=9; // the economy's current Growth level (Stalling); mirrors the home Growth tile. a bill pushes it up
+  var BASE=9; // fallback Growth level until the saved nation state loads (window.growthBase, via liveStat)
   var MINISTRIES=['Treasury','Trade','Welfare','Economic Development'];
   // Indicators projected from a bill's net effect. dir: +1 = higher is good
   // (green when up), -1 = higher is bad (Inflation, Unemployment). Prosperity has
@@ -323,9 +323,10 @@
     document.getElementById('projlist').innerHTML=PROJ.map(function(s){
       var k=s[0], dir=s[1], u=s[2]||'', v=deltas[k];
       if(k==='Growth'){ // shown as an absolute level so the "over 10" goal is checkable
-        var gp=BASE+v;
+        var base=(window.growthBase!=null?window.growthBase:BASE); // live level once loaded, else fallback
+        var gp=base+v;
         var word=window.statLabel?(' · '+window.statLabel('growth',gp)):''; // ladder word (shared with home tiles)
-        return '<div class="projrow"><span class="pk">Projected Growth</span><span class="pv '+(gp>10?'good':'')+'">'+BASE+' → '+gp+word+'</span></div>';
+        return '<div class="projrow"><span class="pk">Projected Growth</span><span class="pv '+(gp>10?'good':'')+'">'+base+' → '+gp+word+'</span></div>';
       }
       if(!v) return '<div class="projrow"><span class="pk">Projected '+k+'</span><span class="pv flat">No change</span></div>';
       var good=(dir>0)?(v>0):(v<0);
@@ -410,7 +411,7 @@
 </script>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar, updateProfile, statLabel } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar, updateProfile, statLabel, liveStat } from '/test/tutorial/shell.js';
   mountTopbar();
   // Share the stat ladders with the classic script (which can't import). It runs
   // first, so refresh the projection once this module has supplied statLabel.
@@ -430,7 +431,12 @@
   }
   window.addEventListener('nationhood:floorbill',function(e){ if(e.detail) markProposed(); });
   window.addEventListener('nationhood:legislation',function(e){ if(e.detail&&e.detail.some(function(it){return it.id==='bp';})) markProposed(); });
-  initSidebar();
+  // Once the saved nation state has loaded, the Growth projection bases off the
+  // live level (base + passed-bill deltas) instead of the static fallback.
+  initSidebar().then(function(){
+    window.growthBase = liveStat('growth', window.nationhoodNation || {});
+    if (window.renderPreview) window.renderPreview();
+  });
 </script>
 </body>
 </html>
