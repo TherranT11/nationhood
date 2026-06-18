@@ -537,8 +537,8 @@
   // ---- The Manifesto (UI shell) --------------------------------------------
   // A brand-new party has 0 Conviction and 0 years in power, and adoption waits
   // on the turn system, so this is read-only: you can browse your tree, but the
-  // Adopt buttons are disabled and nothing persists. The numbers come from the
-  // party row (which has no conviction column yet → 0), never from mock figures.
+  // Adopt buttons are disabled and nothing persists. Conviction is read live from
+  // the party row (new parties start at 0); years-in-power waits on the calendar.
   var MF = { tree: null, color: '#8d8d95', tier: 1, years: 0, balance: 0 };
   var overlayEl = document.getElementById('overlay');
 
@@ -587,7 +587,7 @@
   function initManifesto(party) {
     MF.tree = null; MF.color = archetypeColor(party.archetype); MF.tier = 1;
     MF.years = 0;     // no calendar yet → 0 years in power
-    MF.balance = 0;   // no conviction column yet → 0 Conviction
+    MF.balance = Number(party.conviction) || 0; // game-controlled stat; new parties start at 0
     document.getElementById('convBal').textContent = MF.balance;
     document.getElementById('convYears').textContent = MF.years;
     renderManifestoList();
