@@ -93,3 +93,74 @@ begin
 end $$;
 
 grant execute on function public.party_rally() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- party_organize(): the ORGANIZE leader action. Rolls 1d6 + the Party Leader's
+-- Command, divides by 6, and adds that to the popularity FLOOR (capped at the
+-- ceiling). Popularity never sits below the floor, so it's pulled up to meet a
+-- raised floor. Costs ₣25K + 1 action; records a tiered event.
+-- ---------------------------------------------------------------------------
+create or replace function public.party_organize()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user  uuid := auth.uid();
+  v_p     public.parties%rowtype;
+  v_com   int;
+  v_roll  int;
+  v_total int;
+  v_delta numeric;
+  v_newfloor numeric;
+  v_newpop numeric;
+  v_cost  bigint := 25000;
+  v_tier  text;
+  v_body  text;
+begin
+  if v_user is null then raise exception 'Not signed in.'; end if;
+  select * into v_p from public.parties where user_id = v_user for update;
+  if not found then raise exception 'You have no party.'; end if;
+  if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
+  if v_p.funds < v_cost then raise exception 'Not enough funds to organize (need ₣25K).'; end if;
+
+  select coalesce(com, 0) into v_com from public.politicians
+    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
+  v_com := coalesce(v_com, 0);
+
+  v_roll  := floor(random() * 6)::int + 1;                  -- 1d6
+  v_total := v_roll + v_com;
+  v_delta := round((v_total::numeric) / 6.0, 1);            -- (1d6 + Command) / 6
+  v_newfloor := least(v_p.pop_floor + v_delta, v_p.pop_ceiling::numeric); -- floor capped at the ceiling
+  v_delta := v_newfloor - v_p.pop_floor;                    -- amount actually applied
+  v_newpop := greatest(v_p.popularity, v_newfloor);         -- popularity is never below the floor
+
+  if    v_total >= 7 then v_tier := 'strong';
+  elsif v_total >= 4 then v_tier := 'middling';
+  else                    v_tier := 'poor';
+  end if;
+
+  v_body := 'The ' || v_p.name || case v_tier
+    when 'strong'   then ' has spent the week organizing, and the ground game took hold. New local chapters opened their doors, volunteers signed up in droves, and a base is forming that no rival attack will pry loose.'
+    when 'middling' then ' has been organizing on the ground. A few new chapters found their feet and the volunteer rolls grew — steady, unglamorous work that quietly deepens your roots.'
+    else                 ' tried to organize this week, but the effort sputtered. Meetings went half-attended, the paperwork stalled, and little took root.'
+  end || ' Floor +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
+
+  update public.parties
+     set pop_floor = v_newfloor,
+         popularity = v_newpop,
+         funds = funds - v_cost,
+         actions_remaining = actions_remaining - 1
+   where id = v_p.id;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+  values (v_p.nation_id, v_p.id, 'organize', v_body, 'January, 1980');
+
+  return jsonb_build_object(
+    'tier', v_tier, 'delta', v_delta, 'floor', v_newfloor, 'popularity', v_newpop,
+    'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - 1, 'body', v_body
+  );
+end $$;
+
+grant execute on function public.party_organize() to authenticated;

@@ -21,7 +21,7 @@ create table if not exists public.parties (
   -- logic moves these later. They live here so each page reads one source.
   seats         int     not null default 0,     -- seats held in the legislature
   popularity    numeric not null default 0,     -- public support, % (fractional — actions move it in tenths)
-  pop_floor     int     not null default 0,     -- support floor: the base attacks can't push below, %
+  pop_floor     numeric not null default 0,     -- support floor: the base attacks can't push below, % (fractional — Organize moves it in tenths)
   pop_ceiling   int     not null default 5,     -- support ceiling: current reach / cap on popularity, %
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
@@ -34,7 +34,8 @@ alter table public.parties add column if not exists abbreviation text;
 alter table public.parties add column if not exists seats int not null default 0;
 alter table public.parties add column if not exists popularity numeric not null default 0;
 alter table public.parties alter column popularity type numeric using popularity::numeric; -- widen int → numeric for fractional support
-alter table public.parties add column if not exists pop_floor int not null default 0;
+alter table public.parties add column if not exists pop_floor numeric not null default 0;
+alter table public.parties alter column pop_floor type numeric using pop_floor::numeric; -- widen int → numeric for fractional floor
 alter table public.parties add column if not exists pop_ceiling int not null default 5;
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
