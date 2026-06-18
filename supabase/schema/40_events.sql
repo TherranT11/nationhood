@@ -140,8 +140,8 @@ end $$;
 grant execute on function public.party_organize() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- party_fundraise(): 1d6 + Charisma, ×₣15K, added to Party Funds. A natural 1 on
--- the d6 costs −1 popularity (never below the floor). No franc cost — only 1 action.
+-- party_fundraise(): 1d6 + Charisma, ×₣15K, added to Party Funds. No franc cost —
+-- only 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_fundraise()
 returns jsonb
@@ -151,7 +151,7 @@ set search_path = public
 as $$
 declare
   v_p public.parties%rowtype; v_cha int; v_roll int; v_total int;
-  v_haul bigint; v_penalty int; v_newpop numeric; v_tier text; v_body text;
+  v_haul bigint; v_tier text; v_body text;
 begin
   v_p := public._begin_action(0);  -- fundraising is free; only the action is spent
   select coalesce(cha, 0) into v_cha from public.politicians
@@ -162,8 +162,6 @@ begin
   v_total := v_roll + v_cha;
   v_tier  := public._action_tier(v_total);
   v_haul  := v_total::bigint * 15000;                              -- (1d6 + Cha) × ₣15K
-  v_penalty := case when v_roll = 1 then 1 else 0 end;            -- natural 1 → −1 popularity
-  v_newpop := greatest(v_p.popularity - v_penalty, v_p.pop_floor); -- never below the floor
 
   v_body := 'The ' || v_p.name || case v_tier
     when 'strong'   then ' has held a fundraising drive, and the cheques poured in. Donors emptied their pockets and new members signed up by the hundred — the war chest has never looked healthier.'
@@ -171,9 +169,9 @@ begin
     else                 ' passed the hat this week, but the donors stayed shy. A thin trickle of small gifts was all the drive could manage.'
   end || ' Funds +₣' || (v_haul / 1000) || 'K.';
 
-  update public.parties set funds = funds + v_haul, popularity = v_newpop, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set funds = funds + v_haul, actions_remaining = actions_remaining - 1 where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'fundraise', v_body, 'January, 1980');
-  return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'pop_penalty', v_penalty, 'funds', v_p.funds + v_haul, 'popularity', v_newpop, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'funds', v_p.funds + v_haul, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
 
 grant execute on function public.party_fundraise() to authenticated;
