@@ -230,25 +230,27 @@ create policy "parties_select_all" on public.parties for select using (true);
 drop policy if exists "parties_insert_own" on public.parties;
 create policy "parties_insert_own" on public.parties for insert with check (auth.uid() = user_id);
 
+-- The update policy also carries a WITH CHECK so a player can't reassign their
+-- party to someone else (user_id must stay the caller's) — needed because the
+-- founding upsert's DO UPDATE may re-set user_id.
 drop policy if exists "parties_update_own" on public.parties;
-create policy "parties_update_own" on public.parties for update using (auth.uid() = user_id);
+create policy "parties_update_own" on public.parties for update
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "parties_delete_own" on public.parties;
 create policy "parties_delete_own" on public.parties for delete using (auth.uid() = user_id);
 
--- KNOWN ISSUE (write-scope): the standings columns — seats, popularity,
--- pop_floor, pop_ceiling, funds, in_government — are GAME-CONTROLLED and the
--- client never writes them. But parties_update_own / parties_insert_own are
--- row-level (they gate WHICH row, not WHICH columns), so a crafted client
--- request to a player's own row could still set them (e.g. popularity = 100).
--- No client code does this, but it is not yet prevented server-side.
--- Fix when standings go live: restrict the writable COLUMNS with grants, e.g.
---   revoke insert, update on public.parties from authenticated;
---   grant insert (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
---   grant update (nation_id, name, abbreviation, archetype)          on public.parties to authenticated;
--- (verify against Supabase's default grants + the party-creation upsert before
--- applying), or move standings writes behind a service-role function. Not done
--- here to avoid breaking the working sign-up/founding flow without testing.
+-- Write-scope lock (column-level). RLS gates WHICH row a player can touch; these
+-- grants gate WHICH columns. The standings — seats, popularity, pop_floor,
+-- pop_ceiling, funds, in_government — are GAME-CONTROLLED, so they are left out
+-- of the client's insert/update privileges entirely: a crafted request can no
+-- longer set e.g. popularity = 100. Only the identity fields the founding flow
+-- writes are granted (user_id is included so the upsert's DO UPDATE works; the
+-- WITH CHECK above keeps it pinned to the caller). When standings start changing
+-- server-side, do it via a service-role path (which bypasses these grants).
+revoke insert, update on public.parties from authenticated;
+grant insert (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
+grant update (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Politicians: a party's prominent politicians. Public read (shared instance —
