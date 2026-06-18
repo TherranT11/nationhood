@@ -29,3 +29,11 @@ export function fmtGdp(value) {
   if (n > 999) return (Math.round(n / 1000 * 100) / 100) + ' Trillion'; // >999B → trillions, 2 dp
   return n.toLocaleString() + ' Billion';
 }
+
+// Population is stored as a number of MILLIONS. Show "<n> Million", rolling to
+// Billion once it passes 999 million. Display only.
+export function fmtPop(value) {
+  var n = Number(value) || 0;
+  if (n > 999) return (Math.round(n / 1000 * 100) / 100) + ' Billion'; // >999M → billions, 2 dp
+  return n.toLocaleString() + ' Million';
+}

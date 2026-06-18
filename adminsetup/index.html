@@ -87,7 +87,7 @@
           <div class="full"><label for="f-name">Name</label><input id="f-name" type="text" required></div>
           <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
           <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
-          <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="1"></div>
+          <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="1" placeholder="in millions"></div>
           <div><label for="f-gdp">Starting GDP</label><input id="f-gdp" type="number" min="0" step="1" placeholder="in billions"></div>
           <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
           <div><label for="f-welfare">Starting Welfare</label><input id="f-welfare" type="number" step="1"></div>
@@ -116,7 +116,7 @@
 
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
-    import { esc, fmtGdp } from '/util.js';
+    import { esc, fmtGdp, fmtPop } from '/util.js';
     import { REGIME_TIERS, regimeLabel } from '/ladders.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
@@ -177,14 +177,6 @@
       await refresh();
     });
 
-    // Population/GDP shown raw-ish but compact in the existing list.
-    function fmtBig(n) {
-      n = Number(n) || 0;
-      if (n >= 1e12) return (Math.round(n / 1e11) / 10) + 'T';
-      if (n >= 1e9) return (Math.round(n / 1e8) / 10) + 'B';
-      if (n >= 1e6) return (Math.round(n / 1e5) / 10) + 'M';
-      return n.toLocaleString();
-    }
     function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + esc(String(v)) + '</span></div>'; }
 
     async function loadNations() {
@@ -206,7 +198,7 @@
             (n.analogous ? '<div class="ncard__analog">' + esc(n.analogous) + '</div>' : '') +
             (n.description ? '<div class="ncard__desc">' + esc(n.description) + '</div>' : '') +
             '<div class="ncard__stats">' +
-              kv('Population', fmtBig(n.population)) + kv('GDP', cur + fmtGdp(n.gdp)) +
+              kv('Population', fmtPop(n.population)) + kv('GDP', cur + fmtGdp(n.gdp)) +
               kv('Regime', regimeTxt) +
               kv('Legislature', (n.legislature_seats || 0) + ' seats') +
               kv('Elections', 'every ' + (n.election_frequency_months || 0) + ' mo') +
