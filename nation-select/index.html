@@ -41,13 +41,19 @@
   .nstat .v.warn { color: #c0860a; }   /* amber (readable "yellow" on white) */
   .nstat .v.bad  { color: #c0341d; }   /* red */
 
-  /* The roster of parties already in this nation (shared instance). */
-  .plist { margin: 0 0 20px; }
+  /* The roster of parties already in this nation (shared instance) — collapsible. */
+  .proster { margin: 0 0 20px; }
+  .plist { border-top: 1px solid var(--line); }
+  .plist > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 11px 0; font-weight: 700; font-size: 13.5px; color: var(--ink); }
+  .plist > summary::-webkit-details-marker { display: none; }
+  .plist > summary::after { content: '▸'; color: var(--muted); font-size: 12px; }
+  .plist[open] > summary::after { content: '▾'; }
   .plist .prow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .plist .prow:first-of-type { border-top: 1px solid var(--line); }
   .plist .prow:last-child { border-bottom: 0; }
   .plist .pn { font-weight: 700; color: var(--ink); }
   .plist .pa { color: var(--muted); font-size: 12.5px; }
-  .plist .pempty { color: #9a9a9a; font-size: 13px; font-style: italic; padding: 4px 0 0; }
+  .pempty { color: #9a9a9a; font-size: 13px; font-style: italic; padding: 4px 0 0; border-top: 1px solid var(--line); }
 
   .nation-join { width: 100%; padding: 13px; font-size: 15px; }
   .note { margin-top: 12px; text-align: center; font-size: 13.5px; color: var(--muted); min-height: 18px; }
@@ -84,7 +90,7 @@
   <script type="module">
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
     import { statLabel, statBand } from '/ladders.js';
-    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp } from '/util.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -95,22 +101,12 @@
     function err(msg) { note.textContent = msg; note.className = 'note error'; }
     function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-    // Population/GDP are stored raw; format to a readable scale.
-    function fmtBig(n) {
-      n = Number(n) || 0;
-      if (n >= 1e12) return trim(n / 1e12) + ' Trillion';
-      if (n >= 1e9)  return trim(n / 1e9)  + ' Billion';
-      if (n >= 1e6)  return trim(n / 1e6)  + ' Million';
-      return n.toLocaleString();
-    }
-    function trim(x) { return String(Math.round(x * 10) / 10); }
-
     // One card's markup. The five ladder stats: the number is the source, the
     // word + colour band are derived (statLabel/statBand) — never stored.
     function statsHTML(n) {
       var stats = n.stats || {};
       var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
-      var rows = '<div class="nstat"><span class="k">Population</span><span class="v">' + fmtBig(n.population) + '</span></div>' +
+      var rows = '<div class="nstat"><span class="k">Population</span><span class="v">' + fmtPop(n.population) + '</span></div>' +
         '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtGdp(n.gdp) + '</span></div>';
       LADDER_STATS.forEach(function (k) {
         var v = stats[k];
@@ -130,7 +126,7 @@
           (n.description ? '<p class="nation-desc">' + esc(n.description) + '</p>' : '') +
           (n.analogous ? '<p class="nation-analog">Analogous to: ' + esc(n.analogous) + '</p>' : '') +
           '<div class="nstats">' + statsHTML(n) + '</div>' +
-          '<div class="plist"></div>' +
+          '<div class="proster"></div>' +
           '<button class="btn btn-solid nation-join">Join Nation</button>' +
         '</div></article>';
     }
@@ -139,7 +135,7 @@
     // Derived live from the shared parties table (this is one multiplayer world).
     async function loadParties(card, n) {
       var elV = card.querySelector('.parties');
-      var elList = card.querySelector('.plist');
+      var elRoster = card.querySelector('.proster');
       try {
         const { data, error } = await supabase
           .from('parties').select('name, archetype')
@@ -147,12 +143,16 @@
         if (error) throw error;
         var list = data || [];
         elV.textContent = list.length + ' / ' + MAX_PARTIES;
-        elList.innerHTML = list.length
-          ? list.map(function (p) {
-              return '<div class="prow"><span class="pn">' + esc(p.name) +
-                     '</span><span class="pa">' + esc(p.archetype) + '</span></div>';
-            }).join('')
-          : '<div class="pempty">No parties yet — be the first to found one.</div>';
+        if (list.length) {
+          // Collapsible roster — keeps a full nation from making the card huge.
+          var rows = list.map(function (p) {
+            return '<div class="prow"><span class="pn">' + esc(p.name) +
+                   '</span><span class="pa">' + esc(p.archetype) + '</span></div>';
+          }).join('');
+          elRoster.innerHTML = '<details class="plist"><summary>Party list (' + list.length + ')</summary>' + rows + '</details>';
+        } else {
+          elRoster.innerHTML = '<div class="pempty">No parties yet — be the first to found one.</div>';
+        }
         if (list.length >= MAX_PARTIES) {
           var join = card.querySelector('.nation-join');
           join.disabled = true;
@@ -160,7 +160,7 @@
         }
       } catch (e) {
         elV.textContent = '— / ' + MAX_PARTIES;
-        elList.innerHTML = '';
+        elRoster.innerHTML = '';
       }
     }
 

@@ -67,13 +67,14 @@ create policy "nations_insert_admin" on public.nations for insert with check (pu
 
 -- Seed the first nation with its starting numbers (idempotent; won't clobber a
 -- live row's values on re-run).
-insert into public.nations (id, name, description, flag, population, gdp, legislature_seats, stats, economy)
+insert into public.nations (id, name, description, analogous, flag, population, gdp, legislature_seats, stats, economy)
 values (
   'sessau',
   'Sessau',
   'A nation in Meridian, steeped in culture and history.',
+  'France',
   '/assets/Sessau.png',
-  69000000,
+  69,
   678,
   280,
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
@@ -94,3 +95,9 @@ update public.nations set legislature_seats = 280
 -- once; the guard keeps a re-run from re-triggering after it's already 678.
 update public.nations set gdp = 678
  where id = 'sessau' and gdp > 1000000;
+-- Population is now stored in millions (was a raw count). Same one-time migration.
+update public.nations set population = 69
+ where id = 'sessau' and population > 100000;
+-- Sessau's real-world analogue.
+update public.nations set analogous = 'France'
+ where id = 'sessau' and analogous is null;
