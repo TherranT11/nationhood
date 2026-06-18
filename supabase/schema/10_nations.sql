@@ -20,6 +20,7 @@ create table if not exists public.nations (
   electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
+  production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
   created_at     timestamptz not null default now()
 );
 -- For installs created before these columns existed.
@@ -28,6 +29,7 @@ alter table public.nations add column if not exists legislature_seats int not nu
 alter table public.nations add column if not exists election_frequency_months int not null default 60;
 alter table public.nations add column if not exists electoral_threshold numeric not null default 0;
 alter table public.nations add column if not exists analogous text;
+alter table public.nations add column if not exists production jsonb not null default '{}'::jsonb;
 -- The active-party count is derived live from public.parties (one source), not
 -- stored — drop the old counter column if an earlier install still has it.
 alter table public.nations drop column if exists active_parties;
