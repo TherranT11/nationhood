@@ -118,7 +118,8 @@
       document.getElementById('nName').textContent = n.name || 'Unknown';
       document.getElementById('nDesc').textContent = n.description || '';
       document.getElementById('v-pop').textContent = fmtBig(n.population);
-      document.getElementById('v-gdp').textContent = '₶' + fmtBig(n.gdp); // ₶ = French livre
+      var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
+      document.getElementById('v-gdp').textContent = currency + fmtBig(n.gdp);
       document.getElementById('v-parties').textContent = (n.active_parties != null ? n.active_parties : 0);
 
       // The five ladder stats: the number is the source, the word is derived.

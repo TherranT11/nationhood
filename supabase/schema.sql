@@ -138,12 +138,14 @@ create table if not exists public.nations (
   population     bigint,          -- raw count; formatted on the client
   gdp            bigint,          -- raw value; formatted on the client
   active_parties int  not null default 0,
+  legislature_seats int not null default 0, -- total seats in the nation's legislature
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
-  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt}
+  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
   created_at     timestamptz not null default now()
 );
--- For installs created before the economy column existed.
+-- For installs created before these columns existed.
 alter table public.nations add column if not exists economy jsonb not null default '{}'::jsonb;
+alter table public.nations add column if not exists legislature_seats int not null default 0;
 
 alter table public.nations enable row level security;
 
@@ -153,7 +155,7 @@ create policy "nations_select_all" on public.nations for select using (true);
 
 -- Seed the first nation with its starting numbers (idempotent; won't clobber a
 -- live row's values on re-run).
-insert into public.nations (id, name, description, flag, population, gdp, active_parties, stats, economy)
+insert into public.nations (id, name, description, flag, population, gdp, active_parties, legislature_seats, stats, economy)
 values (
   'sessau',
   'Sessau',
@@ -162,16 +164,21 @@ values (
   69000000,
   678000000000,
   0,
+  280,
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
-  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31}'::jsonb
+  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"₶"}'::jsonb
 )
 on conflict (id) do nothing;
 
--- Backfill the economy figures on an already-seeded Sessau row (the insert above
--- is a no-op once the row exists). Only touches a row that hasn't got them yet.
+-- Backfill on an already-seeded Sessau row (the insert above is a no-op once the
+-- row exists). Each only touches a row that hasn't got the value yet.
 update public.nations
-   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31}'::jsonb
+   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"₶"}'::jsonb
  where id = 'sessau' and (economy is null or economy = '{}'::jsonb);
+update public.nations set economy = economy || '{"currency":"₶"}'::jsonb
+ where id = 'sessau' and not (economy ? 'currency');
+update public.nations set legislature_seats = 280
+ where id = 'sessau' and legislature_seats = 0;
 
 -- ---------------------------------------------------------------------------
 -- Parties: a player's party within a nation. One per player for now (unique
@@ -187,11 +194,21 @@ create table if not exists public.parties (
   name         text not null,
   abbreviation text not null,
   archetype    text not null,
+  -- Starting standings. A brand-new party begins at zero on every count; game
+  -- logic moves these later. They live here so each page reads one source.
+  seats         int     not null default 0,     -- seats held in the legislature
+  popularity    int     not null default 0,     -- public support, %
+  funds         bigint  not null default 0,      -- party treasury, in the nation's currency
+  in_government boolean not null default false, -- governing vs in opposition
   created_at   timestamptz not null default now(),
   unique (user_id)
 );
--- For installs created before the abbreviation column existed.
+-- For installs created before these columns existed.
 alter table public.parties add column if not exists abbreviation text;
+alter table public.parties add column if not exists seats int not null default 0;
+alter table public.parties add column if not exists popularity int not null default 0;
+alter table public.parties add column if not exists funds bigint not null default 0;
+alter table public.parties add column if not exists in_government boolean not null default false;
 
 -- No two parties in the same nation may share a name (case-insensitive) or an
 -- abbreviation — enforced server-side, not just in the client.
