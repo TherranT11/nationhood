@@ -165,6 +165,10 @@
     user = await requireUser();
     if (!user) return; // not signed in: requireUser has redirected to login
     const progress = await getTutorialProgress(user.id);
+    if (progress && progress.completed) {
+      window.location.replace('/test/'); // tutorial ended for good: no re-entry
+      return;
+    }
     if (progress && progress.party) {
       window.location.replace('/test/tutorial/home/'); // already chosen: skip ahead
       return;

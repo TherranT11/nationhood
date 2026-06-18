@@ -310,7 +310,15 @@
     // Assigning a task is the final tutorial beat: wrap up with the end modal.
     document.getElementById('endModal').hidden=false;
   });
-  document.getElementById('endBtn').addEventListener('click',function(){ window.location.href='/test/'; });
+  // End the tutorial for good: mark it completed (so no page lets the player back
+  // in), then leave for /test/. Navigate even if the write fails — never trap them.
+  var ending=false;
+  document.getElementById('endBtn').addEventListener('click',async function(){
+    if(ending) return; ending=true;
+    document.getElementById('endBtn').textContent='Ending…';
+    try{ await updateProfile({ tutorial_completed:true }); }catch(e){/* leave anyway */}
+    window.location.href='/test/';
+  });
   document.getElementById('taskCancel').addEventListener('click',closeModal);
   document.getElementById('taskClose').addEventListener('click',closeModal);
   modal.addEventListener('click',function(e){ if(e.target===modal) closeModal(); });

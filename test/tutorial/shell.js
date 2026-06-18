@@ -62,6 +62,7 @@ export async function getTutorialProgress(userId) {
       nation: s.nation || {}, // accumulated stat deltas from passed bills
       recruits: s.recruits || (s.recruit ? [s.recruit] : []), // politicians recruited on the Party page
       tasks: s.tasks || {}, // per-member active task: { <memberId>: {task, total, elapsed} }
+      completed: !!s.completed, // tutorial ended for good — no re-entry
     };
   } catch (err) {
     return null;
@@ -93,6 +94,7 @@ export async function initSidebar() {
 
   const progress = await getTutorialProgress(user.id);
   if (!progress) { reveal(); return; } // lookup failed: keep defaults
+  if (progress.completed) { window.location.replace('/test/'); return; } // tutorial ended: lock out every in-game page
 
   const p = PARTY[progress.party];
   if (p && partyEl) { partyEl.textContent = p.label; partyEl.style.color = p.color; }
