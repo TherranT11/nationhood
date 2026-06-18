@@ -200,19 +200,22 @@
     if (eco.debt != null) chips.push(chip('Debt', val('₣' + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }
-  // The party-founding event. The clock is frozen at the game's start date, so a
-  // party founded now was founded on that date — we read the live date the topbar
-  // already shows (one source). When months start advancing, the founding date
-  // should be persisted on the party row instead of read from the current date.
-  function renderEvents(party, nation, when) {
-    var nm = (nation && nation.name) || party.nation_id;
+  // Party-founding events for EVERY party in the nation (shared instance), newest
+  // first. The clock is frozen at the game's start date, so a party founded now
+  // was founded on that date — we read the live date the topbar shows (one
+  // source). When months start advancing, the founding date should be persisted
+  // on each party row instead of read from the current date.
+  function renderEvents(parties, nation, when) {
+    var box = document.getElementById('events');
+    if (!parties.length) { box.innerHTML = '<p class="empty">No events yet.</p>'; return; }
+    var nm = (nation && nation.name) || '';
     var flagImg = (nation && nation.flag) ? '<img class="feed__flag" src="' + esc(nation.flag) + '" alt="">' : '';
-    document.getElementById('events').innerHTML =
-      '<ul class="feed"><li class="feed__evt">' +
-      '<span class="feed__date">' + esc(when) + '</span> &mdash; ' + flagImg +
-      'The <b>' + esc(party.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. ' +
-      'It is a ' + esc(party.archetype) + ' party.' +
-      '</li></ul>';
+    box.innerHTML = '<ul class="feed">' + parties.map(function (p) {
+      return '<li class="feed__evt">' +
+        '<span class="feed__date">' + esc(when) + '</span> &mdash; ' + flagImg +
+        'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. ' +
+        'It is a ' + esc(p.archetype) + ' party.</li>';
+    }).join('') + '</ul>';
   }
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
@@ -237,8 +240,11 @@
       document.title = party.name + ' · Nationhood';
 
       if (nation) renderGlance(nation);
-      var gameDate = (document.querySelector('.tb-date__v') || {}).textContent || 'January, 1980';
-      renderEvents(party, nation, gameDate.trim());
+      var gameDate = ((document.querySelector('.tb-date__v') || {}).textContent || 'January, 1980').trim();
+      // Every party in the nation, newest first — so each one's founding shows up.
+      const { data: nationParties } = await supabase.from('parties')
+        .select('name, archetype, created_at').eq('nation_id', party.nation_id).order('created_at', { ascending: false });
+      renderEvents(nationParties || [], nation, gameDate);
 
       if (nation && nation.flag) {
         flag.onload = function () { flag.hidden = false; };
