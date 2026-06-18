@@ -78,6 +78,19 @@
   .cols .panel{margin-top:0}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
+  /* Party Leader · This Week's Action — disabled for now (not wired). The cards
+     are real <button disabled> so they can't be clicked or focused; the muted
+     styling shows they're coming, not active. */
+  .leadbar__sub{font-size:14.5px;color:var(--muted);line-height:1.55;margin:0 0 16px;max-width:none}
+  .leadbar__sub b{color:var(--indigo);font-weight:700}
+  .leadbar__grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;opacity:.6}
+  .lead{text-align:left;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:not-allowed}
+  .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px}
+  .lead__lane{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .leadbar__builds{font-family:'Space Mono',monospace;font-size:11px;line-height:1.7;color:var(--soft);margin-top:16px;letter-spacing:.01em}
+  .leadbar__builds b{color:var(--muted);font-weight:700}
+  .leadbar__builds .sep{color:var(--indigo)}
+
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -116,6 +129,23 @@
     <div class="kicker" id="kicker">The Instance</div>
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
+
+    <section class="panel leadbar">
+      <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
+      <p class="leadbar__sub">You lead the party, in government or out. <b>One action this week</b> &mdash; choose where to spend it.</p>
+      <div class="leadbar__grid">
+        <button class="lead" type="button" disabled><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span></button>
+        <button class="lead" type="button" disabled><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span></button>
+        <button class="lead" type="button" disabled><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span></button>
+        <button class="lead" type="button" disabled><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span></button>
+        <button class="lead" type="button" disabled><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span></button>
+        <button class="lead" type="button" disabled><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span></button>
+        <button class="lead" type="button" disabled><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span></button>
+        <button class="lead" type="button" disabled><b>Court</b><span class="lead__lane">Guile &middot; The Backroom</span></button>
+      </div>
+      <p class="leadbar__builds"><b>Builds:</b> Rally &amp; Platform &amp; Ad Blitz lift your <b>ceiling</b> <span class="sep">&middot;</span> Organize raises your <b>floor</b> <span class="sep">&middot;</span> Fundraise fills <b>Party Funds</b> <span class="sep">&middot;</span> Attack &amp; Court target <b>rivals</b> <span class="sep">&middot;</span> Recruit grows your <b>bench</b>.</p>
+    </section>
+
     <section class="panel" id="glance">
       <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
       <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>

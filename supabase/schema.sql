@@ -211,3 +211,22 @@ create policy "parties_update_own" on public.parties for update using (auth.uid(
 
 drop policy if exists "parties_delete_own" on public.parties;
 create policy "parties_delete_own" on public.parties for delete using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- Sessau name pool: the source for Sessau-flavoured names (used later for
+-- generated politicians/characters). One row per name, tagged by kind
+-- (male / female first names, surname). Public read; clients never write it.
+-- The rows themselves are bulk data and live in supabase/seed/sessau_names.sql
+-- (run that once after this file); only the structure lives here.
+-- ---------------------------------------------------------------------------
+create table if not exists public.sessau_names (
+  id   bigint generated always as identity primary key,
+  kind text not null check (kind in ('male', 'female', 'surname')),
+  name text not null,
+  unique (kind, name)
+);
+
+alter table public.sessau_names enable row level security;
+
+drop policy if exists "sessau_names_select_all" on public.sessau_names;
+create policy "sessau_names_select_all" on public.sessau_names for select using (true);
