@@ -95,7 +95,7 @@
 
   <script type="module">
     import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES } from '/util.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, COMPETENCIES } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -174,7 +174,7 @@
         var age = 25 + Math.floor(Math.random() * 31);  // 25–55 inclusive
         var exp = Math.floor(age / 10);                  // experience = stat points to spend
         var stats = { cha: 0, acu: 0, gui: 0, res: 0, com: 0 };
-        var keys = ['cha', 'acu', 'gui', 'res', 'com'];
+        var keys = COMPETENCIES.map(function (c) { return c.key; });
         for (var i = 0; i < exp; i++) { stats[keys[Math.floor(Math.random() * keys.length)]]++; }
 
         await supabase.from('politicians').insert({

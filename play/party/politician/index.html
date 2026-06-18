@@ -145,14 +145,13 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc } from '/util.js';
+  import { esc, COMPETENCIES } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
     i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
   });
 
-  var STATS = [['cha', 'Charisma'], ['acu', 'Acumen'], ['gui', 'Guile'], ['res', 'Resolve'], ['com', 'Command']];
   var id = new URLSearchParams(location.search).get('id') || '';
 
   function initials(name) { var p = String(name).trim().split(/\s+/); return ((p[0] || '')[0] + ((p[1] || '')[0] || '')).toUpperCase(); }
@@ -164,12 +163,12 @@
     var name = pol.first_name + ' ' + pol.last_name;
     document.title = name + ' · Nationhood';
 
-    var vals = STATS.map(function (s) { return pol[s[0]] || 0; });
+    var vals = COMPETENCIES.map(function (c) { return pol[c.key] || 0; });
     var mx = Math.max.apply(null, vals);
     var tiles = '<div class="stile"><span class="l">Age</span><span class="v">' + (pol.age || 0) + '<small> yrs</small></span></div>' +
       '<div class="stile"><span class="l">Exp</span><span class="v">' + (pol.experience || 0) + '</span></div>' +
-      STATS.map(function (s, i) {
-        return '<div class="stile' + (vals[i] === mx && mx > 0 ? ' max' : '') + '"><span class="l">' + s[1] + '</span><span class="v">' + vals[i] + '</span></div>';
+      COMPETENCIES.map(function (c, i) {
+        return '<div class="stile' + (vals[i] === mx && mx > 0 ? ' max' : '') + '"><span class="l">' + c.name + '</span><span class="v">' + vals[i] + '</span></div>';
       }).join('');
 
     // Character history starts almost empty: a founding/joining line + a birth line.
@@ -187,7 +186,7 @@
         '<span class="hero__pic">' + esc(initials(name)) + '</span>' +
         '<div class="hero__id"><div class="kicker">Prominent Politician</div><h1>' + esc(name) + '</h1>' +
           '<div class="role">' + esc(pol.status || 'Party Member') + ' &middot; ' + esc(party.name) + '</div>' +
-          '<div class="htags"><span class="tag party">' + esc(party.archetype) + '</span></div></div>' +
+          '<div class="htags">' + (party.archetype ? '<span class="tag party">' + esc(party.archetype) + '</span>' : '') + '</div></div>' +
       '</div><div class="sgrid">' + tiles + '</div></section>' +
 
       '<section class="mod"><div class="mod__hd">Current Task</div>' +
