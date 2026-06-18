@@ -111,6 +111,17 @@
   .atarget__id b{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
   .atarget__id span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;color:var(--soft);margin-left:6px}
   .atarget__st{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap;text-align:right}
+  /* RECRUIT candidate cards (reuse the .amodal shell). */
+  .cand{display:flex;flex-direction:column;gap:9px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
+  .cand:hover{border-color:var(--indigo)}
+  .cand__top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .cand__name b{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .cand__tag{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .cand__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .cand__stats{display:flex;flex-wrap:wrap;gap:6px}
+  .cand__stat{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--muted);background:var(--chip);border-radius:6px;padding:4px 8px}
+  .cand__stat b{color:var(--ink)}
+  .cand__cost{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo)}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
   .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
@@ -169,7 +180,7 @@
         <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: ₣25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
         <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: ₣100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
         <button class="lead" id="act-platform" type="button" title="Roll 1d6 + Resolve, ÷3, added to your popularity ceiling. Costs −0.2% popularity. Cost: ₣25K + 1 action."><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span><span class="lead__desc">Raises your popularity ceiling.</span></button>
-        <button class="lead" type="button" disabled><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span></button>
+        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive (₣25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, quality set by your 1d6 + Charisma roll) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
         <button class="lead" type="button" disabled><b>Court</b><span class="lead__lane">Guile &middot; The Backroom</span></button>
       </div>
     </section>
@@ -201,10 +212,17 @@
   </div>
 </div>
 
+<div class="amodal" id="recruitModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Recruitment Drive</b><button class="amodal__x" id="recruitClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="recruitList"></div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { statLabel, statBand } from '/ladders.js';
-  import { esc } from '/util.js';
+  import { esc, COMPETENCIES } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   // sidebar nav items aren't wired yet (online-game screens not built) — highlight only.
@@ -342,6 +360,59 @@
     document.getElementById('attackClose').addEventListener('click', closeAttackModal);
     attackModal.addEventListener('click', function (e) { if (e.target === attackModal) closeAttackModal(); });
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !attackModal.hidden) closeAttackModal(); });
+  }
+
+  // RECRUIT is two-step: opening the drive (party_recruit_scout) charges ₣25K and
+  // surfaces two candidates; hiring one (party_recruit_hire) spends the action
+  // cost. Scouting is a side-effecting "picker" like Attack, so it opens the modal
+  // itself; the hire goes through performAction to refresh the budget + feed.
+  var recruitBtn = document.getElementById('act-recruit');
+  var recruitModal = document.getElementById('recruitModal');
+  if (recruitBtn) {
+    actionBtns.push(recruitBtn);
+    recruitBtn.addEventListener('click', openRecruitModal);
+  }
+  function candCard(choice, c, acts) {
+    if (!c) return '';
+    var label = choice === 'seasoned' ? 'Seasoned' : 'Newcomer';
+    var stats = COMPETENCIES.map(function (k) { return '<span class="cand__stat">' + k.abbr + ' <b>' + (c[k.key] || 0) + '</b></span>'; }).join('');
+    return '<button class="cand" type="button" data-choice="' + choice + '">' +
+      '<span class="cand__top"><span class="cand__name"><b>' + esc((c.first_name || '') + ' ' + (c.last_name || '')) + '</b></span><span class="cand__tag">' + label + '</span></span>' +
+      '<span class="cand__meta">Age ' + (c.age || 0) + ' &middot; Exp ' + (c.experience || 0) + '</span>' +
+      '<span class="cand__stats">' + stats + '</span>' +
+      '<span class="cand__cost">Recruit &middot; ' + acts + ' action' + (acts > 1 ? 's' : '') + '</span></button>';
+  }
+  function renderCandidates(d) {
+    var list = document.getElementById('recruitList');
+    list.innerHTML = candCard('newcomer', d.newcomer, 1) + candCard('seasoned', d.seasoned, 2);
+    list.querySelectorAll('.cand').forEach(function (b) { b.addEventListener('click', function () { hireCandidate(b.dataset.choice); }); });
+  }
+  async function openRecruitModal() {
+    if (acting || recruitBtn.disabled || !feedCtx) return;
+    acting = true;
+    actionBtns.forEach(function (b) { b.disabled = true; });
+    var list = document.getElementById('recruitList');
+    list.innerHTML = '<p class="empty">Opening the recruitment drive…</p>';
+    recruitModal.hidden = false;
+    try {
+      const { data, error } = await supabase.rpc('party_recruit_scout');
+      if (error) { recruitModal.hidden = true; ping(error.message || 'Couldn’t open the drive.'); return; }
+      setActions(data.actions);
+      renderCandidates(data);
+    } catch (e) { recruitModal.hidden = true; ping('Couldn’t open the drive.'); }
+    finally { acting = false; setActions(partyActions); }
+  }
+  function closeRecruitModal() { recruitModal.hidden = true; }
+  function hireCandidate(choice) {
+    closeRecruitModal();
+    performAction(function () { return supabase.rpc('party_recruit_hire', { p_choice: choice }); }, function (d) {
+      return 'Recruited ' + d.name + ' (' + (d.choice === 'seasoned' ? 'Seasoned' : 'Newcomer') + ').';
+    });
+  }
+  if (recruitModal) {
+    document.getElementById('recruitClose').addEventListener('click', closeRecruitModal);
+    recruitModal.addEventListener('click', function (e) { if (e.target === recruitModal) closeRecruitModal(); });
+    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !recruitModal.hidden) closeRecruitModal(); });
   }
 
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }

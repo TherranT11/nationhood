@@ -34,3 +34,25 @@ create policy "politicians_select_all" on public.politicians for select using (t
 drop policy if exists "politicians_insert_own" on public.politicians;
 create policy "politicians_insert_own" on public.politicians for insert
   with check (exists (select 1 from public.parties p where p.id = party_id and p.user_id = auth.uid()));
+
+-- ---------------------------------------------------------------------------
+-- Recruitment-drive staging: the two candidates a party is currently choosing
+-- between (RECRUIT action). One row per party, overwritten each drive. Written
+-- ONLY by the security-definer recruit RPCs in 40 — so the candidate the player
+-- sees (and its server-rolled stats) is exactly the one that gets hired, and
+-- can't be forged from the client. The drive's ₣ cost is charged when it's
+-- opened (party_recruit_scout); the action cost is charged on hire
+-- (party_recruit_hire), which also deletes the row.
+-- ---------------------------------------------------------------------------
+create table if not exists public.recruit_drives (
+  party_id   uuid primary key references public.parties (id) on delete cascade,
+  candidates jsonb not null,                 -- { "newcomer": {…}, "seasoned": {…} }
+  created_at timestamptz not null default now()
+);
+
+alter table public.recruit_drives enable row level security;
+
+-- A player may read their own pending drive; nobody writes it from the client.
+drop policy if exists "recruit_drives_select_own" on public.recruit_drives;
+create policy "recruit_drives_select_own" on public.recruit_drives for select
+  using (exists (select 1 from public.parties p where p.id = party_id and p.user_id = auth.uid()));
