@@ -18,7 +18,7 @@
   .select-head p { color: var(--muted); font-size: 15px; margin: 0; }
 
   /* nation card */
-  .nation { width: 100%; max-width: 460px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
+  .nation { flex: 1 1 340px; max-width: 440px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
   .nation-banner {
     min-height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden;
     background: repeating-linear-gradient(45deg, #fafafa, #fafafa 12px, #f3f3f3 12px, #f3f3f3 24px);
@@ -30,7 +30,7 @@
   .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
   .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 4px; }
   .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
-  .nations { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 22px; }
+  .nations { width: 100%; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 22px; }
 
   .nstats { border-top: 1px solid var(--line); margin-bottom: 20px; }
   .nstat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
