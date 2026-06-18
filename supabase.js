@@ -1,5 +1,6 @@
 // Shared Supabase browser client — the single source of truth for the
-// project URL and publishable key. Both /signup and /home import it.
+// project URL and publishable key. Imported across the app (the auth pages
+// directly, and every in-game screen via tutorial/shell.js).
 //
 // The publishable key (sb_publishable_...) is safe to ship in client code:
 // access is governed by Row Level Security in the database, not by hiding

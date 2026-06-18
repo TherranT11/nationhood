@@ -565,7 +565,7 @@ export function mountTopbar() {
   renderPartyActions(PARTY_ACTIONS); // default until initSidebar fills the live count
 }
 
-// Sign the player out and return to the test landing page. Redirects even if
+// Sign the player out and return to the landing page. Redirects even if
 // the sign-out call fails so a stuck session never traps the player. Guards
 // against a double-click firing two sign-outs before the redirect lands.
 let loggingOut = false;
