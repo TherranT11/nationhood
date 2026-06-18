@@ -351,7 +351,7 @@
   // Composition of the Assembly: a 0→totalSeats bar built from real party seats
   // (government parties first, then opposition, then a Vacant remainder). Brand-
   // new nation: nothing is held yet, so it reads as one Vacant bar.
-  function renderAssembly(parties, myId, totalSeats, leaders) {
+  function renderAssembly(parties, myId, totalSeats) {
     var bar = document.getElementById('bar'), legend = document.getElementById('legend'), maj = document.getElementById('maj');
     document.getElementById('asmTotal').textContent = totalSeats ? totalSeats + ' seats' : '';
     if (!totalSeats || totalSeats <= 0) { bar.innerHTML = ''; legend.innerHTML = ''; maj.style.display = 'none'; return; }
@@ -448,6 +448,8 @@
       renderPoliticians(pols || []);
 
       // The shared Assembly: every party in this nation + each one's leader name.
+      // Public columns only — rival funds are deliberately NOT selected here (your
+      // own funds come from the select('*') own-party query above).
       const totalSeats = (nation && nation.legislature_seats) || 0;
       const { data: allParties } = await supabase.from('parties')
         .select('id, name, abbreviation, archetype, seats, popularity, in_government')
@@ -460,7 +462,7 @@
           .select('party_id, first_name, last_name').eq('status', 'Party Leader').in('party_id', partyIds);
         (leads || []).forEach(function (l) { leaders[l.party_id] = l.first_name + ' ' + l.last_name; });
       }
-      renderAssembly(ap, party.id, totalSeats, leaders);
+      renderAssembly(ap, party.id, totalSeats);
       renderOtherParties(ap, party.id, totalSeats, leaders);
 
       if (nation && nation.flag) {
