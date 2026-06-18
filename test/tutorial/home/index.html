@@ -444,12 +444,13 @@
   window.addEventListener('nationhood:legislation', (e) => { curLegislation = e.detail || null; renderPressingIssues(); });
 
   // Once Théo is assigned to Labour Talks, his talks show up in the feed and the
-  // post-formation coach gives way to the "look at Labour Unrest" prompt.
+  // post-formation coach gives way to the "look at Labour Unrest" prompt — but only
+  // before Week 24, when the "back to the Party Page" nudge takes over the guidance.
   window.addEventListener('nationhood:task', (e) => {
     if (e.detail !== 'Labour Talks') return;
     const evt = document.getElementById('labourTalksEvt'); if (evt) evt.hidden = false;
     const cg = document.getElementById('coachGov'); if (cg) cg.style.display = 'none';
-    const ct = document.getElementById('coachTalks'); if (ct) ct.style.display = '';
+    const ct = document.getElementById('coachTalks'); if (ct) ct.style.display = (window.nationhoodWeek || 22) >= 24 ? 'none' : '';
   });
 
   initSidebar();
