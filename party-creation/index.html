@@ -14,6 +14,10 @@
   .create { max-width: 760px; margin: 0 auto; padding: 44px 24px 120px; }
   .create h1 { font-size: clamp(26px, 4.5vw, 36px); letter-spacing: -0.03em; font-weight: 800; margin: 0 0 6px; }
   .create .sub { color: var(--muted); font-size: 15px; margin: 0 0 28px; }
+  /* One-party-state explainer (shown only when the nation has a ruling party). */
+  .banner { background: #ECE9FD; border: 1px solid #c7c0f5; border-radius: 12px; padding: 14px 16px; font-size: 14px; line-height: 1.55; color: var(--ink); margin: 0 0 26px; }
+  .banner[hidden] { display: none; }
+  .banner b { font-weight: 700; }
 
   .lbl { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
   input.pname {
@@ -69,10 +73,11 @@
   </header>
 
   <main class="create">
-    <h1>Create your party</h1>
+    <h1 id="h1">Create your party</h1>
     <p class="sub" id="sub">Name your party and choose what it stands for.</p>
+    <div class="banner" id="onepartyBanner" hidden></div>
 
-    <div class="lbl">Party name</div>
+    <div class="lbl" id="nameLbl">Party name</div>
     <input class="pname" id="pname" type="text" maxlength="48" placeholder="e.g. The People's Front" autocomplete="off">
 
     <div class="lbl arch-h">Party abbreviation</div>
@@ -106,6 +111,8 @@
 
     // Which nation are we founding a party in? (?nation=<id>, default sessau.)
     var nationId = new URLSearchParams(location.search).get('nation') || 'sessau';
+    // One-party state: set when the nation has a ruling party (you join as a faction).
+    var isOneParty = false, rulingName = '', noun = 'party';
 
     var selected = null;
     var pname = document.getElementById('pname');
@@ -143,6 +150,26 @@
       if (name && abbrOk() && selected) { picked.className = 'picked'; picked.innerHTML = '<b>' + esc(name) + '</b> (' + esc(pabbr.value.trim()) + ') · ' + esc(archName(selected)); }
       else { picked.className = 'picked'; picked.textContent = 'Add a name, a 2–4 letter abbreviation, and an archetype to continue.'; }
     }
+
+    // One-party state: if the admin named a ruling party for this nation, you join
+    // as a FACTION of it. Fetch the nation, then relabel the page — the form,
+    // validation and seeding logic are otherwise identical (a faction is a party row).
+    (async () => {
+      if (!isConfigured) return;
+      try {
+        const { data } = await supabase.from('nations').select('name, ruling_party').eq('id', nationId).maybeSingle();
+        if (!data || !data.ruling_party) return;
+        isOneParty = true; rulingName = data.ruling_party; noun = 'faction';
+        var b = document.getElementById('onepartyBanner');
+        b.innerHTML = 'The nation of <b>' + esc(data.name || 'this nation') + '</b> is a one-party state. New political parties are not legally viable — if you join, you do so as a <b>caucus / faction of ' + esc(rulingName) + '</b>. Name your faction and choose an archetype; its members are those who support that line.';
+        b.hidden = false;
+        document.getElementById('h1').textContent = 'Create your faction';
+        document.getElementById('sub').textContent = 'Form a faction within ' + rulingName + ' and choose what it stands for.';
+        document.getElementById('nameLbl').textContent = 'Faction name';
+        pname.setAttribute('placeholder', 'e.g. The Reformist Bloc');
+        join.textContent = 'Join ' + rulingName;
+      } catch (e) { /* leave the default multiparty copy */ }
+    })();
 
     // A brand-new party starts with one prominent politician — its Party Leader.
     // Names come from this nation's nation_names pool; age 25–55; experience =
@@ -203,14 +230,14 @@
         // (Client-side guard; a race-proof cap needs a server-side check — see
         // the parties table comment in schema/20_parties.sql.)
         if ((others || []).length >= MAX_PARTIES) {
-          fail('This nation is full — it already has its ' + MAX_PARTIES + ' parties.'); return;
+          fail('This nation is full — it already has its ' + MAX_PARTIES + ' ' + noun + 's.'); return;
         }
 
         var lname = name.toLowerCase();
         var clash = (others || []).some(function (p) {
           return ((p.name || '').toLowerCase() === lname) || ((p.abbreviation || '').toUpperCase() === abbr);
         });
-        if (clash) { fail('A party with that name or abbreviation already exists in this nation.'); return; }
+        if (clash) { fail('A ' + noun + ' with that name or abbreviation already exists in this nation.'); return; }
 
         // One party per player: upsert on the user so re-creating replaces.
         const { data: created, error } = await supabase.from('parties')
