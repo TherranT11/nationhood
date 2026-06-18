@@ -551,16 +551,9 @@ export function mountTopbar() {
   renderPartyActions(PARTY_ACTIONS); // default until initSidebar fills the live count
 }
 
-// Sign the player out and return to the landing page. Redirects even if
-// the sign-out call fails so a stuck session never traps the player. Guards
-// against a double-click firing two sign-outs before the redirect lands.
-let loggingOut = false;
-export async function logout() {
-  if (loggingOut) return;
-  loggingOut = true;
-  try { if (isConfigured) await supabase.auth.signOut(); } catch (err) { /* fall through to redirect */ }
-  window.location.href = '/';
-}
+// logout now lives in the shared client module (used by the online game too).
+// Re-exported so existing tutorial imports keep working.
+export { logout } from '/supabase.js';
 
 // Confidence of the formed government from the actual coalition: base, the
 // three standing crises, a penalty per contradictory partner, and the seat

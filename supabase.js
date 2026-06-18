@@ -17,3 +17,14 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 export const isConfigured =
   !SUPABASE_URL.includes('YOUR-PROJECT-REF') &&
   !SUPABASE_PUBLISHABLE_KEY.includes('YOUR-');
+
+// Sign the player out and return to the landing page. One source, used by every
+// signed-in screen. Redirects even if the sign-out call fails so a stuck session
+// never traps the player; guards against a double-click firing two sign-outs.
+let loggingOut = false;
+export async function logout() {
+  if (loggingOut) return;
+  loggingOut = true;
+  try { if (isConfigured) await supabase.auth.signOut(); } catch (err) { /* fall through to redirect */ }
+  window.location.href = '/';
+}
