@@ -186,7 +186,7 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar, updateProfile, renderPartyActions, POLITICIANS } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar, updateProfile, renderPartyActions, resetTutorial, POLITICIANS } from '/test/tutorial/shell.js';
 
   var SL=['Charisma','Acumen','Guile','Resolve','Command'];
   function d(n){return Math.floor(Math.random()*n)+1;} // 1..n
@@ -310,13 +310,13 @@
     // Assigning a task is the final tutorial beat: wrap up with the end modal.
     document.getElementById('endModal').hidden=false;
   });
-  // End the tutorial for good: mark it completed (so no page lets the player back
-  // in), then leave for /test/. Navigate even if the write fails — never trap them.
+  // End the tutorial: wipe the run so re-entering starts over from scratch, then
+  // leave for /test/. Navigate even if the wipe fails — never trap them.
   var ending=false;
   document.getElementById('endBtn').addEventListener('click',async function(){
     if(ending) return; ending=true;
     document.getElementById('endBtn').textContent='Ending…';
-    try{ await updateProfile({ tutorial_completed:true }); }catch(e){/* leave anyway */}
+    try{ await resetTutorial(); }catch(e){/* leave anyway */}
     window.location.href='/test/';
   });
   document.getElementById('taskCancel').addEventListener('click',closeModal);
