@@ -32,11 +32,12 @@ language sql
 stable
 set search_path = public
 as $$
-  select to_char(
-    make_date(1980, 1, 1)
-      + (greatest(coalesce((select current_tick from public.game_state where id), 1), 1) - 1) * interval '1 month',
-    'FMMonth, YYYY'
-  );
+  -- m = months since January 1980 (tick − 1). Month name comes from a literal
+  -- array (NOT to_char, which is locale-dependent) so it always matches util.js.
+  with t as (select greatest(coalesce((select current_tick from public.game_state where id), 1), 1) - 1 as m)
+  select (array['January','February','March','April','May','June','July','August','September','October','November','December'])[(m % 12) + 1]
+         || ', ' || (1980 + m / 12)::text
+  from t;
 $$;
 
 -- Leader actions are server-authoritative (the client can't write the
