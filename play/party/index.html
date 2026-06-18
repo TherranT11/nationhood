@@ -449,7 +449,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
-  import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, fmtFunds } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
 
@@ -461,15 +461,6 @@
     i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
   });
 
-  // Party Funds: compact currency formatting (0 → "0", 375000 → "375K").
-  function fmtFunds(n) {
-    n = Number(n) || 0; var a = Math.abs(n);
-    if (a >= 1e9) return trim(n / 1e9) + 'B';
-    if (a >= 1e6) return trim(n / 1e6) + 'M';
-    if (a >= 1e3) return trim(n / 1e3) + 'K';
-    return String(Math.round(n));
-  }
-  function trim(x) { return String(Math.round(x * 10) / 10); }
 
   // Party Popularity band: the track runs 0 → ceiling. The fill is current
   // popularity, the green tick is the floor (the base attacks can't push below),

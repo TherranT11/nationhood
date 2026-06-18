@@ -38,6 +38,18 @@ export function fmtPop(value) {
   return n.toLocaleString() + ' Million';
 }
 
+// Party funds (a raw currency amount) shown compactly: 375000 → "375K",
+// 2_500_000 → "2.5M", 1_200_000_000 → "1.2B". Display only — prefix the nation's
+// currency symbol at the call site. One source for the topbar pill and the party
+// page's funds stat.
+export function fmtFunds(value) {
+  var n = Number(value) || 0, a = Math.abs(n);
+  if (a >= 1e9) return (Math.round(n / 1e9 * 10) / 10) + 'B';
+  if (a >= 1e6) return (Math.round(n / 1e6 * 10) / 10) + 'M';
+  if (a >= 1e3) return (Math.round(n / 1e3 * 10) / 10) + 'K';
+  return String(Math.round(n));
+}
+
 // The game clock runs one tick per month, tick 1 = January 1980. One source for
 // turning a tick number into its display date (e.g. 5 → "May, 1980"). MIRRORED by
 // public.current_game_date() in schema/40_events.sql (which stamps events from the

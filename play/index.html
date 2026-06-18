@@ -274,7 +274,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, fmtFunds } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -480,16 +480,6 @@
 
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
-
-  // Compact party-funds for the topbar pill (mirrors play/party's fmtFunds).
-  function fmtFunds(n) {
-    n = Number(n) || 0; var a = Math.abs(n);
-    if (a >= 1e9) return ftrim(n / 1e9) + 'B';
-    if (a >= 1e6) return ftrim(n / 1e6) + 'M';
-    if (a >= 1e3) return ftrim(n / 1e3) + 'K';
-    return String(Math.round(n));
-  }
-  function ftrim(x) { return String(Math.round(x * 10) / 10); }
 
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
