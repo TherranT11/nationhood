@@ -106,6 +106,8 @@
   .poltable{overflow-x:auto}
   .pol-row{display:grid;grid-template-columns:minmax(150px,1.5fr) 46px minmax(110px,1.1fr) 44px repeat(5,minmax(52px,.7fr));gap:10px;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line)}
   .pol-row:last-child{border-bottom:0}
+  a.pol-row{text-decoration:none;color:inherit;cursor:pointer;border-radius:8px;transition:background .12s}
+  a.pol-row:hover{background:var(--chip)}
   .pol-head{padding:4px 4px 10px}
   .pol-head span{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .pol-name{display:flex;align-items:center;gap:10px;min-width:0}
@@ -289,11 +291,11 @@
         return '<div class="pol-stat' + hi + '"><span class="pol-stat__n">' + v + '</span>' +
                '<span class="pol-stat__bar"><i style="width:' + w + '%"></i></span></div>';
       }).join('');
-      return '<div class="pol-row">' +
+      return '<a class="pol-row" href="/play/party/politician/?id=' + encodeURIComponent(p.id) + '">' +
         '<div class="pol-name"><span class="dot"></span><b>' + esc(p.first_name + ' ' + p.last_name) + '</b></div>' +
         '<div class="pol-age">' + (p.age || 0) + '</div>' +
         '<div class="pol-status">' + esc(p.status || '') + '</div>' +
-        '<div class="pol-exp">' + (p.experience || 0) + '</div>' + cells + '</div>';
+        '<div class="pol-exp">' + (p.experience || 0) + '</div>' + cells + '</a>';
     }).join('');
     document.getElementById('poltable').innerHTML = head + rows;
   }
