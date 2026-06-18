@@ -77,8 +77,11 @@
   .chip__t.good{color:var(--green)} .chip__t.warn{color:#c0860a} .chip__t.bad{color:var(--red)}
 
   /* National Modifiers + Events row — placeholders for now (no live data yet). */
-  .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:16px}
+  .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:16px;align-items:start}
   .cols .panel{margin-top:0}
+  /* Cap both columns so the feed scrolls inside its panel instead of growing the
+     page forever; align-items:start keeps National Modifiers from stretching. */
+  #events{max-height:440px;overflow-y:auto}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
   /* Party Leader · This Week's Action. Enabled actions are live buttons; the
