@@ -35,6 +35,9 @@
 
   /* existing nations */
   .ncard{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .ncard__top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .ed{flex:none;font-size:12px;font-weight:700;color:var(--indigo);background:var(--indigo-soft,#ECE9FD);border:1px solid color-mix(in srgb,var(--indigo,#5546E8) 30%,transparent);border-radius:8px;padding:6px 12px;cursor:pointer}
+  .ed:hover{filter:brightness(.97)}
   .ncard:last-child{margin-bottom:0}
   .ncard__name{font-size:17px;font-weight:800;letter-spacing:-.01em}
   .ncard__id{font-size:12px;color:#9a9a9a;font-weight:600;margin-left:8px}
@@ -81,13 +84,13 @@
     </div>
 
     <div class="panel">
-      <h2>Add Nation</h2>
+      <h2 id="formTitle">Add Nation</h2>
       <form id="addForm">
         <div class="grid">
           <div class="full"><label for="f-name">Name</label><input id="f-name" type="text" required></div>
           <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
           <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
-          <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="1" placeholder="in millions"></div>
+          <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="0.1" placeholder="in millions (e.g. 24.5)"></div>
           <div><label for="f-gdp">Starting GDP</label><input id="f-gdp" type="number" min="0" step="1" placeholder="in billions"></div>
           <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
           <div><label for="f-welfare">Starting Welfare</label><input id="f-welfare" type="number" step="1"></div>
@@ -109,6 +112,7 @@
           <div><label for="f-diplomacy">Diplomacy (Production)</label><input id="f-diplomacy" type="number" step="1"></div>
         </div>
         <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
+        <button class="btn btn-ghost btn-full" type="button" id="cancelEdit" hidden style="margin-top:8px">Cancel edit</button>
         <div class="note" id="addNote" role="status" aria-live="polite"></div>
       </form>
     </div>
@@ -179,12 +183,49 @@
 
     function kv(k, v) { return '<div class="kv"><span class="k">' + k + '</span><span class="v">' + esc(String(v)) + '</span></div>'; }
 
+    // Edit state: the nation currently loaded into the form (null = adding new).
+    var editing = null, nationsCache = [];
+    function setVal(id, v) { document.getElementById(id).value = (v != null && v !== '') ? v : ''; }
+    function fillForm(n) {
+      var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
+      setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
+      setVal('f-pop', n.population); setVal('f-gdp', n.gdp);
+      setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
+      setVal('f-image', s.image); setVal('f-order', s.order);
+      setVal('f-unemployment', e.unemployment); setVal('f-inflation', e.inflation);
+      setVal('f-budget', e.budget); setVal('f-debt', e.debt);
+      document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
+      setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
+      setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
+      setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
+    }
+    function startEdit(n) {
+      editing = n;
+      fillForm(n);
+      document.getElementById('formTitle').textContent = 'Edit ' + (n.name || 'Nation');
+      document.getElementById('addBtn').textContent = 'Save changes';
+      document.getElementById('cancelEdit').hidden = false;
+      addNote.textContent = ''; addNote.className = 'note';
+      document.getElementById('addForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function cancelEdit() {
+      editing = null;
+      document.getElementById('addForm').reset();
+      document.getElementById('f-regime').value = '17';
+      document.getElementById('formTitle').textContent = 'Add Nation';
+      document.getElementById('addBtn').textContent = 'Add';
+      document.getElementById('cancelEdit').hidden = true;
+      addNote.textContent = ''; addNote.className = 'note';
+    }
+    document.getElementById('cancelEdit').addEventListener('click', cancelEdit);
+
     async function loadNations() {
       var box = document.getElementById('nationList');
       try {
         const { data, error } = await supabase.from('nations').select('*').order('created_at', { ascending: true });
         if (error) throw error;
         var list = data || [];
+        nationsCache = list;
         if (!list.length) { box.innerHTML = '<p class="empty">No nations yet.</p>'; return; }
         box.innerHTML = list.map(function (n) {
           var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
@@ -194,7 +235,8 @@
           var regimeTxt = e.regime == null ? '—'
             : (typeof e.regime === 'number' ? e.regime + ' — ' + (regimeLabel(e.regime) || '') : e.regime);
           return '<div class="ncard">' +
-            '<div class="ncard__name">' + esc(n.name || '') + '<span class="ncard__id">' + esc(n.id || '') + '</span></div>' +
+            '<div class="ncard__top"><div class="ncard__name">' + esc(n.name || '') + '<span class="ncard__id">' + esc(n.id || '') + '</span></div>' +
+            '<button class="ed" type="button" data-id="' + esc(n.id) + '">Edit</button></div>' +
             (n.analogous ? '<div class="ncard__analog">' + esc(n.analogous) + '</div>' : '') +
             (n.description ? '<div class="ncard__desc">' + esc(n.description) + '</div>' : '') +
             '<div class="ncard__stats">' +
@@ -219,6 +261,12 @@
               kv('Diplomacy', pr.diplomacy != null ? pr.diplomacy : '—') +
             '</div></div>';
         }).join('');
+        box.querySelectorAll('.ed').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var n = nationsCache.filter(function (x) { return x.id === b.dataset.id; })[0];
+            if (n) startEdit(n);
+          });
+        });
       } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load nations.</p>'; }
     }
 
@@ -236,31 +284,28 @@
       var btn = document.getElementById('addBtn');
       addNote.textContent = ''; addNote.className = 'note';
       var name = document.getElementById('f-name').value.trim();
-      var id = slugify(name);
-      if (!name || !id) { addNote.textContent = 'Enter a nation name.'; addNote.className = 'note error'; return; }
+      if (!name) { addNote.textContent = 'Enter a nation name.'; addNote.className = 'note error'; return; }
 
       var elecfreq = num('f-elecfreq');
-      // Schedule the first general election 1d6 ticks (months) after the current
-      // tick (falls back to 1 = January 1980 if unavailable).
-      var tick = await currentTick();
-      var row = {
-        id: id, name: name,
+      // Fields the form captures. Population may be fractional millions (e.g. 24.5).
+      // On edit, currency is preserved from the existing row (the form has no
+      // currency field); on add it defaults to '$'.
+      var data = {
+        name: name,
         description: document.getElementById('f-desc').value.trim() || null,
         analogous: document.getElementById('f-analog').value.trim() || null,
-        population: num('f-pop'), gdp: num('f-gdp'),
+        population: num('f-pop', true), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
-        election_frequency_months: elecfreq > 0 ? elecfreq : 60, // blank → column default cadence
-        next_election_tick: tick + 1 + Math.floor(Math.random() * 6), // 1d6 ticks out
+        election_frequency_months: elecfreq > 0 ? elecfreq : 60,
         stats: {
           prosperity: num('f-prosperity'), welfare: num('f-welfare'), growth: num('f-growth'),
           image: num('f-image'), order: num('f-order')
         },
-        // Regime is the numeric tier (1–20). Currency/flag aren't captured yet —
-        // currency falls back to '$' for display.
         economy: {
           regime: parseInt(document.getElementById('f-regime').value, 10),
           unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
-          budget: num('f-budget', true), debt: num('f-debt', true), currency: '$'
+          budget: num('f-budget', true), debt: num('f-debt', true),
+          currency: (editing && editing.economy && editing.economy.currency) || '$'
         },
         production: {
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
@@ -270,19 +315,30 @@
 
       btn.disabled = true;
       try {
-        const { error } = await supabase.from('nations').insert(row);
+        var error;
+        if (editing) {
+          // Update keeps id + next_election_tick (the schedule) untouched.
+          ({ error } = await supabase.from('nations').update(data).eq('id', editing.id));
+        } else {
+          var id = slugify(name);
+          if (!id) { addNote.textContent = 'Enter a valid nation name.'; addNote.className = 'note error'; return; }
+          data.id = id;
+          // First election 1d6 ticks (months) out (tick falls back to 1 if unavailable).
+          data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
+          ({ error } = await supabase.from('nations').insert(data));
+        }
         if (error) {
           addNote.textContent = /duplicate|already exists|unique/i.test(error.message)
             ? 'A nation with that name already exists.'
-            : (/(policy|permission|row-level)/i.test(error.message) ? 'Only the admin can add nations.' : (error.message || 'Couldn’t add the nation.'));
+            : (/(policy|permission|row-level)/i.test(error.message) ? 'Only the admin can do that.' : (error.message || 'Couldn’t save the nation.'));
           addNote.className = 'note error';
           return;
         }
-        addNote.textContent = 'Added “' + name + '”. It’s now joinable on the nation-select screen.';
+        addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
-        e.target.reset();
+        if (editing) cancelEdit(); else e.target.reset();
         loadNations();
-      } catch (e) { addNote.textContent = 'Couldn’t add the nation. Try again.'; addNote.className = 'note error'; }
+      } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
     });
 

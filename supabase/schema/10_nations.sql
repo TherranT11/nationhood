@@ -13,8 +13,8 @@ create table if not exists public.nations (
   description    text,
   analogous      text,            -- real-world analogue, shown in italics under the description
   flag           text,            -- asset path, e.g. /assets/Sessau.png
-  population     bigint,          -- raw count; formatted on the client
-  gdp            bigint,          -- raw value; formatted on the client
+  population     numeric,         -- millions (fractional allowed, e.g. 24.5); formatted on the client
+  gdp            bigint,          -- billions; formatted on the client
   legislature_seats int not null default 0, -- total seats in the nation's legislature
   election_frequency_months int not null default 60, -- months between general elections
   electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
@@ -32,6 +32,8 @@ alter table public.nations add column if not exists electoral_threshold numeric 
 alter table public.nations add column if not exists analogous text;
 alter table public.nations add column if not exists production jsonb not null default '{}'::jsonb;
 alter table public.nations add column if not exists next_election_tick int;
+-- Population may be fractional (millions, e.g. 24.5) — widen the legacy bigint.
+alter table public.nations alter column population type numeric using population::numeric;
 -- The active-party count is derived live from public.parties (one source), not
 -- stored — drop the old counter column if an earlier install still has it.
 alter table public.nations drop column if exists active_parties;
@@ -67,6 +69,11 @@ grant insert on public.nations to authenticated;
 drop policy if exists "nations_insert_admin" on public.nations;
 create policy "nations_insert_admin" on public.nations for insert with check (public.is_admin());
 
+-- Only the admin may edit a nation (the /adminsetup edit flow). Same gate as insert.
+grant update on public.nations to authenticated;
+drop policy if exists "nations_update_admin" on public.nations;
+create policy "nations_update_admin" on public.nations for update using (public.is_admin()) with check (public.is_admin());
+
 -- Seed the first nation with its starting numbers (idempotent; won't clobber a
 -- live row's values on re-run).
 insert into public.nations (id, name, description, analogous, flag, population, gdp, legislature_seats, stats, economy)
@@ -80,16 +87,16 @@ values (
   678,
   280,
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
-  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"₶"}'::jsonb
+  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
 )
 on conflict (id) do nothing;
 
 -- Backfill on an already-seeded Sessau row (the insert above is a no-op once the
 -- row exists). Each only touches a row that hasn't got the value yet.
 update public.nations
-   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"₶"}'::jsonb
+   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
  where id = 'sessau' and (economy is null or economy = '{}'::jsonb);
-update public.nations set economy = economy || '{"currency":"₶"}'::jsonb
+update public.nations set economy = economy || '{"currency":"$"}'::jsonb
  where id = 'sessau' and not (economy ? 'currency');
 update public.nations set legislature_seats = 280
  where id = 'sessau' and legislature_seats = 0;
@@ -103,6 +110,9 @@ update public.nations set population = 69
 -- Sessau's real-world analogue.
 update public.nations set analogous = 'France'
  where id = 'sessau' and analogous is null;
+-- Sessau's currency is the dollar now (was the livre ₶). Flip the live row.
+update public.nations set economy = jsonb_set(economy, '{currency}', '"$"'::jsonb)
+ where id = 'sessau' and economy->>'currency' is distinct from '$';
 
 -- Schedule a first general election for every nation that hasn't got one: 1d6
 -- ticks (months) after the current tick. random() is evaluated per row, so each
