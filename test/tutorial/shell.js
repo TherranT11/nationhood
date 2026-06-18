@@ -60,7 +60,7 @@ export async function getTutorialProgress(userId) {
       partyPopularity: s.party_popularity ?? 38,
       confidenceAdj: s.confidence_adj ?? 0,
       nation: s.nation || {}, // accumulated stat deltas from passed bills
-      recruit: s.recruit || null, // the politician recruited on the Party page
+      recruits: s.recruits || (s.recruit ? [s.recruit] : []), // politicians recruited on the Party page
     };
   } catch (err) {
     return null;
@@ -126,7 +126,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:legislation', { detail: progress.legislation }));
   window.dispatchEvent(new CustomEvent('nationhood:popularity', { detail: progress.partyPopularity }));
   window.dispatchEvent(new CustomEvent('nationhood:nation', { detail: progress.nation }));
-  window.dispatchEvent(new CustomEvent('nationhood:recruit', { detail: progress.recruit }));
+  window.dispatchEvent(new CustomEvent('nationhood:recruits', { detail: progress.recruits }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }

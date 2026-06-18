@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sessau — Recruit a Politician</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--chip:#F4F3EF;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--amber:#E0820E;--green:#16915a;--green-soft:#E5F4EC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
+  .app{display:flex;min-height:100vh}
+
+  /* sidebar */
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:38px;height:auto;border:1px solid var(--line);border-radius:3px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .nav__i.active svg{color:var(--indigo)}
+  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
+  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+
+  /* main */
+  .main{flex:1;padding:28px clamp(16px,3vw,40px) 56px;min-width:0;display:flex;justify-content:center}
+  .panel{width:100%;max-width:760px}
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:18px}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .phead{display:flex;align-items:flex-start;gap:12px;margin-bottom:20px}
+  .phead .ti{flex:1;min-width:0}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(26px,4vw,34px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:14px;margin-top:6px}
+  .aleft{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:6px 11px;border-radius:20px;flex:none;white-space:nowrap;margin-top:6px}
+
+  .cands{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:600px){.cands{grid-template-columns:1fr}}
+  .cand{border:1px solid var(--line);border-radius:16px;padding:18px;display:flex;flex-direction:column;background:var(--surface)}
+  .cand.seasoned{border-color:var(--indigo);box-shadow:0 14px 36px -22px rgba(85,70,232,.55)}
+  .cand__top{display:flex;align-items:center;gap:13px}
+  .cand__av{width:48px;height:48px;border-radius:50%;flex:none;background:var(--indigo-soft);color:var(--indigo);font-family:'Space Mono',monospace;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center}
+  .cand__id{flex:1;min-width:0}
+  .cand__id b{font-weight:800;font-size:17px;letter-spacing:-.01em;display:block}
+  .tier{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:3px 9px;border-radius:20px;margin-top:5px;display:inline-block}
+  .tier.new{color:var(--green);background:var(--green-soft)} .tier.sea{color:var(--indigo);background:var(--indigo-soft)}
+  .bio{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.02em;color:var(--muted);margin-top:14px;display:flex;gap:16px;flex-wrap:wrap}
+  .bio b{color:var(--ink)}
+  .desc{font-size:12.5px;color:var(--muted);margin-top:9px;line-height:1.45;font-style:italic}
+  .sgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-top:15px}
+  .stile{border:1px solid var(--line);border-radius:9px;padding:10px 4px;text-align:center;background:var(--bg)}
+  .stile .l{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .stile .v{font-weight:900;font-size:20px;letter-spacing:-.02em;margin-top:3px}
+  .stile.max{border-color:var(--indigo);background:var(--indigo-soft)} .stile.max .v{color:var(--indigo)}
+  .sumtxt{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.03em;color:var(--soft);margin-top:10px}
+  .cand__btn{margin-top:16px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:13px;border-radius:11px;cursor:pointer;border:1.5px solid var(--indigo);color:#fff;background:var(--indigo);transition:transform .12s,filter .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+  .cand__btn:hover{transform:translateY(-1px);filter:brightness(1.07)}
+  .cand__btn .ac{font-size:9px;color:#cfc8ff}
+  .cand__btn.dis{background:#C9C5E8;border-color:#C9C5E8;cursor:not-allowed;transform:none;filter:none}
+
+  .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:18px}
+  .reroll{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:transparent;border:1.5px solid var(--line);padding:12px 16px;border-radius:11px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+  .reroll:hover{border-color:var(--indigo);background:var(--indigo-soft)}
+  .reroll svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .foot-note{font-size:12px;color:var(--soft)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast b{color:#a99dff}
+
+  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label{display:none}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:30px}.nav__i{justify-content:center;padding:11px 0}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of Sessau"><div class="brand__txt"><b>Front de Sessau</b><span>Governing · Sessau</span></div></div>
+    <nav class="nav">
+      <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i active" href="/test/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/test/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
+    </nav>
+    <div class="side__foot"><div class="me"><span class="me__dot"></span><span class="label">Leader · You</span></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="panel">
+      <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Your Party</span>
+
+      <div class="phead">
+        <div class="ti">
+          <span class="eye">Recruitment Drive</span>
+          <h1>Recruit a Politician</h1>
+          <p>Two have put themselves forward. Take one into the party — or send word out again.</p>
+        </div>
+        <span class="aleft" id="aleft">3 actions left</span>
+      </div>
+
+      <div class="cands" id="cands"></div>
+
+      <div class="foot">
+        <button class="reroll" id="reroll"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7M21 4v5h-5"/></svg>Search again</button>
+        <span class="foot-note">New candidates each search · recruiting spends actions</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  var STATS=['CHA','ACU','GUI','RES','COM'];
+  var FIRST=['Camille','Hugo','Léa','Jules','Inès','Louis','Manon','Adrien','Chloé','Étienne','Noémie','Bastien','Élise','Rémy','Olivier','Sabine','Gaspard','Colette','Mathis','Anaïs','Florian','Margaux','Lucien','Sylvie'];
+  var LAST=['Lefranc','Moreau','Dubois','Laurent','Girard','Mercier','Fournier','Rousseau','Blanc','Caron','Renaud','Vidal','Marchand','Lemoine','Faure','Perrin','Chevalier','Beaumont','Delacroix','Maréchal','Noiret','Bourdon'];
+  function rnd(n){return Math.floor(Math.random()*n);}
+  function pick(a){return a[rnd(a.length)];}
+  function distribute(total){var s=[0,0,0,0,0];for(var i=0;i<total;i++){var open=[];for(var j=0;j<5;j++)if(s[j]<5)open.push(j);s[pick(open)]++;}return s;}
+  function genName(used){var n;do{n=pick(FIRST)+' '+pick(LAST);}while(used.indexOf(n)>=0);used.push(n);return n;}
+  function genCandidates(){
+    var used=[];
+    return [
+      {tier:'new',      name:genName(used), age:25,         exp:0,            stats:distribute(2), sum:2, cost:1},
+      {tier:'seasoned', name:genName(used), age:35+rnd(11), exp:pick([3,5,7]),stats:distribute(5), sum:5, cost:2}
+    ];
+  }
+  function initials(name){var p=name.split(' ');return (p[0][0]+(p[1]?p[1][0]:'')).toUpperCase();}
+
+  var cands=[], actionsLeft=3, recruited=[], saving=false, ready=false;
+  function render(){
+    document.getElementById('aleft').textContent=actionsLeft+' action'+(actionsLeft===1?'':'s')+' left';
+    var box=document.getElementById('cands'); box.innerHTML='';
+    cands.forEach(function(c,i){
+      var mx=Math.max.apply(null,c.stats);
+      var tiles=c.stats.map(function(v,j){return '<div class="stile'+(v===mx?' max':'')+'"><div class="l">'+STATS[j]+'</div><div class="v">'+v+'</div></div>';}).join('');
+      var label=c.tier==='new'?'Newcomer':'Seasoned';
+      var desc=c.tier==='new'?'Young and unproven — but a full career of growth ahead.':'Older and battle-tested — strong now, with less room left to grow.';
+      var dis=(c.taken||!ready||actionsLeft<c.cost||saving)?' dis':'';
+      var btn=c.taken?'Recruited':('Recruit <span class="ac">'+c.cost+' Action'+(c.cost>1?'s':'')+'</span>');
+      var card=document.createElement('div'); card.className='cand'+(c.tier==='seasoned'?' seasoned':'');
+      card.innerHTML=
+        '<div class="cand__top"><span class="cand__av">'+initials(c.name)+'</span>'+
+          '<div class="cand__id"><b>'+c.name+'</b><span class="tier '+(c.tier==='new'?'new':'sea')+'">'+label+'</span></div></div>'+
+        '<div class="bio"><span>Age <b>'+c.age+'</b></span><span>Experience <b>'+c.exp+'</b></span></div>'+
+        '<div class="desc">'+desc+'</div>'+
+        '<div class="sgrid">'+tiles+'</div>'+
+        '<div class="sumtxt">'+c.sum+' stat points, spread across the five</div>'+
+        '<button class="cand__btn'+dis+'" data-i="'+i+'"'+(c.taken?' disabled':'')+'>'+btn+'</button>';
+      box.appendChild(card);
+    });
+    box.querySelectorAll('.cand__btn').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        if(saving||!ready) return;
+        var c=cands[+btn.dataset.i];
+        if(c.taken) return;
+        if(actionsLeft<c.cost){ping('Not enough actions — need <b>'+c.cost+'</b>, have '+actionsLeft+'.');return;}
+        // Persist the recruit (append to the running roster) and the spent actions
+        // in one write; the Party page reads tutorial_recruits back into the table.
+        var person={name:c.name, age:c.age, role:'Backbencher', free:true, exp:c.exp, stats:c.stats, tier:c.tier};
+        var left=actionsLeft-c.cost;
+        saving=true; render();
+        Promise.resolve(window.tutSaveRecruit?window.tutSaveRecruit(recruited.concat([person]), left):true).then(function(ok){
+          saving=false;
+          if(!ok){ ping('Could not recruit — try again.'); render(); return; }
+          recruited.push(person); actionsLeft=left; c.taken=true;
+          ping('Recruited <b>'+c.name+'</b> (age '+c.age+') — &minus;'+c.cost+' Action'+(c.cost>1?'s':'')+'.');
+          render();
+        });
+      });
+    });
+  }
+
+  document.getElementById('reroll').addEventListener('click',function(){ if(saving) return; cands=genCandidates(); render(); });
+  document.getElementById('back').addEventListener('click',function(){ window.location.href='/test/tutorial/party/'; });
+  document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
+    if(!i.getAttribute('href')){ e.preventDefault(); document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')}); i.classList.add('active'); }
+  });});
+
+  // Live state from initSidebar: the real action budget, and the recruits already
+  // on the roster (so a new pick appends rather than overwrites).
+  window.addEventListener('nationhood:actions',function(e){ if(typeof e.detail==='number'){ actionsLeft=e.detail; render(); } });
+  window.addEventListener('nationhood:recruits',function(e){ recruited=Array.isArray(e.detail)?e.detail.slice():[]; ready=true; render(); });
+
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3400);}
+
+  cands=genCandidates(); render();
+</script>
+
+<script type="module">
+  import { initSidebar, updateProfile } from '/test/tutorial/shell.js';
+  // Persist the updated recruit list + spent actions in one atomic write.
+  window.tutSaveRecruit = function(recruitsArr, actionsLeft){
+    return updateProfile({ tutorial_recruits: recruitsArr, tutorial_party_actions: actionsLeft });
+  };
+  initSidebar();
+</script>
+</body>
+</html>
