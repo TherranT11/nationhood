@@ -78,14 +78,19 @@
   .cols .panel{margin-top:0}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
-  /* Party Leader · This Week's Action — disabled for now (not wired). The cards
-     are real <button disabled> so they can't be clicked or focused; the muted
-     styling shows they're coming, not active. Four per row (eight total). */
-  .leadbar__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;opacity:.6}
+  /* Party Leader · This Week's Action. Enabled actions are live buttons; the
+     not-yet-wired ones are real <button disabled> (dimmed, can't click/focus).
+     Four per row (eight total). */
+  .leadbar__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:700px){.leadbar__grid{grid-template-columns:repeat(2,1fr)}}
-  .lead{text-align:left;background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:not-allowed}
+  .lead{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:pointer;transition:border-color .15s,transform .12s,box-shadow .2s}
+  .lead:not(:disabled):hover{border-color:var(--indigo);transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(85,70,232,.5)}
+  .lead:disabled{cursor:not-allowed;opacity:.5;background:var(--chip)}
   .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px}
   .lead__lane{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
   .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
@@ -125,7 +130,7 @@
 
   <main class="main">
     <div class="topbar">
-      <span class="tb-actions">Party Actions: 3 Available</span>
+      <span class="tb-actions" id="tbActions">Party Actions: 3 Available</span>
       <span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v">January, 1980</span></span>
       <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
     </div>
@@ -136,7 +141,7 @@
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" type="button" disabled><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span></button>
+        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: ₣25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span></button>
         <button class="lead" type="button" disabled><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span></button>
         <button class="lead" type="button" disabled><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span></button>
         <button class="lead" type="button" disabled><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span></button>
@@ -164,6 +169,8 @@
     </div>
   </main>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
@@ -200,23 +207,54 @@
     if (eco.debt != null) chips.push(chip('Debt', val('₣' + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }
-  // Party-founding events for EVERY party in the nation (shared instance), newest
-  // first. The clock is frozen at the game's start date, so a party founded now
-  // was founded on that date — we read the live date the topbar shows (one
-  // source). When months start advancing, the founding date should be persisted
-  // on each party row instead of read from the current date.
-  function renderEvents(parties, nation, when) {
+  // The shared nation feed: party-founding events (derived from each party, one
+  // per party) + stored events (rally outcomes, etc. from the events table),
+  // merged newest-first. Founding dates use the frozen game date for now; stored
+  // events carry their own game_date.
+  async function loadFeed(nationId, nation, gameDate) {
     var box = document.getElementById('events');
-    if (!parties.length) { box.innerHTML = '<p class="empty">No events yet.</p>'; return; }
-    var nm = (nation && nation.name) || '';
-    var flagImg = (nation && nation.flag) ? '<img class="feed__flag" src="' + esc(nation.flag) + '" alt="">' : '';
-    box.innerHTML = '<ul class="feed">' + parties.map(function (p) {
-      return '<li class="feed__evt">' +
-        '<span class="feed__date">' + esc(when) + '</span> &mdash; ' + flagImg +
-        'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. ' +
-        'It is a ' + esc(p.archetype) + ' party.</li>';
-    }).join('') + '</ul>';
+    try {
+      const { data: parties } = await supabase.from('parties').select('name, archetype, created_at').eq('nation_id', nationId);
+      const { data: evs } = await supabase.from('events').select('body, game_date, created_at').eq('nation_id', nationId);
+      var nm = (nation && nation.name) || '';
+      var items = [];
+      (parties || []).forEach(function (p) {
+        items.push({ created: p.created_at, when: gameDate,
+          body: 'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. It is a ' + esc(p.archetype) + ' party.' });
+      });
+      (evs || []).forEach(function (e) {
+        items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) });
+      });
+      items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
+      if (!items.length) { box.innerHTML = '<p class="empty">No events yet.</p>'; return; }
+      var flagImg = (nation && nation.flag) ? '<img class="feed__flag" src="' + esc(nation.flag) + '" alt="">' : '';
+      box.innerHTML = '<ul class="feed">' + items.map(function (it) {
+        return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + flagImg + it.body + '</li>';
+      }).join('') + '</ul>';
+    } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
+
+  // topbar action budget + toast
+  var partyActions = 0, feedCtx = null;
+  function setActions(n) { partyActions = n; document.getElementById('tbActions').textContent = 'Party Actions: ' + n + ' Available'; }
+  var toastEl = document.getElementById('toast'), toastT;
+  function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
+
+  // RALLY: a server-authoritative action (party_rally rolls + applies the result).
+  var rallyBtn = document.getElementById('act-rally'), rallying = false;
+  if (rallyBtn) rallyBtn.addEventListener('click', async function () {
+    if (rallying || rallyBtn.disabled) return;
+    rallying = true; rallyBtn.disabled = true;
+    try {
+      const { data, error } = await supabase.rpc('party_rally');
+      if (error) { ping(error.message || 'Rally failed.'); rallying = false; rallyBtn.disabled = partyActions < 1; return; }
+      setActions(data.actions);
+      if (feedCtx) await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
+      ping('Rally held — popularity +' + data.delta + '%.');
+    } catch (e) { ping('Rally failed. Try again.'); }
+    rallying = false;
+    rallyBtn.disabled = partyActions < 1; // out of actions → stays disabled
+  });
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
@@ -240,11 +278,10 @@
       document.title = party.name + ' · Nationhood';
 
       if (nation) renderGlance(nation);
+      setActions(party.actions_remaining != null ? party.actions_remaining : 3);
       var gameDate = ((document.querySelector('.tb-date__v') || {}).textContent || 'January, 1980').trim();
-      // Every party in the nation, newest first — so each one's founding shows up.
-      const { data: nationParties } = await supabase.from('parties')
-        .select('name, archetype, created_at').eq('nation_id', party.nation_id).order('created_at', { ascending: false });
-      renderEvents(nationParties || [], nation, gameDate);
+      feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
+      await loadFeed(party.nation_id, nation, gameDate);
 
       if (nation && nation.flag) {
         flag.onload = function () { flag.hidden = false; };
