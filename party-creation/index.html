@@ -94,8 +94,12 @@
   </div>
 
   <script type="module">
-    import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+    import { supabase, isConfigured, requireUser, logout, currentParty } from '/supabase.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, COMPETENCIES } from '/util.js';
+
+    // Guard: if you already have a party, you can't found another — go to your
+    // instance instead of overwriting it.
+    (async () => { if (await currentParty()) window.location.replace('/play/'); })();
     import { ARCHETYPES } from '/archetypes.js';
 
     document.getElementById('logout').addEventListener('click', logout);

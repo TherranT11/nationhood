@@ -44,3 +44,19 @@ export async function requireUser() {
     return null;
   }
 }
+
+// The signed-in player's party, or null (not signed in / no party / not
+// configured). One source for the "do I already have a party?" routing check —
+// used to send a returning player straight to their instance, and to keep a
+// party-holder out of the found-a-party flow (which would overwrite their party).
+export async function currentParty() {
+  if (!isConfigured) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
+    const { data } = await supabase.from('parties').select('id, nation_id').eq('user_id', session.user.id).maybeSingle();
+    return data || null;
+  } catch (err) {
+    return null;
+  }
+}
