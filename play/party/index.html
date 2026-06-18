@@ -188,7 +188,7 @@
 
   <main class="main">
     <div class="topbar">
-      <span class="tb-actions">Party Actions: 3 Available</span>
+      <span class="tb-actions" id="tbActions">Party Actions: 3 Available</span>
       <span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v">January, 1980</span></span>
       <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
     </div>
@@ -284,7 +284,7 @@
   // and the dashed line at the right is the ceiling (your reach). All positions
   // come straight from the party row, so this redraws whenever the data changes.
   function renderPopularity(p) {
-    var pop = Math.max(0, p.popularity || 0);
+    var pop = Math.max(0, Number(p.popularity) || 0); // numeric → string in supabase-js
     var floor = Math.max(0, p.pop_floor || 0);
     var ceil = Math.max(1, p.pop_ceiling || 5); // default ceiling 5; guard against /0
     var pct = function (v) { return Math.max(0, Math.min(100, v / ceil * 100)); };
@@ -400,7 +400,7 @@
         '<div class="ideo">' + esc(p.archetype || '') + '</div>' +
         '<div class="acard__stats">' +
           '<div><div class="l">Seats</div><div class="v">' + (p.seats || 0) + '<small> / ' + totalSeats + '</small></div></div>' +
-          '<div><div class="l">Popularity</div><div class="v">' + (p.popularity || 0) + '%</div></div>' +
+          '<div><div class="l">Popularity</div><div class="v">' + (Number(p.popularity) || 0) + '%</div></div>' +
           '<div><div class="l">Leader</div><div class="v nm">' + esc(leaders[p.id] || '—') + '</div></div>' +
         '</div></div>';
     }).join('');
@@ -416,6 +416,9 @@
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
       const currency = (nation && nation.economy && nation.economy.currency) || '₶';
+
+      // Topbar action budget (one source: the party row).
+      document.getElementById('tbActions').textContent = 'Party Actions: ' + (party.actions_remaining != null ? party.actions_remaining : 3) + ' Available';
 
       // Sidebar + title.
       document.getElementById('sname').textContent = party.name;
@@ -438,7 +441,7 @@
       // Standings — read straight from the party/nation rows (one source).
       document.getElementById('st-seats').textContent = party.seats || 0;
       document.getElementById('st-seatsTotal').textContent = '/ ' + ((nation && nation.legislature_seats) || 0);
-      document.getElementById('st-pop').textContent = party.popularity || 0;
+      document.getElementById('st-pop').textContent = Number(party.popularity) || 0;
       document.getElementById('st-funds').textContent = currency + fmtFunds(party.funds);
 
       renderPopularity(party);
