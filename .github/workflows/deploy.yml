@@ -26,7 +26,7 @@ jobs:
         run: |
           mkdir -p dist
           cp index.html CNAME .nojekyll site.css supabase.js dist/
-          cp -r assets home login signup tutorial dist/
+          cp -r assets home login signup startup nation-select tutorial dist/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
