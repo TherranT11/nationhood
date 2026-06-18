@@ -122,6 +122,40 @@
   .pol-stat__bar i{display:block;height:100%;background:var(--soft)}
   .pol-stat.hi .pol-stat__bar i{background:var(--indigo)}
   .poltable .empty{color:var(--soft);font-style:italic;font-size:13px;padding:12px 4px}
+  .empty{color:var(--soft);font-style:italic;font-size:13px}
+
+  /* Composition of the Assembly — seat bar driven by real party seats. */
+  .barwrap{position:relative;padding-bottom:26px;margin-top:6px}
+  .bar{display:flex;height:34px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--chip)}
+  .seg{height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;border-right:2px solid var(--surface)}
+  .seg:last-child{border-right:none}
+  .seg.vacant{color:var(--soft)}
+  .seg.you{outline:2px solid var(--ink);outline-offset:-2px}
+  .maj{position:absolute;top:0;height:34px;width:0;border-left:2px dashed var(--ink)}
+  .maj span{position:absolute;top:38px;left:4px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);font-weight:700;white-space:nowrap}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px}
+  .lg{display:flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--muted)}
+  .lg i{width:10px;height:10px;border-radius:3px;flex:none}
+  .lg b{color:var(--ink);font-weight:700}
+
+  /* The Other Parties — one card per rival party in the nation. */
+  .acards{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:680px){.acards{grid-template-columns:1fr}}
+  .acard{border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;background:var(--surface);border-top:3px solid var(--c)}
+  .acard__top{display:flex;align-items:center;gap:12px}
+  .emblem{width:46px;height:46px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 14%,#fff);color:var(--c);font-family:'Space Mono',monospace;font-weight:700;font-size:15px}
+  .acard__id{flex:1;min-width:0}
+  .acard__id b{font-weight:900;font-size:18px;letter-spacing:-.02em}
+  .acard__id b i{font-style:normal;color:var(--soft);font-weight:700;font-size:13px}
+  .arole{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 10px;border-radius:20px;flex:none;white-space:nowrap}
+  .arole.gov{color:var(--green);background:color-mix(in srgb,var(--green) 12%,#fff)}
+  .arole.opp{color:var(--muted);background:var(--chip)}
+  .ideo{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--c);margin-top:12px;font-weight:700}
+  .acard__stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;border-top:1px solid var(--line);padding-top:13px}
+  .acard__stats .l{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .acard__stats .v{font-weight:800;font-size:15px;letter-spacing:-.01em;margin-top:3px}
+  .acard__stats .v small{font-weight:700;font-size:10px;color:var(--soft)}
+  .acard__stats .v.nm{font-size:12px}
 
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -207,12 +241,27 @@
       </div>
       <div class="poltable" id="poltable"></div>
     </section>
+
+    <section class="panel">
+      <div class="glance-hd"><span>Composition of the Assembly</span><span class="pol-count" id="asmTotal"></span></div>
+      <div class="barwrap">
+        <div class="bar" id="bar"></div>
+        <div class="maj" id="maj"><span></span></div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <section class="panel">
+      <div class="glance-hd"><span>The Other Parties</span></div>
+      <div class="acards" id="acards"></div>
+    </section>
   </main>
 </div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES } from '/util.js';
+  import { archetypeColor } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   // Stub nav items (screens not built) just toggle highlight; Home/Party are links.
@@ -299,6 +348,64 @@
     document.getElementById('poltable').innerHTML = head + rows;
   }
 
+  // Composition of the Assembly: a 0→totalSeats bar built from real party seats
+  // (government parties first, then opposition, then a Vacant remainder). Brand-
+  // new nation: nothing is held yet, so it reads as one Vacant bar.
+  function renderAssembly(parties, myId, totalSeats, leaders) {
+    var bar = document.getElementById('bar'), legend = document.getElementById('legend'), maj = document.getElementById('maj');
+    document.getElementById('asmTotal').textContent = totalSeats ? totalSeats + ' seats' : '';
+    if (!totalSeats || totalSeats <= 0) { bar.innerHTML = ''; legend.innerHTML = ''; maj.style.display = 'none'; return; }
+
+    var ordered = parties.slice().sort(function (a, b) {
+      var ag = a.in_government ? 1 : 0, bg = b.in_government ? 1 : 0;
+      return bg !== ag ? bg - ag : (b.seats || 0) - (a.seats || 0);
+    });
+    var held = parties.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
+    var segs = '';
+    ordered.forEach(function (p) {
+      var s = p.seats || 0; if (s <= 0) return;
+      var w = s / totalSeats * 100;
+      segs += '<div class="seg' + (p.id === myId ? ' you' : '') + '" style="width:' + w + '%;background:' + archetypeColor(p.archetype) +
+              '" title="' + esc(p.name) + ' — ' + s + ' seats">' + (w > 9 ? s : '') + '</div>';
+    });
+    var vacant = totalSeats - held;
+    if (vacant > 0) { var vw = vacant / totalSeats * 100; segs += '<div class="seg vacant" style="width:' + vw + '%" title="Vacant — ' + vacant + ' seats">' + (vw > 9 ? vacant : '') + '</div>'; }
+    bar.innerHTML = segs;
+
+    var majority = Math.floor(totalSeats / 2) + 1;
+    maj.style.display = ''; maj.style.left = (majority / totalSeats * 100) + '%';
+    maj.querySelector('span').textContent = 'Majority ' + majority;
+
+    var leg = parties.slice().sort(function (a, b) { return (b.seats || 0) - (a.seats || 0); }).map(function (p) {
+      return '<div class="lg"><i style="background:' + archetypeColor(p.archetype) + '"></i><b>' + esc(p.name) + '</b> ' + (p.seats || 0) + (p.id === myId ? ' · you' : '') + '</div>';
+    }).join('');
+    if (vacant > 0) leg += '<div class="lg"><i style="background:var(--chip);border:1px solid var(--line)"></i><b>Vacant</b> ' + vacant + '</div>';
+    legend.innerHTML = leg;
+  }
+
+  // The Other Parties: one card per rival party in the nation (real data only;
+  // relations/dossiers aren't modelled yet, so we show what we actually have).
+  function renderOtherParties(parties, myId, totalSeats, leaders) {
+    var others = parties.filter(function (p) { return p.id !== myId; })
+      .sort(function (a, b) { return (b.seats || 0) - (a.seats || 0) || (b.popularity || 0) - (a.popularity || 0); });
+    var box = document.getElementById('acards');
+    if (!others.length) { box.innerHTML = '<p class="empty">No other parties have formed in this nation yet.</p>'; return; }
+    box.innerHTML = others.map(function (p) {
+      var abbr = p.abbreviation || '';
+      var roleCls = p.in_government ? 'gov' : 'opp';
+      return '<div class="acard" style="--c:' + archetypeColor(p.archetype) + '">' +
+        '<div class="acard__top"><span class="emblem">' + esc(abbr) + '</span>' +
+          '<div class="acard__id"><b>' + esc(p.name) + (abbr ? ' <i>(' + esc(abbr) + ')</i>' : '') + '</b></div>' +
+          '<span class="arole ' + roleCls + '">' + (p.in_government ? 'Government' : 'Opposition') + '</span></div>' +
+        '<div class="ideo">' + esc(p.archetype || '') + '</div>' +
+        '<div class="acard__stats">' +
+          '<div><div class="l">Seats</div><div class="v">' + (p.seats || 0) + '<small> / ' + totalSeats + '</small></div></div>' +
+          '<div><div class="l">Popularity</div><div class="v">' + (p.popularity || 0) + '%</div></div>' +
+          '<div><div class="l">Leader</div><div class="v nm">' + esc(leaders[p.id] || '—') + '</div></div>' +
+        '</div></div>';
+    }).join('');
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -339,6 +446,22 @@
       const { data: pols } = await supabase.from('politicians')
         .select('*').eq('party_id', party.id).order('created_at', { ascending: true });
       renderPoliticians(pols || []);
+
+      // The shared Assembly: every party in this nation + each one's leader name.
+      const totalSeats = (nation && nation.legislature_seats) || 0;
+      const { data: allParties } = await supabase.from('parties')
+        .select('id, name, abbreviation, archetype, seats, popularity, in_government')
+        .eq('nation_id', party.nation_id);
+      const ap = allParties || [];
+      var leaders = {};
+      const partyIds = ap.map(function (x) { return x.id; });
+      if (partyIds.length) {
+        const { data: leads } = await supabase.from('politicians')
+          .select('party_id, first_name, last_name').eq('status', 'Party Leader').in('party_id', partyIds);
+        (leads || []).forEach(function (l) { leaders[l.party_id] = l.first_name + ' ' + l.last_name; });
+      }
+      renderAssembly(ap, party.id, totalSeats, leaders);
+      renderOtherParties(ap, party.id, totalSeats, leaders);
 
       if (nation && nation.flag) {
         var flag = document.getElementById('flag');
