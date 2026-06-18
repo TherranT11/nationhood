@@ -73,6 +73,11 @@
   .chip__t{font-weight:700;font-size:13.5px;letter-spacing:-.005em;line-height:1.25}
   .chip__t.good{color:var(--green)} .chip__t.warn{color:#c0860a} .chip__t.bad{color:var(--red)}
 
+  /* National Modifiers + Events row — placeholders for now (no live data yet). */
+  .cols{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:16px}
+  .cols .panel{margin-top:0}
+  @media(max-width:900px){.cols{grid-template-columns:1fr}}
+
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -115,12 +120,23 @@
       <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
       <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
     </section>
+
+    <div class="cols">
+      <section class="panel">
+        <div class="glance-hd"><span>National Modifiers</span></div>
+        <p class="empty">No active modifiers.</p>
+      </section>
+      <section class="panel">
+        <div class="glance-hd"><span id="eventsHd">Events</span></div>
+        <p class="empty">No events yet.</p>
+      </section>
+    </div>
   </main>
 </div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { statLabel } from '/ladders.js';
+  import { statLabel, statBand } from '/ladders.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   // sidebar nav items aren't wired yet (online-game screens not built) — highlight only.
@@ -133,10 +149,6 @@
   // Nation at a Glance — same ladder stats + colour bands as /nation-select, so
   // the number is the one source and the word/colour are derived the same way.
   var GLANCE_STATS = ['prosperity', 'welfare', 'growth', 'order', 'image'];
-  function statClass(stat, v) {
-    if (stat === 'growth') return v >= 13 ? 'good' : v >= 10 ? 'warn' : 'bad';
-    return v >= 11 ? 'good' : '';
-  }
   function renderGlance(nation) {
     var snap = document.getElementById('snap');
     var stats = nation.stats || {};
@@ -147,7 +159,7 @@
       if (typeof v !== 'number') return;
       var name = k.charAt(0).toUpperCase() + k.slice(1);
       var label = statLabel(k, v) || '—';
-      chips.push(chip(name, '<span class="chip__t ' + statClass(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
+      chips.push(chip(name, '<span class="chip__t ' + statBand(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
     });
     if (eco.regime != null) chips.push(chip('Regime', '<span class="chip__t">' + esc(eco.regime) + '</span>'));
     if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
@@ -174,6 +186,7 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
       document.getElementById('kicker').textContent = nationName;
+      document.getElementById('eventsHd').textContent = 'Events in ' + nationName;
       document.getElementById('welcome').textContent = 'Welcome to ' + nationName;
       document.getElementById('lede').textContent = party.name + ' is now part of ' + nationName + '. The nation is yours to shape.';
       document.title = party.name + ' · Nationhood';
