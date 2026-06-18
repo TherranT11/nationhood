@@ -139,8 +139,11 @@ create table if not exists public.nations (
   gdp            bigint,          -- raw value; formatted on the client
   active_parties int  not null default 0,
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
+  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt}
   created_at     timestamptz not null default now()
 );
+-- For installs created before the economy column existed.
+alter table public.nations add column if not exists economy jsonb not null default '{}'::jsonb;
 
 alter table public.nations enable row level security;
 
@@ -150,7 +153,7 @@ create policy "nations_select_all" on public.nations for select using (true);
 
 -- Seed the first nation with its starting numbers (idempotent; won't clobber a
 -- live row's values on re-run).
-insert into public.nations (id, name, description, flag, population, gdp, active_parties, stats)
+insert into public.nations (id, name, description, flag, population, gdp, active_parties, stats, economy)
 values (
   'sessau',
   'Sessau',
@@ -159,9 +162,16 @@ values (
   69000000,
   678000000000,
   0,
-  '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb
+  '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
+  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31}'::jsonb
 )
 on conflict (id) do nothing;
+
+-- Backfill the economy figures on an already-seeded Sessau row (the insert above
+-- is a no-op once the row exists). Only touches a row that hasn't got them yet.
+update public.nations
+   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31}'::jsonb
+ where id = 'sessau' and (economy is null or economy = '{}'::jsonb);
 
 -- ---------------------------------------------------------------------------
 -- Parties: a player's party within a nation. One per player for now (unique
