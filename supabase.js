@@ -60,3 +60,50 @@ export async function currentParty() {
     return null;
   }
 }
+
+// Delete the signed-in player's party and everything that cascades from it —
+// politicians, the recruit drive, and its events (the DB FKs handle the cascade;
+// seats/funds/popularity are columns on the party row). RLS lets a player delete
+// only their own party. The session is left intact (the player stays logged in).
+export async function deleteParty() {
+  if (!isConfigured) return { error: { message: 'Not connected.' } };
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { error: { message: 'Not signed in.' } };
+    return await supabase.from('parties').delete().eq('user_id', session.user.id);
+  } catch (err) {
+    return { error: { message: 'Delete failed.' } };
+  }
+}
+
+// Wire the settings-gear "Delete Party" menu. The markup is per-page (part of the
+// topbar each page already duplicates); this is the one shared behaviour: toggle
+// the menu, a two-step confirm, then deleteParty() → /home (still signed in).
+// Errors surface in the confirm text. No-op if the gear isn't on the page.
+export function wireDeletePartyMenu() {
+  const gearBtn = document.getElementById('gearBtn');
+  if (!gearBtn) return;
+  const gearMenu = document.getElementById('gearMenu');
+  const gearMain = document.getElementById('gearMain');
+  const gearConfirm = document.getElementById('gearConfirm');
+  const gearWarn = document.getElementById('gearWarn');
+  const defaultWarn = gearWarn ? gearWarn.textContent : '';
+  function close() { gearMenu.hidden = true; gearBtn.setAttribute('aria-expanded', 'false'); gearMain.hidden = false; gearConfirm.hidden = true; }
+  gearBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (gearMenu.hidden) { gearMenu.hidden = false; gearBtn.setAttribute('aria-expanded', 'true'); gearMain.hidden = false; gearConfirm.hidden = true; }
+    else close();
+  });
+  document.getElementById('delPartyBtn').addEventListener('click', function () { if (gearWarn) gearWarn.textContent = defaultWarn; gearMain.hidden = true; gearConfirm.hidden = false; });
+  document.getElementById('delNo').addEventListener('click', close);
+  document.getElementById('delYes').addEventListener('click', async function () {
+    const yes = document.getElementById('delYes'); yes.disabled = true; yes.textContent = 'Deleting…';
+    const { error } = await deleteParty();
+    if (error) { yes.disabled = false; yes.textContent = 'Yes, delete'; if (gearWarn) gearWarn.textContent = error.message || 'Couldn’t delete your party.'; return; }
+    window.location.href = '/home/';
+  });
+  document.addEventListener('click', function (e) { if (!gearMenu.hidden && !e.target.closest('.tb-gear')) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !gearMenu.hidden) close(); });
+}
+
+

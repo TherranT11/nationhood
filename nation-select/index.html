@@ -32,7 +32,7 @@
   .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
   .nations { width: 100%; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 22px; }
 
-  .nstats { border-top: 1px solid var(--line); margin-bottom: 20px; }
+  .nstats { border-top: 1px solid var(--line); }
   .nstat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
   .nstat .k { color: var(--muted); font-size: 13.5px; }
   .nstat .v { font-weight: 700; font-size: 14.5px; text-align: right; }
@@ -41,19 +41,20 @@
   .nstat .v.warn { color: #c0860a; }   /* amber (readable "yellow" on white) */
   .nstat .v.bad  { color: #c0341d; }   /* red */
 
-  /* The roster of parties already in this nation (shared instance) — collapsible. */
+  /* The roster: the "Active Parties" row is itself the collapsible toggle. The
+     summary is styled to match a stat row; expanding it reveals the party list. */
   .proster { margin: 0 0 20px; }
-  .plist { border-top: 1px solid var(--line); }
-  .plist > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; padding: 11px 0; font-weight: 700; font-size: 13.5px; color: var(--ink); }
+  .plist > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
   .plist > summary::-webkit-details-marker { display: none; }
-  .plist > summary::after { content: '▸'; color: var(--muted); font-size: 12px; }
-  .plist[open] > summary::after { content: '▾'; }
+  .plist > summary .k { color: var(--muted); }
+  .plist > summary .v { font-weight: 700; display: inline-flex; align-items: center; gap: 7px; }
+  .plist > summary .v::after { content: '▾'; color: var(--muted); font-size: 11px; }
+  .plist[open] > summary .v::after { content: '▴'; }
   .plist .prow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
-  .plist .prow:first-of-type { border-top: 1px solid var(--line); }
   .plist .prow:last-child { border-bottom: 0; }
   .plist .pn { font-weight: 700; color: var(--ink); }
   .plist .pa { color: var(--muted); font-size: 12.5px; }
-  .pempty { color: #9a9a9a; font-size: 13px; font-style: italic; padding: 4px 0 0; border-top: 1px solid var(--line); }
+  .pempty { color: #9a9a9a; font-size: 13px; font-style: italic; padding: 9px 0; border-bottom: 1px solid var(--line); }
 
   .nation-join { width: 100%; padding: 13px; font-size: 15px; }
   .note { margin-top: 12px; text-align: center; font-size: 13.5px; color: var(--muted); min-height: 18px; }
@@ -113,7 +114,7 @@
         if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="v tbd">—</span></div>'; return; }
         rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="' + ('v ' + statBand(k, v)).trim() + '">' + esc(statLabel(k, v) || '—') + '</span></div>';
       });
-      return rows + '<div class="nstat"><span class="k">Active Parties</span><span class="v parties">…</span></div>';
+      return rows; // Active Parties is rendered as the collapsible roster header (loadParties)
     }
 
     function cardHTML(n) {
@@ -134,7 +135,6 @@
     // The parties already founded in a nation: count toward the cap + roster.
     // Derived live from the shared parties table (this is one multiplayer world).
     async function loadParties(card, n) {
-      var elV = card.querySelector('.parties');
       var elRoster = card.querySelector('.proster');
       try {
         const { data, error } = await supabase
@@ -142,25 +142,25 @@
           .eq('nation_id', n.id).order('created_at', { ascending: true });
         if (error) throw error;
         var list = data || [];
-        elV.textContent = list.length + ' / ' + MAX_PARTIES;
-        if (list.length) {
-          // Collapsible roster — keeps a full nation from making the card huge.
-          var rows = list.map(function (p) {
-            return '<div class="prow"><span class="pn">' + esc(p.name) +
-                   '</span><span class="pa">' + esc(p.archetype) + '</span></div>';
-          }).join('');
-          elRoster.innerHTML = '<details class="plist"><summary>Party list (' + list.length + ')</summary>' + rows + '</details>';
-        } else {
-          elRoster.innerHTML = '<div class="pempty">No parties yet — be the first to found one.</div>';
-        }
+        // The "Active Parties N / cap" row is the collapsible toggle; expanding it
+        // reveals the roster (keeps a full nation from making the card tower).
+        var inner = list.length
+          ? list.map(function (p) {
+              return '<div class="prow"><span class="pn">' + esc(p.name) +
+                     '</span><span class="pa">' + esc(p.archetype) + '</span></div>';
+            }).join('')
+          : '<div class="pempty">No parties yet — be the first to found one.</div>';
+        elRoster.innerHTML =
+          '<details class="plist"><summary class="nstat"><span class="k">Active Parties</span>' +
+          '<span class="v">' + list.length + ' / ' + MAX_PARTIES + '</span></summary>' +
+          '<div class="prows">' + inner + '</div></details>';
         if (list.length >= MAX_PARTIES) {
           var join = card.querySelector('.nation-join');
           join.disabled = true;
           join.textContent = 'Nation Full';
         }
       } catch (e) {
-        elV.textContent = '— / ' + MAX_PARTIES;
-        elRoster.innerHTML = '';
+        elRoster.innerHTML = '<div class="pempty">Couldn’t load parties.</div>';
       }
     }
 
