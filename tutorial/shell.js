@@ -518,8 +518,8 @@ function ensureTopbarStyles() {
 
 // Render the actions-remaining chip, current week, and Next Week button into
 // the top-right of <main>. Safe to call once per page; a no-op if there is no
-// <main> or a bar is already present. Next Week is disabled during the tutorial,
-// matching the home screen — the week only advances once that flow is built.
+// <main> or a bar is already present. Next Week is wired via wireNextWeek →
+// advanceWeek (confirm, then advance + reload), same as the home screen.
 export function mountTopbar() {
   const main = document.querySelector('.main');
   if (!main || main.querySelector('.gw-topbar')) return;
