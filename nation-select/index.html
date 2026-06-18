@@ -20,11 +20,11 @@
   /* nation card */
   .nation { width: 100%; max-width: 460px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
   .nation-banner {
-    height: 132px; display: flex; align-items: center; justify-content: center;
+    min-height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden;
     background: repeating-linear-gradient(45deg, #fafafa, #fafafa 12px, #f3f3f3 12px, #f3f3f3 24px);
     border-bottom: 1px solid var(--line);
   }
-  .nation-banner img { max-height: 96px; max-width: 80%; border: 1px solid var(--line); border-radius: 4px; }
+  .nation-banner img { display: block; width: 100%; height: auto; }
   .nation-banner .ph { color: #9a9a9a; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .nation-body { padding: 22px 22px 24px; }
   .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
@@ -35,7 +35,9 @@
   .nstat .k { color: var(--muted); font-size: 13.5px; }
   .nstat .v { font-weight: 700; font-size: 14.5px; text-align: right; }
   .nstat .v.tbd { color: #9a9a9a; font-weight: 400; }
-  .nstat .v.good { color: #16915a; }
+  .nstat .v.good { color: #16915a; }   /* green */
+  .nstat .v.warn { color: #c0860a; }   /* amber (readable "yellow" on white) */
+  .nstat .v.bad  { color: #c0341d; }   /* red */
 
   .nation-join { width: 100%; padding: 13px; font-size: 15px; }
   .note { margin-top: 12px; text-align: center; font-size: 13.5px; color: var(--muted); min-height: 18px; }
@@ -108,22 +110,29 @@
     }
     function trim(x) { return String(Math.round(x * 10) / 10); }
 
+    // Colour for a stat value. Growth has its own bands (contracting → red,
+    // around the 10 midpoint → amber, strong → green); the others just go green
+    // once they're strong (upper half).
+    function statClass(stat, v) {
+      if (stat === 'growth') return 'v ' + (v >= 13 ? 'good' : v >= 10 ? 'warn' : 'bad');
+      return 'v' + (v >= 11 ? ' good' : '');
+    }
+
     function render(n) {
       document.getElementById('nName').textContent = n.name || 'Unknown';
       document.getElementById('nDesc').textContent = n.description || '';
       document.getElementById('v-pop').textContent = fmtBig(n.population);
-      document.getElementById('v-gdp').textContent = fmtBig(n.gdp);
+      document.getElementById('v-gdp').textContent = '₶' + fmtBig(n.gdp); // ₶ = French livre
       document.getElementById('v-parties').textContent = (n.active_parties != null ? n.active_parties : 0);
 
-      // The five ladder stats: the number is the source, the word is derived. Green
-      // marks a strong value (upper half / above the growth midpoint).
+      // The five ladder stats: the number is the source, the word is derived.
       var stats = n.stats || {};
       LADDER_STATS.forEach(function (k) {
         var el = document.getElementById('v-' + k);
         var v = stats[k];
         if (typeof v !== 'number') { el.textContent = '—'; el.className = 'v tbd'; return; }
         el.textContent = statLabel(k, v) || '—';
-        el.className = 'v' + (v >= 11 ? ' good' : '');
+        el.className = statClass(k, v);
       });
 
       // Flag, with a text fallback if the asset is missing.
