@@ -123,3 +123,42 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ---------------------------------------------------------------------------
+-- Nations: the public game-world states a player can join. Read-only to clients
+-- (no write policy → RLS denies all client writes); the nation roster is seeded
+-- here. The five ladder stats are the single source of the starting numbers; the
+-- word labels are derived on the client from /ladders.js (statLabel), never stored.
+-- ---------------------------------------------------------------------------
+create table if not exists public.nations (
+  id             text primary key,
+  name           text not null,
+  description    text,
+  flag           text,            -- asset path, e.g. /assets/Sessau.png
+  population     bigint,          -- raw count; formatted on the client
+  gdp            bigint,          -- raw value; formatted on the client
+  active_parties int  not null default 0,
+  stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
+  created_at     timestamptz not null default now()
+);
+
+alter table public.nations enable row level security;
+
+-- Anyone may read the nation roster (public game data); clients never write it.
+drop policy if exists "nations_select_all" on public.nations;
+create policy "nations_select_all" on public.nations for select using (true);
+
+-- Seed the first nation with its starting numbers (idempotent; won't clobber a
+-- live row's values on re-run).
+insert into public.nations (id, name, description, flag, population, gdp, active_parties, stats)
+values (
+  'sessau',
+  'Sessau',
+  'A nation in Meridian, steeped in culture and history.',
+  '/assets/Sessau.png',
+  69000000,
+  678000000000,
+  0,
+  '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb
+)
+on conflict (id) do nothing;

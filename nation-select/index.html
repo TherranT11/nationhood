@@ -33,11 +33,13 @@
   .nstats { border-top: 1px solid var(--line); margin-bottom: 20px; }
   .nstat { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
   .nstat .k { color: var(--muted); font-size: 13.5px; }
-  .nstat .v { font-weight: 700; font-size: 14.5px; }
-  .nstat .v.tbd { color: var(--soft, #9a9a9a); font-weight: 400; }
+  .nstat .v { font-weight: 700; font-size: 14.5px; text-align: right; }
+  .nstat .v.tbd { color: #9a9a9a; font-weight: 400; }
+  .nstat .v.good { color: #16915a; }
 
   .nation-join { width: 100%; padding: 13px; font-size: 15px; }
   .note { margin-top: 12px; text-align: center; font-size: 13.5px; color: var(--muted); min-height: 18px; }
+  .note.error { color: var(--err); }
 
   @media (max-width: 560px) { .select { padding: 32px 16px 56px; } }
 </style>
@@ -63,20 +65,21 @@
 
     <article class="nation">
       <div class="nation-banner">
-        <img id="flag" src="/assets/Sessauflag.png" alt="Flag of Sessau">
-        <span class="ph" id="flagPh" hidden>Sessau</span>
+        <img id="flag" alt="Flag" hidden>
+        <span class="ph" id="flagPh">&hellip;</span>
       </div>
       <div class="nation-body">
-        <h2 class="nation-name">Sessau</h2>
-        <p class="nation-desc">A nation in Meridian, steeped in culture and history.</p>
+        <h2 class="nation-name" id="nName">&hellip;</h2>
+        <p class="nation-desc" id="nDesc"></p>
         <div class="nstats">
-          <div class="nstat"><span class="k">Population</span><span class="v">69 Million</span></div>
-          <div class="nstat"><span class="k">GDP</span><span class="v">678 Billion</span></div>
-          <div class="nstat"><span class="k">Prosperity</span><span class="v tbd">&mdash;</span></div>
-          <div class="nstat"><span class="k">Wealth</span><span class="v tbd">&mdash;</span></div>
-          <div class="nstat"><span class="k">Order</span><span class="v tbd">&mdash;</span></div>
-          <div class="nstat"><span class="k">Image</span><span class="v tbd">&mdash;</span></div>
-          <div class="nstat"><span class="k">Active Parties</span><span class="v">0</span></div>
+          <div class="nstat"><span class="k">Population</span><span class="v" id="v-pop">&hellip;</span></div>
+          <div class="nstat"><span class="k">GDP</span><span class="v" id="v-gdp">&hellip;</span></div>
+          <div class="nstat"><span class="k">Prosperity</span><span class="v tbd" id="v-prosperity">&hellip;</span></div>
+          <div class="nstat"><span class="k">Welfare</span><span class="v tbd" id="v-welfare">&hellip;</span></div>
+          <div class="nstat"><span class="k">Order</span><span class="v tbd" id="v-order">&hellip;</span></div>
+          <div class="nstat"><span class="k">Image</span><span class="v tbd" id="v-image">&hellip;</span></div>
+          <div class="nstat"><span class="k">Growth</span><span class="v tbd" id="v-growth">&hellip;</span></div>
+          <div class="nstat"><span class="k">Active Parties</span><span class="v" id="v-parties">&hellip;</span></div>
         </div>
         <button class="btn btn-solid nation-join" id="join" type="button">Join Nation</button>
         <div class="note" id="note" role="status" aria-live="polite"></div>
@@ -84,17 +87,70 @@
     </article>
   </main>
 
-  <script>
-    // Flag falls back to a text placeholder if the image isn't there yet.
-    var flag = document.getElementById('flag');
-    flag.addEventListener('error', function () {
-      flag.style.display = 'none';
-      document.getElementById('flagPh').hidden = false;
-    });
+  <script type="module">
+    import { supabase, isConfigured } from '/supabase.js';
+    import { statLabel } from '/ladders.js';
 
-    // Joining a nation isn't wired yet — let the player know rather than dead-click.
+    var LADDER_STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
+    var note = document.getElementById('note');
+    var flag = document.getElementById('flag');
+    var flagPh = document.getElementById('flagPh');
+
+    function err(msg) { note.textContent = msg; note.className = 'note error'; }
+
+    // Population/GDP are stored raw; format to a readable scale.
+    function fmtBig(n) {
+      n = Number(n) || 0;
+      if (n >= 1e12) return trim(n / 1e12) + ' Trillion';
+      if (n >= 1e9)  return trim(n / 1e9)  + ' Billion';
+      if (n >= 1e6)  return trim(n / 1e6)  + ' Million';
+      return n.toLocaleString();
+    }
+    function trim(x) { return String(Math.round(x * 10) / 10); }
+
+    function render(n) {
+      document.getElementById('nName').textContent = n.name || 'Unknown';
+      document.getElementById('nDesc').textContent = n.description || '';
+      document.getElementById('v-pop').textContent = fmtBig(n.population);
+      document.getElementById('v-gdp').textContent = fmtBig(n.gdp);
+      document.getElementById('v-parties').textContent = (n.active_parties != null ? n.active_parties : 0);
+
+      // The five ladder stats: the number is the source, the word is derived. Green
+      // marks a strong value (upper half / above the growth midpoint).
+      var stats = n.stats || {};
+      LADDER_STATS.forEach(function (k) {
+        var el = document.getElementById('v-' + k);
+        var v = stats[k];
+        if (typeof v !== 'number') { el.textContent = '—'; el.className = 'v tbd'; return; }
+        el.textContent = statLabel(k, v) || '—';
+        el.className = 'v' + (v >= 11 ? ' good' : '');
+      });
+
+      // Flag, with a text fallback if the asset is missing.
+      if (n.flag) {
+        flag.onerror = function () { flag.hidden = true; flagPh.textContent = n.name || ''; flagPh.hidden = false; };
+        flag.onload = function () { flagPh.hidden = true; flag.hidden = false; };
+        flag.src = n.flag;
+      } else {
+        flagPh.textContent = n.name || '';
+      }
+    }
+
+    (async () => {
+      if (!isConfigured) { err('Nation data isn’t connected yet.'); return; }
+      try {
+        const { data, error } = await supabase.from('nations').select('*').eq('id', 'sessau').single();
+        if (error || !data) { err('Couldn’t load this nation. Try again shortly.'); return; }
+        render(data);
+      } catch (e) {
+        err('Couldn’t load this nation. Try again shortly.');
+      }
+    })();
+
+    // Joining isn't wired yet — acknowledge rather than dead-click.
     document.getElementById('join').addEventListener('click', function () {
-      document.getElementById('note').textContent = 'Sessau opens to players soon — joining isn’t live yet.';
+      note.className = 'note';
+      note.textContent = 'Sessau opens to players soon — joining isn’t live yet.';
     });
   </script>
 </body>
