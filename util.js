@@ -39,7 +39,9 @@ export function fmtPop(value) {
 }
 
 // The game clock runs one tick per month, tick 1 = January 1980. One source for
-// turning a tick number into its display date (e.g. 5 → "May, 1980").
+// turning a tick number into its display date (e.g. 5 → "May, 1980"). MIRRORED by
+// public.current_game_date() in schema/40_events.sql (which stamps events from the
+// tick) — keep the two in sync if the calendar ever changes.
 export function tickToDate(tick) {
   var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var n = Math.max(1, Math.round(Number(tick) || 1));

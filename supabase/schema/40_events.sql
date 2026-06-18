@@ -22,6 +22,24 @@ alter table public.events enable row level security;
 drop policy if exists "events_select_all" on public.events;
 create policy "events_select_all" on public.events for select using (true);
 
+-- The current in-game date as "Month, YYYY", from the shared tick (tick 1 =
+-- January 1980, one tick per month — MIRRORS tickToDate in util.js; keep the two
+-- in sync). One source for stamping events, so once the tick advances every new
+-- event reads the right month/year. Defaults to tick 1 if the clock row is gone.
+create or replace function public.current_game_date()
+returns text
+language sql
+stable
+set search_path = public
+as $$
+  -- m = months since January 1980 (tick − 1). Month name comes from a literal
+  -- array (NOT to_char, which is locale-dependent) so it always matches util.js.
+  with t as (select greatest(coalesce((select current_tick from public.game_state where id), 1), 1) - 1 as m)
+  select (array['January','February','March','April','May','June','July','August','September','October','November','December'])[(m % 12) + 1]
+         || ', ' || (1980 + m / 12)::text
+  from t;
+$$;
+
 -- Leader actions are server-authoritative (the client can't write the
 -- game-controlled columns popularity/pop_floor/funds/actions). Each action below
 -- validates + locks the party, rolls 1d6 + a leader stat, applies its own effect,
@@ -108,7 +126,7 @@ begin
   end || ' Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
   update public.parties set popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'rally', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'rally', v_body, public.current_game_date());
   return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
 
@@ -149,7 +167,7 @@ begin
   end || ' Floor +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
   update public.parties set pop_floor = v_newfloor, popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'organize', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'organize', v_body, public.current_game_date());
   return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'floor', v_newfloor, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
 
@@ -186,7 +204,7 @@ begin
   end || ' Funds +₣' || (v_haul / 1000) || 'K.';
 
   update public.parties set funds = funds + v_haul, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'fundraise', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'fundraise', v_body, public.current_game_date());
   return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'funds', v_p.funds + v_haul, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
 
@@ -249,7 +267,7 @@ begin
   end if;
 
   update public.parties set popularity = v_p_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'attack', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'attack', v_body, public.current_game_date());
 
   return jsonb_build_object('hit', v_hit, 'cut', v_cut, 'self_penalty', v_self_pen, 'target', v_tname, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
@@ -299,7 +317,7 @@ begin
   if v_imggain > 0 then
     update public.nations set stats = jsonb_set(coalesce(stats, '{}'::jsonb), '{image}', to_jsonb(coalesce((stats->>'image')::numeric, 0) + 1)) where id = v_p.nation_id;
   end if;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'adblitz', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'adblitz', v_body, public.current_game_date());
 
   return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'ceiling_gain', v_ceilgain, 'image_gain', v_imggain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
@@ -343,7 +361,7 @@ begin
   end || ' Ceiling +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
   update public.parties set pop_ceiling = v_newceil, popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'platform', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'platform', v_body, public.current_game_date());
 
   return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'pop_penalty', v_pen, 'ceiling', v_newceil, 'popularity', v_newpop, 'actions', v_p.actions_remaining - 1, 'body', v_body);
 end $$;
@@ -473,7 +491,7 @@ begin
   else
     v_body := 'After years working in the party apparatus, ' || v_name || ' has emerged as a name to look out for in the years to come in the ' || v_p.name || '.';
   end if;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'recruit', v_body, 'January, 1980');
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'recruit', v_body, public.current_game_date());
 
   return jsonb_build_object('choice', p_choice, 'name', v_name, 'politician_id', v_id,
     'actions', v_p.actions_remaining - v_need, 'body', v_body);
