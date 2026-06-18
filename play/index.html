@@ -194,7 +194,7 @@
             <button class="gearmenu__item gearmenu__item--danger" id="delPartyBtn" type="button">Delete Party</button>
           </div>
           <div id="gearConfirm" hidden>
-            <p class="gearmenu__warn">Delete your party? This permanently removes your seats, politicians, and funds. This can&rsquo;t be undone.</p>
+            <p class="gearmenu__warn" id="gearWarn">Delete your party? This permanently removes your seats, politicians, and funds. This can&rsquo;t be undone.</p>
             <div class="gearmenu__row">
               <button class="gearmenu__btn gearmenu__btn--danger" id="delYes" type="button">Yes, delete</button>
               <button class="gearmenu__btn" id="delNo" type="button">Cancel</button>
@@ -256,37 +256,12 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser, logout, deleteParty } from '/supabase.js';
+  import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu } from '/supabase.js';
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
   import { esc, COMPETENCIES } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
-
-  // Settings gear → Delete Party (two-step confirm). Deleting the party cascades
-  // to politicians / recruit drive / events (seats, funds, popularity are columns
-  // on the party row). The player stays signed in and lands back on /home with the
-  // join + tutorial options.
-  var gearBtn = document.getElementById('gearBtn');
-  var gearMenu = document.getElementById('gearMenu');
-  var gearMain = document.getElementById('gearMain');
-  var gearConfirm = document.getElementById('gearConfirm');
-  function closeGear() { gearMenu.hidden = true; gearBtn.setAttribute('aria-expanded', 'false'); gearMain.hidden = false; gearConfirm.hidden = true; }
-  gearBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (gearMenu.hidden) { gearMenu.hidden = false; gearBtn.setAttribute('aria-expanded', 'true'); gearMain.hidden = false; gearConfirm.hidden = true; }
-    else closeGear();
-  });
-  document.getElementById('delPartyBtn').addEventListener('click', function () { gearMain.hidden = true; gearConfirm.hidden = false; });
-  document.getElementById('delNo').addEventListener('click', closeGear);
-  document.getElementById('delYes').addEventListener('click', async function () {
-    var yes = document.getElementById('delYes');
-    yes.disabled = true; yes.textContent = 'Deleting…';
-    const { error } = await deleteParty();
-    if (error) { yes.disabled = false; yes.textContent = 'Yes, delete'; ping(error.message || 'Couldn’t delete your party.'); return; }
-    window.location.href = '/home/';
-  });
-  document.addEventListener('click', function (e) { if (!gearMenu.hidden && !e.target.closest('.tb-gear')) closeGear(); });
-  window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !gearMenu.hidden) closeGear(); });
+  wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
 
   // sidebar nav items aren't wired yet (online-game screens not built) — highlight only.
   document.querySelectorAll('.nav__i').forEach(function (i) {

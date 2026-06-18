@@ -197,35 +197,11 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser, logout, deleteParty } from '/supabase.js';
+  import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu } from '/supabase.js';
 
   document.getElementById('logout').addEventListener('click', logout);
+  wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
 
-  // Settings gear → Delete Party (two-step confirm). Deleting the party cascades
-  // to politicians / recruit drive / events; seats/funds/popularity are columns
-  // on the party row. The player stays signed in and lands back on /home.
-  (function () {
-    var DEFAULT_WARN = 'Delete your party? This permanently removes your seats, politicians, and funds. This can’t be undone.';
-    var gearBtn = document.getElementById('gearBtn'), gearMenu = document.getElementById('gearMenu');
-    var gearMain = document.getElementById('gearMain'), gearConfirm = document.getElementById('gearConfirm'), gearWarn = document.getElementById('gearWarn');
-    if (!gearBtn) return;
-    function closeGear() { gearMenu.hidden = true; gearBtn.setAttribute('aria-expanded', 'false'); gearMain.hidden = false; gearConfirm.hidden = true; }
-    gearBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      if (gearMenu.hidden) { gearMenu.hidden = false; gearBtn.setAttribute('aria-expanded', 'true'); gearMain.hidden = false; gearConfirm.hidden = true; }
-      else closeGear();
-    });
-    document.getElementById('delPartyBtn').addEventListener('click', function () { gearWarn.textContent = DEFAULT_WARN; gearMain.hidden = true; gearConfirm.hidden = false; });
-    document.getElementById('delNo').addEventListener('click', closeGear);
-    document.getElementById('delYes').addEventListener('click', async function () {
-      var yes = document.getElementById('delYes'); yes.disabled = true; yes.textContent = 'Deleting…';
-      const { error } = await deleteParty();
-      if (error) { yes.disabled = false; yes.textContent = 'Yes, delete'; gearWarn.textContent = error.message || 'Couldn’t delete your party.'; return; }
-      window.location.href = '/home/';
-    });
-    document.addEventListener('click', function (e) { if (!gearMenu.hidden && !e.target.closest('.tb-gear')) closeGear(); });
-    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !gearMenu.hidden) closeGear(); });
-  })();
   document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
     i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
   });
