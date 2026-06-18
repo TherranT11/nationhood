@@ -105,27 +105,6 @@
   .recruitbtn{font-family:'Space Mono',monospace;font-weight:700;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 35%,transparent);border-radius:9px;padding:8px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
   .recruitbtn:hover{background:var(--indigo);color:#fff;border-color:var(--indigo)}
   .recruitbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-  .recruitbtn[disabled]{opacity:.5;cursor:default;pointer-events:none}
-  /* recruit modal */
-  .rm{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:rgba(21,21,27,.5);padding:20px}
-  .rm[hidden]{display:none}
-  .rm__box{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px;max-width:680px;width:100%;box-shadow:0 30px 70px -24px rgba(0,0,0,.45)}
-  .rm__hd{font-family:'Archivo',sans-serif;font-weight:800;font-size:19px;letter-spacing:-.01em;display:flex;align-items:center;justify-content:space-between;gap:12px}
-  .rm__cost{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:20px;padding:5px 11px}
-  .rm__cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0}
-  .rmcard{border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:11px}
-  .rmcard__nm{font-weight:800;font-size:16px;letter-spacing:-.01em}
-  .rmcard__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:3px}
-  .rmcard__blurb{font-size:13px;color:var(--muted);line-height:1.45;flex:1}
-  .rmcard__stats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-  .rmcard__st{text-align:center}
-  .rmcard__st .l{display:block;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--soft)}
-  .rmcard__st .n{font-weight:800;font-size:15px;letter-spacing:-.02em}
-  .rmcard__pick{font-family:'Space Mono',monospace;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:var(--indigo);color:#fff;border:none;border-radius:10px;padding:11px;cursor:pointer;transition:filter .15s}
-  .rmcard__pick:hover{filter:brightness(1.08)}
-  .rmcard__pick[disabled]{background:#cfcdc7;cursor:default}
-  .rm__cancel{font-family:'Space Mono',monospace;font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;background:var(--surface);border:1.5px solid var(--line);color:var(--muted);border-radius:10px;padding:10px 16px;cursor:pointer;width:100%}
-  @media(max-width:560px){.rm__cards{grid-template-columns:1fr}}
   .ptable{display:flex;flex-direction:column}
   .phead,.prow{display:grid;grid-template-columns:1.5fr .55fr 1.25fr .6fr repeat(5,minmax(48px,.7fr));gap:12px;align-items:center}
   .phead{padding:0 12px 10px;border-bottom:1px solid var(--line)}
@@ -295,14 +274,6 @@
 
 <div class="toast" id="toast"></div>
 
-<div class="rm" id="recruitModal" hidden>
-  <div class="rm__box">
-    <div class="rm__hd">Recruit a Politician <span class="rm__cost">2 Actions</span></div>
-    <div class="rm__cards" id="rmCards"></div>
-    <button class="rm__cancel" id="rmCancel" type="button">Cancel</button>
-  </div>
-</div>
-
 <script>
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3600);}
@@ -337,61 +308,19 @@
   }
   pols.forEach(addPol);
 
-  // ---- recruit flow (Week 24+): spend 2 actions to add one new politician ----
-  var CANDIDATES=[
-    {key:'young', name:'Lucas Fontaine', age:28, role:'Backbencher', free:true, exp:1, stats:[4,3,2,2,3], blurb:'Young blood — magnetic on the stump, with a long career ahead, but still green.'},
-    {key:'veteran', name:'Henri Vasseur', age:52, role:'Backbencher', free:true, exp:7, stats:[3,4,4,3,2], blurb:'A diamond in the rough — seasoned and shrewd, his talents never properly used.'}
-  ];
-  var actionsAvail=3, recruited=false, choosing=false;
-  var modal=document.getElementById('recruitModal');
-  var rmCards=document.getElementById('rmCards');
-  var recruitBtn=document.getElementById('recruitBtn');
+  // ---- recruit flow: the button opens the dedicated Recruit page (its own drive
+  // of randomly-generated candidates). Recruited politicians are persisted there
+  // and rendered back into this roster below.
+  document.getElementById('recruitBtn').addEventListener('click',function(){ window.location.href='/test/tutorial/party/recruit/'; });
 
-  function applyRecruit(c){ // render the recruited politician + lock the button (idempotent)
-    if(recruited) return;
-    recruited=true;
-    addPol({name:c.name,age:c.age,role:c.role,free:c.free,exp:c.exp,stats:c.stats,tag:'New'});
-    if(recruitBtn){ recruitBtn.disabled=true; recruitBtn.textContent='Recruited'; }
-  }
-  function choose(c,btn){
-    if(choosing||recruited) return;
-    if(actionsAvail<2){ ping('You need <b>2 actions</b> to recruit — advance to a new week first.'); return; }
-    choosing=true; if(btn) btn.disabled=true;
-    var left=actionsAvail-2;
-    Promise.resolve(window.saveRecruit?window.saveRecruit(c,left):true).then(function(ok){
-      choosing=false;
-      if(!ok){ if(btn) btn.disabled=false; ping('Could not recruit — try again.'); return; }
-      actionsAvail=left; applyRecruit(c); modal.hidden=true;
-      ping('<b>'+c.name+'</b> joins the party.');
-    });
-  }
-  function openModal(){
-    if(recruited){ ping('You\'ve already recruited a politician.'); return; }
-    if(actionsAvail<2){ ping('You need <b>2 actions</b> to recruit — advance to a new week first.'); return; }
-    rmCards.innerHTML=CANDIDATES.map(function(c){
-      var stats=c.stats.map(function(v,i){return '<div class="rmcard__st"><span class="l">'+SL[i]+'</span><span class="n">'+v+'</span></div>';}).join('');
-      return '<div class="rmcard"><div><div class="rmcard__nm">'+c.name+'</div><div class="rmcard__meta">Age '+c.age+' · EXP '+c.exp+'</div></div>'+
-        '<div class="rmcard__blurb">'+c.blurb+'</div><div class="rmcard__stats">'+stats+'</div>'+
-        '<button class="rmcard__pick" type="button" data-key="'+c.key+'">Recruit · 2 Actions</button></div>';
-    }).join('');
-    rmCards.querySelectorAll('.rmcard__pick').forEach(function(b){
-      b.addEventListener('click',function(){ choose(CANDIDATES.filter(function(x){return x.key===b.dataset.key;})[0], b); });
-    });
-    modal.hidden=false;
-  }
-  recruitBtn.addEventListener('click',openModal);
-  document.getElementById('rmCancel').addEventListener('click',function(){modal.hidden=true;});
-  modal.addEventListener('click',function(e){ if(e.target===modal) modal.hidden=true; }); // backdrop closes
-
-  // The recruit coach replaces the welcome coach from Week 24; a saved recruit is
-  // restored to the roster. Both read live state set during initSidebar.
-  window.addEventListener('nationhood:actions',function(e){ if(typeof e.detail==='number') actionsAvail=e.detail; });
-  window.addEventListener('nationhood:recruit',function(e){
+  // From Week 24 the recruit coach replaces the welcome coach. Any politicians
+  // recruited so far are restored to the roster (read once on load).
+  window.addEventListener('nationhood:recruits',function(e){
     if((window.nationhoodWeek||0)>=24){
       var w=document.getElementById('coachWelcome'); if(w) w.style.display='none';
       var r=document.getElementById('coachRecruit'); if(r) r.style.display='';
     }
-    if(e.detail) applyRecruit(e.detail); // already recruited in a prior session
+    (e.detail||[]).forEach(function(p){ addPol({name:p.name,age:p.age,role:p.role||'Backbencher',free:p.free!==false,exp:p.exp,stats:p.stats,tag:'New'}); });
   });
 
   // ---- electoral history ----
@@ -425,14 +354,8 @@
 </script>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar, updateProfile, renderPartyActions } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
   mountTopbar();
-  // Persist the recruited politician and the spent actions in one write, then
-  // refresh the action chip so every display agrees without a reload.
-  window.saveRecruit=function(candidate, actionsLeft){
-    return updateProfile({ tutorial_recruit: candidate, tutorial_party_actions: actionsLeft })
-      .then(function(ok){ if(ok) renderPartyActions(actionsLeft); return ok; });
-  };
   // Hide the hero flag too if the asset is missing, matching the sidebar flag.
   var hf=document.getElementById('heroFlag');
   if(hf){hf.addEventListener('error',function(){hf.style.display='none';});}
