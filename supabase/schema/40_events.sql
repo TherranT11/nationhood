@@ -333,3 +333,135 @@ begin
 end $$;
 
 grant execute on function public.party_platform() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- RECRUIT (Charisma · New Blood) — a two-step action, so it can't reuse the
+-- single-shot _begin_action helper. Opening a drive (party_recruit_scout) rolls
+-- 1d6 + the leader's Charisma to surface two candidates and charges the ₣25K
+-- drive cost; hiring one (party_recruit_hire) spends the action cost (1 for the
+-- Newcomer, 2 for the Seasoned) and adds them to the roster. The candidates are
+-- generated + stored server-side, so the stats the player sees are the ones that
+-- get hired. Scandals/Traits are deferred until those systems exist.
+-- ---------------------------------------------------------------------------
+
+-- Build one candidate: a random Sessau name + p_points stat points spread
+-- randomly across the five competencies. Internal helper for the recruit RPCs
+-- (not granted to clients — only the security-definer functions below call it).
+create or replace function public._gen_candidate(p_age int, p_exp int, p_points int)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_first text; v_last text; s int[] := array[0, 0, 0, 0, 0]; i int; k int;
+begin
+  select name into v_first from public.sessau_names where kind in ('male', 'female') order by random() limit 1;
+  select name into v_last  from public.sessau_names where kind = 'surname'          order by random() limit 1;
+  for i in 1..greatest(p_points, 0) loop
+    k := floor(random() * 5)::int + 1;
+    s[k] := s[k] + 1;
+  end loop;
+  return jsonb_build_object(
+    'first_name', coalesce(v_first, '—'), 'last_name', coalesce(v_last, '—'),
+    'age', p_age, 'experience', p_exp,
+    'cha', s[1], 'acu', s[2], 'gui', s[3], 'res', s[4], 'com', s[5]
+  );
+end $$;
+
+-- party_recruit_scout(): opens (or re-opens) the recruitment drive. Charges the
+-- ₣25K drive cost the first time, rolls 1d6 + Charisma → the Seasoned candidate's
+-- experience tier (poor 3 / middling 5 / strong 7), and stages a Newcomer (age
+-- 25, exp 0, 2 stat points) + Seasoned (age 35–45, 5 stat points). If a drive is
+-- already open it just returns it — no re-roll, no second charge.
+create or replace function public.party_recruit_scout()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid(); v_p public.parties%rowtype;
+  v_existing jsonb; v_cha int; v_roll int; v_total int; v_tier text;
+  v_exp int; v_new jsonb; v_seas jsonb; v_cost bigint := 25000;
+begin
+  if v_user is null then raise exception 'Not signed in.'; end if;
+  select * into v_p from public.parties where user_id = v_user for update;
+  if not found then raise exception 'You have no party.'; end if;
+
+  -- A drive already open → return it untouched (no re-roll, no second charge).
+  select candidates into v_existing from public.recruit_drives where party_id = v_p.id;
+  if found then
+    return jsonb_build_object('newcomer', v_existing -> 'newcomer', 'seasoned', v_existing -> 'seasoned',
+      'existing', true, 'funds', v_p.funds, 'actions', v_p.actions_remaining);
+  end if;
+
+  if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
+  if v_p.funds < v_cost then raise exception 'Not enough funds (need ₣%K).', (v_cost / 1000); end if;
+
+  select coalesce(cha, 0) into v_cha from public.politicians
+    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
+  v_cha := coalesce(v_cha, 0);
+  v_roll := floor(random() * 6)::int + 1;
+  v_total := v_roll + v_cha;
+  v_tier := public._action_tier(v_total);
+  v_exp := case v_tier when 'strong' then 7 when 'middling' then 5 else 3 end;
+
+  v_new  := public._gen_candidate(25, 0, 2);
+  v_seas := public._gen_candidate(35 + floor(random() * 11)::int, v_exp, 5);  -- age 35–45
+
+  insert into public.recruit_drives (party_id, candidates)
+    values (v_p.id, jsonb_build_object('newcomer', v_new, 'seasoned', v_seas));
+  update public.parties set funds = funds - v_cost where id = v_p.id;
+
+  return jsonb_build_object('newcomer', v_new, 'seasoned', v_seas, 'tier', v_tier,
+    'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining);
+end $$;
+
+grant execute on function public.party_recruit_scout() to authenticated;
+
+-- party_recruit_hire(choice): hires one staged candidate ('newcomer' | 'seasoned'),
+-- spends the action cost (1 / 2), adds them to the roster as a Party Member, and
+-- closes the drive. The ₣ cost was already paid when the drive opened.
+create or replace function public.party_recruit_hire(p_choice text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid(); v_p public.parties%rowtype;
+  v_cands jsonb; v_c jsonb; v_need int; v_name text; v_id uuid; v_body text;
+begin
+  if p_choice not in ('newcomer', 'seasoned') then raise exception 'Pick a Newcomer or a Seasoned candidate.'; end if;
+  if v_user is null then raise exception 'Not signed in.'; end if;
+  select * into v_p from public.parties where user_id = v_user for update;
+  if not found then raise exception 'You have no party.'; end if;
+
+  select candidates into v_cands from public.recruit_drives where party_id = v_p.id;
+  if not found then raise exception 'No recruitment drive open — scout first.'; end if;
+  v_c := v_cands -> p_choice;
+  v_need := case p_choice when 'seasoned' then 2 else 1 end;
+  if v_p.actions_remaining < v_need then raise exception 'Not enough actions (need %).', v_need; end if;
+
+  insert into public.politicians (party_id, first_name, last_name, age, experience, status, cha, acu, gui, res, com)
+  values (v_p.id, v_c ->> 'first_name', v_c ->> 'last_name', (v_c ->> 'age')::int, (v_c ->> 'experience')::int,
+          'Party Member', (v_c ->> 'cha')::int, (v_c ->> 'acu')::int, (v_c ->> 'gui')::int, (v_c ->> 'res')::int, (v_c ->> 'com')::int)
+  returning id into v_id;
+
+  update public.parties set actions_remaining = actions_remaining - v_need where id = v_p.id;
+  delete from public.recruit_drives where party_id = v_p.id;
+
+  v_name := (v_c ->> 'first_name') || ' ' || (v_c ->> 'last_name');
+  if p_choice = 'newcomer' then
+    v_body := 'The ' || v_p.name || ' has opened its doors to new blood, and the talent came knocking. The ' || v_p.name || ' has announced ' || v_name || ' has just joined their ranks. Remember this name.';
+  else
+    v_body := 'After years working in the party apparatus, ' || v_name || ' has emerged as a name to look out for in the years to come in the ' || v_p.name || '.';
+  end if;
+  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'recruit', v_body, 'January, 1980');
+
+  return jsonb_build_object('choice', p_choice, 'name', v_name, 'politician_id', v_id,
+    'actions', v_p.actions_remaining - v_need, 'body', v_body);
+end $$;
+
+grant execute on function public.party_recruit_hire(text) to authenticated;
