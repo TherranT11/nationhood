@@ -95,12 +95,12 @@
 
   <script type="module">
     import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
     // Which nation are we founding a party in? (?nation=<id>, default sessau.)
     var nationId = new URLSearchParams(location.search).get('nation') || 'sessau';
-    var MAX_PARTIES = 8; // hard cap on parties per nation (matches nation-select)
 
     var ARCHETYPES = [
       { id: 'centrist',     name: 'Centrist',         color: '#64748b', desc: 'Pragmatic middle ground — balance the market and the state, govern by consensus.', icon: '<path d="M12 3v18"/><path d="M5 20h14"/><path d="M4 7h16"/><path d="M4 7l-2 5a3 3 0 006 0z"/><path d="M20 7l-2 5a3 3 0 006 0z"/>' },
@@ -151,7 +151,39 @@
       if (name && abbrOk() && selected) { picked.className = 'picked'; picked.innerHTML = '<b>' + esc(name) + '</b> (' + esc(pabbr.value.trim()) + ') · ' + esc(archName(selected)); }
       else { picked.className = 'picked'; picked.textContent = 'Add a name, a 2–4 letter abbreviation, and an archetype to continue.'; }
     }
-    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
+
+    // A brand-new party starts with one prominent politician — its Party Leader.
+    // Sessau names come from the sessau_names pool; age 25–55; experience =
+    // age/10 (floor), which is the number of stat points spread randomly across
+    // the five competencies. Skips if the party already has politicians (so a
+    // re-founding upsert doesn't mint a second leader). Non-fatal: a failure here
+    // never blocks party creation — the roster just starts empty.
+    async function seedLeader(partyId) {
+      if (nationId !== 'sessau') return; // only Sessau has a name pool for now
+      try {
+        const { count } = await supabase.from('politicians')
+          .select('id', { count: 'exact', head: true }).eq('party_id', partyId);
+        if (count) return;
+        const { data: names, error } = await supabase.from('sessau_names').select('name, kind');
+        if (error || !names) return;
+        var firsts = names.filter(function (n) { return n.kind === 'male' || n.kind === 'female'; });
+        var surs = names.filter(function (n) { return n.kind === 'surname'; });
+        if (!firsts.length || !surs.length) return;
+        var pick = function (a) { return a[Math.floor(Math.random() * a.length)].name; };
+
+        var age = 25 + Math.floor(Math.random() * 31);  // 25–55 inclusive
+        var exp = Math.floor(age / 10);                  // experience = stat points to spend
+        var stats = { cha: 0, acu: 0, gui: 0, res: 0, com: 0 };
+        var keys = ['cha', 'acu', 'gui', 'res', 'com'];
+        for (var i = 0; i < exp; i++) { stats[keys[Math.floor(Math.random() * keys.length)]]++; }
+
+        await supabase.from('politicians').insert({
+          party_id: partyId, first_name: pick(firsts), last_name: pick(surs),
+          age: age, experience: exp, status: 'Party Leader',
+          cha: stats.cha, acu: stats.acu, gui: stats.gui, res: stats.res, com: stats.com
+        });
+      } catch (e) { /* non-fatal: party still exists, roster just starts empty */ }
+    }
 
     var saving = false;
     function fail(text) { picked.className = 'picked msg error'; picked.textContent = text; saving = false; join.disabled = false; }
@@ -188,9 +220,11 @@
         if (clash) { fail('A party with that name or abbreviation already exists in this nation.'); return; }
 
         // One party per player: upsert on the user so re-creating replaces.
-        const { error } = await supabase.from('parties')
-          .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, archetype: archName(selected) }, { onConflict: 'user_id' });
-        if (error) { fail('That name or abbreviation is already taken in this nation.'); return; }
+        const { data: created, error } = await supabase.from('parties')
+          .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, archetype: archName(selected) }, { onConflict: 'user_id' })
+          .select('id').single();
+        if (error || !created) { fail('That name or abbreviation is already taken in this nation.'); return; }
+        await seedLeader(created.id);  // give a brand-new party its Party Leader
         window.location.href = '/play/';
       } catch (e) {
         fail('Something went wrong. Try again.');

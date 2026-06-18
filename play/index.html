@@ -168,6 +168,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { statLabel, statBand } from '/ladders.js';
+  import { esc } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   // sidebar nav items aren't wired yet (online-game screens not built) — highlight only.
@@ -215,7 +216,6 @@
   }
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
-  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; }); }
 
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
