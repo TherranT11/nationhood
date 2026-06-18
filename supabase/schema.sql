@@ -137,7 +137,6 @@ create table if not exists public.nations (
   flag           text,            -- asset path, e.g. /assets/Sessau.png
   population     bigint,          -- raw count; formatted on the client
   gdp            bigint,          -- raw value; formatted on the client
-  active_parties int  not null default 0,
   legislature_seats int not null default 0, -- total seats in the nation's legislature
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
@@ -146,6 +145,9 @@ create table if not exists public.nations (
 -- For installs created before these columns existed.
 alter table public.nations add column if not exists economy jsonb not null default '{}'::jsonb;
 alter table public.nations add column if not exists legislature_seats int not null default 0;
+-- The active-party count is derived live from public.parties (one source), not
+-- stored — drop the old counter column if an earlier install still has it.
+alter table public.nations drop column if exists active_parties;
 
 alter table public.nations enable row level security;
 
@@ -155,7 +157,7 @@ create policy "nations_select_all" on public.nations for select using (true);
 
 -- Seed the first nation with its starting numbers (idempotent; won't clobber a
 -- live row's values on re-run).
-insert into public.nations (id, name, description, flag, population, gdp, active_parties, legislature_seats, stats, economy)
+insert into public.nations (id, name, description, flag, population, gdp, legislature_seats, stats, economy)
 values (
   'sessau',
   'Sessau',
@@ -163,7 +165,6 @@ values (
   '/assets/Sessau.png',
   69000000,
   678000000000,
-  0,
   280,
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
   '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"₶"}'::jsonb
@@ -182,10 +183,12 @@ update public.nations set legislature_seats = 280
 
 -- ---------------------------------------------------------------------------
 -- Parties: a player's party within a nation. One per player for now (unique
--- user_id). Public read (the roster is shared game data); a player may write only
--- their own row. active_parties on nations is intentionally NOT auto-maintained
--- here — wiring that up (a derived count or a server function) is a deliberate,
--- separate step rather than a hidden trigger.
+-- user_id). Public read — the roster is shared game data, and this single
+-- multiplayer instance shows every party in a nation to everyone (the active
+-- count + list are derived from these rows). A player may write only their own
+-- row. The 8-per-nation cap is currently enforced on the client; a race-proof
+-- cap would need a server-side check (a trigger/function — deliberately not
+-- added here without sign-off, to avoid hidden automation).
 -- ---------------------------------------------------------------------------
 create table if not exists public.parties (
   id           uuid primary key default gen_random_uuid(),
