@@ -22,7 +22,7 @@ create table if not exists public.parties (
   seats         int     not null default 0,     -- seats held in the legislature
   popularity    numeric not null default 0,     -- public support, % (fractional — actions move it in tenths)
   pop_floor     numeric not null default 0,     -- support floor: the base attacks can't push below, % (fractional — Organize moves it in tenths)
-  pop_ceiling   int     not null default 5,     -- support ceiling: current reach / cap on popularity, %
+  pop_ceiling   numeric not null default 5,     -- support ceiling: current reach / cap on popularity, % (fractional — Ad Blitz nudges it)
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
   actions_remaining int not null default 3,     -- party actions left this turn (no auto-reset until the turn system exists)
@@ -36,7 +36,8 @@ alter table public.parties add column if not exists popularity numeric not null 
 alter table public.parties alter column popularity type numeric using popularity::numeric; -- widen int → numeric for fractional support
 alter table public.parties add column if not exists pop_floor numeric not null default 0;
 alter table public.parties alter column pop_floor type numeric using pop_floor::numeric; -- widen int → numeric for fractional floor
-alter table public.parties add column if not exists pop_ceiling int not null default 5;
+alter table public.parties add column if not exists pop_ceiling numeric not null default 5;
+alter table public.parties alter column pop_ceiling type numeric using pop_ceiling::numeric; -- widen int → numeric for fractional ceiling
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
 alter table public.parties add column if not exists actions_remaining int not null default 3;
