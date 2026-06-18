@@ -61,6 +61,7 @@ export async function getTutorialProgress(userId) {
       confidenceAdj: s.confidence_adj ?? 0,
       nation: s.nation || {}, // accumulated stat deltas from passed bills
       recruits: s.recruits || (s.recruit ? [s.recruit] : []), // politicians recruited on the Party page
+      tasks: s.tasks || {}, // per-member active task: { <memberId>: {task, total, elapsed} }
     };
   } catch (err) {
     return null;
@@ -127,6 +128,7 @@ export async function initSidebar() {
   window.dispatchEvent(new CustomEvent('nationhood:popularity', { detail: progress.partyPopularity }));
   window.dispatchEvent(new CustomEvent('nationhood:nation', { detail: progress.nation }));
   window.dispatchEvent(new CustomEvent('nationhood:recruits', { detail: progress.recruits }));
+  window.dispatchEvent(new CustomEvent('nationhood:tasks', { detail: progress.tasks }));
   // Coalition last: redirect/render handlers read window.nationhoodGovernmentFormed (set above).
   window.dispatchEvent(new CustomEvent('nationhood:coalition', { detail: progress.coalition }));
 }
@@ -422,6 +424,17 @@ export async function advanceWeek() {
         patch.tutorial_nation = nation;
         if (leg.bpResolved) patch.tutorial_floor_bill = null; // consumed into history
       }
+    }
+    // Advance each member's active task by one tick (capped at its hidden total).
+    // Phase 1 only fills the progress graph; Phase 2 will apply the resolution
+    // effect (Floor/Ceiling/Experience) and clear the task once elapsed === total.
+    if (progress.tasks && Object.keys(progress.tasks).length) {
+      const tasks = {};
+      Object.keys(progress.tasks).forEach((id) => {
+        const t = progress.tasks[id] || {};
+        tasks[id] = { ...t, elapsed: Math.min(t.total || 0, (t.elapsed || 0) + 1) };
+      });
+      patch.tutorial_tasks = tasks;
     }
     const ok = await updateProfile(patch);
     if (!ok) { advancing = false; return false; } // write failed: leave UI, allow retry
