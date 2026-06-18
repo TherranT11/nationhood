@@ -15,6 +15,8 @@ create table if not exists public.nations (
   population     bigint,          -- raw count; formatted on the client
   gdp            bigint,          -- raw value; formatted on the client
   legislature_seats int not null default 0, -- total seats in the nation's legislature
+  election_frequency_months int not null default 60, -- months between general elections
+  electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
   created_at     timestamptz not null default now()
@@ -22,6 +24,8 @@ create table if not exists public.nations (
 -- For installs created before these columns existed.
 alter table public.nations add column if not exists economy jsonb not null default '{}'::jsonb;
 alter table public.nations add column if not exists legislature_seats int not null default 0;
+alter table public.nations add column if not exists election_frequency_months int not null default 60;
+alter table public.nations add column if not exists electoral_threshold numeric not null default 0;
 -- The active-party count is derived live from public.parties (one source), not
 -- stored — drop the old counter column if an earlier install still has it.
 alter table public.nations drop column if exists active_parties;
