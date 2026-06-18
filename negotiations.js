@@ -1,58 +1,55 @@
-// Coalition negotiations — CLIENT-LOCAL store (localStorage), one list per player
-// per browser. This is a deliberate first-cut: it lets the Negotiate flow work
-// end-to-end before a server-side, multiplayer coalition model exists. Every
-// caller goes through this module, so when the real (Supabase-backed) model
-// lands there is ONE place to change. Not multiplayer and not shared across
-// devices — by design, for now.
+// Coalition negotiations — the one client-side gateway to the server model in
+// schema/45_negotiations.sql. Every page reads + mutates talks through here, so
+// the rules (host authors terms, each side sets only its own agreement, open +
+// invite cost an action) live server-side and there's a single place to change.
 
-const KEY = 'nh_negotiations_v1';
+import { supabase } from '/supabase.js';
 
-function readStore() {
-  try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; }
-}
-function writeStore(s) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage off/full — drop silently */ }
-}
+// One nested shape for a negotiation and everything hanging off it.
+const SELECT = 'id, nation_id, host_party_id, status, created_at,' +
+  ' negotiation_parties(party_id, status),' +
+  ' negotiation_terms(id, party_id, side, type, params, redline, host_agreed, party_agreed, created_at)';
 
-// Lists are keyed by the OWNING party id, so two players sharing a browser never
-// see each other's talks.
-export function loadNegotiations(partyId) {
-  return readStore()[partyId] || [];
+function unwrap(res) { if (res.error) throw new Error(res.error.message); return res.data; }
+
+// Every active negotiation the signed-in player can see (RLS scopes this to the
+// ones they host or were invited to). The two pure filters below split it.
+export async function fetchNegotiations() {
+  return unwrap(await supabase.from('negotiations').select(SELECT).eq('status', 'active').order('created_at', { ascending: false })) || [];
 }
-export function saveNegotiations(partyId, list) {
-  var s = readStore(); s[partyId] = list; writeStore(s);
-}
-export function getNegotiation(partyId, id) {
-  return loadNegotiations(partyId).filter(function (n) { return n.id === id; })[0] || null;
+export async function loadNegotiation(id) {
+  return unwrap(await supabase.from('negotiations').select(SELECT).eq('id', id).maybeSingle());
 }
 
-// Start a new negotiation seeded with one party at the table. Persists + returns it.
-export function createNegotiation(partyId, firstPartyId) {
-  var list = loadNegotiations(partyId);
-  var neg = {
-    id: 'neg_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    created: Date.now(),
-    invited: [firstPartyId],
-    active: firstPartyId,
-    tid: 1,                 // running id for terms within this negotiation
-    data: {}
-  };
-  neg.data[firstPartyId] = { offering: [], requesting: [] };
-  list.push(neg);
-  saveNegotiations(partyId, list);
-  return neg;
+// Pending invites this party still has to answer (for the Home banner).
+export function pendingInvites(all, myPartyId) {
+  return all.filter(function (n) {
+    return n.host_party_id !== myPartyId &&
+      (n.negotiation_parties || []).some(function (p) { return p.party_id === myPartyId && p.status === 'invited'; });
+  });
+}
+// Talks already in progress for this party — hosting, or invited-and-accepted.
+export function activeTalks(all, myPartyId) {
+  return all.filter(function (n) {
+    if (n.host_party_id === myPartyId) return true;
+    return (n.negotiation_parties || []).some(function (p) { return p.party_id === myPartyId && p.status === 'accepted'; });
+  });
 }
 
-export function removeNegotiation(partyId, id) {
-  saveNegotiations(partyId, loadNegotiations(partyId).filter(function (n) { return n.id !== id; }));
-}
-
-// Pure roll-up of a negotiation's terms across every party at the table.
+// Pure roll-up of a negotiation's terms: {agreed, total}. A term counts as agreed
+// only when both sides have signed off.
 export function termCounts(neg) {
   var agreed = 0, total = 0;
-  (neg.invited || []).forEach(function (pid) {
-    var d = neg.data[pid]; if (!d) return;
-    d.offering.concat(d.requesting).forEach(function (t) { total++; if (t.status === 'agreed') agreed++; });
-  });
+  (neg.negotiation_terms || []).forEach(function (t) { total++; if (t.host_agreed && t.party_agreed) agreed++; });
   return { agreed: agreed, total: total };
 }
+
+// ---- mutations (all server-authoritative RPCs) ----
+export async function openNegotiation(targetId) { return unwrap(await supabase.rpc('coalition_open', { p_target: targetId })); }
+export async function inviteParty(negId, targetId) { return unwrap(await supabase.rpc('coalition_invite', { p_neg: negId, p_target: targetId })); }
+export async function respondInvite(negId, accept) { return unwrap(await supabase.rpc('coalition_respond', { p_neg: negId, p_accept: accept })); }
+export async function addTerm(negId, partyId, side) { return unwrap(await supabase.rpc('coalition_add_term', { p_neg: negId, p_party: partyId, p_side: side })); }
+export async function updateTerm(termId, type, params, redline) { return unwrap(await supabase.rpc('coalition_update_term', { p_term: termId, p_type: type, p_params: params, p_redline: redline })); }
+export async function removeTerm(termId) { return unwrap(await supabase.rpc('coalition_remove_term', { p_term: termId })); }
+export async function setAgree(termId, agreed) { return unwrap(await supabase.rpc('coalition_set_agree', { p_term: termId, p_agreed: agreed })); }
+export async function removeParty(negId, partyId) { return unwrap(await supabase.rpc('coalition_remove_party', { p_neg: negId, p_party: partyId })); }
