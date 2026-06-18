@@ -13,10 +13,6 @@
 export const GATES = { 1: 0, 2: 4, 3: 9, 4: 14, 5: 20 };
 export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
-// Conviction earned per year (design rule; accrues once the calendar exists).
-export const CONVICTION_PER_YEAR_PM = 2;   // while holding the Prime Ministership
-export const CONVICTION_PER_YEAR = 1;      // otherwise
-
 // archetype NAME (parties.archetype) → manifesto tree key, or null if unwritten.
 const ARCHETYPE_TREE = {
   Communist: 'communist',

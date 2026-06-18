@@ -296,6 +296,17 @@
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
 
+  // Wire a modal's close affordances (X button, backdrop click, Escape) once and
+  // return its closer — shared by the Attack and Recruit pickers.
+  function wireModalClose(modal, closeBtnId) {
+    function close() { modal.hidden = true; }
+    if (!modal) return close;
+    document.getElementById(closeBtnId).addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
+    return close;
+  }
+
   // Run a leader-action RPC: one shared double-fire lock, disable the buttons,
   // then refresh the action budget + feed and toast the outcome. `call` returns
   // the supabase.rpc promise, so target-bearing actions (Attack) pass their arg.
@@ -350,7 +361,7 @@
       list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { runAttack(b.dataset.id); }); });
     } catch (e) { list.innerHTML = '<p class="empty">Couldn’t load rivals.</p>'; }
   }
-  function closeAttackModal() { attackModal.hidden = true; }
+  var closeAttackModal = wireModalClose(attackModal, 'attackClose');
   function runAttack(targetId) {
     closeAttackModal();
     performAction(function () { return supabase.rpc('party_attack', { p_target: targetId }); }, function (d) {
@@ -358,11 +369,6 @@
         ? ('Hit — ' + d.target + ' popularity −' + d.cut + '%' + (d.self_penalty ? ' (−' + d.self_penalty + '% you)' : '') + '.')
         : ('Backfired — your popularity −' + d.self_penalty + '%.');
     });
-  }
-  if (attackModal) {
-    document.getElementById('attackClose').addEventListener('click', closeAttackModal);
-    attackModal.addEventListener('click', function (e) { if (e.target === attackModal) closeAttackModal(); });
-    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !attackModal.hidden) closeAttackModal(); });
   }
 
   // RECRUIT is two-step: opening the drive (party_recruit_scout) charges ₣25K and
@@ -405,17 +411,12 @@
     } catch (e) { recruitModal.hidden = true; ping('Couldn’t open the drive.'); }
     finally { acting = false; setActions(partyActions); }
   }
-  function closeRecruitModal() { recruitModal.hidden = true; }
+  var closeRecruitModal = wireModalClose(recruitModal, 'recruitClose');
   function hireCandidate(choice) {
     closeRecruitModal();
     performAction(function () { return supabase.rpc('party_recruit_hire', { p_choice: choice }); }, function (d) {
       return 'Recruited ' + d.name + ' (' + (d.choice === 'seasoned' ? 'Seasoned' : 'Newcomer') + ').';
     });
-  }
-  if (recruitModal) {
-    document.getElementById('recruitClose').addEventListener('click', closeRecruitModal);
-    recruitModal.addEventListener('click', function (e) { if (e.target === recruitModal) closeRecruitModal(); });
-    window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !recruitModal.hidden) closeRecruitModal(); });
   }
 
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
