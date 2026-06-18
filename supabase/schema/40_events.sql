@@ -22,6 +22,14 @@ alter table public.events enable row level security;
 drop policy if exists "events_select_all" on public.events;
 create policy "events_select_all" on public.events for select using (true);
 
+-- DUPLICATION TO CONSOLIDATE: party_rally() and party_organize() below share
+-- most of their body — auth + FOR UPDATE lock, the funds/action checks, the 1d6
+-- roll, the strong/middling/poor tiering, the cost+action deduction, the event
+-- insert, and the jsonb return. They differ only in stat (cha/com), divisor
+-- (10/6), the affected column, and the message copy. When the next leader action
+-- lands, factor the shared preamble/charge/log into a helper instead of copying a
+-- third time. Kept as two explicit functions for now — an untested refactor of
+-- security-definer code is riskier than the duplication.
 -- ---------------------------------------------------------------------------
 -- party_rally(): the RALLY leader action. Server-authoritative because it writes
 -- the game-controlled columns (popularity/funds/actions) the client can't. Rolls
