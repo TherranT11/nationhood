@@ -80,6 +80,8 @@ header {
   .nav { height: 56px; }
   .nav-actions { gap: 8px; }
   .btn { padding: 8px 14px; font-size: 13px; }
-  /* the in-bar Login is redundant on small screens (still in the page + footer) */
-  .nav-actions .login { display: none; }
+  /* Keep all three actions in the bar; collapse Discord to its icon so Login
+     stays reachable at the top without scrolling (its text lives in the hero
+     + footer). */
+  .nav-actions .btn-discord .btn-label { display: none; }
 }
