@@ -251,11 +251,22 @@ export function mountWeekNudge(week) {
     '<a class="gw-nudge__btn" href="/test/tutorial/party/">Go to Party Page &#9656;</a></div>';
 }
 
-// Théo Lefèvre's Charisma, used for the Labour Unrest negotiation roll.
-// KNOWN DUPLICATION: the party roster (party/index.html) is the canonical place
-// this stat is defined; it is mirrored here because there is no shared
-// politician-stats module yet. Keep the two in sync until one is introduced.
-const THEO_CHARISMA = 2;
+// The party's prominent politicians — the single source of roster data, read by
+// the Party page table and by each politician's page. Stats are [CHA, ACU, GUI,
+// RES, COM]. Théo keeps a bespoke page (the Labour Talks tutorial lives there);
+// everyone else renders on the generic /party/politician/ page.
+export const POLITICIANS = [
+  { id: 'droulez', name: 'Allen Droulez', age: 49, role: 'Prime Minister',   exp: 9, stats: [4, 3, 2, 4, 3], busy: 'the premiership',      free: false },
+  { id: 'seve',    name: 'Margot Sève',   age: 56, role: 'Deputy Leader',    exp: 6, stats: [3, 5, 2, 3, 4], busy: 'Economic Development', free: false },
+  { id: 'theo',    name: 'Théo Lefèvre',  age: 61, role: 'Interior Minister', exp: 1, stats: [2, 3, 4, 4, 4], busy: 'Labour Unrest', free: false, scandal: true, page: '/test/tutorial/party/theolefevre/' },
+  { id: 'bonnet',  name: 'Claire Bonnet', age: 43, role: 'Trade Minister',   exp: 3, stats: [4, 4, 2, 2, 3], busy: 'Industrial Decline',   free: false },
+  { id: 'brun',    name: 'Aurélie Brun',  age: 40, role: 'Foreign Minister', exp: 0, stats: [5, 3, 3, 2, 2], free: true },
+  { id: 'roux',    name: 'Armand Roux',   age: 54, role: 'Defense Minister', exp: 4, stats: [2, 3, 2, 5, 4], free: true },
+];
+
+// Théo Lefèvre's Charisma, used for the Labour Unrest negotiation roll — read
+// from the shared roster so it can never drift from the table.
+const THEO_CHARISMA = (POLITICIANS.find((p) => p.id === 'theo') || { stats: [2] }).stats[0];
 
 // Compute the one-time Labour Unrest outcome from the player's Energy
 // Independence Act vote. Only a decisive Yes/Nay drives the crisis; an abstain

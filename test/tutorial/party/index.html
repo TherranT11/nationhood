@@ -278,18 +278,13 @@
   var toast=document.getElementById('toast'),tt;
   function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3600);}
 
-  // ---- prominent politicians (stats 1-5: Charisma, Acumen, Guile, Resolve, Command) ----
-  var pols=[
-    {name:'Allen Droulez',age:49,role:'Prime Minister',free:false,busy:'the premiership',exp:9,stats:[4,3,2,4,3]},
-    {name:'Margot Sève',age:56,role:'Deputy Leader',free:false,busy:'Economic Development',exp:6,stats:[3,5,2,3,4]},
-    {name:'Théo Lefèvre',age:61,role:'Interior Minister',free:false,busy:'Labour Unrest',page:'/test/tutorial/party/theolefevre/',exp:1,stats:[2,3,4,4,4],scandal:true},
-    {name:'Claire Bonnet',age:43,role:'Trade Minister',free:false,busy:'Industrial Decline',exp:3,stats:[4,4,2,2,3]},
-    {name:'Aurélie Brun',age:40,role:'Foreign Minister',free:true,exp:0,stats:[5,3,3,2,2]},
-    {name:'Armand Roux',age:54,role:'Defense Minister',free:true,exp:4,stats:[2,3,2,5,4]}
-  ];
+  // ---- prominent politicians (stats: Charisma, Acumen, Guile, Resolve, Command) ----
+  // Roster data is the shared POLITICIANS list in shell.js (one source); the module
+  // below sets window.POLITICIANS and calls renderRoster(). Recruits are appended
+  // from the nationhood:recruits event.
   var SL=['CHA','ACU','GUI','RES','COM'];
   var tbl=document.getElementById('ptable');
-  function addPol(p){
+  function addPol(p,href){
     var max=Math.max.apply(null,p.stats);
     var cells=p.stats.map(function(v,i){
       return '<div class="pstat'+(v===max?' max':'')+'"><span class="sl">'+SL[i]+'</span><span class="num">'+v+'</span><span class="sbar"><i style="width:'+(v/5*100)+'%"></i></span></div>';
@@ -300,13 +295,13 @@
       '<div class="page"><span class="al">Age</span>'+p.age+'</div>'+
       '<div class="pstatus">'+p.role+'</div>'+
       '<div class="pexp"><span class="el">EXP</span>'+p.exp+'</div>'+cells;
-    row.addEventListener('click',function(){
-      if(p.page){window.location.href=p.page;return;} // a politician with a profile page opens it
-      ping('<b>'+p.name+'</b>: '+(p.free?'available for one action this week.':'occupied: '+p.busy+'.'));
-    });
+    row.addEventListener('click',function(){ window.location.href=href; }); // every politician has a page
     tbl.appendChild(row);
   }
-  pols.forEach(addPol);
+  // Base roster: a bespoke page if one exists (Théo), else the generic ?p=<id>.
+  window.renderRoster=function(){
+    (window.POLITICIANS||[]).forEach(function(p){ addPol(p, p.page || '/test/tutorial/party/politician/?p='+p.id); });
+  };
 
   // ---- recruit flow: the button opens the dedicated Recruit page (its own drive
   // of randomly-generated candidates). Recruited politicians are persisted there
@@ -320,7 +315,7 @@
       var w=document.getElementById('coachWelcome'); if(w) w.style.display='none';
       var r=document.getElementById('coachRecruit'); if(r) r.style.display='';
     }
-    (e.detail||[]).forEach(function(p){ addPol({name:p.name,age:p.age,role:p.role||'Backbencher',free:p.free!==false,exp:p.exp,stats:p.stats,tag:'New'}); });
+    (e.detail||[]).forEach(function(p,idx){ addPol({name:p.name,age:p.age,role:p.role||'Backbencher',free:p.free!==false,exp:p.exp,stats:p.stats,tag:'New'}, '/test/tutorial/party/politician/?p=r'+idx); });
   });
 
   // ---- electoral history ----
@@ -354,8 +349,11 @@
 </script>
 
 <script type="module">
-  import { initSidebar, logout, mountTopbar } from '/test/tutorial/shell.js';
+  import { initSidebar, logout, mountTopbar, POLITICIANS } from '/test/tutorial/shell.js';
   mountTopbar();
+  // Hand the shared roster to the classic script and render it (it runs first).
+  window.POLITICIANS = POLITICIANS;
+  if (window.renderRoster) window.renderRoster();
   // Hide the hero flag too if the asset is missing, matching the sidebar flag.
   var hf=document.getElementById('heroFlag');
   if(hf){hf.addEventListener('error',function(){hf.style.display='none';});}
