@@ -39,6 +39,14 @@
   .nstat .v.warn { color: #c0860a; }   /* amber (readable "yellow" on white) */
   .nstat .v.bad  { color: #c0341d; }   /* red */
 
+  /* The roster of parties already in this nation (shared instance). */
+  .plist { margin: 0 0 20px; }
+  .plist .prow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .plist .prow:last-child { border-bottom: 0; }
+  .plist .pn { font-weight: 700; color: var(--ink); }
+  .plist .pa { color: var(--muted); font-size: 12.5px; }
+  .plist .pempty { color: #9a9a9a; font-size: 13px; font-style: italic; padding: 4px 0 0; }
+
   .nation-join { width: 100%; padding: 13px; font-size: 15px; }
   .note { margin-top: 12px; text-align: center; font-size: 13.5px; color: var(--muted); min-height: 18px; }
   .note.error { color: var(--err); }
@@ -85,6 +93,7 @@
           <div class="nstat"><span class="k">Growth</span><span class="v tbd" id="v-growth">&hellip;</span></div>
           <div class="nstat"><span class="k">Active Parties</span><span class="v" id="v-parties">&hellip;</span></div>
         </div>
+        <div class="plist" id="plist"></div>
         <button class="btn btn-solid nation-join" id="join" type="button">Join Nation</button>
         <div class="note" id="note" role="status" aria-live="polite"></div>
       </div>
@@ -97,12 +106,14 @@
 
     document.getElementById('logout').addEventListener('click', logout);
 
+    var MAX_PARTIES = 8; // hard cap on parties per nation
     var LADDER_STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
     var note = document.getElementById('note');
     var flag = document.getElementById('flag');
     var flagPh = document.getElementById('flagPh');
 
     function err(msg) { note.textContent = msg; note.className = 'note error'; }
+    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; }); }
 
     // Population/GDP are stored raw; format to a readable scale.
     function fmtBig(n) {
@@ -120,7 +131,8 @@
       document.getElementById('v-pop').textContent = fmtBig(n.population);
       var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
       document.getElementById('v-gdp').textContent = currency + fmtBig(n.gdp);
-      document.getElementById('v-parties').textContent = (n.active_parties != null ? n.active_parties : 0);
+      // Active Parties (count + roster) are derived live from the parties table —
+      // see loadParties; one shared instance, so everyone sees the same list.
 
       // The five ladder stats: the number is the source, the word is derived.
       var stats = n.stats || {};
@@ -142,12 +154,43 @@
       }
     }
 
+    // The parties already founded in this nation: count toward the cap + roster.
+    // Derived live from the shared parties table (this is one multiplayer world).
+    async function loadParties(nationId) {
+      var elV = document.getElementById('v-parties');
+      var elList = document.getElementById('plist');
+      try {
+        const { data, error } = await supabase
+          .from('parties').select('name, archetype')
+          .eq('nation_id', nationId).order('created_at', { ascending: true });
+        if (error) throw error;
+        var list = data || [];
+        elV.textContent = list.length + ' / ' + MAX_PARTIES;
+        elList.innerHTML = list.length
+          ? list.map(function (p) {
+              return '<div class="prow"><span class="pn">' + esc(p.name) +
+                     '</span><span class="pa">' + esc(p.archetype) + '</span></div>';
+            }).join('')
+          : '<div class="pempty">No parties yet — be the first to found one.</div>';
+        if (list.length >= MAX_PARTIES) {
+          var join = document.getElementById('join');
+          join.disabled = true;
+          join.textContent = 'Nation Full';
+          note.textContent = 'Sessau has reached its ' + MAX_PARTIES + '-party limit.';
+        }
+      } catch (e) {
+        elV.textContent = '— / ' + MAX_PARTIES;
+        elList.innerHTML = '';
+      }
+    }
+
     (async () => {
       if (!isConfigured) { err('Nation data isn’t connected yet.'); return; }
       try {
         const { data, error } = await supabase.from('nations').select('*').eq('id', 'sessau').single();
         if (error || !data) { err('Couldn’t load this nation. Try again shortly.'); return; }
         render(data);
+        await loadParties('sessau');
       } catch (e) {
         err('Couldn’t load this nation. Try again shortly.');
       }
