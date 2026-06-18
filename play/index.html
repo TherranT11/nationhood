@@ -130,6 +130,7 @@
     <nav class="nav">
       <a class="nav__i active" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
       <a class="nav__i" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
@@ -270,24 +271,26 @@
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
 
-  // Leader actions are server-authoritative RPCs (the roll + writes happen in the
-  // function). One runner: a shared lock stops double-fire across buttons, then it
-  // refreshes the action budget + feed and toasts the outcome.
+  // Run a leader-action RPC: one shared double-fire lock, disable the buttons,
+  // then refresh the action budget + feed and toast the outcome. `call` returns
+  // the supabase.rpc promise, so target-bearing actions (Attack) pass their arg.
+  async function performAction(call, okMsg) {
+    if (acting) return;
+    acting = true;
+    actionBtns.forEach(function (b) { b.disabled = true; });
+    try {
+      const { data, error } = await call();
+      if (error) { ping(error.message || 'Action failed.'); return; }
+      setActions(data.actions);
+      if (feedCtx) await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
+      ping(okMsg(data));
+    } catch (e) { ping('Action failed. Try again.'); }
+    finally { acting = false; setActions(partyActions); }
+  }
   function wireAction(btn, rpc, okMsg) {
     if (!btn) return;
     actionBtns.push(btn);
-    btn.addEventListener('click', async function () {
-      if (acting || btn.disabled) return;
-      acting = true; btn.disabled = true;
-      try {
-        const { data, error } = await supabase.rpc(rpc);
-        if (error) { ping(error.message || 'Action failed.'); setActions(partyActions); return; }
-        setActions(data.actions);
-        if (feedCtx) await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
-        ping(okMsg(data));
-      } catch (e) { ping('Action failed. Try again.'); setActions(partyActions); }
-      finally { acting = false; }
-    });
+    btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
   }
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
@@ -321,19 +324,13 @@
     } catch (e) { list.innerHTML = '<p class="empty">Couldn’t load rivals.</p>'; }
   }
   function closeAttackModal() { attackModal.hidden = true; }
-  async function runAttack(targetId) {
-    if (acting) return;
-    acting = true; attackBtn.disabled = true; closeAttackModal();
-    try {
-      const { data, error } = await supabase.rpc('party_attack', { p_target: targetId });
-      if (error) { ping(error.message || 'Attack failed.'); setActions(partyActions); return; }
-      setActions(data.actions);
-      if (feedCtx) await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
-      ping(data.hit
-        ? ('Hit — ' + data.target + ' popularity −' + data.cut + '%' + (data.self_penalty ? ' (−' + data.self_penalty + '% you)' : '') + '.')
-        : ('Backfired — your popularity −' + data.self_penalty + '%.'));
-    } catch (e) { ping('Attack failed. Try again.'); setActions(partyActions); }
-    finally { acting = false; }
+  function runAttack(targetId) {
+    closeAttackModal();
+    performAction(function () { return supabase.rpc('party_attack', { p_target: targetId }); }, function (d) {
+      return d.hit
+        ? ('Hit — ' + d.target + ' popularity −' + d.cut + '%' + (d.self_penalty ? ' (−' + d.self_penalty + '% you)' : '') + '.')
+        : ('Backfired — your popularity −' + d.self_penalty + '%.');
+    });
   }
   if (attackModal) {
     document.getElementById('attackClose').addEventListener('click', closeAttackModal);
