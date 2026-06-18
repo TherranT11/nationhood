@@ -81,7 +81,7 @@ declare
 begin
   v_p := public._lock_party();
   if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
-  if v_p.funds < p_cost then raise exception 'Not enough funds (need ₣%K).', (p_cost / 1000); end if;
+  if v_p.funds < p_cost then raise exception 'Not enough funds (need $%K).', (p_cost / 1000); end if;
   return v_p;
 end $$;
 
@@ -94,7 +94,7 @@ as $$ select case when p_total >= 7 then 'strong' when p_total >= 4 then 'middli
 
 -- ---------------------------------------------------------------------------
 -- party_rally(): 1d6 + Charisma, ÷10, added to popularity (capped at ceiling).
--- Costs ₣25K + 1 action.
+-- Costs $25K + 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_rally()
 returns jsonb
@@ -134,7 +134,7 @@ grant execute on function public.party_rally() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- party_organize(): 1d6 + Command, ÷6, added to the popularity FLOOR (capped at
--- ceiling); popularity is pulled up to never sit below the floor. ₣25K + 1 action.
+-- ceiling); popularity is pulled up to never sit below the floor. $25K + 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_organize()
 returns jsonb
@@ -174,7 +174,7 @@ end $$;
 grant execute on function public.party_organize() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- party_fundraise(): 1d6 + Charisma, ×₣15K, added to Party Funds. No franc cost —
+-- party_fundraise(): 1d6 + Charisma, ×$15K, added to Party Funds. No franc cost —
 -- only 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_fundraise()
@@ -195,13 +195,13 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_cha;
   v_tier  := public._action_tier(v_total);
-  v_haul  := v_total::bigint * 15000;                              -- (1d6 + Cha) × ₣15K
+  v_haul  := v_total::bigint * 15000;                              -- (1d6 + Cha) × $15K
 
   v_body := 'The ' || v_p.name || case v_tier
     when 'strong'   then ' has held a fundraising drive, and the cheques poured in. Donors emptied their pockets and new members signed up by the hundred — the war chest has never looked healthier.'
     when 'middling' then ' has been fundraising. A respectable haul came in from the faithful — enough to keep the lights on and a little to spare.'
     else                 ' passed the hat this week, but the donors stayed shy. A thin trickle of small gifts was all the drive could manage.'
-  end || ' Funds +₣' || (v_haul / 1000) || 'K.';
+  end || ' Funds +$' || (v_haul / 1000) || 'K.';
 
   update public.parties set funds = funds + v_haul, actions_remaining = actions_remaining - 1 where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'fundraise', v_body, public.current_game_date());
@@ -216,7 +216,7 @@ grant execute on function public.party_fundraise() to authenticated;
 -- the margin ÷3 is cut from the target's popularity, down to their floor (never
 -- below). Miss (don't beat it) and it backfires: −1% the attacker's OWN
 -- popularity. A natural 1 also costs the attacker −1% (not stacked with the miss).
--- ₣25K + 1 action. The target cut is a single atomic UPDATE (greatest(...,floor))
+-- $25K + 1 action. The target cut is a single atomic UPDATE (greatest(...,floor))
 -- so it's race-safe without locking the target row (no cross-row deadlock).
 -- ---------------------------------------------------------------------------
 create or replace function public.party_attack(p_target uuid)
@@ -277,7 +277,7 @@ grant execute on function public.party_attack(uuid) to authenticated;
 -- ---------------------------------------------------------------------------
 -- party_ad_blitz(): 1d6 + Guile, ÷3, added to popularity (capped at ceiling).
 -- A natural 6 also raises the ceiling +0.5%. A strong result raises the nation's
--- Image stat by 1 (paid shine on the airwaves). ₣100K + 1 action.
+-- Image stat by 1 (paid shine on the airwaves). $100K + 1 action.
 -- NOTE: this is the first party action that moves a shared NATION stat (Image) —
 -- every party in the nation sees that change. Flagged for sign-off.
 -- ---------------------------------------------------------------------------
@@ -326,7 +326,7 @@ grant execute on function public.party_ad_blitz() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- party_platform(): 1d6 + Resolve, ÷3, added to the popularity CEILING (your
--- reach). Staking a bold line costs −0.2% popularity (down to the floor). ₣25K +
+-- reach). Staking a bold line costs −0.2% popularity (down to the floor). $25K +
 -- 1 action. (The spec calls the raised value "Conviction"; the description and
 -- event copy both call it the Ceiling, so it raises pop_ceiling.)
 -- ---------------------------------------------------------------------------
@@ -371,7 +371,7 @@ grant execute on function public.party_platform() to authenticated;
 -- ---------------------------------------------------------------------------
 -- RECRUIT (Charisma · New Blood) — a two-step action, so it can't reuse the
 -- single-shot _begin_action helper. Opening a drive (party_recruit_scout) rolls
--- 1d6 + the leader's Charisma to surface two candidates and charges the ₣25K
+-- 1d6 + the leader's Charisma to surface two candidates and charges the $25K
 -- drive cost; hiring one (party_recruit_hire) spends the action cost (1 for the
 -- Newcomer, 2 for the Seasoned) and adds them to the roster. The candidates are
 -- generated + stored server-side, so the stats the player sees are the ones that
@@ -407,7 +407,7 @@ begin
 end $$;
 
 -- party_recruit_scout(): opens (or re-opens) the recruitment drive. Charges the
--- ₣25K drive cost the first time, rolls 1d6 + Charisma → the Seasoned candidate's
+-- $25K drive cost the first time, rolls 1d6 + Charisma → the Seasoned candidate's
 -- experience tier (poor 3 / middling 5 / strong 7), and stages a Newcomer (age
 -- 25, exp 0, 2 stat points) + Seasoned (age 35–45, 5 stat points). If a drive is
 -- already open it just returns it — no re-roll, no second charge.
@@ -432,7 +432,7 @@ begin
   end if;
 
   if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
-  if v_p.funds < v_cost then raise exception 'Not enough funds (need ₣%K).', (v_cost / 1000); end if;
+  if v_p.funds < v_cost then raise exception 'Not enough funds (need $%K).', (v_cost / 1000); end if;
 
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
@@ -457,7 +457,7 @@ grant execute on function public.party_recruit_scout() to authenticated;
 
 -- party_recruit_hire(choice): hires one staged candidate ('newcomer' | 'seasoned'),
 -- spends the action cost (1 / 2), adds them to the roster as a Party Member, and
--- closes the drive. The ₣ cost was already paid when the drive opened.
+-- closes the drive. The $ cost was already paid when the drive opened.
 create or replace function public.party_recruit_hire(p_choice text)
 returns jsonb
 language plpgsql

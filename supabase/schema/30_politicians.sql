@@ -40,7 +40,7 @@ create policy "politicians_insert_own" on public.politicians for insert
 -- between (RECRUIT action). One row per party, overwritten each drive. Written
 -- ONLY by the security-definer recruit RPCs in 40 — so the candidate the player
 -- sees (and its server-rolled stats) is exactly the one that gets hired, and
--- can't be forged from the client. The drive's ₣ cost is charged when it's
+-- can't be forged from the client. The drive's $ cost is charged when it's
 -- opened (party_recruit_scout); the action cost is charged on hire
 -- (party_recruit_hire), which also deletes the row.
 -- ---------------------------------------------------------------------------

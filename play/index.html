@@ -222,13 +222,13 @@
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: ₣25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
-        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: ₣25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
-        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×₣15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: ₣25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: ₣100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
-        <button class="lead" id="act-platform" type="button" title="Roll 1d6 + Resolve, ÷3, added to your popularity ceiling. Costs −0.2% popularity. Cost: ₣25K + 1 action."><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span><span class="lead__desc">Raises your popularity ceiling.</span></button>
-        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive (₣25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, quality set by your 1d6 + Charisma roll) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
+        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: $25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
+        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: $25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
+        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
+        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
+        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: $100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-platform" type="button" title="Roll 1d6 + Resolve, ÷3, added to your popularity ceiling. Costs −0.2% popularity. Cost: $25K + 1 action."><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span><span class="lead__desc">Raises your popularity ceiling.</span></button>
+        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, quality set by your 1d6 + Charisma roll) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
         <button class="lead" type="button" disabled><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span></button>
       </div>
     </section>
@@ -305,8 +305,8 @@
     }
     if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
     if (eco.unemployment != null) chips.push(chip('Unemployment', val(eco.unemployment + '%')));
-    if (eco.budget != null) chips.push(chip('Budget', val('₣' + eco.budget + 'B')));
-    if (eco.debt != null) chips.push(chip('Debt', val('₣' + eco.debt + 'B')));
+    if (eco.budget != null) chips.push(chip('Budget', val('$' + eco.budget + 'B')));
+    if (eco.debt != null) chips.push(chip('Debt', val('$' + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }
   // The shared nation feed: party-founding events (derived from each party, one
@@ -382,7 +382,7 @@
   }
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
-  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +₣' + (d.funds_gain / 1000) + 'K.'; });
+  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
   wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.image_gain ? ', Image +1' : '') + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
   wireAction(document.getElementById('act-platform'), 'party_platform', function (d) { return 'Platform set — ceiling +' + d.delta + '%' + (d.pop_penalty > 0 ? ' (−' + d.pop_penalty + '% popularity)' : '') + '.'; });
 
@@ -423,7 +423,7 @@
     });
   }
 
-  // RECRUIT is two-step: opening the drive (party_recruit_scout) charges ₣25K and
+  // RECRUIT is two-step: opening the drive (party_recruit_scout) charges $25K and
   // surfaces two candidates; hiring one (party_recruit_hire) spends the action
   // cost. Scouting is a side-effecting "picker" like Attack, so it opens the modal
   // itself; the hire goes through performAction to refresh the budget + feed.
