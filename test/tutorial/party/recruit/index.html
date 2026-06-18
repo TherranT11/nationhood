@@ -26,6 +26,15 @@
   .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
   .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
   .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .brand__txt .party{font-weight:700}
+  /* tutorial coach bubble (matches the Party screen) */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:18px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0;max-width:64ch}
+  .coach b{font-weight:800}
+  .coach__btn{display:inline-flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-weight:800;font-size:14px;background:#fff;color:var(--indigo);border:none;border-radius:11px;padding:11px 18px;cursor:pointer;margin-top:14px;text-decoration:none;transition:transform .12s,filter .15s}
+  .coach__btn:hover{transform:translateY(-1px);filter:brightness(1.02)}
   .nav{display:flex;flex-direction:column;gap:2px}
   .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
   .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -92,7 +101,7 @@
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of Sessau"><div class="brand__txt"><b>Front de Sessau</b><span>Governing · Sessau</span></div></div>
+    <div class="brand"><img class="brand__flag" id="flag" src="/test/assets/Sessau.png" alt="Flag of the Front Sessau"><div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div></div>
     <nav class="nav">
       <a class="nav__i" href="/test/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
       <a class="nav__i active" href="/test/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
@@ -110,6 +119,12 @@
   <main class="main">
     <div class="panel">
       <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Your Party</span>
+
+      <div class="coach" id="recruitedCoach" hidden>
+        <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+        <p>Okay, great! Navigate to that politician's page now and let's talk about directing your party members.</p>
+        <a class="coach__btn" id="goPolitician" href="/test/tutorial/party/">Go to their page &#9656;</a>
+      </div>
 
       <div class="phead">
         <div class="ti">
@@ -187,6 +202,11 @@
           if(!ok){ ping('Could not recruit — try again.'); render(); return; }
           recruited.push(person); actionsLeft=left; c.taken=true;
           ping('Recruited <b>'+c.name+'</b> (age '+c.age+') — &minus;'+c.cost+' Action'+(c.cost>1?'s':'')+'.');
+          // Point the post-recruit coach at the politician just recruited and reveal it.
+          var link=document.getElementById('goPolitician');
+          if(link) link.href='/test/tutorial/party/politician/?p=r'+(recruited.length-1);
+          var coach=document.getElementById('recruitedCoach');
+          if(coach){ coach.hidden=false; coach.scrollIntoView({behavior:'smooth',block:'start'}); }
           render();
         });
       });
