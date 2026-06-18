@@ -106,7 +106,7 @@
     // word + colour band are derived (statLabel/statBand) — never stored.
     function statsHTML(n) {
       var stats = n.stats || {};
-      var currency = (n.economy && n.economy.currency) || '₶'; // nation's symbol; ₶ = livre
+      var currency = (n.economy && n.economy.currency) || '$'; // nation's currency symbol
       var rows = '<div class="nstat"><span class="k">Population</span><span class="v">' + fmtPop(n.population) + '</span></div>' +
         '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtGdp(n.gdp) + '</span></div>';
       LADDER_STATS.forEach(function (k) {

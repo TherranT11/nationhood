@@ -689,7 +689,7 @@
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
-      const currency = (nation && nation.economy && nation.economy.currency) || '₶';
+      const currency = (nation && nation.economy && nation.economy.currency) || '$';
 
       // Topbar action budget (one source: the party row).
       document.getElementById('tbActions').textContent = 'Party Actions: ' + (party.actions_remaining != null ? party.actions_remaining : 3) + ' Available';
