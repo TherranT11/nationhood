@@ -11,7 +11,8 @@ then the seed data (`seed/`):
 
 ```
 schema/00_profiles.sql      profiles, tutorial_state, tutorial_merge(), auth trigger
-schema/10_nations.sql       nations table + Sessau seed
+schema/05_game.sql          game_state (the shared tick counter, seeded to 1)
+schema/10_nations.sql       nations table + Sessau seed (+ election scheduling)
 schema/20_parties.sql       parties table, RLS, column-level write lock
 schema/30_politicians.sql   politicians + recruit_drives tables + RLS
 schema/40_events.sql        events feed + leader-action functions (rally, recruit, …)

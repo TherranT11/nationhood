@@ -240,6 +240,10 @@
       if (!name || !id) { addNote.textContent = 'Enter a nation name.'; addNote.className = 'note error'; return; }
 
       var elecfreq = num('f-elecfreq');
+      // Schedule the first general election 1d6 ticks (months) after the current
+      // tick (read live; falls back to 1 = January 1980 if unavailable).
+      var tick = 1;
+      try { const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle(); if (gs && gs.current_tick != null) tick = gs.current_tick; } catch (e) { /* fall back to 1 */ }
       var row = {
         id: id, name: name,
         description: document.getElementById('f-desc').value.trim() || null,
@@ -247,6 +251,7 @@
         population: num('f-pop'), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
         election_frequency_months: elecfreq > 0 ? elecfreq : 60, // blank → column default cadence
+        next_election_tick: tick + 1 + Math.floor(Math.random() * 6), // 1d6 ticks out
         stats: {
           prosperity: num('f-prosperity'), welfare: num('f-welfare'), growth: num('f-growth'),
           image: num('f-image'), order: num('f-order')
