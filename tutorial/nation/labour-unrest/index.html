@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Labour Unrest · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--chip:#F4F3EF;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
+    --crimson:#B11A4A;--crimson-soft:#FBE7EF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
+  .app{display:flex;min-height:100vh}
+
+  /* sidebar (shared layout with the other in-game screens) */
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .brand__txt .party{font-weight:700}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .nav__i.active svg{color:var(--indigo)}
+  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
+  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+  .me b{color:var(--ink);font-weight:700}
+  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
+  .logout:hover{color:var(--red)}
+  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  /* main */
+  .main{flex:1;padding:20px clamp(16px,3vw,40px) 56px;min-width:0;max-width:1040px}
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
+  .mod__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:18px}
+
+  /* hero */
+  .hero{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .hero__ic{width:50px;height:50px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--crimson-soft)}
+  .hero__ic svg{width:26px;height:26px;stroke:var(--crimson);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .hero__id{flex:1;min-width:240px}
+  .hero__id .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--crimson)}
+  .hero__id h1{font-weight:900;font-size:clamp(26px,4.4vw,38px);letter-spacing:-.03em;line-height:1.02;margin-top:3px}
+  .htags{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .tag{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:6px}
+  .tag.live{color:var(--crimson);background:var(--crimson-soft)}
+  .tag.conf{color:var(--red);background:#FBEAE9}
+  .tag.route{color:var(--muted);background:var(--chip)}
+  .desc{color:var(--muted);font-size:14.5px;margin-top:16px;line-height:1.6;max-width:640px}
+
+  /* status track */
+  .caps{display:flex;justify-content:space-between;align-items:center;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .caps .res{color:var(--green)} .caps .gs{color:var(--crimson)}
+  .track-wrap{overflow-x:auto;padding:26px 60px 72px}
+  .track{display:flex;align-items:center;min-width:620px}
+  .ms{position:relative;flex:none;display:flex;flex-direction:column;align-items:center}
+  .ms .c{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;border:2px solid var(--line);background:#fff;color:var(--soft)}
+  .ms.done .c{background:var(--crimson);border-color:var(--crimson);color:#fff}
+  .ms.now .c{box-shadow:0 0 0 5px var(--crimson-soft)}
+  .ms .lab{position:absolute;top:44px;left:50%;transform:translateX(-50%);width:118px;text-align:center;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft);line-height:1.35}
+  .ms.done .lab{color:var(--ink)} .ms.now .lab{color:var(--crimson);font-weight:700}
+  .ms .nowpill{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--crimson);padding:2px 7px;border-radius:20px;white-space:nowrap}
+  .gap{flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 9px;min-width:90px}
+  .gap .d{width:6px;height:6px;border-radius:50%;background:#E4E2DD;flex:none}
+  .gap .d.on{background:var(--crimson)}
+
+  /* effect */
+  .effect{display:flex;align-items:center;gap:16px;border:1px solid var(--line);border-left:3px solid var(--crimson);border-radius:12px;padding:16px 18px;background:var(--crimson-soft)}
+  .eff-val{font-weight:900;font-size:34px;letter-spacing:-.03em;color:var(--crimson);line-height:1}
+  .eff-body b{font-weight:800;font-size:15px}
+  .eff-body p{font-size:13px;color:#8a3a55;margin-top:3px;line-height:1.5}
+
+  /* timeline */
+  .tl{position:relative;padding-left:24px}
+  .tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .tli{position:relative;padding-bottom:18px}
+  .tli:last-child{padding-bottom:0}
+  .tli::before{content:"";position:absolute;left:-24px;top:4px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--soft)}
+  .tli.start::before{border-color:var(--crimson);background:var(--crimson)}
+  .tli.act::before{border-color:var(--green);background:var(--green)}
+  .tli .d{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);font-weight:700}
+  .tli.start .d{color:var(--crimson)} .tli.act .d{color:var(--green)}
+  .tli p{font-size:13.5px;color:var(--ink);margin-top:3px;line-height:1.5}
+
+  /* tutorial coach bubble */
+  .coach{position:relative;background:linear-gradient(135deg,#5546E8,#7d6ff1);color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 20px 44px -22px rgba(85,70,232,.65);max-width:760px}
+  .coach::after{content:"";position:absolute;left:36px;bottom:-8px;width:17px;height:17px;background:#6a5cec;transform:rotate(45deg);border-radius:3px}
+  .coach__ey{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.82);margin-bottom:11px}
+  .coach__ey svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .coach p{font-size:15px;line-height:1.55;color:#fff;margin:0;max-width:64ch}
+
+  /* tick tally readout (shown once the week has advanced) */
+  .tickline{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--crimson);font-weight:700;margin-bottom:14px}
+  .tickline b{font-size:15px;letter-spacing:-.01em}
+
+  /* outcome effect boxes: nationalized stays crimson (default .effect); the
+     "refused" / de-escalating outcome reads green */
+  .effect#outcomeEffect{margin-top:10px}
+  .effect.good{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,transparent);border-left-color:var(--green)}
+  .effect.good .eff-body b{color:var(--ink)}
+  .effect.good .eff-body p{color:#2f6b4f}
+
+  /* labour-talks effect (amber) */
+  .effect.talks{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 25%,transparent);border-left-color:var(--amber);margin-top:10px}
+  .effect.talks .eff-body b{color:var(--ink)}
+  .effect.talks .eff-body p{color:#8a6a1f}
+
+  /* options */
+  .opts{display:flex;flex-direction:column;gap:12px}
+  .opt-wrap{position:relative}
+  .ongoing{position:absolute;top:-9px;left:14px;z-index:1;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--amber);border-radius:20px;padding:3px 9px}
+  .optx{display:block;width:100%;text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s,background .15s}
+  .optx:hover:not(:disabled){border-color:var(--crimson)}
+  .optx:disabled{opacity:.6;cursor:default;background:var(--chip)}
+  .optx__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .optx__o{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:4px}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast b{color:#a99dff}
+
+  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><img class="brand__flag" id="flag" src="/assets/Sessau.png" alt="Flag of the Front Sessau"><div class="brand__txt"><b>Front Sessau</b><span style="visibility:hidden"><span class="party" id="party"></span> · Sessau</span></div></div>
+    <nav class="nav">
+      <a class="nav__i" href="/tutorial/home/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i" href="/tutorial/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/tutorial/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i" href="/tutorial/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+      <a class="nav__i active"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
+    </nav>
+    <div class="side__foot"><div class="me"><span class="me__dot"></span><span class="label">Leader · <b>Allen Droulez</b></span></div><button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button></div>
+  </aside>
+
+  <main class="main">
+    <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Home</span>
+
+    <div class="coach">
+      <div class="coach__ey"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 00-3 11v2h6v-2a6 6 0 00-3-11z"/><path d="M9 21h6"/></svg>Tutorial</div>
+      <p>This is the National Modifier page. Some are positive, most are negative. You'll see here under Effect that, left untouched, this situation will deteriorate in 3–4 months and get even worse. You can also see that the labour talks have begun, but their effects haven't taken effect yet. Down at the bottom, you'll see other ways you can influence this modifier. Let's move on. Once you're finished, head to the <b>Legislature</b> page.</p>
+    </div>
+
+    <!-- hero -->
+    <section class="mod">
+      <div class="hero">
+        <span class="hero__ic"><svg viewBox="0 0 24 24"><path d="M12 3c2 3 5 5 5 9a5 5 0 01-10 0c0-2 1-3.2 2-4.5.2 1.2 1 2.2 2 2.5 0-2.3-1-4.5-1-7z"/></svg></span>
+        <div class="hero__id">
+          <div class="kicker">National Crisis</div>
+          <h1>Labour Unrest</h1>
+          <div class="htags">
+            <span class="tag live">● Active</span>
+            <span class="tag conf">−2% Confidence</span>
+            <span class="tag route">Resolve via Interior + Welfare</span>
+          </div>
+        </div>
+      </div>
+      <p class="desc">Discontent on the factory floor has hardened into action. Strikes are spreading across Sessau's industrial north — Order is slipping and production is disrupted.</p>
+    </section>
+
+    <!-- status track -->
+    <section class="mod">
+      <div class="mod__hd">Status</div>
+      <div class="tickline" id="tickline" hidden>Ticks to General Strike <b id="tickTotal"></b></div>
+      <div class="caps"><span class="res">◂ Issue Resolved</span><span class="gs">General Strike ▸</span></div>
+      <div class="track-wrap">
+        <div class="track" id="track">
+          <div class="ms"><span class="c">1</span><span class="lab">Labour<br>Discontent</span></div>
+          <div class="gap"></div>
+          <div class="ms"><span class="c">2</span><span class="lab">Labour Vocal<br>in the Media</span></div>
+          <div class="gap"></div>
+          <div class="ms"><span class="c">3</span><span class="lab">Minor Strikes<br>in the Country</span></div>
+          <div class="gap"></div>
+          <div class="ms"><span class="c">4</span><span class="lab">Select Industries<br>Refuse to Work</span></div>
+          <div class="gap"></div>
+          <div class="ms"><span class="c">5</span><span class="lab">General Strike<br>Called</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- effect -->
+    <section class="mod">
+      <div class="mod__hd">Effect</div>
+      <div class="effect">
+        <span class="eff-val" id="growthVal">+1</span>
+        <div class="eff-body"><b>Growth / tick</b><p>Left unaddressed, the unrest advances one step toward General Strike each week.</p></div>
+      </div>
+      <div class="effect" id="outcomeEffect" hidden>
+        <div class="eff-body"><b></b><p></p></div>
+      </div>
+      <div class="effect talks" id="talksEffect" hidden>
+        <div class="eff-body"><b>Labour Talks</b><p>Minister of the Interior Théo Lefèvre has initiated talks with local labour leaders. Their effects have not taken hold yet.</p></div>
+      </div>
+    </section>
+
+    <!-- options -->
+    <section class="mod">
+      <div class="mod__hd">Options</div>
+      <div class="opts">
+        <div class="opt-wrap">
+          <span class="ongoing" id="talksOngoing" hidden>Ongoing</span>
+          <button class="optx" id="optTalks" type="button">
+            <div class="optx__t">Labour Talks</div>
+            <div class="optx__o">Ministry of the Interior</div>
+          </button>
+        </div>
+        <button class="optx" type="button" data-opt="Disperse Them">
+          <div class="optx__t">Disperse Them</div>
+          <div class="optx__o">Chief of National Police</div>
+        </button>
+        <button class="optx" type="button" data-opt="Arrest the Ringleaders">
+          <div class="optx__t">Arrest the Ringleaders</div>
+          <div class="optx__o">Chief of National Police</div>
+        </button>
+        <button class="optx" type="button" data-opt="Cede to Demands">
+          <div class="optx__t">Cede to Demands</div>
+          <div class="optx__o">Prime Minister</div>
+        </button>
+      </div>
+    </section>
+
+    <!-- event history -->
+    <section class="mod">
+      <div class="mod__hd">Event History</div>
+      <div class="tl">
+        <div class="tli act" id="talksEvt" hidden><span class="d">Week 22 · May 1980</span><p>The Minister of the Interior begins talks with labour leaders.</p></div>
+        <div class="tli start"><span class="d">Week 16 · March 1980</span><p>Labour Unrest begins, driven by failing Welfare conditions across Sessau.</p></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // Render the status track for a given "now" step (1-5): mark milestones done,
+  // place the Now pill, and fill the 15 dots in each gap before the now step.
+  var track=document.getElementById('track');
+  function renderTrack(step){
+    track.querySelectorAll('.ms').forEach(function(el,idx){
+      var i=idx+1;
+      el.classList.toggle('done', i<=step);
+      el.classList.toggle('now', i===step);
+      var pill=el.querySelector('.nowpill');
+      if(i===step){ if(!pill){pill=document.createElement('span');pill.className='nowpill';pill.textContent='Now';el.insertBefore(pill,el.firstChild);} }
+      else if(pill){ pill.remove(); }
+    });
+    track.querySelectorAll('.gap').forEach(function(g,idx){
+      var on=(idx+1)<step;
+      g.innerHTML='';
+      for(var k=0;k<15;k++){var d=document.createElement('span');d.className='d'+(on?' on':'');g.appendChild(d);}
+    });
+  }
+  renderTrack(3); // default: Minor Strikes in the Country
+
+  // Apply the persisted post-vote crisis snapshot (from shell.computeCrisis):
+  // move the step, show the tick tally + Growth rate, reveal the outcome effect,
+  // and set the Labour Talks line from the one-time roll. Called by the module
+  // script on the nationhood:crisis event.
+  window.applyCrisis=function(c){
+    if(!c) return;
+    renderTrack(c.step);
+    var tl=document.getElementById('tickline'), tt2=document.getElementById('tickTotal');
+    if(tl&&tt2){ tt2.textContent=(c.tick>=0?'+':'')+c.tick; tl.hidden=false; }
+    var gv=document.getElementById('growthVal'); if(gv) gv.textContent=(c.growth>=0?'+':'')+c.growth;
+    var box=document.getElementById('outcomeEffect');
+    if(box){
+      var nat=c.outcome==='nationalized';
+      box.className='effect'+(nat?'':' good');
+      box.querySelector('b').textContent = nat ? 'Refineries Nationalized' : 'Nationalization Refused';
+      box.querySelector('p').textContent = nat
+        ? 'With the announcement of several major refineries being nationalized, workers are now concerned their jobs are at risk, their pay could become less competitive, or be resolved immediately.'
+        : 'Labour leaders celebrated in the media a recent bill to reject nationalization. This has helped to defuse tensions and strengthened the labour leaders’ incentive to get a deal done.';
+      box.hidden=false;
+    }
+    // Only narrate the negotiation roll when Théo is actually on Labour Talks
+    // (the task event, which reveals this box, fires before this one).
+    var talks=document.getElementById('talksEffect');
+    if(talks && !talks.hidden){
+      var tp=talks.querySelector('p');
+      if(tp) tp.textContent = c.roll&&c.roll.good
+        ? 'After meeting with some of the local labour leaders, Théo has begun negotiations to discuss the leaders’ most prominent issues.'
+        : 'After meeting with some of the local labour leaders, Théo admitted that there was no plan in place, and the conversation worsens.';
+    }
+  };
+
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show')},3200);}
+  // option buttons (Labour Talks is handled separately; the rest are placeholders)
+  document.querySelectorAll('.optx[data-opt]').forEach(function(b){b.addEventListener('click',function(){ping('<b>'+b.dataset.opt+'</b> — not available in the tutorial yet.');});});
+  document.getElementById('back').addEventListener('click',function(){window.location.href='/tutorial/home/';});
+  // sidebar nav: linked items navigate; the rest just highlight (not wired)
+  document.querySelectorAll('.nav__i').forEach(function(i){i.addEventListener('click',function(e){
+    if(!i.getAttribute('href')){e.preventDefault();document.querySelectorAll('.nav__i').forEach(function(x){x.classList.remove('active')});i.classList.add('active');}
+  });});
+</script>
+
+<script type="module">
+  import { initSidebar, logout, mountTopbar } from '/tutorial/shell.js';
+  mountTopbar();
+
+  // Reflect the player's action once Théo is assigned to Labour Talks (same
+  // source as the Home feed event): the history entry, the amber Effect line,
+  // and the Ongoing tag on the now-locked Labour Talks option.
+  window.addEventListener('nationhood:task', (e) => {
+    if (e.detail !== 'Labour Talks') return;
+    ['talksEvt', 'talksEffect', 'talksOngoing'].forEach((id) => { const el = document.getElementById(id); if (el) el.hidden = false; });
+    const ot = document.getElementById('optTalks'); if (ot) ot.disabled = true;
+  });
+
+  // Once a week has advanced past the Energy Act vote, render the saved crisis
+  // snapshot (step move, tick tally, outcome effect, negotiation roll).
+  window.addEventListener('nationhood:crisis', (e) => { if (window.applyCrisis) window.applyCrisis(e.detail); });
+
+  var lo=document.getElementById('logout'); if(lo){lo.addEventListener('click',logout);}
+  initSidebar();
+</script>
+</body>
+</html>
