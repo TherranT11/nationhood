@@ -383,7 +383,7 @@ export async function advanceWeek() {
   if (!isConfigured) { advancing = false; return false; } // nothing to persist locally
   try {
     const user = await requireUser();
-    if (!user) return false; // requireUser has redirected to login
+    if (!user) { advancing = false; return false; } // requireUser has redirected to login
     const progress = await getTutorialProgress(user.id);
     if (!progress) { advancing = false; return false; } // lookup failed: leave state, allow retry
     // A new week restores the full weekly action budget.
