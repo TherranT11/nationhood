@@ -161,10 +161,9 @@
       }
     })();
 
-    // Joining isn't wired yet — acknowledge rather than dead-click.
+    // Join Nation → create your party in this nation.
     document.getElementById('join').addEventListener('click', function () {
-      note.className = 'note';
-      note.textContent = 'Sessau opens to players soon — joining isn’t live yet.';
+      window.location.href = '/party-creation/?nation=sessau';
     });
   </script>
 </body>

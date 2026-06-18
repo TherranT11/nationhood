@@ -28,3 +28,19 @@ export async function logout() {
   try { if (isConfigured) await supabase.auth.signOut(); } catch (err) { /* fall through to redirect */ }
   window.location.href = '/';
 }
+
+// Resolve the signed-in player. Returns the auth user, or null when Supabase isn't
+// configured (local dev) so callers can fall back to defaults. Redirects to /login/
+// — and returns null — when there's no valid session, so a logged-out player never
+// reaches a gated page. One source, shared by the tutorial and the online game.
+export async function requireUser() {
+  if (!isConfigured) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { window.location.href = '/login/'; return null; }
+    return session.user;
+  } catch (err) {
+    window.location.href = '/login/';
+    return null;
+  }
+}

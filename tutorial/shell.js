@@ -1,7 +1,8 @@
 // Shared logic for the in-game sidebar screens (tutorial/home, tutorial/government).
 // One source of truth for the party colour map and the sidebar's live bits:
 // the flag fallback, the login guard, and the player's chosen-party label.
-import { supabase, isConfigured } from '/supabase.js';
+import { supabase, isConfigured, requireUser } from '/supabase.js';
+export { requireUser }; // shared auth helper, re-exported for the tutorial pages
 
 // The party a player chose in the tutorial -> sidebar label + colour.
 // (Liberal is presented as "Centrist".)
@@ -16,21 +17,7 @@ export const PARTY = {
 // and "what is their tutorial progress", shared by every gated screen)
 // ---------------------------------------------------------------------------
 
-// Resolve the signed-in player. Returns the auth user, or null when Supabase
-// isn't configured yet (local dev) so callers can fall back to their defaults.
-// Redirects to /login/ — and returns null — when there is no valid
-// session, so a logged-out player never reaches a gated page.
-export async function requireUser() {
-  if (!isConfigured) return null;
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { window.location.href = '/login/'; return null; }
-    return session.user;
-  } catch (err) {
-    window.location.href = '/login/';
-    return null;
-  }
-}
+// requireUser lives in the shared client module now (imported + re-exported above).
 
 // Read a player's tutorial progress in one place: the party they chose and
 // whether they've formed their government. Returns null on any failure, so
