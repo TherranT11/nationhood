@@ -16,8 +16,8 @@
   .login{max-width:380px;margin:8vh auto 0;border:1px solid var(--line);border-radius:16px;padding:28px 26px}
   .login h1{margin-bottom:6px}
   label{display:block;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--muted);margin:14px 0 6px}
-  input,textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14.5px;font-family:inherit;background:#fff;color:var(--ink)}
-  input:focus,textarea:focus{outline:none;border-color:var(--ink)}
+  input,select,textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14.5px;font-family:inherit;background:#fff;color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink)}
   textarea{resize:vertical;min-height:64px}
   .note{margin-top:14px;font-size:13.5px;color:var(--muted);min-height:18px}
   .note.error{color:var(--err)}
@@ -98,6 +98,9 @@
           <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
           <div><label for="f-budget">Starting Budget</label><input id="f-budget" type="number" step="0.1"></div>
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
+          <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
+          <div><label for="f-seats">Legislature Seats</label><input id="f-seats" type="number" min="0" step="1" placeholder="seats"></div>
+          <div><label for="f-elecfreq">Election Frequency</label><input id="f-elecfreq" type="number" min="1" step="1" placeholder="months"></div>
         </div>
         <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
         <div class="note" id="addNote" role="status" aria-live="polite"></div>
@@ -108,6 +111,7 @@
   <script type="module">
     import { supabase, isConfigured } from '/supabase.js';
     import { esc } from '/util.js';
+    import { REGIME_TIERS, regimeLabel } from '/ladders.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -117,6 +121,12 @@
 
     function isAdmin(user) { return !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL; }
     function show(view) { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; }
+
+    // Regime dropdown: the numeric tiers (high→low), each shown as "N — Label".
+    // Defaults to Electoral Democracy (17), matching Sessau's footing.
+    document.getElementById('f-regime').innerHTML = REGIME_TIERS.map(function (t) {
+      return '<option value="' + t.value + '"' + (t.value === 17 ? ' selected' : '') + '>' + t.value + ' — ' + esc(t.label) + '</option>';
+    }).join('');
 
     // Decide which view to show from the current session.
     async function refresh() {
@@ -181,12 +191,19 @@
         box.innerHTML = list.map(function (n) {
           var s = n.stats || {}, e = n.economy || {};
           var cur = e.currency || '';
+          // Regime is stored numeric for new nations (show "N — Label"); a legacy
+          // free-text regime is shown as-is.
+          var regimeTxt = e.regime == null ? '—'
+            : (typeof e.regime === 'number' ? e.regime + ' — ' + (regimeLabel(e.regime) || '') : e.regime);
           return '<div class="ncard">' +
             '<div class="ncard__name">' + esc(n.name || '') + '<span class="ncard__id">' + esc(n.id || '') + '</span></div>' +
             (n.analogous ? '<div class="ncard__analog">' + esc(n.analogous) + '</div>' : '') +
             (n.description ? '<div class="ncard__desc">' + esc(n.description) + '</div>' : '') +
             '<div class="ncard__stats">' +
               kv('Population', fmtBig(n.population)) + kv('GDP', cur + fmtBig(n.gdp)) +
+              kv('Regime', regimeTxt) +
+              kv('Legislature', (n.legislature_seats || 0) + ' seats') +
+              kv('Elections', 'every ' + (n.election_frequency_months || 0) + ' mo') +
               kv('Prosperity', s.prosperity != null ? s.prosperity : '—') +
               kv('Welfare', s.welfare != null ? s.welfare : '—') +
               kv('Growth', s.growth != null ? s.growth : '—') +
@@ -218,18 +235,22 @@
       var id = slugify(name);
       if (!name || !id) { addNote.textContent = 'Enter a nation name.'; addNote.className = 'note error'; return; }
 
+      var elecfreq = num('f-elecfreq');
       var row = {
         id: id, name: name,
         description: document.getElementById('f-desc').value.trim() || null,
         analogous: document.getElementById('f-analog').value.trim() || null,
         population: num('f-pop'), gdp: num('f-gdp'),
+        legislature_seats: num('f-seats'),
+        election_frequency_months: elecfreq > 0 ? elecfreq : 60, // blank → column default cadence
         stats: {
           prosperity: num('f-prosperity'), welfare: num('f-welfare'), growth: num('f-growth'),
           image: num('f-image'), order: num('f-order')
         },
-        // Currency/regime/legislature/flag aren't captured by this form yet — they
-        // take the column defaults (currency falls back to '$' for display).
+        // Regime is the numeric tier (1–20). Currency/flag aren't captured yet —
+        // currency falls back to '$' for display.
         economy: {
+          regime: parseInt(document.getElementById('f-regime').value, 10),
           unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
           budget: num('f-budget', true), debt: num('f-debt', true), currency: '$'
         }
