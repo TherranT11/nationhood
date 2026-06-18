@@ -162,3 +162,34 @@ values (
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb
 )
 on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Parties: a player's party within a nation. One per player for now (unique
+-- user_id). Public read (the roster is shared game data); a player may write only
+-- their own row. active_parties on nations is intentionally NOT auto-maintained
+-- here — wiring that up (a derived count or a server function) is a deliberate,
+-- separate step rather than a hidden trigger.
+-- ---------------------------------------------------------------------------
+create table if not exists public.parties (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  nation_id  text not null references public.nations (id),
+  name       text not null,
+  archetype  text not null,
+  created_at timestamptz not null default now(),
+  unique (user_id)
+);
+
+alter table public.parties enable row level security;
+
+drop policy if exists "parties_select_all" on public.parties;
+create policy "parties_select_all" on public.parties for select using (true);
+
+drop policy if exists "parties_insert_own" on public.parties;
+create policy "parties_insert_own" on public.parties for insert with check (auth.uid() = user_id);
+
+drop policy if exists "parties_update_own" on public.parties;
+create policy "parties_update_own" on public.parties for update using (auth.uid() = user_id);
+
+drop policy if exists "parties_delete_own" on public.parties;
+create policy "parties_delete_own" on public.parties for delete using (auth.uid() = user_id);

@@ -17,3 +17,30 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 export const isConfigured =
   !SUPABASE_URL.includes('YOUR-PROJECT-REF') &&
   !SUPABASE_PUBLISHABLE_KEY.includes('YOUR-');
+
+// Sign the player out and return to the landing page. One source, used by every
+// signed-in screen. Redirects even if the sign-out call fails so a stuck session
+// never traps the player; guards against a double-click firing two sign-outs.
+let loggingOut = false;
+export async function logout() {
+  if (loggingOut) return;
+  loggingOut = true;
+  try { if (isConfigured) await supabase.auth.signOut(); } catch (err) { /* fall through to redirect */ }
+  window.location.href = '/';
+}
+
+// Resolve the signed-in player. Returns the auth user, or null when Supabase isn't
+// configured (local dev) so callers can fall back to defaults. Redirects to /login/
+// — and returns null — when there's no valid session, so a logged-out player never
+// reaches a gated page. One source, shared by the tutorial and the online game.
+export async function requireUser() {
+  if (!isConfigured) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { window.location.href = '/login/'; return null; }
+    return session.user;
+  } catch (err) {
+    window.location.href = '/login/';
+    return null;
+  }
+}
