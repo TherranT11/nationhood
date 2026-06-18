@@ -212,7 +212,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc } from '/util.js';
+  import { esc, COMPETENCIES } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   // Stub nav items (screens not built) just toggle highlight; Home/Party are links.
@@ -275,15 +275,14 @@
   // Prominent Politicians roster. STAT_SCALE is just the bar's display max; the
   // highest stat(s) in a row are highlighted. Names are escaped (player-owned).
   var MAX_PROMINENT = 10;
-  var STAT_KEYS = [['cha', 'Cha'], ['acu', 'Acu'], ['gui', 'Gui'], ['res', 'Res'], ['com', 'Com']];
-  var STAT_SCALE = 6;
+  var STAT_SCALE = 6; // bar display max
   function renderPoliticians(list) {
     document.getElementById('polCount').textContent = list.length + ' / ' + MAX_PROMINENT + ' prominent';
     var head = '<div class="pol-row pol-head"><span>Name</span><span>Age</span><span>Status</span><span>Exp</span>' +
-      STAT_KEYS.map(function (k) { return '<span>' + k[1] + '</span>'; }).join('') + '</div>';
+      COMPETENCIES.map(function (c) { return '<span>' + c.abbr + '</span>'; }).join('') + '</div>';
     if (!list.length) { document.getElementById('poltable').innerHTML = head + '<p class="empty">No politicians yet.</p>'; return; }
     var rows = list.map(function (p) {
-      var vals = STAT_KEYS.map(function (k) { return p[k[0]] || 0; });
+      var vals = COMPETENCIES.map(function (c) { return p[c.key] || 0; });
       var max = Math.max.apply(null, vals);
       var cells = vals.map(function (v) {
         var hi = (v === max && max > 0) ? ' hi' : '';
