@@ -182,7 +182,8 @@
       if (!isConfigured) { fail('Not connected yet.'); return; }
       var user = await requireUser();
       if (!user) return; // redirected to login
-      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = 'Founding your party…';
+      // Name the archetype in the confirmation so what's being saved is visible.
+      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = 'Founding ' + name + ' (' + archName(selected) + ')…';
       try {
         // No two parties in a nation may share a name (case-insensitive) or
         // abbreviation. Pre-check for a clear message; the DB unique indexes are
