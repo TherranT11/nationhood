@@ -427,17 +427,6 @@ export async function advanceWeek() {
         if (leg.bpResolved) patch.tutorial_floor_bill = null; // consumed into history
       }
     }
-    // Advance each member's active task by one tick (capped at its hidden total).
-    // Phase 1 only fills the progress graph; Phase 2 will apply the resolution
-    // effect (Floor/Ceiling/Experience) and clear the task once elapsed === total.
-    if (progress.tasks && Object.keys(progress.tasks).length) {
-      const tasks = {};
-      Object.keys(progress.tasks).forEach((id) => {
-        const t = progress.tasks[id] || {};
-        tasks[id] = { ...t, elapsed: Math.min(t.total || 0, (t.elapsed || 0) + 1) };
-      });
-      patch.tutorial_tasks = tasks;
-    }
     const ok = await updateProfile(patch);
     if (!ok) { advancing = false; return false; } // write failed: leave UI, allow retry
     window.location.reload();               // success: re-render every display from saved state
