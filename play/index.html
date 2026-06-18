@@ -319,10 +319,13 @@
       const { data: parties } = await supabase.from('parties').select('name, archetype, created_at').eq('nation_id', nationId);
       const { data: evs } = await supabase.from('events').select('body, game_date, created_at').eq('nation_id', nationId);
       var nm = (nation && nation.name) || '';
+      var ruling = nation && nation.ruling_party; // one-party state → factions, not parties
       var items = [];
       (parties || []).forEach(function (p) {
         items.push({ created: p.created_at, when: gameDate,
-          body: 'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. It is a ' + esc(p.archetype) + ' party.' });
+          body: ruling
+            ? 'The <b>' + esc(p.name) + '</b> formed as a ' + esc(p.archetype) + ' faction of <b>' + esc(ruling) + '</b> in <b>' + esc(nm) + '</b>.'
+            : 'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. It is a ' + esc(p.archetype) + ' party.' });
       });
       (evs || []).forEach(function (e) {
         items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) });
@@ -485,7 +488,7 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
 
       document.getElementById('pname').textContent = party.name;

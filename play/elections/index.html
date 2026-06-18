@@ -180,7 +180,7 @@
     </div>
 
     <section class="mod">
-      <div class="mod__hd"><span>Next General Election</span><span class="r" id="termNote">Not yet scheduled</span></div>
+      <div class="mod__hd"><span id="electHd">Next General Election</span><span class="r" id="termNote">Not yet scheduled</span></div>
       <div class="nextrow">
         <div class="count"><div class="big" id="nextDate">Not scheduled</div><div class="in" id="nextIn">The calendar hasn’t begun yet</div></div>
         <div class="candpro">
@@ -198,7 +198,7 @@
     </section>
 
     <section class="mod">
-      <div class="mod__hd"><span>Electoral Frequency</span><span class="r">National rule</span></div>
+      <div class="mod__hd"><span id="freqHd">Electoral Frequency</span><span class="r">National rule</span></div>
       <div class="thresh"><span class="thpill" id="freqPill">—</span><p id="freqText"></p></div>
     </section>
 
@@ -212,7 +212,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
-  import { tickToDate } from '/util.js';
+  import { tickToDate, esc } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -228,11 +228,18 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, election_frequency_months, electoral_threshold, next_election_tick').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, election_frequency_months, electoral_threshold, next_election_tick, ruling_party').eq('id', party.nation_id).single();
       const tick = await currentTick();
       const nationName = (nation && nation.name) || party.nation_id;
       const seatsTotal = (nation && nation.legislature_seats) || 0;
       const majority = seatsTotal ? Math.floor(seatsTotal / 2) + 1 : 0;
+      const ruling = nation && nation.ruling_party; // one-party state → a Party Congress, not a contested election
+      if (ruling) {
+        document.getElementById('electHd').textContent = 'Next Party Congress';
+        document.getElementById('freqHd').textContent = 'Congress Frequency';
+        document.getElementById('lede').innerHTML = 'Power within <b>' + esc(ruling) + '</b> is settled at its Party Congress — factions vie for standing inside the party, not seats at a public ballot.';
+        var cp = document.querySelector('.candpro'); if (cp) cp.style.display = 'none'; // national-vote projection doesn't apply
+      }
 
       // Sidebar + topbar.
       document.getElementById('sname').textContent = party.name;
@@ -262,20 +269,31 @@
         document.getElementById('nextDate').textContent = when;
         document.getElementById('nextIn').textContent = inText;
         document.getElementById('termNote').textContent = 'Scheduled';
-        document.getElementById('candnote').innerHTML = projNote + 'The next general election is set for <b>' + when + '</b> (' + inText + ').';
+        document.getElementById('candnote').innerHTML = ruling
+          ? 'The next <b>Party Congress</b> of ' + esc(ruling) + ' convenes <b>' + when + '</b> (' + inText + '). Factions contend for standing within the party, not seats at a public ballot.'
+          : projNote + 'The next general election is set for <b>' + when + '</b> (' + inText + ').';
       } else {
-        document.getElementById('candnote').innerHTML = projNote + 'No general election has been scheduled yet.';
+        document.getElementById('candnote').innerHTML = ruling
+          ? 'No Party Congress has been scheduled yet.'
+          : projNote + 'No general election has been scheduled yet.';
       }
 
       // National rules (from the nation row).
       var thr = Number(nation && nation.electoral_threshold) || 0;
-      document.getElementById('thrPill').textContent = thr > 0 ? (thr + '%') : 'None';
-      document.getElementById('thrText').innerHTML = thr > 0
-        ? 'A party must win at least <b>' + thr + '%</b> of the national vote to take any seats.'
-        : 'There is currently <b>no electoral threshold</b>. Any party winning enough votes for a seat takes part.';
+      if (ruling) {
+        document.getElementById('thrPill').textContent = '—';
+        document.getElementById('thrText').innerHTML = 'There is no public ballot in a one-party state — standing is decided within <b>' + esc(ruling) + '</b>.';
+      } else {
+        document.getElementById('thrPill').textContent = thr > 0 ? (thr + '%') : 'None';
+        document.getElementById('thrText').innerHTML = thr > 0
+          ? 'A party must win at least <b>' + thr + '%</b> of the national vote to take any seats.'
+          : 'There is currently <b>no electoral threshold</b>. Any party winning enough votes for a seat takes part.';
+      }
       var freq = (nation && nation.election_frequency_months) || 60;
       document.getElementById('freqPill').textContent = 'Every ' + freq + ' months';
-      document.getElementById('freqText').innerHTML = 'National elections in <b>' + nationName + '</b> are held every <b>' + freq + ' months</b>.';
+      document.getElementById('freqText').innerHTML = ruling
+        ? '<b>' + esc(ruling) + '</b> holds a Party Congress every <b>' + freq + ' months</b>.'
+        : 'National elections in <b>' + esc(nationName) + '</b> are held every <b>' + freq + ' months</b>.';
 
       // The chamber: seats are allocated at an election, so until the first one
       // it is entirely vacant. Render the real held total (0 today → one Vacant bar).
@@ -295,7 +313,9 @@
       if (seatsTotal > 0) { majm.style.left = (majority / seatsTotal * 100) + '%'; majm.querySelector('span').textContent = 'Majority ' + majority; }
       else { majm.style.display = 'none'; }
       document.getElementById('asmnote').innerHTML = held === 0
-        ? 'No general election has been held in ' + nationName + ' yet, so all <b>' + seatsTotal + '</b> seats sit vacant. Parties contest the chamber at the first election; a majority needs <b>' + majority + '</b>.'
+        ? (ruling
+            ? 'No Party Congress has convened in ' + esc(nationName) + ' yet, so all <b>' + seatsTotal + '</b> seats sit vacant. They are held by <b>' + esc(ruling) + '</b>; its factions vie for influence within.'
+            : 'No general election has been held in ' + esc(nationName) + ' yet, so all <b>' + seatsTotal + '</b> seats sit vacant. Parties contest the chamber at the first election; a majority needs <b>' + majority + '</b>.')
         : '<b>' + held + '</b> of <b>' + seatsTotal + '</b> seats are held; a majority needs <b>' + majority + '</b>.';
     } catch (e) {
       document.getElementById('candnote').textContent = 'Could not load the election picture right now. Refresh to try again.';

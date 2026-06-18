@@ -340,7 +340,7 @@
       </div>
     </div>
 
-    <div class="kicker">Your Party</div>
+    <div class="kicker" id="kicker">Your Party</div>
     <section class="phead">
       <div class="phead__id">
         <div class="plogo" id="plogo">&mdash;</div>
@@ -687,7 +687,7 @@
       document.getElementById('tbDate').textContent = tickToDate(await currentTick()); // live game date
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, ruling_party').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
       const currency = (nation && nation.economy && nation.economy.currency) || '$';
 
@@ -705,7 +705,11 @@
       document.getElementById('plogo').textContent = party.abbreviation || party.name.slice(0, 2).toUpperCase();
       document.getElementById('archBadge').textContent = party.archetype;
 
-      if (party.in_government) {
+      if (nation && nation.ruling_party) {
+        // One-party state: this is a faction of the ruling party, not gov/opposition.
+        document.getElementById('kicker').textContent = 'Your Faction';
+        document.getElementById('statusText').textContent = 'Faction of ' + nation.ruling_party;
+      } else if (party.in_government) {
         document.getElementById('statusBadge').classList.add('pbadge--gov');
         document.getElementById('statusText').textContent = 'In Government';
       } else {
