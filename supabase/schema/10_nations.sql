@@ -18,6 +18,7 @@ create table if not exists public.nations (
   legislature_seats int not null default 0, -- total seats in the nation's legislature
   election_frequency_months int not null default 60, -- months between general elections
   electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
+  next_election_tick int,                            -- game tick of this nation's next general election (null = unscheduled)
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
   production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
@@ -30,6 +31,7 @@ alter table public.nations add column if not exists election_frequency_months in
 alter table public.nations add column if not exists electoral_threshold numeric not null default 0;
 alter table public.nations add column if not exists analogous text;
 alter table public.nations add column if not exists production jsonb not null default '{}'::jsonb;
+alter table public.nations add column if not exists next_election_tick int;
 -- The active-party count is derived live from public.parties (one source), not
 -- stored — drop the old counter column if an earlier install still has it.
 alter table public.nations drop column if exists active_parties;
@@ -101,3 +103,11 @@ update public.nations set population = 69
 -- Sessau's real-world analogue.
 update public.nations set analogous = 'France'
  where id = 'sessau' and analogous is null;
+
+-- Schedule a first general election for every nation that hasn't got one: 1d6
+-- ticks (months) after the current tick. random() is evaluated per row, so each
+-- nation rolls independently. Guarded on null so a re-run never reschedules, and
+-- so it doesn't clobber the per-nation roll the admin page sets at creation.
+update public.nations
+   set next_election_tick = (select current_tick from public.game_state where id) + (floor(random() * 6)::int + 1)
+ where next_election_tick is null;

@@ -212,6 +212,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu } from '/supabase.js';
+  import { tickToDate } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -227,7 +228,9 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, election_frequency_months, electoral_threshold').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, election_frequency_months, electoral_threshold, next_election_tick').eq('id', party.nation_id).single();
+      const { data: clock } = await supabase.from('game_state').select('current_tick').maybeSingle();
+      const currentTick = (clock && clock.current_tick != null) ? clock.current_tick : 1;
       const nationName = (nation && nation.name) || party.nation_id;
       const seatsTotal = (nation && nation.legislature_seats) || 0;
       const majority = seatsTotal ? Math.floor(seatsTotal / 2) + 1 : 0;
@@ -247,10 +250,22 @@
       document.getElementById('polling').textContent = polling + '%';
       document.getElementById('projSeats').textContent = projected;
       document.getElementById('standing').textContent = party.in_government ? 'In government' : 'Opposition';
-      document.getElementById('candnote').innerHTML =
-        'At <b>' + polling + '%</b> of the national vote you would take roughly <b>' + projected + '</b> of ' +
-        '<b>' + seatsTotal + '</b> seats (about <b>' + (perPoint).toFixed(1) + '</b> per 1%). ' +
-        'No general election has been called yet — the schedule begins once the game’s calendar starts running.';
+      // Scheduled election — derived from the nation's next_election_tick and the
+      // game clock (one tick = one month; tick 1 = January 1980).
+      var nextTick = nation && nation.next_election_tick;
+      var ticksAway = (nextTick != null) ? (nextTick - currentTick) : null;
+      var projNote = 'At <b>' + polling + '%</b> of the national vote you would take roughly <b>' + projected + '</b> of ' +
+        '<b>' + seatsTotal + '</b> seats (about <b>' + (perPoint).toFixed(1) + '</b> per 1%). ';
+      if (nextTick != null && ticksAway > 0) {
+        var when = tickToDate(nextTick);
+        var inText = 'in ' + ticksAway + ' month' + (ticksAway === 1 ? '' : 's');
+        document.getElementById('nextDate').textContent = when;
+        document.getElementById('nextIn').textContent = inText;
+        document.getElementById('termNote').textContent = 'Scheduled';
+        document.getElementById('candnote').innerHTML = projNote + 'The next general election is set for <b>' + when + '</b> (' + inText + ').';
+      } else {
+        document.getElementById('candnote').innerHTML = projNote + 'No general election has been scheduled yet.';
+      }
 
       // National rules (from the nation row).
       var thr = Number(nation && nation.electoral_threshold) || 0;

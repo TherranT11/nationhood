@@ -37,3 +37,11 @@ export function fmtPop(value) {
   if (n > 999) return (Math.round(n / 1000 * 100) / 100) + ' Billion'; // >999M → billions, 2 dp
   return n.toLocaleString() + ' Million';
 }
+
+// The game clock runs one tick per month, tick 1 = January 1980. One source for
+// turning a tick number into its display date (e.g. 5 → "May, 1980").
+export function tickToDate(tick) {
+  var months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var n = Math.max(1, Math.round(Number(tick) || 1));
+  return months[(n - 1) % 12] + ', ' + (1980 + Math.floor((n - 1) / 12));
+}
