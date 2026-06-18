@@ -26,6 +26,7 @@ create table if not exists public.parties (
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
   actions_remaining int not null default 3,     -- party actions left this turn (no auto-reset until the turn system exists)
+  conviction    int     not null default 0,     -- Manifesto currency: earned over time, spent on planks. Every party starts at 0.
   created_at   timestamptz not null default now(),
   unique (user_id)
 );
@@ -41,6 +42,7 @@ alter table public.parties alter column pop_ceiling type numeric using pop_ceili
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
 alter table public.parties add column if not exists actions_remaining int not null default 3;
+alter table public.parties add column if not exists conviction int not null default 0;
 
 -- No two parties in the same nation may share a name (case-insensitive) or an
 -- abbreviation — enforced server-side, not just in the client.
@@ -67,8 +69,8 @@ create policy "parties_delete_own" on public.parties for delete using (auth.uid(
 
 -- Write-scope lock (column-level). RLS gates WHICH row a player can touch; these
 -- grants gate WHICH columns. The standings — seats, popularity, pop_floor,
--- pop_ceiling, funds, in_government — are GAME-CONTROLLED, so they are left out
--- of the client's insert/update privileges entirely: a crafted request can no
+-- pop_ceiling, funds, in_government, conviction — are GAME-CONTROLLED, so they
+-- are left out of the client's insert/update privileges entirely: a crafted request can no
 -- longer set e.g. popularity = 100. Only the identity fields the founding flow
 -- writes are granted (user_id is included so the upsert's DO UPDATE works; the
 -- WITH CHECK above keeps it pinned to the caller). When standings start changing
