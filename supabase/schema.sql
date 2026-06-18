@@ -171,14 +171,22 @@ on conflict (id) do nothing;
 -- separate step rather than a hidden trigger.
 -- ---------------------------------------------------------------------------
 create table if not exists public.parties (
-  id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null references auth.users (id) on delete cascade,
-  nation_id  text not null references public.nations (id),
-  name       text not null,
-  archetype  text not null,
-  created_at timestamptz not null default now(),
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  nation_id    text not null references public.nations (id),
+  name         text not null,
+  abbreviation text not null,
+  archetype    text not null,
+  created_at   timestamptz not null default now(),
   unique (user_id)
 );
+-- For installs created before the abbreviation column existed.
+alter table public.parties add column if not exists abbreviation text;
+
+-- No two parties in the same nation may share a name (case-insensitive) or an
+-- abbreviation — enforced server-side, not just in the client.
+create unique index if not exists parties_nation_name_uniq on public.parties (nation_id, lower(name));
+create unique index if not exists parties_nation_abbr_uniq on public.parties (nation_id, upper(abbreviation));
 
 alter table public.parties enable row level security;
 
