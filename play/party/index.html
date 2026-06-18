@@ -202,7 +202,7 @@
   function renderPopularity(p) {
     var pop = Math.max(0, p.popularity || 0);
     var floor = Math.max(0, p.pop_floor || 0);
-    var ceil = Math.max(1, p.pop_ceiling || 0); // guard against /0
+    var ceil = Math.max(1, p.pop_ceiling || 5); // default ceiling 5; guard against /0
     var pct = function (v) { return Math.max(0, Math.min(100, v / ceil * 100)); };
     var floorPct = pct(floor);
 

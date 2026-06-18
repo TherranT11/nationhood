@@ -103,17 +103,16 @@
   <script type="module">
     import { supabase, isConfigured, logout } from '/supabase.js';
     import { statLabel, statBand } from '/ladders.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
-    var MAX_PARTIES = 8; // hard cap on parties per nation
     var LADDER_STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
     var note = document.getElementById('note');
     var flag = document.getElementById('flag');
     var flagPh = document.getElementById('flagPh');
 
     function err(msg) { note.textContent = msg; note.className = 'note error'; }
-    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'; }); }
 
     // Population/GDP are stored raw; format to a readable scale.
     function fmtBig(n) {

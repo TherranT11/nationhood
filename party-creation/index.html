@@ -95,12 +95,12 @@
 
   <script type="module">
     import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+    import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
     // Which nation are we founding a party in? (?nation=<id>, default sessau.)
     var nationId = new URLSearchParams(location.search).get('nation') || 'sessau';
-    var MAX_PARTIES = 8; // hard cap on parties per nation (matches nation-select)
 
     var ARCHETYPES = [
       { id: 'centrist',     name: 'Centrist',         color: '#64748b', desc: 'Pragmatic middle ground — balance the market and the state, govern by consensus.', icon: '<path d="M12 3v18"/><path d="M5 20h14"/><path d="M4 7h16"/><path d="M4 7l-2 5a3 3 0 006 0z"/><path d="M20 7l-2 5a3 3 0 006 0z"/>' },
@@ -151,7 +151,6 @@
       if (name && abbrOk() && selected) { picked.className = 'picked'; picked.innerHTML = '<b>' + esc(name) + '</b> (' + esc(pabbr.value.trim()) + ') · ' + esc(archName(selected)); }
       else { picked.className = 'picked'; picked.textContent = 'Add a name, a 2–4 letter abbreviation, and an archetype to continue.'; }
     }
-    function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]; }); }
 
     var saving = false;
     function fail(text) { picked.className = 'picked msg error'; picked.textContent = text; saving = false; join.disabled = false; }

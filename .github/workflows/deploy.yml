@@ -25,7 +25,7 @@ jobs:
       - name: Assemble the site + domain binding
         run: |
           mkdir -p dist
-          cp index.html CNAME .nojekyll site.css supabase.js ladders.js dist/
+          cp index.html CNAME .nojekyll site.css supabase.js ladders.js util.js dist/
           cp -r assets home login signup startup nation-select party-creation play tutorial dist/
       - uses: actions/upload-pages-artifact@v3
         with:
