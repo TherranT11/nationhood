@@ -65,7 +65,7 @@
   </main>
 
   <script type="module">
-    import { supabase, isConfigured } from '/supabase.js';
+    import { supabase, isConfigured, currentParty } from '/supabase.js';
 
     const form = document.getElementById('login-form');
     const btn = document.getElementById('submit-btn');
@@ -106,7 +106,9 @@
           btn.disabled = false;
           return;
         }
-        window.location.href = '/home/';
+        // Returning player with a party → their instance; otherwise the menu.
+        const party = await currentParty();
+        window.location.href = party ? '/play/' : '/home/';
       } catch (err) {
         setMsg('Something went wrong. Please try again.', 'error');
         submitting = false;
