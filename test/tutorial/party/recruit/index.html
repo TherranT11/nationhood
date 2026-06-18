@@ -194,7 +194,7 @@
         if(actionsLeft<c.cost){ping('Not enough actions — need <b>'+c.cost+'</b>, have '+actionsLeft+'.');return;}
         // Persist the recruit (append to the running roster) and the spent actions
         // in one write; the Party page reads tutorial_recruits back into the table.
-        var person={name:c.name, age:c.age, role:'Backbencher', free:true, exp:c.exp, stats:c.stats, tier:c.tier};
+        var person={name:c.name, age:c.age, role:'Party Member', free:true, exp:c.exp, stats:c.stats, tier:c.tier};
         var left=actionsLeft-c.cost;
         saving=true; render();
         Promise.resolve(window.tutSaveRecruit?window.tutSaveRecruit(recruited.concat([person]), left):true).then(function(ok){

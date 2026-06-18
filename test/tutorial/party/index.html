@@ -306,7 +306,7 @@
       var w=document.getElementById('coachWelcome'); if(w) w.style.display='none';
       var r=document.getElementById('coachRecruit'); if(r) r.style.display='';
     }
-    (e.detail||[]).forEach(function(p,idx){ addPol({name:p.name,age:p.age,role:p.role||'Backbencher',free:p.free!==false,exp:p.exp,stats:p.stats,tag:'New'}, '/test/tutorial/party/politician/?p=r'+idx); });
+    (e.detail||[]).forEach(function(p,idx){ addPol({name:p.name,age:p.age,role:p.role||'Party Member',free:p.free!==false,exp:p.exp,stats:p.stats,tag:'New'}, '/test/tutorial/party/politician/?p=r'+idx); });
   });
 
   // ---- electoral history ----
