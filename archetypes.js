@@ -19,3 +19,39 @@ export function archetypeColor(name) {
   var a = ARCHETYPES.filter(function (x) { return x.name === name; })[0];
   return a ? a.color : '#8d8d95';
 }
+
+// Hard ideological oppositions. Two archetypes are "opposite poles" when their
+// core commitments contradict — a coalition partner on the opposite pole costs
+// the forming government confidence (see the government-formation design). Listed
+// ONCE as unordered pairs of archetype NAMES; the lookup is derived from these so
+// the relation is always symmetric. Centrist and Agrarian appear in no pair —
+// they pay no contradiction penalty with anyone (the universal coalition glue).
+const OPPOSED_PAIRS = [
+  ['Communist', 'Libertarian'],          // total planning vs. minimal state
+  ['Communist', 'Liberal'],              // planned economy vs. open markets
+  ['Communist', 'Conservative'],         // revolution vs. tradition & order
+  ['Communist', 'Nationalist'],          // internationalism vs. nation-first
+  ['Communist', 'Faith / Religious'],    // materialist atheism vs. religious order
+  ['Libertarian', 'Faith / Religious'],  // personal liberty vs. moral legislation
+  ['Libertarian', 'Green'],              // deregulation vs. environmental regulation
+  ['Progressive', 'Conservative'],       // reform vs. tradition
+  ['Progressive', 'Faith / Religious'],  // secular rights vs. religious morality
+  ['Progressive', 'Nationalist'],        // cosmopolitan reform vs. nation-first
+];
+
+// name → array of opposing names, built once from OPPOSED_PAIRS (symmetric).
+const OPPOSITION = (function () {
+  var m = {};
+  OPPOSED_PAIRS.forEach(function (p) {
+    (m[p[0]] = m[p[0]] || []).push(p[1]);
+    (m[p[1]] = m[p[1]] || []).push(p[0]);
+  });
+  return m;
+})();
+
+// Do two archetype NAMES sit on opposite ideological poles? Used by coalition
+// formation to penalise confidence per contradictory partner. Order-independent;
+// a party never opposes itself; an unknown/missing name opposes nothing.
+export function opposes(a, b) {
+  return !!(a && b && OPPOSITION[a] && OPPOSITION[a].indexOf(b) >= 0);
+}
