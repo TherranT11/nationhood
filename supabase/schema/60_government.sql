@@ -351,6 +351,12 @@ begin
   end if;
   if v_gov.type <> 'coalition' then raise exception 'There is no coalition agreement to walk away from.'; end if;
   if v_gov.formed_tick <> v_tick then raise exception 'The window to reshape this government has closed.'; end if;
+  -- One reshuffle per term: if anything was already retired this tick (a prior
+  -- renege/install), the choice has been spent.
+  if exists (select 1 from public.governments
+               where nation_id = v_p.nation_id and status = 'replaced' and formed_tick = v_tick) then
+    raise exception 'You have already reshaped the government this term.';
+  end if;
 
   -- Re-seat the formateur alone as a minority. _seat_government retires the
   -- coalition (→ replaced, stamped THIS tick — the proof a renege happened) and
