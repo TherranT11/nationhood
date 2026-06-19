@@ -203,7 +203,7 @@
           '<small>' + esc(TERM_LABELS[a.type] || a.type) + '</small></div>' +
           '<span class="ag__s ' + (a.status === 'done' ? 'done' : 'pending') + '">' + (a.status === 'done' ? 'Done' : 'Pending') + '</span>' + enact + '</div>';
       }).join('');
-      if (amPM) agendaHtml += '<p class="conf__note" style="text-align:left;margin-top:12px">Enacting a promise costs 1 party action and rolls your leader’s Resolve — the better the roll, the more Government Confidence it earns.</p>';
+      if (amPM) agendaHtml += '<p class="conf__note" style="text-align:left;margin-top:12px">Enacting a promise costs 1 party action and raises Government Confidence +3%.</p>';
     } else {
       agendaHtml = '<p class="muted">No coalition agenda — this government is not bound by negotiated terms.</p>';
     }
