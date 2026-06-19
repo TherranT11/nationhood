@@ -27,6 +27,7 @@ create table if not exists public.nations (
 );
 -- For installs created before these columns existed.
 alter table public.nations add column if not exists economy jsonb not null default '{}'::jsonb;
+alter table public.nations add column if not exists stats jsonb not null default '{}'::jsonb;
 alter table public.nations add column if not exists legislature_seats int not null default 0;
 alter table public.nations add column if not exists election_frequency_months int not null default 60;
 alter table public.nations add column if not exists electoral_threshold numeric not null default 0;
