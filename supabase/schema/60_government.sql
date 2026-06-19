@@ -409,11 +409,12 @@ begin
   if v_n.host_party_id is distinct from v_p.id then raise exception 'You can only install your own agreement.'; end if;
   if v_n.status <> 'committed' then raise exception 'Form the agreement before installing it.'; end if;
 
-  -- Seat the new coalition with the −5 Confidence penalty; dock −5 Popularity
-  -- (clamped at 0), report what actually landed. _seat_government inherits the
-  -- new agenda before we close the agreement below.
+  -- Seat the new coalition with the −5 Confidence penalty; dock 5% of the
+  -- formateur's Popularity (proportionate — stings without ever zeroing a small
+  -- party), report what actually landed. _seat_government inherits the new agenda
+  -- before we close the agreement below.
   v_conf   := public._seat_government(v_p.nation_id, v_p.id, 'coalition', p_neg, 5);
-  v_newpop := greatest(0, v_p.popularity - 5);
+  v_newpop := round(v_p.popularity * 0.95, 1);
   v_pophit := v_p.popularity - v_newpop;
   update public.parties set popularity = v_newpop where id = v_p.id;
   update public.negotiations set status = 'closed' where id = p_neg;
