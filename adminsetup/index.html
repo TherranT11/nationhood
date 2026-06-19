@@ -79,6 +79,16 @@
     <div class="tabs"><span class="tab">Nations</span></div>
 
     <div class="panel">
+      <h2>Game Clock</h2>
+      <p class="sub" style="margin:0 0 12px">Advance the shared clock one month. Any nation whose election is due resolves: seats are reallocated from popularity, a government forms, and Government Confidence is set.</p>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div><div class="who" id="clockDate">—</div><div class="sub" style="margin:0">Tick <span id="clockTick">—</span></div></div>
+        <button class="btn btn-solid" id="advanceBtn" type="button">Advance Tick</button>
+      </div>
+      <div class="note" id="advanceNote" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
       <h2>Existing Nations</h2>
       <div id="nationList"><p class="empty">Loading…</p></div>
     </div>
@@ -121,7 +131,7 @@
 
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
-    import { esc, fmtGdp, fmtPop } from '/util.js';
+    import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
     import { REGIME_TIERS, regimeLabel } from '/ladders.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
@@ -132,6 +142,32 @@
 
     function isAdmin(user) { return !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL; }
     function show(view) { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; }
+
+    // Game clock: show the current date/tick and let the admin advance it. Each
+    // advance bumps the shared tick and resolves any nation whose election is due
+    // (server-side, via advance_tick — there's no cron/trigger).
+    async function renderClock() {
+      try {
+        var t = await currentTick();
+        document.getElementById('clockTick').textContent = t;
+        document.getElementById('clockDate').textContent = tickToDate(t);
+      } catch (e) { document.getElementById('clockDate').textContent = '—'; }
+    }
+    document.getElementById('advanceBtn').addEventListener('click', async function () {
+      var btn = this, note = document.getElementById('advanceNote');
+      if (btn.disabled) return;             // single-fire: this writes (advances the clock)
+      btn.disabled = true; note.textContent = 'Advancing…'; note.className = 'note';
+      try {
+        const { data, error } = await supabase.rpc('advance_tick');
+        if (error) throw error;
+        note.textContent = 'Advanced to tick ' + data.tick + ' · ' + data.elections_resolved +
+          ' election' + (data.elections_resolved === 1 ? '' : 's') + ' resolved.';
+        note.className = 'note ok';
+        await renderClock();
+        loadNations();
+      } catch (e) { note.textContent = e.message || 'Could not advance the clock.'; note.className = 'note error'; }
+      finally { btn.disabled = false; }
+    });
 
     // Regime dropdown: the numeric tiers (high→low), each shown as "N — Label".
     // Defaults to Electoral Democracy (17), matching Sessau's footing.
@@ -147,6 +183,7 @@
         if (session && isAdmin(session.user)) {
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
+          renderClock();
           loadNations();
         } else if (session) {
           // Signed in, but not the admin account. Don't sign them out (that would
