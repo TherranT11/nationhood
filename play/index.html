@@ -303,7 +303,6 @@
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, fmtFunds } from '/util.js';
   import { fetchNegotiations, pendingInvites, activeTalks, termCounts, openNegotiation, respondInvite } from '/negotiations.js';
-  import { formationState } from '/formation.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -589,7 +588,8 @@
     if (!myPartyId || !feedCtx) return;
     var box = document.getElementById('formBanner');
     try {
-      var fs = await formationState({ id: myPartyId, nation_id: feedCtx.nationId });
+      const fm = await import('/formation.js');           // lazy: an optional nudge, never a hard dependency
+      var fs = await fm.formationState({ id: myPartyId, nation_id: feedCtx.nationId });
       var msg = fs.canRenege
         ? '🏛 <b>Your government has formed.</b> Keep your agreed coalition or form a new one — this turn only.'
         : fs.postRenege
