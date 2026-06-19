@@ -196,8 +196,10 @@
   }
 
   // The hemicycle: government parties fill the arc first (full colour), opposition
-  // after (faded); a dashed line marks the majority threshold. Geometry ported
-  // from the tutorial; coloured from real seats + archetypes.
+  // after (faded); a dashed line marks the majority threshold. Coloured from
+  // real seats + archetypes. Geometry is a DELIBERATE standalone copy of the
+  // tutorial's (tutorial/government/formed) — that walkthrough is frozen and
+  // self-contained, so the two are intentionally not shared.
   function hemicycleSvg(gov, opp, total, maj){
     if (!total) return '';
     var ROWS = 9, RIN = 86, ROUT = 216, CX = 230, CY = 224, RAD = 3.6;
