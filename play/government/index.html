@@ -387,8 +387,9 @@
       var amPM = !!(govt && govt.formateur_party_id === MY_PARTY_ID); // only the leading party enacts
       // The formation-window choice (formateur-only, the tick it formed) — one
       // source, shared with the Home banner. Loaded lazily and defensively: this
-      // optional nudge must never block the core page from rendering.
-      var formation = { canRenege: false, postRenege: false, negId: null };
+      // optional nudge must never block the core page from rendering. render()
+      // treats a missing object as "no card", so the fallback is just {}.
+      var formation = {};
       try {
         const fm = await import('/formation.js');
         formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
