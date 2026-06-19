@@ -44,8 +44,7 @@
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
 
-  .grid{display:grid;grid-template-columns:1fr 320px;gap:18px;margin-top:20px;align-items:start}
-  @media(max-width:920px){.grid{grid-template-columns:1fr}}
+  #content > .panel{margin-top:18px} #content > :first-child{margin-top:20px}
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
   .panel h2{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
 
@@ -57,12 +56,16 @@
   .gov__id span{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft)}
   .gtype{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:6px 12px;border-radius:20px;background:var(--indigo-soft);color:var(--indigo);margin-left:auto;white-space:nowrap}
 
-  .seatline{font-family:'Space Mono',monospace;font-size:12px;color:var(--ink);font-weight:700;margin-bottom:4px}
-  .seatline span{font-weight:400;color:var(--soft)}
-  .seatbar{position:relative;height:26px;border-radius:8px;background:var(--chip);overflow:hidden;margin-bottom:16px}
-  .seatfill{height:100%;width:0;background:var(--tc,var(--indigo))}
-  .majmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
-  .majmark::after{content:attr(data-maj);position:absolute;top:-13px;left:4px;font-family:'Space Mono',monospace;font-size:8px;color:var(--ink);white-space:nowrap}
+  /* hemicycle — the National Assembly */
+  .hemiwrap{position:relative;display:flex;justify-content:center;padding:2px 0 4px}
+  .hemi{width:100%;max-width:440px;height:auto}
+  .seatcall{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);text-align:center;line-height:1.05}
+  .seatcall b{font-weight:900;font-size:26px;letter-spacing:-.02em}
+  .seatcall span{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:10px}
+  .lg{font-size:11.5px;color:var(--muted)} .lg.opp{opacity:.6}
+  .lg b{color:var(--ink);font-weight:700}
+  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 
   .mrow{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
   .mrow:last-child{border-bottom:none}
@@ -192,6 +195,49 @@
     return '<div class="conf__break">' + chips.join('') + '</div>';
   }
 
+  // The hemicycle: government parties fill the arc first (full colour), opposition
+  // after (faded); a dashed line marks the majority threshold. Geometry ported
+  // from the tutorial; coloured from real seats + archetypes.
+  function hemicycleSvg(gov, opp, total, maj){
+    if (!total) return '';
+    var ROWS = 9, RIN = 86, ROUT = 216, CX = 230, CY = 224, RAD = 3.6;
+    var radii = []; for (var r = 0; r < ROWS; r++) radii.push(RIN + (ROUT - RIN) * r / (ROWS - 1));
+    var totW = radii.reduce(function(a, b){ return a + b; }, 0);
+    var per = radii.map(function(R){ return Math.max(2, Math.round(total * R / totW)); });
+    var diff = total - per.reduce(function(a, b){ return a + b; }, 0), ri = ROWS - 1;
+    while (diff !== 0){ per[ri] += Math.sign(diff); diff -= Math.sign(diff); ri = (ri - 1 + ROWS) % ROWS; }
+    var seats = [];
+    for (var r2 = 0; r2 < ROWS; r2++){ var n = per[r2], R = radii[r2];
+      for (var i = 0; i < n; i++){ var th = Math.PI * (i + 0.5) / n; seats.push({ x: CX - R * Math.cos(th), y: CY - R * Math.sin(th), th: th }); } }
+    seats.sort(function(a, b){ return a.th - b.th; });
+    var order = gov.concat(opp).map(function(p){ return { s: p.seats || 0, c: archetypeColor(p.archetype), gov: p.in_government ? 1 : 0 }; })
+      .filter(function(p){ return p.s > 0; });
+    var circles = '', pi = 0, used = 0, boundary = null;
+    seats.forEach(function(s, k){
+      while (pi < order.length - 1 && used >= order[pi].s){ pi++; used = 0; }
+      used++;
+      var party = order[pi] || { c: 'var(--chip)', gov: 0 };
+      circles += '<circle cx="' + s.x.toFixed(1) + '" cy="' + s.y.toFixed(1) + '" r="' + RAD + '" fill="' + party.c + '" opacity="' + (party.gov ? '1' : '.32') + '"/>';
+      if (k === maj - 1) boundary = s.th;
+    });
+    var line = '';
+    if (boundary != null){
+      var bt = boundary - (Math.PI / total) * 0.5;
+      var x1 = (CX - (RIN - 14) * Math.cos(bt)).toFixed(1), y1 = (CY - (RIN - 14) * Math.sin(bt)).toFixed(1);
+      var x2 = (CX - (ROUT + 16) * Math.cos(bt)).toFixed(1), y2 = (CY - (ROUT + 16) * Math.sin(bt)).toFixed(1);
+      line = '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke="var(--ink)" stroke-width="1.4" stroke-dasharray="3 3" opacity=".5"/>' +
+        '<text x="' + x2 + '" y="' + (Number(y2) - 4) + '" fill="var(--ink)" font-family="Space Mono, monospace" font-size="9" text-anchor="middle">' + maj + ' maj</text>';
+    }
+    return '<svg class="hemi" viewBox="0 0 460 250" aria-hidden="true">' + circles + line + '</svg>';
+  }
+
+  function hemiLegend(gov, opp){
+    return gov.concat(opp).map(function(p){
+      return '<span class="lg' + (p.in_government ? '' : ' opp') + '"><span class="sw" style="background:' + archetypeColor(p.archetype) + '"></span>' +
+        (p.in_government ? '<b>' + esc(p.name) + '</b>' : esc(p.name)) + ' ' + (p.seats || 0) + '</span>';
+    }).join('');
+  }
+
   function memberRow(p, role, lead){
     return '<div class="mrow"><span class="dot" style="background:' + archetypeColor(p.archetype) + '"></span>' +
       '<div class="nm"><b>' + esc(p.name) + '</b><small>' + esc(p.archetype || '') + (p.abbreviation ? ' · ' + esc(p.abbreviation) : '') + '</small></div>' +
@@ -280,28 +326,31 @@
     }
 
     box.innerHTML = cardHtml +
-      '<div class="grid">' +
-        '<div>' +
-          '<div class="panel gov">' +
-            '<div class="gov__top"><span class="gov__emb">' + esc((formateur.abbreviation || formateur.name.slice(0,2)).toUpperCase()) + '</span>' +
-              '<div class="gov__id"><b>' + esc(formateur.name) + '</b><span>Holds the premiership · ' + esc(formateur.archetype || '') + '</span></div>' +
-              '<span class="gtype">' + typeLabel(govt.type) + '</span></div>' +
-            '<div class="seatline">' + govSeats + ' <span>/ ' + total + ' seats · majority ' + maj + (govSeats >= maj ? ' ✓' : '') + '</span></div>' +
-            '<div class="seatbar"><div class="seatfill" style="width:' + (total ? Math.round(govSeats/total*100) : 0) + '%"></div>' +
-              '<div class="majmark" data-maj="MAJ ' + maj + '" style="left:' + (total ? maj/total*100 : 50) + '%"></div></div>' +
-            '<div class="subhd">In government</div>' + members +
-            (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
-          '</div>' +
-          '<div class="panel" style="margin-top:18px"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
+      // 1 — Government Confidence
+      '<div class="panel"><h2>Government Confidence</h2>' +
+        '<div class="conf__n" style="color:' + bd.color + '">' + c + '<span>%</span></div>' +
+        '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
+        '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
+        confChips(govt) +
+        '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.</div>' +
+      '</div>' +
+      // 2 — The National Assembly (hemicycle)
+      '<div class="panel"><h2>The National Assembly</h2>' +
+        '<div class="hemiwrap">' + hemicycleSvg(gov, opp, total, maj) +
+          '<div class="seatcall"><b>' + govSeats + '</b><span>of ' + total + ' · majority ' + maj + (govSeats >= maj ? ' ✓' : '') + '</span></div>' +
         '</div>' +
-        '<aside><div class="panel"><h2>Government Confidence</h2>' +
-          '<div class="conf__n" style="color:' + bd.color + '">' + c + '<span>%</span></div>' +
-          '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
-          '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
-          confChips(govt) +
-          '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.</div>' +
-        '</div></aside>' +
-      '</div>';
+        '<div class="legend">' + hemiLegend(gov, opp) + '</div>' +
+      '</div>' +
+      // 3 — Government & Coalition
+      '<div class="panel gov">' +
+        '<div class="gov__top"><span class="gov__emb">' + esc((formateur.abbreviation || formateur.name.slice(0,2)).toUpperCase()) + '</span>' +
+          '<div class="gov__id"><b>' + esc(formateur.name) + '</b><span>Holds the premiership · ' + esc(formateur.archetype || '') + '</span></div>' +
+          '<span class="gtype">' + typeLabel(govt.type) + '</span></div>' +
+        '<div class="subhd">In government</div>' + members +
+        (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
+      '</div>' +
+      // 4 — Governing Agenda
+      '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>';
 
     box.querySelectorAll('.enact').forEach(function(b){ b.addEventListener('click', function(){ enact(b.dataset.id); }); });
     var ea = document.getElementById('enterAgreed'); if (ea) ea.addEventListener('click', function(){ enterAgreed(govt.id); });
