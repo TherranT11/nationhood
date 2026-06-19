@@ -165,7 +165,6 @@
   import { esc, majority } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
-  import { formationState } from '/formation.js';
 
   document.getElementById('logout').addEventListener('click', logout);
 
@@ -387,8 +386,13 @@
       }
       var amPM = !!(govt && govt.formateur_party_id === MY_PARTY_ID); // only the leading party enacts
       // The formation-window choice (formateur-only, the tick it formed) — one
-      // source, shared with the Home banner.
-      var formation = await formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
+      // source, shared with the Home banner. Loaded lazily and defensively: this
+      // optional nudge must never block the core page from rendering.
+      var formation = { canRenege: false, postRenege: false, negId: null };
+      try {
+        const fm = await import('/formation.js');
+        formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
+      } catch (e) { /* non-critical enhancement — fall through with no card */ }
       render(govt, NATION || {}, parties || [], agenda, amPM, formation);
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';
