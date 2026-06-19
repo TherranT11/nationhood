@@ -302,7 +302,7 @@
       <a class="nav__i" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
       <a class="nav__i active" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
       <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
@@ -340,7 +340,7 @@
       </div>
     </div>
 
-    <div class="kicker">Your Party</div>
+    <div class="kicker" id="kicker">Your Party</div>
     <section class="phead">
       <div class="phead__id">
         <div class="plogo" id="plogo">&mdash;</div>
@@ -449,7 +449,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
-  import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, fmtFunds, majority as majorityOf } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
 
@@ -461,15 +461,6 @@
     i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
   });
 
-  // Party Funds: compact currency formatting (0 → "0", 375000 → "375K").
-  function fmtFunds(n) {
-    n = Number(n) || 0; var a = Math.abs(n);
-    if (a >= 1e9) return trim(n / 1e9) + 'B';
-    if (a >= 1e6) return trim(n / 1e6) + 'M';
-    if (a >= 1e3) return trim(n / 1e3) + 'K';
-    return String(Math.round(n));
-  }
-  function trim(x) { return String(Math.round(x * 10) / 10); }
 
   // Party Popularity band: the track runs 0 → ceiling. The fill is current
   // popularity, the green tick is the floor (the base attacks can't push below),
@@ -564,7 +555,7 @@
     if (vacant > 0) { var vw = vacant / totalSeats * 100; segs += '<div class="seg vacant" style="width:' + vw + '%" title="Vacant — ' + vacant + ' seats">' + (vw > 9 ? vacant : '') + '</div>'; }
     bar.innerHTML = segs;
 
-    var majority = Math.floor(totalSeats / 2) + 1;
+    var majority = majorityOf(totalSeats);
     maj.style.display = ''; maj.style.left = (majority / totalSeats * 100) + '%';
     maj.querySelector('span').textContent = 'Majority ' + majority;
 
@@ -687,7 +678,7 @@
       document.getElementById('tbDate').textContent = tickToDate(await currentTick()); // live game date
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, ruling_party').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
       const currency = (nation && nation.economy && nation.economy.currency) || '$';
 
@@ -705,7 +696,11 @@
       document.getElementById('plogo').textContent = party.abbreviation || party.name.slice(0, 2).toUpperCase();
       document.getElementById('archBadge').textContent = party.archetype;
 
-      if (party.in_government) {
+      if (nation && nation.ruling_party) {
+        // One-party state: this is a faction of the ruling party, not gov/opposition.
+        document.getElementById('kicker').textContent = 'Your Faction';
+        document.getElementById('statusText').textContent = 'Faction of ' + nation.ruling_party;
+      } else if (party.in_government) {
         document.getElementById('statusBadge').classList.add('pbadge--gov');
         document.getElementById('statusText').textContent = 'In Government';
       } else {

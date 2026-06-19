@@ -30,6 +30,7 @@
   .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
   .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 4px; }
   .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
+  .onep { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #c0341d; background: #FBEAE9; border-radius: 999px; padding: 4px 11px; margin: 0 0 14px; }
   .nations { width: 100%; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 22px; }
 
   .nstats { border-top: 1px solid var(--line); }
@@ -126,6 +127,7 @@
           '<h2 class="nation-name">' + esc(n.name || 'Unknown') + '</h2>' +
           (n.description ? '<p class="nation-desc">' + esc(n.description) + '</p>' : '') +
           (n.analogous ? '<p class="nation-analog">Analogous to: ' + esc(n.analogous) + '</p>' : '') +
+          (n.ruling_party ? '<div><span class="onep" title="' + esc(n.ruling_party) + '">One-party state</span></div>' : '') +
           '<div class="nstats">' + statsHTML(n) + '</div>' +
           '<div class="proster"></div>' +
           '<button class="btn btn-solid nation-join">Join Nation</button>' +
@@ -144,14 +146,15 @@
         var list = data || [];
         // The "Active Parties N / cap" row is the collapsible toggle; expanding it
         // reveals the roster (keeps a full nation from making the card tower).
+        var unit = n.ruling_party ? 'Factions' : 'Parties';
         var inner = list.length
           ? list.map(function (p) {
               return '<div class="prow"><span class="pn">' + esc(p.name) +
                      '</span><span class="pa">' + esc(p.archetype) + '</span></div>';
             }).join('')
-          : '<div class="pempty">No parties yet — be the first to found one.</div>';
+          : '<div class="pempty">No ' + unit.toLowerCase() + ' yet — be the first to ' + (n.ruling_party ? 'form one' : 'found one') + '.</div>';
         elRoster.innerHTML =
-          '<details class="plist"><summary class="nstat"><span class="k">Active Parties</span>' +
+          '<details class="plist"><summary class="nstat"><span class="k">Active ' + unit + '</span>' +
           '<span class="v">' + list.length + ' / ' + MAX_PARTIES + '</span></summary>' +
           '<div class="prows">' + inner + '</div></details>';
         if (list.length >= MAX_PARTIES) {

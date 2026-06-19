@@ -20,6 +20,7 @@ schema/50_names.sql         nation_names table (structure only; per-nation pools
 
 seed/sessau_names.sql           Sessau's name pool (run once, after 50)
 seed/vesperia_names.sql         Vesperia's name pool (run after the nation exists)
+seed/denzgraad_names.sql        Denzgraad's name pool (run after the nation exists)
 seed/backfill_party_leaders.sql one-off: give existing partyless parties a leader
 ```
 

@@ -50,6 +50,9 @@
   .tb-discord{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#5865f2;color:#fff;flex:none;transition:background .15s}
   .tb-discord:hover{background:#4752c4}
   .tb-discord svg{width:18px;height:18px}
+  .tb-funds{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--chip);border-radius:11px;padding:8px 15px;white-space:nowrap}
+  .tb-funds__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .tb-funds__v{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:.03em;color:var(--ink)}
   .tb-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
   .tb-date{display:flex;flex-direction:column;align-items:flex-end;line-height:1.12}
   .tb-date__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
@@ -143,6 +146,23 @@
   .cand__stat{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--muted);background:var(--chip);border-radius:6px;padding:4px 8px}
   .cand__stat b{color:var(--ink)}
   .cand__cost{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo)}
+  /* NEGOTIATE modal: reuses .atarget rows; adds the Start-New button + a back link. */
+  .negnew{width:100%;text-align:center;background:#fff;border:1px dashed var(--line2,#D9D6D0);border-radius:11px;padding:13px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo)}
+  .negnew:hover{border-color:var(--indigo)}
+  .negback{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);cursor:pointer;background:none;border:none;padding:0 0 2px}
+  .negback:hover{color:var(--indigo)}
+  /* Pending coalition-invite banners (Home). */
+  #inviteBanners:empty{display:none}
+  #inviteBanners{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+  .invite{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:13px;padding:13px 16px}
+  .invite__t{font-size:13.5px;color:var(--ink);line-height:1.4}
+  .invite__a{display:flex;gap:8px;flex:none}
+  .invite__dec,.invite__go{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;border-radius:9px;cursor:pointer;border:1px solid var(--line)}
+  .invite__dec{background:#fff;color:var(--muted)}
+  .invite__dec:hover{color:var(--red);border-color:var(--red)}
+  .invite__go{background:var(--indigo);border-color:var(--indigo);color:#fff}
+  .invite__go:hover{filter:brightness(1.06)}
+  a.invite{text-decoration:none;margin-bottom:14px}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
   .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
@@ -178,7 +198,7 @@
       <a class="nav__i active" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
       <a class="nav__i" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
       <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
@@ -196,6 +216,7 @@
   <main class="main">
     <div class="topbar">
       <a class="tb-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener" aria-label="Join our Discord"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg></a>
+      <span class="tb-funds" id="tbFunds" hidden><span class="tb-funds__l">Funds</span><span class="tb-funds__v" id="tbFundsV">—</span></span>
       <span class="tb-actions" id="tbActions">Party Actions: 3 Available</span>
       <span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v" id="tbDate">January, 1980</span></span>
       <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
@@ -219,17 +240,20 @@
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
 
+    <div id="formBanner"></div>
+    <div id="inviteBanners"></div>
+
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: ₣25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
-        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: ₣25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
-        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×₣15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: ₣25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: ₣100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
-        <button class="lead" id="act-platform" type="button" title="Roll 1d6 + Resolve, ÷3, added to your popularity ceiling. Costs −0.2% popularity. Cost: ₣25K + 1 action."><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span><span class="lead__desc">Raises your popularity ceiling.</span></button>
-        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive (₣25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, quality set by your 1d6 + Charisma roll) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
-        <button class="lead" type="button" disabled><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span></button>
+        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10, added to popularity (capped at your ceiling). Cost: $25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
+        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6, added to your popularity floor (capped at your ceiling). Cost: $25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
+        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
+        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
+        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: $100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-platform" type="button" title="Roll 1d6 + Resolve, ÷3, added to your popularity ceiling. Costs −0.2% popularity. Cost: $25K + 1 action."><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span><span class="lead__desc">Raises your popularity ceiling.</span></button>
+        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, quality set by your 1d6 + Charisma roll) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
+        <button class="lead" id="act-negotiate" type="button" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
       </div>
     </section>
 
@@ -267,10 +291,19 @@
   </div>
 </div>
 
+<div class="amodal" id="negotiateModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b id="negTitle">Coalition Talks</b><button class="amodal__x" id="negClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="negList"></div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, fmtFunds } from '/util.js';
+  import { fetchNegotiations, pendingInvites, activeTalks, termCounts, openNegotiation, respondInvite } from '/negotiations.js';
+  import { formationState } from '/formation.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -305,8 +338,8 @@
     }
     if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
     if (eco.unemployment != null) chips.push(chip('Unemployment', val(eco.unemployment + '%')));
-    if (eco.budget != null) chips.push(chip('Budget', val('₣' + eco.budget + 'B')));
-    if (eco.debt != null) chips.push(chip('Debt', val('₣' + eco.debt + 'B')));
+    if (eco.budget != null) chips.push(chip('Budget', val('$' + eco.budget + 'B')));
+    if (eco.debt != null) chips.push(chip('Debt', val('$' + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }
   // The shared nation feed: party-founding events (derived from each party, one
@@ -319,10 +352,13 @@
       const { data: parties } = await supabase.from('parties').select('name, archetype, created_at').eq('nation_id', nationId);
       const { data: evs } = await supabase.from('events').select('body, game_date, created_at').eq('nation_id', nationId);
       var nm = (nation && nation.name) || '';
+      var ruling = nation && nation.ruling_party; // one-party state → factions, not parties
       var items = [];
       (parties || []).forEach(function (p) {
         items.push({ created: p.created_at, when: gameDate,
-          body: 'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. It is a ' + esc(p.archetype) + ' party.' });
+          body: ruling
+            ? 'The <b>' + esc(p.name) + '</b> formed as a ' + esc(p.archetype) + ' faction of <b>' + esc(ruling) + '</b> in <b>' + esc(nm) + '</b>.'
+            : 'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. It is a ' + esc(p.archetype) + ' party.' });
       });
       (evs || []).forEach(function (e) {
         items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) });
@@ -382,7 +418,7 @@
   }
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
-  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +₣' + (d.funds_gain / 1000) + 'K.'; });
+  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
   wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.image_gain ? ', Image +1' : '') + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
   wireAction(document.getElementById('act-platform'), 'party_platform', function (d) { return 'Platform set — ceiling +' + d.delta + '%' + (d.pop_penalty > 0 ? ' (−' + d.pop_penalty + '% popularity)' : '') + '.'; });
 
@@ -423,7 +459,7 @@
     });
   }
 
-  // RECRUIT is two-step: opening the drive (party_recruit_scout) charges ₣25K and
+  // RECRUIT is two-step: opening the drive (party_recruit_scout) charges $25K and
   // surfaces two candidates; hiring one (party_recruit_hire) spends the action
   // cost. Scouting is a side-effecting "picker" like Attack, so it opens the modal
   // itself; the hire goes through performAction to refresh the budget + feed.
@@ -471,6 +507,130 @@
     });
   }
 
+  // NEGOTIATE opens coalition talks (server-backed — see /negotiations.js): a
+  // modal listing the player's active talks plus a Start-New flow that picks a
+  // party and opens the negotiation page. Starting talks costs 1 action (charged
+  // server-side by coalition_open), so the button itself stays out of the AP
+  // lock — viewing existing talks is free.
+  var negotiateBtn = document.getElementById('act-negotiate');
+  var negotiateModal = document.getElementById('negotiateModal');
+  var negPool = [];   // other parties in the nation, cached when the modal opens
+  var negStarting = false; // double-fire lock for the (action-costing) open call
+  if (negotiateBtn) negotiateBtn.addEventListener('click', openNegotiateModal);
+  wireModalClose(negotiateModal, 'negClose');
+
+  async function openNegotiateModal() {
+    if (!feedCtx || !myPartyId) return;
+    var list = document.getElementById('negList');
+    list.innerHTML = '<p class="empty">Loading…</p>';
+    negotiateModal.hidden = false;
+    try {
+      const others = await supabase.from('parties')
+        .select('id, name, abbreviation, seats, popularity, archetype')
+        .eq('nation_id', feedCtx.nationId).neq('id', myPartyId).order('seats', { ascending: false });
+      negPool = others.data || [];
+      var all = await fetchNegotiations();
+      renderNegList(activeTalks(all, myPartyId));
+    } catch (e) { list.innerHTML = '<p class="empty">Couldn’t open coalition talks.</p>'; }
+  }
+  function negPartyName(id) { var p = negPool.filter(function (x) { return x.id === id; })[0]; return p ? p.name : 'A party'; }
+  // The other parties involved in a talk, from the player's vantage: if hosting,
+  // the invited parties; if invited, the host.
+  function talkOthers(n) {
+    return n.host_party_id === myPartyId
+      ? (n.negotiation_parties || []).map(function (p) { return p.party_id; })
+      : [n.host_party_id];
+  }
+
+  function renderNegList(negs) {
+    document.getElementById('negTitle').textContent = 'Coalition Talks';
+    var list = document.getElementById('negList');
+    var canStart = partyActions >= 1;
+    var html = negs.length ? negs.map(function (n) {
+      var c = termCounts(n);
+      var label = talkOthers(n).map(negPartyName).join(' + ') || 'Talks';
+      var role = (n.host_party_id === myPartyId ? 'Hosting' : 'Invited') + (n.status === 'committed' ? ' · Committed' : '');
+      return '<button class="atarget" type="button" data-id="' + esc(n.id) + '">' +
+        '<span class="atarget__id"><b>' + esc(label) + '</b><span>' + role + '</span></span>' +
+        '<span class="atarget__st">' + (n.status === 'committed' ? '✓ committed' : c.agreed + '/' + c.total + ' agreed') + '</span></button>';
+    }).join('') : '<p class="empty">No coalition talks yet. Start one to bring a party to the table.</p>';
+    html += '<button class="negnew' + (canStart ? '' : ' dis') + '" id="negNewBtn" type="button">+ Start New Negotiation (1 action)</button>';
+    list.innerHTML = html;
+    list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(b.dataset.id); }); });
+    document.getElementById('negNewBtn').addEventListener('click', function () { if (canStart) renderNegPicker(); else ping('No actions left this turn.'); });
+  }
+
+  function renderNegPicker() {
+    document.getElementById('negTitle').textContent = 'Bring a Party to the Table';
+    var list = document.getElementById('negList');
+    var html = '<button class="negback" id="negBack" type="button">&lsaquo; Back</button>';
+    html += negPool.length ? negPool.map(function (p) {
+      return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
+        '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
+        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% &middot; ' + esc(p.archetype) + '</span></button>';
+    }).join('') : '<p class="empty">No other parties in the nation to negotiate with yet.</p>';
+    list.innerHTML = html;
+    document.getElementById('negBack').addEventListener('click', function () { openNegotiateModal(); });
+    list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { startNegotiation(b.dataset.id); }); });
+  }
+  async function startNegotiation(targetId) {
+    if (negStarting) return; // opening costs an action — never let a double-click charge twice
+    negStarting = true;
+    try {
+      var res = await openNegotiation(targetId);
+      window.location.href = '/play/negotiate/?id=' + encodeURIComponent(res.id);
+    } catch (e) { negStarting = false; ping(e.message || 'Couldn’t open talks.'); }
+  }
+
+  // If the player is a formateur with an open formation window, nudge them to the
+  // Government page where the decision lives (the election fires on the clock, so
+  // they could be anywhere when it lands). Shares formationState with that page.
+  async function renderFormation() {
+    if (!myPartyId || !feedCtx) return;
+    var box = document.getElementById('formBanner');
+    try {
+      var fs = await formationState({ id: myPartyId, nation_id: feedCtx.nationId });
+      var msg = fs.canRenege
+        ? '🏛 <b>Your government has formed.</b> Keep your agreed coalition or form a new one — this turn only.'
+        : fs.postRenege
+        ? '🏛 <b>You’re governing alone.</b> Finish forming a new coalition before the turn ends.'
+        : '';
+      box.innerHTML = msg
+        ? '<a class="invite" href="/play/government/"><span class="invite__t">' + msg +
+          '</span><span class="invite__a"><span class="invite__go">Go to Government ▸</span></span></a>'
+        : '';
+    } catch (e) { box.innerHTML = ''; }
+  }
+
+  // Pending coalition invites surface as banners on Home: Decline, or Enter Talks
+  // (which accepts and opens the negotiation page).
+  async function renderInvites() {
+    if (!myPartyId) return;
+    var box = document.getElementById('inviteBanners');
+    try {
+      var invites = pendingInvites(await fetchNegotiations(), myPartyId);
+      if (!invites.length) { box.innerHTML = ''; return; }
+      const hp = await supabase.from('parties').select('id, name').in('id', invites.map(function (n) { return n.host_party_id; }));
+      var names = {}; (hp.data || []).forEach(function (p) { names[p.id] = p.name; });
+      box.innerHTML = invites.map(function (n) {
+        return '<div class="invite" data-id="' + esc(n.id) + '"><span class="invite__t">You have been invited to discuss a potential coalition with <b>' + esc(names[n.host_party_id] || 'another party') + '</b>.</span>' +
+          '<span class="invite__a"><button class="invite__dec" type="button">Decline</button><button class="invite__go" type="button">Enter Talks</button></span></div>';
+      }).join('');
+      box.querySelectorAll('.invite').forEach(function (el) {
+        var id = el.dataset.id;
+        el.querySelector('.invite__go').addEventListener('click', function () { enterInvite(id, true); });
+        el.querySelector('.invite__dec').addEventListener('click', function () { enterInvite(id, false); });
+      });
+    } catch (e) { box.innerHTML = ''; }
+  }
+  async function enterInvite(negId, accept) {
+    try {
+      await respondInvite(negId, accept);
+      if (accept) { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(negId); return; }
+      renderInvites();
+    } catch (e) { ping(e.message || 'Couldn’t respond to the invite.'); }
+  }
+
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
@@ -485,8 +645,13 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
+
+      // Party funds in the topbar, just right of the Discord logo.
+      var currency = (nation && nation.economy && nation.economy.currency) || '$';
+      document.getElementById('tbFundsV').textContent = currency + fmtFunds(party.funds);
+      document.getElementById('tbFunds').hidden = false;
 
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
@@ -501,6 +666,8 @@
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
       await loadFeed(party.nation_id, nation, gameDate);
+      renderInvites();   // surface any pending coalition invites (non-blocking)
+      renderFormation(); // nudge a formateur to the Government page if the window is open
 
       if (nation && nation.flag) {
         flag.onload = function () { flag.hidden = false; };

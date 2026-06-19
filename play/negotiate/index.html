@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Negotiate · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
+    --acc:#5546E8;--acc-soft:#ECE9FD;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .nav__i.active svg{color:var(--indigo)}
+  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
+  .me b{color:var(--ink);font-weight:700}
+  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
+  .logout:hover{color:var(--red)}
+  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  .main{flex:1;padding:24px clamp(16px,3vw,38px) 56px;min-width:0;max-width:1140px}
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:14px}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:13.5px;margin-top:5px;max-width:620px}
+
+  /* tabs */
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  .tab{display:flex;align-items:center;gap:9px;padding:10px 14px;border:1.5px solid var(--line);border-radius:11px;cursor:pointer;background:#fff;transition:border-color .15s}
+  .tab:hover{border-color:var(--ink)}
+  .tab.on{border-color:var(--tc);background:#fff;box-shadow:inset 0 -3px 0 var(--tc)}
+  .tab .td{width:9px;height:9px;border-radius:50%;background:var(--tc);flex:none}
+  .tab b{font-weight:800;font-size:13.5px;letter-spacing:-.01em}
+  .tab .ts{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);font-weight:700}
+  .tab .st{width:8px;height:8px;border-radius:50%;flex:none}
+  .st.ok{background:var(--green)} .st.wait{background:var(--amber)}
+  .invwrap{position:relative}
+  .invbtn{padding:10px 14px;border:1.5px dashed var(--line2);border-radius:11px;cursor:pointer;background:#fff;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink)}
+  .invbtn:hover{border-color:var(--ink)}
+  .invbtn.dis{opacity:.45;cursor:not-allowed}
+  .invmenu{position:absolute;top:46px;left:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 50px -16px rgba(0,0,0,.32);padding:6px;min-width:230px;display:none}
+  .invmenu.open{display:block}
+  .invmenu .io{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:8px;cursor:pointer}
+  .invmenu .io:hover{background:var(--chip)}
+  .invmenu .io .td{width:9px;height:9px;border-radius:50%;flex:none}
+  .invmenu .io b{font-weight:700;font-size:13px;flex:1}
+  .invmenu .io span{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .invmenu .none{padding:10px 11px;font-size:12px;color:var(--soft);font-style:italic}
+
+  .grid{display:grid;grid-template-columns:1fr 318px;gap:18px;margin-top:16px;align-items:start}
+  @media(max-width:980px){.grid{grid-template-columns:1fr}}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--acc);border-radius:16px;padding:20px 22px}
+  .phd{display:flex;align-items:center;gap:13px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px}
+  .pemb{width:46px;height:46px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--acc-soft);color:var(--acc);font-family:'Space Mono',monospace;font-weight:700;font-size:15px}
+  .phd .pi{flex:1;min-width:160px}
+  .phd .pi b{font-weight:800;font-size:18px;letter-spacing:-.01em;display:block}
+  .phd .pi span{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.03em;color:var(--soft)}
+  .pstat{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:6px 11px;border-radius:20px}
+  .pstat.ok{color:var(--green);background:var(--green-soft)} .pstat.wait{color:var(--amber);background:var(--amber-soft)}
+  .premove{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);cursor:pointer;border:1px solid var(--line2);background:#fff;border-radius:8px;padding:7px 10px}
+  .premove:hover{color:var(--red);border-color:var(--red)}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.cols{grid-template-columns:1fr}}
+  .colhd{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:11px;display:flex;align-items:center;gap:7px}
+  .colhd .dot{width:7px;height:7px;border-radius:50%}
+  .colhd.off .dot{background:var(--green)} .colhd.req .dot{background:var(--indigo)}
+
+  .term{border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:11px;padding:12px;margin-bottom:10px;background:var(--field)}
+  .term.agreed{border-left-color:var(--green)}
+  .term.redline{border-style:dashed;border-color:#e6b3af;border-left:3px solid var(--red);background:#fdf6f5}
+  .trow1{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .trow1 .tt{flex:1;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:8px 9px;font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:600;color:var(--ink)}
+  .rltag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--red);background:var(--red-soft);padding:4px 7px;border-radius:6px}
+  .xb{width:26px;height:26px;flex:none;border:1px solid var(--line2);background:#fff;border-radius:7px;color:var(--soft);cursor:pointer;font-size:14px;line-height:1}
+  .xb:hover{color:var(--red);border-color:var(--red)}
+  .fields{display:flex;flex-direction:column;gap:7px;margin-bottom:9px}
+  .fields .f,.fields select{width:100%;background:#fff;border:1px solid var(--line2);border-radius:8px;padding:8px 9px;font-family:'Archivo',sans-serif;font-size:12.5px;color:var(--ink)}
+  .fields .f:focus,.fields select:focus{outline:none;border-color:var(--ink)}
+  .tsum{font-size:12px;color:var(--muted);font-style:italic;margin-bottom:11px;line-height:1.4;padding-left:2px}
+  .trow2{display:flex;align-items:center;gap:8px}
+  .seg{display:inline-flex;background:var(--chip);border-radius:8px;padding:3px;gap:3px}
+  .seg span{padding:6px 11px;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .seg.st span[data-s="agreed"].on{background:#fff;color:var(--green);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .seg.st span[data-s="no"].on{background:#fff;color:var(--muted);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .rlflag{margin-left:auto;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:7px 9px;border-radius:7px;border:1px solid var(--line2);background:#fff;color:var(--soft);cursor:pointer}
+  .rlflag.on{background:var(--red-soft);border-color:var(--red);color:var(--red)}
+  .addt{display:flex;gap:7px;margin-top:4px}
+  .addt button{flex:1;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:9px;cursor:pointer}
+  .addt button:hover{border-color:var(--ink);background:var(--field)}
+  .addt button.rl{color:var(--red);border-color:#e6b3af}
+  .addt button.rl:hover{border-color:var(--red)}
+
+  .empty{text-align:center;padding:48px 20px;color:var(--soft)}
+  .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
+  .empty a{color:var(--indigo);text-decoration:none;font-weight:700}
+
+  /* rail */
+  .rail{position:sticky;top:20px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+  .rail h3{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  .seatbar{position:relative;height:30px;border-radius:9px;background:var(--chip);overflow:hidden;margin-bottom:8px}
+  .seatfill{height:100%;width:0;transition:width .3s,background .3s}
+  .majmark{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink)}
+  .majmark::after{content:attr(data-maj);position:absolute;top:-14px;left:4px;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.04em;color:var(--ink);white-space:nowrap}
+  .seatline{font-family:'Space Mono',monospace;font-size:12px;color:var(--ink);font-weight:700;margin-bottom:3px}
+  .seatline span{font-weight:400;color:var(--soft)}
+  .seatsub{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;margin-bottom:16px}
+  .seatsub.ok{color:var(--green)} .seatsub.no{color:var(--amber)}
+  .crow{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .crow .cd{width:10px;height:10px;border-radius:50%;flex:none}
+  .crow .cn{flex:1;min-width:0;font-size:13px;font-weight:700}
+  .crow .cn small{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;color:var(--soft);font-weight:400;text-transform:uppercase}
+  .crow .csd{width:8px;height:8px;border-radius:50%}
+  .crow .cseat{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);font-weight:700}
+  .crow.anchor{opacity:1}
+  .crow .cx{font-size:13px;color:var(--soft);cursor:pointer;line-height:1}
+  .crow .cx:hover{color:var(--red)}
+  .progress{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin:14px 0 4px}
+  .progress b{color:var(--ink)}
+  .formbtn{width:100%;margin-top:12px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:15px;border-radius:12px;cursor:pointer;color:#fff;background:var(--green);border:1.5px solid var(--green);transition:transform .12s,filter .15s}
+  .formbtn:hover{transform:translateY(-1px);filter:brightness(1.05)}
+  .formbtn.dis{background:#D9D6D0;border-color:#D9D6D0;cursor:not-allowed;transform:none;filter:none}
+  .formnote{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);text-align:center;margin-top:9px;line-height:1.5}
+  .formnote.bad{color:var(--red)}
+  .committed{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--green);background:var(--green-soft);border:1px solid var(--green);border-radius:11px;padding:13px;text-align:center;margin-top:12px}
+  /* two-sided agreement: my toggle (.seg) + the other side's read-only stance */
+  .oside{margin-left:8px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:6px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--soft);background:#fff;white-space:nowrap}
+  .oside.ok{color:var(--green);border-color:var(--green);background:var(--green-soft)}
+  .term .f:disabled,.term .tt:disabled{background:var(--chip);color:var(--muted);cursor:default;opacity:1}
+  .tabstat{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--soft)}
+  .respond{display:flex;gap:8px;margin:0 0 16px}
+  .respond button{flex:1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:11px;border-radius:10px;cursor:pointer;border:1.5px solid var(--line2);background:#fff;color:var(--ink)}
+  .respond .acc{background:var(--green);border-color:var(--green);color:#fff}
+  .respond .dec:hover{border-color:var(--red);color:var(--red)}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast b{color:#74e0a6} .toast b.bad{color:#ff9b9b}
+
+  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <img class="brand__flag" id="flag" alt="Nation flag" hidden>
+      <div class="brand__txt"><b id="sname">…</b><span id="psub"></span></div>
+    </div>
+    <nav class="nav">
+      <a class="nav__i" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
+      <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
+    </nav>
+    <div class="side__foot">
+      <div class="me"><span class="me__dot"></span><span class="label">Leader · <b>You</b></span></div>
+      <button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <span class="back" id="back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Back to Home</span>
+    <div class="phead">
+      <span class="eye">Negotiate · Coalition Talks</span>
+      <h1>Build a Coalition</h1>
+      <p>Invite parties to the table and trade promises. Each term must be marked <b>Agreed</b> by both sides — and once every term is settled, you can form the government.</p>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="grid">
+      <div id="panel"></div>
+      <aside><div class="rail" id="rail"></div></aside>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+  import { esc, majority } from '/util.js';
+  import { archetypeColor } from '/archetypes.js';
+  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement } from '/negotiations.js';
+  import { TERM_LABELS, summarizeTerm } from '/terms.js';
+
+  document.getElementById('logout').addEventListener('click', logout);
+  document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
+    i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
+  });
+
+  // ---- coalition term catalogue (game content, intentionally static) ----
+  var MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy'];
+  var NATIONS = [];  // filled from the DB at boot (mutated in place — TYPES holds this reference)
+
+  // Field/editing config per term type; the labels + one-line summary come from
+  // the shared /terms.js (same source the government agenda renders from).
+  var TYPES = {
+    legislation:{fields:[{k:'text',kind:'text',ph:'Describe the bill — e.g. the National Industry Act'}]},
+    ministry:{fields:[{k:'ministry',kind:'select',opts:MINISTRIES}]},
+    policy:{fields:[{k:'text',kind:'text',ph:'Which policies you’ll back'}]},
+    treaty:{fields:[{k:'act',kind:'select',opts:['Sign','Cancel']},{k:'nation',kind:'select',opts:NATIONS},{k:'text',kind:'text',ph:'Agreement name (optional)'}]},
+    threshold:{fields:[{k:'pct',kind:'select',opts:['0%','3%','5%','8%','10%','15%']}]},
+    regime:{fields:[{k:'dir',kind:'select',opts:['Increase','Decrease']},{k:'by',kind:'stepper',min:1,max:19}]}
+  };
+  function defaults(type){var p={};TYPES[type].fields.forEach(function(f){p[f.k]=f.kind==='select'?f.opts[0]:f.kind==='stepper'?f.min:'';});return p;}
+
+  // ---- state ----
+  var myParty=null, HOST=null, POOL={}, CHAMBER=280, MAJORITY=141, MAXINV=5;
+  var neg=null, amHost=false, myStatus=null, active=null, data={}, locked=false;
+  var negId=new URLSearchParams(location.search).get('id');
+
+  function popOf(p){return Number(p.popularity)||0;}
+  function colorOf(p){return archetypeColor(p.archetype);}
+  function opt(list,val){return list.map(function(o){return '<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>';}).join('');}
+  function typeSelect(sel,dis){return '<select class="tt"'+(dis?' disabled':'')+'>'+Object.keys(TYPES).map(function(k){return '<option value="'+k+'"'+(k===sel?' selected':'')+'>'+esc(TERM_LABELS[k])+'</option>';}).join('')+'</select>';}
+
+  // Which counterparties get a tab/panel: the host sees every invited party; an
+  // invited player sees only their own bilateral deal with the host.
+  function counterIds(){ return amHost ? (neg.negotiation_parties||[]).map(function(p){return p.party_id;}) : [myParty.id]; }
+  function partyStatus(pid){ if(!amHost) return myStatus; var r=(neg.negotiation_parties||[]).filter(function(p){return p.party_id===pid;})[0]; return r?r.status:null; }
+  function acceptedIds(){ return counterIds().filter(function(pid){return partyStatus(pid)==='accepted';}); }
+  function stWord(s){ return s==='accepted'?'Accepted':s==='declined'?'Declined':'Pending'; }
+  function termsFor(pid,side){ return (data[pid] && data[pid][side]) || []; }
+  function allTermsOf(pid){ return termsFor(pid,'offering').concat(termsFor(pid,'requesting')); }
+  function partyReady(pid){ var t=allTermsOf(pid); return t.length>0 && t.every(function(x){return x.host_agreed && x.party_agreed;}); }
+  function seatTotal(){ var s=HOST?HOST.seats:0; acceptedIds().forEach(function(pid){ if(POOL[pid]) s+=POOL[pid].seats; }); return s; }
+  function redlineUnmet(){ var bad=null; (neg.negotiation_terms||[]).forEach(function(t){ if(t.redline && !(t.host_agreed&&t.party_agreed) && !bad){ var p=POOL[t.party_id]; bad=p?p.name:'a party'; } }); return bad; }
+  function invitablePool(){ var taken={}; taken[neg.host_party_id]=1; counterIds().forEach(function(id){taken[id]=1;}); return Object.keys(POOL).map(function(id){return POOL[id];}).filter(function(p){return !taken[p.id];}); }
+
+  // Rebuild the per-party offering/requesting buckets from the flat term rows.
+  function rebuild(){
+    data={};
+    counterIds().forEach(function(pid){ data[pid]={offering:[],requesting:[]}; });
+    // Stable display order — PostgREST doesn't guarantee nested-row order, so the
+    // cards would otherwise shuffle on each reload.
+    var terms=(neg.negotiation_terms||[]).slice().sort(function(a,b){ return (a.created_at||'')<(b.created_at||'')?-1:1; });
+    terms.forEach(function(t){ if(data[t.party_id] && data[t.party_id][t.side]) data[t.party_id][t.side].push(t); });
+  }
+
+  function err(e){ ping('<b class="bad">'+esc((e&&e.message)||'Something went wrong.')+'</b>'); }
+
+  /* ---------- tabs ---------- */
+  function renderTabs(){
+    var box=document.getElementById('tabs'); box.innerHTML='';
+    if(!amHost){
+      var chip=document.createElement('div'); chip.className='tab on'; chip.style.setProperty('--tc',HOST?HOST.color:'#5546E8');
+      chip.innerHTML='<span class="td"></span><b>Talks with '+esc(HOST?HOST.name:'the host')+'</b>';
+      box.appendChild(chip); return;
+    }
+    counterIds().forEach(function(pid){
+      var p=POOL[pid]||{name:'A party',seats:0}, on=pid===active, rdy=partyReady(pid);
+      var el=document.createElement('div'); el.className='tab'+(on?' on':''); el.style.setProperty('--tc',colorOf(p));
+      el.innerHTML='<span class="td"></span><b>'+esc(p.name)+'</b><span class="ts">'+(p.seats||0)+'</span><span class="st '+(rdy?'ok':'wait')+'"></span><span class="tabstat">'+stWord(partyStatus(pid))+'</span>';
+      el.onclick=function(){active=pid;render();};
+      box.appendChild(el);
+    });
+    if(locked) return; // a committed agreement can't invite more parties
+    var iw=document.createElement('div'); iw.className='invwrap';
+    var full=counterIds().length>=MAXINV || invitablePool().length===0;
+    iw.innerHTML='<button class="invbtn'+(full?' dis':'')+'" id="invbtn">+ Invite party (1 action)</button><div class="invmenu" id="invmenu"></div>';
+    box.appendChild(iw);
+    if(!full){
+      var menu=iw.querySelector('#invmenu');
+      menu.innerHTML=invitablePool().map(function(p){return '<div class="io" data-id="'+esc(p.id)+'"><span class="td" style="background:'+colorOf(p)+'"></span><b>'+esc(p.name)+'</b><span>'+(p.seats||0)+' seats · '+popOf(p)+'% · '+esc(p.archetype)+'</span></div>';}).join('');
+      iw.querySelector('#invbtn').onclick=function(e){e.stopPropagation();menu.classList.toggle('open');};
+      menu.querySelectorAll('.io').forEach(function(o){o.onclick=function(){ inviteParty(neg.id,o.dataset.id).then(function(r){ active=o.dataset.id; ping('<b>Invitation sent.</b>'+(r&&r.actions!=null?' '+r.actions+' action'+(r.actions===1?'':'s')+' left.':'')); return reload(); }).catch(err); };});
+    }
+  }
+  document.addEventListener('click',function(){var m=document.getElementById('invmenu');if(m)m.classList.remove('open');});
+
+  /* ---------- a single term card ---------- */
+  function readParams(card,type){ var p={}; TYPES[type].fields.forEach(function(f){ var el=card.querySelector('.f[data-k="'+f.k+'"]'); if(!el)return; p[f.k]= el.type==='number'? +el.value : el.value; }); return p; }
+
+  function buildTerm(pid,side,term){
+    var def=TYPES[term.type]||TYPES.legislation;
+    var both=term.host_agreed&&term.party_agreed;
+    var editable=amHost&&!locked; // host can edit term substance only while talks are open
+    var card=document.createElement('div'); card.className='term'+(both?' agreed':'')+(term.redline?' redline':'');
+    var dis=editable?'':' disabled';
+    var fieldsHtml=def.fields.map(function(f){
+      if(f.kind==='select') return '<select class="f" data-k="'+f.k+'"'+dis+'>'+opt(f.opts,term.params[f.k])+'</select>';
+      if(f.kind==='stepper') return '<input class="f" type="number" data-k="'+f.k+'" min="'+f.min+'" max="'+f.max+'" value="'+(term.params[f.k]||f.min)+'"'+dis+'>';
+      return '<input class="f" type="text" data-k="'+f.k+'" placeholder="'+esc(f.ph||'')+'" value="'+esc(String(term.params[f.k]||'')).replace(/"/g,'&quot;')+'"'+dis+'>';
+    }).join('');
+    var myAgreed=amHost?term.host_agreed:term.party_agreed;
+    var otherAgreed=amHost?term.party_agreed:term.host_agreed;
+    var otherWho=amHost?((POOL[term.party_id]&&POOL[term.party_id].name)||'They'):(HOST?HOST.name:'Host');
+    card.innerHTML='<div class="trow1">'+typeSelect(term.type,!editable)+(term.redline?'<span class="rltag">Redline</span>':'')+(editable?'<button class="xb" title="Remove term">×</button>':'')+'</div>'+
+      '<div class="fields">'+fieldsHtml+'</div>'+
+      '<div class="tsum">'+esc(summarizeTerm(term.type,term.params))+'</div>'+
+      '<div class="trow2"><div class="seg st"><span class="'+(!myAgreed?'on':'')+'" data-s="no">No agreement</span><span class="'+(myAgreed?'on':'')+'" data-s="agreed">Agreed</span></div>'+
+      '<span class="oside'+(otherAgreed?' ok':'')+'">'+esc(otherWho)+': '+(otherAgreed?'agreed':'pending')+'</span>'+
+      (editable?'<button class="rlflag'+(term.redline?' on':'')+'" title="Mark redline">⚑</button>':'')+'</div>';
+    if(editable){
+      card.querySelector('.tt').onchange=function(e){ var nt=e.target.value; updateTerm(term.id,nt,defaults(nt),term.redline).then(reload).catch(err); };
+      card.querySelectorAll('.f').forEach(function(inp){
+        inp.oninput=function(){ card.querySelector('.tsum').textContent=summarizeTerm(term.type,readParams(card,term.type)); };
+        inp.onchange=function(){ updateTerm(term.id,term.type,readParams(card,term.type),term.redline).then(reload).catch(err); };
+      });
+      var xb=card.querySelector('.xb'); if(xb) xb.onclick=function(){ removeTerm(term.id).then(reload).catch(err); };
+      var rl=card.querySelector('.rlflag'); if(rl) rl.onclick=function(){ updateTerm(term.id,term.type,term.params,!term.redline).then(reload).catch(err); };
+    }
+    if(!locked) card.querySelectorAll('.seg.st span').forEach(function(s){ s.onclick=function(){ var ag=s.dataset.s==='agreed'; if(ag===myAgreed) return; setAgree(term.id,ag).then(reload).catch(err); }; });
+    return card;
+  }
+
+  function buildColumn(pid,side,label,cls){
+    var wrap=document.createElement('div');
+    var hd=document.createElement('div'); hd.className='colhd '+cls; hd.innerHTML='<span class="dot"></span>'+label;
+    wrap.appendChild(hd);
+    termsFor(pid,side).forEach(function(t){wrap.appendChild(buildTerm(pid,side,t));});
+    if(amHost && !locked){
+      var add=document.createElement('div'); add.className='addt';
+      add.innerHTML='<button class="t">+ Add term</button><button class="rl">+ Redline</button>';
+      add.querySelector('.t').onclick=function(){ addTerm(neg.id,pid,side).then(reload).catch(err); };
+      add.querySelector('.rl').onclick=function(){ addTerm(neg.id,pid,side).then(function(id){ return updateTerm(id,'legislation',{},true); }).then(reload).catch(err); };
+      wrap.appendChild(add);
+    } else if(!termsFor(pid,side).length){
+      var e=document.createElement('div'); e.className='tsum'; e.textContent='Nothing here yet.'; wrap.appendChild(e);
+    }
+    return wrap;
+  }
+
+  /* ---------- panel ---------- */
+  function renderPanel(){
+    var box=document.getElementById('panel'); box.innerHTML='';
+    if(!active){
+      var e=document.createElement('div'); e.className='panel';
+      e.innerHTML='<div class="empty"><b>No parties at the table</b><span>'+(amHost?'Use “Invite party” above to bring someone into the talks.':'Waiting on the host.')+'</span></div>';
+      box.appendChild(e); return;
+    }
+    // The party shown in the header: for the host it's the invited counterparty;
+    // for an invited player it's the host they're dealing with.
+    var headParty = amHost ? POOL[active] : HOST;
+    var accent = (headParty && colorOf(headParty)) || '#5546E8';
+    document.documentElement.style.setProperty('--acc',accent);
+    document.documentElement.style.setProperty('--acc-soft','color-mix(in srgb, '+accent+' 14%, #fff)');
+    var panel=document.createElement('div'); panel.className='panel';
+    var hp=headParty||{name:'A party',abbr:'?',archetype:'',seats:0};
+    var phd=document.createElement('div'); phd.className='phd';
+    var statusPill = amHost
+      ? '<span class="pstat '+(partyStatus(active)==='accepted'?'ok':'wait')+'">'+stWord(partyStatus(active))+'</span>'
+      : '<span class="pstat '+(partyReady(active)?'ok':'wait')+'">'+(partyReady(active)?'All terms agreed':'Negotiating')+'</span>';
+    phd.innerHTML='<span class="pemb">'+esc(hp.abbr||'?')+'</span><div class="pi"><b>'+esc(hp.name)+'</b><span>'+esc(hp.archetype||'')+' &nbsp;·&nbsp; '+(hp.seats||0)+' seats &nbsp;·&nbsp; '+popOf(hp)+'% support</span></div>'+
+      statusPill + (amHost && !locked?'<button class="premove">Remove</button>':'');
+    if(amHost && !locked){ phd.querySelector('.premove').onclick=function(){ removeParty(neg.id,active).then(function(){ active=null; return reload(); }).catch(err); }; }
+    panel.appendChild(phd);
+
+    // An invited player still pending sees Accept / Decline here.
+    if(!amHost && myStatus==='invited' && !locked){
+      var resp=document.createElement('div'); resp.className='respond';
+      resp.innerHTML='<button class="acc">Enter talks</button><button class="dec">Decline</button>';
+      resp.querySelector('.acc').onclick=function(){ respondInvite(neg.id,true).then(reload).catch(err); };
+      resp.querySelector('.dec').onclick=function(){ respondInvite(neg.id,false).then(function(){ window.location.href='/play/'; }).catch(err); };
+      panel.appendChild(resp);
+    }
+
+    var cols=document.createElement('div'); cols.className='cols';
+    if(amHost){
+      cols.appendChild(buildColumn(active,'offering','Offering — what you give',' off'));
+      cols.appendChild(buildColumn(active,'requesting','Requesting — what you want',' req'));
+    } else {
+      cols.appendChild(buildColumn(active,'offering','You receive — what '+esc(HOST?HOST.name:'the host')+' gives',' off'));
+      cols.appendChild(buildColumn(active,'requesting','You give — what '+esc(HOST?HOST.name:'the host')+' asks',' req'));
+    }
+    panel.appendChild(cols);
+    box.appendChild(panel);
+  }
+
+  /* ---------- rail ---------- */
+  function renderRail(){
+    var box=document.getElementById('rail');
+    if(!amHost){
+      // Invited players see their own bilateral progress, not the full coalition
+      // (they can't see the host's other deals).
+      var mine=allTermsOf(myParty.id), agreed=mine.filter(function(t){return t.party_agreed;}).length;
+      var html='<h3>Your Terms</h3>'+
+        '<div class="crow anchor"><span class="cd" style="background:'+(HOST?HOST.color:'#5546E8')+'"></span><div class="cn">'+esc(HOST?HOST.name:'Host')+'<small>Host</small></div><span class="cseat">'+(HOST?HOST.seats:0)+'</span></div>'+
+        '<div class="crow"><span class="cd" style="background:'+(POOL[myParty.id]?colorOf(POOL[myParty.id]):'#8d8d95')+'"></span><div class="cn">'+esc(POOL[myParty.id]?POOL[myParty.id].name:'You')+'<small>You</small></div><span class="cseat">'+(POOL[myParty.id]?POOL[myParty.id].seats:0)+'</span></div>'+
+        '<div class="progress"><b>'+agreed+'</b> of <b>'+mine.length+'</b> terms you’ve agreed</div>'+
+        (locked
+          ? '<div class="committed">✓ Coalition committed</div><div class="formnote">'+esc(HOST?HOST.name:'The host')+' has formed this agreement. It’s locked.</div>'
+          : '<div class="formnote">The host forms the final coalition once every side has agreed.</div>');
+      box.innerHTML=html; return;
+    }
+    var seats=seatTotal(), pct=CHAMBER?Math.round(seats/CHAMBER*100):0, maj=seats>=MAJORITY;
+    var html='<h3>Coalition</h3>'+
+      '<div class="seatbar"><div class="seatfill" style="width:'+pct+'%;background:'+(maj?'var(--green)':'var(--indigo)')+'"></div><div class="majmark" data-maj="MAJ '+MAJORITY+'" style="left:'+(CHAMBER?MAJORITY/CHAMBER*100:50)+'%"></div></div>'+
+      '<div class="seatline">'+seats+' <span>/ '+CHAMBER+' seats</span></div>'+
+      '<div class="seatsub '+(maj?'ok':'no')+'">'+(maj?'Majority secured · +'+(seats-MAJORITY)+' over the line':(MAJORITY-seats)+' short of a majority')+'</div>';
+    html+='<div class="crow anchor"><span class="cd" style="background:'+(HOST?HOST.color:'#5546E8')+'"></span><div class="cn">'+esc(HOST?HOST.name:'You')+'<small>You · anchor</small></div><span class="cseat">'+(HOST?HOST.seats:0)+'</span></div>';
+    counterIds().forEach(function(pid){
+      var p=POOL[pid]||{name:'A party',seats:0}, st=partyStatus(pid), counted=st==='accepted';
+      html+='<div class="crow"><span class="cd" style="background:'+colorOf(p)+'"></span><div class="cn">'+esc(p.name)+'<small>'+stWord(st)+(p.archetype?' · '+esc(p.archetype):'')+'</small></div>'+
+        '<span class="csd" style="background:'+(counted?'var(--green)':'var(--amber)')+'"></span><span class="cseat"'+(counted?'':' style="color:var(--soft)"')+'>'+(p.seats||0)+'</span>'+(locked?'':'<span class="cx" data-id="'+esc(pid)+'">×</span>')+'</div>';
+    });
+    var c=termCounts(neg), rl=redlineUnmet();
+    html+='<div class="progress"><b>'+c.agreed+'</b> of <b>'+c.total+'</b> terms agreed</div>';
+    if(locked){
+      // Already committed: a saved, locked agreement. Host can reopen to edit.
+      html+='<div class="committed">✓ Coalition committed &amp; saved</div>';
+      html+='<button class="formbtn" id="withdrawBtn" style="background:#fff;color:var(--ink);border-color:var(--line2)">Reopen for editing</button>';
+      html+='<div class="formnote">Saved as a binding agreement — the election resolver will read it. Reopen to make changes.</div>';
+    } else {
+      // Mirror the server's coalition_commit rules so the button never lights up
+      // when it would be rejected: ALL parties accepted, terms agreed, real majority.
+      var allIn=counterIds().length>0 && counterIds().every(function(pid){return partyStatus(pid)==='accepted';});
+      var ok=allIn && c.total>0 && c.agreed===c.total && !rl && maj;
+      html+='<button class="formbtn'+(ok?'':' dis')+'" id="formbtn">Form Coalition Agreement</button>';
+      if(!counterIds().length) html+='<div class="formnote">Invite at least one party to begin.</div>';
+      else if(!acceptedIds().length) html+='<div class="formnote">Waiting for a party to enter talks.</div>';
+      else if(!allIn) html+='<div class="formnote">Every party must accept — or be removed — before forming.</div>';
+      else if(!maj) html+='<div class="formnote bad">Short of a majority — '+(MAJORITY-seats)+' more seat'+((MAJORITY-seats)===1?'':'s')+' needed to form.</div>';
+      else if(rl) html+='<div class="formnote bad">Redline unmet — '+esc(rl)+' will walk unless it’s agreed.</div>';
+      else if(c.total===0) html+='<div class="formnote">Add the coalition terms first.</div>';
+      else if(c.agreed!==c.total) html+='<div class="formnote">'+(c.total-c.agreed)+' term'+((c.total-c.agreed)===1?'':'s')+' still unresolved.</div>';
+      else html+='<div class="formnote">Every term agreed at a majority. Ready to form.</div>';
+    }
+    box.innerHTML=html;
+    box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){ removeParty(neg.id,x.dataset.id).then(function(){ if(active===x.dataset.id) active=null; return reload(); }).catch(err); };});
+    var wb=box.querySelector('#withdrawBtn'), withdrawing=false;
+    if(wb) wb.onclick=function(){ if(withdrawing) return; withdrawing=true; withdrawAgreement(neg.id).then(function(){ ping('Agreement reopened for editing.'); return reload(); }).catch(function(e){ withdrawing=false; err(e); }); };
+    var fb=box.querySelector('#formbtn'), committing=false;
+    if(fb) fb.onclick=function(){
+      if(fb.classList.contains('dis') || committing) return; // gate + double-fire lock (this writes)
+      committing=true;
+      commitAgreement(neg.id).then(function(){ ping('<b>Coalition agreement committed.</b> Saved and locked.'); return reload(); }).catch(function(e){ committing=false; err(e); });
+    };
+  }
+
+  function render(){renderTabs();renderPanel();renderRail();}
+
+  function showMissing(msg){
+    document.getElementById('tabs').innerHTML='';
+    document.getElementById('rail').innerHTML='';
+    document.getElementById('panel').innerHTML='<div class="panel"><div class="empty"><b>'+esc(msg||'This negotiation isn’t here')+'</b><span>It may have been closed. <a href="/play/">Return home</a> and start a new one.</span></div></div>';
+  }
+
+  document.getElementById('back').onclick=function(){window.location.href='/play/';};
+  var toast=document.getElementById('toast'),tt;
+  function ping(h){toast.innerHTML=h;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},5200);}
+
+  // Re-fetch the negotiation and redraw. Called after every mutation.
+  async function reload(){
+    try {
+      neg = await loadNegotiation(negId);
+    } catch (e) { showMissing('Could not load this negotiation right now.'); return; }
+    if(!neg){ showMissing(); return; }
+    amHost = neg.host_party_id === myParty.id;
+    locked = neg.status !== 'active'; // committed/closed → read-only
+    var mine=(neg.negotiation_parties||[]).filter(function(p){return p.party_id===myParty.id;})[0];
+    myStatus = mine?mine.status:null;
+    if(!amHost && !mine){ showMissing('You’re not part of these talks.'); return; }
+    HOST = POOL[neg.host_party_id] || null;
+    rebuild();
+    var ids=counterIds();
+    if(ids.indexOf(active)<0) active=ids[0]||null;
+    render();
+  }
+
+  (async () => {
+    if(!isConfigured){ showMissing('Supabase not configured'); return; }
+    document.getElementById('panel').innerHTML='<div class="panel"><div class="empty">Loading the talks…</div></div>';
+    const user = await requireUser();
+    if(!user) return; // redirected to login
+    if(!negId){ showMissing(); return; }
+    try {
+      const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
+      if(error||!party){ window.location.replace('/nation-select/'); return; }
+      myParty=party;
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
+      var nationName=(nation&&nation.name)||party.nation_id;
+      document.getElementById('sname').textContent=party.name;
+      document.getElementById('psub').textContent=party.archetype+' · '+nationName;
+      document.title='Negotiate · '+party.name;
+      if(nation&&nation.flag){ var f=document.getElementById('flag'); f.onload=function(){f.hidden=false;}; f.src=nation.flag; }
+      CHAMBER=(nation&&nation.legislature_seats)||280;
+      MAJORITY=majority(CHAMBER);
+
+      // Every party in the nation — the display source for the anchor, the tabs,
+      // and the invite menu (one query, keyed by id).
+      const { data: nparties } = await supabase.from('parties')
+        .select('id,name,abbreviation,seats,popularity,archetype').eq('nation_id', party.nation_id);
+      POOL={};
+      (nparties||[]).forEach(function(p){ POOL[p.id]={id:p.id, abbr:(p.abbreviation||p.name.slice(0,2)).toUpperCase(), name:p.name, archetype:p.archetype, seats:p.seats||0, popularity:Number(p.popularity)||0}; });
+
+      // Real other nations for the treaty term (mutate in place — TYPES holds it).
+      try {
+        const { data: ns } = await supabase.from('nations').select('name').neq('id', party.nation_id).order('name');
+        (ns||[]).forEach(function(n){ NATIONS.push(n.name); });
+      } catch(e){ /* leave empty */ }
+      if(!NATIONS.length) NATIONS.push('(no other nations yet)');
+
+      await reload();
+    } catch(e){ showMissing('Could not load this negotiation right now.'); }
+  })();
+</script>
+</body>
+</html>

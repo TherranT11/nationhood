@@ -38,6 +38,24 @@ export function fmtPop(value) {
   return n.toLocaleString() + ' Million';
 }
 
+// Party funds (a raw currency amount) shown compactly: 375000 → "375K",
+// 2_500_000 → "2.5M", 1_200_000_000 → "1.2B". Display only — prefix the nation's
+// currency symbol at the call site. One source for the topbar pill and the party
+// page's funds stat.
+export function fmtFunds(value) {
+  var n = Number(value) || 0, a = Math.abs(n);
+  if (a >= 1e9) return (Math.round(n / 1e9 * 10) / 10) + 'B';
+  if (a >= 1e6) return (Math.round(n / 1e6 * 10) / 10) + 'M';
+  if (a >= 1e3) return (Math.round(n / 1e3 * 10) / 10) + 'K';
+  return String(Math.round(n));
+}
+
+// Majority threshold for a chamber of N seats: floor(N/2)+1. One source for the
+// client — MIRRORS public._majority() in schema/45 (an accepted JS↔SQL mirror).
+export function majority(seats) {
+  return Math.floor((Number(seats) || 0) / 2) + 1;
+}
+
 // The game clock runs one tick per month, tick 1 = January 1980. One source for
 // turning a tick number into its display date (e.g. 5 → "May, 1980"). MIRRORED by
 // public.current_game_date() in schema/40_events.sql (which stamps events from the

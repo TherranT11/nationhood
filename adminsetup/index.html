@@ -79,6 +79,16 @@
     <div class="tabs"><span class="tab">Nations</span></div>
 
     <div class="panel">
+      <h2>Game Clock</h2>
+      <p class="sub" style="margin:0 0 12px">Advance the shared clock one month. Any nation whose election is due resolves: seats are reallocated from popularity, a government forms, and Government Confidence is set.</p>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div><div class="who" id="clockDate">—</div><div class="sub" style="margin:0">Tick <span id="clockTick">—</span></div></div>
+        <button class="btn btn-solid" id="advanceBtn" type="button">Advance Tick</button>
+      </div>
+      <div class="note" id="advanceNote" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
       <h2>Existing Nations</h2>
       <div id="nationList"><p class="empty">Loading…</p></div>
     </div>
@@ -90,6 +100,7 @@
           <div class="full"><label for="f-name">Name</label><input id="f-name" type="text" required></div>
           <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
           <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
+          <div class="full"><label for="f-ruling">Ruling Party</label><input id="f-ruling" type="text" placeholder="one-party state only — name it and players join as factions; blank = multiparty"></div>
           <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="0.1" placeholder="in millions (e.g. 24.5)"></div>
           <div><label for="f-gdp">Starting GDP</label><input id="f-gdp" type="number" min="0" step="1" placeholder="in billions"></div>
           <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
@@ -120,7 +131,7 @@
 
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
-    import { esc, fmtGdp, fmtPop } from '/util.js';
+    import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
     import { REGIME_TIERS, regimeLabel } from '/ladders.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
@@ -131,6 +142,32 @@
 
     function isAdmin(user) { return !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL; }
     function show(view) { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; }
+
+    // Game clock: show the current date/tick and let the admin advance it. Each
+    // advance bumps the shared tick and resolves any nation whose election is due
+    // (server-side, via advance_tick — there's no cron/trigger).
+    async function renderClock() {
+      try {
+        var t = await currentTick();
+        document.getElementById('clockTick').textContent = t;
+        document.getElementById('clockDate').textContent = tickToDate(t);
+      } catch (e) { document.getElementById('clockDate').textContent = '—'; }
+    }
+    document.getElementById('advanceBtn').addEventListener('click', async function () {
+      var btn = this, note = document.getElementById('advanceNote');
+      if (btn.disabled) return;             // single-fire: this writes (advances the clock)
+      btn.disabled = true; note.textContent = 'Advancing…'; note.className = 'note';
+      try {
+        const { data, error } = await supabase.rpc('advance_tick');
+        if (error) throw error;
+        note.textContent = 'Advanced to tick ' + data.tick + ' · ' + data.elections_resolved +
+          ' election' + (data.elections_resolved === 1 ? '' : 's') + ' resolved.';
+        note.className = 'note ok';
+        await renderClock();
+        loadNations();
+      } catch (e) { note.textContent = e.message || 'Could not advance the clock.'; note.className = 'note error'; }
+      finally { btn.disabled = false; }
+    });
 
     // Regime dropdown: the numeric tiers (high→low), each shown as "N — Label".
     // Defaults to Electoral Democracy (17), matching Sessau's footing.
@@ -146,6 +183,7 @@
         if (session && isAdmin(session.user)) {
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
+          renderClock();
           loadNations();
         } else if (session) {
           // Signed in, but not the admin account. Don't sign them out (that would
@@ -189,6 +227,7 @@
     function fillForm(n) {
       var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
       setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
+      setVal('f-ruling', n.ruling_party);
       setVal('f-pop', n.population); setVal('f-gdp', n.gdp);
       setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
       setVal('f-image', s.image); setVal('f-order', s.order);
@@ -238,6 +277,7 @@
             '<div class="ncard__top"><div class="ncard__name">' + esc(n.name || '') + '<span class="ncard__id">' + esc(n.id || '') + '</span></div>' +
             '<button class="ed" type="button" data-id="' + esc(n.id) + '">Edit</button></div>' +
             (n.analogous ? '<div class="ncard__analog">' + esc(n.analogous) + '</div>' : '') +
+            (n.ruling_party ? '<div class="ncard__analog">One-party state · ' + esc(n.ruling_party) + '</div>' : '') +
             (n.description ? '<div class="ncard__desc">' + esc(n.description) + '</div>' : '') +
             '<div class="ncard__stats">' +
               kv('Population', fmtPop(n.population)) + kv('GDP', cur + fmtGdp(n.gdp)) +
@@ -294,6 +334,7 @@
         name: name,
         description: document.getElementById('f-desc').value.trim() || null,
         analogous: document.getElementById('f-analog').value.trim() || null,
+        ruling_party: document.getElementById('f-ruling').value.trim() || null,
         population: num('f-pop', true), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
         election_frequency_months: elecfreq > 0 ? elecfreq : 60,
