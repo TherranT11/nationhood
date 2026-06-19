@@ -159,6 +159,7 @@
   import { esc, majority } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
+  import { formationState } from '/formation.js';
 
   document.getElementById('logout').addEventListener('click', logout);
 
@@ -299,28 +300,9 @@
         agenda = ag || [];
       }
       var amPM = !!(govt && govt.formateur_party_id === MY_PARTY_ID); // only the leading party enacts
-
-      // Formation window: the formateur's honour-vs-renege choice, live only on
-      // the tick the government formed (governments.formed_tick === current tick).
-      var formation = { canRenege: false, postRenege: false, negId: null };
-      if (amPM) {
-        const { data: gs } = await supabase.from('game_state').select('current_tick').maybeSingle();
-        var tick = gs ? gs.current_tick : null;
-        if (tick != null && govt.formed_tick === tick) {
-          // Has the one-per-term reshuffle already been spent this tick?
-          const { data: rs } = await supabase.from('governments')
-            .select('id').eq('nation_id', NATION_ID).eq('status', 'replaced').eq('formed_tick', tick).limit(1);
-          var reshuffled = !!(rs && rs.length);
-          if (govt.type === 'coalition' && !reshuffled && sessionStorage.getItem('govConfirmed') !== govt.id) {
-            formation.canRenege = true;
-          } else if (govt.type === 'minority' && reshuffled) {
-            formation.postRenege = true;
-            const { data: neg } = await supabase.from('negotiations')
-              .select('id').eq('nation_id', NATION_ID).eq('host_party_id', MY_PARTY_ID).eq('status', 'committed').maybeSingle();
-            formation.negId = neg ? neg.id : null;
-          }
-        }
-      }
+      // The formation-window choice (formateur-only, the tick it formed) — one
+      // source, shared with the Home banner.
+      var formation = await formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
       render(govt, NATION || {}, parties || [], agenda, amPM, formation);
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';

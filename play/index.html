@@ -162,6 +162,7 @@
   .invite__dec:hover{color:var(--red);border-color:var(--red)}
   .invite__go{background:var(--indigo);border-color:var(--indigo);color:#fff}
   .invite__go:hover{filter:brightness(1.06)}
+  a.invite{text-decoration:none;margin-bottom:14px}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
   .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
@@ -239,6 +240,7 @@
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
 
+    <div id="formBanner"></div>
     <div id="inviteBanners"></div>
 
     <section class="panel leadbar">
@@ -301,6 +303,7 @@
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate, fmtFunds } from '/util.js';
   import { fetchNegotiations, pendingInvites, activeTalks, termCounts, openNegotiation, respondInvite } from '/negotiations.js';
+  import { formationState } from '/formation.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -579,6 +582,26 @@
     } catch (e) { negStarting = false; ping(e.message || 'Couldn’t open talks.'); }
   }
 
+  // If the player is a formateur with an open formation window, nudge them to the
+  // Government page where the decision lives (the election fires on the clock, so
+  // they could be anywhere when it lands). Shares formationState with that page.
+  async function renderFormation() {
+    if (!myPartyId || !feedCtx) return;
+    var box = document.getElementById('formBanner');
+    try {
+      var fs = await formationState({ id: myPartyId, nation_id: feedCtx.nationId });
+      var msg = fs.canRenege
+        ? '🏛 <b>Your government has formed.</b> Keep your agreed coalition or form a new one — this turn only.'
+        : fs.postRenege
+        ? '🏛 <b>You’re governing alone.</b> Finish forming a new coalition before the turn ends.'
+        : '';
+      box.innerHTML = msg
+        ? '<a class="invite" href="/play/government/"><span class="invite__t">' + msg +
+          '</span><span class="invite__a"><span class="invite__go">Go to Government ▸</span></span></a>'
+        : '';
+    } catch (e) { box.innerHTML = ''; }
+  }
+
   // Pending coalition invites surface as banners on Home: Decline, or Enter Talks
   // (which accepts and opens the negotiation page).
   async function renderInvites() {
@@ -643,7 +666,8 @@
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
       await loadFeed(party.nation_id, nation, gameDate);
-      renderInvites(); // surface any pending coalition invites (non-blocking)
+      renderInvites();   // surface any pending coalition invites (non-blocking)
+      renderFormation(); // nudge a formateur to the Government page if the window is open
 
       if (nation && nation.flag) {
         flag.onload = function () { flag.hidden = false; };
