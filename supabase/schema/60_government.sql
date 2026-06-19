@@ -318,3 +318,112 @@ begin
   return jsonb_build_object('delta', v_delta, 'confidence', v_newconf, 'actions', v_p.actions_remaining - 1);
 end $$;
 grant execute on function public.agenda_enact(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- THE FORMATION-WINDOW CHOICE. Right after an election the formateur may keep
+-- the coalition the voters expected ([Enter Agreed Coalition] = do nothing) or
+-- break it ([Form New Coalition]). Both RPCs are gated to the formation tick
+-- (governments.formed_tick = the current tick); once the clock advances the
+-- choice is locked until the next election.
+--
+-- coalition_renege(): the [Form New Coalition] click. Burns the bridge — the
+-- agreed coalition is dropped and the formateur is re-seated alone as a MINORITY
+-- (no penalty yet). There is no going back to the deal. From here they have the
+-- rest of the tick to assemble a new majority; fail and they simply stay the
+-- minority. Only the formateur of an active COALITION may call it.
+-- ---------------------------------------------------------------------------
+create or replace function public.coalition_renege()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_gov public.governments%rowtype; v_tick int; v_conf int;
+begin
+  v_p := public._lock_party();   -- locks the caller's party (serializes; double-fire safe)
+  select current_tick into v_tick from public.game_state where id;
+  select * into v_gov from public.governments
+    where nation_id = v_p.nation_id and status = 'active' for update;
+  if not found then raise exception 'There is no sitting government to leave.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the party that formed the government can break its coalition.';
+  end if;
+  if v_gov.type <> 'coalition' then raise exception 'There is no coalition agreement to walk away from.'; end if;
+  if v_gov.formed_tick <> v_tick then raise exception 'The window to reshape this government has closed.'; end if;
+
+  -- Re-seat the formateur alone as a minority. _seat_government retires the
+  -- coalition (→ replaced, stamped THIS tick — the proof a renege happened) and
+  -- seats the minority. No penalty: the gamble itself is the cost.
+  v_conf := public._seat_government(v_p.nation_id, v_p.id, 'minority', null, 0);
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_p.nation_id, v_p.id, 'government',
+            'The ' || v_p.name || ' walked away from its coalition agreement to seek a new majority, governing alone for now (Government Confidence ' || v_conf || '%).',
+            public.current_game_date());
+
+  return jsonb_build_object('confidence', v_conf, 'type', 'minority');
+end $$;
+grant execute on function public.coalition_renege() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- coalition_install(neg): seal the replacement. Callable only by a formateur who
+-- reneged THIS tick (now governing as a minority) and hosts a committed
+-- agreement that reaches a majority. Seats the new coalition with a 5-point
+-- Confidence penalty and docks the formateur 5 points of Popularity — the cost
+-- of handing the public a government it didn't vote for. Succeed and the −5/−5
+-- lands; never call this and you just remain the minority (no penalty).
+-- ---------------------------------------------------------------------------
+create or replace function public.coalition_install(p_neg uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.negotiations%rowtype;
+  v_tick int; v_conf int; v_newpop numeric; v_pophit numeric;
+begin
+  v_p := public._lock_party();
+  select current_tick into v_tick from public.game_state where id;
+
+  select * into v_gov from public.governments
+    where nation_id = v_p.nation_id and status = 'active' for update;
+  if not found then raise exception 'There is no sitting government to replace.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then raise exception 'Only the formateur can install a new coalition.'; end if;
+  if v_gov.type <> 'minority' or v_gov.formed_tick <> v_tick then
+    raise exception 'You can only install a new coalition right after walking away from one.';
+  end if;
+  -- Proof a coalition was actually reneged this tick (excludes an election minority).
+  if not exists (select 1 from public.governments
+                   where nation_id = v_p.nation_id and status = 'replaced'
+                     and type = 'coalition' and formed_tick = v_tick) then
+    raise exception 'You can only install a new coalition right after walking away from one.';
+  end if;
+
+  -- The replacement: a committed agreement you host. Its committed status IS the
+  -- majority guarantee — coalition_commit enforced that against this tick's seats,
+  -- and nothing shifts mid-tick, so there's nothing to re-check here.
+  select * into v_n from public.negotiations where id = p_neg;
+  if not found then raise exception 'That agreement is gone.'; end if;
+  if v_n.host_party_id is distinct from v_p.id then raise exception 'You can only install your own agreement.'; end if;
+  if v_n.status <> 'committed' then raise exception 'Form the agreement before installing it.'; end if;
+
+  -- Seat the new coalition with the −5 Confidence penalty; dock −5 Popularity
+  -- (clamped at 0), report what actually landed. _seat_government inherits the
+  -- new agenda before we close the agreement below.
+  v_conf   := public._seat_government(v_p.nation_id, v_p.id, 'coalition', p_neg, 5);
+  v_newpop := greatest(0, v_p.popularity - 5);
+  v_pophit := v_p.popularity - v_newpop;
+  update public.parties set popularity = v_newpop where id = v_p.id;
+  update public.negotiations set status = 'closed' where id = p_neg;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_p.nation_id, v_p.id, 'government',
+            'The ' || v_p.name || ' formed a new coalition, abandoning the agreement voters expected. Government Confidence '
+            || v_conf || '%, Popularity −' || trim(to_char(v_pophit, 'FM990.0')) || '%.',
+            public.current_game_date());
+
+  return jsonb_build_object('confidence', v_conf, 'popularity', v_newpop, 'pop_delta', v_pophit, 'type', 'coalition');
+end $$;
+grant execute on function public.coalition_install(uuid) to authenticated;
