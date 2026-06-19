@@ -50,6 +50,12 @@ export function fmtFunds(value) {
   return String(Math.round(n));
 }
 
+// Majority threshold for a chamber of N seats: floor(N/2)+1. One source for the
+// client — MIRRORS public._majority() in schema/45 (an accepted JS↔SQL mirror).
+export function majority(seats) {
+  return Math.floor((Number(seats) || 0) / 2) + 1;
+}
+
 // The game clock runs one tick per month, tick 1 = January 1980. One source for
 // turning a tick number into its display date (e.g. 5 → "May, 1980"). MIRRORED by
 // public.current_game_date() in schema/40_events.sql (which stamps events from the

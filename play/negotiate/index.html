@@ -213,7 +213,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc } from '/util.js';
+  import { esc, majority } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement } from '/negotiations.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
@@ -510,7 +510,7 @@
       document.title='Negotiate · '+party.name;
       if(nation&&nation.flag){ var f=document.getElementById('flag'); f.onload=function(){f.hidden=false;}; f.src=nation.flag; }
       CHAMBER=(nation&&nation.legislature_seats)||280;
-      MAJORITY=Math.floor(CHAMBER/2)+1;
+      MAJORITY=majority(CHAMBER);
 
       // Every party in the nation — the display source for the anchor, the tabs,
       // and the invite menu (one query, keyed by id).

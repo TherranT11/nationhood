@@ -137,7 +137,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc } from '/util.js';
+  import { esc, majority } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
 
@@ -171,13 +171,16 @@
     var tc = archetypeColor(formateur.archetype);
     document.documentElement.style.setProperty('--tc', tc);
 
-    var gov = parties.filter(function(p){ return p.in_government; }).sort(function(a,b){ return (b.seats||0)-(a.seats||0); });
-    // formateur first
-    gov.sort(function(a,b){ return a.id === govt.formateur_party_id ? -1 : b.id === govt.formateur_party_id ? 1 : 0; });
+    // Government members: the formateur first, then by seats.
+    var gov = parties.filter(function(p){ return p.in_government; }).sort(function(a,b){
+      if (a.id === govt.formateur_party_id) return -1;
+      if (b.id === govt.formateur_party_id) return 1;
+      return (b.seats||0) - (a.seats||0);
+    });
     var opp = parties.filter(function(p){ return !p.in_government; }).sort(function(a,b){ return (b.seats||0)-(a.seats||0); });
     var govSeats = gov.reduce(function(s,p){ return s + (p.seats||0); }, 0);
     var total = nation.legislature_seats || 0;
-    var majority = Math.floor(total/2) + 1;          // JS mirror of _majority() (schema/45)
+    var maj = majority(total);
     var c = Math.max(0, Math.min(100, Number(govt.confidence) || 0));
     var bd = band(c);
 
@@ -205,9 +208,9 @@
             '<div class="gov__top"><span class="gov__emb">' + esc((formateur.abbreviation || formateur.name.slice(0,2)).toUpperCase()) + '</span>' +
               '<div class="gov__id"><b>' + esc(formateur.name) + '</b><span>Holds the premiership · ' + esc(formateur.archetype || '') + '</span></div>' +
               '<span class="gtype">' + typeLabel(govt.type) + '</span></div>' +
-            '<div class="seatline">' + govSeats + ' <span>/ ' + total + ' seats · majority ' + majority + (govSeats >= majority ? ' ✓' : '') + '</span></div>' +
+            '<div class="seatline">' + govSeats + ' <span>/ ' + total + ' seats · majority ' + maj + (govSeats >= maj ? ' ✓' : '') + '</span></div>' +
             '<div class="seatbar"><div class="seatfill" style="width:' + (total ? Math.round(govSeats/total*100) : 0) + '%"></div>' +
-              '<div class="majmark" data-maj="MAJ ' + majority + '" style="left:' + (total ? majority/total*100 : 50) + '%"></div></div>' +
+              '<div class="majmark" data-maj="MAJ ' + maj + '" style="left:' + (total ? maj/total*100 : 50) + '%"></div></div>' +
             '<div class="subhd">In government</div>' + members +
             (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
           '</div>' +
