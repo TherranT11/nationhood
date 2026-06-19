@@ -212,7 +212,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
-  import { tickToDate, esc } from '/util.js';
+  import { tickToDate, esc, majority as majorityOf } from '/util.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   wireDeletePartyMenu(); // settings gear → Delete Party (shared; see supabase.js)
@@ -232,7 +232,7 @@
       const tick = await currentTick();
       const nationName = (nation && nation.name) || party.nation_id;
       const seatsTotal = (nation && nation.legislature_seats) || 0;
-      const majority = seatsTotal ? Math.floor(seatsTotal / 2) + 1 : 0;
+      const majority = seatsTotal ? majorityOf(seatsTotal) : 0;  // keep 0 for an unconfigured (0-seat) chamber
       const ruling = nation && nation.ruling_party; // one-party state → a Party Congress, not a contested election
       if (ruling) {
         document.getElementById('electHd').textContent = 'Next Party Congress';

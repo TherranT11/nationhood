@@ -449,7 +449,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, wireDeletePartyMenu, currentTick } from '/supabase.js';
-  import { esc, COMPETENCIES, tickToDate, fmtFunds } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, fmtFunds, majority as majorityOf } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
 
@@ -555,7 +555,7 @@
     if (vacant > 0) { var vw = vacant / totalSeats * 100; segs += '<div class="seg vacant" style="width:' + vw + '%" title="Vacant — ' + vacant + ' seats">' + (vw > 9 ? vacant : '') + '</div>'; }
     bar.innerHTML = segs;
 
-    var majority = Math.floor(totalSeats / 2) + 1;
+    var majority = majorityOf(totalSeats);
     maj.style.display = ''; maj.style.left = (majority / totalSeats * 100) + '%';
     maj.querySelector('span').textContent = 'Majority ' + majority;
 
