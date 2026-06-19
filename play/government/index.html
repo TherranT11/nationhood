@@ -343,7 +343,7 @@
   // and one-way, so confirm first. The penalty only lands later, on install.
   async function renege(){
     if (busy) return;
-    if (!confirm('Form a new coalition? This dissolves your agreed coalition immediately — you’ll govern alone until you seal a new majority, and you can’t return to the current deal.')) return;
+    if (!confirm('Form a new coalition? This dissolves your agreed coalition immediately — you’ll govern alone until you seal a new majority, and you can’t return to the current deal. Building the replacement at the negotiating table costs party actions, so be sure you have some left this turn.')) return;
     busy = true;
     try {
       const { error } = await supabase.rpc('coalition_renege');
