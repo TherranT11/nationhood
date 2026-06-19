@@ -356,7 +356,9 @@
       '<div class="panel"><h2>National Crises</h2><p class="muted">No active national crises.</p></div>' +
       // 5 — Governing Agenda
       '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
-      // 6 — National Modifiers (empty scaffold; sits beneath the future Cabinet)
+      // 6 — The Cabinet (empty scaffold; wired up later)
+      '<div class="panel"><h2>The Cabinet</h2><p class="muted">No ministers appointed yet.</p></div>' +
+      // 7 — National Modifiers (empty scaffold; sits beneath the Cabinet)
       '<div class="panel"><h2>National Modifiers</h2><p class="muted">No active national modifiers.</p></div>';
 
     box.querySelectorAll('.enact').forEach(function(b){ b.addEventListener('click', function(){ enact(b.dataset.id); }); });
