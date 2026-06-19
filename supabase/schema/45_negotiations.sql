@@ -105,6 +105,17 @@ create policy "neg_terms_select_part" on public.negotiation_terms for select usi
 -- "you own an invited party at this table". open + invite each cost 1 action.
 -- ---------------------------------------------------------------------------
 
+-- The majority threshold for a chamber of p_seats: floor(p_seats/2)+1. ONE source
+-- for the coalition-commit gate (below) and the election resolver in schema/60.
+-- The JS client mirrors this for its live UI gate — an accepted JS↔SQL mirror.
+create or replace function public._majority(p_seats int)
+returns int
+language sql
+immutable
+set search_path = public
+as $$ select coalesce(p_seats, 0) / 2 + 1 $$;
+grant execute on function public._majority(int) to authenticated;
+
 -- A committed (or closed) agreement is immutable — the single rule + message for
 -- every mutating RPC below, so a locked deal can't be edited from any path.
 create or replace function public._assert_negotiation_open(p_neg uuid)
@@ -355,7 +366,7 @@ begin
 
   -- Majority: host + accepted partners' seats >= floor(legislature_seats/2)+1.
   select coalesce(legislature_seats, 0) into v_total from public.nations where id = v_n.nation_id;
-  v_majority := v_total / 2 + 1;
+  v_majority := public._majority(v_total);
   select coalesce(v_host.seats, 0) + coalesce(sum(p.seats), 0) into v_seats
     from public.negotiation_parties np join public.parties p on p.id = np.party_id
    where np.negotiation_id = p_neg and np.status = 'accepted';

@@ -100,7 +100,7 @@ begin
     into v_seats, v_threshold, v_freq from public.nations where id = p_nation;
   if v_seats is null then raise exception 'Unknown nation %.', p_nation; end if;
   select current_tick into v_tick from public.game_state where id;
-  v_majority := v_seats / 2 + 1;
+  v_majority := public._majority(v_seats);  -- one source (schema/45)
 
   -- Outgoing government → the incumbents who get the Confidence seat modifier.
   select confidence into v_old_conf from public.governments where nation_id = p_nation and status = 'active';
