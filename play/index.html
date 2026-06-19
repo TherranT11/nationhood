@@ -546,10 +546,10 @@
     var html = negs.length ? negs.map(function (n) {
       var c = termCounts(n);
       var label = talkOthers(n).map(negPartyName).join(' + ') || 'Talks';
-      var role = n.host_party_id === myPartyId ? 'Hosting' : 'Invited';
+      var role = (n.host_party_id === myPartyId ? 'Hosting' : 'Invited') + (n.status === 'committed' ? ' · Committed' : '');
       return '<button class="atarget" type="button" data-id="' + esc(n.id) + '">' +
         '<span class="atarget__id"><b>' + esc(label) + '</b><span>' + role + '</span></span>' +
-        '<span class="atarget__st">' + c.agreed + '/' + c.total + ' agreed</span></button>';
+        '<span class="atarget__st">' + (n.status === 'committed' ? '✓ committed' : c.agreed + '/' + c.total + ' agreed') + '</span></button>';
     }).join('') : '<p class="empty">No coalition talks yet. Start one to bring a party to the table.</p>';
     html += '<button class="negnew' + (canStart ? '' : ' dis') + '" id="negNewBtn" type="button">+ Start New Negotiation (1 action)</button>';
     list.innerHTML = html;

@@ -148,6 +148,7 @@
   .formbtn.dis{background:#D9D6D0;border-color:#D9D6D0;cursor:not-allowed;transform:none;filter:none}
   .formnote{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);text-align:center;margin-top:9px;line-height:1.5}
   .formnote.bad{color:var(--red)}
+  .committed{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--green);background:var(--green-soft);border:1px solid var(--green);border-radius:11px;padding:13px;text-align:center;margin-top:12px}
   /* two-sided agreement: my toggle (.seg) + the other side's read-only stance */
   .oside{margin-left:8px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:6px 8px;border-radius:7px;border:1px solid var(--line2);color:var(--soft);background:#fff;white-space:nowrap}
   .oside.ok{color:var(--green);border-color:var(--green);background:var(--green-soft)}
@@ -214,7 +215,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
-  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty } from '/negotiations.js';
+  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement } from '/negotiations.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
@@ -243,7 +244,7 @@
 
   // ---- state ----
   var myParty=null, HOST=null, POOL={}, CHAMBER=280, MAJORITY=141, MAXINV=5;
-  var neg=null, amHost=false, myStatus=null, active=null, data={};
+  var neg=null, amHost=false, myStatus=null, active=null, data={}, locked=false;
   var negId=new URLSearchParams(location.search).get('id');
 
   function popOf(p){return Number(p.popularity)||0;}
@@ -291,6 +292,7 @@
       el.onclick=function(){active=pid;render();};
       box.appendChild(el);
     });
+    if(locked) return; // a committed agreement can't invite more parties
     var iw=document.createElement('div'); iw.className='invwrap';
     var full=counterIds().length>=MAXINV || invitablePool().length===0;
     iw.innerHTML='<button class="invbtn'+(full?' dis':'')+'" id="invbtn">+ Invite party (1 action)</button><div class="invmenu" id="invmenu"></div>';
@@ -310,8 +312,9 @@
   function buildTerm(pid,side,term){
     var def=TYPES[term.type]||TYPES.legislation;
     var both=term.host_agreed&&term.party_agreed;
+    var editable=amHost&&!locked; // host can edit term substance only while talks are open
     var card=document.createElement('div'); card.className='term'+(both?' agreed':'')+(term.redline?' redline':'');
-    var dis=amHost?'':' disabled';
+    var dis=editable?'':' disabled';
     var fieldsHtml=def.fields.map(function(f){
       if(f.kind==='select') return '<select class="f" data-k="'+f.k+'"'+dis+'>'+opt(f.opts,term.params[f.k])+'</select>';
       if(f.kind==='stepper') return '<input class="f" type="number" data-k="'+f.k+'" min="'+f.min+'" max="'+f.max+'" value="'+(term.params[f.k]||f.min)+'"'+dis+'>';
@@ -320,13 +323,13 @@
     var myAgreed=amHost?term.host_agreed:term.party_agreed;
     var otherAgreed=amHost?term.party_agreed:term.host_agreed;
     var otherWho=amHost?((POOL[term.party_id]&&POOL[term.party_id].name)||'They'):(HOST?HOST.name:'Host');
-    card.innerHTML='<div class="trow1">'+typeSelect(term.type,!amHost)+(term.redline?'<span class="rltag">Redline</span>':'')+(amHost?'<button class="xb" title="Remove term">×</button>':'')+'</div>'+
+    card.innerHTML='<div class="trow1">'+typeSelect(term.type,!editable)+(term.redline?'<span class="rltag">Redline</span>':'')+(editable?'<button class="xb" title="Remove term">×</button>':'')+'</div>'+
       '<div class="fields">'+fieldsHtml+'</div>'+
       '<div class="tsum">'+esc(def.sum(term.params))+'</div>'+
       '<div class="trow2"><div class="seg st"><span class="'+(!myAgreed?'on':'')+'" data-s="no">No agreement</span><span class="'+(myAgreed?'on':'')+'" data-s="agreed">Agreed</span></div>'+
       '<span class="oside'+(otherAgreed?' ok':'')+'">'+esc(otherWho)+': '+(otherAgreed?'agreed':'pending')+'</span>'+
-      (amHost?'<button class="rlflag'+(term.redline?' on':'')+'" title="Mark redline">⚑</button>':'')+'</div>';
-    if(amHost){
+      (editable?'<button class="rlflag'+(term.redline?' on':'')+'" title="Mark redline">⚑</button>':'')+'</div>';
+    if(editable){
       card.querySelector('.tt').onchange=function(e){ var nt=e.target.value; updateTerm(term.id,nt,defaults(nt),term.redline).then(reload).catch(err); };
       card.querySelectorAll('.f').forEach(function(inp){
         inp.oninput=function(){ card.querySelector('.tsum').textContent=(TYPES[term.type]||TYPES.legislation).sum(readParams(card,term.type)); };
@@ -335,7 +338,7 @@
       var xb=card.querySelector('.xb'); if(xb) xb.onclick=function(){ removeTerm(term.id).then(reload).catch(err); };
       var rl=card.querySelector('.rlflag'); if(rl) rl.onclick=function(){ updateTerm(term.id,term.type,term.params,!term.redline).then(reload).catch(err); };
     }
-    card.querySelectorAll('.seg.st span').forEach(function(s){ s.onclick=function(){ var ag=s.dataset.s==='agreed'; if(ag===myAgreed) return; setAgree(term.id,ag).then(reload).catch(err); }; });
+    if(!locked) card.querySelectorAll('.seg.st span').forEach(function(s){ s.onclick=function(){ var ag=s.dataset.s==='agreed'; if(ag===myAgreed) return; setAgree(term.id,ag).then(reload).catch(err); }; });
     return card;
   }
 
@@ -344,7 +347,7 @@
     var hd=document.createElement('div'); hd.className='colhd '+cls; hd.innerHTML='<span class="dot"></span>'+label;
     wrap.appendChild(hd);
     termsFor(pid,side).forEach(function(t){wrap.appendChild(buildTerm(pid,side,t));});
-    if(amHost){
+    if(amHost && !locked){
       var add=document.createElement('div'); add.className='addt';
       add.innerHTML='<button class="t">+ Add term</button><button class="rl">+ Redline</button>';
       add.querySelector('.t').onclick=function(){ addTerm(neg.id,pid,side).then(reload).catch(err); };
@@ -377,12 +380,12 @@
       ? '<span class="pstat '+(partyStatus(active)==='accepted'?'ok':'wait')+'">'+stWord(partyStatus(active))+'</span>'
       : '<span class="pstat '+(partyReady(active)?'ok':'wait')+'">'+(partyReady(active)?'All terms agreed':'Negotiating')+'</span>';
     phd.innerHTML='<span class="pemb">'+esc(hp.abbr||'?')+'</span><div class="pi"><b>'+esc(hp.name)+'</b><span>'+esc(hp.archetype||'')+' &nbsp;·&nbsp; '+(hp.seats||0)+' seats &nbsp;·&nbsp; '+popOf(hp)+'% support</span></div>'+
-      statusPill + (amHost?'<button class="premove">Remove</button>':'');
-    if(amHost){ phd.querySelector('.premove').onclick=function(){ removeParty(neg.id,active).then(function(){ active=null; return reload(); }).catch(err); }; }
+      statusPill + (amHost && !locked?'<button class="premove">Remove</button>':'');
+    if(amHost && !locked){ phd.querySelector('.premove').onclick=function(){ removeParty(neg.id,active).then(function(){ active=null; return reload(); }).catch(err); }; }
     panel.appendChild(phd);
 
     // An invited player still pending sees Accept / Decline here.
-    if(!amHost && myStatus==='invited'){
+    if(!amHost && myStatus==='invited' && !locked){
       var resp=document.createElement('div'); resp.className='respond';
       resp.innerHTML='<button class="acc">Enter talks</button><button class="dec">Decline</button>';
       resp.querySelector('.acc').onclick=function(){ respondInvite(neg.id,true).then(reload).catch(err); };
@@ -413,7 +416,9 @@
         '<div class="crow anchor"><span class="cd" style="background:'+(HOST?HOST.color:'#5546E8')+'"></span><div class="cn">'+esc(HOST?HOST.name:'Host')+'<small>Host</small></div><span class="cseat">'+(HOST?HOST.seats:0)+'</span></div>'+
         '<div class="crow"><span class="cd" style="background:'+(POOL[myParty.id]?colorOf(POOL[myParty.id]):'#8d8d95')+'"></span><div class="cn">'+esc(POOL[myParty.id]?POOL[myParty.id].name:'You')+'<small>You</small></div><span class="cseat">'+(POOL[myParty.id]?POOL[myParty.id].seats:0)+'</span></div>'+
         '<div class="progress"><b>'+agreed+'</b> of <b>'+mine.length+'</b> terms you’ve agreed</div>'+
-        '<div class="formnote">The host forms the final coalition once every side has agreed.</div>';
+        (locked
+          ? '<div class="committed">✓ Coalition committed</div><div class="formnote">'+esc(HOST?HOST.name:'The host')+' has formed this agreement. It’s locked.</div>'
+          : '<div class="formnote">The host forms the final coalition once every side has agreed.</div>');
       box.innerHTML=html; return;
     }
     var seats=seatTotal(), pct=CHAMBER?Math.round(seats/CHAMBER*100):0, maj=seats>=MAJORITY;
@@ -425,24 +430,39 @@
     counterIds().forEach(function(pid){
       var p=POOL[pid]||{name:'A party',seats:0}, st=partyStatus(pid), counted=st==='accepted';
       html+='<div class="crow"><span class="cd" style="background:'+colorOf(p)+'"></span><div class="cn">'+esc(p.name)+'<small>'+stWord(st)+(p.archetype?' · '+esc(p.archetype):'')+'</small></div>'+
-        '<span class="csd" style="background:'+(counted?'var(--green)':'var(--amber)')+'"></span><span class="cseat"'+(counted?'':' style="color:var(--soft)"')+'>'+(p.seats||0)+'</span><span class="cx" data-id="'+esc(pid)+'">×</span></div>';
+        '<span class="csd" style="background:'+(counted?'var(--green)':'var(--amber)')+'"></span><span class="cseat"'+(counted?'':' style="color:var(--soft)"')+'>'+(p.seats||0)+'</span>'+(locked?'':'<span class="cx" data-id="'+esc(pid)+'">×</span>')+'</div>';
     });
     var c=termCounts(neg), rl=redlineUnmet();
-    var ok=acceptedIds().length>0 && c.total>0 && c.agreed===c.total && !rl;
     html+='<div class="progress"><b>'+c.agreed+'</b> of <b>'+c.total+'</b> terms agreed</div>';
-    html+='<button class="formbtn'+(ok?'':' dis')+'" id="formbtn">Form Coalition Agreement</button>';
-    if(!counterIds().length) html+='<div class="formnote">Invite at least one party to begin.</div>';
-    else if(!acceptedIds().length) html+='<div class="formnote">Waiting for a party to enter talks.</div>';
-    else if(rl) html+='<div class="formnote bad">Redline unmet — '+esc(rl)+' will walk unless it’s agreed.</div>';
-    else if(!ok) html+='<div class="formnote">'+(c.total-c.agreed)+' term'+((c.total-c.agreed)===1?'':'s')+' still unresolved.</div>';
-    else html+='<div class="formnote">Every term agreed. Ready to govern.</div>';
+    if(locked){
+      // Already committed: a saved, locked agreement. Host can reopen to edit.
+      html+='<div class="committed">✓ Coalition committed &amp; saved</div>';
+      html+='<button class="formbtn" id="withdrawBtn" style="background:#fff;color:var(--ink);border-color:var(--line2)">Reopen for editing</button>';
+      html+='<div class="formnote">Saved as a binding agreement — the election resolver will read it. Reopen to make changes.</div>';
+    } else {
+      // Mirror the server's coalition_commit rules so the button never lights up
+      // when it would be rejected: ALL parties accepted, terms agreed, real majority.
+      var allIn=counterIds().length>0 && counterIds().every(function(pid){return partyStatus(pid)==='accepted';});
+      var ok=allIn && c.total>0 && c.agreed===c.total && !rl && maj;
+      html+='<button class="formbtn'+(ok?'':' dis')+'" id="formbtn">Form Coalition Agreement</button>';
+      if(!counterIds().length) html+='<div class="formnote">Invite at least one party to begin.</div>';
+      else if(!acceptedIds().length) html+='<div class="formnote">Waiting for a party to enter talks.</div>';
+      else if(!allIn) html+='<div class="formnote">Every party must accept — or be removed — before forming.</div>';
+      else if(!maj) html+='<div class="formnote bad">Short of a majority — '+(MAJORITY-seats)+' more seat'+((MAJORITY-seats)===1?'':'s')+' needed to form.</div>';
+      else if(rl) html+='<div class="formnote bad">Redline unmet — '+esc(rl)+' will walk unless it’s agreed.</div>';
+      else if(c.total===0) html+='<div class="formnote">Add the coalition terms first.</div>';
+      else if(c.agreed!==c.total) html+='<div class="formnote">'+(c.total-c.agreed)+' term'+((c.total-c.agreed)===1?'':'s')+' still unresolved.</div>';
+      else html+='<div class="formnote">Every term agreed at a majority. Ready to form.</div>';
+    }
     box.innerHTML=html;
     box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){ removeParty(neg.id,x.dataset.id).then(function(){ if(active===x.dataset.id) active=null; return reload(); }).catch(err); };});
-    var fb=box.querySelector('#formbtn');
-    if(fb)fb.onclick=function(){
-      if(!ok)return;
-      var names=[HOST.name].concat(acceptedIds().map(function(id){return POOL[id]?POOL[id].name:'a party';}));
-      ping('<b>Coalition Agreement formed.</b> '+esc(names.join(' + '))+' · '+seatTotal()+' seats ('+(seatTotal()>=MAJORITY?'majority +'+(seatTotal()-MAJORITY):'minority')+'). Forming the government comes next.');
+    var wb=box.querySelector('#withdrawBtn');
+    if(wb) wb.onclick=function(){ withdrawAgreement(neg.id).then(function(){ ping('Agreement reopened for editing.'); return reload(); }).catch(err); };
+    var fb=box.querySelector('#formbtn'), committing=false;
+    if(fb) fb.onclick=function(){
+      if(fb.classList.contains('dis') || committing) return; // gate + double-fire lock (this writes)
+      committing=true;
+      commitAgreement(neg.id).then(function(){ ping('<b>Coalition agreement committed.</b> Saved and locked.'); return reload(); }).catch(function(e){ committing=false; err(e); });
     };
   }
 
@@ -465,6 +485,7 @@
     } catch (e) { showMissing('Could not load this negotiation right now.'); return; }
     if(!neg){ showMissing(); return; }
     amHost = neg.host_party_id === myParty.id;
+    locked = neg.status !== 'active'; // committed/closed → read-only
     var mine=(neg.negotiation_parties||[]).filter(function(p){return p.party_id===myParty.id;})[0];
     myStatus = mine?mine.status:null;
     if(!amHost && !mine){ showMissing('You’re not part of these talks.'); return; }

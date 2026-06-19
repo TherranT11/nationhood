@@ -13,7 +13,7 @@ create table if not exists public.negotiations (
   id            uuid primary key default gen_random_uuid(),
   nation_id     text not null references public.nations (id),
   host_party_id uuid not null references public.parties (id) on delete cascade,
-  status        text not null default 'active',   -- active | closed
+  status        text not null default 'active',   -- active | committed | closed ('closed' reserved for the future election resolver)
   created_at    timestamptz not null default now()
 );
 
@@ -99,6 +99,21 @@ create policy "neg_terms_select_part" on public.negotiation_terms for select usi
 -- "you own an invited party at this table". open + invite each cost 1 action.
 -- ---------------------------------------------------------------------------
 
+-- A committed (or closed) agreement is immutable — the single rule + message for
+-- every mutating RPC below, so a locked deal can't be edited from any path.
+create or replace function public._assert_negotiation_open(p_neg uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (select 1 from public.negotiations where id = p_neg and status = 'active') then
+    raise exception 'These talks are locked (committed or closed).';
+  end if;
+end $$;
+grant execute on function public._assert_negotiation_open(uuid) to authenticated;
+
 -- Open talks with a first party (same nation). Costs the host 1 action.
 create or replace function public.coalition_open(p_target uuid)
 returns jsonb
@@ -169,6 +184,7 @@ begin
    where np.negotiation_id = p_neg and p.user_id = auth.uid()
    for update;
   if not found then raise exception 'You have no invite to these talks.'; end if;
+  perform public._assert_negotiation_open(p_neg);
   update public.negotiation_parties
      set status = case when p_accept then 'accepted' else 'declined' end
    where id = v_np.id;
@@ -192,6 +208,7 @@ begin
   if not exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and party_id = p_party) then
     raise exception 'That party is not at the table.';
   end if;
+  perform public._assert_negotiation_open(p_neg);
   insert into public.negotiation_terms (negotiation_id, party_id, side)
     values (p_neg, p_party, p_side) returning id into v_id;
   return v_id;
@@ -216,6 +233,7 @@ begin
    where t.id = p_term and hp.user_id = auth.uid()
    for update;
   if not found then raise exception 'Only the host can edit terms.'; end if;
+  perform public._assert_negotiation_open(v_t.negotiation_id);
 
   v_reset := (v_t.type is distinct from p_type) or (v_t.params is distinct from p_params);
   update public.negotiation_terms
@@ -233,11 +251,16 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare v_neg uuid;
 begin
-  delete from public.negotiation_terms t
-   using public.negotiations n, public.parties hp
-   where t.id = p_term and n.id = t.negotiation_id and hp.id = n.host_party_id and hp.user_id = auth.uid();
+  select t.negotiation_id into v_neg
+    from public.negotiation_terms t
+    join public.negotiations n on n.id = t.negotiation_id
+    join public.parties hp on hp.id = n.host_party_id
+   where t.id = p_term and hp.user_id = auth.uid();
   if not found then raise exception 'Only the host can remove terms.'; end if;
+  perform public._assert_negotiation_open(v_neg);
+  delete from public.negotiation_terms where id = p_term;
 end $$;
 grant execute on function public.coalition_remove_term(uuid) to authenticated;
 
@@ -254,6 +277,7 @@ begin
   if auth.uid() is null then raise exception 'Not signed in.'; end if;
   select * into v_t from public.negotiation_terms where id = p_term for update;
   if not found then raise exception 'That term is gone.'; end if;
+  perform public._assert_negotiation_open(v_t.negotiation_id);
 
   select exists (select 1 from public.negotiations n join public.parties hp on hp.id = n.host_party_id
                  where n.id = v_t.negotiation_id and hp.user_id = auth.uid()) into v_is_host;
@@ -281,7 +305,77 @@ begin
                  where n.id = p_neg and hp.user_id = auth.uid()) then
     raise exception 'Only the host can remove a party.';
   end if;
+  perform public._assert_negotiation_open(p_neg);
   delete from public.negotiation_terms where negotiation_id = p_neg and party_id = p_party;
   delete from public.negotiation_parties where negotiation_id = p_neg and party_id = p_party;
 end $$;
 grant execute on function public.coalition_remove_party(uuid, uuid) to authenticated;
+
+-- Host commits the deal into a saved, locked agreement. Requires every invited
+-- party accepted, at least one term, every term agreed by BOTH sides, and the
+-- members (host + accepted partners) reaching a majority of the legislature. A
+-- host may hold only one committed agreement at a time. No action cost — opening
+-- and inviting already charged. This is the artifact the election resolver will
+-- read later; it does NOT form a government yet.
+create or replace function public.coalition_commit(p_neg uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_host public.parties%rowtype; v_n public.negotiations%rowtype;
+  v_seats int; v_total int; v_majority int;
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  select * into v_n from public.negotiations where id = p_neg;
+  if not found then raise exception 'That negotiation is gone.'; end if;
+  select * into v_host from public.parties where id = v_n.host_party_id;
+  if v_host.user_id is distinct from auth.uid() then raise exception 'Only the host can form the agreement.'; end if;
+  if v_n.status <> 'active' then raise exception 'This agreement is already committed.'; end if;
+
+  if not exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and status = 'accepted') then
+    raise exception 'At least one party must be at the table and have accepted.';
+  end if;
+  if exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and status <> 'accepted') then
+    raise exception 'Every invited party must accept before you can form the agreement.';
+  end if;
+  if not exists (select 1 from public.negotiation_terms where negotiation_id = p_neg) then
+    raise exception 'Add the coalition terms before forming the agreement.';
+  end if;
+  if exists (select 1 from public.negotiation_terms where negotiation_id = p_neg and not (host_agreed and party_agreed)) then
+    raise exception 'Every term must be agreed by both sides.';
+  end if;
+
+  -- Majority: host + accepted partners' seats >= floor(legislature_seats/2)+1.
+  select coalesce(legislature_seats, 0) into v_total from public.nations where id = v_n.nation_id;
+  v_majority := v_total / 2 + 1;
+  select coalesce(v_host.seats, 0) + coalesce(sum(p.seats), 0) into v_seats
+    from public.negotiation_parties np join public.parties p on p.id = np.party_id
+   where np.negotiation_id = p_neg and np.status = 'accepted';
+  if v_seats < v_majority then
+    raise exception 'The coalition holds % seats — short of the % needed for a majority.', v_seats, v_majority;
+  end if;
+
+  if exists (select 1 from public.negotiations where host_party_id = v_host.id and status = 'committed' and id <> p_neg) then
+    raise exception 'You already have a committed coalition agreement.';
+  end if;
+
+  update public.negotiations set status = 'committed' where id = p_neg;
+end $$;
+grant execute on function public.coalition_commit(uuid) to authenticated;
+
+-- Host reopens a committed agreement for editing (back to active). Host only.
+create or replace function public.coalition_withdraw(p_neg uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.negotiations set status = 'active'
+   where id = p_neg and status = 'committed'
+     and host_party_id in (select id from public.parties where user_id = auth.uid());
+  if not found then raise exception 'Only the host can reopen a committed agreement.'; end if;
+end $$;
+grant execute on function public.coalition_withdraw(uuid) to authenticated;

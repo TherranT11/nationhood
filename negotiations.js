@@ -12,10 +12,11 @@ const SELECT = 'id, nation_id, host_party_id, status, created_at,' +
 
 function unwrap(res) { if (res.error) throw new Error(res.error.message); return res.data; }
 
-// Every active negotiation the signed-in player can see (RLS scopes this to the
-// ones they host or were invited to). The two pure filters below split it.
+// Every live negotiation the signed-in player can see — active or committed, but
+// not closed (RLS scopes this to the ones they host or were invited to). The two
+// pure filters below split it.
 export async function fetchNegotiations() {
-  return unwrap(await supabase.from('negotiations').select(SELECT).eq('status', 'active').order('created_at', { ascending: false })) || [];
+  return unwrap(await supabase.from('negotiations').select(SELECT).neq('status', 'closed').order('created_at', { ascending: false })) || [];
 }
 export async function loadNegotiation(id) {
   return unwrap(await supabase.from('negotiations').select(SELECT).eq('id', id).maybeSingle());
@@ -53,3 +54,5 @@ export async function updateTerm(termId, type, params, redline) { return unwrap(
 export async function removeTerm(termId) { return unwrap(await supabase.rpc('coalition_remove_term', { p_term: termId })); }
 export async function setAgree(termId, agreed) { return unwrap(await supabase.rpc('coalition_set_agree', { p_term: termId, p_agreed: agreed })); }
 export async function removeParty(negId, partyId) { return unwrap(await supabase.rpc('coalition_remove_party', { p_neg: negId, p_party: partyId })); }
+export async function commitAgreement(negId) { return unwrap(await supabase.rpc('coalition_commit', { p_neg: negId })); }
+export async function withdrawAgreement(negId) { return unwrap(await supabase.rpc('coalition_withdraw', { p_neg: negId })); }
