@@ -456,8 +456,8 @@
     }
     box.innerHTML=html;
     box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){ removeParty(neg.id,x.dataset.id).then(function(){ if(active===x.dataset.id) active=null; return reload(); }).catch(err); };});
-    var wb=box.querySelector('#withdrawBtn');
-    if(wb) wb.onclick=function(){ withdrawAgreement(neg.id).then(function(){ ping('Agreement reopened for editing.'); return reload(); }).catch(err); };
+    var wb=box.querySelector('#withdrawBtn'), withdrawing=false;
+    if(wb) wb.onclick=function(){ if(withdrawing) return; withdrawing=true; withdrawAgreement(neg.id).then(function(){ ping('Agreement reopened for editing.'); return reload(); }).catch(function(e){ withdrawing=false; err(e); }); };
     var fb=box.querySelector('#formbtn'), committing=false;
     if(fb) fb.onclick=function(){
       if(fb.classList.contains('dis') || committing) return; // gate + double-fire lock (this writes)

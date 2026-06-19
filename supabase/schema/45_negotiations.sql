@@ -48,6 +48,12 @@ create index if not exists negotiation_parties_neg_idx   on public.negotiation_p
 create index if not exists negotiation_parties_party_idx on public.negotiation_parties (party_id);
 create index if not exists negotiation_terms_neg_idx     on public.negotiation_terms (negotiation_id);
 
+-- A host may hold at most one committed agreement at a time — enforced at the DB
+-- level so a concurrent double-commit can't slip two through (coalition_commit's
+-- own check handles the normal case with a friendly message).
+create unique index if not exists negotiations_one_committed_per_host
+  on public.negotiations (host_party_id) where status = 'committed';
+
 -- Is the signed-in user a participant in this negotiation (the host, or one of
 -- the invited parties)? The single gate for every read policy below.
 create or replace function public.is_negotiation_participant(p_neg uuid)
