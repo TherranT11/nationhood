@@ -49,6 +49,7 @@ create table if not exists public.governments (
   formateur_party_id    uuid references public.parties (id) on delete set null,  -- the party that formed + leads it
   type                  text not null,                 -- majority | coalition | minority
   confidence            int  not null,                 -- 0..100, public approval of this government
+  conf_breakdown        jsonb,                          -- the Confidence formula's parts at formation (base/crises/contradictions/majority/renege/formed); the panel reads this, never recomputes
   formed_tick           int  not null,                 -- the tick it formed; the formation window (renege) reads this
   source_negotiation_id uuid references public.negotiations (id) on delete set null, -- the committed agreement, if a coalition
   status                text not null default 'active', -- active | replaced
@@ -56,6 +57,7 @@ create table if not exists public.governments (
 );
 create unique index if not exists governments_one_active_per_nation
   on public.governments (nation_id) where status = 'active';
+alter table public.governments add column if not exists conf_breakdown jsonb;  -- additive: existing deployments get it on re-apply
 
 -- The governing agenda: the agreed coalition terms a government has promised to
 -- enact. Inherited from the committed agreement at formation; NOT applied
@@ -96,7 +98,7 @@ set search_path = public
 as $$
 declare
   v_seats int; v_form_arch text; v_members uuid[];
-  v_govt_seats int; v_contra int; v_bonus numeric; v_crises int := 0; v_conf int; v_gid uuid;
+  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid;
 begin
   select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
   select archetype into v_form_arch from public.parties where id = p_formateur;
@@ -120,14 +122,20 @@ begin
     from public.parties p
     join public.archetype_oppositions o on o.archetype = v_form_arch and o.opposes = p.archetype
    where p.id = any(v_members) and p.id <> p_formateur;
-  v_bonus := case when v_seats > 0 and (v_govt_seats::numeric / v_seats * 100) > 50
-                  then (v_govt_seats::numeric / v_seats * 100 - 50) / 2 else 0 end;
-  v_conf := greatest(0, least(100, round(50 - 2 * v_crises - 4 * v_contra + v_bonus - p_conf_penalty)::int));
+  -- Integer parts so the stored breakdown sums exactly to the result: every term
+  -- but the bonus is already an integer, so rounding the bonus alone is identical
+  -- to rounding the whole sum.
+  v_maj := case when v_seats > 0 and (v_govt_seats::numeric / v_seats * 100) > 50
+                then round((v_govt_seats::numeric / v_seats * 100 - 50) / 2)::int else 0 end;
+  v_conf := greatest(0, least(100, 50 - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty));
 
-  -- Retire the sitting government, seat the new one (stamped with the tick it formed).
+  -- Retire the sitting government, seat the new one (stamped with the tick it
+  -- formed, plus the Confidence parts for the panel to read back).
   update public.governments set status = 'replaced' where nation_id = p_nation and status = 'active';
-  insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id)
-    values (p_nation, p_formateur, p_type, v_conf, (select current_tick from public.game_state where id), p_source)
+  insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id, conf_breakdown)
+    values (p_nation, p_formateur, p_type, v_conf, (select current_tick from public.game_state where id), p_source,
+            jsonb_build_object('base', 50, 'crises', -2 * v_crises, 'contradictions', -4 * v_contra,
+                               'majority', v_maj, 'renege', -p_conf_penalty, 'formed', v_conf))
     returning id into v_gid;
   -- A coalition inherits its agreed terms as a pending agenda (not auto-applied).
   if p_source is not null then

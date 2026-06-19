@@ -81,6 +81,9 @@
   .conf__bar{height:12px;border-radius:7px;background:var(--chip);overflow:hidden;margin-bottom:6px}
   .conf__fill{height:100%;width:0;border-radius:7px;transition:width .3s}
   .conf__note{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);line-height:1.5;margin-top:12px}
+  .conf__break{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 2px}
+  .bk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;font-weight:700;padding:4px 8px;border-radius:7px;background:var(--chip);color:var(--soft);white-space:nowrap}
+  .bk.pos{background:var(--green-soft);color:var(--green)} .bk.neg{background:var(--red-soft);color:var(--red)}
 
   /* agenda */
   .ag{display:flex;align-items:flex-start;gap:11px;padding:12px 0;border-bottom:1px solid var(--line)}
@@ -172,6 +175,23 @@
     return { word: 'In trouble', color: 'var(--red)' };                // <40 = the seat penalty
   }
 
+  // Confidence breakdown chips, read straight from the stored conf_breakdown
+  // (computed once in _seat_government) plus the movement since formation. Show
+  // Base always and any non-zero part; governments seated before the breakdown
+  // existed simply show none.
+  function confChips(govt){
+    var b = govt.conf_breakdown;
+    if (!b) return '';
+    var parts = [['Base', b.base], ['Crises', b.crises], ['Contradictions', b.contradictions],
+                 ['Coalition size', b.majority], ['Reneged', b.renege]];
+    if (b.formed != null) parts.push(['Agenda', (Number(govt.confidence) || 0) - b.formed]);
+    var chips = parts.filter(function(p){ return p[0] === 'Base' || p[1]; }).map(function(p){
+      var n = p[1] || 0, cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
+      return '<span class="bk ' + cls + '">' + p[0] + ' ' + (n > 0 ? '+' : '') + n + '</span>';
+    });
+    return '<div class="conf__break">' + chips.join('') + '</div>';
+  }
+
   function memberRow(p, role, lead){
     return '<div class="mrow"><span class="dot" style="background:' + archetypeColor(p.archetype) + '"></span>' +
       '<div class="nm"><b>' + esc(p.name) + '</b><small>' + esc(p.archetype || '') + (p.abbreviation ? ' · ' + esc(p.abbreviation) : '') + '</small></div>' +
@@ -182,8 +202,15 @@
   function render(govt, nation, parties, agenda, amPM, formation){
     var box = document.getElementById('content');
     if (!govt){
-      box.innerHTML = '<div class="panel"><div class="empty"><b>No government has formed yet</b>' +
-        '<span>A government is seated when the nation holds its next general election.</span></div></div>';
+      // Two distinct "no government" reasons: a one-party state never forms a
+      // coalition government, vs a multiparty nation that simply hasn't voted yet.
+      var oneParty = !!(nation && nation.ruling_party);
+      box.innerHTML = '<div class="panel"><div class="empty"><b>' +
+        (oneParty ? 'No coalition government' : 'No government has formed yet') + '</b><span>' +
+        (oneParty
+          ? esc(nation.name || 'This nation') + ' is a one-party state — power isn’t shared through a coalition, so there’s no Government Confidence to track here.'
+          : 'A government is seated when the nation holds its first general election.') +
+        '</span></div></div>';
       return;
     }
     var byId = {}; parties.forEach(function(p){ byId[p.id] = p; });
@@ -271,6 +298,7 @@
           '<div class="conf__n" style="color:' + bd.color + '">' + c + '<span>%</span></div>' +
           '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
           '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
+          confChips(govt) +
           '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.</div>' +
         '</div></aside>' +
       '</div>';
@@ -360,7 +388,7 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
