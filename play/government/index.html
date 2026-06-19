@@ -352,8 +352,12 @@
         '<div class="subhd">In government</div>' + members +
         (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
       '</div>' +
-      // 4 — Governing Agenda
-      '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>';
+      // 4 — National Crises (empty scaffold; wired up later)
+      '<div class="panel"><h2>National Crises</h2><p class="muted">No active national crises.</p></div>' +
+      // 5 — Governing Agenda
+      '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
+      // 6 — National Modifiers (empty scaffold; sits beneath the future Cabinet)
+      '<div class="panel"><h2>National Modifiers</h2><p class="muted">No active national modifiers.</p></div>';
 
     box.querySelectorAll('.enact').forEach(function(b){ b.addEventListener('click', function(){ enact(b.dataset.id); }); });
     var ea = document.getElementById('enterAgreed'); if (ea) ea.addEventListener('click', function(){ enterAgreed(govt.id); });
