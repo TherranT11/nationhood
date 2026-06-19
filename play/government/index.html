@@ -232,7 +232,8 @@
   }
 
   function hemiLegend(gov, opp){
-    return gov.concat(opp).map(function(p){
+    // Only seated parties — the legend describes the chart, which excludes 0-seat parties.
+    return gov.concat(opp).filter(function(p){ return (p.seats || 0) > 0; }).map(function(p){
       return '<span class="lg' + (p.in_government ? '' : ' opp') + '"><span class="sw" style="background:' + archetypeColor(p.archetype) + '"></span>' +
         (p.in_government ? '<b>' + esc(p.name) + '</b>' : esc(p.name)) + ' ' + (p.seats || 0) + '</span>';
     }).join('');
