@@ -246,3 +246,56 @@ begin
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 grant execute on function public.advance_tick() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- agenda_enact(item): the PM (the government's formateur) carries out one pending
+-- agenda item. Costs the leading party 1 action; rolls 1d6 + the leader's Resolve
+-- to decide HOW MUCH Government Confidence the win earns (strong/middling/poor) —
+-- the item always resolves (done). Confidence moves accordingly, clamped at 100.
+-- v1 does NOT apply the term's literal effect (e.g. changing the regime); it marks
+-- the promise delivered and moves the public's standing.
+-- ---------------------------------------------------------------------------
+create or replace function public.agenda_enact(p_item uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_item public.government_agenda%rowtype; v_gov public.governments%rowtype;
+  v_res int; v_roll int; v_tier text; v_delta int; v_newconf int; v_body text;
+begin
+  v_p := public._begin_action(0);   -- locks the caller's party, requires >= 1 action
+  select * into v_item from public.government_agenda where id = p_item;
+  if not found then raise exception 'That agenda item is gone.'; end if;
+  if v_item.status = 'done' then raise exception 'That item is already delivered.'; end if;
+  select * into v_gov from public.governments where id = v_item.government_id;
+  if v_gov.status <> 'active' then raise exception 'That government is no longer in power.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the leading party of the government can enact its agenda.';
+  end if;
+
+  select coalesce(res, 0) into v_res from public.politicians
+    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
+  v_res  := coalesce(v_res, 0);
+  v_roll := floor(random() * 6)::int + 1;
+  v_tier := public._action_tier(v_roll + v_res);
+  v_delta := case v_tier when 'strong' then 4 when 'middling' then 2 else 1 end;  -- always a gain; resolving resolves
+  v_newconf := least(100, v_gov.confidence + v_delta);
+  v_delta := v_newconf - v_gov.confidence;   -- the gain actually applied (so the 100% cap never overstates)
+
+  update public.government_agenda set status = 'done' where id = p_item;
+  update public.governments set confidence = v_newconf where id = v_gov.id;
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+
+  v_body := 'The ' || v_p.name || ' government delivered on its agenda' || case v_tier
+    when 'strong'   then ', and the win landed well with the public.'
+    when 'middling' then '.'
+    else                 ', though the rollout was rocky.'
+  end || ' Government Confidence +' || v_delta || '% (now ' || v_newconf || '%).';
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_gov.nation_id, v_p.id, 'agenda', v_body, public.current_game_date());
+
+  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'confidence', v_newconf, 'actions', v_p.actions_remaining - 1);
+end $$;
+grant execute on function public.agenda_enact(uuid) to authenticated;
