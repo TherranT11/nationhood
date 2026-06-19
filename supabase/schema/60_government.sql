@@ -41,7 +41,7 @@ on conflict do nothing;
 -- The government object: one active government per nation. Members are the
 -- parties with parties.in_government = true; this row records who leads, the
 -- kind of government, and the public's standing in it (Government Confidence).
--- Public read; written only by the resolver.
+-- Public read; written only through _seat_government (one seating path).
 -- ---------------------------------------------------------------------------
 create table if not exists public.governments (
   id                    uuid primary key default gen_random_uuid(),
@@ -49,7 +49,7 @@ create table if not exists public.governments (
   formateur_party_id    uuid references public.parties (id) on delete set null,  -- the party that formed + leads it
   type                  text not null,                 -- majority | coalition | minority
   confidence            int  not null,                 -- 0..100, public approval of this government
-  formed_tick           int  not null,
+  formed_tick           int  not null,                 -- the tick it formed; the formation window (renege) reads this
   source_negotiation_id uuid references public.negotiations (id) on delete set null, -- the committed agreement, if a coalition
   status                text not null default 'active', -- active | replaced
   created_at            timestamptz not null default now()
