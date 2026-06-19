@@ -152,9 +152,9 @@
   // Confidence band, tied to the resolver's seat-modifier thresholds (>50 rewarded,
   // <40 punished at the next election).
   function band(c){
-    if (c >= 50) return { word: 'Confident', color: 'var(--green)' };
-    if (c >= 40) return { word: 'Holding',   color: 'var(--amber)' };
-    return { word: 'In trouble', color: 'var(--red)' };
+    if (c > 50) return { word: 'Confident', color: 'var(--green)' };   // >50 = the resolver's seat bonus
+    if (c >= 40) return { word: 'Holding',   color: 'var(--amber)' };  // 40–50 = neutral
+    return { word: 'In trouble', color: 'var(--red)' };                // <40 = the seat penalty
   }
 
   function memberRow(p, role, lead){
