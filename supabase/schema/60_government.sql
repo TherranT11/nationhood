@@ -78,6 +78,68 @@ drop policy if exists "government_agenda_select_all" on public.government_agenda
 create policy "government_agenda_select_all" on public.government_agenda for select using (true);
 
 -- ---------------------------------------------------------------------------
+-- _seat_government(...): the ONE place a government is seated. Works out the
+-- membership (a coalition = host + accepted partners; otherwise the formateur
+-- alone), computes Government Confidence (50 − 2·crises − 4·opposite-pole
+-- partners + majority-size bonus, minus an optional penalty), retires the
+-- sitting government, inserts the new one stamped with the current tick, and
+-- inherits the source coalition's agreed terms as a pending agenda. Returns the
+-- resulting Confidence. INTERNAL — called by resolve_election (a fresh election,
+-- penalty 0) and the renege/install RPCs (penalty 5 for breaking the deal).
+-- ---------------------------------------------------------------------------
+create or replace function public._seat_government(
+  p_nation text, p_formateur uuid, p_type text, p_source uuid, p_conf_penalty int default 0)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_seats int; v_form_arch text; v_members uuid[];
+  v_govt_seats int; v_contra int; v_bonus numeric; v_crises int := 0; v_conf int; v_gid uuid;
+begin
+  select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
+  select archetype into v_form_arch from public.parties where id = p_formateur;
+
+  -- Members: a coalition is the host + its accepted partners; otherwise just the formateur.
+  if p_type = 'coalition' then
+    select array_agg(pid) into v_members from (
+      select p_formateur as pid
+      union
+      select party_id from public.negotiation_parties where negotiation_id = p_source and status = 'accepted'
+    ) m;
+  else
+    v_members := array[p_formateur];
+  end if;
+  update public.parties set in_government = (id = any(v_members)) where nation_id = p_nation;
+
+  -- Confidence: 50 − 2·(active crises) − 4·(opposite-pole partners) + majority-size
+  -- bonus, then minus the caller's penalty. Crises aren't tracked yet → 0 for now.
+  select coalesce(sum(seats), 0) into v_govt_seats from public.parties where id = any(v_members);
+  select count(*) into v_contra
+    from public.parties p
+    join public.archetype_oppositions o on o.archetype = v_form_arch and o.opposes = p.archetype
+   where p.id = any(v_members) and p.id <> p_formateur;
+  v_bonus := case when v_seats > 0 and (v_govt_seats::numeric / v_seats * 100) > 50
+                  then (v_govt_seats::numeric / v_seats * 100 - 50) / 2 else 0 end;
+  v_conf := greatest(0, least(100, round(50 - 2 * v_crises - 4 * v_contra + v_bonus - p_conf_penalty)::int));
+
+  -- Retire the sitting government, seat the new one (stamped with the tick it formed).
+  update public.governments set status = 'replaced' where nation_id = p_nation and status = 'active';
+  insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id)
+    values (p_nation, p_formateur, p_type, v_conf, (select current_tick from public.game_state where id), p_source)
+    returning id into v_gid;
+  -- A coalition inherits its agreed terms as a pending agenda (not auto-applied).
+  if p_source is not null then
+    insert into public.government_agenda (government_id, type, params, status)
+      select v_gid, type, params, 'pending' from public.negotiation_terms where negotiation_id = p_source;
+  end if;
+
+  return v_conf;
+end $$;
+revoke all on function public._seat_government(text, uuid, text, uuid, int) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- resolve_election(nation): the full pipeline for ONE nation. INTERNAL — execute
 -- is revoked from clients; only advance_tick() (admin-gated, same owner) calls it.
 -- ---------------------------------------------------------------------------
@@ -90,11 +152,8 @@ as $$
 declare
   v_seats int; v_threshold numeric; v_freq int; v_tick int; v_majority int;
   v_old_conf int; v_incumbents uuid[];
-  v_formateur_id uuid; v_form_arch text; v_form_seats int;
-  v_coal_host uuid; v_coal_arch text;
-  v_type text; v_source uuid; v_members uuid[];
-  v_govt_seats int; v_contra int; v_bonus numeric; v_crises int := 0; v_conf int;
-  v_gid uuid;
+  v_formateur_id uuid; v_form_seats int; v_coal_host uuid;
+  v_type text; v_source uuid; v_conf int;
 begin
   select legislature_seats, coalesce(electoral_threshold, 0), coalesce(election_frequency_months, 60)
     into v_seats, v_threshold, v_freq from public.nations where id = p_nation;
@@ -134,7 +193,7 @@ begin
 
   -- ---- FORMATION CASCADE --------------------------------------------------
   -- Largest party (seats, then popularity, then incumbency).
-  select id, archetype, seats into v_formateur_id, v_form_arch, v_form_seats
+  select id, seats into v_formateur_id, v_form_seats
     from public.parties where nation_id = p_nation
     order by seats desc, popularity desc, (id = any(v_incumbents)) desc
     limit 1;
@@ -149,9 +208,9 @@ begin
   else
     -- First party in cascade order that hosts a committed agreement reaching a
     -- majority with the POST-election seats (best-ranked qualifier = first one hit).
-    select q.neg_id, q.host_id, q.host_arch into v_source, v_coal_host, v_coal_arch
+    select q.neg_id, q.host_id into v_source, v_coal_host
     from (
-      select n.id as neg_id, hp.id as host_id, hp.archetype as host_arch,
+      select n.id as neg_id, hp.id as host_id,
              hp.seats as hseats, hp.popularity as hpop,
              hp.seats + coalesce((select sum(pp.seats) from public.negotiation_parties np
                                     join public.parties pp on pp.id = np.party_id
@@ -164,48 +223,17 @@ begin
     limit 1;
 
     if v_source is not null then
-      v_type := 'coalition'; v_formateur_id := v_coal_host; v_form_arch := v_coal_arch;
+      v_type := 'coalition'; v_formateur_id := v_coal_host;
     else
       v_type := 'minority';                            -- largest party governs alone, sans majority
     end if;
   end if;
 
-  -- Members: a coalition is the host + its accepted partners; otherwise just the
-  -- formateur.
-  if v_type = 'coalition' then
-    select array_agg(pid) into v_members from (
-      select v_formateur_id as pid
-      union
-      select party_id from public.negotiation_parties where negotiation_id = v_source and status = 'accepted'
-    ) m;
-  else
-    v_members := array[v_formateur_id];
-  end if;
-
-  update public.parties set in_government = (id = any(v_members)) where nation_id = p_nation;
-
-  -- ---- GOVERNMENT CONFIDENCE ---------------------------------------------
-  -- 50 − 2·(active crises) − 4·(opposite-pole partners) + majority-size bonus.
-  -- Crises aren't tracked yet (no National Modifiers system) → 0 for now.
-  select coalesce(sum(seats), 0) into v_govt_seats from public.parties where id = any(v_members);
-  select count(*) into v_contra
-    from public.parties p
-    join public.archetype_oppositions o on o.archetype = v_form_arch and o.opposes = p.archetype
-   where p.id = any(v_members) and p.id <> v_formateur_id;
-  v_bonus := case when v_seats > 0 and (v_govt_seats::numeric / v_seats * 100) > 50
-                  then (v_govt_seats::numeric / v_seats * 100 - 50) / 2 else 0 end;
-  v_conf := greatest(0, least(100, round(50 - 2 * v_crises - 4 * v_contra + v_bonus)::int));
-
-  -- ---- GOVERNMENT OBJECT + AGENDA ----------------------------------------
-  update public.governments set status = 'replaced' where nation_id = p_nation and status = 'active';
-  insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id)
-    values (p_nation, v_formateur_id, v_type, v_conf, v_tick, v_source)
-    returning id into v_gid;
-  -- A coalition inherits its agreed terms as a pending agenda (not auto-applied).
-  if v_source is not null then
-    insert into public.government_agenda (government_id, type, params, status)
-      select v_gid, type, params, 'pending' from public.negotiation_terms where negotiation_id = v_source;
-  end if;
+  -- ---- SEAT THE GOVERNMENT -----------------------------------------------
+  -- Members, Confidence, the government row + its inherited agenda all happen in
+  -- the single seating helper the renege/install path also calls. No penalty —
+  -- an honest election doesn't dock the public's standing.
+  v_conf := public._seat_government(p_nation, v_formateur_id, v_type, v_source, 0);
 
   -- ---- RESCHEDULE + DISSOLVE SAVED AGREEMENTS -----------------------------
   update public.nations set next_election_tick = v_tick + v_freq where id = p_nation;
