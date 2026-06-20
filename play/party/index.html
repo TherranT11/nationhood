@@ -450,7 +450,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
-  import { archetypeColor } from '/archetypes.js';
+  import { partyColor } from '/archetypes.js';
   import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -632,9 +632,6 @@
   // Composition of the Assembly: a 0→totalSeats bar built from real party seats
   // (government parties first, then opposition, then a Vacant remainder). Brand-
   // new nation: nothing is held yet, so it reads as one Vacant bar.
-  // A party's display colour: its chosen colour, else the archetype default. One
-  // source for the assembly bar, legend, and rival cards.
-  function partyColor(p) { return (p && p.color) || archetypeColor(p && p.archetype); }
 
   function renderAssembly(parties, myId, totalSeats) {
     var bar = document.getElementById('bar'), legend = document.getElementById('legend'), maj = document.getElementById('maj');
@@ -795,7 +792,7 @@
       document.getElementById('pname').textContent = party.name;
       document.getElementById('pabbr').textContent = party.abbreviation ? '(' + party.abbreviation + ')' : '';
       ME.user = user; ME.party = party;
-      applyAccent(party.color || archetypeColor(party.archetype));  // party colour overrides the page accent
+      applyAccent(partyColor(party));  // party colour (or archetype default) overrides the page accent
       renderCrest(party);                                            // logo image, else tinted initials
       document.getElementById('archBadge').textContent = party.archetype;
 
