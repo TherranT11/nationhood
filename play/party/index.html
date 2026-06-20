@@ -449,7 +449,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
-  import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
   import { archetypeColor } from '/archetypes.js';
   import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
 
@@ -469,10 +469,8 @@
   var ME = { user: null, party: null };
   var ACCENT = '#5546E8';
   function applyAccent(color) {
-    ACCENT = color;
-    var m = document.querySelector('.main');
-    m.style.setProperty('--indigo', color);
-    m.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, #fff)');
+    ACCENT = color;     // the crest tint reads this
+    setAccent(color);   // remap the page + chrome accent globally (one source: topbar.js)
   }
   function renderCrest(party) {
     var el = document.getElementById('plogo');

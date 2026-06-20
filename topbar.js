@@ -2,8 +2,9 @@
 // and the settings gear). ONE source for every signed-in screen: a page drops
 // <div class="topbar" id="topbar"></div> at the top of <main>, calls
 // mountTopbar() once, then feeds live values via the setters as data loads.
-import { wireDeletePartyMenu, currentTick } from '/supabase.js';
+import { supabase, wireDeletePartyMenu, currentTick } from '/supabase.js';
 import { fmtFunds, tickToDate } from '/util.js';
+import { archetypeColor } from '/archetypes.js';
 
 const CSS = `
 .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
@@ -74,6 +75,7 @@ export function mountTopbar(){
   const host = document.getElementById('topbar');
   if (host) host.innerHTML = HTML;
   wireDeletePartyMenu();   // settings gear → Delete Party (shared; see supabase.js)
+  loadAccent();            // tint the chrome with the player's party colour (every screen)
 
   // The game date is owned here — one source, read straight from the live tick.
   // Re-pull it whenever the page is (re)shown so it never goes stale after a tick
@@ -102,4 +104,23 @@ export function setTopbarFunds(currency, funds){
 export function setTopbarDate(dateStr){
   const el = document.getElementById('tbDate');
   if (el) el.textContent = dateStr;
+}
+
+// Party-colour accent — ONE source for every signed-in screen. Remaps the page's
+// --indigo (and its soft tint) on :root, so the topbar pill, sidebar, and all page
+// accents follow the player's party colour. Pages can call this to update live (e.g.
+// after Edit Party); mountTopbar also loads it once so every page is tinted on boot.
+export function setAccent(color){
+  if (!color) return;
+  const r = document.documentElement;
+  r.style.setProperty('--indigo', color);
+  r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, #fff)');
+}
+async function loadAccent(){
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data } = await supabase.from('parties').select('color, archetype').eq('user_id', session.user.id).maybeSingle();
+    if (data) setAccent(data.color || archetypeColor(data.archetype)); // chosen colour, else archetype default
+  } catch (e) { /* keep the default accent if the party can't be read */ }
 }
