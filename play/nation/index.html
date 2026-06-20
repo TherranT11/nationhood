@@ -113,7 +113,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc, fmtPop } from '/util.js';
+  import { esc, fmtPop, declaredValue } from '/util.js';
   import { regimeLabel } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
 
@@ -129,18 +129,8 @@
   function render(nation, slots, gov, pmParty, pmPol){
     var vals = nation.declarations || {};
     var slotBySlug = {}; slots.forEach(function(s){ slotBySlug[s.slug] = s; });
-    // A declaration's current value: the nation's own choice first. Pick-list slots
-    // (custom_allowed = false: titles, emblem, state form, …) fall back to the slot's
-    // shared ★ default — a sensible starting value for any nation. Free-text identity
-    // slots (custom_allowed = true: official name, capital, demonym, …) do NOT: their
-    // ★ is just the seed nation's own name, so inheriting it would show one nation's
-    // identity on another. Those read '—' until this nation declares its own.
-    function declValue(slug){
-      var s = slotBySlug[slug];
-      if (vals[slug] != null && vals[slug] !== '') return vals[slug];
-      if (s && !s.custom_allowed && (s.options || [])[s.default_index] != null) return s.options[s.default_index];
-      return '—';
-    }
+    // This slot's current value — via the shared one-source helper (see util.js).
+    function declValue(slug){ return declaredValue(slotBySlug[slug], vals); }
 
     var eco = nation.economy || {}, prod = nation.production || {};
     var regime = eco.regime;
