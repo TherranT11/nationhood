@@ -42,17 +42,7 @@
 
   /* main */
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;max-width:980px}
-  .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:22px}
-  .tb-discord{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;background:#5865f2;color:#fff;flex:none;transition:background .15s}
-  .tb-discord:hover{background:#4752c4}
-  .tb-discord svg{width:18px;height:18px}
-  .tb-actions{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:20px;padding:9px 15px;white-space:nowrap}
-  .tb-date{display:flex;flex-direction:column;align-items:flex-end;line-height:1.12}
-  .tb-date__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
-  .tb-date__v{font-family:'Archivo',sans-serif;font-size:16px;font-weight:800;color:var(--ink);letter-spacing:.01em;white-space:nowrap}
-  .tb-next{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:1px solid var(--line);background:var(--chip);border-radius:11px;padding:8px 15px;white-space:nowrap}
-  .tb-next__l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-  .tb-next__v{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--soft)}
+  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
 
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px;text-decoration:none}
   .back:hover{color:var(--indigo)}
@@ -137,12 +127,7 @@
   </aside>
 
   <main class="main">
-    <div class="topbar">
-      <a class="tb-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener" aria-label="Join our Discord"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg></a>
-      <span class="tb-actions">Party Actions: 3 Available</span>
-      <span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v" id="tbDate">January, 1980</span></span>
-      <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
-    </div>
+    <div class="topbar" id="topbar"></div>
     <a class="back" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Your Party</a>
     <div id="content"><section class="mod"><p class="empty">Loading&hellip;</p></section></div>
   </main>
@@ -151,8 +136,10 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { mountTopbar, setTopbarDate } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
+  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
     i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
   });
@@ -232,7 +219,7 @@
       }
 
       var gameDate = tickToDate(await currentTick());
-      document.getElementById('tbDate').textContent = gameDate;
+      setTopbarDate(gameDate);
       render(pol, p, gameDate);
     } catch (e) {
       document.getElementById('content').innerHTML = '<section class="mod"><div class="mod__hd">Politician</div><p class="empty">Could not load this politician. Refresh to try again.</p></section>';
