@@ -440,7 +440,8 @@
     }
 
     // Build a stable id from the name: lowercase, alphanumeric, hyphenated.
-    function slugify(s) { return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+    // One slug helper: '-' for nation ids (default), '_' for declaration keys.
+    function slugify(s, sep) { sep = sep || '-'; return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, sep).replace(new RegExp('^' + sep + '+|' + sep + '+$', 'g'), ''); }
     function num(id, float) {
       var raw = document.getElementById(id).value.trim();
       if (raw === '') return 0;
@@ -830,8 +831,7 @@
     }
 
     // ---- Declarations (admin CRUD: cosmetic name slots) ----
-    var decls = [], declActive = 0, declFocusLast = false;
-    function declSlug(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
+    var decls = [], declActive = 0, declFocusLast = false, declAdding = false;
 
     async function loadDeclarations() {
       var reg = document.getElementById('declReg');
@@ -895,7 +895,7 @@
         optsBox.appendChild(row);
       });
       ed.querySelector('#d-ct').textContent = (d.options || []).length + ' total';
-      ed.querySelector('#d-label').oninput = function (e) { d.label = e.target.value; d.slug = declSlug(d.label); ed.querySelector('#d-key').textContent = d.slug; renderDeclReg(); };
+      ed.querySelector('#d-label').oninput = function (e) { d.label = e.target.value; d.slug = slugify(d.label, '_'); ed.querySelector('#d-key').textContent = d.slug; renderDeclReg(); };
       ed.querySelector('#d-addopt').onclick = function () { d.options = d.options || []; d.options.push(''); declFocusLast = true; renderDeclReg(); renderDeclEditor(); };
       ed.querySelector('#d-custom').onchange = function (e) { d.custom_allowed = e.target.checked; renderDeclReg(); };
       ed.querySelector('#d-save').onclick = function () { saveDecl(d); };
@@ -905,6 +905,7 @@
     }
 
     async function addDeclaration() {
+      if (declAdding) return; declAdding = true;   // guard double-clicks (each one inserts a row)
       var maxSort = decls.reduce(function (m, d) { return Math.max(m, d.sort_order || 0); }, 0);
       try {
         const { data, error } = await supabase.from('declarations')
@@ -916,6 +917,7 @@
         declActive = idx >= 0 ? idx : Math.max(0, decls.length - 1);
         renderDeclReg(); renderDeclEditor();
       } catch (e) { alert(/(policy|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Couldn’t add a declaration.')); }
+      finally { declAdding = false; }
     }
 
     async function saveDecl(d) {
@@ -924,7 +926,7 @@
       if (!d.label || !d.label.trim()) { note.textContent = 'Enter a declaration name.'; note.className = 'note error'; return; }
       if (!opts.length) { note.textContent = 'Add at least one name.'; note.className = 'note error'; return; }
       var di = Math.min(Math.max(d.default_index || 0, 0), opts.length - 1);
-      var row = { grp: (d.grp || 'Custom').trim() || 'Custom', label: d.label.trim(), slug: declSlug(d.label), options: opts, default_index: di, custom_allowed: !!d.custom_allowed, sort_order: d.sort_order || 0 };
+      var row = { grp: (d.grp || 'Custom').trim() || 'Custom', label: d.label.trim(), slug: slugify(d.label, '_'), options: opts, default_index: di, custom_allowed: !!d.custom_allowed, sort_order: d.sort_order || 0 };
       var btn = document.getElementById('d-save'); btn.disabled = true;
       try {
         const { error } = await supabase.from('declarations').update(row).eq('id', d.id);
