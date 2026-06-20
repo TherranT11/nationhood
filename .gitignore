@@ -1,0 +1,4 @@
+# Generated artifact: the full schema concatenated from supabase/schema/*.sql.
+# Rebuilt on demand; the per-file sources under supabase/schema/ are the source
+# of truth, so this is never committed (it would silently drift).
+supabase/schema_all.sql
