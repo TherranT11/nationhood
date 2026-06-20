@@ -83,3 +83,18 @@ create policy "parties_delete_own" on public.parties for delete using (auth.uid(
 revoke insert, update on public.parties from authenticated;
 grant insert (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
 grant update (user_id, nation_id, name, abbreviation, archetype, color, logo_url) on public.parties to authenticated;
+
+-- Archetype crowding: a party's popularity ceiling is trimmed by 2 points for every
+-- OTHER party in the nation sharing its archetype. ONE source for the gameplay cap
+-- (the leader actions in schema/40) and the Party page display (mirrored in JS).
+create or replace function public._archetype_ceiling_penalty(p_nation text, p_archetype text)
+returns numeric language sql stable as $$
+  select 2 * greatest(0, count(*) - 1)::numeric
+    from public.parties where nation_id = p_nation and archetype = p_archetype;
+$$;
+-- A party's EFFECTIVE popularity ceiling: its own ceiling less the crowding penalty,
+-- never below its floor. The cap the raise actions actually enforce.
+create or replace function public._effective_ceiling(p_nation text, p_archetype text, p_ceiling numeric, p_floor numeric)
+returns numeric language sql stable as $$
+  select greatest(coalesce(p_floor, 0), p_ceiling - public._archetype_ceiling_penalty(p_nation, p_archetype));
+$$;

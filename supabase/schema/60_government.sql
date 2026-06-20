@@ -99,6 +99,7 @@ as $$
 declare
   v_seats int; v_form_arch text; v_members uuid[];
   v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric;
+  v_base int := case when p_type = 'minority' then 30 else 50 end;  -- minority govts start lower
 begin
   select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
   select archetype into v_form_arch from public.parties where id = p_formateur;
@@ -131,14 +132,14 @@ begin
   -- most-restrictive confidence ceiling (100 if none).
   v_mod_form := round(public._mod_confidence_formation(p_nation));
   v_ceil     := public._mod_confidence_ceiling(p_nation);
-  v_conf := greatest(0, least(v_ceil, 50 - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty + v_mod_form))::int;
+  v_conf := greatest(0, least(v_ceil, v_base - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty + v_mod_form))::int;
 
   -- Retire the sitting government, seat the new one (stamped with the tick it
   -- formed, plus the Confidence parts for the panel to read back).
   update public.governments set status = 'replaced' where nation_id = p_nation and status = 'active';
   insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id, conf_breakdown)
     values (p_nation, p_formateur, p_type, v_conf, (select current_tick from public.game_state where id), p_source,
-            jsonb_build_object('base', 50, 'crises', -2 * v_crises, 'contradictions', -4 * v_contra,
+            jsonb_build_object('base', v_base, 'crises', -2 * v_crises, 'contradictions', -4 * v_contra,
                                'majority', v_maj, 'renege', -p_conf_penalty, 'modifier', v_mod_form::int, 'formed', v_conf))
     returning id into v_gid;
   -- A coalition inherits its agreed terms as a pending agenda (not auto-applied).
@@ -248,6 +249,14 @@ begin
   -- the single seating helper the renege/install path also calls. No penalty —
   -- an honest election doesn't dock the public's standing.
   v_conf := public._seat_government(p_nation, v_formateur_id, v_type, v_source, 0);
+
+  -- ---- POST-ELECTION STANDINGS --------------------------------------------
+  -- Every party sheds 30% of its standing popularity (never below its floor) — a
+  -- fresh mandate resets the field. Runs after seat allocation, so it doesn't skew
+  -- the result that was just computed from the pre-election popularity.
+  update public.parties
+     set popularity = greatest(pop_floor, round(popularity * 0.7, 1))
+   where nation_id = p_nation;
 
   -- ---- RESCHEDULE + DISSOLVE SAVED AGREEMENTS -----------------------------
   update public.nations set next_election_tick = v_tick + v_freq where id = p_nation;
