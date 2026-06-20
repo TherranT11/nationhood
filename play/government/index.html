@@ -46,6 +46,9 @@
 
   #content > .panel{margin-top:18px} #content > :first-child{margin-top:20px}
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px}
+  /* Agenda + Cabinet on top, Modifiers + Crises beneath — two columns. */
+  .govgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;align-items:start}
+  @media(max-width:760px){.govgrid{grid-template-columns:1fr}}
   .panel h2{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
 
   /* government header card */
@@ -354,14 +357,13 @@
         '<div class="subhd">In government</div>' + members +
         (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
       '</div>' +
-      // 4 — National Crises (empty scaffold; wired up later)
-      '<div class="panel"><h2>National Crises</h2><p class="muted">No active national crises.</p></div>' +
-      // 5 — Governing Agenda
-      '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
-      // 6 — The Cabinet (empty scaffold; wired up later)
-      '<div class="panel"><h2>The Cabinet</h2><p class="muted">No ministers appointed yet.</p></div>' +
-      // 7 — National Modifiers (empty scaffold; sits beneath the Cabinet)
-      '<div class="panel"><h2>National Modifiers</h2><p class="muted">No active national modifiers.</p></div>';
+      // 4–7 — two columns: Agenda + Cabinet on top, Modifiers + Crises beneath.
+      '<div class="govgrid">' +
+        '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
+        '<div class="panel"><h2>The Cabinet</h2><p class="muted">No ministers appointed yet.</p></div>' +
+        '<div class="panel"><h2>National Modifiers</h2><p class="muted">No active national modifiers.</p></div>' +
+        '<div class="panel"><h2>National Crises</h2><p class="muted">No active national crises.</p></div>' +
+      '</div>';
 
     box.querySelectorAll('.enact').forEach(function(b){ b.addEventListener('click', function(){ enact(b.dataset.id); }); });
     var ea = document.getElementById('enterAgreed'); if (ea) ea.addEventListener('click', function(){ enterAgreed(govt.id); });
