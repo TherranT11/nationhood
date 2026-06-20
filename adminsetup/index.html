@@ -119,6 +119,13 @@
   .custom .t b{font-weight:700}.custom .t span{color:#9a9a9a;display:block;font-size:11.5px}
   .declfoot{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
 
+  /* per-nation declaration fields inside the nation add/edit form */
+  .declsec{grid-column:1/-1;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+  .declsec__h{font-size:15px;font-weight:800;margin-bottom:4px}
+  .declsec__sub{font-size:12.5px;color:var(--muted);margin:0 0 12px;line-height:1.45}
+  .declgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px}
+  .declrow .decl-custom{margin-top:6px}
+
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
@@ -199,6 +206,11 @@
           <div><label for="f-goods">Goods (Production)</label><input id="f-goods" type="number" step="1"></div>
           <div><label for="f-services">Services (Production)</label><input id="f-services" type="number" step="1"></div>
           <div><label for="f-diplomacy">Diplomacy (Production)</label><input id="f-diplomacy" type="number" step="1"></div>
+        </div>
+        <div class="declsec">
+          <h3 class="declsec__h">National Identity &amp; Declarations</h3>
+          <p class="declsec__sub">Per-nation names and titles. Leave “— not set —” to use the shared default (free-text identity slots then show “—” until declared). Choose “+ Add custom…” to type your own value and select it for this nation.</p>
+          <div id="declFields" class="declgrid"><p class="empty">Loading declarations…</p></div>
         </div>
         <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
         <button class="btn btn-ghost btn-full" type="button" id="cancelEdit" hidden style="margin-top:8px">Cancel edit</button>
@@ -312,6 +324,7 @@
           show('admin');
           renderClock();
           await loadNations();
+          loadDeclFields();
           renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []);
           loadModifiers();
         } else if (session) {
@@ -366,6 +379,7 @@
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
       setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
+      fillDeclFields(n);
     }
     function startEdit(n) {
       editing = n;
@@ -379,6 +393,7 @@
     function cancelEdit() {
       editing = null;
       document.getElementById('addForm').reset();
+      resetDeclFields();
       document.getElementById('f-regime').value = '17';
       document.getElementById('formTitle').textContent = 'Add Nation';
       document.getElementById('addBtn').textContent = 'Add';
@@ -386,6 +401,86 @@
       addNote.textContent = ''; addNote.className = 'note';
     }
     document.getElementById('cancelEdit').addEventListener('click', cancelEdit);
+
+    // --- Per-nation declaration fields in the nation form -------------------
+    // Built from the live slot definitions so the admin sets each nation's
+    // identity/titles right here. Each slot is a combobox: pick an existing option,
+    // or "+ Add custom…" to type a brand-new value and select it for this nation.
+    var declSlots = [];
+    async function loadDeclFields() {
+      var box = document.getElementById('declFields');
+      if (!box) return;
+      try {
+        const { data, error } = await supabase.from('declarations')
+          .select('slug, label, grp, options, default_index, custom_allowed, sort_order')
+          .order('sort_order').order('created_at');
+        if (error) throw error;
+        declSlots = data || [];
+        if (!declSlots.length) { box.innerHTML = '<p class="empty">No declaration slots defined yet — add them in the Declarations tab.</p>'; return; }
+        box.innerHTML = declSlots.map(function (s) {
+          var opts = (s.options || []).map(function (o) { return '<option value="' + esc(o) + '">' + esc(o) + '</option>'; }).join('');
+          return '<div class="declrow" data-slug="' + esc(s.slug) + '">' +
+            '<label>' + esc(s.label) + '</label>' +
+            '<select class="decl-sel">' +
+              '<option value="">— not set —</option>' + opts +
+              '<option value="__custom__">+ Add custom…</option>' +
+            '</select>' +
+            '<input class="decl-custom" type="text" placeholder="Type a custom value, then Enter" hidden>' +
+          '</div>';
+        }).join('');
+        box.querySelectorAll('.declrow').forEach(function (row) {
+          var sel = row.querySelector('.decl-sel'), inp = row.querySelector('.decl-custom');
+          sel.addEventListener('change', function () {
+            if (sel.value === '__custom__') { inp.hidden = false; inp.focus(); } else { inp.hidden = true; }
+          });
+          function commit() {
+            var v = inp.value.trim();
+            if (!v) { inp.hidden = true; if (sel.value === '__custom__') sel.value = ''; return; }
+            addDeclOption(sel, v); sel.value = v; inp.value = ''; inp.hidden = true;
+          }
+          inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+          inp.addEventListener('blur', commit);
+        });
+        if (editing) fillDeclFields(editing);   // re-apply the loaded nation's values
+      } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load declaration slots.</p>'; }
+    }
+    // Ensure value v is a selectable <option> (inserted before the "+ Add custom…" item).
+    function addDeclOption(sel, v) {
+      var exists = Array.prototype.some.call(sel.options, function (o) { return o.value === v; });
+      if (exists) return;
+      var opt = document.createElement('option'); opt.value = v; opt.textContent = v;
+      sel.insertBefore(opt, sel.querySelector('option[value="__custom__"]'));
+    }
+    function fillDeclFields(n) {
+      var vals = (n && n.declarations) || {};
+      document.querySelectorAll('#declFields .declrow').forEach(function (row) {
+        var sel = row.querySelector('.decl-sel'), inp = row.querySelector('.decl-custom');
+        inp.hidden = true; inp.value = '';
+        var v = vals[row.dataset.slug];
+        if (v != null && v !== '') { addDeclOption(sel, v); sel.value = v; } else { sel.value = ''; }
+      });
+    }
+    function resetDeclFields() {
+      document.querySelectorAll('#declFields .declrow').forEach(function (row) {
+        var sel = row.querySelector('.decl-sel'), inp = row.querySelector('.decl-custom');
+        sel.value = ''; inp.hidden = true; inp.value = '';
+      });
+    }
+    // The form's declaration values as a jsonb object — only slugs the admin actually set.
+    function collectDeclarations() {
+      var out = {};
+      document.querySelectorAll('#declFields .declrow').forEach(function (row) {
+        var sel = row.querySelector('.decl-sel'), inp = row.querySelector('.decl-custom');
+        var v = (sel.value === '__custom__') ? inp.value.trim() : sel.value;
+        if (v && v !== '__custom__') out[row.dataset.slug] = v;
+      });
+      // Don't silently drop stored values whose slot no longer exists in the register.
+      if (editing && editing.declarations) {
+        var known = {}; declSlots.forEach(function (s) { known[s.slug] = true; });
+        Object.keys(editing.declarations).forEach(function (k) { if (!known[k] && out[k] == null) out[k] = editing.declarations[k]; });
+      }
+      return out;
+    }
 
     async function loadNations() {
       var box = document.getElementById('nationList');
@@ -481,7 +576,8 @@
         production: {
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
           goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy')
-        }
+        },
+        declarations: collectDeclarations()
       };
 
       btn.disabled = true;
@@ -507,7 +603,7 @@
         }
         addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
-        if (editing) cancelEdit(); else e.target.reset();
+        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); }
         loadNations();
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
@@ -520,6 +616,7 @@
         document.querySelectorAll('.vtab').forEach(function (x) { x.classList.toggle('active', x === t); });
         document.querySelectorAll('.tabpane').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
         if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
+        if (tab === 'nations') loadDeclFields();
         if (tab === 'declarations') loadDeclarations();
       });
     });
