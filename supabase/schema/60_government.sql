@@ -167,6 +167,7 @@ declare
   v_formateur_id uuid; v_form_seats int; v_coal_host uuid;
   v_type text; v_source uuid; v_conf int;
   v_nname text; v_year int; v_results text := ''; v_idx int := 0; v_cnt int; rec record;
+  v_ruling text; v_fname text;
 begin
   select legislature_seats, coalesce(electoral_threshold, 0), coalesce(election_frequency_months, 60)
     into v_seats, v_threshold, v_freq from public.nations where id = p_nation;
@@ -253,10 +254,12 @@ begin
   update public.negotiations set status = 'closed'
    where nation_id = p_nation and status in ('active', 'committed');
 
-  -- ---- FEED: election results, then the government that formed ------------
-  -- Results name every party that won a seat, most seats first, with varied
-  -- connectives ("The X won N seats, followed by Y with N, … and Z winning N").
-  select name into v_nname from public.nations where id = p_nation;
+  -- ---- FEED: results, then who leads the government ----------------------
+  -- A multiparty nation holds an election; a one-party state holds a Party
+  -- Congress where factions of the ruling party vie for standing. The seat
+  -- breakdown is identical; only the framing differs.
+  select name, ruling_party into v_nname, v_ruling from public.nations where id = p_nation;
+  select name into v_fname from public.parties where id = v_formateur_id;
   v_year := 1980 + (v_tick - 1) / 12;   -- tick 1 = January 1980 (mirrors util.js/current_game_date)
   select count(*) into v_cnt from public.parties where nation_id = p_nation and seats > 0;
   for rec in
@@ -273,16 +276,20 @@ begin
       else                    ', ' || rec.name || ' with ' || rec.seats
     end);
   end loop;
-  if v_cnt = 0 then v_results := 'No party cleared the threshold to win a seat'; end if;
+  if v_cnt = 0 then v_results := 'No ' || (case when v_ruling is not null then 'faction took a seat' else 'party cleared the threshold to win a seat' end); end if;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, v_formateur_id, 'election',
-            'Election results are in for the election of ' || v_year || ' for ' || v_nname || '. ' || v_results || '.',
+            (case when v_ruling is not null
+                  then 'The results of the ' || v_year || ' Party Congress for ' || v_nname || ' are in. '
+                  else 'Election results are in for the election of ' || v_year || ' for ' || v_nname || '. ' end)
+            || v_results || '.',
             public.current_game_date());
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, v_formateur_id, 'government',
-            'The ' || (select name from public.parties where id = v_formateur_id)
-            || ' forms a ' || v_type || ' government (Government Confidence ' || v_conf || '%).',
+            (case when v_ruling is not null
+                  then 'The ' || v_fname || ' now leads ' || v_ruling || ' (Government Confidence ' || v_conf || '%).'
+                  else 'The ' || v_fname || ' forms a ' || v_type || ' government (Government Confidence ' || v_conf || '%).' end),
             public.current_game_date());
 end $$;
 -- Internal only: clients can never call the resolver directly (advance_tick,
