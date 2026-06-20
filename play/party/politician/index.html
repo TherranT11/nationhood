@@ -136,7 +136,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarDate } from '/topbar.js';
+  import { mountTopbar } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -218,8 +218,7 @@
         flag.src = nation.flag;
       }
 
-      var gameDate = tickToDate(await currentTick());
-      setTopbarDate(gameDate);
+      var gameDate = tickToDate(await currentTick()); // for the bio timeline; the topbar owns its own date
       render(pol, p, gameDate);
     } catch (e) {
       document.getElementById('content').innerHTML = '<section class="mod"><div class="mod__hd">Politician</div><p class="empty">Could not load this politician. Refresh to try again.</p></section>';

@@ -111,7 +111,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds, setTopbarDate } from '/topbar.js';
+  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -163,11 +163,10 @@
       document.getElementById('lhead').textContent = 'National Assembly of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
-      const session = tickToDate(await currentTick());
+      const session = tickToDate(await currentTick()); // for the assembly summary; the topbar owns its own date
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      setTopbarDate(session);
       render(session, nation || {}, parties || []);
     } catch (e) {
       fail('Couldn’t load the Legislature right now. Refresh to try again.');

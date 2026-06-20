@@ -397,9 +397,9 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
-  import { esc, COMPETENCIES, tickToDate, fmtFunds, majority as majorityOf } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarDate } from '/topbar.js';
+  import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+  import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { archetypeColor } from '/archetypes.js';
   import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
 
@@ -625,7 +625,6 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      setTopbarDate(tickToDate(await currentTick())); // live game date
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, ruling_party').eq('id', party.nation_id).single();
