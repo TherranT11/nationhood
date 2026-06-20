@@ -132,6 +132,7 @@
   .invite__dec:hover{color:var(--red);border-color:var(--red)}
   .invite__go{background:var(--indigo);border-color:var(--indigo);color:#fff}
   .invite__go:hover{filter:brightness(1.06)}
+  .invite__dec:disabled,.invite__go:disabled{opacity:.5;cursor:not-allowed;filter:none}
   a.invite{text-decoration:none;margin-bottom:14px}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
@@ -561,25 +562,30 @@
       box.innerHTML = invites.map(function (n) {
         var host = (n.host && n.host.name) || 'Another party';
         var roster = (n.parties || []).map(function (p) {
-          return '<span class="invite__p"><b>' + esc(p.name) + '</b> <span>· ' + esc(p.archetype || '') + '</span></span>';
+          return '<span class="invite__p"><b>' + esc(p.name) + '</b>' + (p.archetype ? ' <span>· ' + esc(p.archetype) + '</span>' : '') + '</span>';
         }).join('');
         return '<div class="invite" data-id="' + esc(n.id) + '"><div class="invite__t"><b>' + esc(host) + '</b> has invited you to Coalition Talks.' +
           (roster ? '<span class="invite__lbl">Invited Parties</span>' + roster : '') + '</div>' +
           '<span class="invite__a"><button class="invite__dec" type="button">Reject Talks</button><button class="invite__go" type="button">Accept Talks</button></span></div>';
       }).join('');
       box.querySelectorAll('.invite').forEach(function (el) {
-        var id = el.dataset.id;
-        el.querySelector('.invite__go').addEventListener('click', function () { enterInvite(id, true); });
-        el.querySelector('.invite__dec').addEventListener('click', function () { enterInvite(id, false); });
+        var id = el.dataset.id, go = el.querySelector('.invite__go'), dec = el.querySelector('.invite__dec');
+        // Both buttons write (coalition_respond) — lock the pair on first click.
+        function lock() { go.disabled = true; dec.disabled = true; }
+        go.addEventListener('click', function () { if (go.disabled) return; lock(); enterInvite(id, true, go, dec); });
+        dec.addEventListener('click', function () { if (dec.disabled) return; lock(); enterInvite(id, false, go, dec); });
       });
     } catch (e) { box.innerHTML = ''; }
   }
-  async function enterInvite(negId, accept) {
+  async function enterInvite(negId, accept, go, dec) {
     try {
       await respondInvite(negId, accept);
       if (accept) { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(negId); return; }
       renderInvites();
-    } catch (e) { ping(e.message || 'Couldn’t respond to the invite.'); }
+    } catch (e) {
+      if (go) go.disabled = false; if (dec) dec.disabled = false; // failed — let them retry
+      ping(e.message || 'Couldn’t respond to the invite.');
+    }
   }
 
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
