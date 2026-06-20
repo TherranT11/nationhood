@@ -55,4 +55,10 @@ from (values
 ) as v(grp, label, slug, options, default_index, custom_allowed, sort_order)
 where not exists (select 1 from public.declarations);
 
+-- Demonym (what a nation's people are called) — added idempotently so existing
+-- installs pick it up too. Player-settable like Capital / Official Name.
+insert into public.declarations (grp, label, slug, options, default_index, custom_allowed, sort_order)
+select 'Names & places', 'Demonym', 'demonym', '["Sessauan"]'::jsonb, 0, true, 7
+where not exists (select 1 from public.declarations where slug = 'demonym');
+
 notify pgrst, 'reload schema';
