@@ -117,6 +117,7 @@ begin
   v_tier  := public._action_tier(v_total);
   v_delta := round((v_total::numeric) / 10.0 * 0.75, 1);                -- (1d6 + Cha) / 10, then −25%
   v_newpop := least(v_p.popularity + v_delta, v_p.pop_ceiling::numeric); -- capped at the ceiling
+  v_newpop := public._mod_clamp_pop(v_p.nation_id, v_p.archetype, v_newpop); -- archetype modifier band (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
 
   v_body := 'The ' || v_p.name || ' has held a local rally' || case v_tier
@@ -160,6 +161,7 @@ begin
   v_newfloor := least(v_p.pop_floor + v_delta, v_p.pop_ceiling::numeric);  -- floor capped at the ceiling
   v_delta := v_newfloor - v_p.pop_floor;                                   -- amount actually applied
   v_newpop := greatest(v_p.popularity, v_newfloor);                        -- popularity never below the floor
+  v_newpop := public._mod_clamp_pop(v_p.nation_id, v_p.archetype, v_newpop); -- archetype modifier band (schema/70)
 
   v_body := 'The ' || v_p.name || case v_tier
     when 'strong'   then ' has spent the week organizing, and the ground game took hold. New local chapters opened their doors, volunteers signed up in droves, and a base is forming that no rival attack will pry loose.'
@@ -230,10 +232,10 @@ declare
   v_p public.parties%rowtype; v_acu int; v_res int; v_roll int; v_total int;
   v_margin numeric; v_cut numeric := 0; v_self_pen int; v_p_newpop numeric;
   v_cost bigint := 25000; v_hit boolean; v_tier text; v_body text;
-  v_tname text; v_tnation text; v_toldpop numeric; v_tnewpop numeric;
+  v_tname text; v_tnation text; v_tarch text; v_toldpop numeric; v_tnewpop numeric; v_tfloor numeric;
 begin
   v_p := public._begin_action(v_cost);  -- attacker locked + checked
-  select name, nation_id, popularity into v_tname, v_tnation, v_toldpop from public.parties where id = p_target;
+  select name, nation_id, archetype, popularity into v_tname, v_tnation, v_tarch, v_toldpop from public.parties where id = p_target;
   if not found then raise exception 'No such party.'; end if;
   if p_target = v_p.id then raise exception 'You can''t attack your own party.'; end if;
   if v_tnation <> v_p.nation_id then raise exception 'That party isn''t in your nation.'; end if;
@@ -252,11 +254,15 @@ begin
 
   if v_hit then
     v_cut := round(v_margin / 3.0, 1);
-    update public.parties set popularity = greatest(popularity - v_cut, pop_floor)
+    -- An attack only lowers the target, so just the floor binds: the higher of the
+    -- target's own floor and any archetype popularity floor modifier (schema/70).
+    v_tfloor := public._mod_archetype_pop_floor(v_tnation, v_tarch);
+    update public.parties set popularity = greatest(popularity - v_cut, pop_floor, coalesce(v_tfloor, pop_floor))
       where id = p_target returning popularity into v_tnewpop;
     v_cut := v_toldpop - v_tnewpop;  -- actual amount removed after the floor clamp
   end if;
   v_p_newpop := greatest(v_p.popularity - v_self_pen, v_p.pop_floor);
+  v_p_newpop := public._mod_clamp_pop(v_p.nation_id, v_p.archetype, v_p_newpop); -- attacker's own archetype band (schema/70)
 
   if v_hit then
     v_body := 'The ' || v_p.name || ' went after the ' || v_tname || '''s record' || case v_tier
@@ -303,6 +309,7 @@ begin
   v_tier  := public._action_tier(v_total);
   v_delta := round((v_total::numeric) / 3.0, 1);                        -- (1d6 + Guile) / 3
   v_newpop := least(v_p.popularity + v_delta, v_p.pop_ceiling);         -- capped at the ceiling
+  v_newpop := public._mod_clamp_pop(v_p.nation_id, v_p.archetype, v_newpop); -- archetype modifier band (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
   if v_roll = 6 then v_ceilgain := 0.5; end if;                         -- natural 6 → +0.5% ceiling
   v_newceil := v_p.pop_ceiling + v_ceilgain;
@@ -353,6 +360,7 @@ begin
   v_delta := round((v_total::numeric) / 3.0, 1);                 -- (1d6 + Resolve) / 3 → ceiling gain
   v_newceil := v_p.pop_ceiling + v_delta;
   v_newpop := greatest(v_p.popularity - 0.2, v_p.pop_floor);     -- bold stance dips popularity 0.2%
+  v_newpop := public._mod_clamp_pop(v_p.nation_id, v_p.archetype, v_newpop); -- archetype modifier band (schema/70)
   v_pen := v_p.popularity - v_newpop;                            -- amount actually lost
 
   v_body := 'The ' || v_p.name || case v_tier

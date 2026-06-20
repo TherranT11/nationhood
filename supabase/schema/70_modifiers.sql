@@ -118,4 +118,37 @@ returns numeric language sql stable security definer set search_path = public as
    where nm.nation_id = p_nation and e.effect_type = 'confidence_ceiling';
 $$;
 
+-- Archetype popularity ceiling for an archetype in a nation: the most restrictive
+-- (min) of any applicable ceiling modifier; null when there is none (uncapped).
+create or replace function public._mod_archetype_pop_ceiling(p_nation text, p_archetype text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select min(e.effect_value)
+    from public.nation_modifiers nm
+    join public.modifier_effects e on e.modifier_id = nm.modifier_id
+   where nm.nation_id = p_nation and e.effect_type = 'archetype_pop_ceiling' and e.effect_key = p_archetype;
+$$;
+
+-- Archetype popularity floor: the most generous (max); null when there is none.
+create or replace function public._mod_archetype_pop_floor(p_nation text, p_archetype text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select max(e.effect_value)
+    from public.nation_modifiers nm
+    join public.modifier_effects e on e.modifier_id = nm.modifier_id
+   where nm.nation_id = p_nation and e.effect_type = 'archetype_pop_floor' and e.effect_key = p_archetype;
+$$;
+
+-- Clamp a proposed popularity into the archetype modifier band [floor, ceiling].
+-- The ONE place the two readers above are combined: callers (the leader actions
+-- in schema/40) pass their freshly-computed popularity through this before saving,
+-- so an archetype's cap/floor is enforced at every write. No modifier → no change
+-- (each bound coalesces to the input). If a ceiling sits below a floor, the
+-- ceiling wins (most restrictive). Internal — not granted to clients.
+create or replace function public._mod_clamp_pop(p_nation text, p_archetype text, p_pop numeric)
+returns numeric language sql stable security definer set search_path = public as $$
+  select least(
+           greatest(p_pop, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_pop)),
+           coalesce(public._mod_archetype_pop_ceiling(p_nation, p_archetype), p_pop)
+         );
+$$;
+
 notify pgrst, 'reload schema';
