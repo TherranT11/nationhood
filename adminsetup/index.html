@@ -185,6 +185,9 @@
             <label style="margin-top:12px">Effects</label>
             <div id="m-effects"></div>
             <button class="btn btn-ghost" type="button" id="m-addEffect" style="margin-top:8px">+ Add effect</button>
+            <label style="margin-top:12px">End conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier lifts itself once ALL of these are met (none = stays until removed)</span></label>
+            <div id="m-endconds"></div>
+            <button class="btn btn-ghost" type="button" id="m-addCond" style="margin-top:8px">+ Add end condition</button>
             <label style="margin-top:12px">Nation(s) assigned this Modifier</label>
             <div id="m-nations" class="modnations"><span class="empty">Loading nations…</span></div>
             <button class="btn btn-solid btn-full" type="submit" id="modBtn">Add Modifier</button>
@@ -476,7 +479,7 @@
     });
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
-    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {};   // assignCache/effectsCache: modifier_id -> [...]
+    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
     var EFFECT_TYPES = [
       { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
@@ -554,6 +557,85 @@
     document.getElementById('m-addEffect').addEventListener('click', function () { addEffectRow(); });
     setEffectRows();   // start with one empty effect row
 
+    // ---- End conditions (optional; ALL must hold for the modifier to auto-lift) ----
+    // Direction is baked into the option (…at or above / …at or below); the row
+    // stores the base type + op separately (cond_type / cond_op), mirroring the DB.
+    var CONDITION_TYPES = [
+      { v: 'stat_gte',       base: 'stat',       op: 'gte', target: 'stat',     label: 'Stat at or above' },
+      { v: 'stat_lte',       base: 'stat',       op: 'lte', target: 'stat',     label: 'Stat at or below' },
+      { v: 'regime_gte',     base: 'regime',     op: 'gte', target: 'none',     label: 'Regime at or above' },
+      { v: 'regime_lte',     base: 'regime',     op: 'lte', target: 'none',     label: 'Regime at or below' },
+      { v: 'resource_gte',   base: 'resource',   op: 'gte', target: 'resource', label: 'Resource production at or above' },
+      { v: 'resource_lte',   base: 'resource',   op: 'lte', target: 'resource', label: 'Resource production at or below' },
+      { v: 'economy_gte',    base: 'economy',    op: 'gte', target: 'economy',  label: 'Economy at or above' },
+      { v: 'economy_lte',    base: 'economy',    op: 'lte', target: 'economy',  label: 'Economy at or below' },
+      { v: 'confidence_gte', base: 'confidence', op: 'gte', target: 'none',     label: 'Gov Confidence at or above' },
+      { v: 'confidence_lte', base: 'confidence', op: 'lte', target: 'none',     label: 'Gov Confidence at or below' },
+      { v: 'duration_gte',   base: 'duration',   op: 'gte', target: 'none',     label: 'Months active reaches' }
+    ];
+    var ECONOMY = ['unemployment', 'inflation', 'budget', 'debt', 'gdp', 'population'];
+    var COND_OPTS = CONDITION_TYPES.map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
+    function condInfo(v) { return CONDITION_TYPES.filter(function (x) { return x.v === v; })[0] || { base: 'stat', op: 'gte', target: 'none', label: v }; }
+    function niceKey(k) { return k === 'gdp' ? 'GDP' : k === 'image' ? statName(k) : cap(k); } // one source for a metric/stat key's label
+    function condKeyOpts(target) {
+      var list = target === 'resource' ? RESOURCES : target === 'economy' ? ECONOMY : STATS;
+      return list.map(function (k) { return '<option value="' + k + '">' + esc(niceKey(k)) + '</option>'; }).join('');
+    }
+    function condText(c) {                       // concise label for the existing-modifiers list
+      var op = c.cond_op === 'lte' ? '≤' : '≥';
+      var name = c.cond_type === 'stat' ? statName(c.cond_key)
+               : c.cond_type === 'resource' ? niceKey(c.cond_key) + ' production'
+               : c.cond_type === 'economy' ? niceKey(c.cond_key)
+               : c.cond_type === 'regime' ? 'Regime'
+               : c.cond_type === 'confidence' ? 'Gov Confidence'
+               : c.cond_type === 'duration' ? 'Months active'
+               : c.cond_type;
+      return name + ' ' + op + ' ' + c.cond_value;
+    }
+    function syncCondKey(row) {
+      var target = condInfo(row.querySelector('.cond-type').value).target;
+      var sel = row.querySelector('.cond-key');
+      if (target === 'none') { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+      var prev = sel.value;
+      sel.style.display = '';
+      sel.innerHTML = condKeyOpts(target);
+      if (prev) sel.value = prev;
+    }
+    function addCondRow(c) {
+      c = c || {};
+      var row = document.createElement('div');
+      row.className = 'effrow';
+      row.innerHTML =
+        '<div><label>When</label><select class="cond-type">' + COND_OPTS + '</select></div>' +
+        '<div><label>Target</label><select class="cond-key"></select></div>' +
+        '<div><label>Value</label><input class="cond-value" type="number" step="0.1" value="0"></div>' +
+        '<button class="eff-del" type="button" aria-label="Remove condition">&times;</button>';
+      document.getElementById('m-endconds').appendChild(row);
+      var typeSel = row.querySelector('.cond-type');
+      if (c.cond_type) typeSel.value = c.cond_type + '_' + (c.cond_op || 'gte');
+      typeSel.addEventListener('change', function () { syncCondKey(row); });
+      syncCondKey(row);
+      if (c.cond_key && condInfo(typeSel.value).target !== 'none') row.querySelector('.cond-key').value = c.cond_key;
+      if (c.cond_value != null) row.querySelector('.cond-value').value = c.cond_value;
+      row.querySelector('.eff-del').addEventListener('click', function () { row.remove(); }); // conditions are optional → no auto re-add
+      return row;
+    }
+    function setCondRows(cs) {
+      document.getElementById('m-endconds').innerHTML = '';
+      (cs || []).forEach(addCondRow);   // none = no rows (end conditions are optional)
+    }
+    function readCondRows() {
+      return Array.prototype.slice.call(document.querySelectorAll('#m-endconds .effrow')).map(function (row) {
+        var info = condInfo(row.querySelector('.cond-type').value);
+        return {
+          cond_type: info.base, cond_op: info.op,
+          cond_key: info.target === 'none' ? null : (row.querySelector('.cond-key').value || null),
+          cond_value: parseFloat(row.querySelector('.cond-value').value) || 0
+        };
+      });
+    }
+    document.getElementById('m-addCond').addEventListener('click', function () { addCondRow(); });
+
     function renderModNations(selected) {
       var box = document.getElementById('m-nations'), sel = selected || [];
       if (!nationsCache.length) { box.innerHTML = '<span class="empty">No nations yet.</span>'; return; }
@@ -571,22 +653,27 @@
         if (eLinks) throw eLinks;
         const { data: effs, error: eEffs } = await supabase.from('modifier_effects').select('*');
         if (eEffs) throw eEffs;
+        const { data: conds, error: eConds } = await supabase.from('modifier_end_conditions').select('*');
+        if (eConds) throw eConds;
         modsCache = mods || [];
-        assignCache = {}; effectsCache = {};
+        assignCache = {}; effectsCache = {}; condsCache = {};
         (links || []).forEach(function (l) { (assignCache[l.modifier_id] = assignCache[l.modifier_id] || []).push(l.nation_id); });
         (effs || []).forEach(function (x) { (effectsCache[x.modifier_id] = effectsCache[x.modifier_id] || []).push(x); });
+        (conds || []).forEach(function (x) { (condsCache[x.modifier_id] = condsCache[x.modifier_id] || []).push(x); });
         if (!modsCache.length) { box.innerHTML = '<p class="empty">No modifiers yet.</p>'; return; }
         box.innerHTML = modsCache.map(function (m) {
           var effRows = (effectsCache[m.id] || []).map(function (x) {
             var kl = keyLabel(x.effect_type, x.effect_key);
             return '<li>' + esc(effInfo(x.effect_type).label) + (kl ? ' · ' + esc(kl) : '') + ' · ' + esc(String(x.effect_value)) + '</li>';
           }).join('');
+          var condRows = (condsCache[m.id] || []).map(function (c) { return '<li>' + esc(condText(c)) + '</li>'; }).join('');
           var names = (assignCache[m.id] || []).map(function (nid) { var n = nationsCache.filter(function (x) { return x.id === nid; })[0]; return n ? n.name : nid; });
           return '<div class="mcard ' + esc(m.color || 'yellow') + '"><div class="mcard__top"><div>' +
             '<div class="mcard__name">' + esc(m.name) + '</div><ul class="mcard__efflist">' + (effRows || '<li>No effects</li>') + '</ul></div>' +
             '<div class="mcard__btns"><button class="ed" type="button" data-id="' + esc(m.id) + '">Edit</button>' +
             '<button class="rm" type="button" data-id="' + esc(m.id) + '">Remove</button></div></div>' +
             (m.description ? '<div class="mcard__desc">' + esc(m.description) + '</div>' : '') +
+            '<div class="mcard__nations">' + (condRows ? 'Ends when ALL: <ul class="mcard__efflist">' + condRows + '</ul>' : 'No end conditions — stays until removed') + '</div>' +
             '<div class="mcard__nations">' + (names.length ? 'Assigned: ' + esc(names.join(', ')) : 'Not assigned to any nation') + '</div></div>';
         }).join('');
         box.querySelectorAll('.ed').forEach(function (b) { b.addEventListener('click', function () { var m = modsCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (m) startModEdit(m); }); });
@@ -600,6 +687,7 @@
       document.getElementById('m-color').value = m.color || 'yellow';
       document.getElementById('m-desc').value = m.description || '';
       setEffectRows(effectsCache[m.id] || []);
+      setCondRows(condsCache[m.id] || []);
       renderModNations(assignCache[m.id] || []);
       document.getElementById('modFormTitle').textContent = 'Edit ' + (m.name || 'Modifier');
       document.getElementById('modBtn').textContent = 'Save changes';
@@ -612,6 +700,7 @@
       document.getElementById('modForm').reset();
       document.getElementById('m-color').value = 'yellow';
       setEffectRows([]);
+      setCondRows([]);
       renderModNations([]);
       document.getElementById('modFormTitle').textContent = 'Add Modifier';
       document.getElementById('modBtn').textContent = 'Add Modifier';
@@ -628,6 +717,7 @@
       if (!name) { modNote.textContent = 'Enter a modifier name.'; modNote.className = 'note error'; return; }
       var effects = readEffectRows();
       if (!effects.length) { modNote.textContent = 'Add at least one effect.'; modNote.className = 'note error'; return; }
+      var conditions = readCondRows();   // end conditions are optional
       var row = {
         name: name,
         color: document.getElementById('m-color').value,
@@ -635,6 +725,7 @@
       };
       var nations = Array.prototype.slice.call(document.querySelectorAll('#m-nations input:checked')).map(function (c) { return c.value; });
       var isNew = !modEditing;
+      var tick = await currentTick();    // to stamp newly-assigned nations (for 'duration' conditions)
       btn.disabled = true;
       try {
         var id;
@@ -653,11 +744,22 @@
         if (eDelE) throw eDelE;
         const { error: eInsE } = await supabase.from('modifier_effects').insert(effects.map(function (x) { return { modifier_id: id, effect_type: x.effect_type, effect_key: x.effect_key, effect_value: x.effect_value }; }));
         if (eInsE) throw eInsE;
-        // Reset the assignment to exactly the checked set.
+        // Reset end conditions to exactly the rows on screen (may be none).
+        const { error: eDelC } = await supabase.from('modifier_end_conditions').delete().eq('modifier_id', id);
+        if (eDelC) throw eDelC;
+        if (conditions.length) {
+          const { error: eInsC } = await supabase.from('modifier_end_conditions').insert(conditions.map(function (c) { return { modifier_id: id, cond_type: c.cond_type, cond_op: c.cond_op, cond_key: c.cond_key, cond_value: c.cond_value }; }));
+          if (eInsC) throw eInsC;
+        }
+        // Reset the assignment to the checked set, preserving since_tick for nations
+        // that stay (so a 'duration' clock isn't restarted by an unrelated edit);
+        // newly-assigned nations are stamped with the current tick.
+        const { data: prevRows } = await supabase.from('nation_modifiers').select('nation_id, since_tick').eq('modifier_id', id);
+        var sinceByNation = {}; (prevRows || []).forEach(function (r) { sinceByNation[r.nation_id] = r.since_tick; });
         const { error: eDel } = await supabase.from('nation_modifiers').delete().eq('modifier_id', id);
         if (eDel) throw eDel;
         if (nations.length) {
-          const { error: e2 } = await supabase.from('nation_modifiers').insert(nations.map(function (nid) { return { modifier_id: id, nation_id: nid }; }));
+          const { error: e2 } = await supabase.from('nation_modifiers').insert(nations.map(function (nid) { return { modifier_id: id, nation_id: nid, since_tick: (sinceByNation[nid] != null ? sinceByNation[nid] : tick) }; }));
           if (e2) throw e2;
         }
         modNote.textContent = isNew ? 'Modifier added.' : 'Saved changes.';

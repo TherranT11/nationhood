@@ -286,6 +286,9 @@ begin
     perform public.resolve_election(v_n);
     v_count := v_count + 1;
   end loop;
+  -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
+  delete from public.nation_modifiers nm
+   where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 grant execute on function public.advance_tick() to authenticated;
