@@ -25,10 +25,13 @@ create policy "market_select_all" on public.market for select using (true);
 insert into public.market (resource, available, min_price, max_price)
 select v.resource, (floor(random() * 6) + 1)::int, v.min_price, v.max_price
 from (values
-  ('energy',   1, 10),
+  ('energy',   1, 20),
   ('food',     3, 8),
   ('minerals', 1, 7),
   ('goods',    2, 8),
   ('services', 2, 8)
 ) as v(resource, min_price, max_price)
 where not exists (select 1 from public.market);
+
+-- Energy's ceiling was raised to 20; correct any DB seeded at the old 10.
+update public.market set max_price = 20 where resource = 'energy' and max_price < 20;
