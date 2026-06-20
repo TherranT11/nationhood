@@ -22,13 +22,6 @@ export async function loadNegotiation(id) {
   return unwrap(await supabase.from('negotiations').select(SELECT).eq('id', id).maybeSingle());
 }
 
-// Pending invites this party still has to answer (for the Home banner).
-export function pendingInvites(all, myPartyId) {
-  return all.filter(function (n) {
-    return n.host_party_id !== myPartyId &&
-      (n.negotiation_parties || []).some(function (p) { return p.party_id === myPartyId && p.status === 'invited'; });
-  });
-}
 // Talks already in progress for this party — hosting, or invited-and-accepted.
 export function activeTalks(all, myPartyId) {
   return all.filter(function (n) {
@@ -56,3 +49,14 @@ export async function setAgree(termId, agreed) { return unwrap(await supabase.rp
 export async function removeParty(negId, partyId) { return unwrap(await supabase.rpc('coalition_remove_party', { p_neg: negId, p_party: partyId })); }
 export async function commitAgreement(negId) { return unwrap(await supabase.rpc('coalition_commit', { p_neg: negId })); }
 export async function withdrawAgreement(negId) { return unwrap(await supabase.rpc('coalition_withdraw', { p_neg: negId })); }
+
+// Pending invites for the Home banner, with the host + full invited roster
+// (name + archetype). Server-side because RLS hides co-invitees from a player.
+export async function coalitionInvitesForMe() { return unwrap(await supabase.rpc('coalition_invites_for_me')) || []; }
+
+// ---- coalition chat (per negotiation; participants only) ----
+export async function fetchMessages(negId) {
+  return unwrap(await supabase.from('negotiation_messages').select('id, party_id, body, created_at')
+    .eq('negotiation_id', negId).order('created_at', { ascending: true })) || [];
+}
+export async function postMessage(negId, body) { return unwrap(await supabase.rpc('coalition_post_message', { p_neg: negId, p_body: body })); }

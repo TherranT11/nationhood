@@ -396,3 +396,84 @@ begin
   if not found then raise exception 'Only the host can reopen a committed agreement.'; end if;
 end $$;
 grant execute on function public.coalition_withdraw(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Home invite banner. RLS lets an invited player see only their OWN seat row,
+-- so they can't enumerate their co-invitees for the banner. This security-
+-- definer RPC returns, for each still-pending invite, the host and the full
+-- roster of invited parties (name + archetype) — the ONE source the Home
+-- banner reads. Scoped to the caller's own pending invites only.
+-- ---------------------------------------------------------------------------
+create or replace function public.coalition_invites_for_me()
+returns jsonb
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select coalesce(jsonb_agg(x order by x_created desc), '[]'::jsonb)
+  from (
+    select n.created_at as x_created,
+           jsonb_build_object(
+             'id', n.id,
+             'host', jsonb_build_object('name', hp.name, 'archetype', hp.archetype),
+             'parties', (
+               select coalesce(jsonb_agg(jsonb_build_object('name', p2.name, 'archetype', p2.archetype) order by p2.name), '[]'::jsonb)
+                 from public.negotiation_parties np2
+                 join public.parties p2 on p2.id = np2.party_id
+                where np2.negotiation_id = n.id
+             )
+           ) as x
+      from public.negotiation_parties np
+      join public.parties me on me.id = np.party_id and me.user_id = auth.uid()
+      join public.negotiations n on n.id = np.negotiation_id and n.status = 'active'
+      join public.parties hp on hp.id = n.host_party_id
+     where np.status = 'invited'
+  ) s;
+$$;
+grant execute on function public.coalition_invites_for_me() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Coalition chat — a running message log per negotiation, visible to everyone
+-- at the table (host + invited parties). Reads via RLS (participants only);
+-- posting goes through the RPC so the author party can't be spoofed.
+-- ---------------------------------------------------------------------------
+create table if not exists public.negotiation_messages (
+  id             uuid primary key default gen_random_uuid(),
+  negotiation_id uuid not null references public.negotiations (id) on delete cascade,
+  party_id       uuid not null references public.parties (id) on delete cascade,
+  body           text not null,
+  created_at     timestamptz not null default now()
+);
+create index if not exists negotiation_messages_neg_idx on public.negotiation_messages (negotiation_id, created_at);
+
+alter table public.negotiation_messages enable row level security;
+drop policy if exists "neg_msg_select_part" on public.negotiation_messages;
+create policy "neg_msg_select_part" on public.negotiation_messages for select using (public.is_negotiation_participant(negotiation_id));
+-- no insert/update/delete policies — posting is RPC-only.
+
+create or replace function public.coalition_post_message(p_neg uuid, p_body text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_party uuid; v_body text;
+begin
+  if auth.uid() is null then raise exception 'Not signed in.'; end if;
+  v_body := nullif(btrim(p_body), '');
+  if v_body is null then raise exception 'Type a message first.'; end if;
+  if length(v_body) > 1000 then v_body := left(v_body, 1000); end if;
+  -- Which of the caller's parties sits at this table (host or invited).
+  select p.id into v_party
+    from public.parties p
+   where p.user_id = auth.uid()
+     and ( exists (select 1 from public.negotiations n where n.id = p_neg and n.host_party_id = p.id)
+        or exists (select 1 from public.negotiation_parties np where np.negotiation_id = p_neg and np.party_id = p.id) )
+   limit 1;
+  if v_party is null then raise exception 'You''re not part of these talks.'; end if;
+  insert into public.negotiation_messages (negotiation_id, party_id, body) values (p_neg, v_party, v_body);
+end $$;
+grant execute on function public.coalition_post_message(uuid, text) to authenticated;
+
+notify pgrst, 'reload schema';

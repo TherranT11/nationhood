@@ -121,8 +121,11 @@
   /* Pending coalition-invite banners (Home). */
   #inviteBanners:empty{display:none}
   #inviteBanners{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
-  .invite{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:13px;padding:13px 16px}
-  .invite__t{font-size:13.5px;color:var(--ink);line-height:1.4}
+  .invite{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:13px;padding:14px 16px}
+  .invite__t{font-size:13.5px;color:var(--ink);line-height:1.45;min-width:240px}
+  .invite__lbl{display:block;margin-top:9px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .invite__p{display:block;font-size:13px;color:var(--ink);margin-top:3px}
+  .invite__p span{color:var(--muted)}
   .invite__a{display:flex;gap:8px;flex:none}
   .invite__dec,.invite__go{font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:9px 14px;border-radius:9px;cursor:pointer;border:1px solid var(--line)}
   .invite__dec{background:#fff;color:var(--muted)}
@@ -247,7 +250,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
-  import { fetchNegotiations, pendingInvites, activeTalks, termCounts, openNegotiation, respondInvite } from '/negotiations.js';
+  import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // injects the shared top bar into #topbar + wires the settings gear
@@ -553,13 +556,16 @@
     if (!myPartyId) return;
     var box = document.getElementById('inviteBanners');
     try {
-      var invites = pendingInvites(await fetchNegotiations(), myPartyId);
+      var invites = await coalitionInvitesForMe();   // host + full invited roster (server-side; RLS hides co-invitees)
       if (!invites.length) { box.innerHTML = ''; return; }
-      const hp = await supabase.from('parties').select('id, name').in('id', invites.map(function (n) { return n.host_party_id; }));
-      var names = {}; (hp.data || []).forEach(function (p) { names[p.id] = p.name; });
       box.innerHTML = invites.map(function (n) {
-        return '<div class="invite" data-id="' + esc(n.id) + '"><span class="invite__t">You have been invited to discuss a potential coalition with <b>' + esc(names[n.host_party_id] || 'another party') + '</b>.</span>' +
-          '<span class="invite__a"><button class="invite__dec" type="button">Decline</button><button class="invite__go" type="button">Enter Talks</button></span></div>';
+        var host = (n.host && n.host.name) || 'Another party';
+        var roster = (n.parties || []).map(function (p) {
+          return '<span class="invite__p"><b>' + esc(p.name) + '</b> <span>· ' + esc(p.archetype || '') + '</span></span>';
+        }).join('');
+        return '<div class="invite" data-id="' + esc(n.id) + '"><div class="invite__t"><b>' + esc(host) + '</b> has invited you to Coalition Talks.' +
+          (roster ? '<span class="invite__lbl">Invited Parties</span>' + roster : '') + '</div>' +
+          '<span class="invite__a"><button class="invite__dec" type="button">Reject Talks</button><button class="invite__go" type="button">Accept Talks</button></span></div>';
       }).join('');
       box.querySelectorAll('.invite').forEach(function (el) {
         var id = el.dataset.id;

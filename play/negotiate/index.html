@@ -40,7 +40,7 @@
   .logout:hover{color:var(--red)}
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-  .main{flex:1;padding:24px clamp(16px,3vw,38px) 56px;min-width:0;max-width:1140px}
+  .main{flex:1;padding:24px clamp(16px,3vw,38px) 56px;min-width:0}
   .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:14px}
   .back:hover{color:var(--indigo)}
   .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -159,6 +159,23 @@
   .respond .acc{background:var(--green);border-color:var(--green);color:#fff}
   .respond .dec:hover{border-color:var(--red);color:var(--red)}
 
+  /* coalition chat (right rail, below the summary) */
+  .chat{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-top:16px;display:flex;flex-direction:column}
+  .chat h3{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
+  .chat__log{display:flex;flex-direction:column;gap:10px;max-height:420px;min-height:120px;overflow-y:auto;padding-right:4px}
+  .chat__empty{color:var(--soft);font-size:12.5px;font-style:italic;text-align:center;padding:24px 6px}
+  .msg{display:flex;flex-direction:column;gap:2px}
+  .msg.mine{align-items:flex-end}
+  .msg__who{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .msg__b{max-width:88%;font-size:13px;line-height:1.4;padding:8px 11px;border-radius:11px;background:var(--chip);color:var(--ink);word-wrap:break-word;overflow-wrap:anywhere}
+  .msg.mine .msg__b{background:var(--indigo);color:#fff}
+  .chat__form{display:flex;gap:8px;margin-top:12px}
+  .chat__form input{flex:1;min-width:0;background:#fff;border:1px solid var(--line2);border-radius:9px;padding:9px 11px;font-family:'Archivo',sans-serif;font-size:13px;color:var(--ink)}
+  .chat__form input:focus{outline:none;border-color:var(--ink)}
+  .chat__form button{flex:none;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--indigo);border:1.5px solid var(--indigo);border-radius:9px;padding:0 14px;cursor:pointer}
+  .chat__form button:hover{filter:brightness(1.06)}
+  .chat__form button:disabled{opacity:.5;cursor:not-allowed}
+
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast b{color:#74e0a6} .toast b.bad{color:#ff9b9b}
@@ -205,7 +222,17 @@
 
     <div class="grid">
       <div id="panel"></div>
-      <aside><div class="rail" id="rail"></div></aside>
+      <aside>
+        <div class="rail" id="rail"></div>
+        <div class="chat" id="chat" hidden>
+          <h3>Coalition Chat</h3>
+          <div class="chat__log" id="chatLog"></div>
+          <form class="chat__form" id="chatForm" autocomplete="off">
+            <input id="chatInput" type="text" placeholder="Message the table…" maxlength="1000" aria-label="Chat message">
+            <button type="submit">Send</button>
+          </form>
+        </div>
+      </aside>
     </div>
   </main>
 </div>
@@ -215,7 +242,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, majority } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
-  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement } from '/negotiations.js';
+  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement, fetchMessages, postMessage } from '/negotiations.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -465,6 +492,41 @@
 
   function render(){renderTabs();renderPanel();renderRail();}
 
+  /* ---------- coalition chat (everyone at the table) ---------- */
+  var chatStarted=false, lastMsgKey='';
+  function whoName(pid){ return (POOL[pid] && POOL[pid].name) || 'A party'; }
+  async function loadChat(){
+    if(!negId) return;
+    var log=document.getElementById('chatLog');
+    try {
+      var msgs=await fetchMessages(negId);
+      var key=msgs.length ? msgs.length+'|'+msgs[msgs.length-1].id : '0';
+      if(key===lastMsgKey) return;                 // nothing new — don't disturb scroll/typing
+      lastMsgKey=key;
+      if(!msgs.length){ log.innerHTML='<div class="chat__empty">No messages yet. Say hello to the table.</div>'; return; }
+      var atBottom=log.scrollHeight-log.scrollTop-log.clientHeight < 40;
+      log.innerHTML=msgs.map(function(m){
+        var mine=myParty && m.party_id===myParty.id;
+        return '<div class="msg'+(mine?' mine':'')+'"><span class="msg__who">'+esc(mine?'You':whoName(m.party_id))+'</span><span class="msg__b">'+esc(m.body)+'</span></div>';
+      }).join('');
+      if(atBottom) log.scrollTop=log.scrollHeight;
+    } catch(e){ /* keep the last log shown */ }
+  }
+  function startChat(){
+    if(chatStarted) return; chatStarted=true;
+    document.getElementById('chat').hidden=false;
+    var form=document.getElementById('chatForm'), input=document.getElementById('chatInput'), btn=form.querySelector('button');
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      var body=input.value.trim(); if(!body) return;
+      btn.disabled=true;
+      postMessage(negId,body).then(function(){ input.value=''; lastMsgKey=''; return loadChat(); })
+        .catch(err).then(function(){ btn.disabled=false; input.focus(); });
+    });
+    loadChat();
+    setInterval(loadChat,4000);   // light poll while the page is open
+  }
+
   function showMissing(msg){
     document.getElementById('tabs').innerHTML='';
     document.getElementById('rail').innerHTML='';
@@ -491,6 +553,7 @@
     var ids=counterIds();
     if(ids.indexOf(active)<0) active=ids[0]||null;
     render();
+    startChat();   // once the table is loaded, light up the chat (idempotent)
   }
 
   (async () => {
