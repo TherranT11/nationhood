@@ -397,7 +397,7 @@
     var headParty = amHost ? POOL[active] : HOST;
     var accent = (headParty && colorOf(headParty)) || '#5546E8';
     document.documentElement.style.setProperty('--acc',accent);
-    document.documentElement.style.setProperty('--acc-soft','color-mix(in srgb, '+accent+' 14%, #fff)');
+    document.documentElement.style.setProperty('--acc-soft','color-mix(in srgb, '+accent+' 14%, var(--surface))');
     var panel=document.createElement('div'); panel.className='panel';
     var hp=headParty||{name:'A party',abbr:'?',archetype:'',seats:0};
     var phd=document.createElement('div'); phd.className='phd';

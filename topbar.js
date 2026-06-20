@@ -133,19 +133,14 @@ function wireTheme(){
 // --indigo (and its soft tint) on :root, so the topbar pill, sidebar, and all page
 // accents follow the player's party colour. Pages can call this to update live (e.g.
 // after Edit Party); mountTopbar also loads it once so every page is tinted on boot.
-// The soft tint mixes toward the page background, so it's recomputed per theme; the
-// chosen accent is remembered so the nh-theme event can re-tint without a refetch.
-let _accent = null;
+// The soft tint blends toward var(--surface), so it re-resolves automatically when
+// the theme flips — no recompute needed here.
 export function setAccent(color){
-  if (color) _accent = color;
-  if (!_accent) return;
+  if (!color) return;
   const r = document.documentElement;
-  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const soft = dark ? ' 26%, #1d1d25)' : ' 14%, #fff)';   // mix toward --surface
-  r.style.setProperty('--indigo', _accent);
-  r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + _accent + soft);
+  r.style.setProperty('--indigo', color);
+  r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, var(--surface))');
 }
-window.addEventListener('nh-theme', function () { if (_accent) setAccent(_accent); });
 // Load the player's party once and fill the shared chrome on EVERY screen — accent
 // colour, party funds, and the action budget — so they're correct even on pages that
 // don't feed the topbar themselves. Pages may still call the setters to update live.
