@@ -82,6 +82,8 @@
   .effrow label{margin:0 0 4px}
   .effrow .eff-del{align-self:end;height:42px;border:1px solid var(--line);background:#FBEAE9;color:#C42B2B;border-radius:10px;font-size:18px;font-weight:700;cursor:pointer}
   .effrow .eff-del:hover{filter:brightness(.97)}
+  .eff-hint{grid-column:1/-1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:#9a9a9a;margin:-2px 0 4px;min-height:13px}
+  .eff-hint b{color:var(--ink)}
   .mcard__efflist{margin:4px 0 0;padding:0;list-style:none}
   .mcard__efflist li{font-size:12.5px;color:var(--muted);line-height:1.5}
   @media(max-width:560px){.effrow{grid-template-columns:1fr 1fr;}.effrow .eff-del{grid-column:2;justify-self:end;width:42px}}
@@ -661,6 +663,20 @@
       sel.innerHTML = keyOpts(target);
       if (prev) sel.value = prev;          // keep the choice when the same target type stays
     }
+    // Show the current value of the chosen resource/stat across all nations, so the
+    // admin sees what they're capping/raising. Reads nationsCache (already loaded).
+    function effHint(row) {
+      var hint = row.querySelector('.eff-hint'); if (!hint) return;
+      var target = effInfo(row.querySelector('.eff-type').value).target;
+      var key = row.querySelector('.eff-key').value;
+      if ((target !== 'resource' && target !== 'stat') || !key || !nationsCache.length) { hint.innerHTML = ''; return; }
+      var field = target === 'resource' ? 'production' : 'stats';
+      var parts = nationsCache.map(function (n) {
+        var v = (n[field] || {})[key];
+        return esc(n.name) + ' <b>' + (v != null ? v : '—') + '</b>';
+      });
+      hint.innerHTML = 'Current ' + esc(cap(key)) + ' — ' + parts.join(' · ');
+    }
     function addEffectRow(eff) {
       eff = eff || {};
       var row = document.createElement('div');
@@ -669,14 +685,17 @@
         '<div><label>Effect</label><select class="eff-type">' + EFFECT_OPTS + '</select></div>' +
         '<div><label>Target</label><select class="eff-key"></select></div>' +
         '<div><label>Value</label><input class="eff-value" type="number" step="0.1" value="0"></div>' +
-        '<button class="eff-del" type="button" aria-label="Remove effect">&times;</button>';
+        '<button class="eff-del" type="button" aria-label="Remove effect">&times;</button>' +
+        '<div class="eff-hint"></div>';
       document.getElementById('m-effects').appendChild(row);
       var typeSel = row.querySelector('.eff-type');
       if (eff.effect_type) typeSel.value = eff.effect_type;
-      typeSel.addEventListener('change', function () { syncRowKey(row); });
+      typeSel.addEventListener('change', function () { syncRowKey(row); effHint(row); });
       syncRowKey(row);
       if (eff.effect_key && effInfo(typeSel.value).target !== 'none') row.querySelector('.eff-key').value = eff.effect_key;
       if (eff.effect_value != null) row.querySelector('.eff-value').value = eff.effect_value;
+      row.querySelector('.eff-key').addEventListener('change', function () { effHint(row); });
+      effHint(row);
       row.querySelector('.eff-del').addEventListener('click', function () {
         row.remove();
         if (!document.querySelectorAll('#m-effects .effrow').length) addEffectRow(); // always keep at least one row
