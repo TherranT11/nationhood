@@ -150,6 +150,7 @@
   </aside>
 
   <main class="main">
+    <div class="topbar" id="topbar"></div>
     <div class="phead">
       <span class="eye">The Government</span>
       <h1 id="ghead">Government</h1>
@@ -161,12 +162,14 @@
 <div class="toast" id="toast"></div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc, majority } from '/util.js';
+  import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
+  import { esc, majority, tickToDate } from '/util.js';
   import { archetypeColor } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
+  import { mountTopbar, setTopbarActions, setTopbarFunds, setTopbarDate } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
+  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
 
   function typeLabel(t){ return t === 'coalition' ? 'Coalition Government' : t === 'minority' ? 'Minority Government' : 'Majority Government'; }
   // Confidence band, tied to the resolver's seat-modifier thresholds (>50 rewarded,
@@ -449,15 +452,21 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype').eq('user_id', user.id).single();
+      const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
       document.getElementById('ghead').textContent = 'Government of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
+
+      var currency = (nation && nation.economy && nation.economy.currency) || '$';
+      setTopbarFunds(currency, party.funds);
+      setTopbarActions(party.actions_remaining);
+      setTopbarDate(tickToDate(await currentTick()));
+
       await load();
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';

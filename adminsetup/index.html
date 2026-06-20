@@ -132,7 +132,7 @@
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
-    import { REGIME_TIERS, regimeLabel } from '/ladders.js';
+    import { regimeLabel } from '/ladders.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -169,11 +169,13 @@
       finally { btn.disabled = false; }
     });
 
-    // Regime dropdown: the numeric tiers (high→low), each shown as "N — Label".
-    // Defaults to Electoral Democracy (17), matching Sessau's footing.
-    document.getElementById('f-regime').innerHTML = REGIME_TIERS.map(function (t) {
-      return '<option value="' + t.value + '"' + (t.value === 17 ? ' selected' : '') + '>' + t.value + ' — ' + esc(t.label) + '</option>';
-    }).join('');
+    // Regime dropdown: every value 1–20 (high→low), each shown as "N — Tier"
+    // (the tier label comes from regimeLabel). Defaults to Electoral Democracy (17).
+    var regimeOpts = '';
+    for (var rv = 20; rv >= 1; rv--) {
+      regimeOpts += '<option value="' + rv + '"' + (rv === 17 ? ' selected' : '') + '>' + rv + ' — ' + esc(regimeLabel(rv)) + '</option>';
+    }
+    document.getElementById('f-regime').innerHTML = regimeOpts;
 
     // Decide which view to show from the current session.
     async function refresh() {
