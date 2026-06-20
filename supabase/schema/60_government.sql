@@ -323,6 +323,16 @@ begin
   -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
   delete from public.nation_modifiers nm
    where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
+  -- Floor measures that have stood 6 ticks without a majority fail now (schema/81).
+  with expired as (
+    update public.proposals set status = 'failed'
+     where status = 'voting' and opened_tick is not null and (v_tick - opened_tick) >= 6
+    returning nation_id, party_id, title
+  )
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    select nation_id, party_id, 'declaration',
+           'A measure failed for want of a majority: ' || title || '.', public.current_game_date()
+    from expired;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 grant execute on function public.advance_tick() to authenticated;

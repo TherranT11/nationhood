@@ -27,6 +27,14 @@ create table if not exists public.proposals (
 );
 create index if not exists proposals_nation_idx on public.proposals (nation_id, status);
 
+-- A floor measure resolves the instant Aye-seats reach a majority, or fails after
+-- it has stood on the floor this many ticks without one. opened_tick records when
+-- it reached the floor (null while still on the agenda); the deadline is enforced
+-- in advance_tick (schema/60). Give any pre-migration floor measure a fresh window.
+alter table public.proposals add column if not exists opened_tick int;
+update public.proposals set opened_tick = (select current_tick from public.game_state where id)
+ where status = 'voting' and opened_tick is null;
+
 -- One vote per party per proposal (changeable while voting is open).
 create table if not exists public.proposal_votes (
   proposal_id uuid not null references public.proposals (id) on delete cascade,
@@ -64,8 +72,10 @@ returns int language sql stable security definer set search_path = public as $$
   select coalesce(sum(seats), 0)::int from public.parties where nation_id = p_nation;
 $$;
 
--- Tally an open proposal by seats and resolve it if the math is decided. ONE place
--- the pass/fail rule lives (propose + cast_vote both call it). Returns the status.
+-- A measure on the floor PASSES the moment Aye-seats reach a chamber majority.
+-- It does NOT fail here — a measure stands for its full window (6 ticks) and only
+-- fails for want of a majority at tick advance (advance_tick, schema/60). ONE place
+-- the pass rule lives (propose + cast_vote call it). Returns the status.
 create or replace function public._resolve_proposal(p_proposal uuid)
 returns text
 language plpgsql
@@ -73,24 +83,18 @@ security definer
 set search_path = public
 as $$
 declare
-  v_p public.proposals%rowtype; v_chamber int; v_maj int;
-  v_party_seats int; v_aye int; v_nay int; v_max_aye int;
+  v_p public.proposals%rowtype; v_maj int; v_aye int;
 begin
   select * into v_p from public.proposals where id = p_proposal for update;
   if not found then return 'gone'; end if;
   if v_p.status <> 'voting' then return v_p.status; end if;
 
-  select coalesce(legislature_seats, 0) into v_chamber from public.nations where id = v_p.nation_id;
-  v_maj := public._majority(v_chamber);                                  -- majority of the whole chamber
-  v_party_seats := public._party_seats(v_p.nation_id);
-  select coalesce(sum(p.seats) filter (where pv.aye), 0),
-         coalesce(sum(p.seats) filter (where not pv.aye), 0)
-    into v_aye, v_nay
+  select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = v_p.nation_id;
+  select coalesce(sum(p.seats) filter (where pv.aye), 0) into v_aye
     from public.proposal_votes pv join public.parties p on p.id = pv.party_id
    where pv.proposal_id = p_proposal;
-  v_max_aye := v_aye + greatest(v_party_seats - v_aye - v_nay, 0);       -- undecided seats could still go Aye
 
-  if v_party_seats > 0 and v_aye >= v_maj then
+  if v_aye >= v_maj then   -- v_maj is always >= 1, so this implies real seated Ayes
     update public.proposals set status = 'passed' where id = p_proposal;
     if v_p.kind = 'declaration' then
       perform public._apply_declaration(v_p.nation_id, v_p.payload->>'slug', v_p.payload->>'value');
@@ -99,12 +103,6 @@ begin
       values (v_p.nation_id, v_p.party_id, 'declaration',
               'The assembly passed a measure: ' || v_p.title || '.', public.current_game_date());
     return 'passed';
-  elsif v_max_aye < v_maj then
-    update public.proposals set status = 'failed' where id = p_proposal;
-    insert into public.events (nation_id, party_id, kind, body, game_date)
-      values (v_p.nation_id, v_p.party_id, 'declaration',
-              'The assembly rejected a measure: ' || v_p.title || '.', public.current_game_date());
-    return 'failed';
   end if;
   return 'voting';
 end $$;
@@ -151,11 +149,12 @@ begin
     v_party := public._lock_party();
   end if;
 
-  insert into public.proposals (nation_id, party_id, kind, title, payload, status)
+  insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick)
     values (v_party.nation_id, v_party.id, 'declaration',
             v_decl.label || ' → ' || v_value,
             jsonb_build_object('slug', v_decl.slug, 'label', v_decl.label, 'value', v_value),
-            case when p_to_floor then 'voting' else 'agenda' end)
+            case when p_to_floor then 'voting' else 'agenda' end,
+            case when p_to_floor then (select current_tick from public.game_state where id) else null end)
     returning id into v_pid;
 
   if not p_to_floor then
@@ -185,7 +184,7 @@ begin
   if v_p.status <> 'agenda' then raise exception 'That measure is not on the agenda.'; end if;
   if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election first.'; end if;
 
-  update public.proposals set status = 'voting' where id = p_proposal;
+  update public.proposals set status = 'voting', opened_tick = (select current_tick from public.game_state where id) where id = p_proposal;
   update public.parties  set actions_remaining = actions_remaining - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (p_proposal, v_party.id, true)
     on conflict (proposal_id, party_id) do update set aye = excluded.aye;

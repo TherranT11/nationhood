@@ -173,13 +173,21 @@
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
-  var ST = { party:null, session:'', total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, proposals:[], votes:[], busy:false };
+  var FLOOR_WINDOW = 6;  // ticks a measure stands on the floor before failing — mirrors advance_tick (schema/60)
+  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, proposals:[], votes:[], busy:false };
 
   function tallyOf(pid){
     var vs = ST.votes.filter(function(v){ return v.proposal_id === pid; });
     var t = tallyVotes(vs, ST.seatsByParty);
     var mine = vs.filter(function(v){ return v.party_id === ST.party.id; })[0];
     return { aye:t.aye, nay:t.nay, myVote: mine ? (mine.aye ? 'aye' : 'nay') : null };
+  }
+  function ticksLeft(p){
+    if (p.opened_tick == null) return '';
+    var rem = FLOOR_WINDOW - (ST.tick - p.opened_tick);
+    return rem > 0
+      ? '<span>' + rem + ' tick' + (rem === 1 ? '' : 's') + ' remaining until resolution</span>'
+      : '<span>Resolves at the next tick</span>';
   }
   function measureCard(p){
     var t = tallyOf(p.id);
@@ -188,7 +196,7 @@
     return '<div class="measure" data-id="' + esc(p.id) + '">' +
       '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>' +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
-      '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span class="need' + (t.aye >= ST.maj && ST.total ? ' met' : '') + '">needs <b>' + ST.maj + '</b></span></div>' +
+      '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span class="need' + (t.aye >= ST.maj && ST.total ? ' met' : '') + '">needs <b>' + ST.maj + '</b></span>' + ticksLeft(p) + '</div>' +
       '<div class="mrow"><button class="vb aye' + (t.myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Aye</button>' +
         '<button class="vb nay' + (t.myVote === 'nay' ? ' on' : '') + '" data-v="nay" type="button">Nay</button>' +
         (t.myVote ? '<span class="youvote">You voted ' + t.myVote + '</span>' : '') + '</div></div>';
@@ -270,7 +278,8 @@
       document.getElementById('lhead').textContent = 'National Assembly of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
-      ST.session = tickToDate(await currentTick()); // assembly summary; the topbar owns its own date
+      ST.tick = await currentTick();
+      ST.session = tickToDate(ST.tick); // assembly summary; the topbar owns its own date
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
