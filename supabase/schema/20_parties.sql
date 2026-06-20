@@ -43,6 +43,11 @@ alter table public.parties add column if not exists funds bigint not null defaul
 alter table public.parties add column if not exists in_government boolean not null default false;
 alter table public.parties add column if not exists actions_remaining int not null default 3;
 alter table public.parties add column if not exists conviction int not null default 0;
+-- Player-set branding: a crest colour (hex) and an uploaded logo (Storage public
+-- URL). Both nullable — null colour falls back to the archetype colour, null logo
+-- shows the abbreviation. Cosmetic, so they're in the client write-scope below.
+alter table public.parties add column if not exists color text;
+alter table public.parties add column if not exists logo_url text;
 
 -- No two parties in the same nation may share a name (case-insensitive) or an
 -- abbreviation — enforced server-side, not just in the client.
@@ -77,4 +82,4 @@ create policy "parties_delete_own" on public.parties for delete using (auth.uid(
 -- server-side, do it via a service-role path (which bypasses these grants).
 revoke insert, update on public.parties from authenticated;
 grant insert (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
-grant update (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
+grant update (user_id, nation_id, name, abbreviation, archetype, color, logo_url) on public.parties to authenticated;
