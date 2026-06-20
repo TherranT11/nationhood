@@ -169,7 +169,7 @@
       <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
       <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i" href="/play/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
@@ -195,12 +195,12 @@
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
         <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
-        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Command, ÷6 then −25%, added to your popularity floor (capped at your ceiling). Cost: $25K + 1 action."><b>Organize</b><span class="lead__lane">Command &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
+        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Image, ÷6 then −25%, added to your popularity floor (capped at your ceiling). Cost: $25K + 1 action."><b>Organize</b><span class="lead__lane">Image &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
         <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
         <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Strong result: nation Image +1. Cost: $100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
         <button class="lead" id="act-platform" type="button" title="Roll 1d6 + Resolve, ÷3, added to your popularity ceiling. Costs −0.2% popularity. Cost: $25K + 1 action."><b>Platform</b><span class="lead__lane">Resolve &middot; The Manifesto</span><span class="lead__desc">Raises your popularity ceiling.</span></button>
-        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, quality set by your 1d6 + Charisma roll) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
+        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
         <button class="lead" id="act-negotiate" type="button" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
       </div>
     </section>
@@ -249,7 +249,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
-  import { statLabel, statBand, regimeLabel } from '/ladders.js';
+  import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
 
@@ -274,7 +274,7 @@
     GLANCE_STATS.forEach(function (k) {
       var v = stats[k];
       if (typeof v !== 'number') return;
-      var name = k.charAt(0).toUpperCase() + k.slice(1);
+      var name = statName(k);
       var label = statLabel(k, v) || '—';
       chips.push(chip(name, '<span class="chip__t ' + statBand(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
     });
@@ -367,7 +367,7 @@
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
   wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
-  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.image_gain ? ', Image +1' : '') + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
+  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
   wireAction(document.getElementById('act-platform'), 'party_platform', function (d) { return 'Platform set — ceiling +' + d.delta + '%' + (d.pop_penalty > 0 ? ' (−' + d.pop_penalty + '% popularity)' : '') + '.'; });
 
   // ATTACK targets a rival → open a picker (all other parties, with seats +

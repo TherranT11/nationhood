@@ -18,7 +18,7 @@ export const COMPETENCIES = [
   { key: 'acu', name: 'Acumen',   abbr: 'Acu' },
   { key: 'gui', name: 'Guile',    abbr: 'Gui' },
   { key: 'res', name: 'Resolve',  abbr: 'Res' },
-  { key: 'com', name: 'Command',  abbr: 'Com' },
+  { key: 'com', name: 'Image',    abbr: 'Img' },   // 'com' = internal column key (legacy); displayed as Image
 ];
 
 // GDP is stored as a number of BILLIONS (one source for the scale). Show it as

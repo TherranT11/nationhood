@@ -16,6 +16,14 @@ export function statLabel(stat, value) {
   return rung[i];
 }
 
+// Display NAME for a stat key — the one source for stat labels. Most are just the
+// capitalised key; 'image' shows as "Global Image" (the NATION stat, kept distinct
+// from the politician Image competency).
+export function statName(key) {
+  if (key === 'image') return 'Global Image';
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : '';
+}
+
 // Colour band for a stat value — the single source for how a number maps to
 // good/warn/bad, shared by every nation view. Growth has its own thresholds
 // (contracting → bad, around the flat 10 midpoint → warn, strong → good); the

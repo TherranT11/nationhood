@@ -91,7 +91,7 @@
 
   <script type="module">
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
-    import { statLabel, statBand } from '/ladders.js';
+    import { statLabel, statBand, statName } from '/ladders.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
 
     document.getElementById('logout').addEventListener('click', logout);
@@ -101,7 +101,6 @@
     var nationsBox = document.getElementById('nations');
 
     function err(msg) { note.textContent = msg; note.className = 'note error'; }
-    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
     // One card's markup. The five ladder stats: the number is the source, the
     // word + colour band are derived (statLabel/statBand) — never stored.
@@ -112,8 +111,8 @@
         '<div class="nstat"><span class="k">GDP</span><span class="v">' + currency + fmtGdp(n.gdp) + '</span></div>';
       LADDER_STATS.forEach(function (k) {
         var v = stats[k];
-        if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="v tbd">—</span></div>'; return; }
-        rows += '<div class="nstat"><span class="k">' + cap(k) + '</span><span class="' + ('v ' + statBand(k, v)).trim() + '">' + esc(statLabel(k, v) || '—') + '</span></div>';
+        if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + statName(k) + '</span><span class="v tbd">—</span></div>'; return; }
+        rows += '<div class="nstat"><span class="k">' + statName(k) + '</span><span class="' + ('v ' + statBand(k, v)).trim() + '">' + esc(statLabel(k, v) || '—') + '</span></div>';
       });
       return rows; // Active Parties is rendered as the collapsible roster header (loadParties)
     }

@@ -22,7 +22,7 @@ create table if not exists public.politicians (
   acu int not null default 0,   -- Acumen
   gui int not null default 0,   -- Guile
   res int not null default 0,   -- Resolve
-  com int not null default 0,   -- Command
+  com int not null default 0,   -- Image (legacy key 'com')
   created_at timestamptz not null default now()
 );
 

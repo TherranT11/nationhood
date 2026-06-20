@@ -86,6 +86,39 @@
   .mcard__efflist li{font-size:12.5px;color:var(--muted);line-height:1.5}
   @media(max-width:560px){.effrow{grid-template-columns:1fr 1fr;}.effrow .eff-del{grid-column:2;justify-self:end;width:42px}}
 
+  /* declarations: register (left) + editor (right) */
+  .declcols{display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:start}
+  @media(max-width:880px){.declcols{grid-template-columns:1fr}}
+  .reg{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;max-height:70vh;overflow:auto}
+  .reggrp{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#9a9a9a;margin:12px 6px 6px}
+  .reggrp:first-child{margin-top:2px}
+  .slot{padding:9px 11px;border-radius:9px;cursor:pointer;border:1px solid transparent}
+  .slot:hover{background:var(--chip,#F4F3EF)}
+  .slot.on{background:var(--indigo-soft,#ECE9FD);border-color:color-mix(in srgb,var(--indigo,#5546E8) 25%,transparent)}
+  .slot b{font-weight:700;font-size:13.5px;display:block;letter-spacing:-.01em}
+  .slot .meta{font-family:'Space Mono',monospace;font-size:9.5px;color:#9a9a9a;margin-top:4px}
+  .addslot{width:100%;margin-top:12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:10px;cursor:pointer}
+  .addslot:hover{border-color:var(--ink)}
+  .decled{border:1px solid var(--line);border-radius:12px;padding:18px 18px;background:#fff}
+  .keyline{font-family:'Space Mono',monospace;font-size:11px;color:#9a9a9a;margin-top:6px}
+  .keyline b{color:var(--ink)}
+  .subhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a9a9a;margin:20px 0 6px;display:flex;justify-content:space-between}
+  .starnote{font-family:'Space Mono',monospace;font-size:9.5px;color:#9a9a9a;margin:0 0 12px}
+  .optline{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .star{width:34px;height:40px;border:1px solid var(--line2);background:#fff;border-radius:9px;cursor:pointer;color:#9a9a9a;font-size:16px;line-height:1;flex:none}
+  .star:hover{border-color:#E0820E;color:#E0820E}
+  .star.on{color:#E0820E;border-color:#E0820E;background:#FBF0DD}
+  .optline input{flex:1}
+  .del{width:40px;height:40px;border:1px solid var(--line2);background:#fff;border-radius:9px;color:#9a9a9a;cursor:pointer;font-size:16px;line-height:1;flex:none}
+  .del:hover{color:var(--red);border-color:var(--red)}
+  .addopt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:11px 14px;cursor:pointer}
+  .addopt:hover{border-color:var(--ink)}
+  .custom{display:flex;align-items:center;gap:10px;margin-top:18px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--chip,#F4F3EF)}
+  .custom input{width:18px;height:18px;flex:none;cursor:pointer}
+  .custom .t{font-size:12.5px}
+  .custom .t b{font-weight:700}.custom .t span{color:#9a9a9a;display:block;font-size:11.5px}
+  .declfoot{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
@@ -115,6 +148,7 @@
       <nav class="vtabs">
         <button class="vtab active" data-tab="nations" type="button">Nations</button>
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
+        <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
@@ -150,7 +184,7 @@
           <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
           <div><label for="f-welfare">Starting Welfare</label><input id="f-welfare" type="number" step="1"></div>
           <div><label for="f-growth">Starting Growth</label><input id="f-growth" type="number" step="1"></div>
-          <div><label for="f-image">Starting Image</label><input id="f-image" type="number" step="1"></div>
+          <div><label for="f-image">Starting Global Image</label><input id="f-image" type="number" step="1"></div>
           <div><label for="f-order">Starting Order</label><input id="f-order" type="number" step="1"></div>
           <div><label for="f-unemployment">Starting Unemployment</label><input id="f-unemployment" type="number" step="0.1"></div>
           <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
@@ -185,6 +219,9 @@
             <label style="margin-top:12px">Effects</label>
             <div id="m-effects"></div>
             <button class="btn btn-ghost" type="button" id="m-addEffect" style="margin-top:8px">+ Add effect</button>
+            <label style="margin-top:12px">End conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier lifts itself once ALL of these are met (none = stays until removed)</span></label>
+            <div id="m-endconds"></div>
+            <button class="btn btn-ghost" type="button" id="m-addCond" style="margin-top:8px">+ Add end condition</button>
             <label style="margin-top:12px">Nation(s) assigned this Modifier</label>
             <div id="m-nations" class="modnations"><span class="empty">Loading nations…</span></div>
             <button class="btn btn-solid btn-full" type="submit" id="modBtn">Add Modifier</button>
@@ -198,6 +235,16 @@
         </div>
       </div>
 
+      <div class="tabpane" data-tab="declarations" hidden>
+        <div class="panel">
+          <h2>Declarations</h2>
+          <p class="sub" style="margin:0 0 14px">Each declaration is a titled slot with a list of selectable names. A declaration is purely cosmetic — it changes a title/emblem/name and has no mechanical effect.</p>
+          <div class="declcols">
+            <div class="reg" id="declReg"><p class="empty">Loading…</p></div>
+            <div id="declEditor"></div>
+          </div>
+        </div>
+      </div>
       <div class="tabpane" data-tab="policies" hidden><div class="panel"><h2>Policies</h2><p class="empty">Nothing here yet.</p></div></div>
       <div class="tabpane" data-tab="crises" hidden><div class="panel"><h2>Crises</h2><p class="empty">Nothing here yet.</p></div></div>
       <div class="tabpane" data-tab="events" hidden><div class="panel"><h2>Events</h2><p class="empty">Nothing here yet.</p></div></div>
@@ -208,7 +255,7 @@
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
-    import { regimeLabel } from '/ladders.js';
+    import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES } from '/archetypes.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
@@ -369,7 +416,7 @@
               kv('Prosperity', s.prosperity != null ? s.prosperity : '—') +
               kv('Welfare', s.welfare != null ? s.welfare : '—') +
               kv('Growth', s.growth != null ? s.growth : '—') +
-              kv('Image', s.image != null ? s.image : '—') +
+              kv(statName('image'), s.image != null ? s.image : '—') +
               kv('Order', s.order != null ? s.order : '—') +
               kv('Unemployment', e.unemployment != null ? e.unemployment + '%' : '—') +
               kv('Inflation', e.inflation != null ? e.inflation + '%' : '—') +
@@ -393,7 +440,8 @@
     }
 
     // Build a stable id from the name: lowercase, alphanumeric, hyphenated.
-    function slugify(s) { return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
+    // One slug helper: '-' for nation ids (default), '_' for declaration keys.
+    function slugify(s, sep) { sep = sep || '-'; return (s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, sep).replace(new RegExp('^' + sep + '+|' + sep + '+$', 'g'), ''); }
     function num(id, float) {
       var raw = document.getElementById(id).value.trim();
       if (raw === '') return 0;
@@ -472,11 +520,12 @@
         document.querySelectorAll('.vtab').forEach(function (x) { x.classList.toggle('active', x === t); });
         document.querySelectorAll('.tabpane').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
         if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
+        if (tab === 'declarations') loadDeclarations();
       });
     });
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
-    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {};   // assignCache/effectsCache: modifier_id -> [...]
+    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
     var EFFECT_TYPES = [
       { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
@@ -554,6 +603,85 @@
     document.getElementById('m-addEffect').addEventListener('click', function () { addEffectRow(); });
     setEffectRows();   // start with one empty effect row
 
+    // ---- End conditions (optional; ALL must hold for the modifier to auto-lift) ----
+    // Direction is baked into the option (…at or above / …at or below); the row
+    // stores the base type + op separately (cond_type / cond_op), mirroring the DB.
+    var CONDITION_TYPES = [
+      { v: 'stat_gte',       base: 'stat',       op: 'gte', target: 'stat',     label: 'Stat at or above' },
+      { v: 'stat_lte',       base: 'stat',       op: 'lte', target: 'stat',     label: 'Stat at or below' },
+      { v: 'regime_gte',     base: 'regime',     op: 'gte', target: 'none',     label: 'Regime at or above' },
+      { v: 'regime_lte',     base: 'regime',     op: 'lte', target: 'none',     label: 'Regime at or below' },
+      { v: 'resource_gte',   base: 'resource',   op: 'gte', target: 'resource', label: 'Resource production at or above' },
+      { v: 'resource_lte',   base: 'resource',   op: 'lte', target: 'resource', label: 'Resource production at or below' },
+      { v: 'economy_gte',    base: 'economy',    op: 'gte', target: 'economy',  label: 'Economy at or above' },
+      { v: 'economy_lte',    base: 'economy',    op: 'lte', target: 'economy',  label: 'Economy at or below' },
+      { v: 'confidence_gte', base: 'confidence', op: 'gte', target: 'none',     label: 'Gov Confidence at or above' },
+      { v: 'confidence_lte', base: 'confidence', op: 'lte', target: 'none',     label: 'Gov Confidence at or below' },
+      { v: 'duration_gte',   base: 'duration',   op: 'gte', target: 'none',     label: 'Months active reaches' }
+    ];
+    var ECONOMY = ['unemployment', 'inflation', 'budget', 'debt', 'gdp', 'population'];
+    var COND_OPTS = CONDITION_TYPES.map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
+    function condInfo(v) { return CONDITION_TYPES.filter(function (x) { return x.v === v; })[0] || { base: 'stat', op: 'gte', target: 'none', label: v }; }
+    function niceKey(k) { return k === 'gdp' ? 'GDP' : k === 'image' ? statName(k) : cap(k); } // one source for a metric/stat key's label
+    function condKeyOpts(target) {
+      var list = target === 'resource' ? RESOURCES : target === 'economy' ? ECONOMY : STATS;
+      return list.map(function (k) { return '<option value="' + k + '">' + esc(niceKey(k)) + '</option>'; }).join('');
+    }
+    function condText(c) {                       // concise label for the existing-modifiers list
+      var op = c.cond_op === 'lte' ? '≤' : '≥';
+      var name = c.cond_type === 'stat' ? statName(c.cond_key)
+               : c.cond_type === 'resource' ? niceKey(c.cond_key) + ' production'
+               : c.cond_type === 'economy' ? niceKey(c.cond_key)
+               : c.cond_type === 'regime' ? 'Regime'
+               : c.cond_type === 'confidence' ? 'Gov Confidence'
+               : c.cond_type === 'duration' ? 'Months active'
+               : c.cond_type;
+      return name + ' ' + op + ' ' + c.cond_value;
+    }
+    function syncCondKey(row) {
+      var target = condInfo(row.querySelector('.cond-type').value).target;
+      var sel = row.querySelector('.cond-key');
+      if (target === 'none') { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+      var prev = sel.value;
+      sel.style.display = '';
+      sel.innerHTML = condKeyOpts(target);
+      if (prev) sel.value = prev;
+    }
+    function addCondRow(c) {
+      c = c || {};
+      var row = document.createElement('div');
+      row.className = 'effrow';
+      row.innerHTML =
+        '<div><label>When</label><select class="cond-type">' + COND_OPTS + '</select></div>' +
+        '<div><label>Target</label><select class="cond-key"></select></div>' +
+        '<div><label>Value</label><input class="cond-value" type="number" step="0.1" value="0"></div>' +
+        '<button class="eff-del" type="button" aria-label="Remove condition">&times;</button>';
+      document.getElementById('m-endconds').appendChild(row);
+      var typeSel = row.querySelector('.cond-type');
+      if (c.cond_type) typeSel.value = c.cond_type + '_' + (c.cond_op || 'gte');
+      typeSel.addEventListener('change', function () { syncCondKey(row); });
+      syncCondKey(row);
+      if (c.cond_key && condInfo(typeSel.value).target !== 'none') row.querySelector('.cond-key').value = c.cond_key;
+      if (c.cond_value != null) row.querySelector('.cond-value').value = c.cond_value;
+      row.querySelector('.eff-del').addEventListener('click', function () { row.remove(); }); // conditions are optional → no auto re-add
+      return row;
+    }
+    function setCondRows(cs) {
+      document.getElementById('m-endconds').innerHTML = '';
+      (cs || []).forEach(addCondRow);   // none = no rows (end conditions are optional)
+    }
+    function readCondRows() {
+      return Array.prototype.slice.call(document.querySelectorAll('#m-endconds .effrow')).map(function (row) {
+        var info = condInfo(row.querySelector('.cond-type').value);
+        return {
+          cond_type: info.base, cond_op: info.op,
+          cond_key: info.target === 'none' ? null : (row.querySelector('.cond-key').value || null),
+          cond_value: parseFloat(row.querySelector('.cond-value').value) || 0
+        };
+      });
+    }
+    document.getElementById('m-addCond').addEventListener('click', function () { addCondRow(); });
+
     function renderModNations(selected) {
       var box = document.getElementById('m-nations'), sel = selected || [];
       if (!nationsCache.length) { box.innerHTML = '<span class="empty">No nations yet.</span>'; return; }
@@ -571,22 +699,27 @@
         if (eLinks) throw eLinks;
         const { data: effs, error: eEffs } = await supabase.from('modifier_effects').select('*');
         if (eEffs) throw eEffs;
+        const { data: conds, error: eConds } = await supabase.from('modifier_end_conditions').select('*');
+        if (eConds) throw eConds;
         modsCache = mods || [];
-        assignCache = {}; effectsCache = {};
+        assignCache = {}; effectsCache = {}; condsCache = {};
         (links || []).forEach(function (l) { (assignCache[l.modifier_id] = assignCache[l.modifier_id] || []).push(l.nation_id); });
         (effs || []).forEach(function (x) { (effectsCache[x.modifier_id] = effectsCache[x.modifier_id] || []).push(x); });
+        (conds || []).forEach(function (x) { (condsCache[x.modifier_id] = condsCache[x.modifier_id] || []).push(x); });
         if (!modsCache.length) { box.innerHTML = '<p class="empty">No modifiers yet.</p>'; return; }
         box.innerHTML = modsCache.map(function (m) {
           var effRows = (effectsCache[m.id] || []).map(function (x) {
             var kl = keyLabel(x.effect_type, x.effect_key);
             return '<li>' + esc(effInfo(x.effect_type).label) + (kl ? ' · ' + esc(kl) : '') + ' · ' + esc(String(x.effect_value)) + '</li>';
           }).join('');
+          var condRows = (condsCache[m.id] || []).map(function (c) { return '<li>' + esc(condText(c)) + '</li>'; }).join('');
           var names = (assignCache[m.id] || []).map(function (nid) { var n = nationsCache.filter(function (x) { return x.id === nid; })[0]; return n ? n.name : nid; });
           return '<div class="mcard ' + esc(m.color || 'yellow') + '"><div class="mcard__top"><div>' +
             '<div class="mcard__name">' + esc(m.name) + '</div><ul class="mcard__efflist">' + (effRows || '<li>No effects</li>') + '</ul></div>' +
             '<div class="mcard__btns"><button class="ed" type="button" data-id="' + esc(m.id) + '">Edit</button>' +
             '<button class="rm" type="button" data-id="' + esc(m.id) + '">Remove</button></div></div>' +
             (m.description ? '<div class="mcard__desc">' + esc(m.description) + '</div>' : '') +
+            '<div class="mcard__nations">' + (condRows ? 'Ends when ALL: <ul class="mcard__efflist">' + condRows + '</ul>' : 'No end conditions — stays until removed') + '</div>' +
             '<div class="mcard__nations">' + (names.length ? 'Assigned: ' + esc(names.join(', ')) : 'Not assigned to any nation') + '</div></div>';
         }).join('');
         box.querySelectorAll('.ed').forEach(function (b) { b.addEventListener('click', function () { var m = modsCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (m) startModEdit(m); }); });
@@ -600,6 +733,7 @@
       document.getElementById('m-color').value = m.color || 'yellow';
       document.getElementById('m-desc').value = m.description || '';
       setEffectRows(effectsCache[m.id] || []);
+      setCondRows(condsCache[m.id] || []);
       renderModNations(assignCache[m.id] || []);
       document.getElementById('modFormTitle').textContent = 'Edit ' + (m.name || 'Modifier');
       document.getElementById('modBtn').textContent = 'Save changes';
@@ -612,6 +746,7 @@
       document.getElementById('modForm').reset();
       document.getElementById('m-color').value = 'yellow';
       setEffectRows([]);
+      setCondRows([]);
       renderModNations([]);
       document.getElementById('modFormTitle').textContent = 'Add Modifier';
       document.getElementById('modBtn').textContent = 'Add Modifier';
@@ -628,6 +763,7 @@
       if (!name) { modNote.textContent = 'Enter a modifier name.'; modNote.className = 'note error'; return; }
       var effects = readEffectRows();
       if (!effects.length) { modNote.textContent = 'Add at least one effect.'; modNote.className = 'note error'; return; }
+      var conditions = readCondRows();   // end conditions are optional
       var row = {
         name: name,
         color: document.getElementById('m-color').value,
@@ -635,6 +771,7 @@
       };
       var nations = Array.prototype.slice.call(document.querySelectorAll('#m-nations input:checked')).map(function (c) { return c.value; });
       var isNew = !modEditing;
+      var tick = await currentTick();    // to stamp newly-assigned nations (for 'duration' conditions)
       btn.disabled = true;
       try {
         var id;
@@ -653,11 +790,23 @@
         if (eDelE) throw eDelE;
         const { error: eInsE } = await supabase.from('modifier_effects').insert(effects.map(function (x) { return { modifier_id: id, effect_type: x.effect_type, effect_key: x.effect_key, effect_value: x.effect_value }; }));
         if (eInsE) throw eInsE;
-        // Reset the assignment to exactly the checked set.
+        // Reset end conditions to exactly the rows on screen (may be none).
+        const { error: eDelC } = await supabase.from('modifier_end_conditions').delete().eq('modifier_id', id);
+        if (eDelC) throw eDelC;
+        if (conditions.length) {
+          const { error: eInsC } = await supabase.from('modifier_end_conditions').insert(conditions.map(function (c) { return { modifier_id: id, cond_type: c.cond_type, cond_op: c.cond_op, cond_key: c.cond_key, cond_value: c.cond_value }; }));
+          if (eInsC) throw eInsC;
+        }
+        // Reset the assignment to the checked set, preserving since_tick for nations
+        // that stay (so a 'duration' clock isn't restarted by an unrelated edit);
+        // newly-assigned nations are stamped with the current tick. Best-effort: if
+        // this read fails, prevRows is empty and staying nations simply restamp.
+        const { data: prevRows } = await supabase.from('nation_modifiers').select('nation_id, since_tick').eq('modifier_id', id);
+        var sinceByNation = {}; (prevRows || []).forEach(function (r) { sinceByNation[r.nation_id] = r.since_tick; });
         const { error: eDel } = await supabase.from('nation_modifiers').delete().eq('modifier_id', id);
         if (eDel) throw eDel;
         if (nations.length) {
-          const { error: e2 } = await supabase.from('nation_modifiers').insert(nations.map(function (nid) { return { modifier_id: id, nation_id: nid }; }));
+          const { error: e2 } = await supabase.from('nation_modifiers').insert(nations.map(function (nid) { return { modifier_id: id, nation_id: nid, since_tick: (sinceByNation[nid] != null ? sinceByNation[nid] : tick) }; }));
           if (e2) throw e2;
         }
         modNote.textContent = isNew ? 'Modifier added.' : 'Saved changes.';
@@ -679,6 +828,128 @@
         if (modEditing && modEditing.id === id) cancelModEdit();
         loadModifiers();
       } catch (e) { alert(e.message || 'Couldn’t remove the modifier.'); }
+    }
+
+    // ---- Declarations (admin CRUD: cosmetic name slots) ----
+    var decls = [], declActive = 0, declFocusLast = false, declAdding = false;
+
+    async function loadDeclarations() {
+      var reg = document.getElementById('declReg');
+      try {
+        const { data, error } = await supabase.from('declarations').select('*').order('sort_order').order('created_at');
+        if (error) throw error;
+        decls = data || [];
+        if (declActive >= decls.length) declActive = Math.max(0, decls.length - 1);
+        renderDeclReg(); renderDeclEditor();
+      } catch (e) { reg.innerHTML = '<p class="empty">Couldn’t load declarations.</p>'; document.getElementById('declEditor').innerHTML = ''; }
+    }
+
+    function renderDeclReg() {
+      var box = document.getElementById('declReg'); box.innerHTML = '';
+      if (!decls.length) box.innerHTML = '<p class="empty">No declarations yet.</p>';
+      var groups = [];
+      decls.forEach(function (d) { var g = d.grp || 'Custom'; if (groups.indexOf(g) < 0) groups.push(g); });
+      groups.forEach(function (g) {
+        var h = document.createElement('div'); h.className = 'reggrp'; h.textContent = g; box.appendChild(h);
+        decls.forEach(function (d, i) {
+          if ((d.grp || 'Custom') !== g) return;
+          var n = (d.options || []).length;
+          var el = document.createElement('div'); el.className = 'slot' + (i === declActive ? ' on' : '');
+          el.innerHTML = '<b>' + esc(d.label || '—') + '</b><div class="meta">' + n + ' option' + (n === 1 ? '' : 's') + (d.custom_allowed ? ' · custom allowed' : '') + '</div>';
+          el.onclick = function () { declActive = i; renderDeclReg(); renderDeclEditor(); };
+          box.appendChild(el);
+        });
+      });
+      var add = document.createElement('button'); add.className = 'addslot'; add.type = 'button'; add.textContent = '+ Add declaration';
+      add.onclick = addDeclaration;
+      box.appendChild(add);
+    }
+
+    function renderDeclEditor() {
+      var box = document.getElementById('declEditor');
+      if (!decls.length) { box.innerHTML = '<div class="decled"><p class="empty">Add a declaration to begin.</p></div>'; return; }
+      var d = decls[declActive];
+      var ed = document.createElement('div'); ed.className = 'decled';
+      ed.innerHTML =
+        '<label for="d-label">Declaration name</label>' +
+        '<input id="d-label" type="text" value="' + esc(d.label || '').replace(/"/g, '&quot;') + '"><div class="keyline">key · <b id="d-key">' + esc(d.slug || '') + '</b></div>' +
+        '<div class="subhd"><span>Selectable names</span><span id="d-ct"></span></div>' +
+        '<div class="starnote">★ marks the default — the name a nation starts with.</div>' +
+        '<div id="d-opts"></div>' +
+        '<button class="addopt" id="d-addopt" type="button">+ Add name</button>' +
+        '<div class="custom"><input type="checkbox" id="d-custom"' + (d.custom_allowed ? ' checked' : '') + '><div class="t"><b>Allow a custom name</b><span>Players may type their own instead of picking from the list.</span></div></div>' +
+        '<div class="declfoot"><button class="btn btn-solid" id="d-save" type="button">Save declaration</button>' +
+        '<button id="d-del" type="button" style="background:none;border:none;color:#9a9a9a;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer">Delete this declaration</button></div>' +
+        '<div class="note" id="declNote" role="status" aria-live="polite"></div>';
+      box.innerHTML = ''; box.appendChild(ed);
+
+      var optsBox = ed.querySelector('#d-opts');
+      (d.options || []).forEach(function (opt, i) {
+        var row = document.createElement('div'); row.className = 'optline';
+        row.innerHTML = '<button class="star' + (i === d.default_index ? ' on' : '') + '" type="button" title="Set as default">' + (i === d.default_index ? '★' : '☆') + '</button>' +
+          '<input type="text" value="' + esc(String(opt || '')).replace(/"/g, '&quot;') + '">' +
+          '<button class="del" type="button" title="Delete">×</button>';
+        row.querySelector('input').oninput = function (e) { d.options[i] = e.target.value; };
+        row.querySelector('.star').onclick = function () { d.default_index = i; renderDeclEditor(); };
+        row.querySelector('.del').onclick = function () { d.options.splice(i, 1); if (d.default_index >= d.options.length) d.default_index = Math.max(0, d.options.length - 1); renderDeclReg(); renderDeclEditor(); };
+        optsBox.appendChild(row);
+      });
+      ed.querySelector('#d-ct').textContent = (d.options || []).length + ' total';
+      ed.querySelector('#d-label').oninput = function (e) { d.label = e.target.value; d.slug = slugify(d.label, '_'); ed.querySelector('#d-key').textContent = d.slug; renderDeclReg(); };
+      ed.querySelector('#d-addopt').onclick = function () { d.options = d.options || []; d.options.push(''); declFocusLast = true; renderDeclReg(); renderDeclEditor(); };
+      ed.querySelector('#d-custom').onchange = function (e) { d.custom_allowed = e.target.checked; renderDeclReg(); };
+      ed.querySelector('#d-save').onclick = function () { saveDecl(d); };
+      ed.querySelector('#d-del').onclick = function () { deleteDecl(d); };
+
+      if (declFocusLast) { declFocusLast = false; var ins = optsBox.querySelectorAll('input'); if (ins.length) ins[ins.length - 1].focus(); }
+    }
+
+    async function addDeclaration() {
+      if (declAdding) return; declAdding = true;   // guard double-clicks (each one inserts a row)
+      var maxSort = decls.reduce(function (m, d) { return Math.max(m, d.sort_order || 0); }, 0);
+      try {
+        const { data, error } = await supabase.from('declarations')
+          .insert({ grp: 'Custom', label: 'New Declaration', slug: 'new_declaration', options: ['Option one'], default_index: 0, custom_allowed: false, sort_order: maxSort + 1 })
+          .select('id').single();
+        if (error) throw error;
+        await loadDeclarations();
+        var idx = decls.findIndex(function (d) { return d.id === data.id; });
+        declActive = idx >= 0 ? idx : Math.max(0, decls.length - 1);
+        renderDeclReg(); renderDeclEditor();
+      } catch (e) { alert(/(policy|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Couldn’t add a declaration.')); }
+      finally { declAdding = false; }
+    }
+
+    async function saveDecl(d) {
+      var note = document.getElementById('declNote');
+      var opts = (d.options || []).map(function (o) { return (o || '').trim(); }).filter(function (o) { return o.length; });
+      if (!d.label || !d.label.trim()) { note.textContent = 'Enter a declaration name.'; note.className = 'note error'; return; }
+      if (!opts.length) { note.textContent = 'Add at least one name.'; note.className = 'note error'; return; }
+      var di = Math.min(Math.max(d.default_index || 0, 0), opts.length - 1);
+      var row = { grp: (d.grp || 'Custom').trim() || 'Custom', label: d.label.trim(), slug: slugify(d.label, '_'), options: opts, default_index: di, custom_allowed: !!d.custom_allowed, sort_order: d.sort_order || 0 };
+      var btn = document.getElementById('d-save'); btn.disabled = true;
+      try {
+        const { error } = await supabase.from('declarations').update(row).eq('id', d.id);
+        if (error) throw error;
+        // sync memory to the cleaned, saved row, then redraw (the note lives in the new DOM)
+        d.label = row.label; d.slug = row.slug; d.options = opts.slice(); d.default_index = di; d.grp = row.grp; d.custom_allowed = row.custom_allowed;
+        renderDeclReg(); renderDeclEditor();
+        var n2 = document.getElementById('declNote'); n2.textContent = 'Saved “' + row.label + '” — ' + opts.length + ' name' + (opts.length === 1 ? '' : 's') + '.'; n2.className = 'note ok';
+      } catch (e) {
+        note.textContent = /(policy|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Couldn’t save the declaration.');
+        note.className = 'note error';
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function deleteDecl(d) {
+      if (!confirm('Delete the declaration “' + (d.label || '') + '”? This removes the slot and its options.')) return;
+      try {
+        const { error } = await supabase.from('declarations').delete().eq('id', d.id);
+        if (error) throw error;
+        if (declActive > 0) declActive -= 1;
+        await loadDeclarations();
+      } catch (e) { alert(e.message || 'Couldn’t delete the declaration.'); }
     }
 
     refresh();

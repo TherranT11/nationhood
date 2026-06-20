@@ -63,11 +63,30 @@ create table if not exists public.nation_modifiers (
   primary key (nation_id, modifier_id)
 );
 create index if not exists nation_modifiers_nation_idx on public.nation_modifiers (nation_id);
+-- The tick the modifier became active on this nation — drives 'duration' end
+-- conditions. The admin UI stamps it at assignment (1 for any pre-existing row).
+alter table public.nation_modifiers add column if not exists since_tick int not null default 1;
+
+-- End conditions: a modifier assigned to a nation is automatically LIFTED (its
+-- nation_modifiers row deleted) at tick advance once it has at least one end
+-- condition AND every one of them is satisfied (AND, not OR). A modifier with no
+-- end conditions never auto-ends — only the admin removes it. Each condition is a
+-- read-only threshold check against the nation's live state.
+create table if not exists public.modifier_end_conditions (
+  id           uuid primary key default gen_random_uuid(),
+  modifier_id  uuid not null references public.national_modifiers (id) on delete cascade,
+  cond_type    text not null,                 -- stat | regime | resource | economy | confidence | duration
+  cond_op      text not null default 'gte',   -- gte (at or above) | lte (at or below)
+  cond_key     text,                          -- stat / resource / economy metric; null for regime, confidence, duration
+  cond_value   numeric not null default 0     -- the threshold (rank, raw value, %, or months for duration)
+);
+create index if not exists modifier_end_conditions_modifier_idx on public.modifier_end_conditions (modifier_id);
 
 -- RLS: world-readable (the game reads them to enforce, the admin UI to display);
 -- only the admin writes. Mirrors the nations table.
 alter table public.national_modifiers enable row level security;
 alter table public.modifier_effects    enable row level security;
+alter table public.modifier_end_conditions enable row level security;
 alter table public.nation_modifiers    enable row level security;
 
 drop policy if exists "nm_select_all"   on public.national_modifiers;
@@ -87,6 +106,15 @@ drop policy if exists "me_update_admin" on public.modifier_effects;
 create policy "me_update_admin" on public.modifier_effects for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "me_delete_admin" on public.modifier_effects;
 create policy "me_delete_admin" on public.modifier_effects for delete using (public.is_admin());
+
+drop policy if exists "mec_select_all"   on public.modifier_end_conditions;
+create policy "mec_select_all"   on public.modifier_end_conditions for select using (true);
+drop policy if exists "mec_insert_admin" on public.modifier_end_conditions;
+create policy "mec_insert_admin" on public.modifier_end_conditions for insert with check (public.is_admin());
+drop policy if exists "mec_update_admin" on public.modifier_end_conditions;
+create policy "mec_update_admin" on public.modifier_end_conditions for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "mec_delete_admin" on public.modifier_end_conditions;
+create policy "mec_delete_admin" on public.modifier_end_conditions for delete using (public.is_admin());
 
 drop policy if exists "nmod_select_all"   on public.nation_modifiers;
 create policy "nmod_select_all"   on public.nation_modifiers for select using (true);
@@ -156,5 +184,62 @@ create or replace function public._mod_floor_drop(p_nation text, p_archetype tex
 returns numeric language sql stable security definer set search_path = public as $$
   select least(p_old, greatest(p_new, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_new)));
 $$;
+
+-- Safe numeric cast: returns null instead of throwing on non-numeric text (e.g. a
+-- legacy free-text regime like "Electoral Democracy"). Used by the end-condition
+-- reader so one bad jsonb value can never abort advance_tick.
+create or replace function public._to_num(p text)
+returns numeric language sql immutable as $$
+  select case when p ~ '^\s*-?[0-9]+(\.[0-9]+)?\s*$' then p::numeric else null end;
+$$;
+
+-- ===========================================================================
+-- End-condition evaluation — true when a modifier should be LIFTED from a nation:
+-- it has at least one end condition AND every one is satisfied. Read-only against
+-- live nation state; called by advance_tick() (schema/60). p_since = the tick the
+-- modifier became active on this nation (for 'duration'); p_tick = the new tick.
+-- ===========================================================================
+create or replace function public._modifier_end_met(p_mod uuid, p_nation text, p_since int, p_tick int)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_n public.nations%rowtype; c record; v_cur numeric; v_total int;
+begin
+  select count(*) into v_total from public.modifier_end_conditions where modifier_id = p_mod;
+  if v_total = 0 then return false; end if;          -- no conditions → never auto-ends
+  select * into v_n from public.nations where id = p_nation;
+  if not found then return false; end if;
+
+  for c in select * from public.modifier_end_conditions where modifier_id = p_mod loop
+    v_cur := null;
+    case c.cond_type
+      when 'stat'       then v_cur := public._to_num(v_n.stats      ->> c.cond_key);
+      when 'regime'     then v_cur := public._to_num(v_n.economy    ->> 'regime');
+      when 'resource'   then v_cur := public._to_num(v_n.production ->> c.cond_key);
+      when 'economy'    then
+        v_cur := case c.cond_key
+                   when 'gdp'        then v_n.gdp::numeric
+                   when 'population' then v_n.population
+                   else public._to_num(v_n.economy ->> c.cond_key)
+                 end;
+      when 'confidence' then
+        select g.confidence into v_cur from public.governments g
+          where g.nation_id = p_nation and g.status = 'active';
+      when 'duration'   then v_cur := p_tick - p_since;   -- months active
+      else return false;                                  -- unknown condition → never satisfied
+    end case;
+    if v_cur is null then return false; end if;           -- no value to test → condition unmet
+    if c.cond_op = 'gte' then
+      if v_cur < c.cond_value then return false; end if;
+    else  -- 'lte'
+      if v_cur > c.cond_value then return false; end if;
+    end if;
+  end loop;
+  return true;   -- every condition satisfied
+end $$;
 
 notify pgrst, 'reload schema';

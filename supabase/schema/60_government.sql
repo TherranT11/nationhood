@@ -166,6 +166,8 @@ declare
   v_old_conf int; v_incumbents uuid[];
   v_formateur_id uuid; v_form_seats int; v_coal_host uuid;
   v_type text; v_source uuid; v_conf int;
+  v_nname text; v_year int; v_results text := ''; v_idx int := 0; v_cnt int; rec record;
+  v_ruling text; v_fname text;
 begin
   select legislature_seats, coalesce(electoral_threshold, 0), coalesce(election_frequency_months, 60)
     into v_seats, v_threshold, v_freq from public.nations where id = p_nation;
@@ -252,10 +254,42 @@ begin
   update public.negotiations set status = 'closed'
    where nation_id = p_nation and status in ('active', 'committed');
 
+  -- ---- FEED: results, then who leads the government ----------------------
+  -- A multiparty nation holds an election; a one-party state holds a Party
+  -- Congress where factions of the ruling party vie for standing. The seat
+  -- breakdown is identical; only the framing differs.
+  select name, ruling_party into v_nname, v_ruling from public.nations where id = p_nation;
+  select name into v_fname from public.parties where id = v_formateur_id;
+  v_year := 1980 + (v_tick - 1) / 12;   -- tick 1 = January 1980 (mirrors util.js/current_game_date)
+  select count(*) into v_cnt from public.parties where nation_id = p_nation and seats > 0;
+  for rec in
+    select name, seats from public.parties
+     where nation_id = p_nation and seats > 0
+     order by seats desc, popularity desc, name
+  loop
+    v_idx := v_idx + 1;
+    v_results := v_results || (case
+      when v_idx = 1     then 'The ' || rec.name || ' won ' || rec.seats || ' seats'
+      when v_idx = v_cnt then ' and ' || rec.name || ' winning ' || rec.seats
+      when v_idx = 2     then ', followed by ' || rec.name || ' with ' || rec.seats
+      when v_idx = 3     then ', as well as ' || rec.name || ' with ' || rec.seats
+      else                    ', ' || rec.name || ' with ' || rec.seats
+    end);
+  end loop;
+  if v_cnt = 0 then v_results := 'No ' || (case when v_ruling is not null then 'faction took a seat' else 'party cleared the threshold to win a seat' end); end if;
+
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, v_formateur_id, 'election',
-            'A general election was held. The ' || (select name from public.parties where id = v_formateur_id)
-            || ' forms a ' || v_type || ' government (Government Confidence ' || v_conf || '%).',
+            (case when v_ruling is not null
+                  then 'The results of the ' || v_year || ' Party Congress for ' || v_nname || ' are in. '
+                  else 'Election results are in for the election of ' || v_year || ' for ' || v_nname || '. ' end)
+            || v_results || '.',
+            public.current_game_date());
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (p_nation, v_formateur_id, 'government',
+            (case when v_ruling is not null
+                  then 'The ' || v_fname || ' now leads ' || v_ruling || ' (Government Confidence ' || v_conf || '%).'
+                  else 'The ' || v_fname || ' forms a ' || v_type || ' government (Government Confidence ' || v_conf || '%).' end),
             public.current_game_date());
 end $$;
 -- Internal only: clients can never call the resolver directly (advance_tick,
@@ -286,6 +320,19 @@ begin
     perform public.resolve_election(v_n);
     v_count := v_count + 1;
   end loop;
+  -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
+  delete from public.nation_modifiers nm
+   where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
+  -- Floor measures that have stood 6 ticks without a majority fail now (schema/81).
+  with expired as (
+    update public.proposals set status = 'failed'
+     where status = 'voting' and opened_tick is not null and (v_tick - opened_tick) >= 6
+    returning nation_id, party_id, title
+  )
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    select nation_id, party_id, 'declaration',
+           'A measure failed for want of a majority: ' || title || '.', public.current_game_date()
+    from expired;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 grant execute on function public.advance_tick() to authenticated;
