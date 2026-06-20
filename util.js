@@ -65,3 +65,15 @@ export function tickToDate(tick) {
   var n = Math.max(1, Math.round(Number(tick) || 1));
   return months[(n - 1) % 12] + ', ' + (1980 + Math.floor((n - 1) / 12));
 }
+
+// A nation's CURRENT value for a declaration slot — the one source for "what is it
+// now", shared by the Nation page and the declaration propose preview. The nation's
+// own choice wins; otherwise a pick-list slot shows its ★ default, while a free-text
+// identity slot (custom_allowed) stays '—' until declared (its ★ is only an example,
+// not a shared default). `values` is the nation's declarations jsonb ({} when none).
+export function declaredValue(slot, values) {
+  var v = values && slot ? values[slot.slug] : null;
+  if (v != null && v !== '') return v;
+  if (slot && !slot.custom_allowed && (slot.options || [])[slot.default_index] != null) return slot.options[slot.default_index];
+  return '—';
+}
