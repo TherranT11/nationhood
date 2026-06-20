@@ -129,11 +129,16 @@
   function render(nation, slots, gov, pmParty, pmPol){
     var vals = nation.declarations || {};
     var slotBySlug = {}; slots.forEach(function(s){ slotBySlug[s.slug] = s; });
-    // A declaration's current value: the nation's choice, else the slot's ★ default.
+    // A declaration's current value: the nation's own choice first. Pick-list slots
+    // (custom_allowed = false: titles, emblem, state form, …) fall back to the slot's
+    // shared ★ default — a sensible starting value for any nation. Free-text identity
+    // slots (custom_allowed = true: official name, capital, demonym, …) do NOT: their
+    // ★ is just the seed nation's own name, so inheriting it would show one nation's
+    // identity on another. Those read '—' until this nation declares its own.
     function declValue(slug){
       var s = slotBySlug[slug];
       if (vals[slug] != null && vals[slug] !== '') return vals[slug];
-      if (s && (s.options || [])[s.default_index] != null) return s.options[s.default_index];
+      if (s && !s.custom_allowed && (s.options || [])[s.default_index] != null) return s.options[s.default_index];
       return '—';
     }
 
@@ -195,7 +200,7 @@
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations')
         .select('name, flag, population, economy, production, declarations').eq('id', party.nation_id).single();
-      const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, grp, sort_order').order('sort_order').order('created_at');
+      const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
       const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
 
       var pmParty = null, pmPol = null;

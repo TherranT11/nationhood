@@ -12,8 +12,27 @@
 -- ===========================================================================
 
 -- Each nation's current declaration values, keyed by slug (the player picks/sets
--- these via passed proposals; defaults derive on the client from each slot's ★).
+-- these via passed proposals). Pick-list slots derive a default on the client from
+-- each slot's ★; the free-text IDENTITY slots (official name, capital, demonym, …)
+-- do not — those are per-nation, so each nation carries its own here.
 alter table public.nations add column if not exists declarations jsonb not null default '{}'::jsonb;
+
+-- Seed Sessau's own identity values. Without this, Sessau would read '—' for these
+-- (the client no longer inherits the shared ★ default for free-text identity slots,
+-- precisely so one nation's name/capital can't show on another). Existing per-nation
+-- values win (merge puts them on the right), so this never clobbers a later edit and
+-- is safe to re-run.
+update public.nations
+   set declarations = jsonb_build_object(
+     'formal_state_name',  'The Republic of Sessau',
+     'capital_name',       'Seyonne',
+     'demonym',            'Sessauan',
+     'currency_name',      'Franc',
+     'national_motto',     'Liberty, Order, Prosperity',
+     'national_day',       '14 July',
+     'official_language',  'Sessauan'
+   ) || declarations
+ where id = 'sessau';
 
 create table if not exists public.proposals (
   id          uuid primary key default gen_random_uuid(),
