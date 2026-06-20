@@ -118,4 +118,43 @@ returns numeric language sql stable security definer set search_path = public as
    where nm.nation_id = p_nation and e.effect_type = 'confidence_ceiling';
 $$;
 
+-- Archetype popularity ceiling for an archetype in a nation: the most restrictive
+-- (min) of any applicable ceiling modifier; null when there is none (uncapped).
+create or replace function public._mod_archetype_pop_ceiling(p_nation text, p_archetype text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select min(e.effect_value)
+    from public.nation_modifiers nm
+    join public.modifier_effects e on e.modifier_id = nm.modifier_id
+   where nm.nation_id = p_nation and e.effect_type = 'archetype_pop_ceiling' and e.effect_key = p_archetype;
+$$;
+
+-- Archetype popularity floor: the most generous (max); null when there is none.
+create or replace function public._mod_archetype_pop_floor(p_nation text, p_archetype text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select max(e.effect_value)
+    from public.nation_modifiers nm
+    join public.modifier_effects e on e.modifier_id = nm.modifier_id
+   where nm.nation_id = p_nation and e.effect_type = 'archetype_pop_floor' and e.effect_key = p_archetype;
+$$;
+
+-- Bounds are enforced DIRECTIONALLY (callers in schema/40 pass old + freshly-
+-- computed popularity): a raise is capped by the ceiling, a drop is held up by the
+-- floor — but neither reverses the action. A party already outside its band is
+-- grandfathered (the bound never yanks it back across its starting point), so a
+-- raise never cuts and a drop never lifts. No matching modifier → p_new unchanged.
+
+-- A raising action's result, capped by the archetype ceiling but never below where
+-- it started (an over-cap party keeps its standing; the ceiling just blocks gains).
+create or replace function public._mod_cap_raise(p_nation text, p_archetype text, p_old numeric, p_new numeric)
+returns numeric language sql stable security definer set search_path = public as $$
+  select greatest(p_old, least(p_new, coalesce(public._mod_archetype_pop_ceiling(p_nation, p_archetype), p_new)));
+$$;
+
+-- A dropping action's result, held up by the archetype floor but never raised above
+-- where it started (a below-floor party isn't lifted by being attacked/penalised).
+create or replace function public._mod_floor_drop(p_nation text, p_archetype text, p_old numeric, p_new numeric)
+returns numeric language sql stable security definer set search_path = public as $$
+  select least(p_old, greatest(p_new, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_new)));
+$$;
+
 notify pgrst, 'reload schema';
