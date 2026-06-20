@@ -98,6 +98,7 @@
   </aside>
 
   <main class="main">
+    <div class="topbar" id="topbar"></div>
     <div class="phead">
       <span class="eye">The Legislature</span>
       <h1 id="lhead">The National Assembly</h1>
@@ -110,8 +111,10 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
+  import { mountTopbar, setTopbarActions, setTopbarFunds, setTopbarDate } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
+  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
@@ -149,9 +152,9 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     try {
-      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype').eq('user_id', user.id).single();
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
       const { data: parties } = await supabase.from('parties').select('seats, in_government').eq('nation_id', party.nation_id);
       const nationName = (nation && nation.name) || party.nation_id;
 
@@ -161,6 +164,10 @@
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       const session = tickToDate(await currentTick());
+      var currency = (nation && nation.economy && nation.economy.currency) || '$';
+      setTopbarFunds(currency, party.funds);
+      setTopbarActions(party.actions_remaining);
+      setTopbarDate(session);
       render(session, nation || {}, parties || []);
     } catch (e) {
       fail('Couldn’t load the Legislature right now. Refresh to try again.');
