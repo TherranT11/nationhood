@@ -67,6 +67,44 @@
   .propose{margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:8px 14px;border-radius:9px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}
   .propose:hover{filter:brightness(1.06)}
 
+  /* a measure on the floor / agenda */
+  .measure{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:14px 16px;margin-bottom:10px}
+  .measure__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .measure__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .measure__by{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .votebar{display:flex;height:9px;border-radius:6px;overflow:hidden;background:var(--chip);margin:11px 0 7px}
+  .votebar .va{background:var(--green)}.votebar .vn{background:var(--red)}
+  .votenums{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+  .votenums b{color:var(--ink)}
+  .votenums .need.met{color:var(--green)}
+  .mrow{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .vb{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:9px 16px;border-radius:9px;cursor:pointer;border:1.5px solid var(--line2);background:#fff;color:var(--ink)}
+  .vb.aye.on{background:var(--green-soft);border-color:var(--green);color:var(--green)}
+  .vb.nay.on{background:var(--red-soft);border-color:var(--red);color:var(--red)}
+  .vb:disabled{opacity:.55;cursor:not-allowed}
+  .vb:not(:disabled):hover{border-color:var(--ink)}
+  .youvote{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-left:2px}
+  .sendfloor{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:9px 14px;border-radius:9px;border:1.5px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
+  .sendfloor:hover{filter:brightness(1.06)}.sendfloor:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .histrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .histrow:last-child{border-bottom:none}
+  .histrow .pf{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;flex:none}
+  .pf.passed{color:var(--green)}.pf.failed{color:var(--red)}
+
+  /* propose modal */
+  .modal{position:fixed;inset:0;background:rgba(12,12,18,.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:100}
+  .modal[hidden]{display:none}
+  .modal__card{background:var(--surface);border:1px solid var(--line);border-radius:16px;max-width:440px;width:100%;padding:22px 24px}
+  .modal__hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .modal__hd b{font-weight:900;font-size:19px;letter-spacing:-.01em}
+  .modal__x{background:none;border:none;font-size:22px;line-height:1;color:var(--soft);cursor:pointer}
+  .modal__x:hover{color:var(--ink)}
+  .modal__sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .choice{display:block;width:100%;text-align:left;border:1px solid var(--line2);border-radius:12px;padding:14px 16px;margin-bottom:10px;background:var(--field);cursor:pointer}
+  .choice:hover{border-color:var(--ink)}
+  .choice b{font-weight:800;font-size:15px;display:block}
+  .choice span{color:var(--muted);font-size:12.5px;display:block;margin-top:3px}
+
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -108,43 +146,107 @@
   </main>
 </div>
 
+<div class="modal" id="proposeModal" hidden>
+  <div class="modal__card">
+    <div class="modal__hd"><b>Propose New Law</b><button class="modal__x" id="pmX" type="button" aria-label="Close">&times;</button></div>
+    <p class="modal__sub">What kind of measure are you bringing to the chamber?</p>
+    <button class="choice" id="pmLaw" type="button"><b>Law</b><span>A new law has effects across the nation — it moves stats and other things.</span></button>
+    <button class="choice" id="pmDecl" type="button"><b>Declaration</b><span>A declaration changes the name of a title, emblem, capital, etc. It has no mechanical effect in game.</span></button>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes } from '/proposals.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
 
+  // Propose New Law → Law / Declaration choice, then route to the propose page.
+  var modal = document.getElementById('proposeModal');
+  document.getElementById('pmX').onclick = function () { modal.hidden = true; };
+  modal.addEventListener('click', function (e) { if (e.target === modal) modal.hidden = true; });
+  document.getElementById('pmLaw').onclick = function () { location.href = '/play/legislature/propose/'; };
+  document.getElementById('pmDecl').onclick = function () { location.href = '/play/legislature/propose/?type=declaration'; };
+
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
-  // The assembly snapshot (real seats) + empty scaffolds. Bills/voting aren't in
-  // play yet, so On the Floor / Upcoming Agenda / Legislative History are empty.
-  function render(session, nation, parties){
-    var total = nation.legislature_seats || 0;
-    var maj = majority(total);
-    var govBloc = parties.filter(function(p){ return p.in_government; }).reduce(function(s,p){ return s + (p.seats||0); }, 0);
+  var ST = { party:null, session:'', total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, proposals:[], votes:[], busy:false };
 
-    document.getElementById('content').innerHTML =
+  function tallyOf(pid){
+    var vs = ST.votes.filter(function(v){ return v.proposal_id === pid; });
+    var t = tallyVotes(vs, ST.seatsByParty);
+    var mine = vs.filter(function(v){ return v.party_id === ST.party.id; })[0];
+    return { aye:t.aye, nay:t.nay, myVote: mine ? (mine.aye ? 'aye' : 'nay') : null };
+  }
+  function measureCard(p){
+    var t = tallyOf(p.id);
+    var ayePct = ST.total ? Math.min(100, t.aye / ST.total * 100) : 0;
+    var nayPct = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0;
+    return '<div class="measure" data-id="' + esc(p.id) + '">' +
+      '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>' +
+      '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
+      '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span class="need' + (t.aye >= ST.maj && ST.total ? ' met' : '') + '">needs <b>' + ST.maj + '</b></span></div>' +
+      '<div class="mrow"><button class="vb aye' + (t.myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Aye</button>' +
+        '<button class="vb nay' + (t.myVote === 'nay' ? ' on' : '') + '" data-v="nay" type="button">Nay</button>' +
+        (t.myVote ? '<span class="youvote">You voted ' + t.myVote + '</span>' : '') + '</div></div>';
+  }
+  function agendaCard(p){
+    var mine = p.party_id === ST.party.id;
+    return '<div class="measure" data-id="' + esc(p.id) + '">' +
+      '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>' +
+      '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor (1 action)</button>' : '<span class="youvote">Awaiting the proposer</span>') + '</div></div>';
+  }
+  function emptyPanel(b, s){ return '<div class="panel"><div class="empty"><b>' + b + '</b><span>' + s + '</span></div></div>'; }
+
+  function renderBody(){
+    var floor = ST.proposals.filter(function(p){ return p.status === 'voting'; });
+    var agenda = ST.proposals.filter(function(p){ return p.status === 'agenda'; });
+    var hist = ST.proposals.filter(function(p){ return p.status === 'passed' || p.status === 'failed'; }).slice(0, 12);
+    var content = document.getElementById('content');
+    content.innerHTML =
       '<div class="summary">' +
-        '<div class="scell"><div class="k">Session</div><div class="v">' + esc(session) + '</div></div>' +
-        '<div class="scell"><div class="k">Seats</div><div class="v">' + total + '</div></div>' +
-        '<div class="scell"><div class="k">Majority needed</div><div class="v">' + maj + '</div></div>' +
-        '<div class="scell"><div class="k">Government bloc</div><div class="v ind">' + govBloc + (total && govBloc >= maj ? ' ✓' : '') + '</div></div>' +
+        '<div class="scell"><div class="k">Session</div><div class="v">' + esc(ST.session) + '</div></div>' +
+        '<div class="scell"><div class="k">Seats</div><div class="v">' + ST.total + '</div></div>' +
+        '<div class="scell"><div class="k">Majority needed</div><div class="v">' + ST.maj + '</div></div>' +
+        '<div class="scell"><div class="k">Government bloc</div><div class="v ind">' + ST.govBloc + (ST.total && ST.govBloc >= ST.maj ? ' ✓' : '') + '</div></div>' +
       '</div>' +
-      '<div class="legcols">' +
-        '<div class="legmain">' +
-          '<div class="secthd">On the Floor <span class="ct">0</span>' +
-            '<a class="propose" href="/play/legislature/propose/">Propose New Law</a></div>' +
-          '<div class="panel"><div class="empty"><b>No bills are on the floor</b><span>Proposing and voting on bills isn’t in play yet.</span></div></div>' +
-          '<div class="secthd">Upcoming Agenda <span class="ct">0</span></div>' +
-          '<div class="panel"><div class="empty"><b>Nothing on the agenda</b><span>Scheduled bills will appear here.</span></div></div>' +
-        '</div>' +
-        '<aside class="legrail">' +
-          '<section class="panel"><h2>Legislative History</h2>' +
-            '<p class="muted">No bills have been resolved yet.</p></section>' +
-        '</aside>' +
-      '</div>';
+      '<div class="legcols"><div class="legmain">' +
+        '<div class="secthd">On the Floor <span class="ct">' + floor.length + '</span><button class="propose" id="proposeBtn" type="button">Propose New Law</button></div>' +
+        (floor.length ? floor.map(measureCard).join('') : emptyPanel('No measures on the floor', 'Propose one, or wait for another party to bring a measure.')) +
+        '<div class="secthd">Upcoming Agenda <span class="ct">' + agenda.length + '</span></div>' +
+        (agenda.length ? agenda.map(agendaCard).join('') : emptyPanel('Nothing on the agenda', 'Queued measures sit here until sent to the floor.')) +
+      '</div><aside class="legrail"><section class="panel"><h2>Legislative History</h2>' +
+        (hist.length ? hist.map(function(p){ return '<div class="histrow"><span>' + esc(p.title) + '</span><span class="pf ' + p.status + '">' + (p.status === 'passed' ? 'Passed' : 'Failed') + '</span></div>'; }).join('') : '<p class="muted">No measures resolved yet.</p>') +
+      '</section></aside></div>';
+
+    document.getElementById('proposeBtn').onclick = function () { modal.hidden = false; };
+    content.querySelectorAll('.measure .vb').forEach(function (btn) {
+      btn.onclick = function () {
+        if (ST.busy) return;
+        var card = btn.closest('.measure');
+        ST.busy = true; card.querySelectorAll('.vb').forEach(function (b) { b.disabled = true; });
+        castVote(card.dataset.id, btn.dataset.v === 'aye').then(loadProposals)
+          .catch(function (e) { alert(e.message || 'Couldn’t record your vote.'); }).then(function () { ST.busy = false; });
+      };
+    });
+    content.querySelectorAll('.sendfloor').forEach(function (btn) {
+      btn.onclick = function () {
+        if (ST.busy) return; ST.busy = true; btn.disabled = true;
+        proposalToFloor(btn.dataset.send).then(function (res) { if (res && res.actions != null) setTopbarActions(res.actions); return loadProposals(); })
+          .catch(function (e) { alert(e.message || 'Couldn’t send it to the floor.'); btn.disabled = false; }).then(function () { ST.busy = false; });
+      };
+    });
+  }
+
+  async function loadProposals(){
+    try {
+      ST.proposals = await fetchProposals(ST.party.nation_id);
+      ST.votes = await fetchVotes(ST.proposals.map(function (p) { return p.id; }));
+      renderBody();
+    } catch (e) { fail('Couldn’t load the chamber’s measures. Refresh to try again.'); }
   }
 
   (async () => {
@@ -155,19 +257,24 @@
       const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
-      const { data: parties } = await supabase.from('parties').select('seats, in_government').eq('nation_id', party.nation_id);
+      const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
       const nationName = (nation && nation.name) || party.nation_id;
+
+      ST.party = party;
+      ST.total = (nation && nation.legislature_seats) || 0;
+      ST.maj = ST.total ? majority(ST.total) : 0;
+      (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; if (p.in_government) ST.govBloc += (p.seats || 0); });
 
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
       document.getElementById('lhead').textContent = 'National Assembly of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
-      const session = tickToDate(await currentTick()); // for the assembly summary; the topbar owns its own date
+      ST.session = tickToDate(await currentTick()); // assembly summary; the topbar owns its own date
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      render(session, nation || {}, parties || []);
+      await loadProposals();
     } catch (e) {
       fail('Couldn’t load the Legislature right now. Refresh to try again.');
     }

@@ -126,7 +126,7 @@
       <p>Name the bill, fill its articles with policies, and see where it would push the economy.</p>
     </div>
 
-    <div class="grid">
+    <div class="grid" id="proposeGrid">
       <!-- editor -->
       <div>
         <section class="mod">
@@ -175,19 +175,92 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+  import { esc } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { fetchDeclarations, proposeDeclaration } from '/proposals.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
 
-  // Live preview of the title — the one policy-independent bit that works today.
-  var titleInp = document.getElementById('title');
-  var pvTitle = document.getElementById('pv-title');
-  titleInp.addEventListener('input', function () {
-    var v = titleInp.value.trim();
-    pvTitle.textContent = v || 'Untitled Bill';
-    pvTitle.classList.toggle('empty', !v);
-  });
+  var isDecl = new URLSearchParams(location.search).get('type') === 'declaration';
+
+  // ---- Law mode: live title preview (the one policy-independent bit today) ----
+  function wireBillPreview() {
+    var titleInp = document.getElementById('title'), pvTitle = document.getElementById('pv-title');
+    if (!titleInp) return;
+    titleInp.addEventListener('input', function () {
+      var v = titleInp.value.trim();
+      pvTitle.textContent = v || 'Untitled Bill';
+      pvTitle.classList.toggle('empty', !v);
+    });
+  }
+
+  // ---- Declaration mode: pick a slot + name, then queue it or send to the floor ----
+  var declBusy = false;
+  async function renderDeclMode() {
+    document.querySelector('.phead .eye').textContent = 'Legislature · Declaration';
+    document.querySelector('.phead h1').textContent = 'Make a Declaration';
+    document.querySelector('.phead p').textContent = 'A declaration sets a title, emblem, capital, or other name — no mechanical effect, but it still goes through the chamber.';
+    var grid = document.getElementById('proposeGrid');
+    var decls;
+    try { decls = await fetchDeclarations(); }
+    catch (e) { grid.innerHTML = '<section class="mod"><p class="muted">Couldn’t load the declarations. Refresh to try again.</p></section>'; return; }
+    if (!decls.length) { grid.innerHTML = '<section class="mod"><p class="muted">No declarations have been defined yet — an admin sets these up first.</p></section>'; return; }
+
+    grid.innerHTML =
+      '<div><section class="mod"><div class="mod__hd"><span>Declaration</span><span class="hint">no mechanical effect — just a name</span></div>' +
+        '<label class="lbl">What to declare</label><select id="d-slot" class="inp"></select>' +
+        '<label class="lbl" style="margin-top:14px">New name</label><select id="d-opt" class="inp"></select>' +
+        '<input id="d-custom" class="inp" type="text" placeholder="Type a custom name…" maxlength="80" style="margin-top:8px" hidden>' +
+      '</section></div>' +
+      '<div class="preview"><div class="pvlabel">Live Preview</div>' +
+        '<div class="pvcard"><h3 id="d-pv" class="empty">Choose what to declare</h3></div>' +
+        '<div class="proj"><div class="actions">' +
+          '<button class="btn" id="d-floor" type="button" disabled>Send to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="d-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
+          '<div class="proposed-note" id="d-note">Pick a name to propose it.</div>' +
+        '</div></div></div>';
+
+    var slotSel = document.getElementById('d-slot'), optSel = document.getElementById('d-opt'), customInp = document.getElementById('d-custom');
+    var floorBtn = document.getElementById('d-floor'), agendaBtn = document.getElementById('d-agenda'), note = document.getElementById('d-note');
+    slotSel.innerHTML = decls.map(function (d, i) { return '<option value="' + i + '">' + esc(d.label) + '</option>'; }).join('');
+
+    function curDecl() { return decls[+slotSel.value] || decls[0]; }
+    function curValue() { return optSel.value === '__custom__' ? customInp.value.trim() : optSel.value; }
+    function fillOpts() {
+      var d = curDecl();
+      var html = (d.options || []).map(function (o) { return '<option value="' + esc(String(o)).replace(/"/g, '&quot;') + '">' + esc(String(o)) + '</option>'; }).join('');
+      if (d.custom_allowed) html += '<option value="__custom__">Custom name…</option>';
+      optSel.innerHTML = html;
+      sync();
+    }
+    function sync() {
+      customInp.hidden = !(curDecl().custom_allowed && optSel.value === '__custom__');
+      var val = curValue(), pv = document.getElementById('d-pv');
+      pv.textContent = val ? (curDecl().label + ' → ' + val) : 'Choose a name';
+      pv.classList.toggle('empty', !val);
+      var ok = !!val && !declBusy;
+      floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
+    }
+    slotSel.onchange = fillOpts;
+    optSel.onchange = sync;
+    customInp.oninput = sync;
+    fillOpts();
+
+    function submit(toFloor) {
+      var d = curDecl(), val = curValue();
+      if (!val || declBusy) return;
+      declBusy = true; floorBtn.disabled = true; agendaBtn.disabled = true;
+      note.textContent = toFloor ? 'Bringing it to the floor…' : 'Adding to the agenda…';
+      proposeDeclaration(d.slug, val, toFloor)
+        .then(function () { location.href = '/play/legislature/'; })
+        .catch(function (e) { note.textContent = e.message || 'Couldn’t propose that.'; declBusy = false; sync(); });
+    }
+    floorBtn.onclick = function () { submit(true); };
+    agendaBtn.onclick = function () { submit(false); };
+  }
+
+  if (isDecl) renderDeclMode(); else wireBillPreview();
 
   (async () => {
     if (!isConfigured) return;
@@ -206,7 +279,7 @@
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-    } catch (e) { /* the draft form still works without the party chrome */ }
+    } catch (e) { /* the form still works without the party chrome */ }
   })();
 </script>
 </body>
