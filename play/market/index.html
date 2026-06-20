@@ -70,8 +70,8 @@
   .commodity.hot .com__ico{background:var(--red-soft);color:var(--red)}
   .com__id b{font-weight:800;font-size:19px;display:block;line-height:1.1;letter-spacing:-.01em}
   .com__id .sub{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--soft)}
-  .onhand{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--muted);background:var(--chip);border-radius:20px;padding:3px 9px}
-  .onhand b{color:var(--ink)} .onhand.short b{color:var(--red)}
+  .avail{margin-top:7px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .avail b{font-family:'Archivo',sans-serif;font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--ink);margin-left:5px}
   .com__price{text-align:right}
   .com__price .p{font-weight:800;font-size:26px;letter-spacing:-.02em}
   .com__price .tr{display:block;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;margin-top:2px}
@@ -220,7 +220,7 @@
       cards += '<div class="commodity' + (hot ? ' hot' : '') + '">' +
         '<div class="com__top">' +
           '<div class="com__id"><span class="com__ico">' + I[c.id] + '</span><div><b>' + esc(c.name) + '</b><span class="sub">' + esc(c.sub) + '</span>' +
-            '<div class="onhand' + (mine <= 0 ? ' short' : '') + '">On hand <b>' + fmtUnits(mine) + ' units</b></div></div></div>' +
+            '<div class="avail">Availability <b>' + num(mk.available) + '</b></div></div></div>' +
           '<div class="com__price"><span class="p">' + esc(currency) + price + '</span><span class="tr ' + trend.c + '">' + trend.t + '</span></div>' +
         '</div>' +
         '<div class="track"><div class="track__bar"><span class="track__mark" style="left:' + pos + '%"></span></div>' +
@@ -228,7 +228,7 @@
         '<div class="scar"><div class="sd">' +
             '<div class="sdrow s">Stock<span class="bar"><span class="fill" style="width:' + (supply / maxBar * 100) + '%"></span></span></div>' +
             '<div class="sdrow c">Capacity<span class="bar"><span class="fill" style="width:' + (capacity / maxBar * 100) + '%"></span></span></div>' +
-          '</div><span class="scar__txt">' + scar + ' Market has <b>' + num(mk.available) + '</b> units available.</span></div>' +
+          '</div><span class="scar__txt">' + scar + '</span></div>' +
         '<div class="nations">' + chips + '</div>' +
       '</div>';
     });
