@@ -412,10 +412,9 @@ begin
 end $$;
 
 -- party_recruit_scout(): opens (or re-opens) the recruitment drive. Charges the
--- $25K drive cost the first time, rolls 1d6 + Charisma → the Seasoned candidate's
--- experience tier (poor 3 / middling 5 / strong 7), and stages a Newcomer (age
--- 25, exp 0, 2 stat points) + Seasoned (age 35–45, 5 stat points). If a drive is
--- already open it just returns it — no re-roll, no second charge.
+-- $25K drive cost the first time and stages a Newcomer (age 25, exp 0, 2 stat
+-- points) + Seasoned (age 35–45, 5 stat points, experience = a flat 1d3 — no stat
+-- roll). If a drive is already open it just returns it — no re-roll, no second charge.
 create or replace function public.party_recruit_scout()
 returns jsonb
 language plpgsql
@@ -424,8 +423,7 @@ set search_path = public
 as $$
 declare
   v_p public.parties%rowtype;
-  v_existing jsonb; v_cha int; v_roll int; v_total int; v_tier text;
-  v_exp int; v_new jsonb; v_seas jsonb; v_cost bigint := 25000;
+  v_existing jsonb; v_exp int; v_new jsonb; v_seas jsonb; v_cost bigint := 25000;
 begin
   v_p := public._lock_party();
 
@@ -439,13 +437,7 @@ begin
   if v_p.actions_remaining < 1 then raise exception 'No actions left this turn.'; end if;
   if v_p.funds < v_cost then raise exception 'Not enough funds (need $%K).', (v_cost / 1000); end if;
 
-  select coalesce(cha, 0) into v_cha from public.politicians
-    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
-  v_cha := coalesce(v_cha, 0);
-  v_roll := floor(random() * 6)::int + 1;
-  v_total := v_roll + v_cha;
-  v_tier := public._action_tier(v_total);
-  v_exp := case v_tier when 'strong' then 7 when 'middling' then 5 else 3 end;
+  v_exp := floor(random() * 3)::int + 1;   -- 1d3 years of experience (no stat roll)
 
   v_new  := public._gen_candidate(v_p.nation_id, 25, 0, 2);
   v_seas := public._gen_candidate(v_p.nation_id, 35 + floor(random() * 11)::int, v_exp, 5);  -- age 35–45
@@ -454,7 +446,7 @@ begin
     values (v_p.id, jsonb_build_object('newcomer', v_new, 'seasoned', v_seas));
   update public.parties set funds = funds - v_cost where id = v_p.id;
 
-  return jsonb_build_object('newcomer', v_new, 'seasoned', v_seas, 'tier', v_tier,
+  return jsonb_build_object('newcomer', v_new, 'seasoned', v_seas,
     'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining);
 end $$;
 
