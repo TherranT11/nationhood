@@ -259,8 +259,9 @@ end $$;
 revoke all on function public.resolve_election(text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- advance_tick(): the admin's single lever. Bumps the shared clock one tick and
--- resolves every nation whose election has come due. Admin-gated; no automation.
+-- advance_tick(): the admin's single lever. Bumps the shared clock one tick,
+-- refreshes every party's action budget to 3, and resolves every nation whose
+-- election has come due. Admin-gated; no automation.
 -- ---------------------------------------------------------------------------
 create or replace function public.advance_tick()
 returns jsonb
@@ -272,6 +273,8 @@ declare v_tick int; v_n text; v_count int := 0;
 begin
   if not public.is_admin() then raise exception 'Admin only.'; end if;
   update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
+  -- Every party gets a fresh turn: action budget reset to 3 on each tick.
+  update public.parties set actions_remaining = 3;
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick

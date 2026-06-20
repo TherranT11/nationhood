@@ -25,7 +25,7 @@ create table if not exists public.parties (
   pop_ceiling   numeric not null default 5,     -- support ceiling: current reach / cap on popularity, % (fractional — Ad Blitz nudges it)
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
-  actions_remaining int not null default 3,     -- party actions left this turn (no auto-reset until the turn system exists)
+  actions_remaining int not null default 3,     -- party actions left this turn; reset to 3 each tick by advance_tick()
   conviction    int     not null default 0,     -- Manifesto currency: earned over time, spent on planks. Every party starts at 0.
   created_at   timestamptz not null default now(),
   unique (user_id)
