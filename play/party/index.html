@@ -122,9 +122,7 @@
   .pop__desc b{color:var(--ink);font-weight:700}
 
   /* Prominent Politicians table. Rendered live from the politicians table. */
-  .pol-hd-right{display:flex;align-items:center;gap:14px}
   .pol-count{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
-  .pol-recruit{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:9px;padding:8px 13px;cursor:not-allowed;opacity:.55}
   .poltable{overflow-x:auto}
   .pol-row{display:grid;grid-template-columns:minmax(150px,1.5fr) 46px minmax(110px,1.1fr) 44px repeat(5,minmax(52px,.7fr));gap:10px;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line)}
   .pol-row:last-child{border-bottom:0}
@@ -343,10 +341,7 @@
 
     <section class="panel">
       <div class="glance-hd"><span>Prominent Politicians</span>
-        <div class="pol-hd-right">
-          <span class="pol-count" id="polCount"></span>
-          <button class="pol-recruit" type="button" disabled>+ Recruit</button>
-        </div>
+        <span class="pol-count" id="polCount"></span>
       </div>
       <div class="poltable" id="poltable"></div>
     </section>
