@@ -244,7 +244,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
-  import { mountTopbar, setTopbarActions, setTopbarFunds, setTopbarDate } from '/topbar.js';
+  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { statLabel, statBand, regimeLabel } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
   import { fetchNegotiations, pendingInvites, activeTalks, termCounts, openNegotiation, respondInvite } from '/negotiations.js';
@@ -585,8 +585,7 @@
     if (!user) return; // redirected to login
     try {
       // Live game date in the topbar (and the feed), derived from the shared tick.
-      var gameDate = tickToDate(await currentTick());
-      setTopbarDate(gameDate);
+      var gameDate = tickToDate(await currentTick()); // for the events feed; the topbar owns its own date
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }

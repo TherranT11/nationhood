@@ -2,8 +2,8 @@
 // and the settings gear). ONE source for every signed-in screen: a page drops
 // <div class="topbar" id="topbar"></div> at the top of <main>, calls
 // mountTopbar() once, then feeds live values via the setters as data loads.
-import { wireDeletePartyMenu } from '/supabase.js';
-import { fmtFunds } from '/util.js';
+import { wireDeletePartyMenu, currentTick } from '/supabase.js';
+import { fmtFunds, tickToDate } from '/util.js';
 
 const CSS = `
 .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
@@ -74,6 +74,18 @@ export function mountTopbar(){
   const host = document.getElementById('topbar');
   if (host) host.innerHTML = HTML;
   wireDeletePartyMenu();   // settings gear → Delete Party (shared; see supabase.js)
+
+  // The game date is owned here — one source, read straight from the live tick.
+  // Re-pull it whenever the page is (re)shown so it never goes stale after a tick
+  // advances elsewhere: on first mount, on bfcache restore (back/forward), and
+  // when a backgrounded tab is refocused.
+  refreshTopbarDate();
+  window.addEventListener('pageshow', refreshTopbarDate);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshTopbarDate(); });
+}
+
+export async function refreshTopbarDate(){
+  try { setTopbarDate(tickToDate(await currentTick())); } catch (e) { /* keep the last shown date */ }
 }
 
 // Live-value setters — no-ops if the topbar isn't mounted on this page.

@@ -163,7 +163,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { tickToDate, esc, majority as majorityOf } from '/util.js';
-  import { mountTopbar, setTopbarActions, setTopbarDate } from '/topbar.js';
+  import { mountTopbar, setTopbarActions } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -197,7 +197,6 @@
       document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
       document.getElementById('kicker').textContent = 'The Assembly · ' + nationName;
       setTopbarActions(party.actions_remaining);
-      setTopbarDate(tickToDate(tick)); // live game date
       document.title = 'Elections · ' + nationName;
       if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }
 
