@@ -20,6 +20,12 @@ export function archetypeColor(name) {
   return a ? a.color : '#8d8d95';
 }
 
+// A party's display colour: its chosen colour, else its archetype default. ONE
+// source for the crest, assembly bar/legend, rival cards, and the page accent.
+export function partyColor(party) {
+  return (party && party.color) || archetypeColor(party && party.archetype);
+}
+
 // Hard ideological oppositions. Two archetypes are "opposite poles" when their
 // core commitments contradict — a coalition partner on the opposite pole costs
 // the forming government confidence (see the government-formation design). Listed

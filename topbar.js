@@ -4,7 +4,7 @@
 // mountTopbar() once, then feeds live values via the setters as data loads.
 import { supabase, wireDeletePartyMenu, currentTick } from '/supabase.js';
 import { fmtFunds, tickToDate } from '/util.js';
-import { archetypeColor } from '/archetypes.js';
+import { partyColor } from '/archetypes.js';
 
 const CSS = `
 .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
@@ -121,6 +121,6 @@ async function loadAccent(){
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     const { data } = await supabase.from('parties').select('color, archetype').eq('user_id', session.user.id).maybeSingle();
-    if (data) setAccent(data.color || archetypeColor(data.archetype)); // chosen colour, else archetype default
+    if (data) setAccent(partyColor(data)); // chosen colour, else archetype default (one source: archetypes.js)
   } catch (e) { /* keep the default accent if the party can't be read */ }
 }
