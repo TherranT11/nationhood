@@ -83,6 +83,7 @@
   .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px}
   .lead__lane{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .lead__desc{display:block;font-size:12px;line-height:1.4;color:var(--muted);margin-top:8px}
+  .leadbar__sub{color:var(--muted);font-size:13px;margin:-6px 0 14px}
 
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -190,6 +191,8 @@
 
     <div id="formBanner"></div>
     <div id="inviteBanners"></div>
+
+    <div id="pmbar"></div>
 
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
@@ -591,6 +594,32 @@
   function chip(k, body) { return '<div class="chip"><span class="chip__k">' + k + '</span>' + body + '</div>'; }
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
+  // Prime Minister actions — shown ONLY to the party holding the premiership (the
+  // active government's formateur). None are wired yet, so they render as dimmed
+  // scaffolds; when the player isn't PM the container is not rendered at all.
+  var PM_ACTIONS = [
+    ['Coalition', 'Manage the governing coalition.'],
+    ['Policy',    'Set the government’s direction.'],
+    ['Direct',    'Direct a ministry’s work.'],
+    ['Whip',      'Whip the chamber for a vote.'],
+    ['Appoint',   'Appoint a minister to the cabinet.'],
+    ['Reshuffle', 'Reshuffle the cabinet.'],
+    ['Elections', 'Call a general election.'],
+    ['Resign',    'Resign the government.']
+  ];
+  function renderPMBar(isPM) {
+    var el = document.getElementById('pmbar');
+    if (!isPM) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="panel leadbar">' +
+      '<div class="glance-hd"><span>Prime Minister &middot; This Week’s Action</span></div>' +
+      '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
+      '<div class="leadbar__grid">' +
+      PM_ACTIONS.map(function (a) {
+        return '<button class="lead" type="button" disabled><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
+      }).join('') +
+      '</div></section>';
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -623,6 +652,13 @@
       setActions(party.actions_remaining != null ? party.actions_remaining : 3);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
+
+      // Prime Minister actions appear only for the party that holds the premiership.
+      try {
+        const { data: govt } = await supabase.from('governments')
+          .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
+        renderPMBar(!!(govt && govt.formateur_party_id === party.id));
+      } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
