@@ -30,7 +30,7 @@ const CSS = `
 .gearmenu__item{display:block;width:100%;text-align:left;background:none;border:none;border-radius:8px;padding:10px 12px;font-family:inherit;font-size:13.5px;color:var(--ink);cursor:pointer}
 .gearmenu__item:hover{background:var(--chip)}
 .gearmenu__item--danger{color:var(--red);font-weight:700}
-.gearmenu__item--danger:hover{background:#FBEAE9}
+.gearmenu__item--danger:hover{background:var(--red-soft,#FBEAE9)}
 .gearmenu__warn{font-size:12.5px;line-height:1.5;color:var(--muted);padding:8px 10px 4px;margin:0}
 .gearmenu__row{display:flex;gap:8px;padding:8px 6px 4px}
 .gearmenu__btn{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:9px 10px;font-family:inherit;font-size:12.5px;font-weight:700;color:var(--ink);cursor:pointer}
@@ -47,6 +47,7 @@ const HTML = `
 <span class="tb-actions" id="tbActions">Party Actions: 3 Available</span>
 <span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v" id="tbDate">January, 1980</span></span>
 <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
+<button class="gear" id="themeBtn" type="button" aria-label="Toggle dark mode"></button>
 <div class="tb-gear">
   <button class="gear" id="gearBtn" type="button" aria-label="Settings" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   <div class="gearmenu" id="gearMenu" hidden>
@@ -75,6 +76,7 @@ export function mountTopbar(){
   const host = document.getElementById('topbar');
   if (host) host.innerHTML = HTML;
   wireDeletePartyMenu();   // settings gear → Delete Party (shared; see supabase.js)
+  wireTheme();             // sun/moon toggle → flips the persistent light/dark theme
   loadChrome();            // accent + funds + action budget on every screen (one source)
 
   // The game date is owned here — one source, read straight from the live tick.
@@ -106,16 +108,44 @@ export function setTopbarDate(dateStr){
   if (el) el.textContent = dateStr;
 }
 
+// Light/dark toggle. The actual theme state + persistence live in theme.js
+// (window.NHTheme); the topbar just owns the button. We re-tint the party accent
+// on every flip because the soft tint mixes toward the page background, which
+// differs between light and dark.
+const SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+function paintThemeIcon(){
+  const b = document.getElementById('themeBtn');
+  if (!b) return;
+  const dark = window.NHTheme && window.NHTheme.current === 'dark';
+  b.innerHTML = dark ? SUN : MOON;          // show what you'll switch TO
+  b.setAttribute('aria-pressed', dark ? 'true' : 'false');
+}
+function wireTheme(){
+  const b = document.getElementById('themeBtn');
+  if (!b) return;
+  paintThemeIcon();
+  b.addEventListener('click', function () { if (window.NHTheme) window.NHTheme.toggle(); });
+  window.addEventListener('nh-theme', paintThemeIcon);
+}
+
 // Party-colour accent — ONE source for every signed-in screen. Remaps the page's
 // --indigo (and its soft tint) on :root, so the topbar pill, sidebar, and all page
 // accents follow the player's party colour. Pages can call this to update live (e.g.
 // after Edit Party); mountTopbar also loads it once so every page is tinted on boot.
+// The soft tint mixes toward the page background, so it's recomputed per theme; the
+// chosen accent is remembered so the nh-theme event can re-tint without a refetch.
+let _accent = null;
 export function setAccent(color){
-  if (!color) return;
+  if (color) _accent = color;
+  if (!_accent) return;
   const r = document.documentElement;
-  r.style.setProperty('--indigo', color);
-  r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, #fff)');
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const soft = dark ? ' 26%, #1d1d25)' : ' 14%, #fff)';   // mix toward --surface
+  r.style.setProperty('--indigo', _accent);
+  r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + _accent + soft);
 }
+window.addEventListener('nh-theme', function () { if (_accent) setAccent(_accent); });
 // Load the player's party once and fill the shared chrome on EVERY screen — accent
 // colour, party funds, and the action budget — so they're correct even on pages that
 // don't feed the topbar themselves. Pages may still call the setters to update live.
