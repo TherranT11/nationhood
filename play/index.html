@@ -216,7 +216,7 @@
     <div class="cols">
       <section class="panel">
         <div class="glance-hd"><span>National Modifiers</span></div>
-        <p class="empty">No active modifiers.</p>
+        <div id="homeMods"><p class="empty">No active modifiers.</p></div>
       </section>
       <section class="panel">
         <div class="glance-hd"><span id="eventsHd">Events</span></div>
@@ -252,6 +252,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
@@ -662,6 +663,7 @@
       await loadFeed(party.nation_id, nation, gameDate);
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
+      renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
 
       if (nation && nation.flag) {
         flag.onload = function () { flag.hidden = false; };
