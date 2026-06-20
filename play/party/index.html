@@ -48,7 +48,37 @@
   /* party header card */
   .phead{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
   .phead__id{display:flex;align-items:center;gap:18px;flex:1;min-width:260px}
-  .plogo{width:72px;height:72px;flex:none;border-radius:12px;background:var(--chip);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:19px;letter-spacing:.04em;color:var(--soft)}
+  .plogo{width:72px;height:72px;flex:none;border-radius:12px;background:var(--chip);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:19px;letter-spacing:.04em;color:var(--soft);overflow:hidden}
+  .plogo img{width:100%;height:100%;object-fit:cover}
+  .plogo-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;flex:none}
+  .editparty{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:8px;padding:6px 9px;cursor:pointer}
+  .editparty:hover{filter:brightness(.97)}
+
+  /* Edit Party modal */
+  .epmodal{position:fixed;inset:0;background:rgba(12,12,18,.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:120}
+  .epmodal[hidden]{display:none}
+  .epmodal__card{background:var(--surface);border:1px solid var(--line);border-radius:16px;max-width:440px;width:100%;padding:22px 24px}
+  .epmodal__hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .epmodal__hd b{font-weight:900;font-size:19px;letter-spacing:-.01em}
+  .epmodal__x{background:none;border:none;font-size:22px;line-height:1;color:var(--soft);cursor:pointer}
+  .epmodal__x:hover{color:var(--ink)}
+  .epmodal__sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  .ep-body{display:flex;gap:18px;align-items:flex-start}
+  .ep-preview{width:72px;height:72px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;font-family:'Space Mono',monospace;font-weight:700;font-size:19px;background:var(--chip);color:var(--soft);border:1px solid var(--line)}
+  .ep-preview img{width:100%;height:100%;object-fit:cover}
+  .ep-fields{flex:1;min-width:0}
+  .ep-lbl{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  .ep-lbl span{text-transform:none;letter-spacing:0;color:var(--soft);font-size:9px}
+  .ep-color{width:100%;height:40px;padding:3px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer}
+  .ep-file{width:100%;font-size:12.5px;color:var(--muted)}
+  .ep-clear{margin-top:9px;background:none;border:none;color:var(--red);font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;padding:0}
+  .ep-note{min-height:18px;font-size:12.5px;margin-top:14px}
+  .ep-note.error{color:var(--red)} .ep-note.ok{color:var(--green)}
+  .ep-actions{display:flex;gap:10px;margin-top:14px}
+  .ep-btn{flex:1;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:12px;border-radius:10px;cursor:pointer}
+  .ep-cancel{background:#fff;border:1.5px solid var(--line2);color:var(--ink)}
+  .ep-save{background:var(--indigo);border:1.5px solid var(--indigo);color:#fff}
+  .ep-save:disabled,.ep-cancel:disabled{opacity:.55;cursor:not-allowed}
   .phead__txt{min-width:0}
   .pname-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .pname-row h1{font-weight:900;font-size:clamp(24px,3.2vw,34px);letter-spacing:-.02em;line-height:1.05}
@@ -79,7 +109,7 @@
   .pop__axis span.end-l{transform:none}
   .pop__axis span.end-r{transform:translateX(-100%)}
   .pop__track{position:relative;height:14px;border-radius:8px;background:var(--chip)}
-  .pop__fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:linear-gradient(90deg,#6f63ea,#5546E8);transition:width .4s ease}
+  .pop__fill{position:absolute;left:0;top:0;bottom:0;border-radius:8px;background:linear-gradient(90deg,color-mix(in srgb,var(--indigo) 78%,#fff),var(--indigo));transition:width .4s ease}
   .pop__floor{position:absolute;top:-3px;bottom:-3px;width:3px;border-radius:2px;background:var(--green);transform:translateX(-50%)}
   .pop__ceil{position:absolute;top:-4px;bottom:-4px;border-left:2px dashed var(--soft);transform:translateX(-50%)}
   .pop__labels{position:relative;height:13px;margin-top:8px}
@@ -292,7 +322,10 @@
     <div class="kicker" id="kicker">Your Party</div>
     <section class="phead">
       <div class="phead__id">
-        <div class="plogo" id="plogo">&mdash;</div>
+        <div class="plogo-wrap">
+          <div class="plogo" id="plogo">&mdash;</div>
+          <button class="editparty" id="editPartyBtn" type="button">Edit Party</button>
+        </div>
         <div class="phead__txt">
           <div class="pname-row"><h1 id="pname">&hellip;</h1><span class="pabbr" id="pabbr"></span></div>
           <div class="pbadges">
@@ -396,6 +429,28 @@
   </div>
 </div>
 
+<div class="epmodal" id="editModal" hidden>
+  <div class="epmodal__card">
+    <div class="epmodal__hd"><b>Edit Party</b><button class="epmodal__x" id="epX" type="button" aria-label="Close">&times;</button></div>
+    <p class="epmodal__sub">Set your party colour and crest. Both are visible to everyone in the nation.</p>
+    <div class="ep-body">
+      <div class="ep-preview" id="epPreview">&mdash;</div>
+      <div class="ep-fields">
+        <label class="ep-lbl" for="epColor">Party colour</label>
+        <input type="color" id="epColor" class="ep-color" value="#5546E8">
+        <label class="ep-lbl" for="epFile" style="margin-top:14px">Party logo <span>PNG · JPG · WebP · GIF, max 2&nbsp;MB</span></label>
+        <input type="file" id="epFile" class="ep-file" accept="image/png,image/jpeg,image/webp,image/gif">
+        <button type="button" class="ep-clear" id="epClear" hidden>Remove current logo</button>
+      </div>
+    </div>
+    <div class="ep-note" id="epNote" role="status" aria-live="polite"></div>
+    <div class="ep-actions">
+      <button class="ep-btn ep-cancel" id="epCancel" type="button">Cancel</button>
+      <button class="ep-btn ep-save" id="epSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
@@ -410,6 +465,101 @@
   document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
     i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
   });
+
+  // ---- Party branding: accent colour + crest (logo or initials) -------------
+  // ACCENT is the party's chosen colour, falling back to its archetype colour. It
+  // is the ONE source for the page accent: applyAccent remaps the page's --indigo so
+  // every player-side accent (popularity bar, badges, manifesto, …) follows it, and
+  // it tints the crest. Other parties keep their own archetype colour (their --c).
+  var ME = { user: null, party: null };
+  var ACCENT = '#5546E8';
+  function applyAccent(color) {
+    ACCENT = color;
+    var m = document.querySelector('.main');
+    m.style.setProperty('--indigo', color);
+    m.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, #fff)');
+  }
+  function renderCrest(party) {
+    var el = document.getElementById('plogo');
+    if (party.logo_url) {
+      el.innerHTML = '<img src="' + esc(party.logo_url) + '" alt="' + esc(party.name) + ' logo">';
+      el.style.background = 'var(--chip)'; el.style.color = ''; el.style.borderColor = 'var(--line)';
+    } else {
+      el.textContent = party.abbreviation || party.name.slice(0, 2).toUpperCase();
+      el.style.background = 'color-mix(in srgb, ' + ACCENT + ' 14%, #fff)';
+      el.style.color = ACCENT;
+      el.style.borderColor = 'color-mix(in srgb, ' + ACCENT + ' 28%, transparent)';
+    }
+  }
+
+  // ---- Edit Party modal: choose a colour + upload a crest (≤2 MB image) ------
+  (function wireEditParty() {
+    var modal = document.getElementById('editModal');
+    var colorIn = document.getElementById('epColor'), fileIn = document.getElementById('epFile');
+    var clearBtn = document.getElementById('epClear'), preview = document.getElementById('epPreview');
+    var note = document.getElementById('epNote'), saveBtn = document.getElementById('epSave'), cancelBtn = document.getElementById('epCancel');
+    var MAX = 2 * 1024 * 1024, pendingFile = null, removeLogo = false, busy = false, objUrl = null;
+
+    function setNote(msg, cls) { note.textContent = msg || ''; note.className = 'ep-note' + (cls ? ' ' + cls : ''); }
+    function freeObjUrl() { if (objUrl) { URL.revokeObjectURL(objUrl); objUrl = null; } }
+    function drawPreview() {
+      var color = colorIn.value;
+      var showLogo = pendingFile || (!removeLogo && ME.party && ME.party.logo_url);
+      if (pendingFile) { freeObjUrl(); objUrl = URL.createObjectURL(pendingFile); preview.innerHTML = '<img alt="" src="' + objUrl + '">'; }
+      else if (showLogo) { preview.innerHTML = '<img alt="" src="' + esc(ME.party.logo_url) + '">'; }
+      else {
+        preview.textContent = (ME.party && (ME.party.abbreviation || ME.party.name.slice(0, 2).toUpperCase())) || '—';
+        preview.style.background = 'color-mix(in srgb, ' + color + ' 14%, #fff)';
+        preview.style.color = color; preview.style.borderColor = 'color-mix(in srgb, ' + color + ' 28%, transparent)';
+      }
+      if (showLogo) { preview.style.background = 'var(--chip)'; preview.style.color = ''; preview.style.borderColor = 'var(--line)'; }
+      clearBtn.hidden = !showLogo;
+    }
+    function open() {
+      if (!ME.party) return;
+      pendingFile = null; removeLogo = false; setNote(''); fileIn.value = '';
+      colorIn.value = ME.party.color || ACCENT;
+      drawPreview(); modal.hidden = false;
+    }
+    function close() { modal.hidden = true; freeObjUrl(); }
+
+    document.getElementById('editPartyBtn').addEventListener('click', open);
+    cancelBtn.addEventListener('click', close);
+    document.getElementById('epX').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+    colorIn.addEventListener('input', drawPreview);
+    clearBtn.addEventListener('click', function () { pendingFile = null; removeLogo = true; fileIn.value = ''; drawPreview(); });
+    fileIn.addEventListener('change', function () {
+      var f = fileIn.files && fileIn.files[0];
+      if (!f) return;
+      if (!/^image\//.test(f.type)) { setNote('That file isn’t an image.', 'error'); fileIn.value = ''; return; }
+      if (f.size > MAX) { setNote('That image is over 2 MB — choose a smaller one.', 'error'); fileIn.value = ''; return; }
+      setNote(''); pendingFile = f; removeLogo = false; drawPreview();
+    });
+    saveBtn.addEventListener('click', async function () {
+      if (busy || !ME.party) return;
+      busy = true; saveBtn.disabled = true; cancelBtn.disabled = true; setNote('Saving…');
+      try {
+        var logo = removeLogo ? null : (ME.party.logo_url || null);
+        if (pendingFile) {
+          var ext = ((pendingFile.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '')) || 'png';
+          var path = ME.user.id + '/logo_' + Date.now() + '.' + ext;
+          var up = await supabase.storage.from('party-logos').upload(path, pendingFile, { upsert: true, contentType: pendingFile.type });
+          if (up.error) throw new Error(up.error.message);
+          logo = supabase.storage.from('party-logos').getPublicUrl(path).data.publicUrl;
+        }
+        var res = await supabase.from('parties').update({ color: colorIn.value, logo_url: logo }).eq('id', ME.party.id);
+        if (res.error) throw new Error(res.error.message);
+        ME.party.color = colorIn.value; ME.party.logo_url = logo;
+        applyAccent(colorIn.value); renderCrest(ME.party); MF.color = ACCENT;
+        close();
+      } catch (e) {
+        setNote(e.message || 'Couldn’t save your changes.', 'error');
+      } finally {
+        busy = false; saveBtn.disabled = false; cancelBtn.disabled = false;
+      }
+    });
+  })();
 
 
   // Party Popularity band: the track runs 0 → ceiling. The fill is current
@@ -590,7 +740,7 @@
   }
 
   function initManifesto(party) {
-    MF.tree = null; MF.color = archetypeColor(party.archetype); MF.tier = 1;
+    MF.tree = null; MF.color = ACCENT; MF.tier = 1;
     MF.years = 0;     // no calendar yet → 0 years in power
     MF.balance = Number(party.conviction) || 0; // game-controlled stat; new parties start at 0
     document.getElementById('convBal').textContent = MF.balance;
@@ -642,7 +792,9 @@
       // Header card.
       document.getElementById('pname').textContent = party.name;
       document.getElementById('pabbr').textContent = party.abbreviation ? '(' + party.abbreviation + ')' : '';
-      document.getElementById('plogo').textContent = party.abbreviation || party.name.slice(0, 2).toUpperCase();
+      ME.user = user; ME.party = party;
+      applyAccent(party.color || archetypeColor(party.archetype));  // party colour overrides the page accent
+      renderCrest(party);                                            // logo image, else tinted initials
       document.getElementById('archBadge').textContent = party.archetype;
 
       if (nation && nation.ruling_party) {
