@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/site.css">
 <style>
   body{margin:0;background:#fff;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
-  .wrap2{max-width:960px;margin:0 auto;padding:40px 24px 80px}
+  .wrap2{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
   h1{font-size:clamp(24px,4vw,32px);letter-spacing:-.03em;font-weight:800;margin:0 0 4px}
   .sub{color:var(--muted);font-size:14px;margin:0 0 28px}
 
@@ -52,6 +52,34 @@
   /* add form */
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 16px}
   .grid .full{grid-column:1/-1}
+
+  /* left-hand admin tabs */
+  .adminbody{display:flex;gap:26px;align-items:flex-start}
+  .vtabs{flex:none;width:160px;display:flex;flex-direction:column;gap:2px;position:sticky;top:24px}
+  .vtab{text-align:left;padding:10px 14px;border:none;background:none;font-family:inherit;font-size:14px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer}
+  .vtab:hover{background:var(--chip,#F4F3EF);color:var(--ink)}
+  .vtab.active{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
+  .tabwrap{flex:1;min-width:0}
+
+  /* modifiers */
+  .mcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:12px;border-left:5px solid var(--mc,#9a9a9a)}
+  .mcard:last-child{margin-bottom:0}
+  .mcard.red{--mc:#C42B2B} .mcard.yellow{--mc:#E0820E} .mcard.green{--mc:#16915a}
+  .mcard__top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .mcard__name{font-size:16px;font-weight:800}
+  .mcard__eff{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .mcard__desc{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.45}
+  .mcard__nations{font-size:12px;color:#9a9a9a;margin-top:8px}
+  .mcard__btns{display:flex;gap:6px;flex:none}
+  .mcard .ed,.mcard .rm{font-size:12px;font-weight:700;border-radius:8px;padding:6px 12px;cursor:pointer}
+  .mcard .ed{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8);border:1px solid color-mix(in srgb,var(--indigo,#5546E8) 30%,transparent)}
+  .mcard .rm{background:#FBEAE9;color:#C42B2B;border:1px solid color-mix(in srgb,#C42B2B 30%,transparent)}
+  .modnations{display:flex;flex-wrap:wrap;gap:7px 16px;border:1px solid var(--line);border-radius:10px;padding:11px 12px;max-height:170px;overflow:auto;margin-top:6px}
+  .modnations label{display:flex;align-items:center;gap:7px;margin:0;font-size:13.5px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
+  .modnations input{width:auto;margin:0}
+  .modnations .empty{margin:0}
+
+  @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
 </head>
@@ -76,7 +104,16 @@
       <div><h1>Admin Setup</h1><p class="sub" style="margin:0">Manage the game worlds.</p></div>
       <div style="text-align:right"><div class="who" id="who"></div><button class="btn btn-ghost" id="logout" type="button" style="margin-top:6px">Log out</button></div>
     </div>
-    <div class="tabs"><span class="tab">Nations</span></div>
+    <div class="adminbody">
+      <nav class="vtabs">
+        <button class="vtab active" data-tab="nations" type="button">Nations</button>
+        <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
+        <button class="vtab" data-tab="policies" type="button">Policies</button>
+        <button class="vtab" data-tab="crises" type="button">Crises</button>
+        <button class="vtab" data-tab="events" type="button">Events</button>
+      </nav>
+      <div class="tabwrap">
+      <div class="tabpane" data-tab="nations">
 
     <div class="panel">
       <h2>Game Clock</h2>
@@ -127,18 +164,52 @@
         <div class="note" id="addNote" role="status" aria-live="polite"></div>
       </form>
     </div>
+      </div><!-- /nations pane -->
+
+      <div class="tabpane" data-tab="modifiers" hidden>
+        <div class="panel">
+          <h2 id="modFormTitle">Add Modifier</h2>
+          <form id="modForm">
+            <div class="grid">
+              <div class="full"><label for="m-name">Name of Modifier</label><input id="m-name" type="text" required></div>
+              <div><label for="m-color">Color (container)</label><select id="m-color"><option value="red">Red</option><option value="yellow" selected>Yellow</option><option value="green">Green</option></select></div>
+              <div class="full"><label for="m-desc">Description</label><textarea id="m-desc"></textarea></div>
+              <div><label for="m-effect">Effect</label><select id="m-effect"></select></div>
+              <div id="m-keywrap"><label for="m-key">Target</label><select id="m-key"></select></div>
+              <div><label for="m-value">Value</label><input id="m-value" type="number" step="0.1" value="0"></div>
+            </div>
+            <label style="margin-top:12px">Nation(s) assigned this Modifier</label>
+            <div id="m-nations" class="modnations"><span class="empty">Loading nations…</span></div>
+            <button class="btn btn-solid btn-full" type="submit" id="modBtn">Add Modifier</button>
+            <button class="btn btn-ghost btn-full" type="button" id="modCancel" hidden style="margin-top:8px">Cancel edit</button>
+            <div class="note" id="modNote" role="status" aria-live="polite"></div>
+          </form>
+        </div>
+        <div class="panel">
+          <h2>Existing Modifiers</h2>
+          <div id="modList"><p class="empty">Loading…</p></div>
+        </div>
+      </div>
+
+      <div class="tabpane" data-tab="policies" hidden><div class="panel"><h2>Policies</h2><p class="empty">Nothing here yet.</p></div></div>
+      <div class="tabpane" data-tab="crises" hidden><div class="panel"><h2>Crises</h2><p class="empty">Nothing here yet.</p></div></div>
+      <div class="tabpane" data-tab="events" hidden><div class="panel"><h2>Events</h2><p class="empty">Nothing here yet.</p></div></div>
+      </div><!-- /tabwrap -->
+    </div><!-- /adminbody -->
   </div>
 
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
     import { regimeLabel } from '/ladders.js';
+    import { ARCHETYPES } from '/archetypes.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
     var adminView = document.getElementById('adminView');
     var loginNote = document.getElementById('loginNote');
     var addNote = document.getElementById('addNote');
+    var modNote = document.getElementById('modNote');
 
     function isAdmin(user) { return !!user && (user.email || '').toLowerCase() === ADMIN_EMAIL; }
     function show(view) { loginView.hidden = view !== 'login'; adminView.hidden = view !== 'admin'; }
@@ -186,7 +257,9 @@
           document.getElementById('who').textContent = 'Signed in as ' + session.user.email;
           show('admin');
           renderClock();
-          loadNations();
+          await loadNations();
+          renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []);
+          loadModifiers();
         } else if (session) {
           // Signed in, but not the admin account. Don't sign them out (that would
           // silently end a normal player's game session) — just say so; signing
@@ -384,6 +457,176 @@
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
     });
+
+    // ---- Left-hand tab switching ----
+    document.querySelectorAll('.vtab').forEach(function (t) {
+      t.addEventListener('click', function () {
+        var tab = t.dataset.tab;
+        document.querySelectorAll('.vtab').forEach(function (x) { x.classList.toggle('active', x === t); });
+        document.querySelectorAll('.tabpane').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
+        if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
+      });
+    });
+
+    // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
+    var modEditing = null, modsCache = [], assignCache = {};   // assignCache: modifier_id -> [nation_id]
+    var EFFECT_TYPES = [
+      { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
+      { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
+      { v: 'resource_ceiling',      label: 'Resource Ceiling',             target: 'resource' },
+      { v: 'confidence_ceiling',    label: 'Government Confidence Ceiling', target: 'none' },
+      { v: 'confidence_formation',  label: 'Gov Confidence Penalty/Bonus on Formation', target: 'none' },
+      { v: 'stat_ceiling',          label: 'Stat Ceiling',                 target: 'stat' },
+      { v: 'stat_floor',            label: 'Stat Floor',                   target: 'stat' },
+      { v: 'regime_ceiling',        label: 'Regime Ceiling',               target: 'none' },
+      { v: 'regime_floor',          label: 'Regime Floor',                 target: 'none' }
+    ];
+    var RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services', 'diplomacy'];
+    var STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
+    function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+    function effInfo(v) { return EFFECT_TYPES.filter(function (x) { return x.v === v; })[0] || { label: v, target: 'none' }; }
+    function keyLabel(type, key) {
+      if (!key) return '';
+      if (effInfo(type).target === 'archetype') { var a = ARCHETYPES.filter(function (x) { return x.id === key; })[0]; return a ? a.name : key; }
+      return cap(key);
+    }
+
+    document.getElementById('m-effect').innerHTML = EFFECT_TYPES.map(function (t) {
+      return '<option value="' + t.v + '">' + esc(t.label) + '</option>';
+    }).join('');
+
+    // The target dropdown depends on the effect: archetype / resource / stat, or hidden.
+    function refreshKeyField() {
+      var target = effInfo(document.getElementById('m-effect').value).target;
+      var wrap = document.getElementById('m-keywrap'), sel = document.getElementById('m-key');
+      if (target === 'none') { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+      wrap.style.display = '';
+      var opts = target === 'archetype' ? ARCHETYPES.map(function (a) { return { v: a.id, l: a.name }; })
+               : (target === 'resource' ? RESOURCES : STATS).map(function (k) { return { v: k, l: cap(k) }; });
+      sel.innerHTML = opts.map(function (o) { return '<option value="' + o.v + '">' + esc(o.l) + '</option>'; }).join('');
+    }
+    document.getElementById('m-effect').addEventListener('change', refreshKeyField);
+    refreshKeyField();
+
+    function renderModNations(selected) {
+      var box = document.getElementById('m-nations'), sel = selected || [];
+      if (!nationsCache.length) { box.innerHTML = '<span class="empty">No nations yet.</span>'; return; }
+      box.innerHTML = nationsCache.map(function (n) {
+        return '<label><input type="checkbox" value="' + esc(n.id) + '"' + (sel.indexOf(n.id) >= 0 ? ' checked' : '') + '>' + esc(n.name || n.id) + '</label>';
+      }).join('');
+    }
+
+    async function loadModifiers() {
+      var box = document.getElementById('modList');
+      try {
+        const { data: mods } = await supabase.from('national_modifiers').select('*').order('created_at', { ascending: true });
+        const { data: links } = await supabase.from('nation_modifiers').select('*');
+        modsCache = mods || [];
+        assignCache = {};
+        (links || []).forEach(function (l) { (assignCache[l.modifier_id] = assignCache[l.modifier_id] || []).push(l.nation_id); });
+        if (!modsCache.length) { box.innerHTML = '<p class="empty">No modifiers yet.</p>'; return; }
+        box.innerHTML = modsCache.map(function (m) {
+          var info = effInfo(m.effect_type);
+          var kl = keyLabel(m.effect_type, m.effect_key);
+          var eff = info.label + (kl ? ' · ' + kl : '') + ' · ' + m.effect_value;
+          var names = (assignCache[m.id] || []).map(function (nid) { var n = nationsCache.filter(function (x) { return x.id === nid; })[0]; return n ? n.name : nid; });
+          return '<div class="mcard ' + esc(m.color || 'yellow') + '"><div class="mcard__top"><div>' +
+            '<div class="mcard__name">' + esc(m.name) + '</div><div class="mcard__eff">' + esc(eff) + '</div></div>' +
+            '<div class="mcard__btns"><button class="ed" type="button" data-id="' + esc(m.id) + '">Edit</button>' +
+            '<button class="rm" type="button" data-id="' + esc(m.id) + '">Remove</button></div></div>' +
+            (m.description ? '<div class="mcard__desc">' + esc(m.description) + '</div>' : '') +
+            '<div class="mcard__nations">' + (names.length ? 'Assigned: ' + esc(names.join(', ')) : 'Not assigned to any nation') + '</div></div>';
+        }).join('');
+        box.querySelectorAll('.ed').forEach(function (b) { b.addEventListener('click', function () { var m = modsCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (m) startModEdit(m); }); });
+        box.querySelectorAll('.rm').forEach(function (b) { b.addEventListener('click', function () { removeModifier(b.dataset.id); }); });
+      } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load modifiers.</p>'; }
+    }
+
+    function startModEdit(m) {
+      modEditing = m;
+      document.getElementById('m-name').value = m.name || '';
+      document.getElementById('m-color').value = m.color || 'yellow';
+      document.getElementById('m-desc').value = m.description || '';
+      document.getElementById('m-effect').value = m.effect_type;
+      refreshKeyField();
+      if (effInfo(m.effect_type).target !== 'none' && m.effect_key) document.getElementById('m-key').value = m.effect_key;
+      document.getElementById('m-value').value = m.effect_value;
+      renderModNations(assignCache[m.id] || []);
+      document.getElementById('modFormTitle').textContent = 'Edit ' + (m.name || 'Modifier');
+      document.getElementById('modBtn').textContent = 'Save changes';
+      document.getElementById('modCancel').hidden = false;
+      modNote.textContent = ''; modNote.className = 'note';
+      document.getElementById('modForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    function cancelModEdit() {
+      modEditing = null;
+      document.getElementById('modForm').reset();
+      document.getElementById('m-color').value = 'yellow';
+      document.getElementById('m-effect').selectedIndex = 0;
+      refreshKeyField();
+      document.getElementById('m-value').value = '0';
+      renderModNations([]);
+      document.getElementById('modFormTitle').textContent = 'Add Modifier';
+      document.getElementById('modBtn').textContent = 'Add Modifier';
+      document.getElementById('modCancel').hidden = true;
+      modNote.textContent = ''; modNote.className = 'note';
+    }
+    document.getElementById('modCancel').addEventListener('click', cancelModEdit);
+
+    document.getElementById('modForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('modBtn');
+      modNote.textContent = ''; modNote.className = 'note';
+      var name = document.getElementById('m-name').value.trim();
+      if (!name) { modNote.textContent = 'Enter a modifier name.'; modNote.className = 'note error'; return; }
+      var type = document.getElementById('m-effect').value;
+      var row = {
+        name: name,
+        color: document.getElementById('m-color').value,
+        description: document.getElementById('m-desc').value.trim() || null,
+        effect_type: type,
+        effect_key: effInfo(type).target === 'none' ? null : (document.getElementById('m-key').value || null),
+        effect_value: parseFloat(document.getElementById('m-value').value) || 0
+      };
+      var nations = Array.prototype.slice.call(document.querySelectorAll('#m-nations input:checked')).map(function (c) { return c.value; });
+      btn.disabled = true;
+      try {
+        var id;
+        if (modEditing) {
+          const { error } = await supabase.from('national_modifiers').update(row).eq('id', modEditing.id);
+          if (error) throw error;
+          id = modEditing.id;
+        } else {
+          const { data, error } = await supabase.from('national_modifiers').insert(row).select('id').single();
+          if (error) throw error;
+          id = data.id;
+        }
+        // Reset the assignment to exactly the checked set.
+        await supabase.from('nation_modifiers').delete().eq('modifier_id', id);
+        if (nations.length) {
+          const { error: e2 } = await supabase.from('nation_modifiers').insert(nations.map(function (nid) { return { modifier_id: id, nation_id: nid }; }));
+          if (e2) throw e2;
+        }
+        modNote.textContent = modEditing ? 'Saved changes.' : 'Modifier added.';
+        modNote.className = 'note ok';
+        cancelModEdit();
+        loadModifiers();
+      } catch (e) {
+        modNote.textContent = /(policy|permission|row-level)/i.test(e.message || '') ? 'Only the admin can do that.' : (e.message || 'Couldn’t save the modifier.');
+        modNote.className = 'note error';
+      } finally { btn.disabled = false; }
+    });
+
+    async function removeModifier(id) {
+      var m = modsCache.filter(function (x) { return x.id === id; })[0];
+      if (!confirm('Remove the modifier “' + ((m && m.name) || '') + '”? This unassigns it from all nations.')) return;
+      try {
+        const { error } = await supabase.from('national_modifiers').delete().eq('id', id);
+        if (error) throw error;
+        if (modEditing && modEditing.id === id) cancelModEdit();
+        loadModifiers();
+      } catch (e) { alert(e.message || 'Couldn’t remove the modifier.'); }
+    }
 
     refresh();
   </script>
