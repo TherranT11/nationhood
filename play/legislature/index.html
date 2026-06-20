@@ -84,6 +84,8 @@
   .vb:disabled{opacity:.55;cursor:not-allowed}
   .vb:not(:disabled):hover{border-color:var(--ink)}
   .youvote{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-left:2px}
+  .agwhen{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-top:9px}
+  .agwhen b{color:var(--ink);font-weight:700}
   .sendfloor{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:9px 14px;border-radius:9px;border:1.5px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
   .sendfloor:hover{filter:brightness(1.06)}.sendfloor:disabled{opacity:.55;cursor:not-allowed;filter:none}
   .histrow{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
@@ -203,14 +205,17 @@
   }
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
+    var when = p.scheduled_tick != null ? tickToDate(p.scheduled_tick) : '—';
     return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) +
-      '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor (1 action)</button>' : '<span class="youvote">Awaiting the proposer</span>') + '</div></div>';
+      '<div class="agwhen">Reaches the floor · <b>' + esc(when) + '</b></div>' +
+      '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor now (1 action)</button>' : '<span class="youvote">Awaiting its scheduled month</span>') + '</div></div>';
   }
   function emptyPanel(b, s){ return '<div class="panel"><div class="empty"><b>' + b + '</b><span>' + s + '</span></div></div>'; }
 
   function renderBody(){
     var floor = ST.proposals.filter(function(p){ return p.status === 'voting'; });
-    var agenda = ST.proposals.filter(function(p){ return p.status === 'agenda'; });
+    var agenda = ST.proposals.filter(function(p){ return p.status === 'agenda'; })
+      .sort(function(a, b){ return (a.scheduled_tick || 0) - (b.scheduled_tick || 0); });  // earliest month first
     var hist = ST.proposals.filter(function(p){ return p.status === 'passed' || p.status === 'failed'; }).slice(0, 12);
     var content = document.getElementById('content');
     content.innerHTML =
@@ -224,7 +229,7 @@
         '<div class="secthd">On the Floor <span class="ct">' + floor.length + '</span><button class="propose" id="proposeBtn" type="button">Propose New Law</button></div>' +
         (floor.length ? floor.map(measureCard).join('') : emptyPanel('No measures on the floor', 'Propose one, or wait for another party to bring a measure.')) +
         '<div class="secthd">Upcoming Agenda <span class="ct">' + agenda.length + '</span></div>' +
-        (agenda.length ? agenda.map(agendaCard).join('') : emptyPanel('Nothing on the agenda', 'Queued measures sit here until sent to the floor.')) +
+        (agenda.length ? agenda.map(agendaCard).join('') : emptyPanel('Nothing on the agenda', 'Queued measures reach the floor automatically on their scheduled month — one per month.')) +
       '</div><aside class="legrail"><section class="panel"><h2>Legislative History</h2>' +
         (hist.length ? hist.map(function(p){ return '<div class="histrow"><span>' + esc(p.title) + '</span><span class="pf ' + p.status + '">' + (p.status === 'passed' ? 'Passed' : 'Failed') + '</span></div>'; }).join('') : '<p class="muted">No measures resolved yet.</p>') +
       '</section></aside></div>';

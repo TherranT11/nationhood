@@ -54,6 +54,11 @@ alter table public.proposals add column if not exists opened_tick int;
 update public.proposals set opened_tick = (select current_tick from public.game_state where id)
  where status = 'voting' and opened_tick is null;
 
+-- Agenda items carry the tick they're due to reach the floor — one slot per month,
+-- per nation. advance_tick (schema/60) promotes them to the floor automatically when
+-- the shared clock reaches that tick. Null once a measure leaves the agenda.
+alter table public.proposals add column if not exists scheduled_tick int;
+
 -- One vote per party per proposal (changeable while voting is open).
 create table if not exists public.proposal_votes (
   proposal_id uuid not null references public.proposals (id) on delete cascade,
@@ -156,28 +161,35 @@ set search_path = public
 as $$
 declare
   v_party public.parties%rowtype; v_decl public.declarations%rowtype;
-  v_value text; v_pid uuid; v_res text;
+  v_value text; v_pid uuid; v_res text; v_cur int; v_sched int;
 begin
   v_decl  := public._check_declaration(p_slug, p_value);
   v_value := btrim(p_value);
+  select current_tick into v_cur from public.game_state where id;
 
   if p_to_floor then
     v_party := public._begin_action(0);          -- requires >= 1 action
     if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election before bringing measures to the floor.'; end if;
   else
     v_party := public._lock_party();
+    -- Queue on the next free month: one agenda slot per tick, filling from the tick
+    -- after now. advance_tick carries it to the floor when the clock reaches it.
+    select greatest(v_cur + 1, coalesce(max(scheduled_tick), v_cur) + 1)
+      into v_sched
+      from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
   end if;
 
-  insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick)
+  insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
     values (v_party.nation_id, v_party.id, 'declaration',
             v_decl.label || ' → ' || v_value,
             jsonb_build_object('slug', v_decl.slug, 'label', v_decl.label, 'value', v_value),
             case when p_to_floor then 'voting' else 'agenda' end,
-            case when p_to_floor then (select current_tick from public.game_state where id) else null end)
+            case when p_to_floor then v_cur else null end,
+            case when p_to_floor then null else v_sched end)
     returning id into v_pid;
 
   if not p_to_floor then
-    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'actions', v_party.actions_remaining);
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining);
   end if;
 
   update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
@@ -203,7 +215,7 @@ begin
   if v_p.status <> 'agenda' then raise exception 'That measure is not on the agenda.'; end if;
   if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election first.'; end if;
 
-  update public.proposals set status = 'voting', opened_tick = (select current_tick from public.game_state where id) where id = p_proposal;
+  update public.proposals set status = 'voting', opened_tick = (select current_tick from public.game_state where id), scheduled_tick = null where id = p_proposal;
   update public.parties  set actions_remaining = actions_remaining - 1 where id = v_party.id;
   insert into public.proposal_votes (proposal_id, party_id, aye) values (p_proposal, v_party.id, true)
     on conflict (proposal_id, party_id) do update set aye = excluded.aye;
