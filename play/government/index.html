@@ -188,7 +188,7 @@
     var b = govt.conf_breakdown;
     if (!b) return '';
     var parts = [['Base', b.base], ['Crises', b.crises], ['Contradictions', b.contradictions],
-                 ['Coalition size', b.majority], ['Reneged', b.renege]];
+                 ['Coalition size', b.majority], ['Reneged', b.renege], ['National modifier', b.modifier]];
     if (b.formed != null) parts.push(['Agenda', (Number(govt.confidence) || 0) - b.formed]);
     var chips = parts.filter(function(p){ return p[0] === 'Base' || p[1]; }).map(function(p){
       var n = p[1] || 0, cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';

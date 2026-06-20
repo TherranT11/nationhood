@@ -49,7 +49,7 @@ create table if not exists public.governments (
   formateur_party_id    uuid references public.parties (id) on delete set null,  -- the party that formed + leads it
   type                  text not null,                 -- majority | coalition | minority
   confidence            int  not null,                 -- 0..100, public approval of this government
-  conf_breakdown        jsonb,                          -- the Confidence formula's parts at formation (base/crises/contradictions/majority/renege/formed); the panel reads this, never recomputes
+  conf_breakdown        jsonb,                          -- the Confidence formula's parts at formation (base/crises/contradictions/majority/renege/modifier/formed); the panel reads this, never recomputes
   formed_tick           int  not null,                 -- the tick it formed; the formation window (renege) reads this
   source_negotiation_id uuid references public.negotiations (id) on delete set null, -- the committed agreement, if a coalition
   status                text not null default 'active', -- active | replaced
@@ -98,7 +98,7 @@ set search_path = public
 as $$
 declare
   v_seats int; v_form_arch text; v_members uuid[];
-  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid;
+  v_govt_seats int; v_contra int; v_maj int; v_crises int := 0; v_conf int; v_gid uuid; v_mod_form numeric; v_ceil numeric;
 begin
   select coalesce(legislature_seats, 0) into v_seats from public.nations where id = p_nation;
   select archetype into v_form_arch from public.parties where id = p_formateur;
@@ -127,7 +127,11 @@ begin
   -- to rounding the whole sum.
   v_maj := case when v_seats > 0 and (v_govt_seats::numeric / v_seats * 100) > 50
                 then round((v_govt_seats::numeric / v_seats * 100 - 50) / 2)::int else 0 end;
-  v_conf := greatest(0, least(100, 50 - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty));
+  -- National modifiers on the nation: a signed formation penalty/bonus, and the
+  -- most-restrictive confidence ceiling (100 if none).
+  v_mod_form := round(public._mod_confidence_formation(p_nation));
+  v_ceil     := public._mod_confidence_ceiling(p_nation);
+  v_conf := greatest(0, least(v_ceil, 50 - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty + v_mod_form))::int;
 
   -- Retire the sitting government, seat the new one (stamped with the tick it
   -- formed, plus the Confidence parts for the panel to read back).
@@ -135,7 +139,7 @@ begin
   insert into public.governments (nation_id, formateur_party_id, type, confidence, formed_tick, source_negotiation_id, conf_breakdown)
     values (p_nation, p_formateur, p_type, v_conf, (select current_tick from public.game_state where id), p_source,
             jsonb_build_object('base', 50, 'crises', -2 * v_crises, 'contradictions', -4 * v_contra,
-                               'majority', v_maj, 'renege', -p_conf_penalty, 'formed', v_conf))
+                               'majority', v_maj, 'renege', -p_conf_penalty, 'modifier', v_mod_form::int, 'formed', v_conf))
     returning id into v_gid;
   -- A coalition inherits its agreed terms as a pending agenda (not auto-applied).
   if p_source is not null then
@@ -314,7 +318,7 @@ begin
     raise exception 'Only the leading party of the government can enact its agenda.';
   end if;
 
-  v_newconf := least(100, v_gov.confidence + v_delta);
+  v_newconf := least(public._mod_confidence_ceiling(v_gov.nation_id), v_gov.confidence + v_delta);
   v_delta := v_newconf - v_gov.confidence;   -- the gain actually applied (so the 100% cap never overstates)
 
   update public.government_agenda set status = 'done' where id = p_item;

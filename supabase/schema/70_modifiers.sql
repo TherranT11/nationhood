@@ -53,3 +53,26 @@ drop policy if exists "nmod_insert_admin" on public.nation_modifiers;
 create policy "nmod_insert_admin" on public.nation_modifiers for insert with check (public.is_admin());
 drop policy if exists "nmod_delete_admin" on public.nation_modifiers;
 create policy "nmod_delete_admin" on public.nation_modifiers for delete using (public.is_admin());
+
+-- ===========================================================================
+-- Stage 2 enforcement readers — the ONE place each modifier kind is reduced.
+-- Internal helpers, read straight from the (world-readable) tables.
+-- ===========================================================================
+
+-- Government Confidence on formation: penalties/bonuses SUM (signed).
+create or replace function public._mod_confidence_formation(p_nation text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(m.effect_value), 0)
+    from public.nation_modifiers nm
+    join public.national_modifiers m on m.id = nm.modifier_id
+   where nm.nation_id = p_nation and m.effect_type = 'confidence_formation';
+$$;
+
+-- Government Confidence ceiling: the most restrictive (min); 100 when uncapped.
+create or replace function public._mod_confidence_ceiling(p_nation text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(min(m.effect_value), 100)
+    from public.nation_modifiers nm
+    join public.national_modifiers m on m.id = nm.modifier_id
+   where nm.nation_id = p_nation and m.effect_type = 'confidence_ceiling';
+$$;

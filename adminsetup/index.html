@@ -487,8 +487,7 @@
     function effInfo(v) { return EFFECT_TYPES.filter(function (x) { return x.v === v; })[0] || { label: v, target: 'none' }; }
     function keyLabel(type, key) {
       if (!key) return '';
-      if (effInfo(type).target === 'archetype') { var a = ARCHETYPES.filter(function (x) { return x.id === key; })[0]; return a ? a.name : key; }
-      return cap(key);
+      return effInfo(type).target === 'archetype' ? key : cap(key); // archetype key is the name (matches parties.archetype)
     }
 
     document.getElementById('m-effect').innerHTML = EFFECT_TYPES.map(function (t) {
@@ -501,7 +500,7 @@
       var wrap = document.getElementById('m-keywrap'), sel = document.getElementById('m-key');
       if (target === 'none') { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
       wrap.style.display = '';
-      var opts = target === 'archetype' ? ARCHETYPES.map(function (a) { return { v: a.id, l: a.name }; })
+      var opts = target === 'archetype' ? ARCHETYPES.map(function (a) { return { v: a.name, l: a.name }; }) // value = NAME (matches parties.archetype)
                : (target === 'resource' ? RESOURCES : STATS).map(function (k) { return { v: k, l: cap(k) }; });
       sel.innerHTML = opts.map(function (o) { return '<option value="' + o.v + '">' + esc(o.l) + '</option>'; }).join('');
     }
