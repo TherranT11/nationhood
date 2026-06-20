@@ -243,8 +243,14 @@
       var val = curValue(), pv = document.getElementById('d-pv');
       pv.textContent = val ? (curDecl().label + ' → ' + val) : 'Choose a name';
       pv.classList.toggle('empty', !val);
-      var ok = !!val && !declBusy;
+      // A name identical to the current one is a no-op (and would still cost an action
+      // on the floor) — block it and say why.
+      var same = !!val && val === declaredValue(curDecl(), currentValues);
+      var ok = !!val && !same && !declBusy;
       floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
+      if (!declBusy) note.textContent = !val ? 'Pick a name to propose it.'
+        : same ? ('That’s already the current ' + curDecl().label + '.')
+        : 'Ready to propose — choose how.';
     }
     slotSel.onchange = fillOpts;
     optSel.onchange = sync;
@@ -253,12 +259,12 @@
 
     function submit(toFloor) {
       var d = curDecl(), val = curValue();
-      if (!val || declBusy) return;
+      if (!val || declBusy || val === declaredValue(d, currentValues)) return;  // guard mirrors sync()
       declBusy = true; floorBtn.disabled = true; agendaBtn.disabled = true;
       note.textContent = toFloor ? 'Bringing it to the floor…' : 'Adding to the agenda…';
       proposeDeclaration(d.slug, val, toFloor)
         .then(function () { location.href = '/play/legislature/'; })
-        .catch(function (e) { note.textContent = e.message || 'Couldn’t propose that.'; declBusy = false; sync(); });
+        .catch(function (e) { declBusy = false; sync(); note.textContent = e.message || 'Couldn’t propose that.'; });
     }
     floorBtn.onclick = function () { submit(true); };
     agendaBtn.onclick = function () { submit(false); };
