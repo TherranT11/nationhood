@@ -75,7 +75,7 @@ export function mountTopbar(){
   const host = document.getElementById('topbar');
   if (host) host.innerHTML = HTML;
   wireDeletePartyMenu();   // settings gear → Delete Party (shared; see supabase.js)
-  loadAccent();            // tint the chrome with the player's party colour (every screen)
+  loadChrome();            // accent + funds + action budget on every screen (one source)
 
   // The game date is owned here — one source, read straight from the live tick.
   // Re-pull it whenever the page is (re)shown so it never goes stale after a tick
@@ -116,11 +116,21 @@ export function setAccent(color){
   r.style.setProperty('--indigo', color);
   r.style.setProperty('--indigo-soft', 'color-mix(in srgb, ' + color + ' 14%, #fff)');
 }
-async function loadAccent(){
+// Load the player's party once and fill the shared chrome on EVERY screen — accent
+// colour, party funds, and the action budget — so they're correct even on pages that
+// don't feed the topbar themselves. Pages may still call the setters to update live.
+async function loadChrome(){
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
-    const { data } = await supabase.from('parties').select('color, archetype').eq('user_id', session.user.id).maybeSingle();
-    if (data) setAccent(partyColor(data)); // chosen colour, else archetype default (one source: archetypes.js)
-  } catch (e) { /* keep the default accent if the party can't be read */ }
+    const { data: p } = await supabase.from('parties')
+      .select('color, archetype, funds, actions_remaining, nation_id').eq('user_id', session.user.id).maybeSingle();
+    if (!p) return;
+    setAccent(partyColor(p));               // chosen colour, else archetype default (one source: archetypes.js)
+    setTopbarActions(p.actions_remaining);
+    var currency = '$';
+    const { data: n } = await supabase.from('nations').select('economy').eq('id', p.nation_id).maybeSingle();
+    if (n && n.economy && n.economy.currency) currency = n.economy.currency;
+    setTopbarFunds(currency, p.funds);
+  } catch (e) { /* leave the defaults if the party can't be read */ }
 }

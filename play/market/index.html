@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;--blue:#1f86d6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+
+  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
+  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
+  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent}
+  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
+  .nav__i:hover{color:var(--ink);background:var(--chip)}
+  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
+  .nav__i.active svg{color:var(--indigo)}
+  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
+  .me b{color:var(--ink);font-weight:700}
+  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
+  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
+  .logout:hover{color:var(--red)}
+  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;max-width:1080px}
+  .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .topline{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .cash{text-align:right;font-family:'Space Mono',monospace}
+  .cash .k{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .cash .v{font-weight:800;font-size:22px;color:var(--ink)}
+  .intro{font-size:13.5px;color:var(--muted);margin:8px 0 22px;max-width:70ch}
+  .empty{text-align:center;padding:40px 20px;color:var(--soft)}
+
+  .holdhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
+  .holdings{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:26px}
+  @media(max-width:760px){.holdings{grid-template-columns:repeat(2,1fr)}}
+  .hold{border:1px solid var(--line);border-radius:12px;padding:12px 13px;background:#fff;display:flex;align-items:center;gap:11px}
+  .hold .hico{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--chip);color:var(--muted)}
+  .hold .hico svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .hold .ht{min-width:0}
+  .hold .ht .nm{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .hold .ht .qt{font-weight:800;font-size:17px;letter-spacing:-.02em;line-height:1.15}
+  .hold .ht .qt small{font-weight:400;font-size:11px;color:var(--soft);font-family:'Space Mono',monospace}
+  .qt.short{color:var(--red)}
+
+  .commodity{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+  .commodity.hot{border-color:var(--red);box-shadow:0 0 0 1px rgba(196,43,43,.12)}
+  .com__top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .com__id{display:flex;align-items:center;gap:12px}
+  .com__ico{width:40px;height:40px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--chip);color:var(--ink)}
+  .com__ico svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.7}
+  .commodity.hot .com__ico{background:var(--red-soft);color:var(--red)}
+  .com__id b{font-weight:800;font-size:19px;display:block;line-height:1.1;letter-spacing:-.01em}
+  .com__id .sub{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--soft)}
+  .onhand{display:inline-flex;align-items:center;gap:6px;margin-top:6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;color:var(--muted);background:var(--chip);border-radius:20px;padding:3px 9px}
+  .onhand b{color:var(--ink)} .onhand.short b{color:var(--red)}
+  .com__price{text-align:right}
+  .com__price .p{font-weight:800;font-size:26px;letter-spacing:-.02em}
+  .com__price .tr{display:block;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;margin-top:2px}
+  .tr.up{color:var(--red)} .tr.flat{color:var(--soft)} .tr.down{color:var(--green)}
+
+  .track{margin:16px 0 6px}
+  .track__bar{height:9px;border-radius:6px;position:relative;background:linear-gradient(90deg,var(--green) 0%,var(--amber) 55%,var(--red) 100%);opacity:.9}
+  .track__mark{position:absolute;top:50%;width:3px;height:21px;background:var(--ink);transform:translate(-50%,-50%);border-radius:2px;box-shadow:0 0 0 2px #fff}
+  .track__ends{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:6px}
+
+  .scar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0;font-size:12.5px;color:var(--muted)}
+  .sd{display:flex;flex-direction:column;gap:5px;min-width:150px}
+  .sdrow{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .sdrow .bar{flex:1;height:6px;border-radius:4px;background:var(--chip);overflow:hidden}
+  .sdrow .fill{height:100%;border-radius:4px}
+  .sdrow.s .fill{background:var(--blue)} .sdrow.c .fill{background:var(--amber)}
+  .scar__txt{flex:1;min-width:180px;font-style:italic}
+
+  .nations{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 2px}
+  .nchip{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.02em;padding:5px 10px;border-radius:20px;border:1px solid var(--line);color:var(--muted);display:flex;gap:6px;align-items:center}
+  .nchip b{color:var(--ink);font-weight:700}
+  .nchip.export{color:var(--green);border-color:rgba(22,145,90,.4);background:var(--green-soft)}
+  .nchip.short{color:var(--red);border-color:rgba(196,43,43,.4);background:var(--red-soft)}
+  .nchip.you{border-color:var(--indigo);box-shadow:0 0 0 1px rgba(85,70,232,.25)}
+
+  .note{font-size:12.5px;color:var(--soft);font-style:italic;text-align:center;margin-top:8px}
+
+  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <img class="brand__flag" id="flag" alt="Nation flag" hidden>
+      <div class="brand__txt"><b id="sname">…</b><span id="psub"></span></div>
+    </div>
+    <nav class="nav">
+      <a class="nav__i" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
+      <a class="nav__i" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
+      <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
+      <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
+      <a class="nav__i" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
+      <a class="nav__i" href="/play/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i" href="/play/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
+      <a class="nav__i active" href="/play/market/"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
+      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
+    </nav>
+    <div class="side__foot">
+      <div class="me"><span class="me__dot"></span><span class="label">Leader · <b>You</b></span></div>
+      <button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="phead">
+      <div class="topline">
+        <div><span class="eye">Market · World Commodities</span><h1>The Market</h1></div>
+        <div class="cash"><div class="k">National Treasury</div><div class="v" id="treasury">—</div></div>
+      </div>
+      <p class="intro">Prices float on <b>global supply</b> — the total every nation holds on hand. Scarce resources run dear; abundant ones stay cheap. <b>Diplomacy</b> isn't traded here.</p>
+    </div>
+    <div id="content"><div class="empty">Loading the market…</div></div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { mountTopbar } from '/topbar.js';
+
+  document.getElementById('logout').addEventListener('click', logout);
+  mountTopbar();
+
+  function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
+
+  // The five tradeable commodities (Diplomacy is influence, not traded). Energy is
+  // the mockup's "Oil". Icons inline; labels drive the cards.
+  var I = {
+    energy:'<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 3c3 5 5 8 5 11a5 5 0 01-10 0c0-3 2-6 5-11z"/></svg>',
+    food:'<svg viewBox="0 0 24 24"><path d="M12 21V8M12 8c0-3 2-5 2-5M12 8c0-3-2-5-2-5M12 12c0-2 3-3 3-3M12 12c0-2-3-3-3-3M12 16c0-2 3-3 3-3M12 16c0-2-3-3-3-3"/></svg>',
+    minerals:'<svg viewBox="0 0 24 24"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 18M15 3l-3 18"/></svg>',
+    goods:'<svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>',
+    services:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>'
+  };
+  var COMM = [
+    { id:'energy',   name:'Energy',   sub:'primary · energy' },
+    { id:'food',     name:'Food',     sub:'primary · staple' },
+    { id:'minerals', name:'Minerals', sub:'primary · industry' },
+    { id:'goods',    name:'Goods',    sub:'secondary · manufactured' },
+    { id:'services', name:'Services', sub:'secondary · finance & trade' }
+  ];
+
+  var num = function (v) { return Number(v) || 0; };
+  var fmtUnits = function (n) { return (Math.round(n * 10) / 10).toLocaleString(); };
+
+  // The ONE price rule: dear when global supply is thin, cheap when it's plentiful,
+  // measured against total production capacity, clamped to the commodity's band.
+  // (When trading is wired server-side, mirror this in the trade RPC.)
+  function priceOf(supply, capacity, min, max){
+    var ratio = capacity > 0 ? Math.max(0, Math.min(1, supply / capacity)) : 0;
+    return Math.round((max - (max - min) * ratio) * 10) / 10;
+  }
+
+  function render(home, nations, marketByRes, currency){
+    var cards = '', holds = '';
+
+    COMM.forEach(function (c){
+      var mk = marketByRes[c.id] || { available: 0, min_price: 1, max_price: 10 };
+      var min = num(mk.min_price), max = num(mk.max_price);
+      var supply = nations.reduce(function (s, n){ return s + num((n.on_hand || {})[c.id]); }, 0);
+      var capacity = nations.reduce(function (s, n){ return s + num((n.production || {})[c.id]); }, 0);
+      var price = priceOf(supply, capacity, min, max);
+      var pos = max > min ? (price - min) / (max - min) * 100 : 50;
+      var ratio = capacity > 0 ? supply / capacity : 0;
+      var mine = num((home.on_hand || {})[c.id]);
+
+      // Holdings strip (your nation).
+      holds += '<div class="hold"><span class="hico">' + I[c.id] + '</span><div class="ht">' +
+        '<div class="nm">' + esc(c.name) + '</div>' +
+        '<div class="qt' + (mine <= 0 ? ' short' : '') + '">' + fmtUnits(mine) + ' <small>units</small></div></div></div>';
+
+      // Scarcity wording + trend (derived from supply ratio / price position).
+      var scar = ratio < 0.34 ? 'Scarce — stocks are thin, so it trades dear.'
+               : ratio < 0.67 ? 'Tight — supply is limited and prices hold.'
+               : 'Ample — stocks are plentiful, so it stays cheap.';
+      var hot = ratio < 0.34;
+      var trend = pos >= 66 ? { t:'▲ dear', c:'up' } : pos >= 34 ? { t:'→ steady', c:'flat' } : { t:'▼ cheap', c:'down' };
+      var maxBar = Math.max(supply, capacity, 1);
+
+      // Per-nation holdings: biggest holder reads as the exporter, an empty one is short.
+      var maxHold = nations.reduce(function (m, n){ return Math.max(m, num((n.on_hand || {})[c.id])); }, 0);
+      var chips = nations.slice().sort(function (a, b){ return num((b.on_hand||{})[c.id]) - num((a.on_hand||{})[c.id]); })
+        .map(function (n){
+          var q = num((n.on_hand || {})[c.id]);
+          var you = n.id === home.id;
+          var cls = (q <= 0 ? 'short' : (q >= maxHold && maxHold > 0 ? 'export' : '')) + (you ? ' you' : '');
+          var tag = q <= 0 ? ' ▼' : (q >= maxHold && maxHold > 0 ? ' ▲' : '');
+          return '<span class="nchip ' + cls + '"><b>' + esc(n.name) + (you ? ' (you)' : '') + '</b> ' + fmtUnits(q) + tag + '</span>';
+        }).join('');
+
+      cards += '<div class="commodity' + (hot ? ' hot' : '') + '">' +
+        '<div class="com__top">' +
+          '<div class="com__id"><span class="com__ico">' + I[c.id] + '</span><div><b>' + esc(c.name) + '</b><span class="sub">' + esc(c.sub) + '</span>' +
+            '<div class="onhand' + (mine <= 0 ? ' short' : '') + '">On hand <b>' + fmtUnits(mine) + ' units</b></div></div></div>' +
+          '<div class="com__price"><span class="p">' + esc(currency) + price + '</span><span class="tr ' + trend.c + '">' + trend.t + '</span></div>' +
+        '</div>' +
+        '<div class="track"><div class="track__bar"><span class="track__mark" style="left:' + pos + '%"></span></div>' +
+          '<div class="track__ends"><span>' + esc(currency) + min + ' cheap</span><span>' + esc(currency) + max + ' dear</span></div></div>' +
+        '<div class="scar"><div class="sd">' +
+            '<div class="sdrow s">Stock<span class="bar"><span class="fill" style="width:' + (supply / maxBar * 100) + '%"></span></span></div>' +
+            '<div class="sdrow c">Capacity<span class="bar"><span class="fill" style="width:' + (capacity / maxBar * 100) + '%"></span></span></div>' +
+          '</div><span class="scar__txt">' + scar + ' Market has <b>' + num(mk.available) + '</b> units available.</span></div>' +
+        '<div class="nations">' + chips + '</div>' +
+      '</div>';
+    });
+
+    document.getElementById('content').innerHTML =
+      '<div class="holdhd">Your holdings · on hand</div><div class="holdings">' + holds + '</div>' +
+      cards +
+      '<p class="note">Trading opens once your government appoints a Minister of Trade.</p>';
+  }
+
+  (async () => {
+    if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    try {
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      const { data: home } = await supabase.from('nations').select('id, name, flag, economy, on_hand, production').eq('id', party.nation_id).single();
+      const { data: nations } = await supabase.from('nations').select('id, name, on_hand, production').order('name');
+      const { data: market } = await supabase.from('market').select('resource, available, min_price, max_price');
+
+      const nationName = (home && home.name) || party.nation_id;
+      document.getElementById('sname').textContent = party.name;
+      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      if (home && home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
+
+      var eco = (home && home.economy) || {};
+      var currency = eco.currency || '$';
+      document.getElementById('treasury').textContent = eco.budget != null ? (currency + eco.budget + 'B') : '—';
+
+      var marketByRes = {};
+      (market || []).forEach(function (m){ marketByRes[m.resource] = m; });
+      render(home || { id: party.nation_id }, nations || [], marketByRes, currency);
+    } catch (e) {
+      fail('Couldn’t load the market right now. Refresh to try again.');
+    }
+  })();
+</script>
+</body>
+</html>

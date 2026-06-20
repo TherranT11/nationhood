@@ -124,3 +124,18 @@ update public.nations set economy = jsonb_set(economy, '{currency}', '"$"'::json
 update public.nations
    set next_election_tick = (select current_tick from public.game_state where id) + (floor(random() * 6)::int + 1)
  where next_election_tick is null;
+
+-- On-hand stockpiles: each nation starts holding HALF its production of every
+-- tradeable resource (Energy/Food/Minerals/Goods/Services; Diplomacy isn't traded).
+-- Stored so the Market can move it later; seeded ONCE (guarded on empty) so a
+-- re-apply never clobbers a stockpile that trading has since changed.
+alter table public.nations add column if not exists on_hand jsonb not null default '{}'::jsonb;
+update public.nations
+   set on_hand = jsonb_build_object(
+     'energy',   round(coalesce((production->>'energy')::numeric,   0) * 0.5, 1),
+     'food',     round(coalesce((production->>'food')::numeric,     0) * 0.5, 1),
+     'minerals', round(coalesce((production->>'minerals')::numeric, 0) * 0.5, 1),
+     'goods',    round(coalesce((production->>'goods')::numeric,    0) * 0.5, 1),
+     'services', round(coalesce((production->>'services')::numeric, 0) * 0.5, 1)
+   )
+ where on_hand = '{}'::jsonb;
