@@ -323,6 +323,17 @@ begin
   -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
   delete from public.nation_modifiers nm
    where public._modifier_end_met(nm.modifier_id, nm.nation_id, nm.since_tick, v_tick);
+  -- Agenda items whose scheduled month has arrived reach the floor automatically
+  -- (schema/81). opened_tick starts their 6-tick window; scheduled_tick is cleared.
+  with promoted as (
+    update public.proposals set status = 'voting', opened_tick = v_tick, scheduled_tick = null
+     where status = 'agenda' and scheduled_tick is not null and scheduled_tick <= v_tick
+    returning nation_id, party_id, title
+  )
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    select nation_id, party_id, 'declaration',
+           'A measure reached the floor: ' || title || '.', public.current_game_date()
+    from promoted;
   -- Floor measures that have stood 6 ticks without a majority fail now (schema/81).
   with expired as (
     update public.proposals set status = 'failed'
