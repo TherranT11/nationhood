@@ -137,18 +137,24 @@ returns numeric language sql stable security definer set search_path = public as
    where nm.nation_id = p_nation and e.effect_type = 'archetype_pop_floor' and e.effect_key = p_archetype;
 $$;
 
--- Clamp a proposed popularity into the archetype modifier band [floor, ceiling].
--- The ONE place the two readers above are combined: callers (the leader actions
--- in schema/40) pass their freshly-computed popularity through this before saving,
--- so an archetype's cap/floor is enforced at every write. No modifier → no change
--- (each bound coalesces to the input). If a ceiling sits below a floor, the
--- ceiling wins (most restrictive). Internal — not granted to clients.
-create or replace function public._mod_clamp_pop(p_nation text, p_archetype text, p_pop numeric)
+-- Bounds are enforced DIRECTIONALLY (callers in schema/40 pass old + freshly-
+-- computed popularity): a raise is capped by the ceiling, a drop is held up by the
+-- floor — but neither reverses the action. A party already outside its band is
+-- grandfathered (the bound never yanks it back across its starting point), so a
+-- raise never cuts and a drop never lifts. No matching modifier → p_new unchanged.
+
+-- A raising action's result, capped by the archetype ceiling but never below where
+-- it started (an over-cap party keeps its standing; the ceiling just blocks gains).
+create or replace function public._mod_cap_raise(p_nation text, p_archetype text, p_old numeric, p_new numeric)
 returns numeric language sql stable security definer set search_path = public as $$
-  select least(
-           greatest(p_pop, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_pop)),
-           coalesce(public._mod_archetype_pop_ceiling(p_nation, p_archetype), p_pop)
-         );
+  select greatest(p_old, least(p_new, coalesce(public._mod_archetype_pop_ceiling(p_nation, p_archetype), p_new)));
+$$;
+
+-- A dropping action's result, held up by the archetype floor but never raised above
+-- where it started (a below-floor party isn't lifted by being attacked/penalised).
+create or replace function public._mod_floor_drop(p_nation text, p_archetype text, p_old numeric, p_new numeric)
+returns numeric language sql stable security definer set search_path = public as $$
+  select least(p_old, greatest(p_new, coalesce(public._mod_archetype_pop_floor(p_nation, p_archetype), p_new)));
 $$;
 
 notify pgrst, 'reload schema';
