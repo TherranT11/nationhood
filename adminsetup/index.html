@@ -78,6 +78,14 @@
   .modnations label{display:flex;align-items:center;gap:7px;margin:0;font-size:13.5px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
   .modnations input{width:auto;margin:0}
   .modnations .empty{margin:0}
+  /* one effect = one row */
+  .effrow{display:grid;grid-template-columns:1fr 1fr 110px 38px;gap:8px;align-items:end;margin-bottom:8px}
+  .effrow label{margin:0 0 4px}
+  .effrow .eff-del{align-self:end;height:42px;border:1px solid var(--line);background:#FBEAE9;color:#C42B2B;border-radius:10px;font-size:18px;font-weight:700;cursor:pointer}
+  .effrow .eff-del:hover{filter:brightness(.97)}
+  .mcard__efflist{margin:4px 0 0;padding:0;list-style:none}
+  .mcard__efflist li{font-size:12.5px;color:var(--muted);line-height:1.5}
+  @media(max-width:560px){.effrow{grid-template-columns:1fr 1fr;}.effrow .eff-del{grid-column:2;justify-self:end;width:42px}}
 
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
@@ -174,10 +182,10 @@
               <div class="full"><label for="m-name">Name of Modifier</label><input id="m-name" type="text" required></div>
               <div><label for="m-color">Color (container)</label><select id="m-color"><option value="red">Red</option><option value="yellow" selected>Yellow</option><option value="green">Green</option></select></div>
               <div class="full"><label for="m-desc">Description</label><textarea id="m-desc"></textarea></div>
-              <div><label for="m-effect">Effect</label><select id="m-effect"></select></div>
-              <div id="m-keywrap"><label for="m-key">Target</label><select id="m-key"></select></div>
-              <div><label for="m-value">Value</label><input id="m-value" type="number" step="0.1" value="0"></div>
             </div>
+            <label style="margin-top:12px">Effects</label>
+            <div id="m-effects"></div>
+            <button class="btn btn-ghost" type="button" id="m-addEffect" style="margin-top:8px">+ Add effect</button>
             <label style="margin-top:12px">Nation(s) assigned this Modifier</label>
             <div id="m-nations" class="modnations"><span class="empty">Loading nations…</span></div>
             <button class="btn btn-solid btn-full" type="submit" id="modBtn">Add Modifier</button>
@@ -469,7 +477,7 @@
     });
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
-    var modEditing = null, modsCache = [], assignCache = {};   // assignCache: modifier_id -> [nation_id]
+    var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {};   // assignCache/effectsCache: modifier_id -> [...]
     var EFFECT_TYPES = [
       { v: 'archetype_pop_ceiling', label: 'Archetype Popularity Ceiling', target: 'archetype' },
       { v: 'archetype_pop_floor',   label: 'Archetype Popularity Floor',   target: 'archetype' },
@@ -490,22 +498,62 @@
       return effInfo(type).target === 'archetype' ? key : cap(key); // archetype key is the name (matches parties.archetype)
     }
 
-    document.getElementById('m-effect').innerHTML = EFFECT_TYPES.map(function (t) {
-      return '<option value="' + t.v + '">' + esc(t.label) + '</option>';
-    }).join('');
-
-    // The target dropdown depends on the effect: archetype / resource / stat, or hidden.
-    function refreshKeyField() {
-      var target = effInfo(document.getElementById('m-effect').value).target;
-      var wrap = document.getElementById('m-keywrap'), sel = document.getElementById('m-key');
-      if (target === 'none') { wrap.style.display = 'none'; sel.innerHTML = ''; return; }
-      wrap.style.display = '';
+    var EFFECT_OPTS = EFFECT_TYPES.map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
+    function keyOpts(target) {
       var opts = target === 'archetype' ? ARCHETYPES.map(function (a) { return { v: a.name, l: a.name }; }) // value = NAME (matches parties.archetype)
                : (target === 'resource' ? RESOURCES : STATS).map(function (k) { return { v: k, l: cap(k) }; });
-      sel.innerHTML = opts.map(function (o) { return '<option value="' + o.v + '">' + esc(o.l) + '</option>'; }).join('');
+      return opts.map(function (o) { return '<option value="' + o.v + '">' + esc(o.l) + '</option>'; }).join('');
     }
-    document.getElementById('m-effect').addEventListener('change', refreshKeyField);
-    refreshKeyField();
+
+    // A modifier holds one or more effects, each its own row (effect · target ·
+    // value · delete). The target dropdown depends on the chosen effect.
+    function syncRowKey(row) {
+      var target = effInfo(row.querySelector('.eff-type').value).target;
+      var sel = row.querySelector('.eff-key');
+      if (target === 'none') { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+      var prev = sel.value;
+      sel.style.display = '';
+      sel.innerHTML = keyOpts(target);
+      if (prev) sel.value = prev;          // keep the choice when the same target type stays
+    }
+    function addEffectRow(eff) {
+      eff = eff || {};
+      var row = document.createElement('div');
+      row.className = 'effrow';
+      row.innerHTML =
+        '<div><label>Effect</label><select class="eff-type">' + EFFECT_OPTS + '</select></div>' +
+        '<div><label>Target</label><select class="eff-key"></select></div>' +
+        '<div><label>Value</label><input class="eff-value" type="number" step="0.1" value="0"></div>' +
+        '<button class="eff-del" type="button" aria-label="Remove effect">&times;</button>';
+      document.getElementById('m-effects').appendChild(row);
+      var typeSel = row.querySelector('.eff-type');
+      if (eff.effect_type) typeSel.value = eff.effect_type;
+      typeSel.addEventListener('change', function () { syncRowKey(row); });
+      syncRowKey(row);
+      if (eff.effect_key && effInfo(typeSel.value).target !== 'none') row.querySelector('.eff-key').value = eff.effect_key;
+      if (eff.effect_value != null) row.querySelector('.eff-value').value = eff.effect_value;
+      row.querySelector('.eff-del').addEventListener('click', function () {
+        row.remove();
+        if (!document.querySelectorAll('#m-effects .effrow').length) addEffectRow(); // always keep at least one row
+      });
+      return row;
+    }
+    function setEffectRows(effs) {
+      document.getElementById('m-effects').innerHTML = '';
+      if (effs && effs.length) effs.forEach(addEffectRow); else addEffectRow();
+    }
+    function readEffectRows() {
+      return Array.prototype.slice.call(document.querySelectorAll('#m-effects .effrow')).map(function (row) {
+        var type = row.querySelector('.eff-type').value;
+        return {
+          effect_type: type,
+          effect_key: effInfo(type).target === 'none' ? null : (row.querySelector('.eff-key').value || null),
+          effect_value: parseFloat(row.querySelector('.eff-value').value) || 0
+        };
+      });
+    }
+    document.getElementById('m-addEffect').addEventListener('click', function () { addEffectRow(); });
+    setEffectRows();   // start with one empty effect row
 
     function renderModNations(selected) {
       var box = document.getElementById('m-nations'), sel = selected || [];
@@ -522,17 +570,21 @@
         if (eMods) throw eMods;
         const { data: links, error: eLinks } = await supabase.from('nation_modifiers').select('*');
         if (eLinks) throw eLinks;
+        const { data: effs, error: eEffs } = await supabase.from('modifier_effects').select('*');
+        if (eEffs) throw eEffs;
         modsCache = mods || [];
-        assignCache = {};
+        assignCache = {}; effectsCache = {};
         (links || []).forEach(function (l) { (assignCache[l.modifier_id] = assignCache[l.modifier_id] || []).push(l.nation_id); });
+        (effs || []).forEach(function (x) { (effectsCache[x.modifier_id] = effectsCache[x.modifier_id] || []).push(x); });
         if (!modsCache.length) { box.innerHTML = '<p class="empty">No modifiers yet.</p>'; return; }
         box.innerHTML = modsCache.map(function (m) {
-          var info = effInfo(m.effect_type);
-          var kl = keyLabel(m.effect_type, m.effect_key);
-          var eff = info.label + (kl ? ' · ' + kl : '') + ' · ' + m.effect_value;
+          var effRows = (effectsCache[m.id] || []).map(function (x) {
+            var kl = keyLabel(x.effect_type, x.effect_key);
+            return '<li>' + esc(effInfo(x.effect_type).label) + (kl ? ' · ' + esc(kl) : '') + ' · ' + esc(String(x.effect_value)) + '</li>';
+          }).join('');
           var names = (assignCache[m.id] || []).map(function (nid) { var n = nationsCache.filter(function (x) { return x.id === nid; })[0]; return n ? n.name : nid; });
           return '<div class="mcard ' + esc(m.color || 'yellow') + '"><div class="mcard__top"><div>' +
-            '<div class="mcard__name">' + esc(m.name) + '</div><div class="mcard__eff">' + esc(eff) + '</div></div>' +
+            '<div class="mcard__name">' + esc(m.name) + '</div><ul class="mcard__efflist">' + (effRows || '<li>No effects</li>') + '</ul></div>' +
             '<div class="mcard__btns"><button class="ed" type="button" data-id="' + esc(m.id) + '">Edit</button>' +
             '<button class="rm" type="button" data-id="' + esc(m.id) + '">Remove</button></div></div>' +
             (m.description ? '<div class="mcard__desc">' + esc(m.description) + '</div>' : '') +
@@ -548,10 +600,7 @@
       document.getElementById('m-name').value = m.name || '';
       document.getElementById('m-color').value = m.color || 'yellow';
       document.getElementById('m-desc').value = m.description || '';
-      document.getElementById('m-effect').value = m.effect_type;
-      refreshKeyField();
-      if (effInfo(m.effect_type).target !== 'none' && m.effect_key) document.getElementById('m-key').value = m.effect_key;
-      document.getElementById('m-value').value = m.effect_value;
+      setEffectRows(effectsCache[m.id] || []);
       renderModNations(assignCache[m.id] || []);
       document.getElementById('modFormTitle').textContent = 'Edit ' + (m.name || 'Modifier');
       document.getElementById('modBtn').textContent = 'Save changes';
@@ -563,9 +612,7 @@
       modEditing = null;
       document.getElementById('modForm').reset();
       document.getElementById('m-color').value = 'yellow';
-      document.getElementById('m-effect').selectedIndex = 0;
-      refreshKeyField();
-      document.getElementById('m-value').value = '0';
+      setEffectRows([]);
       renderModNations([]);
       document.getElementById('modFormTitle').textContent = 'Add Modifier';
       document.getElementById('modBtn').textContent = 'Add Modifier';
@@ -580,16 +627,15 @@
       modNote.textContent = ''; modNote.className = 'note';
       var name = document.getElementById('m-name').value.trim();
       if (!name) { modNote.textContent = 'Enter a modifier name.'; modNote.className = 'note error'; return; }
-      var type = document.getElementById('m-effect').value;
+      var effects = readEffectRows();
+      if (!effects.length) { modNote.textContent = 'Add at least one effect.'; modNote.className = 'note error'; return; }
       var row = {
         name: name,
         color: document.getElementById('m-color').value,
-        description: document.getElementById('m-desc').value.trim() || null,
-        effect_type: type,
-        effect_key: effInfo(type).target === 'none' ? null : (document.getElementById('m-key').value || null),
-        effect_value: parseFloat(document.getElementById('m-value').value) || 0
+        description: document.getElementById('m-desc').value.trim() || null
       };
       var nations = Array.prototype.slice.call(document.querySelectorAll('#m-nations input:checked')).map(function (c) { return c.value; });
+      var isNew = !modEditing;
       btn.disabled = true;
       try {
         var id;
@@ -601,8 +647,13 @@
           const { data, error } = await supabase.from('national_modifiers').insert(row).select('id').single();
           if (error) throw error;
           id = data.id;
-          modEditing = { id: id }; // if the assignment step below fails, a retry edits this row (no duplicate)
+          modEditing = { id: id }; // if a step below fails, a retry edits this row (no duplicate)
         }
+        // Reset effects to exactly the rows on screen.
+        const { error: eDelE } = await supabase.from('modifier_effects').delete().eq('modifier_id', id);
+        if (eDelE) throw eDelE;
+        const { error: eInsE } = await supabase.from('modifier_effects').insert(effects.map(function (x) { return { modifier_id: id, effect_type: x.effect_type, effect_key: x.effect_key, effect_value: x.effect_value }; }));
+        if (eInsE) throw eInsE;
         // Reset the assignment to exactly the checked set.
         const { error: eDel } = await supabase.from('nation_modifiers').delete().eq('modifier_id', id);
         if (eDel) throw eDel;
@@ -610,7 +661,7 @@
           const { error: e2 } = await supabase.from('nation_modifiers').insert(nations.map(function (nid) { return { modifier_id: id, nation_id: nid }; }));
           if (e2) throw e2;
         }
-        modNote.textContent = modEditing ? 'Saved changes.' : 'Modifier added.';
+        modNote.textContent = isNew ? 'Modifier added.' : 'Saved changes.';
         modNote.className = 'note ok';
         cancelModEdit();
         loadModifiers();
