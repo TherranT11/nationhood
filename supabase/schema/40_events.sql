@@ -93,7 +93,7 @@ immutable
 as $$ select case when p_total >= 7 then 'strong' when p_total >= 4 then 'middling' else 'poor' end $$;
 
 -- ---------------------------------------------------------------------------
--- party_rally(): 1d6 + Charisma, ÷10, added to popularity (capped at ceiling).
+-- party_rally(): 1d6 + Charisma, ÷10, then ×0.75 (−25%), added to popularity (capped at ceiling).
 -- Costs $25K + 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_rally()
@@ -115,7 +115,7 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_cha;
   v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 10.0, 1);                       -- (1d6 + Cha) / 10
+  v_delta := round((v_total::numeric) / 10.0 * 0.75, 1);                -- (1d6 + Cha) / 10, then −25%
   v_newpop := least(v_p.popularity + v_delta, v_p.pop_ceiling::numeric); -- capped at the ceiling
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
 
@@ -133,8 +133,9 @@ end $$;
 grant execute on function public.party_rally() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- party_organize(): 1d6 + Command, ÷6, added to the popularity FLOOR (capped at
--- ceiling); popularity is pulled up to never sit below the floor. $25K + 1 action.
+-- party_organize(): 1d6 + Command, ÷6, then ×0.75 (−25%), added to the popularity
+-- FLOOR (capped at ceiling); popularity is pulled up to never sit below the floor.
+-- $25K + 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_organize()
 returns jsonb
@@ -155,7 +156,7 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_com;
   v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 6.0, 1);                           -- (1d6 + Command) / 6
+  v_delta := round((v_total::numeric) / 6.0 * 0.75, 1);                    -- (1d6 + Command) / 6, then −25%
   v_newfloor := least(v_p.pop_floor + v_delta, v_p.pop_ceiling::numeric);  -- floor capped at the ceiling
   v_delta := v_newfloor - v_p.pop_floor;                                   -- amount actually applied
   v_newpop := greatest(v_p.popularity, v_newfloor);                        -- popularity never below the floor
