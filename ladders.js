@@ -1,13 +1,14 @@
 // Qualitative stat ladders — the single source of truth for every nation stat's
 // word label, shared by the tutorial and the online nation pages. Index 0 = value
-// 1. Prosperity/Welfare/Order/Image run 1–20; Growth runs 1–19 (10 is the flat,
-// zero-growth midpoint). The number is the source — the word always follows it.
+// 1. All five ladders run 1–20; for Growth the low-middle (≈8–10, "Flatlining"
+// to "Ticking over") is the flat, near-zero-growth band, with contraction below
+// and expansion above. The number is the source — the word always follows it.
 export const STAT_LADDERS = {
   prosperity: ['Economic collapse','Failed economy','Deep depression','Depression','Severe downturn','Struggling economy','Weak economy','Underdeveloped','Developing economy','Modest economy','Steady economy','Solid economy','Prosperous','Thriving economy','Wealthy','Affluent economy','Booming economy','Economic powerhouse','Industrial titan','Engine of the world'],
   welfare: ['Total destitution','Widespread misery','No safety net','Deep deprivation','Bare subsistence','Hardscrabble living','Threadbare services','Minimal provision','Patchy support','Basic safety net','Adequate services','Decent provision','Strong public services','Well looked-after','Comprehensive care','Generous welfare state','Comprehensive cradle-to-grave','Universal abundance','Total social security','Want abolished'],
   order: ['Total anarchy','Open rebellion','Lawless chaos','Rampant unrest','Crime and disorder','Fragile peace','Shaky stability','Mostly calm','Settled and stable','Law and order','Firm control','A tight grip','Strong authority','Rigid discipline','Heavy enforcement','Iron rule','Watchful state','Surveillance state','Absolute obedience','Total police state'],
   image: ['Global pariah','Despised abroad','Disgraced reputation','Widely distrusted','Poor standing','A forgotten nobody','Quietly overlooked','Mildly regarded','Fair reputation','Respected enough','Well regarded','Rising influence','Admired abroad','Real prestige','Soft-power player','Globally admired','Cultural beacon','World-renowned','A revered power','Icon of the age'],
-  growth: ['Massive recession','Deep recession','Severe recession','Sharp recession','Recession','Mild recession','Downturn','Slowdown','Stalling','Stagnant','Stirring','Slow growth','Modest growth','Steady growth','Strong growth','Rapid growth','Booming','Surging','Explosive growth'],
+  growth: ['Economic freefall','Severe contraction','Deep recession','Recession','Sharp slowdown','Shrinking','Stalling','Flatlining','Sluggish','Ticking over','Modest growth','Steady growth','Solid expansion','Healthy expansion','Strong growth','Rapid growth','Surging','Booming','Red-hot expansion','Overheating'],
 };
 
 export function statLabel(stat, value) {
