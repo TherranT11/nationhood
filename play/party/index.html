@@ -561,10 +561,12 @@
   // popularity, the green tick is the floor (the base attacks can't push below),
   // and the dashed line at the right is the ceiling (your reach). All positions
   // come straight from the party row, so this redraws whenever the data changes.
+  var CEIL_PENALTY = 0;  // ceiling points lost to archetype crowding; set once the assembly loads
   function renderPopularity(p) {
     var pop = Math.max(0, Number(p.popularity) || 0); // numeric → string in supabase-js
     var floor = Math.max(0, Number(p.pop_floor) || 0);
-    var ceil = Math.max(1, Number(p.pop_ceiling) || 5); // numeric → string in supabase-js; default 5
+    var rawCeil = Math.max(1, Number(p.pop_ceiling) || 5);   // the party's own ceiling
+    var ceil = Math.max(floor, 1, rawCeil - CEIL_PENALTY);   // effective reach after archetype crowding
     var pct = function (v) { return Math.max(0, Math.min(100, v / ceil * 100)); };
     var floorPct = pct(floor);
 
@@ -594,9 +596,12 @@
     if (pop >= ceil) close = 'You&rsquo;ve hit your <b>' + ceil + '% ceiling</b>; lift it on the national stage to climb further.';
     else if (pop >= ceil * 0.8) close = 'You&rsquo;re approaching your <b>' + ceil + '% ceiling</b>; to climb further, lift the ceiling on the national stage.';
     else close = 'Your reach tops out at your <b>' + ceil + '% ceiling</b> — raise it on the national stage to grow.';
+    var crowd = CEIL_PENALTY > 0
+      ? ' A crowded field trims your reach: <b>&minus;' + CEIL_PENALTY + '%</b> ceiling from rival parties sharing your archetype (&minus;2% each), so it sits at <b>' + ceil + '%</b> rather than ' + rawCeil + '%.'
+      : '';
     document.getElementById('popDesc').innerHTML =
       '<b>Local organising</b> builds your floor, the base that never abandons you, which attacks can&rsquo;t push below. ' +
-      '<b>National politics</b> raises your ceiling, your reach. ' + close;
+      '<b>National politics</b> raises your ceiling, your reach. ' + close + crowd;
   }
 
   // Prominent Politicians roster. STAT_SCALE is just the bar's display max; the
@@ -828,6 +833,10 @@
         .select('id, name, abbreviation, archetype, seats, popularity, in_government, color')
         .eq('nation_id', party.nation_id);
       const ap = allParties || [];
+      // Archetype crowding trims the ceiling: −2% for every OTHER party sharing your
+      // archetype (mirrors _archetype_ceiling_penalty in SQL). Recompute + redraw.
+      CEIL_PENALTY = 2 * Math.max(0, ap.filter(function (x) { return x.archetype === party.archetype; }).length - 1);
+      renderPopularity(party);
       var leaders = {};
       const partyIds = ap.map(function (x) { return x.id; });
       if (partyIds.length) {

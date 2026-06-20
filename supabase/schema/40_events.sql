@@ -116,7 +116,7 @@ begin
   v_total := v_roll + v_cha;
   v_tier  := public._action_tier(v_total);
   v_delta := round((v_total::numeric) / 10.0 * 0.75, 1);                -- (1d6 + Cha) / 10, then −25%
-  v_newpop := least(v_p.popularity + v_delta, v_p.pop_ceiling::numeric); -- capped at the ceiling
+  v_newpop := least(v_p.popularity + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)); -- capped at the crowding-adjusted ceiling
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
 
@@ -158,7 +158,7 @@ begin
   v_total := v_roll + v_com;
   v_tier  := public._action_tier(v_total);
   v_delta := round((v_total::numeric) / 6.0 * 0.75, 1);                    -- (1d6 + Image) / 6, then −25%
-  v_newfloor := least(v_p.pop_floor + v_delta, v_p.pop_ceiling::numeric);  -- floor capped at the ceiling
+  v_newfloor := least(v_p.pop_floor + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor));  -- floor capped at the crowding-adjusted ceiling
   v_delta := v_newfloor - v_p.pop_floor;                                   -- amount actually applied
   v_newpop := greatest(v_p.popularity, v_newfloor);                        -- popularity never below the floor
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
@@ -308,7 +308,7 @@ begin
   v_total := v_roll + v_gui;
   v_tier  := public._action_tier(v_total);
   v_delta := round((v_total::numeric) / 3.0, 1);                        -- (1d6 + Guile) / 3
-  v_newpop := least(v_p.popularity + v_delta, v_p.pop_ceiling);         -- capped at the ceiling
+  v_newpop := least(v_p.popularity + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)); -- capped at the crowding-adjusted ceiling
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
   if v_roll = 6 then v_ceilgain := 0.5; end if;                         -- natural 6 → +0.5% ceiling
