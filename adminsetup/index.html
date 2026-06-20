@@ -753,7 +753,8 @@
         }
         // Reset the assignment to the checked set, preserving since_tick for nations
         // that stay (so a 'duration' clock isn't restarted by an unrelated edit);
-        // newly-assigned nations are stamped with the current tick.
+        // newly-assigned nations are stamped with the current tick. Best-effort: if
+        // this read fails, prevRows is empty and staying nations simply restamp.
         const { data: prevRows } = await supabase.from('nation_modifiers').select('nation_id, since_tick').eq('modifier_id', id);
         var sinceByNation = {}; (prevRows || []).forEach(function (r) { sinceByNation[r.nation_id] = r.since_tick; });
         const { error: eDel } = await supabase.from('nation_modifiers').delete().eq('modifier_id', id);
