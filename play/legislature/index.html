@@ -189,12 +189,12 @@
       ? '<span>' + rem + ' tick' + (rem === 1 ? '' : 's') + ' remaining until resolution</span>'
       : '<span>Resolves at the next tick</span>';
   }
+  function mhead(p){ return '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>'; }
   function measureCard(p){
     var t = tallyOf(p.id);
     var ayePct = ST.total ? Math.min(100, t.aye / ST.total * 100) : 0;
     var nayPct = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0;
-    return '<div class="measure" data-id="' + esc(p.id) + '">' +
-      '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>' +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
       '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span class="need' + (t.aye >= ST.maj && ST.total ? ' met' : '') + '">needs <b>' + ST.maj + '</b></span>' + ticksLeft(p) + '</div>' +
       '<div class="mrow"><button class="vb aye' + (t.myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Aye</button>' +
@@ -203,8 +203,7 @@
   }
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
-    return '<div class="measure" data-id="' + esc(p.id) + '">' +
-      '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>' +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) +
       '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor (1 action)</button>' : '<span class="youvote">Awaiting the proposer</span>') + '</div></div>';
   }
   function emptyPanel(b, s){ return '<div class="panel"><div class="empty"><b>' + b + '</b><span>' + s + '</span></div></div>'; }
@@ -237,7 +236,8 @@
         var card = btn.closest('.measure');
         ST.busy = true; card.querySelectorAll('.vb').forEach(function (b) { b.disabled = true; });
         castVote(card.dataset.id, btn.dataset.v === 'aye').then(loadProposals)
-          .catch(function (e) { alert(e.message || 'Couldn’t record your vote.'); }).then(function () { ST.busy = false; });
+          .catch(function (e) { alert(e.message || 'Couldn’t record your vote.'); card.querySelectorAll('.vb').forEach(function (b) { b.disabled = false; }); })
+          .then(function () { ST.busy = false; });
       };
     });
     content.querySelectorAll('.sendfloor').forEach(function (btn) {
