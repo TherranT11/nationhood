@@ -196,7 +196,7 @@
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
       document.getElementById('kicker').textContent = 'The Assembly · ' + nationName;
-      setTopbarActions(party.actions_remaining != null ? party.actions_remaining : 3);
+      setTopbarActions(party.actions_remaining);
       setTopbarDate(tickToDate(tick)); // live game date
       document.title = 'Elections · ' + nationName;
       if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }

@@ -633,7 +633,7 @@
       const currency = (nation && nation.economy && nation.economy.currency) || '$';
 
       // Topbar action budget (one source: the party row).
-      setTopbarActions(party.actions_remaining != null ? party.actions_remaining : 3);
+      setTopbarActions(party.actions_remaining);
 
       // Sidebar + title.
       document.getElementById('sname').textContent = party.name;

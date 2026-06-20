@@ -79,7 +79,7 @@ export function mountTopbar(){
 // Live-value setters — no-ops if the topbar isn't mounted on this page.
 export function setTopbarActions(n){
   const el = document.getElementById('tbActions');
-  if (el) el.textContent = 'Party Actions: ' + (n != null ? n : 0) + ' Available';
+  if (el) el.textContent = 'Party Actions: ' + (n != null ? n : 3) + ' Available'; // 3 = the default budget, matching the static markup
 }
 export function setTopbarFunds(currency, funds){
   const v = document.getElementById('tbFundsV');
