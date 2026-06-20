@@ -150,7 +150,7 @@
           <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
           <div><label for="f-welfare">Starting Welfare</label><input id="f-welfare" type="number" step="1"></div>
           <div><label for="f-growth">Starting Growth</label><input id="f-growth" type="number" step="1"></div>
-          <div><label for="f-image">Starting Image</label><input id="f-image" type="number" step="1"></div>
+          <div><label for="f-image">Starting Global Image</label><input id="f-image" type="number" step="1"></div>
           <div><label for="f-order">Starting Order</label><input id="f-order" type="number" step="1"></div>
           <div><label for="f-unemployment">Starting Unemployment</label><input id="f-unemployment" type="number" step="0.1"></div>
           <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
@@ -208,7 +208,7 @@
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
-    import { regimeLabel } from '/ladders.js';
+    import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES } from '/archetypes.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
@@ -369,7 +369,7 @@
               kv('Prosperity', s.prosperity != null ? s.prosperity : '—') +
               kv('Welfare', s.welfare != null ? s.welfare : '—') +
               kv('Growth', s.growth != null ? s.growth : '—') +
-              kv('Image', s.image != null ? s.image : '—') +
+              kv(statName('image'), s.image != null ? s.image : '—') +
               kv('Order', s.order != null ? s.order : '—') +
               kv('Unemployment', e.unemployment != null ? e.unemployment + '%' : '—') +
               kv('Inflation', e.inflation != null ? e.inflation + '%' : '—') +

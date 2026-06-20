@@ -249,7 +249,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
-  import { statLabel, statBand, regimeLabel } from '/ladders.js';
+  import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
 
@@ -274,7 +274,7 @@
     GLANCE_STATS.forEach(function (k) {
       var v = stats[k];
       if (typeof v !== 'number') return;
-      var name = k.charAt(0).toUpperCase() + k.slice(1);
+      var name = statName(k);
       var label = statLabel(k, v) || '—';
       chips.push(chip(name, '<span class="chip__t ' + statBand(k, v) + '">' + v + ' &mdash; ' + esc(label) + '</span>'));
     });
