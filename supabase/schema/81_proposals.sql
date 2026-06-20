@@ -57,6 +57,13 @@ returns void language sql security definer set search_path = public as $$
    where id = p_nation;
 $$;
 
+-- Seats currently held by parties in a nation — ONE source for the floor's tally
+-- and the vacant-chamber guard (a vote needs an elected, seated assembly).
+create or replace function public._party_seats(p_nation text)
+returns int language sql stable security definer set search_path = public as $$
+  select coalesce(sum(seats), 0)::int from public.parties where nation_id = p_nation;
+$$;
+
 -- Tally an open proposal by seats and resolve it if the math is decided. ONE place
 -- the pass/fail rule lives (propose + cast_vote both call it). Returns the status.
 create or replace function public._resolve_proposal(p_proposal uuid)
@@ -75,7 +82,7 @@ begin
 
   select coalesce(legislature_seats, 0) into v_chamber from public.nations where id = v_p.nation_id;
   v_maj := public._majority(v_chamber);                                  -- majority of the whole chamber
-  select coalesce(sum(seats), 0) into v_party_seats from public.parties where nation_id = v_p.nation_id;
+  v_party_seats := public._party_seats(v_p.nation_id);
   select coalesce(sum(p.seats) filter (where pv.aye), 0),
          coalesce(sum(p.seats) filter (where not pv.aye), 0)
     into v_aye, v_nay
@@ -132,15 +139,14 @@ set search_path = public
 as $$
 declare
   v_party public.parties%rowtype; v_decl public.declarations%rowtype;
-  v_value text; v_pid uuid; v_seated int; v_res text;
+  v_value text; v_pid uuid; v_res text;
 begin
   v_decl  := public._check_declaration(p_slug, p_value);
   v_value := btrim(p_value);
 
   if p_to_floor then
     v_party := public._begin_action(0);          -- requires >= 1 action
-    select coalesce(sum(seats), 0) into v_seated from public.parties where nation_id = v_party.nation_id;
-    if v_seated = 0 then raise exception 'The assembly is vacant — hold an election before bringing measures to the floor.'; end if;
+    if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election before bringing measures to the floor.'; end if;
   else
     v_party := public._lock_party();
   end if;
@@ -170,15 +176,14 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare v_party public.parties%rowtype; v_p public.proposals%rowtype; v_seated int; v_res text;
+declare v_party public.parties%rowtype; v_p public.proposals%rowtype; v_res text;
 begin
   v_party := public._begin_action(0);
   select * into v_p from public.proposals where id = p_proposal for update;
   if not found then raise exception 'That measure is gone.'; end if;
   if v_p.party_id <> v_party.id then raise exception 'Only the proposer can bring it to the floor.'; end if;
   if v_p.status <> 'agenda' then raise exception 'That measure is not on the agenda.'; end if;
-  select coalesce(sum(seats), 0) into v_seated from public.parties where nation_id = v_party.nation_id;
-  if v_seated = 0 then raise exception 'The assembly is vacant — hold an election first.'; end if;
+  if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election first.'; end if;
 
   update public.proposals set status = 'voting' where id = p_proposal;
   update public.parties  set actions_remaining = actions_remaining - 1 where id = v_party.id;
