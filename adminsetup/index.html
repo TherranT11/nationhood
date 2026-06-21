@@ -819,7 +819,7 @@
     // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
     // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Regime'],
-                    Government: ['Government Confidence','Party Popularity'],
+                    Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }
     var POL_SAMPLES = [{n:'2M·P10',pop:2,pros:10},{n:'70M·P14',pop:70,pros:14},{n:'200M·P16',pop:200,pros:16}];

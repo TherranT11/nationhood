@@ -5,7 +5,7 @@
 
 export const CONV_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 export function convRoman(l) { return CONV_ROMAN[(l || 1) - 1] || l; }
-export function isPctTarget(t) { return t === 'Party Popularity' || t === 'Government Confidence'; }
+export function isPctTarget(t) { return t === 'Party Popularity' || t === 'Government Confidence' || t === 'Popularity Ceiling'; }
 function pos(v) { return (Number(v) || 0) >= 0 ? 'pos' : 'neg'; }
 
 // "+3% Party Popularity" / "−10 Debt" — signed reward with a % only on the pct targets.
