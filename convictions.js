@@ -19,18 +19,23 @@ export function adoptLines(c) {
   return (c.onAdopt || []).map(function (e) { return { reward: convReward(e.v, e.t), cond: 'once', cls: pos(e.v) }; });
 }
 
+// Role gate suffix for a while-active effect: an effect scoped to government /
+// opposition (e.when) reads its role; an unscoped effect adds nothing.
+function whenLabel(w) { return w === 'gov' ? ' · while in government' : w === 'opp' ? ' · while in opposition' : ''; }
+
 // A conviction's while-active effects as [{ reward, cond, cls }] — triggers expanded
 // into their condition (plus the mirrored inverse when set), standings as held modifiers.
 export function activeLines(c) {
   var out = [];
   (c.whileActive || []).forEach(function (e) {
-    if (e.kind === 'standing') { out.push({ reward: convReward(e.v, e.t), cond: 'while held', cls: pos(e.v) }); return; }
+    var role = whenLabel(e.when);
+    if (e.kind === 'standing') { out.push({ reward: convReward(e.v, e.t), cond: 'while held' + role, cls: pos(e.v) }); return; }
     var dir = e.dir === 'rise' ? 'rises' : e.dir === 'fall' ? 'falls' : 'changes';
     var per = (e.per && e.per != 1) ? ('per ' + e.per + ' ' + e.stat) : 'each';
-    out.push({ reward: convReward(e.rv, e.rt), cond: 'when ' + e.stat + ' ' + dir + ' · ' + per, cls: pos(e.rv) });
+    out.push({ reward: convReward(e.rv, e.rt), cond: 'when ' + e.stat + ' ' + dir + ' · ' + per + role, cls: pos(e.rv) });
     if (e.sym && e.dir !== 'either') {
       var opp = e.dir === 'rise' ? 'falls' : 'rises';
-      out.push({ reward: convReward(-e.rv, e.rt), cond: 'when ' + e.stat + ' ' + opp, cls: pos(-e.rv) });
+      out.push({ reward: convReward(-e.rv, e.rt), cond: 'when ' + e.stat + ' ' + opp + role, cls: pos(-e.rv) });
     }
   });
   return out;
