@@ -41,6 +41,14 @@ export function activeLines(c) {
   return out;
 }
 
+// A conviction's "when a tagged law passes" effects as [{ reward, cond, cls }] — each
+// fires once when a law carrying that identity tag is enacted (server: _apply_law).
+export function lawLines(c) {
+  return (c.onLaw || []).map(function (e) {
+    return { reward: convReward(e.v, e.t), cond: 'when a ' + e.tag + ' passes', cls: pos(e.v) };
+  });
+}
+
 // Group conviction rows ({id, definition}) by level 1..5, each sorted by cost.
 export function convsByLevel(rows) {
   var by = { 1: [], 2: [], 3: [], 4: [], 5: [] };

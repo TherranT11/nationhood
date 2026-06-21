@@ -21,7 +21,7 @@
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int;
+declare v_tick int; v_tags jsonb; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
   -- Flip the option AND stamp the enactment tick (policy_since) so finite-duration
@@ -31,6 +31,25 @@ begin
          policy_since = jsonb_set(coalesce(policy_since, '{}'::jsonb), array[p_policy::text], to_jsonb(v_tick),   true)
    where id = p_nation;
   perform public._apply_policy_option_effects(p_nation, p_policy, p_option, 'once');
+
+  -- Identity-tagged law: fire every adopted conviction's onLaw effect whose tag matches
+  -- a tag on the enacted option, for each party in the nation that holds it. Reactive to
+  -- a passed law (like onAdopt). _apply_conviction_effect lives in schema/94 (loaded
+  -- after this file) — plpgsql resolves it at runtime, so the forward reference is fine.
+  select public._policy_options(definition) -> p_option -> 'tags' into v_tags
+    from public.policies where id = p_policy;
+  if jsonb_typeof(v_tags) = 'array' and jsonb_array_length(v_tags) > 0 then
+    for r in
+      select pc.party_id, e.value as eff
+      from public.party_convictions pc
+      join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
+      join public.convictions c  on c.id = pc.conviction_id
+      cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
+      where (e.value ->> 'tag') in (select t from jsonb_array_elements_text(v_tags) t)
+    loop
+      perform public._apply_conviction_effect(r.party_id, p_nation, r.eff);
+    end loop;
+  end if;
 end $$;
 
 -- Validate a policy + option index against the stored definition; return the

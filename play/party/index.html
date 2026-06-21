@@ -442,7 +442,7 @@
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
   import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel, opposes } from '/archetypes.js';
-  import { convRoman, adoptLines, activeLines, convsByLevel } from '/convictions.js';
+  import { convRoman, adoptLines, activeLines, lawLines, convsByLevel } from '/convictions.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -710,7 +710,7 @@
 
   function cvCard(r, color){
     var d = r.definition || {}, cost = d.cost != null ? d.cost : 0, adopted = !!CVS.adopted[r.id];
-    var lines = adoptLines(d).concat(activeLines(d));
+    var lines = adoptLines(d).concat(activeLines(d)).concat(lawLines(d));
     var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
     var btn = adopted
       ? '<button class="cvadopt on" type="button" disabled>✓ Adopted</button>'
