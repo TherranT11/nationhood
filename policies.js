@@ -13,6 +13,14 @@ export function policyOptions(def) {
 export function policyDefaultIdx(def) {
   return (def && def.type === 'spectrum') ? (def.defaultIdx || 0) : ((def && def.binDefault) || 0);
 }
+// The option index in force for a nation: its stored override for this policy, else
+// the policy default. ONE source for "what's in force" — read by the propose page and
+// the Policies slate; MIRRORS _nation_policy_option (schema/92). overrides is the
+// nation.policies map (policyId → optionIdx); 0 is a valid override (not "unset").
+export function policyOptionIdx(def, overrides, id) {
+  var stored = overrides && overrides[id];
+  return stored == null ? policyDefaultIdx(def) : +stored;
+}
 // Budget/Debt are money targets — their value scales by the nation's size/wealth.
 export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt'; }
 // Money scaling: flat = v; perm = v × pop(millions); pop = v × pop × prosperity/10.

@@ -115,7 +115,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { ideologyLabel } from '/archetypes.js';
   import { fetchPolicies } from '/proposals.js';
-  import { policyOptions, policyDefaultIdx, effectText } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText } from '/policies.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -128,7 +128,7 @@
   function policyCard(p, overrides, pop, pros){
     var def = p.definition || {};
     var opts = policyOptions(def);
-    var cur = overrides[p.id]; cur = (cur == null) ? policyDefaultIdx(def) : +cur;
+    var cur = policyOptionIdx(def, overrides, p.id);
     var o = opts[cur] || {};
     var effs = (o.effects || []).filter(function(e){ return (e && e.cad) !== 'once'; });  // standing (per-tick) effects
     var effHtml = effs.length
