@@ -10,19 +10,23 @@
 -- pass authority, _resolve_proposal, which dispatches kind='law' to _apply_law.
 -- advance_tick (schema/60) already promotes/expires proposals kind-agnostically.
 --
--- NOTE: passing a law FLIPS the nation's option for the policy. The option's
--- mechanical once-effects (stat/budget changes) are applied by the effects engine
--- in a later migration; this file is only the per-nation option flip + the RPC.
+-- NOTE: passing a law FLIPS the nation's option for the policy and applies that
+-- option's once-effects (schema/91). Per-tick effects are applied each month by a
+-- later per-tick pass.
 -- ===========================================================================
 
--- A passed law sets the nation's chosen option for the policy. ONE place the
--- per-nation option flip lives (called from _resolve_proposal on pass).
+-- A passed law sets the nation's chosen option for the policy AND applies that
+-- option's one-time (cadence='once') effects — the "costs money from the treasury"
+-- moment. Per-tick effects are applied each month by the per-tick pass (later).
+-- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
-returns void language sql security definer set search_path = public as $$
+returns void language plpgsql security definer set search_path = public as $$
+begin
   update public.nations
      set policies = jsonb_set(coalesce(policies, '{}'::jsonb), array[p_policy::text], to_jsonb(p_option), true)
    where id = p_nation;
-$$;
+  perform public._apply_policy_option_effects(p_nation, p_policy, p_option, 'once');
+end $$;
 
 -- Validate a policy + option index against the stored definition; return the
 -- policy's and option's display names (for the proposal title/payload).
