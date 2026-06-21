@@ -364,6 +364,7 @@
     import { esc, fmtGdp, fmtPop, tickToDate } from '/util.js';
     import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES, archetypeColor } from '/archetypes.js';
+    import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -591,8 +592,8 @@
         polNationDefs = data || [];
         if (!polNationDefs.length) { box.innerHTML = '<p class="empty">No policies defined yet — add them in the Policies tab.</p>'; return; }
         box.innerHTML = polNationDefs.map(function (row) {
-          var d = row.definition || {}, def = polDefIdx(d);
-          var opts = polOptList(d).map(function (o, i) {
+          var d = row.definition || {}, def = policyDefaultIdx(d);
+          var opts = policyOptions(d).map(function (o, i) {
             return '<option value="' + i + '"' + (i === def ? ' selected' : '') + '>' + esc(o.name || ('Option ' + (i + 1))) + (i === def ? ' (default)' : '') + '</option>';
           }).join('');
           return '<div class="declrow" data-pid="' + esc(row.id) + '"><label>' + esc(d.name || 'Untitled policy') + '</label><select class="pol-sel">' + opts + '</select></div>';
@@ -770,12 +771,10 @@
                     Government: ['Government Confidence','Party Popularity'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }
-    function polIsMoney(t){ return t==='Budget' || t==='Debt'; }
     var POL_SAMPLES = [{n:'2M·P10',pop:2,pros:10},{n:'70M·P14',pop:70,pros:14},{n:'200M·P16',pop:200,pros:16}];
-    function polMoney(v,mode,pop,pros){ if(mode==='flat')return v; if(mode==='perm')return v*pop; return v*pop*(pros/10); }
     function polFmtAmt(a){ return (a>=0?'+':'−')+'₣'+Math.abs(a).toFixed(2)+'B'; }
     function polWorked(e){ if(e.scale==='flat') return 'Fixed · '+polFmtAmt(e.v)+' — same for every nation';
-      return POL_SAMPLES.map(function(s){ return s.n+' '+polFmtAmt(polMoney(e.v,e.scale,s.pop,s.pros))+(e.cad==='tick'?'/t':''); }).join('   ·   '); }
+      return POL_SAMPLES.map(function(s){ return s.n+' '+polFmtAmt(policyMoney(e.v,e.scale,s.pop,s.pros))+(e.cad==='tick'?'/t':''); }).join('   ·   '); }
 
     var polCache = [], P = null, polEditingId = null;
     function blankPolicy(){ return {
@@ -785,9 +784,7 @@
       spectrum:[ {name:'Option A',desc:'',support:[],oppose:[],effects:[polEff('Budget',0,'tick',0)]},
                  {name:'Option B',desc:'',support:[],oppose:[],effects:[]} ]
     }; }
-    function polOptList(d){ return (d && d.type==='spectrum') ? (d.spectrum||[]) : (d&&d.binary||[]); }   // a policy's option array
-    function polDefIdx(d){ return (d && d.type==='spectrum') ? (d.defaultIdx||0) : (d&&d.binDefault||0); } // its starting option index
-    function polOpts(){ return polOptList(P); }
+    function polOpts(){ return policyOptions(P); }
     var polSaving = false;   // double-fire lock for the create/save path
     function setPolNote(msg,kind){ var n=document.getElementById('polNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
 
@@ -899,7 +896,7 @@
       var supChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.support.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
       var oppChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.oppose.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
       var effHtml=o.effects.map(function(e){
-        var scaleRow = polIsMoney(e.t) ? '<div class="scalerow"><span class="lbl">Scaled by</span><select class="es"><option value="flat"'+(e.scale==='flat'?' selected':'')+'>Flat amount</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>Per million pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>× Pop × Prosperity</option></select><span class="worked">'+polWorked(e)+'</span></div>' : '';
+        var scaleRow = isMoneyTarget(e.t) ? '<div class="scalerow"><span class="lbl">Scaled by</span><select class="es"><option value="flat"'+(e.scale==='flat'?' selected':'')+'>Flat amount</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>Per million pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>× Pop × Prosperity</option></select><span class="worked">'+polWorked(e)+'</span></div>' : '';
         return '<div class="effwrap"><div class="effrow">'+polTgtSelect(e.t)+
           '<input type="number" class="ev" step="any" value="'+e.v+'">'+
           '<select class="ec"><option value="once"'+(e.cad==='once'?' selected':'')+'>Once</option><option value="tick"'+(e.cad==='tick'?' selected':'')+'>Per tick</option></select>'+
@@ -921,7 +918,7 @@
       card.querySelectorAll('.archrow.opp .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.oppose.indexOf(a); if(k>=0)o.oppose.splice(k,1); else{ o.oppose.push(a); var s2=o.support.indexOf(a); if(s2>=0)o.support.splice(s2,1); } renderPolEditor(); renderPolPrev(); }; });
       card.querySelectorAll('.effwrap').forEach(function(wrap,j){
         var e=o.effects[j], row=wrap.querySelector('.effrow');
-        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(polIsMoney(e.t)&&!e.scale)e.scale='pop'; renderPolEditor(); renderPolPrev(); };
+        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(isMoneyTarget(e.t)&&!e.scale)e.scale='pop'; renderPolEditor(); renderPolPrev(); };
         row.querySelector('.ev').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
         row.querySelector('.ec').onchange=function(ev){ e.cad=ev.target.value; if(e.cad==='once')e.dur=null; renderPolEditor(); renderPolPrev(); };
         var dur=row.querySelector('.dur'); dur.oninput=function(ev){ e.dur=ev.target.value?+ev.target.value:0; renderPolPrev(); };
@@ -933,8 +930,8 @@
     }
     function polEffLine(e){
       var cad = e.cad==='once' ? 'once' : (e.dur && e.dur>0 ? '/ tick · '+e.dur+'t' : '/ tick · while enacted');
-      if (polIsMoney(e.t)){
-        var mid=polMoney(e.v,e.scale,70,14), modeT=e.scale==='flat'?'flat':e.scale==='perm'?'×pop':'×pop×prosp', s=mid>=0?'+':'−';
+      if (isMoneyTarget(e.t)){
+        var mid=policyMoney(e.v,e.scale,70,14), modeT=e.scale==='flat'?'flat':e.scale==='perm'?'×pop':'×pop×prosp', s=mid>=0?'+':'−';
         return '<div class="e '+(mid>0?'pos':mid<0?'neg':'')+'"><b>'+esc(e.t)+' '+s+'₣'+Math.abs(mid).toFixed(2)+'B</b> <span class="cad">'+cad+' · '+modeT+' @ 70M·P14</span></div>';
       }
       var sign=e.v>=0?'+':'−', mag=Math.abs(e.v), cls=e.v>0?'pos':e.v<0?'neg':'';
