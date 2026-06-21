@@ -21,9 +21,14 @@
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_tags jsonb; r record;
+declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
+  -- The option in force BEFORE this law, and whether it was an actual prior enactment
+  -- (a stored override) rather than the untouched default — only a law that was passed
+  -- can later be "repealed". Read both before the flip.
+  select (policies ? (p_policy::text)) into v_had_override from public.nations where id = p_nation;
+  v_old := public._nation_policy_option(p_nation, p_policy);
   -- Flip the option AND stamp the enactment tick (policy_since) so finite-duration
   -- tick effects can age from here; an active enactment starts/resets that clock.
   update public.nations
@@ -32,10 +37,10 @@ begin
    where id = p_nation;
   perform public._apply_policy_option_effects(p_nation, p_policy, p_option, 'once');
 
-  -- Identity-tagged law: fire every adopted conviction's onLaw effect whose tag matches
-  -- a tag on the enacted option, for each party in the nation that holds it. Reactive to
-  -- a passed law (like onAdopt). _apply_conviction_effect lives in schema/94 (loaded
-  -- after this file) — plpgsql resolves it at runtime, so the forward reference is fine.
+  -- Identity-tagged law (gain): fire every adopted conviction's onLaw effect whose tag
+  -- matches a tag on the enacted option, for each party in the nation that holds it.
+  -- Reactive to a passed law (like onAdopt). _apply_conviction_effect lives in schema/94
+  -- (loaded after this file) — plpgsql resolves it at runtime, so the forward ref is fine.
   select public._policy_options(definition) -> p_option -> 'tags' into v_tags
     from public.policies where id = p_policy;
   if jsonb_typeof(v_tags) = 'array' and jsonb_array_length(v_tags) > 0 then
@@ -49,6 +54,29 @@ begin
     loop
       perform public._apply_conviction_effect(r.party_id, p_nation, r.eff);
     end loop;
+  end if;
+
+  -- Reverse (mirror): the previously-passed option is now repealed. Fire the INVERSE of
+  -- any onLaw effect flagged 'sym' whose tag was on that old option, so a party gives
+  -- back the standing it gained while that law was in force. Skips the never-enacted
+  -- default (it was never passed, so it can't be repealed).
+  if v_had_override and v_old is not null and v_old <> p_option then
+    select public._policy_options(definition) -> v_old -> 'tags' into v_old_tags
+      from public.policies where id = p_policy;
+    if jsonb_typeof(v_old_tags) = 'array' and jsonb_array_length(v_old_tags) > 0 then
+      for r in
+        select pc.party_id, e.value as eff
+        from public.party_convictions pc
+        join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
+        join public.convictions c  on c.id = pc.conviction_id
+        cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
+        where coalesce((e.value ->> 'sym')::boolean, false)
+          and (e.value ->> 'tag') in (select t from jsonb_array_elements_text(v_old_tags) t)
+      loop
+        perform public._apply_conviction_effect(r.party_id, p_nation,
+          jsonb_build_object('t', r.eff ->> 't', 'v', to_jsonb(- coalesce((r.eff ->> 'v')::numeric, 0))));
+      end loop;
+    end if;
   end if;
 end $$;
 

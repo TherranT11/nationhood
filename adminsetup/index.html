@@ -1159,14 +1159,16 @@
       var lc=document.createElement('div'); lc.className='card';
       lc.innerHTML='<div class="subhd"><span>Effect when a tagged law passes <span class="hint" style="text-transform:none;letter-spacing:0">· fires each time a law with this identity tag is enacted</span></span><button type="button" class="tagadd">+ new tag</button></div>';
       c.onLaw.forEach(function(e,j){
-        var row=document.createElement('div'); row.className='ceff law';
-        row.innerHTML='<select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
-          cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button>';
-        row.querySelector('.lt').onchange=function(ev){ e.tag=ev.target.value; renderConvPrev(); };
-        row.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
-        row.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
-        row.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
-        lc.appendChild(row);
+        var wrap=document.createElement('div');
+        wrap.innerHTML='<div class="ceff law"><select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
+          cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
+          '<div class="mirror" style="margin:-2px 0 10px"><input type="checkbox" class="lsym" '+(e.sym?'checked':'')+'><span>Reverse it when the law is repealed (give the gain back)</span></div>';
+        wrap.querySelector('.lt').onchange=function(ev){ e.tag=ev.target.value; renderConvPrev(); };
+        wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
+        wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+        wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
+        wrap.querySelector('.lsym').onchange=function(ev){ e.sym=ev.target.checked; renderConvPrev(); };
+        lc.appendChild(wrap);
       });
       var lAdd=document.createElement('button'); lAdd.className='add'; lAdd.type='button'; lAdd.textContent='+ law effect';
       lAdd.onclick=function(){ c.onLaw.push(cvLaw(IDENTITY_TAGS[0]||'','Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
