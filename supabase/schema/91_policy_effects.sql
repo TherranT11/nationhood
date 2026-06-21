@@ -103,6 +103,9 @@ begin
         else             v_new := public._mod_floor_drop(p_nation, r.archetype, v_old, v_old + v_v); end if;
         update public.parties set popularity = greatest(0, least(100, v_new)) where id = r.id;
       end loop;
+    -- Popularity Ceiling → every party in the nation's support ceiling (0..100)
+    when 'Popularity Ceiling' then
+      update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where nation_id = p_nation;
     else
       null;  -- unknown target
   end case;

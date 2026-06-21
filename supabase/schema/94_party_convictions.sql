@@ -35,6 +35,9 @@ begin
     if v_v >= 0 then v_new := public._mod_cap_raise(p_nation, v_arch, v_pop, v_pop + v_v);
     else             v_new := public._mod_floor_drop(p_nation, v_arch, v_pop, v_pop + v_v); end if;
     update public.parties set popularity = greatest(0, least(100, v_new)) where id = p_party;
+  elsif v_t = 'Popularity Ceiling' then
+    -- party-scoped (intercept before delegating, which would hit every party)
+    update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where id = p_party;
   else
     perform public._apply_policy_effect(p_nation, p_eff);
   end if;
@@ -73,6 +76,7 @@ grant execute on function public.adopt_conviction(uuid) to authenticated;
 -- once per tick so a trigger can measure how a stat moved month-over-month.
 alter table public.nations  add column if not exists conv_snapshot jsonb;
 alter table public.parties  add column if not exists conv_prev_pop numeric;
+alter table public.parties  add column if not exists conv_prev_ceiling numeric;  -- watch baseline for Popularity Ceiling
 
 -- Safe numeric read: null (not an error) on a non-numeric value, e.g. a legacy text
 -- regime — a watched stat that can't be read simply doesn't fire its trigger.
@@ -119,6 +123,7 @@ declare
 begin
   for r in
     select pc.party_id, p.nation_id, p.popularity as party_pop, p.conv_prev_pop,
+           p.pop_ceiling as party_ceiling, p.conv_prev_ceiling,
            n.stats, n.economy, n.production, n.conv_snapshot,
            c.definition->'whileActive' as wa
     from public.party_convictions pc
@@ -136,6 +141,8 @@ begin
         if v_snap is null then continue; end if;          -- no baseline yet
         if (v_eff->>'stat') = 'Party Popularity' then
           v_cur := r.party_pop; v_prev := r.conv_prev_pop;
+        elsif (v_eff->>'stat') = 'Popularity Ceiling' then
+          v_cur := r.party_ceiling; v_prev := r.conv_prev_ceiling;
         else
           v_cur  := public._target_from_state(r.stats, r.economy, r.production, v_conf, v_eff->>'stat');
           v_prev := public._target_from_state(v_snap->'stats', v_snap->'economy', v_snap->'production', (v_snap->>'conf')::numeric, v_eff->>'stat');
@@ -164,7 +171,7 @@ begin
       'stats', n.stats, 'economy', n.economy, 'production', n.production,
       'conf', (select g.confidence from public.governments g where g.nation_id = n.id and g.status = 'active'))
     where exists (select 1 from public.parties p join public.party_convictions pc on pc.party_id = p.id where p.nation_id = n.id);
-  update public.parties p set conv_prev_pop = p.popularity
+  update public.parties p set conv_prev_pop = p.popularity, conv_prev_ceiling = p.pop_ceiling
     where exists (select 1 from public.party_convictions pc where pc.party_id = p.id);
 end $$;
 
