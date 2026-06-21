@@ -69,16 +69,6 @@
   .thresh p{font-size:13.5px;color:var(--muted);line-height:1.5}
   .thresh p b{color:var(--ink)}
 
-  /* assembly bar (current chamber — vacant until the first election) */
-  .asmbar{display:flex;height:30px;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:var(--chip);position:relative;margin-bottom:24px}
-  .asmbar .seg{height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;border-right:2px solid var(--surface)}
-  .asmbar .seg:last-child{border-right:none}
-  .asmbar .seg.vacant{color:var(--soft)}
-  .asmbar .majm{position:absolute;top:-4px;bottom:-4px;width:0;border-left:2px dashed var(--ink)}
-  .asmbar .majm span{position:absolute;top:34px;left:4px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink);font-weight:700;white-space:nowrap}
-  .asmnote{font-size:13px;color:var(--muted);line-height:1.55}
-  .asmnote b{color:var(--ink)}
-
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill, and spread the projection stats evenly. */
   @media(max-width:560px){
@@ -152,18 +142,12 @@
       <div class="mod__hd"><span id="freqHd">Electoral Frequency</span><span class="r">National rule</span></div>
       <div class="thresh"><span class="thpill" id="freqPill">—</span><p id="freqText"></p></div>
     </section>
-
-    <section class="mod">
-      <div class="mod__hd"><span>The Assembly</span><span class="r" id="seatNote"></span></div>
-      <div class="asmbar" id="asmbar"><div class="majm" id="majm"><span></span></div></div>
-      <p class="asmnote" id="asmnote"></p>
-    </section>
   </main>
 </div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
-  import { tickToDate, esc, majority as majorityOf } from '/util.js';
+  import { tickToDate, esc } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -184,7 +168,6 @@
       const tick = await currentTick();
       const nationName = (nation && nation.name) || party.nation_id;
       const seatsTotal = (nation && nation.legislature_seats) || 0;
-      const majority = seatsTotal ? majorityOf(seatsTotal) : 0;  // keep 0 for an unconfigured (0-seat) chamber
       const ruling = nation && nation.ruling_party; // one-party state → a Party Congress, not a contested election
       if (ruling) {
         document.getElementById('electHd').textContent = 'Next Party Congress';
@@ -204,9 +187,8 @@
       // Your projection. Seats fill by RELATIVE share at the election (resolver,
       // schema/60): each party's weight over the contesting field × the chamber —
       // not an absolute % of seats. The projection mirrors that exactly so the page
-      // can't promise seats the resolver won't deliver. This one query also feeds
-      // the chamber bar below (one source for both).
-      const { data: roster } = await supabase.from('parties').select('seats, popularity').eq('nation_id', party.nation_id);
+      // can't promise seats the resolver won't deliver.
+      const { data: roster } = await supabase.from('parties').select('popularity').eq('nation_id', party.nation_id);
       var field = roster || [];
       var thr = Number(nation && nation.electoral_threshold) || 0; // resolver gate: parties contest at/above the threshold
       var polling = Math.max(0, Number(party.popularity) || 0);
@@ -258,28 +240,6 @@
       document.getElementById('freqText').innerHTML = ruling
         ? '<b>' + esc(ruling) + '</b> holds a Party Congress every <b>' + freq + ' months</b>.'
         : 'National elections in <b>' + esc(nationName) + '</b> are held every <b>' + freq + ' months</b>.';
-
-      // The chamber: seats are allocated at an election, so until the first one
-      // it is entirely vacant. Render the real held total (0 today → one Vacant bar).
-      var held = field.reduce(function (s, p) { return s + (p.seats || 0); }, 0);
-      var vacant = seatsTotal - held;
-      document.getElementById('seatNote').textContent = held + ' / ' + seatsTotal + ' seats held';
-      var bar = document.getElementById('asmbar');
-      if (seatsTotal > 0 && vacant > 0) {
-        var seg = document.createElement('div');
-        seg.className = 'seg vacant';
-        seg.style.width = (vacant / seatsTotal * 100) + '%';
-        seg.textContent = 'Vacant · ' + vacant;
-        bar.insertBefore(seg, bar.firstChild);
-      }
-      var majm = document.getElementById('majm');
-      if (seatsTotal > 0) { majm.style.left = (majority / seatsTotal * 100) + '%'; majm.querySelector('span').textContent = 'Majority ' + majority; }
-      else { majm.style.display = 'none'; }
-      document.getElementById('asmnote').innerHTML = held === 0
-        ? (ruling
-            ? 'No Party Congress has convened in ' + esc(nationName) + ' yet, so all <b>' + seatsTotal + '</b> seats sit vacant. They are held by <b>' + esc(ruling) + '</b>; its factions vie for influence within.'
-            : 'No general election has been held in ' + esc(nationName) + ' yet, so all <b>' + seatsTotal + '</b> seats sit vacant. Parties contest the chamber at the first election; a majority needs <b>' + majority + '</b>.')
-        : '<b>' + held + '</b> of <b>' + seatsTotal + '</b> seats are held; a majority needs <b>' + majority + '</b>.';
     } catch (e) {
       document.getElementById('candnote').textContent = 'Could not load the election picture right now. Refresh to try again.';
     }
