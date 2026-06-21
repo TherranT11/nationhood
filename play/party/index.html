@@ -641,6 +641,13 @@
   // Conviction balance is read live from the party row; years-in-power waits on the
   // political calendar.
   var CVS = { party: null, rows: [], adopted: {}, balance: 0, busy: false };
+  var MF_NATION = '';
+  // A party's ideology reads "No Ideology" until it adopts its first conviction; from
+  // then on it shows its archetype. Sets the header badge + the sidebar subtitle.
+  function setIdeology(label){
+    var ab = document.getElementById('archBadge'); ab.textContent = label || 'No Ideology'; ab.style.display = '';
+    document.getElementById('psub').textContent = (label || 'No Ideology') + ' · ' + MF_NATION;
+  }
   function cvEffHtml(L){ return '<div class="cveff ' + L.cls + '"><b>' + esc(L.reward) + '</b><span>' + esc(L.cond) + '</span></div>'; }
   function mfEmpty(b, s){ return '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg><b>' + b + '</b><span>' + s + '</span></div>'; }
 
@@ -677,6 +684,7 @@
       const res = await supabase.rpc('adopt_conviction', { p_conviction: id });
       if (res.error) throw res.error;
       CVS.adopted[id] = true;
+      if (CVS.party && CVS.party.archetype) setIdeology(CVS.party.archetype);  // first conviction unlocks the ideology
       // Re-read the party row so the balance + the popularity standing reflect the
       // on-adopt effects (one source: the party row).
       try {
@@ -704,6 +712,7 @@
       CVS.rows = (data || []).filter(function (r) { return (r.definition || {}).archetype === party.archetype; });
       const { data: ad } = await supabase.from('party_convictions').select('conviction_id').eq('party_id', party.id);
       (ad || []).forEach(function (r) { CVS.adopted[r.conviction_id] = true; });
+      if (party.archetype && Object.keys(CVS.adopted).length) setIdeology(party.archetype);  // ideology unlocked
     } catch (e) { box.innerHTML = mfEmpty('Couldn’t load convictions', 'Refresh to try again.'); return; }
     if (!CVS.rows.length) {
       box.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(party.archetype) + ' parties yet.');
@@ -726,9 +735,11 @@
       // Topbar action budget (one source: the party row).
       setTopbarActions(party.actions_remaining);
 
-      // Sidebar + title.
+      // Sidebar + title. Ideology starts at "No Ideology"; initManifesto upgrades it
+      // to the archetype once the party holds a conviction.
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
+      MF_NATION = nationName;
+      setIdeology('No Ideology');
       document.title = party.name + ' · Nationhood';
 
       // Header card.
@@ -737,11 +748,7 @@
       ME.user = user; ME.party = party;
       applyAccent(partyColor(party));  // party colour (or archetype default) overrides the page accent
       renderCrest(party);                                            // logo image, else tinted initials
-      // Archetype is no longer chosen at founding: show its badge only if the party
-      // has one, and surface the founding description as the party's tagline.
-      var archBadge = document.getElementById('archBadge');
-      archBadge.textContent = party.archetype || '';
-      archBadge.style.display = party.archetype ? '' : 'none';
+      // Surface the founding description as the party's tagline.
       var tagline = document.getElementById('ptagline');
       tagline.textContent = party.description || '';
       tagline.style.display = party.description ? '' : 'none';
