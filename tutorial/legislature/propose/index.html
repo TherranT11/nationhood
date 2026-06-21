@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <title>Propose a Law · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -70,8 +71,8 @@
   .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:6px;display:block}
   .inp{width:100%;font-family:'Archivo',sans-serif;font-size:14.5px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
   .inp::placeholder{color:var(--soft)}
-  .inp:focus{outline:none;border-color:var(--indigo);background:#fff;box-shadow:0 0 0 3px var(--indigo-soft)}
-  .inp:disabled{color:var(--soft);background:#F1F0EC}
+  .inp:focus{outline:none;border-color:var(--indigo);background:var(--surface);box-shadow:0 0 0 3px var(--indigo-soft)}
+  .inp:disabled{color:var(--soft);background:var(--chip)}
   .title-inp{font-size:20px;font-weight:800;letter-spacing:-.01em;padding:13px}
   select.inp{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238d8d95' stroke-width='2.5' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
 
@@ -80,7 +81,7 @@
   .aedit__top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .aedit__lbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:6px 10px;border-radius:8px;flex:none}
   .aedit__top .at-min{flex:1;min-width:150px} .aedit__top .at-pol{flex:1.4;min-width:170px}
-  .aedit__del{flex:none;width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--soft);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .aedit__del{flex:none;width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--soft);cursor:pointer;display:flex;align-items:center;justify-content:center}
   .aedit__del:hover{color:var(--red);border-color:var(--red)}
   .aedit__del svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   .aedit__eff{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:11px}
@@ -141,7 +142,7 @@
   .proposed-note{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);text-align:center;margin-top:2px}
   .btn:disabled .ac{color:var(--soft)}
 
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast b{color:#a99dff}
 

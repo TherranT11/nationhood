@@ -3,15 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <title>Main Menu · Nationhood Game</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#FFFFFF;--ink:#111114;--muted:#5b5b63;--soft:#8d8d95;
-    --line:#E4E2DD;--card:#FFFFFF;--chip:#F3F2EF;--discord:#5865f2;
+    --bg:#FFFFFF;--surface:#FFFFFF;--ink:#111114;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E4E2DD;--line2:#cfcfcf;--card:var(--surface);--chip:#F3F2EF;--discord:#5865f2;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
   }
+  /* Dark mode: theme.js flips the shared tokens; these rules cover this page's
+     own tokens, the literal-coloured "inverted" badges, and the card splashes. */
+  html[data-theme="dark"] .mark{background:var(--indigo)}
+  html[data-theme="dark"] .confirm-btn{background:var(--indigo)}
+  html[data-theme="dark"] .card__ico{background:color-mix(in srgb,var(--accent) 22%,var(--surface))}
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100%;display:flex;flex-direction:column}
@@ -21,10 +28,10 @@
   .nav{display:flex;align-items:center;justify-content:space-between;height:64px;max-width:900px;margin:0 auto;width:100%;padding:0 22px}
   .brand{font-weight:800;font-size:19px;letter-spacing:-0.02em}
   .nav-actions{display:flex;align-items:center;gap:10px}
-  .gamedate{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;color:#5546E8;background:#ECE9FD;border-radius:999px;padding:8px 14px;white-space:nowrap}
+  .gamedate{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--indigo);background:var(--indigo-soft);border-radius:999px;padding:8px 14px;white-space:nowrap}
   .btn{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:700;padding:9px 16px;border-radius:999px;border:1px solid transparent;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s,opacity .15s;white-space:nowrap}
-  .btn-ghost{border-color:var(--line);color:var(--ink);background:#fff}
-  .btn-ghost:hover{border-color:#bdbbb4}
+  .btn-ghost{border-color:var(--line);color:var(--ink);background:var(--card)}
+  .btn-ghost:hover{border-color:var(--line2)}
   .btn-discord{background:var(--discord);color:#fff}
   .btn-discord:hover{background:#4752c4}
   .btn[disabled]{opacity:.55;cursor:default}
@@ -72,7 +79,7 @@
   .card.sel{border-color:var(--accent)}
 
   /* confirm bar: slides up once Tutorial is chosen */
-  .confirm-bar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);transform:translateY(100%);pointer-events:none;transition:transform .28s}
+  .confirm-bar{position:fixed;left:0;right:0;bottom:0;background:color-mix(in srgb,var(--surface) 94%,transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);transform:translateY(100%);pointer-events:none;transition:transform .28s}
   .confirm-bar.show{transform:translateY(0);pointer-events:auto}
   .confirm-in{max-width:900px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
   .confirm-label{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.04em;color:var(--muted)}
@@ -81,7 +88,7 @@
   .confirm-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
   .confirm-btn[disabled]{opacity:.55;cursor:default}
   .confirm-btns{display:flex;gap:10px}
-  .confirm-cancel{background:#fff;border:1.5px solid var(--line);color:var(--ink);font-weight:700;font-size:15px;border-radius:11px;padding:11px 18px;cursor:pointer;font-family:inherit;transition:border-color .15s}
+  .confirm-cancel{background:var(--card);border:1.5px solid var(--line);color:var(--ink);font-weight:700;font-size:15px;border-radius:11px;padding:11px 18px;cursor:pointer;font-family:inherit;transition:border-color .15s}
   .confirm-cancel:hover{border-color:var(--ink)}
   @media (max-width:560px){
     .nav{height:56px;padding:0 16px}

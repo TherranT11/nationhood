@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <title>Nation Select · Nationhood Game</title>
 <link rel="stylesheet" href="/site.css">
 <style>
   body {
-    margin: 0; background: #fff; color: var(--ink);
+    margin: 0; background: var(--bg); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh; display: flex; flex-direction: column;
@@ -18,19 +19,19 @@
   .select-head p { color: var(--muted); font-size: 15px; margin: 0; }
 
   /* nation card */
-  .nation { flex: 1 1 340px; max-width: 440px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
+  .nation { flex: 1 1 340px; max-width: 440px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--surface); }
   .nation-banner {
     min-height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden;
-    background: repeating-linear-gradient(45deg, #fafafa, #fafafa 12px, #f3f3f3 12px, #f3f3f3 24px);
+    background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 12px, color-mix(in srgb, var(--surface) 92%, var(--ink)) 12px, color-mix(in srgb, var(--surface) 92%, var(--ink)) 24px);
     border-bottom: 1px solid var(--line);
   }
   .nation-banner img { display: block; width: 100%; height: auto; }
-  .nation-banner .ph { color: #9a9a9a; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+  .nation-banner .ph { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
   .nation-body { padding: 22px 22px 24px; }
   .nation-name { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
   .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 4px; }
   .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
-  .onep { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #c0341d; background: #FBEAE9; border-radius: 999px; padding: 4px 11px; margin: 0 0 14px; }
+  .onep { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--err); background: color-mix(in srgb, var(--err) 14%, var(--surface)); border-radius: 999px; padding: 4px 11px; margin: 0 0 14px; }
   .nations { width: 100%; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 22px; }
 
   .nstats { border-top: 1px solid var(--line); }

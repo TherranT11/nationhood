@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <title>Government · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -60,7 +61,7 @@
   .conf__num{font-weight:900;font-size:clamp(42px,7vw,58px);color:var(--amber);line-height:.9;flex:none;letter-spacing:-.04em}
   .conf__num span{font-size:.4em;color:var(--soft);font-weight:700}
   .conf__mid{flex:1;min-width:230px}
-  .conf__meter{height:14px;border-radius:8px;position:relative;overflow:hidden;background:linear-gradient(90deg,var(--red-soft) 0 20%,var(--amber-soft) 20% 60%,#E5F6EC 60% 100%)}
+  .conf__meter{height:14px;border-radius:8px;position:relative;overflow:hidden;background:linear-gradient(90deg,var(--red-soft) 0 20%,var(--amber-soft) 20% 60%,var(--green-soft) 60% 100%)}
   .conf__fill{position:absolute;left:0;top:0;bottom:0;width:47%;border-radius:8px;background:linear-gradient(90deg,#E0820E,#F2A93C)}
   .conf__tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);left:50%;opacity:.35}
   .conf__break{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}
@@ -296,7 +297,7 @@
     return rows.map((r) => {
       const partyTag = r.front
         ? '<span class="ptag f">Front</span>'
-        : '<span class="ptag" style="color:' + r.color + ';background:#fff;border:1px solid ' + r.color + '">' + r.party + '</span>';
+        : '<span class="ptag" style="color:' + r.color + ';background:var(--surface);border:1px solid ' + r.color + '">' + r.party + '</span>';
       const tags = '<span class="ptags">' + (r.scandal ? '<span class="ptag scandal">Scandal</span>' : '') + partyTag + '</span>';
       const work = r.work ? '<span class="post__work">' + r.work + '</span>' : '';
       return '<div class="post"><span class="post__pic">' + r.pic + '</span>' +

@@ -55,7 +55,7 @@
   /* government header card */
   .gov{border-top:3px solid var(--tc,var(--indigo))}
   .gov__top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}
-  .gov__emb{width:50px;height:50px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:16px;background:color-mix(in srgb,var(--tc,var(--indigo)) 14%,#fff);color:var(--tc,var(--indigo))}
+  .gov__emb{width:50px;height:50px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:16px;background:color-mix(in srgb,var(--tc,var(--indigo)) 14%, var(--surface));color:var(--tc,var(--indigo))}
   .gov__id b{font-weight:900;font-size:20px;letter-spacing:-.02em;display:block}
   .gov__id span{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft)}
   .gtype{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:6px 12px;border-radius:20px;background:var(--indigo-soft);color:var(--indigo);margin-left:auto;white-space:nowrap}
@@ -120,7 +120,7 @@
   .btn--ghost{background:var(--surface);color:var(--indigo)}
   .btn--danger{background:var(--red);border-color:var(--red)}
   .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}

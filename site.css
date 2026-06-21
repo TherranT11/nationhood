@@ -4,13 +4,25 @@
    The /home Main Menu is a separate design system and does not use this. */
 
 :root {
+  --bg: #fff;
+  --surface: #fff;
   --ink: #0a0a0a;
   --muted: #5b5b5b;
   --line: #ececec;
+  --line2: #cfcfcf;
   --accent: #111;
   --discord: #5865f2;
   --err: #c0341d;
+  --indigo: #5546E8;
+  --indigo-soft: #ECE9FD;
   --max: 1080px;
+}
+/* Dark theme: theme.js flips the shared tokens (--bg/--surface/--ink/--muted/
+   --line/--line2/--indigo…) on <html data-theme="dark">; only set the tokens
+   unique to these pages here. One source — pages just include /theme.js. */
+html[data-theme="dark"] {
+  --accent: var(--indigo);
+  --err: #ef6a6a;
 }
 
 * { box-sizing: border-box; }
@@ -28,7 +40,7 @@ a { color: inherit; text-decoration: none; }
 header {
   position: sticky;
   top: 0;
-  background: rgba(255,255,255,0.85);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   backdrop-filter: saturate(180%) blur(12px);
   border-bottom: 1px solid var(--line);
   z-index: 10;
@@ -67,15 +79,15 @@ header {
 }
 .btn:active { transform: translateY(1px); }
 .btn[disabled] { opacity: .55; cursor: default; }
-.btn-ghost { border-color: var(--line); color: var(--ink); background: #fff; }
-.btn-ghost:hover { border-color: #cfcfcf; }
+.btn-ghost { border-color: var(--line); color: var(--ink); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--line2); }
 .btn-solid { background: var(--accent); color: #fff; }
-.btn-solid:hover { background: #2a2a2a; }
+.btn-solid:hover { filter: brightness(1.12); }
 .btn-discord { background: var(--discord); color: #fff; }
 .btn-discord:hover { background: #4752c4; }
 
 /* Game-date chip in the navbar (nation-select, party-creation). */
-.gamedate { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: #5546E8; background: #ECE9FD; border-radius: 999px; padding: 8px 13px; white-space: nowrap; }
+.gamedate { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--indigo); background: var(--indigo-soft); border-radius: 999px; padding: 8px 13px; white-space: nowrap; }
 
 /* ---------- Mobile ---------- */
 @media (max-width: 560px) {
