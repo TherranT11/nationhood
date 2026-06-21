@@ -5,7 +5,7 @@
 import { supabase, wireDeletePartyMenu } from '/supabase.js';
 import { fmtFunds } from '/util.js';
 import { partyColor } from '/archetypes.js';
-import { cachedGameDate, liveGameDate } from '/gamedate.js';
+import { liveGameDate, mountGameDate } from '/gamedate.js';
 
 const CSS = `
 .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
@@ -80,12 +80,11 @@ export function mountTopbar(){
   wireTheme();             // sun/moon toggle → flips the persistent light/dark theme
   loadChrome();            // accent + funds + action budget on every screen (one source)
 
-  // The game date (the global tick) is shown here. Paint the cached value at once
-  // so there's no placeholder flash, then confirm from the live tick. Re-pull it
-  // whenever the page is (re)shown so it never goes stale after a tick advances
+  // The game date (the global tick) is shown here: cached value instantly (no
+  // placeholder flash) then confirmed from the live tick — see gamedate.js. Re-pull
+  // it whenever the page is (re)shown so it never goes stale after a tick advances
   // elsewhere: on bfcache restore (back/forward) and when a tab is refocused.
-  setTopbarDate(cachedGameDate());
-  refreshTopbarDate();
+  mountGameDate(document.getElementById('tbDate'));
   window.addEventListener('pageshow', refreshTopbarDate);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshTopbarDate(); });
 }
