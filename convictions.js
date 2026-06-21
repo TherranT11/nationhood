@@ -42,11 +42,15 @@ export function activeLines(c) {
 }
 
 // A conviction's "when a tagged law passes" effects as [{ reward, cond, cls }] — each
-// fires once when a law carrying that identity tag is enacted (server: _apply_law).
+// fires once when a law carrying that identity tag is enacted (server: _apply_law). A
+// 'sym' (mirror) effect also gives the inverse back when that law is later repealed.
 export function lawLines(c) {
-  return (c.onLaw || []).map(function (e) {
-    return { reward: convReward(e.v, e.t), cond: 'when a ' + e.tag + ' passes', cls: pos(e.v) };
+  var out = [];
+  (c.onLaw || []).forEach(function (e) {
+    out.push({ reward: convReward(e.v, e.t), cond: 'when a ' + e.tag + ' passes', cls: pos(e.v) });
+    if (e.sym) out.push({ reward: convReward(-e.v, e.t), cond: 'when a ' + e.tag + ' is repealed', cls: pos(-e.v) });
   });
+  return out;
 }
 
 // Group conviction rows ({id, definition}) by level 1..5, each sorted by cost.
