@@ -1,7 +1,7 @@
 -- 94 · Party convictions (adoption).
 -- Depends on: 20 (parties.conviction/archetype/popularity), 40 (events +
--- current_game_date), 70 (_mod_cap_raise/_mod_floor_drop), 91 (_apply_policy_effect),
--- 93 (convictions). Run after 93.
+-- current_game_date), 60 (archetype_oppositions), 70 (_mod_cap_raise/_mod_floor_drop),
+-- 91 (_apply_policy_effect), 93 (convictions). Run after 93.
 --
 -- Which convictions each party has adopted. Adopting spends the party's conviction
 -- points and applies the conviction's one-time on-adopt effects. The per-tick
@@ -44,11 +44,12 @@ begin
   end if;
 end $$;
 
--- Adopt a conviction for the caller's party: validate archetype + cost, spend the
--- points, record it, apply the on-adopt effects, and announce the new platform to the
--- shared nation feed. Server-authoritative.
--- A party with no ideology yet (archetype null) commits to the conviction's archetype
--- on this first adoption; afterwards it's locked to that archetype's tree.
+-- Adopt a conviction for the caller's party: validate, spend the points, record it,
+-- apply the on-adopt effects, and announce the new platform. Server-authoritative.
+-- A party is NOT locked to one archetype — it may mix convictions across trees, with
+-- two rules: it can't adopt a conviction whose archetype OPPOSES one it already holds
+-- (archetype_oppositions, schema/60), and its identity (parties.archetype) is the
+-- archetype it holds the MOST convictions in (recomputed here, read everywhere else).
 create or replace function public.adopt_conviction(p_conviction uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_party public.parties%rowtype; v_def jsonb; v_arch text; v_cost int; v_eff jsonb; v_body text;
@@ -57,19 +58,38 @@ begin
   select definition into v_def from public.convictions where id = p_conviction;
   if v_def is null then raise exception 'That conviction no longer exists.'; end if;
   v_arch := v_def->>'archetype';
-  if v_party.archetype is null then
-    update public.parties set archetype = v_arch where id = v_party.id;
-  elsif v_party.archetype is distinct from v_arch then
-    raise exception 'That conviction belongs to a different ideology.';
-  end if;
   if exists (select 1 from public.party_convictions where party_id = v_party.id and conviction_id = p_conviction) then
     raise exception 'Your party has already adopted that conviction.';
+  end if;
+  -- Coherence: reject if the new archetype opposes one the party already holds a
+  -- conviction in (the table is seeded both directions, so this single join catches it).
+  if exists (
+    select 1 from public.party_convictions pc
+    join public.convictions c on c.id = pc.conviction_id
+    join public.archetype_oppositions o on o.archetype = (c.definition->>'archetype') and o.opposes = v_arch
+    where pc.party_id = v_party.id
+  ) then
+    raise exception 'That conviction contradicts an ideology your party already holds.';
   end if;
   v_cost := coalesce((v_def->>'cost')::int, 0);
   if v_party.conviction < v_cost then raise exception 'Not enough conviction points.'; end if;
 
   update public.parties set conviction = conviction - v_cost where id = v_party.id;
   insert into public.party_convictions (party_id, conviction_id) values (v_party.id, p_conviction);
+
+  -- Identity = the archetype this party holds the most convictions in; ties go to the
+  -- tree it committed to earliest. Recompute now (with the new row counted) so the
+  -- on-adopt effects below and every reader see the up-to-date archetype.
+  update public.parties p set archetype = (
+    select c.definition->>'archetype'
+    from public.party_convictions pc
+    join public.convictions c on c.id = pc.conviction_id
+    where pc.party_id = v_party.id
+    group by c.definition->>'archetype'
+    order by count(*) desc, min(pc.created_at) asc
+    limit 1
+  ) where p.id = v_party.id;
+
   for v_eff in select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb)) loop
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, v_eff);
   end loop;

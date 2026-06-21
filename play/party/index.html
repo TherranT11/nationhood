@@ -230,9 +230,9 @@
   .cvcard.is-adopted{border-left-color:var(--green)}
 
   /* Add Convictions: a header button + a modal that picks an archetype (chips),
-     then lists that archetype's convictions to adopt. Adopting the first one
-     commits a blank party to that ideology — so a committed party only sees its
-     own archetype. Reuses the .cvcard look from the manifesto. */
+     then lists that archetype's convictions to adopt. A party can mix trees; chips
+     for ideologies that contradict one it already holds are greyed out. Reuses the
+     .cvcard look from the manifesto. */
   .cv-add{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);font-weight:700;cursor:pointer;background:none;border:none;padding:0}
   .cv-add:hover{filter:brightness(1.1)}
   .cvmodal{position:fixed;inset:0;background:rgba(12,12,18,.45);display:flex;align-items:flex-start;justify-content:center;padding:5vh 20px;z-index:120;overflow:auto}
@@ -248,6 +248,12 @@
   .cvchip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.03em;padding:8px 13px;border-radius:20px;border:1.5px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;transition:border-color .12s,color .12s,background .12s}
   .cvchip:hover{border-color:var(--c);color:var(--c)}
   .cvchip.on{background:var(--c);border-color:var(--c);color:#fff}
+  .cvchip:disabled{opacity:.38;cursor:not-allowed;text-decoration:line-through}
+  .cvchip:disabled:hover{border-color:var(--line);color:var(--muted)}
+  /* Manifesto archetype sub-header (a mixed party groups its convictions by tree). */
+  .cv-arch{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--c,var(--soft));margin:16px 0 9px;display:flex;align-items:center;gap:7px}
+  .cv-arch:first-child{margin-top:4px}
+  .cv-arch i{width:8px;height:8px;border-radius:2px;background:var(--c,var(--soft));flex:none}
   .cvmodal__note{font-size:12.5px;color:var(--muted);line-height:1.55;margin-bottom:14px}
   .cvmodal__list{max-height:54vh;overflow:auto}
 
@@ -434,7 +440,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
-  import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel } from '/archetypes.js';
+  import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel, opposes } from '/archetypes.js';
   import { convRoman, adoptLines, activeLines, convsByLevel } from '/convictions.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -672,12 +678,12 @@
     }).join('');
   }
 
-  // ---- The Manifesto: the convictions written for this party's archetype, grouped
-  // by Level. A party adopts one by spending Conviction (◆), which applies its
-  // on-adopt effects; "while active" effects then run each month (the trigger engine).
+  // ---- The Manifesto: the party's adopted convictions. A party mixes trees freely
+  // (subject to opposed-pair rules); adopting one spends Conviction (◆) and applies its
+  // on-adopt effects, and "while active" effects run each month (the trigger engine).
   // Conviction balance is read live from the party row; years-in-power waits on the
   // political calendar.
-  var CVS = { party: null, rows: [], adopted: {}, balance: 0, busy: false };
+  var CVS = { party: null, adopted: {}, balance: 0, busy: false };
   var ALL_CONV = null;           // every conviction {id, definition}, fetched once
   var MF_NATION = '';
   // All convictions, cached. The manifesto and the Add Convictions picker both read
@@ -727,22 +733,36 @@
     box.querySelectorAll('.cvadopt[data-id]').forEach(function (b) { b.onclick = function () { adoptConviction(b.dataset.id); }; });
   }
 
-  // The manifesto panel: a committed party's archetype tree; a party with no ideology
-  // yet is pointed at the Add Convictions picker (the header button) to choose one.
+  // The distinct archetypes the party holds convictions in (a party can mix trees).
+  function heldArchetypes(){
+    var set = {};
+    (ALL_CONV || []).forEach(function (r) { if (CVS.adopted[r.id]) { var a = (r.definition || {}).archetype; if (a) set[a] = true; } });
+    return Object.keys(set);
+  }
+
+  // The manifesto panel: the party's ADOPTED convictions, grouped by archetype (a
+  // party mixes trees now). Adoption itself happens in the Add Convictions picker.
   function renderConvictions(){
     var box = document.getElementById('mfList');
     document.getElementById('convBal').textContent = CVS.balance;
-    if (!CVS.party || !CVS.party.archetype) {
-      document.getElementById('mfCount').textContent = '';
-      box.innerHTML = mfEmpty('No ideology yet', 'Open Add Convictions to choose an ideology and adopt your first conviction.');
+    var adopted = (ALL_CONV || []).filter(function (r) { return CVS.adopted[r.id]; });
+    document.getElementById('mfCount').textContent = adopted.length ? (adopted.length + (adopted.length === 1 ? ' conviction' : ' convictions')) : '';
+    if (!adopted.length) {
+      box.innerHTML = mfEmpty('No convictions yet', 'Open Add Convictions to adopt your first conviction and set your ideology.');
       return;
     }
-    document.getElementById('mfCount').textContent = CVS.rows.length + (CVS.rows.length === 1 ? ' conviction' : ' convictions');
-    if (!CVS.rows.length) {
-      box.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(CVS.party.archetype) + ' parties yet.');
-      return;
-    }
-    cvCatalogue(box, CVS.rows);
+    var byArch = {};
+    adopted.forEach(function (r) { var a = (r.definition || {}).archetype || '—'; (byArch[a] = byArch[a] || []).push(r); });
+    // Banner archetype (most-held) first, then the rest alphabetically; cards by level.
+    var order = Object.keys(byArch).sort(function (a, b) {
+      if (a === CVS.party.archetype) return -1; if (b === CVS.party.archetype) return 1; return a < b ? -1 : 1;
+    });
+    box.innerHTML = order.map(function (a) {
+      var col = archetypeColor(a);
+      var cards = byArch[a].sort(function (x, y) { return ((x.definition.level || 1) - (y.definition.level || 1)) || ((x.definition.cost || 0) - (y.definition.cost || 0)); })
+        .map(function (r) { return cvCard(r, col); }).join('');
+      return '<div class="cv-arch" style="--c:' + col + '"><i></i>' + esc(a) + '</div>' + cards;
+    }).join('');
   }
 
   async function adoptConviction(id){
@@ -752,9 +772,8 @@
       const res = await supabase.rpc('adopt_conviction', { p_conviction: id });
       if (res.error) throw res.error;
       CVS.adopted[id] = true;
-      // Re-read the party row so the balance, the popularity standing, and the archetype
-      // the first conviction may have just set all reflect the on-adopt effects (one
-      // source: the party row).
+      // Re-read the party row: balance, popularity standing, and the archetype the
+      // server may have just recomputed (most-held). One source: the party row.
       try {
         const { data: p } = await supabase.from('parties').select('archetype, popularity, conviction').eq('id', CVS.party.id).single();
         if (p) {
@@ -763,11 +782,7 @@
           document.getElementById('st-pop').textContent = Number(p.popularity) || 0;
         }
       } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
-      if (CVS.party.archetype) {                       // first conviction unlocks the ideology
-        CVS.rows = cvRowsFor(CVS.party.archetype);
-        setIdeology(CVS.party);
-        applyAccent(partyColor(CVS.party));
-      }
+      if (CVS.party.archetype) { setIdeology(CVS.party); applyAccent(partyColor(CVS.party)); }
     } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); }
     finally {
       CVS.busy = false;
@@ -777,7 +792,7 @@
   }
 
   async function initManifesto(party) {
-    CVS = { party: party, rows: [], adopted: {}, balance: Number(party.conviction) || 0, busy: false };
+    CVS = { party: party, adopted: {}, balance: Number(party.conviction) || 0, busy: false };
     document.getElementById('convBal').textContent = CVS.balance;
     document.getElementById('convYears').textContent = 0;   // no calendar yet → 0 years in power
     var box = document.getElementById('mfList');
@@ -787,36 +802,37 @@
       const { data: ad } = await supabase.from('party_convictions').select('conviction_id').eq('party_id', party.id);
       (ad || []).forEach(function (r) { CVS.adopted[r.conviction_id] = true; });
     } catch (e) { box.innerHTML = mfEmpty('Couldn’t load convictions', 'Refresh to try again.'); return; }
-    if (party.archetype) CVS.rows = cvRowsFor(party.archetype);  // archetype set ⇒ committed
     renderConvictions();
   }
 
-  // ---- Add Convictions picker (modal): choose an archetype (chips) and adopt one of
-  // its convictions. A party with no ideology sees all archetypes; adopting its first
-  // conviction commits it (see adopt_conviction). A committed party only sees its own.
+  // ---- Add Convictions picker (modal): browse any archetype's convictions and adopt.
+  // A party can mix trees, so every archetype is offered EXCEPT those that oppose one it
+  // already holds convictions in (greyed out). Its identity follows its most-held tree.
   var CVPICK = { arch: null };
   function renderPick(){
-    var locked = !!(CVS.party && CVS.party.archetype);
-    if (locked) CVPICK.arch = CVS.party.archetype;
     document.getElementById('cvPickBal').textContent = CVS.balance;
+    var held = heldArchetypes();
+    function blocked(name){ return held.some(function (h) { return opposes(name, h); }); }
+    // Keep the current selection unless it's now blocked/unset; fall back to the banner.
+    if (!CVPICK.arch || blocked(CVPICK.arch)) CVPICK.arch = (CVS.party && CVS.party.archetype) || null;
 
-    var list = locked ? ARCHETYPES.filter(function (a) { return a.name === CVS.party.archetype; }) : ARCHETYPES;
-    document.getElementById('cvPickChips').innerHTML = list.map(function (a) {
-      return '<button class="cvchip' + (a.name === CVPICK.arch ? ' on' : '') + '" type="button" data-arch="' +
-        esc(a.name) + '" style="--c:' + a.color + '">' + esc(a.name) + '</button>';
+    document.getElementById('cvPickChips').innerHTML = ARCHETYPES.map(function (a) {
+      var off = blocked(a.name);
+      return '<button class="cvchip' + (a.name === CVPICK.arch ? ' on' : '') + '" type="button"' + (off ? ' disabled title="Contradicts an ideology your party already holds"' : '') +
+        ' data-arch="' + esc(a.name) + '" style="--c:' + a.color + '">' + esc(a.name) + '</button>';
     }).join('');
-    document.getElementById('cvPickChips').querySelectorAll('.cvchip').forEach(function (b) {
+    document.getElementById('cvPickChips').querySelectorAll('.cvchip:not([disabled])').forEach(function (b) {
       b.onclick = function () { CVPICK.arch = b.dataset.arch; renderPick(); };
     });
 
     var note = document.getElementById('cvPickNote'), listBox = document.getElementById('cvPickList');
     if (!CVPICK.arch) {
-      note.textContent = 'Pick an ideology to see its convictions. Adopting your first conviction commits your party to that ideology — choose with care.';
+      note.textContent = 'Pick an ideology to browse its convictions. Greyed-out ideologies contradict one your party already holds.';
       listBox.innerHTML = ''; return;
     }
-    note.textContent = locked
-      ? 'Your party is committed to ' + CVPICK.arch + '. Spend Conviction to adopt from its tree.'
-      : 'Adopting a conviction from ' + CVPICK.arch + ' commits your party to that ideology.';
+    note.textContent = held.length
+      ? 'Adopt from any ideology that doesn’t contradict the ones you already hold. Your identity follows whichever tree you hold the most convictions in.'
+      : 'Adopting your first conviction sets your party’s ideology.';
     var rows = cvRowsFor(CVPICK.arch);
     if (!rows.length) { listBox.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(CVPICK.arch) + ' parties yet.'); return; }
     cvCatalogue(listBox, rows, archetypeColor(CVPICK.arch));
