@@ -316,7 +316,7 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare v_tick int; v_n text; v_count int := 0;
+declare v_tick int; v_n text; v_count int := 0; v_rec record;
 begin
   if not public.is_admin() then raise exception 'Admin only.'; end if;
   update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
@@ -324,6 +324,10 @@ begin
   -- predicate matches all parties not already at 3 (and is null-safe) — it also
   -- satisfies Postgres' require-a-WHERE-clause guard (sql_safe_updates).
   update public.parties set actions_remaining = 3 where actions_remaining is distinct from 3;
+  -- Standing monthly economics: every nation's in-force policy options apply their
+  -- per-tick effects for this month (schema/91). Runs before the floor close below,
+  -- so a law enacted this tick starts contributing next tick, not the month it passed.
+  perform public._apply_policy_tick_effects(v_tick);
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick
@@ -345,16 +349,15 @@ begin
     select nation_id, party_id, 'declaration',
            'A measure reached the floor: ' || title || '.', public.current_game_date()
     from promoted;
-  -- Floor measures that have stood 6 ticks without a majority fail now (schema/81).
-  with expired as (
-    update public.proposals set status = 'failed'
+  -- Floor measures that have stood 6 ticks are tallied now: a simple majority of
+  -- the seats cast (Aye > Nay) carries them, otherwise they fall (schema/81). Each
+  -- is resolved individually so a passing measure applies its effects.
+  for v_rec in
+    select id from public.proposals
      where status = 'voting' and opened_tick is not null and (v_tick - opened_tick) >= 6
-    returning nation_id, party_id, title
-  )
-  insert into public.events (nation_id, party_id, kind, body, game_date)
-    select nation_id, party_id, 'declaration',
-           'A measure failed for want of a majority: ' || title || '.', public.current_game_date()
-    from expired;
+  loop
+    perform public._resolve_proposal(v_rec.id, true);
+  end loop;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 grant execute on function public.advance_tick() to authenticated;

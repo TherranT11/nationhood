@@ -324,7 +324,7 @@
     box.appendChild(iw);
     if(!full){
       var menu=iw.querySelector('#invmenu');
-      menu.innerHTML=invitablePool().map(function(p){return '<div class="io" data-id="'+esc(p.id)+'"><span class="td" style="background:'+colorOf(p)+'"></span><b>'+esc(p.name)+'</b><span>'+(p.seats||0)+' seats · '+popOf(p)+'% · '+esc(p.archetype)+'</span></div>';}).join('');
+      menu.innerHTML=invitablePool().map(function(p){return '<div class="io" data-id="'+esc(p.id)+'"><span class="td" style="background:'+colorOf(p)+'"></span><b>'+esc(p.name)+'</b><span>'+(p.seats||0)+' seats · '+popOf(p)+'%'+(p.archetype?' · '+esc(p.archetype):'')+'</span></div>';}).join('');
       iw.querySelector('#invbtn').onclick=function(e){e.stopPropagation();menu.classList.toggle('open');};
       menu.querySelectorAll('.io').forEach(function(o){o.onclick=function(){ inviteParty(neg.id,o.dataset.id).then(function(r){ active=o.dataset.id; ping('<b>Invitation sent.</b>'+(r&&r.actions!=null?' '+r.actions+' action'+(r.actions===1?'':'s')+' left.':'')); return reload(); }).catch(err); };});
     }
@@ -570,7 +570,7 @@
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
       var nationName=(nation&&nation.name)||party.nation_id;
       document.getElementById('sname').textContent=party.name;
-      document.getElementById('psub').textContent=party.archetype+' · '+nationName;
+      document.getElementById('psub').textContent=(party.archetype ? party.archetype + ' · ' : '') + nationName;
       document.title='Negotiate · '+party.name;
       if(nation&&nation.flag){ var f=document.getElementById('flag'); f.onload=function(){f.hidden=false;}; f.src=nation.flag; }
       CHAMBER=(nation&&nation.legislature_seats)||280;

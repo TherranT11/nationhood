@@ -18,10 +18,16 @@ export async function fetchVotes(proposalIds) {
   if (!proposalIds.length) return [];
   return unwrap(await supabase.from('proposal_votes').select('proposal_id, party_id, aye').in('proposal_id', proposalIds)) || [];
 }
+export async function fetchPolicies() {
+  return unwrap(await supabase.from('policies').select('id, definition').order('created_at')) || [];
+}
 
 // ---- mutations (server-authoritative RPCs) ----
 export async function proposeDeclaration(slug, value, toFloor) {
   return unwrap(await supabase.rpc('propose_declaration', { p_slug: slug, p_value: value, p_to_floor: toFloor }));
+}
+export async function proposeLaw(policyId, optionIdx, toFloor) {
+  return unwrap(await supabase.rpc('propose_law', { p_policy: policyId, p_option: optionIdx, p_to_floor: toFloor }));
 }
 export async function proposalToFloor(id) { return unwrap(await supabase.rpc('proposal_to_floor', { p_proposal: id })); }
 export async function castVote(id, aye) { return unwrap(await supabase.rpc('cast_floor_vote', { p_proposal: id, p_aye: aye })); }

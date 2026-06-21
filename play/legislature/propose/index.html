@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Draft a Bill · Nationhood</title>
+<title>Propose a Measure · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -60,12 +60,7 @@
   .inp{width:100%;font-family:'Archivo',sans-serif;font-size:14.5px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
   .inp::placeholder{color:var(--soft)}
   .inp:focus{outline:none;border-color:var(--indigo);background:var(--surface);box-shadow:0 0 0 3px var(--indigo-soft)}
-  .title-inp{font-size:20px;font-weight:800;letter-spacing:-.01em;padding:13px}
   .curval{font-size:15px;font-weight:700;color:var(--ink);padding:10px 13px;border:1px solid var(--line);border-radius:10px;background:var(--chip)}
-
-  .addart{width:100%;padding:11px;border:1.5px dashed var(--line);border-radius:11px;background:transparent;color:var(--muted);font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
-  .addart svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .addart:disabled{opacity:.5;cursor:not-allowed}
 
   .preview{position:sticky;top:20px}
   .pvlabel{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:0 4px 8px}
@@ -77,10 +72,6 @@
   .pvarts .none{color:var(--soft);font-style:italic;font-size:13px}
 
   .proj{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-top:16px}
-  .proj__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
-  .costs{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
-  .costs .cl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:9px}
-  .costwrap .none{color:var(--soft);font-style:italic;font-size:13px}
 
   .actions{display:flex;flex-direction:column;gap:9px;margin-top:18px}
   .btn{display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:13px;border-radius:11px;cursor:pointer;border:1.5px solid var(--indigo)}
@@ -88,6 +79,10 @@
   .btn:disabled{border-color:var(--line);background:var(--chip);color:var(--soft);cursor:not-allowed;pointer-events:none}
   .btn:disabled .ac{color:var(--soft)}
   .proposed-note{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);text-align:center;margin-top:2px}
+  .eff{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .eff:last-child{border-bottom:none}
+  .eff b{font-weight:700}.eff.pos b{color:var(--green)}.eff.neg b{color:var(--red)}
+  .eff .cad{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);flex:none}
 
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -124,53 +119,12 @@
     <a class="back" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Legislature</a>
     <div class="phead">
       <span class="eye">Legislature</span>
-      <h1>Draft a Bill</h1>
-      <p>Name the bill, fill its articles with policies, and see where it would push the economy.</p>
+      <h1>Propose a Measure</h1>
+      <p>Bring a law or a declaration to the chamber.</p>
     </div>
 
     <div class="grid" id="proposeGrid">
-      <!-- editor -->
-      <div>
-        <section class="mod">
-          <div class="mod__hd"><span>The Bill</span></div>
-          <label class="lbl">Title</label>
-          <input id="title" class="inp title-inp" type="text" placeholder="e.g. Economic Recovery Act" maxlength="60">
-        </section>
-
-        <section class="mod">
-          <div class="mod__hd"><span>Articles</span><span class="hint">each article enacts one policy</span></div>
-          <p class="muted" style="margin-bottom:12px">No policies are available to legislate yet — the policy catalogue isn’t in play.</p>
-          <button class="addart" id="addart" type="button" disabled><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add Article</button>
-        </section>
-      </div>
-
-      <!-- preview + projection -->
-      <div class="preview">
-        <div class="pvlabel">Live Preview</div>
-        <div class="pvcard">
-          <h3 id="pv-title" class="empty">Untitled Bill</h3>
-          <div class="pvarts">
-            <div class="ac">No articles yet</div>
-            <p class="none">Add articles to see the bill take shape.</p>
-          </div>
-        </div>
-
-        <div class="proj">
-          <div class="proj__hd">Projected Effect</div>
-          <p class="muted">Nothing to project yet.</p>
-
-          <div class="costs">
-            <div class="cl">Cost</div>
-            <div class="costwrap"><span class="none">No cost yet.</span></div>
-          </div>
-
-          <div class="actions">
-            <button class="btn" type="button" disabled>Bring to the Floor Now <span class="ac">1 Action</span></button>
-            <button class="btn" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free Action</span></button>
-            <div class="proposed-note">Proposing opens up once the policy catalogue is in play.</div>
-          </div>
-        </div>
-      </div>
+      <section class="mod"><p class="muted">Loading…</p></section>
     </div>
   </main>
 </div>
@@ -179,22 +133,91 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, declaredValue } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
-  import { fetchDeclarations, proposeDeclaration } from '/proposals.js';
+  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw } from '/proposals.js';
+  import { policyOptions, policyDefaultIdx, effectText } from '/policies.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
 
   var isDecl = new URLSearchParams(location.search).get('type') === 'declaration';
 
-  // ---- Law mode: live title preview (the one policy-independent bit today) ----
-  function wireBillPreview() {
-    var titleInp = document.getElementById('title'), pvTitle = document.getElementById('pv-title');
-    if (!titleInp) return;
-    titleInp.addEventListener('input', function () {
-      var v = titleInp.value.trim();
-      pvTitle.textContent = v || 'Untitled Bill';
-      pvTitle.classList.toggle('empty', !v);
-    });
+  // ---- Law mode: pick a policy + the option to enact, preview its effects for this
+  // nation, then queue it or send it to the floor (mirrors the declaration flow). ----
+  var lawBusy = false;
+  async function renderLawMode(currentPolicies, nation) {
+    currentPolicies = currentPolicies || {};
+    var pop = nation && nation.population, pros = nation && nation.stats && nation.stats.prosperity;
+    document.querySelector('.phead .eye').textContent = 'Legislature · Law';
+    document.querySelector('.phead h1').textContent = 'Propose a Law';
+    document.querySelector('.phead p').textContent = 'Pick a policy and the option to put to the chamber. If it passes, the nation switches to that option and its effects land.';
+    var grid = document.getElementById('proposeGrid');
+    var policies;
+    try { policies = await fetchPolicies(); }
+    catch (e) { grid.innerHTML = '<section class="mod"><p class="muted">Couldn’t load the policy catalogue. Refresh to try again.</p></section>'; return; }
+    if (!policies.length) { grid.innerHTML = '<section class="mod"><p class="muted">No policies have been defined yet — an admin sets these up first.</p></section>'; return; }
+
+    grid.innerHTML =
+      '<div><section class="mod"><div class="mod__hd"><span>Policy</span><span class="hint">one policy per law</span></div>' +
+        '<label class="lbl">Policy</label><select id="l-policy" class="inp"></select>' +
+        '<label class="lbl" style="margin-top:14px">In force now</label><div id="l-current" class="curval">—</div>' +
+        '<label class="lbl" style="margin-top:14px">Change to</label><select id="l-opt" class="inp"></select>' +
+      '</section></div>' +
+      '<div class="preview"><div class="pvlabel">Live Preview</div>' +
+        '<div class="pvcard"><h3 id="l-pv" class="empty">Choose a policy</h3>' +
+          '<div class="pvarts"><div class="ac">Effects if enacted</div><div id="l-effs"><p class="none">—</p></div></div></div>' +
+        '<div class="proj"><div class="actions">' +
+          '<button class="btn" id="l-floor" type="button" disabled>Bring to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="l-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
+          '<div class="proposed-note" id="l-note">Pick an option to propose it.</div>' +
+        '</div></div></div>';
+
+    var polSel = document.getElementById('l-policy'), optSel = document.getElementById('l-opt');
+    var floorBtn = document.getElementById('l-floor'), agendaBtn = document.getElementById('l-agenda'), note = document.getElementById('l-note');
+    polSel.innerHTML = policies.map(function (p, i) { return '<option value="' + i + '">' + esc((p.definition && p.definition.name) || 'Policy') + '</option>'; }).join('');
+
+    function curPolicy() { return policies[+polSel.value] || policies[0]; }
+    function curDef() { return curPolicy().definition || {}; }
+    // The option in force for this nation: its stored override, else the policy default.
+    function inForceIdx() { var stored = currentPolicies[curPolicy().id]; return stored == null ? policyDefaultIdx(curDef()) : +stored; }
+
+    function fillOpts() {
+      var opts = policyOptions(curDef()), cur = inForceIdx();
+      document.getElementById('l-current').textContent = (opts[cur] && opts[cur].name) || '—';
+      optSel.innerHTML = opts.map(function (o, i) { return '<option value="' + i + '"' + (i === cur ? ' selected' : '') + '>' + esc(o.name || ('Option ' + (i + 1))) + (i === cur ? ' · current' : '') + '</option>'; }).join('');
+      sync();
+    }
+    function sync() {
+      var def = curDef(), opts = policyOptions(def), idx = +optSel.value, o = opts[idx], cur = inForceIdx();
+      var pv = document.getElementById('l-pv');
+      pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (idx + 1)))) : 'Choose an option';
+      pv.classList.toggle('empty', !o);
+      // Previews every authored effect with its cadence. NOTE: the server applies
+      // 'once' effects on enactment today; 'per tick' effects are labelled but not yet
+      // applied (the per-tick pass is a later stage) — accurate on timing, not live.
+      var effs = (o && o.effects) || [];
+      document.getElementById('l-effs').innerHTML = effs.length
+        ? effs.map(function (e) { var t = effectText(e, pop, pros); return '<div class="eff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')
+        : '<p class="none">No mechanical effects — a flavour-only option.</p>';
+      // The option already in force is a no-op (and would still cost an action) — block it.
+      var same = idx === cur, ok = !!o && !same && !lawBusy;
+      floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
+      if (!lawBusy) note.textContent = same ? 'That option is already in force.' : 'Ready to propose — choose how.';
+    }
+    polSel.onchange = fillOpts;
+    optSel.onchange = sync;
+    fillOpts();
+
+    function submit(toFloor) {
+      var p = curPolicy(), idx = +optSel.value;
+      if (lawBusy || idx === inForceIdx()) return;  // guard mirrors sync()
+      lawBusy = true; floorBtn.disabled = true; agendaBtn.disabled = true;
+      note.textContent = toFloor ? 'Bringing it to the floor…' : 'Adding to the agenda…';
+      proposeLaw(p.id, idx, toFloor)
+        .then(function () { location.href = '/play/legislature/'; })
+        .catch(function (e) { lawBusy = false; sync(); note.textContent = e.message || 'Couldn’t propose that.'; });
+    }
+    floorBtn.onclick = function () { submit(true); };
+    agendaBtn.onclick = function () { submit(false); };
   }
 
   // ---- Declaration mode: pick a slot + name, then queue it or send to the floor ----
@@ -272,28 +295,27 @@
   }
 
   (async () => {
-    // Law mode needs no data — wire its live preview straight away.
-    if (!isDecl) wireBillPreview();
-    if (!isConfigured) { if (isDecl) renderDeclMode({}); return; }
+    if (!isConfigured) { if (isDecl) renderDeclMode({}); else renderLawMode({}, {}); return; }
     const user = await requireUser();
     if (!user) return; // redirected to login
     var party = null, nation = null;
     try {
       ({ data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single());
       if (!party) { window.location.replace('/nation-select/'); return; }
-      ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations').eq('id', party.nation_id).single());
+      ({ data: nation } = await supabase.from('nations').select('name, flag, economy, declarations, policies, population, stats').eq('id', party.nation_id).single());
       const nationName = (nation && nation.name) || party.nation_id;
 
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-    } catch (e) { /* chrome is best-effort; the declaration picker still loads below */ }
-    // Declaration mode renders here so each slot can show its CURRENT value.
+    } catch (e) { /* chrome is best-effort; the picker below still loads */ }
+    // Each mode renders here so it can show the nation's CURRENT value/option.
     if (isDecl) renderDeclMode((nation && nation.declarations) || {});
+    else renderLawMode((nation && nation.policies) || {}, nation || {});
   })();
 </script>
 </body>

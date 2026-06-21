@@ -16,7 +16,7 @@ create table if not exists public.parties (
   nation_id    text not null references public.nations (id),
   name         text not null,
   abbreviation text not null,
-  archetype    text not null,
+  archetype    text,                            -- no longer chosen at creation; kept nullable for existing parties + the archetype mechanics
   -- Starting standings. A brand-new party begins at zero on every count; game
   -- logic moves these later. They live here so each page reads one source.
   seats         int     not null default 0,     -- seats held in the legislature
@@ -26,7 +26,8 @@ create table if not exists public.parties (
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
   actions_remaining int not null default 3,     -- party actions left this turn; reset to 3 each tick by advance_tick()
-  conviction    int     not null default 0,     -- Manifesto currency: earned over time, spent on planks. Every party starts at 0.
+  conviction    int     not null default 1,     -- Manifesto currency: earned over time, spent on planks. Every new party starts with 1.
+  description   text,                            -- founding identity statement (≤360 chars); replaces the archetype picker at creation
   created_at   timestamptz not null default now(),
   unique (user_id)
 );
@@ -48,6 +49,14 @@ alter table public.parties add column if not exists conviction int not null defa
 -- shows the abbreviation. Cosmetic, so they're in the client write-scope below.
 alter table public.parties add column if not exists color text;
 alter table public.parties add column if not exists logo_url text;
+-- Founding identity statement (≤360 chars), set in place of the archetype picker.
+alter table public.parties add column if not exists description text;
+alter table public.parties drop constraint if exists parties_description_len;
+alter table public.parties add constraint parties_description_len check (char_length(coalesce(description, '')) <= 360);
+-- Archetype is no longer chosen at creation; relax the NOT NULL for new parties.
+alter table public.parties alter column archetype drop not null;
+-- New parties begin with one conviction point (existing rows keep what they have).
+alter table public.parties alter column conviction set default 1;
 
 -- No two parties in the same nation may share a name (case-insensitive) or an
 -- abbreviation — enforced server-side, not just in the client.
@@ -81,8 +90,8 @@ create policy "parties_delete_own" on public.parties for delete using (auth.uid(
 -- WITH CHECK above keeps it pinned to the caller). When standings start changing
 -- server-side, do it via a service-role path (which bypasses these grants).
 revoke insert, update on public.parties from authenticated;
-grant insert (user_id, nation_id, name, abbreviation, archetype) on public.parties to authenticated;
-grant update (user_id, nation_id, name, abbreviation, archetype, color, logo_url) on public.parties to authenticated;
+grant insert (user_id, nation_id, name, abbreviation, description) on public.parties to authenticated;
+grant update (user_id, nation_id, name, abbreviation, description, color, logo_url) on public.parties to authenticated;
 
 -- Archetype crowding: a party's popularity ceiling is trimmed by 2 points for every
 -- OTHER party in the nation sharing its archetype. ONE source for the gameplay cap

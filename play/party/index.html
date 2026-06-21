@@ -90,6 +90,7 @@
   .pbadge--status .dot{width:7px;height:7px;border-radius:50%;background:var(--soft)}
   .pbadge--gov{color:var(--green)}
   .pbadge--gov .dot{background:var(--green)}
+  .ptagline{margin-top:11px;color:var(--muted);font-size:14px;line-height:1.5;max-width:640px}
   .pstats{display:flex;gap:10px;flex-wrap:wrap}
   .pstat{min-width:108px;border:1px solid var(--line);background:var(--bg);border-radius:12px;padding:12px 16px}
   .pstat__k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:7px}
@@ -331,6 +332,7 @@
             <span class="pbadge" id="archBadge">&mdash;</span>
             <span class="pbadge pbadge--status" id="statusBadge"><span class="dot"></span><span id="statusText">Opposition</span></span>
           </div>
+          <p class="ptagline" id="ptagline" style="display:none"></p>
         </div>
       </div>
       <div class="pstats">
@@ -786,7 +788,7 @@
 
       // Sidebar + title.
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       document.title = party.name + ' · Nationhood';
 
       // Header card.
@@ -795,7 +797,14 @@
       ME.user = user; ME.party = party;
       applyAccent(partyColor(party));  // party colour (or archetype default) overrides the page accent
       renderCrest(party);                                            // logo image, else tinted initials
-      document.getElementById('archBadge').textContent = party.archetype;
+      // Archetype is no longer chosen at founding: show its badge only if the party
+      // has one, and surface the founding description as the party's tagline.
+      var archBadge = document.getElementById('archBadge');
+      archBadge.textContent = party.archetype || '';
+      archBadge.style.display = party.archetype ? '' : 'none';
+      var tagline = document.getElementById('ptagline');
+      tagline.textContent = party.description || '';
+      tagline.style.display = party.description ? '' : 'none';
 
       if (nation && nation.ruling_party) {
         // One-party state: this is a faction of the ruling party, not gov/opposition.
@@ -830,8 +839,9 @@
         .eq('nation_id', party.nation_id);
       const ap = allParties || [];
       // Archetype crowding trims the ceiling: −2% for every OTHER party sharing your
-      // archetype (mirrors _archetype_ceiling_penalty in SQL). Recompute + redraw.
-      CEIL_PENALTY = 2 * Math.max(0, ap.filter(function (x) { return x.archetype === party.archetype; }).length - 1);
+      // archetype (mirrors _archetype_ceiling_penalty in SQL, where a null archetype
+      // matches nothing). A party with no archetype takes no crowding penalty.
+      CEIL_PENALTY = party.archetype ? 2 * Math.max(0, ap.filter(function (x) { return x.archetype === party.archetype; }).length - 1) : 0;
       renderPopularity(party);
       var leaders = {};
       const partyIds = ap.map(function (x) { return x.id; });

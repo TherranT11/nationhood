@@ -100,33 +100,59 @@ $$;
 -- It does NOT fail here — a measure stands for its full window (6 ticks) and only
 -- fails for want of a majority at tick advance (advance_tick, schema/60). ONE place
 -- the pass rule lives (propose + cast_vote call it). Returns the status.
-create or replace function public._resolve_proposal(p_proposal uuid)
+-- Drop the pre-simple-majority single-arg version so re-running the schema doesn't
+-- leave an ambiguous overload beside the (uuid, boolean) signature below.
+drop function if exists public._resolve_proposal(uuid);
+
+-- Tally a floor measure. Called after every vote (p_final=false) and once more at
+-- the close of voting (p_final=true, from advance_tick). The pass rule is a simple
+-- majority of the seats actually cast — Aye-seats > Nay-seats — decided at the
+-- close. Before the close we still pass early the moment an outright majority of
+-- the whole chamber backs it, since that result can no longer be overturned and so
+-- never contradicts the simple-majority rule. A measure only fails at the close.
+create or replace function public._resolve_proposal(p_proposal uuid, p_final boolean default false)
 returns text
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_p public.proposals%rowtype; v_maj int; v_aye int;
+  v_p public.proposals%rowtype; v_maj int; v_aye int; v_nay int; v_pass boolean;
 begin
   select * into v_p from public.proposals where id = p_proposal for update;
   if not found then return 'gone'; end if;
   if v_p.status <> 'voting' then return v_p.status; end if;
 
   select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = v_p.nation_id;
-  select coalesce(sum(p.seats) filter (where pv.aye), 0) into v_aye
+  select coalesce(sum(p.seats) filter (where pv.aye), 0),
+         coalesce(sum(p.seats) filter (where not pv.aye), 0)
+    into v_aye, v_nay
     from public.proposal_votes pv join public.parties p on p.id = pv.party_id
    where pv.proposal_id = p_proposal;
 
-  if v_aye >= v_maj then   -- v_maj is always >= 1, so this implies real seated Ayes
+  -- early: outright chamber majority (v_maj >= 1, so this implies real seated Ayes);
+  -- at close: simple majority of the seats cast.
+  v_pass := (v_aye >= v_maj) or (p_final and v_aye > v_nay and v_aye > 0);
+
+  if v_pass then
     update public.proposals set status = 'passed' where id = p_proposal;
     if v_p.kind = 'declaration' then
       perform public._apply_declaration(v_p.nation_id, v_p.payload->>'slug', v_p.payload->>'value');
+    elsif v_p.kind = 'law' then
+      perform public._apply_law(v_p.nation_id, (v_p.payload->>'policy_id')::uuid, (v_p.payload->>'option_idx')::int);
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
               'The assembly passed a measure: ' || v_p.title || '.', public.current_game_date());
     return 'passed';
+  end if;
+
+  if p_final then   -- voting closed without a simple majority
+    update public.proposals set status = 'failed' where id = p_proposal;
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+      values (v_p.nation_id, v_p.party_id, 'declaration',
+              'A measure failed for want of a majority: ' || v_p.title || '.', public.current_game_date());
+    return 'failed';
   end if;
   return 'voting';
 end $$;

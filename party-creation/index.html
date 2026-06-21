@@ -29,22 +29,13 @@
   input.pname.abbr { max-width: 220px; text-transform: uppercase; letter-spacing: 0.18em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
   .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
 
-  .arch-h { margin: 30px 0 12px; }
-  .archs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 620px) { .archs { grid-template-columns: 1fr; } }
-  .arch {
-    --c: #5546E8;
-    display: flex; gap: 14px; align-items: flex-start; text-align: left; background: var(--surface);
-    border: 1.5px solid var(--line); border-radius: 14px; padding: 16px; cursor: pointer; color: var(--ink);
-    font-family: inherit; transition: border-color .15s, background .15s, box-shadow .2s;
+  .sec-h { margin: 30px 0 12px; }
+  textarea.pdesc {
+    width: 100%; font-size: 15px; line-height: 1.5; padding: 14px 16px; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--surface); color: var(--ink); outline: none; transition: border-color .15s;
+    font-family: inherit; resize: vertical; min-height: 110px;
   }
-  .arch:hover { border-color: var(--c); }
-  .arch.sel { border-color: var(--c); background: color-mix(in srgb, var(--c) 6%, var(--surface)); box-shadow: 0 10px 28px -18px var(--c); }
-  .arch__ico { flex: none; width: 42px; height: 42px; border-radius: 11px; background: color-mix(in srgb, var(--c) 14%, var(--surface)); color: var(--c); display: flex; align-items: center; justify-content: center; }
-  .arch__ico svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .arch__b { flex: 1; min-width: 0; }
-  .arch__n { display: block; font-weight: 800; font-size: 15.5px; letter-spacing: -0.01em; color: var(--c); }
-  .arch__d { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; margin-top: 4px; }
+  textarea.pdesc:focus { border-color: var(--line2); }
 
   /* sticky action bar */
   .bar { position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--line); }
@@ -55,7 +46,7 @@
   .bar .btn { padding: 12px 22px; font-size: 15px; }
   .btn-solid[disabled] { opacity: .45; cursor: not-allowed; }
   .msg.error { color: var(--err); }
-  @media (max-width: 560px) { .create { padding: 28px 16px 116px; } .create h1 { font-size: 25px; } .arch { padding: 14px; gap: 12px; } .bar__in { padding: 12px 16px; } .bar .picked { flex-basis: 100%; } .bar .btns { flex: 1; } .bar .btn { flex: 1; } }
+  @media (max-width: 560px) { .create { padding: 28px 16px 116px; } .create h1 { font-size: 25px; } .bar__in { padding: 12px 16px; } .bar .picked { flex-basis: 100%; } .bar .btns { flex: 1; } .bar .btn { flex: 1; } }
 </style>
 </head>
 <body>
@@ -81,17 +72,18 @@
     <div class="lbl" id="nameLbl">Party name</div>
     <input class="pname" id="pname" type="text" maxlength="48" placeholder="e.g. The People's Front" autocomplete="off">
 
-    <div class="lbl arch-h">Party abbreviation</div>
+    <div class="lbl sec-h">Party abbreviation</div>
     <input class="pname abbr" id="pabbr" type="text" maxlength="4" placeholder="e.g. PFP" autocomplete="off" spellcheck="false">
     <div class="hint">2–4 capital letters. Must be unique within the nation.</div>
 
-    <div class="lbl arch-h">Choose an archetype</div>
-    <div class="archs" id="archs"></div>
+    <div class="lbl sec-h">Party description</div>
+    <textarea class="pdesc" id="pdesc" maxlength="360" rows="4" placeholder="Describe what your party stands for and who they represent."></textarea>
+    <div class="hint"><span id="descCount">0</span> / 360</div>
   </main>
 
   <div class="bar">
     <div class="bar__in">
-      <span class="picked" id="picked">Pick a name and an archetype to continue.</span>
+      <span class="picked" id="picked">Add a name and a 2–4 letter abbreviation to continue.</span>
       <div class="btns">
         <a class="btn btn-ghost" href="/nation-select/" role="button">Go Back</a>
         <button class="btn btn-solid" id="join" type="button" disabled>Join Nation</button>
@@ -109,7 +101,6 @@
     // Guard: if you already have a party, you can't found another — go to your
     // instance instead of overwriting it.
     (async () => { if (await currentParty()) window.location.replace('/play/'); })();
-    import { ARCHETYPES } from '/archetypes.js';
 
     document.getElementById('logout').addEventListener('click', logout);
 
@@ -118,41 +109,28 @@
     // One-party state: set when the nation has a ruling party (you join as a faction).
     var rulingName = '', noun = 'party';
 
-    var selected = null;
     var pname = document.getElementById('pname');
     var pabbr = document.getElementById('pabbr');
+    var pdesc = document.getElementById('pdesc');
+    var descCount = document.getElementById('descCount');
     var join = document.getElementById('join');
     var picked = document.getElementById('picked');
 
-    document.getElementById('archs').innerHTML = ARCHETYPES.map(function (a) {
-      return '<button class="arch" type="button" data-id="' + a.id + '" style="--c:' + a.color + '">' +
-        '<span class="arch__ico"><svg viewBox="0 0 24 24">' + a.icon + '</svg></span>' +
-        '<span class="arch__b"><span class="arch__n">' + a.name + '</span><span class="arch__d">' + a.desc + '</span></span></button>';
-    }).join('');
-
-    document.querySelectorAll('.arch').forEach(function (el) {
-      el.addEventListener('click', function () {
-        document.querySelectorAll('.arch').forEach(function (x) { x.classList.remove('sel'); });
-        el.classList.add('sel');
-        selected = el.dataset.id;
-        refresh();
-      });
-    });
     pname.addEventListener('input', refresh);
     // Abbreviation: force to 2–4 capital letters as the player types.
     pabbr.addEventListener('input', function () {
       pabbr.value = pabbr.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
       refresh();
     });
+    pdesc.addEventListener('input', function () { descCount.textContent = pdesc.value.length; });
 
-    function archName(id) { var a = ARCHETYPES.filter(function (x) { return x.id === id; })[0]; return a ? a.name : ''; }
     function abbrOk() { return /^[A-Z]{2,4}$/.test(pabbr.value.trim()); }
     function refresh() {
       var name = pname.value.trim();
-      var ready = name.length > 0 && abbrOk() && selected && !saving;
+      var ready = name.length > 0 && abbrOk() && !saving;
       join.disabled = !ready;
-      if (name && abbrOk() && selected) { picked.className = 'picked'; picked.innerHTML = '<b>' + esc(name) + '</b> (' + esc(pabbr.value.trim()) + ') · ' + esc(archName(selected)); }
-      else { picked.className = 'picked'; picked.textContent = 'Add a name, a 2–4 letter abbreviation, and an archetype to continue.'; }
+      if (name && abbrOk()) { picked.className = 'picked'; picked.innerHTML = '<b>' + esc(name) + '</b> (' + esc(pabbr.value.trim()) + ')'; }
+      else { picked.className = 'picked'; picked.textContent = 'Add a name and a 2–4 letter abbreviation to continue.'; }
     }
 
     // One-party state: if the admin named a ruling party for this nation, you join
@@ -165,7 +143,7 @@
         if (!data || !data.ruling_party) return;
         rulingName = data.ruling_party; noun = 'faction';
         var b = document.getElementById('onepartyBanner');
-        b.innerHTML = 'The nation of <b>' + esc(data.name || 'this nation') + '</b> is a one-party state. New political parties are not legally viable — if you join, you do so as a <b>caucus / faction of ' + esc(rulingName) + '</b>. Name your faction and choose an archetype; its members are those who support that line.';
+        b.innerHTML = 'The nation of <b>' + esc(data.name || 'this nation') + '</b> is a one-party state. New political parties are not legally viable — if you join, you do so as a <b>caucus / faction of ' + esc(rulingName) + '</b>. Name your faction and describe what it stands for; its members are those who support that line.';
         b.hidden = false;
         document.getElementById('h1').textContent = 'Create your faction';
         document.getElementById('sub').textContent = 'Form a faction within ' + rulingName + ' and choose what it stands for.';
@@ -213,12 +191,11 @@
     join.addEventListener('click', async function () {
       var name = pname.value.trim();
       var abbr = pabbr.value.trim().toUpperCase();
-      if (saving || !name || !selected || !abbrOk()) return;
+      if (saving || !name || !abbrOk()) return;
       if (!isConfigured) { fail('Not connected yet.'); return; }
       var user = await requireUser();
       if (!user) return; // redirected to login
-      // Name the archetype in the confirmation so what's being saved is visible.
-      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = 'Founding ' + name + ' (' + archName(selected) + ')…';
+      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = 'Founding ' + name + '…';
       try {
         // No two parties in a nation may share a name (case-insensitive) or
         // abbreviation. Pre-check for a clear message; the DB unique indexes are
@@ -245,7 +222,7 @@
 
         // One party per player: upsert on the user so re-creating replaces.
         const { data: created, error } = await supabase.from('parties')
-          .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, archetype: archName(selected) }, { onConflict: 'user_id' })
+          .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, description: pdesc.value.trim() || null }, { onConflict: 'user_id' })
           .select('id').single();
         if (error || !created) { fail('That name or abbreviation is already taken in this nation.'); return; }
         await seedLeader(created.id);  // give a brand-new party its Party Leader
