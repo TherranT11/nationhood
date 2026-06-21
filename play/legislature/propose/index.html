@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Draft a Bill · Nationhood</title>
+<title>Propose a Measure · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -119,8 +119,8 @@
     <a class="back" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Legislature</a>
     <div class="phead">
       <span class="eye">Legislature</span>
-      <h1>Draft a Bill</h1>
-      <p>Name the bill, fill its articles with policies, and see where it would push the economy.</p>
+      <h1>Propose a Measure</h1>
+      <p>Bring a law or a declaration to the chamber.</p>
     </div>
 
     <div class="grid" id="proposeGrid">
@@ -191,6 +191,9 @@
       var pv = document.getElementById('l-pv');
       pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (idx + 1)))) : 'Choose an option';
       pv.classList.toggle('empty', !o);
+      // Previews every authored effect with its cadence. NOTE: the server applies
+      // 'once' effects on enactment today; 'per tick' effects are labelled but not yet
+      // applied (the per-tick pass is a later stage) — accurate on timing, not live.
       var effs = (o && o.effects) || [];
       document.getElementById('l-effs').innerHTML = effs.length
         ? effs.map(function (e) { var t = effectText(e, pop, pros); return '<div class="eff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')
