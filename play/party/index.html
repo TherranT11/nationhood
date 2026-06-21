@@ -222,6 +222,12 @@
   .cveff.pos b{color:var(--green)} .cveff.neg b{color:var(--red)}
   .cveff span{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft);text-align:right}
   .cveff.none{color:var(--soft);font-style:italic}
+  .cvadopt{margin-top:12px;width:100%;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--c,var(--indigo));border:1.5px solid var(--c,var(--indigo));padding:10px;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+  .cvadopt span{opacity:.85;font-size:9.5px}
+  .cvadopt:hover:not(:disabled){filter:brightness(1.08)}
+  .cvadopt:disabled{cursor:not-allowed;opacity:.5}
+  .cvadopt.on{background:transparent;color:var(--green);border-color:var(--green);opacity:1;cursor:default}
+  .cvcard.is-adopted{border-left-color:var(--green)}
 
   /* Phone refresh: tighter padding, a header that stacks (logo + name on top, the
      three standings as an even 3-up row), a single-column readout, and a modal
@@ -630,46 +636,80 @@
   }
 
   // ---- The Manifesto: the convictions written for this party's archetype, grouped
-  // by Level. Read-only for now (browsing only) — adopting + spending Conviction
-  // comes with a later stage. Conviction balance is read live from the party row;
-  // years-in-power waits on the political calendar.
+  // by Level. A party adopts one by spending Conviction (◆), which applies its
+  // on-adopt effects; "while active" effects then run each month (the trigger engine).
+  // Conviction balance is read live from the party row; years-in-power waits on the
+  // political calendar.
+  var CVS = { party: null, rows: [], adopted: {}, balance: 0, busy: false };
   function cvEffHtml(L){ return '<div class="cveff ' + L.cls + '"><b>' + esc(L.reward) + '</b><span>' + esc(L.cond) + '</span></div>'; }
-  function cvCard(d){
-    var lines = adoptLines(d).concat(activeLines(d));
-    var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
-    return '<div class="cvcard" style="--c:' + ACCENT + '">' +
-      '<div class="cvcard__hd"><b>' + esc(d.name || 'Untitled') + '</b><span class="cvcost">◆ ' + (d.cost != null ? d.cost : 0) + '</span></div>' +
-      (d.desc ? '<div class="cvcard__desc">' + esc(d.desc) + '</div>' : '') +
-      '<div class="cvcard__eff">' + eff + '</div></div>';
-  }
   function mfEmpty(b, s){ return '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg><b>' + b + '</b><span>' + s + '</span></div>'; }
 
+  function cvCard(r){
+    var d = r.definition || {}, cost = d.cost != null ? d.cost : 0, adopted = !!CVS.adopted[r.id];
+    var lines = adoptLines(d).concat(activeLines(d));
+    var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
+    var btn = adopted
+      ? '<button class="cvadopt on" type="button" disabled>✓ Adopted</button>'
+      : '<button class="cvadopt" type="button" data-id="' + esc(r.id) + '"' + (CVS.balance < cost ? ' disabled' : '') + '>Adopt <span>◆ ' + cost + '</span></button>';
+    return '<div class="cvcard' + (adopted ? ' is-adopted' : '') + '" style="--c:' + ACCENT + '">' +
+      '<div class="cvcard__hd"><b>' + esc(d.name || 'Untitled') + '</b><span class="cvcost">◆ ' + cost + '</span></div>' +
+      (d.desc ? '<div class="cvcard__desc">' + esc(d.desc) + '</div>' : '') +
+      '<div class="cvcard__eff">' + eff + '</div>' + btn + '</div>';
+  }
+
+  function renderConvictions(){
+    var box = document.getElementById('mfList');
+    document.getElementById('convBal').textContent = CVS.balance;
+    document.getElementById('mfCount').textContent = CVS.rows.length + (CVS.rows.length === 1 ? ' conviction' : ' convictions');
+    var by = convsByLevel(CVS.rows), html = '';
+    [1, 2, 3, 4, 5].forEach(function (lvl) {
+      if (!by[lvl].length) return;
+      html += '<div class="cv-lvl">Level ' + convRoman(lvl) + '</div>' + by[lvl].map(cvCard).join('');
+    });
+    box.innerHTML = html;
+    box.querySelectorAll('.cvadopt[data-id]').forEach(function (b) { b.onclick = function () { adoptConviction(b.dataset.id); }; });
+  }
+
+  async function adoptConviction(id){
+    if (CVS.busy) return; CVS.busy = true;
+    document.querySelectorAll('.cvadopt').forEach(function (b) { b.disabled = true; });
+    try {
+      const res = await supabase.rpc('adopt_conviction', { p_conviction: id });
+      if (res.error) throw res.error;
+      CVS.adopted[id] = true;
+      // Re-read the party row so the balance + the popularity standing reflect the
+      // on-adopt effects (one source: the party row).
+      try {
+        const { data: p } = await supabase.from('parties').select('popularity, conviction').eq('id', CVS.party.id).single();
+        if (p) { CVS.balance = Number(p.conviction) || 0; document.getElementById('st-pop').textContent = Number(p.popularity) || 0; }
+      } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
+      renderConvictions();
+    } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); renderConvictions(); }
+    finally { CVS.busy = false; }
+  }
+
   async function initManifesto(party) {
-    document.getElementById('convBal').textContent = Number(party.conviction) || 0;
+    CVS = { party: party, rows: [], adopted: {}, balance: Number(party.conviction) || 0, busy: false };
+    document.getElementById('convBal').textContent = CVS.balance;
     document.getElementById('convYears').textContent = 0;   // no calendar yet → 0 years in power
-    var box = document.getElementById('mfList'), count = document.getElementById('mfCount');
-    count.textContent = '';
+    var box = document.getElementById('mfList');
+    document.getElementById('mfCount').textContent = '';
     if (!party.archetype) {
       box.innerHTML = mfEmpty('No convictions', 'A party’s convictions come from its archetype — this party doesn’t have one.');
       return;
     }
-    var rows;
     try {
       const { data, error } = await supabase.from('convictions').select('id, definition');
       if (error) throw error;
-      rows = (data || []).filter(function (r) { return (r.definition || {}).archetype === party.archetype; });
+      CVS.rows = (data || []).filter(function (r) { return (r.definition || {}).archetype === party.archetype; });
+      const { data: ad } = await supabase.from('party_convictions').select('conviction_id').eq('party_id', party.id);
+      (ad || []).forEach(function (r) { CVS.adopted[r.conviction_id] = true; });
     } catch (e) { box.innerHTML = mfEmpty('Couldn’t load convictions', 'Refresh to try again.'); return; }
-    if (!rows.length) {
+    if (!CVS.rows.length) {
       box.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(party.archetype) + ' parties yet.');
       return;
     }
-    count.textContent = rows.length + (rows.length === 1 ? ' conviction' : ' convictions');
-    var by = convsByLevel(rows), html = '';
-    [1, 2, 3, 4, 5].forEach(function (lvl) {
-      if (!by[lvl].length) return;
-      html += '<div class="cv-lvl">Level ' + convRoman(lvl) + '</div>' + by[lvl].map(function (r) { return cvCard(r.definition); }).join('');
-    });
-    box.innerHTML = html;
+    renderConvictions();
   }
 
   (async () => {
