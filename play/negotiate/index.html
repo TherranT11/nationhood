@@ -242,7 +242,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, majority } from '/util.js';
-  import { archetypeColor } from '/archetypes.js';
+  import { archetypeColor, ideologyLabel } from '/archetypes.js';
   import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement, fetchMessages, postMessage } from '/negotiations.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
 
@@ -324,7 +324,7 @@
     box.appendChild(iw);
     if(!full){
       var menu=iw.querySelector('#invmenu');
-      menu.innerHTML=invitablePool().map(function(p){return '<div class="io" data-id="'+esc(p.id)+'"><span class="td" style="background:'+colorOf(p)+'"></span><b>'+esc(p.name)+'</b><span>'+(p.seats||0)+' seats · '+popOf(p)+'%'+(p.archetype?' · '+esc(p.archetype):'')+'</span></div>';}).join('');
+      menu.innerHTML=invitablePool().map(function(p){return '<div class="io" data-id="'+esc(p.id)+'"><span class="td" style="background:'+colorOf(p)+'"></span><b>'+esc(p.name)+'</b><span>'+(p.seats||0)+' seats · '+popOf(p)+'% · '+esc(ideologyLabel(p))+'</span></div>';}).join('');
       iw.querySelector('#invbtn').onclick=function(e){e.stopPropagation();menu.classList.toggle('open');};
       menu.querySelectorAll('.io').forEach(function(o){o.onclick=function(){ inviteParty(neg.id,o.dataset.id).then(function(r){ active=o.dataset.id; ping('<b>Invitation sent.</b>'+(r&&r.actions!=null?' '+r.actions+' action'+(r.actions===1?'':'s')+' left.':'')); return reload(); }).catch(err); };});
     }
@@ -404,7 +404,7 @@
     var statusPill = amHost
       ? '<span class="pstat '+(partyStatus(active)==='accepted'?'ok':'wait')+'">'+stWord(partyStatus(active))+'</span>'
       : '<span class="pstat '+(partyReady(active)?'ok':'wait')+'">'+(partyReady(active)?'All terms agreed':'Negotiating')+'</span>';
-    phd.innerHTML='<span class="pemb">'+esc(hp.abbr||'?')+'</span><div class="pi"><b>'+esc(hp.name)+'</b><span>'+esc(hp.archetype||'')+' &nbsp;·&nbsp; '+(hp.seats||0)+' seats &nbsp;·&nbsp; '+popOf(hp)+'% support</span></div>'+
+    phd.innerHTML='<span class="pemb">'+esc(hp.abbr||'?')+'</span><div class="pi"><b>'+esc(hp.name)+'</b><span>'+esc(ideologyLabel(hp))+' &nbsp;·&nbsp; '+(hp.seats||0)+' seats &nbsp;·&nbsp; '+popOf(hp)+'% support</span></div>'+
       statusPill + (amHost && !locked?'<button class="premove">Remove</button>':'');
     if(amHost && !locked){ phd.querySelector('.premove').onclick=function(){ removeParty(neg.id,active).then(function(){ active=null; return reload(); }).catch(err); }; }
     panel.appendChild(phd);
@@ -454,7 +454,7 @@
     html+='<div class="crow anchor"><span class="cd" style="background:'+(HOST?HOST.color:'#5546E8')+'"></span><div class="cn">'+esc(HOST?HOST.name:'You')+'<small>You · anchor</small></div><span class="cseat">'+(HOST?HOST.seats:0)+'</span></div>';
     counterIds().forEach(function(pid){
       var p=POOL[pid]||{name:'A party',seats:0}, st=partyStatus(pid), counted=st==='accepted';
-      html+='<div class="crow"><span class="cd" style="background:'+colorOf(p)+'"></span><div class="cn">'+esc(p.name)+'<small>'+stWord(st)+(p.archetype?' · '+esc(p.archetype):'')+'</small></div>'+
+      html+='<div class="crow"><span class="cd" style="background:'+colorOf(p)+'"></span><div class="cn">'+esc(p.name)+'<small>'+stWord(st)+' · '+esc(ideologyLabel(p))+'</small></div>'+
         '<span class="csd" style="background:'+(counted?'var(--green)':'var(--amber)')+'"></span><span class="cseat"'+(counted?'':' style="color:var(--soft)"')+'>'+(p.seats||0)+'</span>'+(locked?'':'<span class="cx" data-id="'+esc(pid)+'">×</span>')+'</div>';
     });
     var c=termCounts(neg), rl=redlineUnmet();
@@ -570,7 +570,7 @@
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats').eq('id', party.nation_id).single();
       var nationName=(nation&&nation.name)||party.nation_id;
       document.getElementById('sname').textContent=party.name;
-      document.getElementById('psub').textContent=(party.archetype ? party.archetype + ' · ' : '') + nationName;
+      document.getElementById('psub').textContent=ideologyLabel(party) + ' · ' + nationName;
       document.title='Negotiate · '+party.name;
       if(nation&&nation.flag){ var f=document.getElementById('flag'); f.onload=function(){f.hidden=false;}; f.src=nation.flag; }
       CHAMBER=(nation&&nation.legislature_seats)||280;

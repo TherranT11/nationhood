@@ -27,6 +27,14 @@ export function partyColor(party) {
   return (party && party.color) || archetypeColor(party && party.archetype);
 }
 
+// A party's ideology LABEL for display: its archetype, or "No Ideology" until it
+// adopts its first conviction (which sets the archetype). ONE source for every
+// sidebar subtitle, party card, and roster list across the app, so a party with no
+// ideology reads the same everywhere.
+export function ideologyLabel(party) {
+  return (party && party.archetype) || 'No Ideology';
+}
+
 // Hard ideological oppositions. Two archetypes are "opposite poles" when their
 // core commitments contradict — a coalition partner on the opposite pole costs
 // the forming government confidence (see the government-formation design). Listed

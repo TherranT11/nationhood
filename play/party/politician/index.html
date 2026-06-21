@@ -138,6 +138,7 @@
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { ideologyLabel } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -179,7 +180,7 @@
         '<span class="hero__pic">' + esc(initials(name)) + '</span>' +
         '<div class="hero__id"><div class="kicker">Prominent Politician</div><h1>' + esc(name) + '</h1>' +
           '<div class="role">' + esc(pol.status || 'Party Member') + ' &middot; ' + esc(party.name) + '</div>' +
-          '<div class="htags">' + (party.archetype ? '<span class="tag party">' + esc(party.archetype) + '</span>' : '') + '</div></div>' +
+          '<div class="htags"><span class="tag party">' + esc(ideologyLabel(party)) + '</span></div></div>' +
       '</div><div class="sgrid">' + tiles + '</div></section>' +
 
       '<section class="mod"><div class="mod__hd">Current Task</div>' +
@@ -212,7 +213,7 @@
       const nationName = (nation && nation.name) || p.nation_id;
 
       document.getElementById('sname').textContent = p.name || 'Your Party';
-      document.getElementById('psub').textContent = (p.archetype ? p.archetype + ' · ' : '') + nationName;
+      document.getElementById('psub').textContent = ideologyLabel(p) + ' · ' + nationName;
       if (nation && nation.flag) {
         var flag = document.getElementById('flag');
         flag.onload = function () { flag.hidden = false; };

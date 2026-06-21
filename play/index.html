@@ -257,6 +257,7 @@
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
   import { esc, COMPETENCIES, tickToDate } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
+  import { ideologyLabel } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // injects the shared top bar into #topbar + wires the settings gear
@@ -525,7 +526,7 @@
     html += negPool.length ? negPool.map(function (p) {
       return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
         '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
-        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '%' + (p.archetype ? ' &middot; ' + esc(p.archetype) : '') + '</span></button>';
+        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% &middot; ' + esc(ideologyLabel(p)) + '</span></button>';
     }).join('') : '<p class="empty">No other parties in the nation to negotiate with yet.</p>';
     list.innerHTML = html;
     document.getElementById('negBack').addEventListener('click', function () { openNegotiateModal(); });
@@ -572,7 +573,7 @@
       box.innerHTML = invites.map(function (n) {
         var host = (n.host && n.host.name) || 'Another party';
         var roster = (n.parties || []).map(function (p) {
-          return '<span class="invite__p"><b>' + esc(p.name) + '</b>' + (p.archetype ? ' <span>· ' + esc(p.archetype) + '</span>' : '') + '</span>';
+          return '<span class="invite__p"><b>' + esc(p.name) + '</b> <span>· ' + esc(ideologyLabel(p)) + '</span></span>';
         }).join('');
         return '<div class="invite" data-id="' + esc(n.id) + '"><div class="invite__t"><b>' + esc(host) + '</b> has invited you to Coalition Talks.' +
           (roster ? '<span class="invite__lbl">Invited Parties</span>' + roster : '') + '</div>' +
@@ -645,7 +646,7 @@
       setTopbarFunds(currency, party.funds);
 
       document.getElementById('pname').textContent = party.name;
-      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       document.getElementById('kicker').textContent = nationName;
       document.getElementById('eventsHd').textContent = 'Events in ' + nationName;
       document.getElementById('welcome').textContent = 'Welcome to ' + nationName;
