@@ -38,7 +38,7 @@ begin
   select definition into v_def from public.policies where id = p_policy;
   if v_def is null then raise exception 'No such policy.'; end if;
   policy_name := coalesce(v_def->>'name', 'Policy');
-  v_opts := v_def->(coalesce(v_def->>'type', 'spectrum'));   -- the 'spectrum' or 'binary' option array
+  v_opts := public._policy_options(v_def);
   if v_opts is null or jsonb_typeof(v_opts) <> 'array'
      or p_option < 0 or p_option >= jsonb_array_length(v_opts) then
     raise exception 'Invalid policy option.';

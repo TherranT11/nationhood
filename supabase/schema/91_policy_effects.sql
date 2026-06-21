@@ -33,11 +33,17 @@ $$;
 create or replace function public._nation_stat_add(p_nation text, p_col text, p_key text,
   p_delta numeric, p_lo numeric, p_hi numeric)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_old numeric; v_new numeric;
+declare v_raw text; v_old numeric; v_new numeric;
 begin
-  execute format('select coalesce((%I->>$1)::numeric, 0) from public.nations where id = $2', p_col)
-    into v_old using p_key, p_nation;
-  if v_old is null then return; end if;                 -- no such nation
+  execute format('select (%I->>$1) from public.nations where id = $2', p_col)
+    into v_raw using p_key, p_nation;
+  -- Null (absent key, or no such nation) counts as 0 — a missing nation just makes
+  -- the update below a no-op. A non-numeric legacy value (e.g. a text regime label
+  -- on an un-migrated nation) is skipped rather than thrown on, so it can't abort
+  -- the enclosing law/tick transaction.
+  if v_raw is null then v_old := 0;
+  elsif v_raw ~ '^-?[0-9]+(\.[0-9]+)?$' then v_old := v_raw::numeric;
+  else return; end if;
   v_new := v_old + p_delta;
   if p_lo is not null then v_new := greatest(p_lo, v_new); end if;
   if p_hi is not null then v_new := least(p_hi, v_new); end if;
@@ -110,7 +116,7 @@ declare v_def jsonb; v_opts jsonb; v_eff jsonb;
 begin
   select definition into v_def from public.policies where id = p_policy;
   if v_def is null then return; end if;
-  v_opts := v_def->(coalesce(v_def->>'type', 'spectrum'));
+  v_opts := public._policy_options(v_def);
   if v_opts is null or jsonb_typeof(v_opts) <> 'array'
      or p_option < 0 or p_option >= jsonb_array_length(v_opts) then return; end if;
   for v_eff in select value from jsonb_array_elements(coalesce(v_opts->p_option->'effects', '[]'::jsonb)) loop

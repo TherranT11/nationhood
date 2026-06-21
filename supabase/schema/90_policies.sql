@@ -37,3 +37,11 @@ create policy "pol_delete_admin" on public.policies for delete using (public.is_
 -- admin-only write — schema/10).
 alter table public.nations add column if not exists policies jsonb not null default '{}'::jsonb;
 
+-- ONE source for a policy definition's option array — the 'spectrum' or 'binary'
+-- list, keyed by the policy's own type. Read by the law validator (schema/92) and
+-- the effects engine (schema/91); mirrors polOptList() in the admin tool.
+create or replace function public._policy_options(p_def jsonb)
+returns jsonb language sql immutable as $$
+  select p_def->(coalesce(p_def->>'type', 'spectrum'));
+$$;
+
