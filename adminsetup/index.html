@@ -158,6 +158,9 @@
   .poltab .archrow.sup .achip.on{border-color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 12%,var(--surface));color:var(--green,#16915a)}
   .poltab .archrow.opp .achip.on{border-color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B)}
   .poltab .archrow.tag .achip.on{border-color:var(--indigo,#5546E8);background:color-mix(in srgb,var(--indigo,#5546E8) 12%,var(--surface));color:var(--indigo,#5546E8)}
+  .poltab .tagadd{font-family:inherit;font-size:11px;font-weight:700;padding:6px 11px;border:1.5px dashed var(--line2,#D9D6D0);border-radius:18px;background:var(--surface);color:var(--soft);cursor:pointer}
+  .poltab .tagadd:hover{border-color:var(--indigo,#5546E8);color:var(--indigo,#5546E8)}
+  .subhd .tagadd{padding:3px 9px;font-size:10px}
   .poltab .pvtagrow{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px}
   .poltab .pvltag{font-size:9.5px;font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:14px;background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .poltab .sublab .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--soft)}
@@ -478,6 +481,7 @@
           show('admin');
           renderClock();
           await loadNations();
+          await loadIdentityTags();
           loadDeclFields();
           loadPolFields();
           renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []);
@@ -834,8 +838,29 @@
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     // Identity tags — metadata describing what a law IS (not a popularity score). A
     // policy option carries any of these; a conviction's "when a tagged law passes"
-    // effect keys off them. ONE source for the policy tag chips + the conviction picker.
-    var IDENTITY_TAGS = ['Tax cut','Tax rise','Values law','Farm / Land law','Trade law','Green law','Nationalisation','Security law','Civil-rights law'];
+    // effect keys off them. Loaded from public.identity_tags (the ONE source — an admin
+    // can add more from the policy/conviction UI), feeding the tag chips + the picker.
+    var IDENTITY_TAGS = [];
+    async function loadIdentityTags(){
+      try{
+        const { data, error } = await supabase.from('identity_tags').select('name').order('created_at');
+        if (error) throw error;
+        IDENTITY_TAGS = (data||[]).map(function(r){ return r.name; });
+      }catch(e){ /* keep whatever's loaded; the admin can reload */ }
+    }
+    // Add a new identity tag (prompted), persist it, refresh the shared list, then run
+    // onDone(name) so the caller can apply/select it. Shared by both authoring editors.
+    async function addIdentityTag(onDone){
+      var name = (prompt('New identity tag — what a law IS (e.g. “Subsidy”, “Defence law”):')||'').trim();
+      if (!name) return;
+      if (IDENTITY_TAGS.indexOf(name) >= 0) { onDone && onDone(name); return; }   // already exists
+      try{
+        const { error } = await supabase.from('identity_tags').insert({ name: name });
+        if (error) throw error;
+        await loadIdentityTags();
+        onDone && onDone(name);
+      }catch(e){ alert('Could not add that tag: '+(e.message||e)); }
+    }
     function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }
     var POL_SAMPLES = [{n:'2M·P10',pop:2,pros:10},{n:'70M·P14',pop:70,pros:14},{n:'200M·P16',pop:200,pros:16}];
     function polFmtAmt(a){ return (a>=0?'+':'−')+'₣'+Math.abs(a).toFixed(2)+'B'; }
@@ -975,7 +1000,7 @@
         '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
         '<div class="sublab">Archetype support</div><div class="archrow sup">'+supChips+'</div>'+
         '<div class="sublab" style="margin-top:12px">Archetype opposition</div><div class="archrow opp">'+oppChips+'</div>'+
-        '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'</div>'+
+        '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'<button type="button" class="tagadd">+ tag</button></div>'+
         '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
         '<button class="add sm addeff" type="button">+ effect</button>';
 
@@ -986,6 +1011,7 @@
       card.querySelectorAll('.archrow.sup .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.support.indexOf(a); if(k>=0)o.support.splice(k,1); else{ o.support.push(a); var o2=o.oppose.indexOf(a); if(o2>=0)o.oppose.splice(o2,1); } renderPolEditor(); renderPolPrev(); }; });
       card.querySelectorAll('.archrow.opp .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.oppose.indexOf(a); if(k>=0)o.oppose.splice(k,1); else{ o.oppose.push(a); var s2=o.support.indexOf(a); if(s2>=0)o.support.splice(s2,1); } renderPolEditor(); renderPolPrev(); }; });
       card.querySelectorAll('.archrow.tag .achip').forEach(function(ch){ ch.onclick=function(){ var t=ch.dataset.t, k=o.tags.indexOf(t); if(k>=0)o.tags.splice(k,1); else o.tags.push(t); renderPolEditor(); renderPolPrev(); }; });
+      card.querySelector('.archrow.tag .tagadd').onclick=function(){ addIdentityTag(function(name){ if(name&&o.tags.indexOf(name)<0)o.tags.push(name); renderPolEditor(); renderPolPrev(); }); };
       card.querySelectorAll('.effwrap').forEach(function(wrap,j){
         var e=o.effects[j], row=wrap.querySelector('.effrow');
         row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(isMoneyTarget(e.t)&&!e.scale)e.scale='pop'; renderPolEditor(); renderPolPrev(); };
@@ -1131,7 +1157,7 @@
       wrow.appendChild(t1); wrow.appendChild(t2); wc.appendChild(wrow); box.appendChild(wc);
 
       var lc=document.createElement('div'); lc.className='card';
-      lc.innerHTML='<div class="subhd"><span>Effect when a tagged law passes <span class="hint" style="text-transform:none;letter-spacing:0">· fires each time a law with this identity tag is enacted</span></span></div>';
+      lc.innerHTML='<div class="subhd"><span>Effect when a tagged law passes <span class="hint" style="text-transform:none;letter-spacing:0">· fires each time a law with this identity tag is enacted</span></span><button type="button" class="tagadd">+ new tag</button></div>';
       c.onLaw.forEach(function(e,j){
         var row=document.createElement('div'); row.className='ceff law';
         row.innerHTML='<select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
@@ -1143,8 +1169,9 @@
         lc.appendChild(row);
       });
       var lAdd=document.createElement('button'); lAdd.className='add'; lAdd.type='button'; lAdd.textContent='+ law effect';
-      lAdd.onclick=function(){ c.onLaw.push(cvLaw(IDENTITY_TAGS[0],'Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
+      lAdd.onclick=function(){ c.onLaw.push(cvLaw(IDENTITY_TAGS[0]||'','Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
       lc.appendChild(lAdd); box.appendChild(lc);
+      lc.querySelector('.subhd .tagadd').onclick=function(){ addIdentityTag(function(){ renderConvEditor(); renderConvPrev(); }); };
 
       var sv=document.createElement('button'); sv.className='save'; sv.type='button'; sv.textContent=convEditingId?'Save changes':'Create conviction';
       sv.onclick=saveConviction; box.appendChild(sv);
