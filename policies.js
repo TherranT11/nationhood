@@ -33,9 +33,11 @@ export function policyMoney(v, scale, pop, pros) {
 // the same coalesce(pop,0)/coalesce(pros,10) the server applies). Returns
 // { text, cad, cls } where cls is 'pos' | 'neg' | '' by direction.
 export function effectText(e, pop, pros) {
-  // 'once' on enactment; otherwise per tick — finite (dur>0) for that many months
-  // after enactment, else for as long as the option is in force.
-  var cad = e.cad === 'once' ? 'once' : (Number(e.dur) > 0 ? 'per tick · ' + Number(e.dur) + ' mo' : 'per tick');
+  // 'once' on enactment; 'year' every January while in force; otherwise per tick —
+  // finite (dur>0) for that many months after enactment, else while in force.
+  var cad = e.cad === 'once' ? 'once'
+          : e.cad === 'year' ? 'per year'
+          : (Number(e.dur) > 0 ? 'per tick · ' + Number(e.dur) + ' mo' : 'per tick');
   if (isMoneyTarget(e.t)) {
     var amt = policyMoney(Number(e.v) || 0, e.scale, Number(pop) || 0, Number(pros) || 10);
     return { text: e.t + ' ' + (amt >= 0 ? '+' : '−') + '₣' + Math.abs(amt).toFixed(2) + 'B',
