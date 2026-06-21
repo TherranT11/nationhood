@@ -1,6 +1,7 @@
 -- 94 · Party convictions (adoption).
--- Depends on: 20 (parties.conviction/archetype/popularity), 70 (_mod_cap_raise/
--- _mod_floor_drop), 91 (_apply_policy_effect), 93 (convictions). Run after 93.
+-- Depends on: 20 (parties.conviction/archetype/popularity), 40 (events +
+-- current_game_date), 70 (_mod_cap_raise/_mod_floor_drop), 91 (_apply_policy_effect),
+-- 93 (convictions). Run after 93.
 --
 -- Which convictions each party has adopted. Adopting spends the party's conviction
 -- points and applies the conviction's one-time on-adopt effects. The per-tick
@@ -44,12 +45,13 @@ begin
 end $$;
 
 -- Adopt a conviction for the caller's party: validate archetype + cost, spend the
--- points, record it, and apply the on-adopt effects. Server-authoritative.
+-- points, record it, apply the on-adopt effects, and announce the new platform to the
+-- shared nation feed. Server-authoritative.
 -- A party with no ideology yet (archetype null) commits to the conviction's archetype
 -- on this first adoption; afterwards it's locked to that archetype's tree.
 create or replace function public.adopt_conviction(p_conviction uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_def jsonb; v_arch text; v_cost int; v_eff jsonb;
+declare v_party public.parties%rowtype; v_def jsonb; v_arch text; v_cost int; v_eff jsonb; v_body text;
 begin
   v_party := public._lock_party();
   select definition into v_def from public.convictions where id = p_conviction;
@@ -71,6 +73,18 @@ begin
   for v_eff in select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb)) loop
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, v_eff);
   end loop;
+
+  -- Announce the new platform to the shared feed — one of five flavours, picked at
+  -- random. Plain text (the feed escapes event bodies); %1$s = party, %2$s = conviction.
+  v_body := format((array[
+    'The %1$s has unveiled a new platform, enshrining %2$s as a founding principle of the party.',
+    'In a defining shift, the %1$s has reshaped its platform around a new core conviction: %2$s.',
+    'The %1$s has formally adopted %2$s, planting it at the heart of the party''s new platform.',
+    'With a freshly announced platform, the %1$s now counts %2$s among its core principles.',
+    'The %1$s has declared a new direction, taking up %2$s as a central pillar of its identity.'
+  ])[1 + floor(random() * 5)::int], v_party.name, v_def->>'name');
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'conviction', v_body, public.current_game_date());
 
   return jsonb_build_object('ok', true, 'conviction', (select conviction from public.parties where id = v_party.id));
 end $$;
