@@ -10,10 +10,10 @@
 create table if not exists public.party_convictions (
   party_id      uuid not null references public.parties (id)      on delete cascade,
   conviction_id uuid not null references public.convictions (id)  on delete cascade,
-  adopted_tick  int  not null,
   created_at    timestamptz not null default now(),
   primary key (party_id, conviction_id)
 );
+alter table public.party_convictions drop column if exists adopted_tick;  -- unused (created_at records when)
 
 alter table public.party_convictions enable row level security;
 drop policy if exists "pconv_select_all" on public.party_convictions;
@@ -44,7 +44,7 @@ end $$;
 -- points, record it, and apply the on-adopt effects. Server-authoritative.
 create or replace function public.adopt_conviction(p_conviction uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_def jsonb; v_cost int; v_tick int; v_eff jsonb;
+declare v_party public.parties%rowtype; v_def jsonb; v_cost int; v_eff jsonb;
 begin
   v_party := public._lock_party();
   select definition into v_def from public.convictions where id = p_conviction;
@@ -57,10 +57,9 @@ begin
   end if;
   v_cost := coalesce((v_def->>'cost')::int, 0);
   if v_party.conviction < v_cost then raise exception 'Not enough conviction points.'; end if;
-  select current_tick into v_tick from public.game_state where id;
 
   update public.parties set conviction = conviction - v_cost where id = v_party.id;
-  insert into public.party_convictions (party_id, conviction_id, adopted_tick) values (v_party.id, p_conviction, v_tick);
+  insert into public.party_convictions (party_id, conviction_id) values (v_party.id, p_conviction);
   for v_eff in select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb)) loop
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, v_eff);
   end loop;
