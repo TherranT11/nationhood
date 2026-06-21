@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <meta name="robots" content="noindex">
 <title>Admin Setup · Nationhood</title>
 <link rel="stylesheet" href="/site.css">
 <style>
-  body{margin:0;background:#fff;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh}
   .wrap2{max-width:1120px;margin:0 auto;padding:40px 24px 80px}
   h1{font-size:clamp(24px,4vw,32px);letter-spacing:-.03em;font-weight:800;margin:0 0 4px}
   .sub{color:var(--muted);font-size:14px;margin:0 0 28px}
@@ -16,7 +17,7 @@
   .login{max-width:380px;margin:8vh auto 0;border:1px solid var(--line);border-radius:16px;padding:28px 26px}
   .login h1{margin-bottom:6px}
   label{display:block;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--muted);margin:14px 0 6px}
-  input,select,textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14.5px;font-family:inherit;background:#fff;color:var(--ink)}
+  input,select,textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:14.5px;font-family:inherit;background:var(--surface);color:var(--ink)}
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink)}
   textarea{resize:vertical;min-height:64px}
   .note{margin-top:14px;font-size:13.5px;color:var(--muted);min-height:18px}
@@ -72,7 +73,7 @@
   .mcard__btns{display:flex;gap:6px;flex:none}
   .mcard .ed,.mcard .rm{font-size:12px;font-weight:700;border-radius:8px;padding:6px 12px;cursor:pointer}
   .mcard .ed{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8);border:1px solid color-mix(in srgb,var(--indigo,#5546E8) 30%,transparent)}
-  .mcard .rm{background:#FBEAE9;color:#C42B2B;border:1px solid color-mix(in srgb,#C42B2B 30%,transparent)}
+  .mcard .rm{background:color-mix(in srgb,#C42B2B 12%,var(--surface));color:#C42B2B;border:1px solid color-mix(in srgb,#C42B2B 30%,transparent)}
   .modnations{display:flex;flex-wrap:wrap;gap:7px 16px;border:1px solid var(--line);border-radius:10px;padding:11px 12px;max-height:170px;overflow:auto;margin-top:6px}
   .modnations label{display:flex;align-items:center;gap:7px;margin:0;font-size:13.5px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
   .modnations input{width:auto;margin:0}
@@ -80,7 +81,7 @@
   /* one effect = one row */
   .effrow{display:grid;grid-template-columns:1fr 1fr 110px 38px;gap:8px;align-items:end;margin-bottom:8px}
   .effrow label{margin:0 0 4px}
-  .effrow .eff-del{align-self:end;height:42px;border:1px solid var(--line);background:#FBEAE9;color:#C42B2B;border-radius:10px;font-size:18px;font-weight:700;cursor:pointer}
+  .effrow .eff-del{align-self:end;height:42px;border:1px solid var(--line);background:color-mix(in srgb,#C42B2B 12%,var(--surface));color:#C42B2B;border-radius:10px;font-size:18px;font-weight:700;cursor:pointer}
   .effrow .eff-del:hover{filter:brightness(.97)}
   .eff-hint{grid-column:1/-1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:#9a9a9a;margin:-2px 0 4px;min-height:13px}
   .eff-hint b{color:var(--ink)}
@@ -91,7 +92,7 @@
   /* declarations: register (left) + editor (right) */
   .declcols{display:grid;grid-template-columns:280px 1fr;gap:18px;align-items:start}
   @media(max-width:880px){.declcols{grid-template-columns:1fr}}
-  .reg{border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff;max-height:70vh;overflow:auto}
+  .reg{border:1px solid var(--line);border-radius:12px;padding:10px;background:var(--surface);max-height:70vh;overflow:auto}
   .reggrp{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#9a9a9a;margin:12px 6px 6px}
   .reggrp:first-child{margin-top:2px}
   .slot{padding:9px 11px;border-radius:9px;cursor:pointer;border:1px solid transparent}
@@ -99,21 +100,21 @@
   .slot.on{background:var(--indigo-soft,#ECE9FD);border-color:color-mix(in srgb,var(--indigo,#5546E8) 25%,transparent)}
   .slot b{font-weight:700;font-size:13.5px;display:block;letter-spacing:-.01em}
   .slot .meta{font-family:'Space Mono',monospace;font-size:9.5px;color:#9a9a9a;margin-top:4px}
-  .addslot{width:100%;margin-top:12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:10px;cursor:pointer}
+  .addslot{width:100%;margin-top:12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:9px;padding:10px;cursor:pointer}
   .addslot:hover{border-color:var(--ink)}
-  .decled{border:1px solid var(--line);border-radius:12px;padding:18px 18px;background:#fff}
+  .decled{border:1px solid var(--line);border-radius:12px;padding:18px 18px;background:var(--surface)}
   .keyline{font-family:'Space Mono',monospace;font-size:11px;color:#9a9a9a;margin-top:6px}
   .keyline b{color:var(--ink)}
   .subhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#9a9a9a;margin:20px 0 6px;display:flex;justify-content:space-between}
   .starnote{font-family:'Space Mono',monospace;font-size:9.5px;color:#9a9a9a;margin:0 0 12px}
   .optline{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-  .star{width:34px;height:40px;border:1px solid var(--line2);background:#fff;border-radius:9px;cursor:pointer;color:#9a9a9a;font-size:16px;line-height:1;flex:none}
+  .star{width:34px;height:40px;border:1px solid var(--line2);background:var(--surface);border-radius:9px;cursor:pointer;color:#9a9a9a;font-size:16px;line-height:1;flex:none}
   .star:hover{border-color:#E0820E;color:#E0820E}
-  .star.on{color:#E0820E;border-color:#E0820E;background:#FBF0DD}
+  .star.on{color:#E0820E;border-color:#E0820E;background:color-mix(in srgb,#E0820E 14%,var(--surface))}
   .optline input{flex:1}
-  .del{width:40px;height:40px;border:1px solid var(--line2);background:#fff;border-radius:9px;color:#9a9a9a;cursor:pointer;font-size:16px;line-height:1;flex:none}
+  .del{width:40px;height:40px;border:1px solid var(--line2);background:var(--surface);border-radius:9px;color:#9a9a9a;cursor:pointer;font-size:16px;line-height:1;flex:none}
   .del:hover{color:var(--red);border-color:var(--red)}
-  .addopt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:#fff;border:1px dashed var(--line2);border-radius:9px;padding:11px 14px;cursor:pointer}
+  .addopt{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:9px;padding:11px 14px;cursor:pointer}
   .addopt:hover{border-color:var(--ink)}
   .custom{display:flex;align-items:center;gap:10px;margin-top:18px;padding:12px 14px;border:1px solid var(--line);border-radius:11px;background:var(--chip,#F4F3EF)}
   .custom input{width:18px;height:18px;flex:none;cursor:pointer}

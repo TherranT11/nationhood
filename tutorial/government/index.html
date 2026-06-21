@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <title>Form a Coalition · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -68,7 +69,7 @@
   .tally .need{font-family:'Space Mono',monospace;font-size:12px;color:var(--soft);letter-spacing:.04em}
   .tally .ok{color:var(--green);font-weight:700;font-family:'Archivo';font-size:14px;letter-spacing:0;display:none}
   .tally.reached .ok{display:inline}
-  .seatbar{position:relative;height:30px;border-radius:8px;background:#EDEBE6;overflow:hidden;display:flex}
+  .seatbar{position:relative;height:30px;border-radius:8px;background:var(--chip);overflow:hidden;display:flex}
   .seatbar__seg{height:100%;transition:width .3s ease}
   .seatbar__line{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);left:50.36%;z-index:3}
   .seatbar__flag{position:absolute;top:-22px;left:50.36%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;color:var(--ink);white-space:nowrap;background:var(--bg);padding:0 5px}
@@ -98,7 +99,7 @@
   .partytitle{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin:26px 2px 12px}
   .party{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:0;margin-bottom:12px;overflow:hidden;transition:border-color .18s,box-shadow .2s}
   .party.in{border-color:var(--pc);box-shadow:0 14px 32px -22px color-mix(in srgb,var(--pc) 70%,transparent)}
-  .party.anchor{border-color:var(--indigo);background:linear-gradient(180deg,var(--indigo-soft),#fff)}
+  .party.anchor{border-color:var(--indigo);background:linear-gradient(180deg,var(--indigo-soft),var(--surface))}
   .party__hd{display:flex;align-items:center;gap:13px;padding:16px 18px}
   .party__dot{width:13px;height:13px;border-radius:4px;background:var(--pc);flex:none}
   .party__id{flex:1;min-width:0}
@@ -106,10 +107,10 @@
   .party__id .arch{display:block;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;color:var(--soft);text-transform:uppercase;margin-top:2px}
   .party__seats{font-weight:900;font-size:20px;letter-spacing:-.02em;margin-right:4px}
   .party__seats small{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);font-weight:400;display:block;text-align:right;letter-spacing:.06em;text-transform:uppercase}
-  .addbtn{font-family:'Archivo';font-weight:700;font-size:13px;border-radius:10px;padding:10px 16px;cursor:pointer;border:1.5px solid var(--pc);color:var(--pc);background:#fff;white-space:nowrap;transition:all .15s}
-  .addbtn:hover{background:color-mix(in srgb,var(--pc) 10%,#fff)}
+  .addbtn{font-family:'Archivo';font-weight:700;font-size:13px;border-radius:10px;padding:10px 16px;cursor:pointer;border:1.5px solid var(--pc);color:var(--pc);background:var(--surface);white-space:nowrap;transition:all .15s}
+  .addbtn:hover{background:color-mix(in srgb,var(--pc) 10%, var(--surface))}
   .party.in .addbtn{background:var(--pc);color:#fff}
-  .tagme{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo);background:#fff;border:1px solid var(--indigo);border-radius:20px;padding:5px 11px;white-space:nowrap}
+  .tagme{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--indigo);background:var(--surface);border:1px solid var(--indigo);border-radius:20px;padding:5px 11px;white-space:nowrap}
 
   .demands{border-top:1px dashed var(--line);padding:6px 18px 16px}
   .demand{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
@@ -128,14 +129,14 @@
   .party.in .dact{display:flex}
   .dstate{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;display:inline-flex;align-items:center;gap:5px}
   .dstate.accepted{color:var(--muted)} .dstate.waived{color:var(--green)} .dstate.held{color:var(--red)}
-  .chbtn{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:6px 11px;cursor:pointer;transition:all .15s}
+  .chbtn{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:6px 11px;cursor:pointer;transition:all .15s}
   .chbtn:hover{border-color:var(--ink)}
   .chbtn:disabled{opacity:.4;cursor:default}
   .rl-note{margin-top:8px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.03em;color:var(--red);display:none}
   .party.in .rl-note{display:block}
 
   /* sticky action */
-  .actions{position:fixed;left:236px;right:0;bottom:0;background:rgba(251,250,248,.93);backdrop-filter:blur(10px);border-top:1px solid var(--line);z-index:40}
+  .actions{position:fixed;left:236px;right:0;bottom:0;background:color-mix(in srgb, var(--bg) 93%, transparent);backdrop-filter:blur(10px);border-top:1px solid var(--line);z-index:40}
   .actions__in{max-width:1000px;padding:14px clamp(16px,3vw,40px);display:flex;align-items:center;justify-content:space-between;gap:14px}
   .astatus{font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.03em;color:var(--muted)}
   .astatus b{color:var(--ink);font-weight:700}
@@ -143,7 +144,7 @@
   .form-btn.ready{background:var(--green);pointer-events:auto}
   .form-btn.ready:hover{filter:brightness(1.07);transform:translateY(-1px)}
 
-  .toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:90;max-width:90vw;text-align:center}
+  .toast{position:fixed;left:50%;bottom:86px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:13px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:90;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast b{color:#a99dff}
 

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
 <title>Labour Unrest · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -62,7 +63,7 @@
   .htags{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
   .tag{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:6px}
   .tag.live{color:var(--crimson);background:var(--crimson-soft)}
-  .tag.conf{color:var(--red);background:#FBEAE9}
+  .tag.conf{color:var(--red);background:color-mix(in srgb,var(--red) 14%,var(--surface))}
   .tag.route{color:var(--muted);background:var(--chip)}
   .desc{color:var(--muted);font-size:14.5px;margin-top:16px;line-height:1.6;max-width:640px}
 
@@ -72,14 +73,14 @@
   .track-wrap{overflow-x:auto;padding:26px 60px 72px}
   .track{display:flex;align-items:center;min-width:620px}
   .ms{position:relative;flex:none;display:flex;flex-direction:column;align-items:center}
-  .ms .c{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;border:2px solid var(--line);background:#fff;color:var(--soft)}
+  .ms .c{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;border:2px solid var(--line);background:var(--surface);color:var(--soft)}
   .ms.done .c{background:var(--crimson);border-color:var(--crimson);color:#fff}
   .ms.now .c{box-shadow:0 0 0 5px var(--crimson-soft)}
   .ms .lab{position:absolute;top:44px;left:50%;transform:translateX(-50%);width:118px;text-align:center;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft);line-height:1.35}
   .ms.done .lab{color:var(--ink)} .ms.now .lab{color:var(--crimson);font-weight:700}
   .ms .nowpill{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--crimson);padding:2px 7px;border-radius:20px;white-space:nowrap}
   .gap{flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 9px;min-width:90px}
-  .gap .d{width:6px;height:6px;border-radius:50%;background:#E4E2DD;flex:none}
+  .gap .d{width:6px;height:6px;border-radius:50%;background:var(--chip);flex:none}
   .gap .d.on{background:var(--crimson)}
 
   /* effect */
@@ -93,7 +94,7 @@
   .tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--line)}
   .tli{position:relative;padding-bottom:18px}
   .tli:last-child{padding-bottom:0}
-  .tli::before{content:"";position:absolute;left:-24px;top:4px;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--soft)}
+  .tli::before{content:"";position:absolute;left:-24px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--soft)}
   .tli.start::before{border-color:var(--crimson);background:var(--crimson)}
   .tli.act::before{border-color:var(--green);background:var(--green)}
   .tli .d{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);font-weight:700}
@@ -116,7 +117,7 @@
   .effect#outcomeEffect{margin-top:10px}
   .effect.good{background:var(--green-soft);border-color:color-mix(in srgb,var(--green) 25%,transparent);border-left-color:var(--green)}
   .effect.good .eff-body b{color:var(--ink)}
-  .effect.good .eff-body p{color:#2f6b4f}
+  .effect.good .eff-body p{color:var(--green)}
 
   /* labour-talks effect (amber) */
   .effect.talks{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 25%,transparent);border-left-color:var(--amber);margin-top:10px}
@@ -134,7 +135,7 @@
   .optx__o{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:4px}
 
   /* toast */
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast b{color:#a99dff}
 
