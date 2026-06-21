@@ -824,7 +824,13 @@
   }
   (function wireConvPicker(){
     var modal = document.getElementById('cvPickModal');
-    function open(){ if (!CVS.party) return; CVPICK.arch = (CVS.party && CVS.party.archetype) || null; renderPick(); modal.hidden = false; }
+    async function open(){
+      if (!CVS.party) return;
+      CVPICK.arch = CVS.party.archetype || null;
+      modal.hidden = false; renderPick();
+      try { await loadAllConv(); } catch (e) { /* renderPick already shows graceful empty states */ }
+      renderPick();   // re-render once the catalogue cache is warm (no-op if it already was)
+    }
     function close(){ modal.hidden = true; }
     document.getElementById('cvAddBtn').addEventListener('click', open);
     document.getElementById('cvX').addEventListener('click', close);
