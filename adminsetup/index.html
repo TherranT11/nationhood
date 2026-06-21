@@ -198,6 +198,35 @@
   .poltab .plcard .ed{background:var(--indigo-soft,#ECE9FD);color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent)}
   .poltab .plcard .rm{background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B);border:1px solid color-mix(in srgb,var(--red,#C42B2B) 30%,transparent)}
 
+  /* Convictions tab — reuses the .poltab shell (.card/.f/.seg/.xb/.rail/.plcard/.subhd/.pvname/.pvnone) */
+  .poltab .grid3{display:grid;grid-template-columns:1.4fr .8fr .8fr;gap:12px}
+  @media(max-width:560px){.poltab .grid3{grid-template-columns:1fr}}
+  .poltab .costwrap{display:flex;align-items:center;gap:8px}
+  .poltab .costwrap .dia{font-size:16px;color:var(--indigo)}
+  .poltab .ceff{display:grid;grid-template-columns:1.6fr .8fr 30px;gap:8px;align-items:center;margin-bottom:8px}
+  .poltab .ceff select,.poltab .ceff input{padding:8px 9px;font-size:12.5px}
+  .poltab .add{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer}
+  .poltab .add:hover{border-color:var(--ink)}
+  .poltab .addrow{display:flex;gap:8px;margin-top:2px}
+  .poltab .trig{border:1px solid var(--line);border-left:3px solid var(--indigo);border-radius:11px;padding:13px;margin-bottom:10px;background:var(--field,#FCFBF9)}
+  .poltab .trig .th{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .poltab .trig .th .xb{margin-left:auto}
+  .poltab .clause{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:2px 0 7px}
+  .poltab .whenrow{display:grid;grid-template-columns:1.4fr 1fr .7fr;gap:7px;margin-bottom:10px}
+  .poltab .thenrow{display:grid;grid-template-columns:1.4fr .8fr;gap:7px;align-items:center;margin-bottom:9px}
+  .poltab .whenrow select,.poltab .whenrow input,.poltab .thenrow select,.poltab .thenrow input{padding:8px 9px;font-size:12.5px}
+  .poltab .mirror{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+  .poltab .mirror input{width:17px;height:17px;accent-color:var(--indigo);cursor:pointer}
+  .poltab .pvcard{border:1px solid var(--line);border-top:3px solid var(--acc,#5546E8);border-radius:13px;padding:15px 16px}
+  .poltab .pvtags{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+  .poltab .pvtag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:4px 8px;border-radius:20px;background:var(--chip);color:var(--muted)}
+  .poltab .pvtag.arch{color:#fff}
+  .poltab .pvdesc{color:var(--muted);font-size:12.5px;margin-top:5px;line-height:1.45}
+  .poltab .pvsec{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin:13px 0 6px}
+  .poltab .pvline{font-size:12px;margin-bottom:5px;line-height:1.4}
+  .poltab .pvline b.g{color:var(--green,#16915a);font-weight:800} .poltab .pvline b.r{color:var(--red,#C42B2B);font-weight:800}
+  .poltab .pvline .mute{color:var(--soft)}
+
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
@@ -229,6 +258,7 @@
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
+        <button class="vtab" data-tab="convictions" type="button">Convictions</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
       </nav>
@@ -353,6 +383,25 @@
           </div>
         </div>
       </div>
+      <div class="tabpane" data-tab="convictions" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <h2 style="margin:0">Convictions</h2>
+              <button class="btn btn-solid" id="convNew" type="button">+ New conviction</button>
+            </div>
+            <p class="sub" style="margin:8px 0 14px">A conviction attaches to an archetype at a Level and surfaces in that archetype's manifesto. <b>Effect when adopted</b> is a one-time bump; <b>Effect while active</b> is an ongoing trigger or a standing modifier held while the conviction is.</p>
+            <div id="convList"><p class="empty">Loading…</p></div>
+          </div>
+          <div class="panel" id="convEditorPanel" hidden>
+            <div class="polcols">
+              <div id="convEditor"></div>
+              <aside><div class="rail"><div class="rh">Preview · how it reads</div><div class="rb" id="convPrev"></div></div></aside>
+            </div>
+            <div class="note" id="convNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
       <div class="tabpane" data-tab="crises" hidden><div class="panel"><h2>Crises</h2><p class="empty">Nothing here yet.</p></div></div>
       <div class="tabpane" data-tab="events" hidden><div class="panel"><h2>Events</h2><p class="empty">Nothing here yet.</p></div></div>
       </div><!-- /tabwrap -->
@@ -365,6 +414,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES, archetypeColor } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
+    import { CONV_ROMAN, convRoman, adoptLines, activeLines } from '/convictions.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -762,6 +812,7 @@
         if (tab === 'nations') { loadDeclFields(); loadPolFields(); }
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
+        if (tab === 'convictions') loadConvictions();
       });
     });
 
@@ -952,6 +1003,176 @@
       box.innerHTML=html;
     }
     document.getElementById('polNew').onclick=function(){ openPolicy(blankPolicy(), null); };
+
+    // ---- Convictions (admin authoring; one JSONB definition per conviction, is_admin RLS) ----
+    // Stage 1: author + persist. Per-party adoption + the effects/trigger engine come later.
+    // Reuses POL_TGT (effect targets) and ARCHETYPES (one source); a conviction's
+    // archetype is stored as the NAME, matching parties.archetype.
+    function convArch(name){ return ARCHETYPES.filter(function(a){ return a.name===name; })[0] || ARCHETYPES[0]; }
+    function cvTrig(stat,dir,per,rt,rv,sym){ return { kind:'trigger', stat:stat, dir:dir, per:per, rt:rt, rv:rv, sym:sym }; }
+    function cvStanding(t,v){ return { kind:'standing', t:t, v:v }; }
+    function cvOnce(t,v){ return { t:t, v:v }; }
+    function blankConviction(){ return { name:'New Conviction', archetype:'Conservative', level:1, cost:1, desc:'',
+      onAdopt:[cvOnce('Party Popularity',3)], whileActive:[cvTrig('Order','rise',1,'Party Popularity',2,true)] }; }
+    function cvTgt(cls,sel){ var h='<select class="'+cls+'">'; Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+esc(g)+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }); return h+'</select>'; }
+
+    var convCache=[], CV=null, convEditingId=null, convSaving=false;
+    function setConvNote(msg,kind){ var n=document.getElementById('convNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
+
+    async function loadConvictions(){
+      var box=document.getElementById('convList');
+      try{
+        const { data, error } = await supabase.from('convictions').select('id, definition').order('created_at', { ascending: true });
+        if (error) throw error;
+        convCache = data || [];
+        renderConvList();
+      }catch(e){ box.innerHTML='<p class="empty">Could not load convictions.</p>'; }
+    }
+    function renderConvList(){
+      var box=document.getElementById('convList');
+      if (!convCache.length){ box.innerHTML='<p class="empty">No convictions yet. Click “New conviction” to create one.</p>'; return; }
+      box.innerHTML = convCache.map(function(row){
+        var d=row.definition||{}, a=convArch(d.archetype);
+        return '<div class="plcard"><div><div class="plcard__name">'+esc(d.name||'Untitled conviction')+'</div>'+
+          '<div class="plcard__meta">'+esc(a.name)+' · Level '+convRoman(d.level)+' · ◆ '+(d.cost!=null?d.cost:0)+'</div></div>'+
+          '<div class="plcard__btns"><button class="ed" data-id="'+row.id+'" type="button">Edit</button>'+
+          '<button class="rm" data-id="'+row.id+'" type="button">Remove</button></div></div>';
+      }).join('');
+      box.querySelectorAll('.ed').forEach(function(b){ b.onclick=function(){ var r=convCache.filter(function(x){ return x.id===b.dataset.id; })[0]; if(r) openConviction(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
+      box.querySelectorAll('.rm').forEach(function(b){ b.onclick=function(){ removeConviction(b.dataset.id); }; });
+    }
+    function openConviction(def, id){
+      CV = Object.assign(blankConviction(), def || {});
+      CV.onAdopt = Array.isArray(CV.onAdopt) ? CV.onAdopt : [];
+      CV.whileActive = Array.isArray(CV.whileActive) ? CV.whileActive : [];
+      convEditingId = id || null;
+      document.getElementById('convEditorPanel').hidden = false;
+      setConvNote('');
+      renderConvEditor(); renderConvPrev();
+      document.getElementById('convEditorPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+    async function saveConviction(){
+      if (convSaving) return; convSaving = true;                 // double-fire lock
+      try{
+        if (convEditingId){ const { error } = await supabase.from('convictions').update({ definition: CV }).eq('id', convEditingId); if (error) throw error; }
+        else { const { data, error } = await supabase.from('convictions').insert({ definition: CV }).select('id').single(); if (error) throw error; convEditingId = data.id; }
+        setConvNote('Saved “'+(CV.name||'conviction')+'”.', 'ok');
+        loadConvictions();
+      }catch(e){ setConvNote('Save failed: '+(e.message||e), 'error'); }
+      finally { convSaving = false; }
+    }
+    async function removeConviction(id){
+      if (!confirm('Delete this conviction?')) return;
+      try{
+        const { error } = await supabase.from('convictions').delete().eq('id', id);
+        if (error) throw error;
+        if (convEditingId===id){ convEditingId=null; document.getElementById('convEditorPanel').hidden=true; }
+        loadConvictions();
+      }catch(e){ alert('Could not remove: '+(e.message||e)); }
+    }
+
+    function renderConvEditor(){
+      var c=CV, box=document.getElementById('convEditor'); box.innerHTML='';
+      var idc=document.createElement('div'); idc.className='card';
+      idc.innerHTML=
+        '<div class="f"><label>Conviction name</label><input type="text" id="cvname" value="'+esc(c.name||'')+'"></div>'+
+        '<div class="f grid3">'+
+          '<div><label>Archetype</label><select id="cvarch">'+ARCHETYPES.map(function(a){ return '<option value="'+esc(a.name)+'"'+(a.name===c.archetype?' selected':'')+'>'+esc(a.name)+'</option>'; }).join('')+'</select></div>'+
+          '<div><label>Level</label><select id="cvlevel">'+[1,2,3,4,5].map(function(l){ return '<option value="'+l+'"'+(l===c.level?' selected':'')+'>Level '+CONV_ROMAN[l-1]+'</option>'; }).join('')+'</select></div>'+
+          '<div><label>Cost <span class="hint">conviction points</span></label><div class="costwrap"><span class="dia">◆</span><input type="number" id="cvcost" min="0" value="'+(c.cost!=null?c.cost:1)+'"></div></div>'+
+        '</div>'+
+        '<div class="f" style="margin-bottom:0"><label>Description</label><textarea id="cvdesc">'+esc(c.desc||'')+'</textarea></div>';
+      box.appendChild(idc);
+
+      var ac=document.createElement('div'); ac.className='card';
+      ac.innerHTML='<div class="subhd"><span>Effect when adopted <span class="hint" style="text-transform:none;letter-spacing:0">· one-time, on taking the conviction</span></span></div>';
+      c.onAdopt.forEach(function(e,j){
+        var row=document.createElement('div'); row.className='ceff';
+        row.innerHTML=cvTgt('at',e.t)+'<input type="number" class="av" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button>';
+        row.querySelector('.at').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
+        row.querySelector('.av').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+        row.querySelector('.xb').onclick=function(){ c.onAdopt.splice(j,1); renderConvEditor(); renderConvPrev(); };
+        ac.appendChild(row);
+      });
+      var aAdd=document.createElement('button'); aAdd.className='add'; aAdd.type='button'; aAdd.textContent='+ effect';
+      aAdd.onclick=function(){ c.onAdopt.push(cvOnce('Party Popularity',3)); renderConvEditor(); renderConvPrev(); };
+      ac.appendChild(aAdd); box.appendChild(ac);
+
+      var wc=document.createElement('div'); wc.className='card';
+      wc.innerHTML='<div class="subhd"><span>Effect while active <span class="hint" style="text-transform:none;letter-spacing:0">· ongoing triggers while the conviction is held</span></span></div>';
+      c.whileActive.forEach(function(e,j){ wc.appendChild(cvBuildWhile(e,j)); });
+      var wrow=document.createElement('div'); wrow.className='addrow';
+      var t1=document.createElement('button'); t1.className='add'; t1.type='button'; t1.textContent='+ trigger';
+      t1.onclick=function(){ c.whileActive.push(cvTrig('Order','rise',1,'Party Popularity',2,true)); renderConvEditor(); renderConvPrev(); };
+      var t2=document.createElement('button'); t2.className='add'; t2.type='button'; t2.textContent='+ standing modifier';
+      t2.onclick=function(){ c.whileActive.push(cvStanding('Order',1)); renderConvEditor(); renderConvPrev(); };
+      wrow.appendChild(t1); wrow.appendChild(t2); wc.appendChild(wrow); box.appendChild(wc);
+
+      var sv=document.createElement('button'); sv.className='save'; sv.type='button'; sv.textContent=convEditingId?'Save changes':'Create conviction';
+      sv.onclick=saveConviction; box.appendChild(sv);
+
+      idc.querySelector('#cvname').oninput=function(e){ c.name=e.target.value; renderConvPrev(); };
+      idc.querySelector('#cvarch').onchange=function(e){ c.archetype=e.target.value; renderConvPrev(); };
+      idc.querySelector('#cvlevel').onchange=function(e){ c.level=+e.target.value; renderConvPrev(); };
+      idc.querySelector('#cvcost').oninput=function(e){ c.cost=+e.target.value||0; renderConvPrev(); };
+      idc.querySelector('#cvdesc').oninput=function(e){ c.desc=e.target.value; renderConvPrev(); };
+    }
+
+    function cvBuildWhile(e,j){
+      var c=CV;
+      var card=document.createElement('div'); card.className='trig';
+      card.innerHTML='<div class="th"><div class="seg"><span data-k="trigger" class="'+(e.kind==='trigger'?'on':'')+'">Trigger</span><span data-k="standing" class="'+(e.kind==='standing'?'on':'')+'">Standing</span></div><button class="xb" type="button">×</button></div>';
+      if(e.kind==='trigger'){
+        var when=document.createElement('div');
+        when.innerHTML='<div class="clause">When — a stat moves</div>'+
+          '<div class="whenrow">'+cvTgt('ws',e.stat)+
+            '<select class="wd"><option value="rise"'+(e.dir==='rise'?' selected':'')+'>rises</option><option value="fall"'+(e.dir==='fall'?' selected':'')+'>falls</option><option value="either"'+(e.dir==='either'?' selected':'')+'>changes (either way)</option></select>'+
+            '<input type="number" class="wp" min="1" step="any" value="'+(e.per!=null?e.per:1)+'" title="per N units"></div>'+
+          '<div class="clause">Then — the reward</div>'+
+          '<div class="thenrow">'+cvTgt('rt',e.rt)+'<input type="number" class="rv" step="any" value="'+(e.rv!=null?e.rv:0)+'"></div>'+
+          '<div class="mirror"><input type="checkbox" class="sym" '+(e.sym?'checked':'')+(e.dir==='either'?' disabled':'')+'><span>Mirror the inverse reward on the opposite move'+(e.dir==='either'?' (n/a)':'')+'</span></div>';
+        card.appendChild(when);
+        card.querySelector('.ws').onchange=function(ev){ e.stat=ev.target.value; renderConvPrev(); };
+        card.querySelector('.wd').onchange=function(ev){ e.dir=ev.target.value; renderConvEditor(); renderConvPrev(); };
+        card.querySelector('.wp').oninput=function(ev){ e.per=parseFloat(ev.target.value)||1; renderConvPrev(); };
+        card.querySelector('.rt').onchange=function(ev){ e.rt=ev.target.value; renderConvPrev(); };
+        card.querySelector('.rv').oninput=function(ev){ e.rv=parseFloat(ev.target.value)||0; renderConvPrev(); };
+        card.querySelector('.sym').onchange=function(ev){ e.sym=ev.target.checked; renderConvPrev(); };
+      }else{
+        var st=document.createElement('div');
+        st.innerHTML='<div class="clause">While held — a constant modifier</div>'+
+          '<div class="thenrow">'+cvTgt('st',e.t)+'<input type="number" class="sv2" step="any" value="'+(e.v!=null?e.v:0)+'"></div>';
+        card.appendChild(st);
+        card.querySelector('.st').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
+        card.querySelector('.sv2').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+      }
+      card.querySelectorAll('.seg span').forEach(function(s){ s.onclick=function(){
+        var k=s.dataset.k;
+        if(k==='trigger'&&e.kind!=='trigger'){ c.whileActive[j]=cvTrig('Order','rise',1,'Party Popularity',2,true); }
+        if(k==='standing'&&e.kind!=='standing'){ c.whileActive[j]=cvStanding('Order',1); }
+        renderConvEditor(); renderConvPrev();
+      }; });
+      card.querySelector('.th .xb').onclick=function(){ c.whileActive.splice(j,1); renderConvEditor(); renderConvPrev(); };
+      return card;
+    }
+
+    function cvLineHtml(L){ return '<div class="pvline"><b class="'+(L.cls==='pos'?'g':'r')+'">'+esc(L.reward)+'</b> <span class="mute">'+esc(L.cond)+'</span></div>'; }
+    function renderConvPrev(){
+      var c=CV, a=convArch(c.archetype), box=document.getElementById('convPrev');
+      document.documentElement.style.setProperty('--acc', a.color);
+      var aL=adoptLines(c), wL=activeLines(c);
+      var adopt = aL.length ? aL.map(cvLineHtml).join('') : '<div class="pvnone">—</div>';
+      var act   = wL.length ? wL.map(cvLineHtml).join('') : '<div class="pvnone">—</div>';
+      box.innerHTML='<div class="pvcard">'+
+        '<div class="pvtags"><span class="pvtag arch" style="background:'+a.color+'">'+esc(a.name)+'</span><span class="pvtag">Level '+convRoman(c.level)+'</span><span class="pvtag">◆ '+(c.cost!=null?c.cost:0)+'</span></div>'+
+        '<div class="pvname">'+esc(c.name||'Untitled conviction')+'</div>'+
+        '<div class="pvdesc">'+esc(c.desc||'')+'</div>'+
+        '<div class="pvsec">On adopt</div>'+adopt+
+        '<div class="pvsec">While active</div>'+act+
+      '</div>';
+    }
+
+    document.getElementById('convNew').onclick=function(){ openConviction(blankConviction(), null); };
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
     var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
