@@ -253,7 +253,7 @@
 
       const nationName = (home && home.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       if (home && home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
 
       var eco = (home && home.economy) || {};

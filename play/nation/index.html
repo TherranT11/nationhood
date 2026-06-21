@@ -204,7 +204,7 @@
 
       const nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       document.getElementById('nhead').textContent = nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 

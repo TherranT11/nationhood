@@ -302,16 +302,21 @@
   async function loadFeed(nationId, nation, gameDate) {
     var box = document.getElementById('events');
     try {
-      const { data: parties } = await supabase.from('parties').select('name, archetype, created_at').eq('nation_id', nationId);
+      const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
       const { data: evs } = await supabase.from('events').select('body, game_date, created_at').eq('nation_id', nationId);
-      var nm = (nation && nation.name) || '';
-      var ruling = nation && nation.ruling_party; // one-party state → factions, not parties
+      // Party Leader names for the formation announcements (one per party).
+      var leaderBy = {};
+      var pids = (parties || []).map(function (p) { return p.id; });
+      if (pids.length) {
+        const { data: leaders } = await supabase.from('politicians')
+          .select('party_id, first_name, last_name').eq('status', 'Party Leader').in('party_id', pids);
+        (leaders || []).forEach(function (l) { if (!leaderBy[l.party_id]) leaderBy[l.party_id] = (l.first_name + ' ' + l.last_name).trim(); });
+      }
       var items = [];
       (parties || []).forEach(function (p) {
+        var leader = leaderBy[p.id];
         items.push({ created: p.created_at, when: gameDate,
-          body: ruling
-            ? 'The <b>' + esc(p.name) + '</b> formed as a ' + esc(p.archetype) + ' faction of <b>' + esc(ruling) + '</b> in <b>' + esc(nm) + '</b>.'
-            : 'The <b>' + esc(p.name) + '</b> was officially founded in <b>' + esc(nm) + '</b>. It is a ' + esc(p.archetype) + ' party.' });
+          body: 'The <b>' + esc(p.name) + '</b> has announced its formation' + (leader ? ', led by <b>' + esc(leader) + '</b>' : '') + '.' });
       });
       (evs || []).forEach(function (e) {
         items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) });
@@ -520,7 +525,7 @@
     html += negPool.length ? negPool.map(function (p) {
       return '<button class="atarget" type="button" data-id="' + esc(p.id) + '">' +
         '<span class="atarget__id"><b>' + esc(p.name) + '</b><span>' + esc(p.abbreviation || '') + '</span></span>' +
-        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '% &middot; ' + esc(p.archetype) + '</span></button>';
+        '<span class="atarget__st">' + (p.seats || 0) + ' seats &middot; ' + (Number(p.popularity) || 0) + '%' + (p.archetype ? ' &middot; ' + esc(p.archetype) : '') + '</span></button>';
     }).join('') : '<p class="empty">No other parties in the nation to negotiate with yet.</p>';
     list.innerHTML = html;
     document.getElementById('negBack').addEventListener('click', function () { openNegotiateModal(); });
@@ -640,7 +645,7 @@
       setTopbarFunds(currency, party.funds);
 
       document.getElementById('pname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       document.getElementById('kicker').textContent = nationName;
       document.getElementById('eventsHd').textContent = 'Events in ' + nationName;
       document.getElementById('welcome').textContent = 'Welcome to ' + nationName;

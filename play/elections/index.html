@@ -178,7 +178,7 @@
 
       // Sidebar + topbar.
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       document.getElementById('kicker').textContent = 'The Assembly · ' + nationName;
       setTopbarActions(party.actions_remaining);
       document.title = 'Elections · ' + nationName;

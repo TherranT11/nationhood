@@ -463,7 +463,7 @@
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = party.archetype + ' · ' + nationName;
+      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
       document.getElementById('ghead').textContent = 'Government of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
