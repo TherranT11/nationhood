@@ -782,6 +782,10 @@
           document.getElementById('st-pop').textContent = Number(p.popularity) || 0;
         }
       } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
+      // Refresh the archetype-derived chrome (badge + accent). Known minor: if this
+      // adoption flipped the banner archetype, the popularity chart's crowding marker
+      // (CEIL_PENALTY, computed once on load) stays until the next page load — cosmetic;
+      // the popularity value and server-side ceiling are already correct.
       if (CVS.party.archetype) { setIdeology(CVS.party); applyAccent(partyColor(CVS.party)); }
     } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); }
     finally {
