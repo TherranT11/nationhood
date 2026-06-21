@@ -21,7 +21,7 @@ create table if not exists public.nations (
   electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
   next_election_tick int,                            -- game tick of this nation's next general election (null = unscheduled)
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
-  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, budget, debt, currency}
+  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, tax, budget, debt, currency}
   production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
   created_at     timestamptz not null default now()
 );
@@ -90,17 +90,22 @@ values (
   678,
   280,
   '{"prosperity":14,"welfare":13,"order":13,"image":16,"growth":9}'::jsonb,
-  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
+  '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
 )
 on conflict (id) do nothing;
 
 -- Backfill on an already-seeded Sessau row (the insert above is a no-op once the
 -- row exists). Each only touches a row that hasn't got the value yet.
 update public.nations
-   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
+   set economy = '{"regime":"Electoral Democracy. 45% Ceiling.","inflation":13,"unemployment":9,"tax":30,"budget":12.4,"debt":31,"currency":"$"}'::jsonb
  where id = 'sessau' and (economy is null or economy = '{}'::jsonb);
 update public.nations set economy = economy || '{"currency":"$"}'::jsonb
  where id = 'sessau' and not (economy ? 'currency');
+-- Tax Burden % is a tracked economic figure (0–100) that the coming tax policies
+-- (corporate / income / property) will move. Give every nation a neutral starting
+-- value so the figure is real from day one; idempotent (only un-set rows).
+update public.nations set economy = economy || '{"tax":30}'::jsonb
+ where not (economy ? 'tax');
 update public.nations set legislature_seats = 280
  where id = 'sessau' and legislature_seats = 0;
 -- GDP is now stored in billions (was a raw figure). Migrate the legacy value

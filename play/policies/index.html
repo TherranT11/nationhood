@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Nation · Nationhood</title>
+<title>Policies · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -43,37 +43,31 @@
   .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .phead p{color:var(--muted);font-size:14px;margin-top:6px;max-width:640px}
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
 
-  .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:16px}
-  .panel h2{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
-
-  /* identity box: map (left) + facts (right) */
-  .idgrid{display:grid;grid-template-columns:390px 1fr;gap:26px;align-items:start}
-  @media(max-width:760px){.idgrid{grid-template-columns:1fr}}
-  .map__ph{aspect-ratio:4/3;background:var(--chip);border:1px dashed var(--line2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
-  .maptoggle{display:flex;gap:6px;margin-top:10px}
-  .mt{flex:1;padding:8px 6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;border:1px solid var(--line2);border-radius:8px;background:var(--surface);color:var(--muted);cursor:pointer}
-  .mt.on{background:var(--indigo-soft);border-color:var(--indigo);color:var(--indigo)}
-  .facts{display:flex;flex-direction:column}
-  .frow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
-  .frow:last-child{border-bottom:none}
-  .frow .fk{color:var(--muted);font-size:12.5px;font-family:'Space Mono',monospace;letter-spacing:.03em}
-  .frow .fv{font-weight:700;font-size:14.5px;text-align:right}
-
-  /* domestic economy strip */
-  .econ{display:flex;flex-wrap:wrap;gap:10px}
-  .ecell{flex:1;min-width:118px;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--field)}
-  .ecell .k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
-  .ecell .v{font-weight:800;font-size:19px;letter-spacing:-.01em;margin-top:3px}
-
-  /* national identity (declarations) */
-  .decls{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:16px 26px}
-  .dgrp__h{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:4px}
-  .drow{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px}
-  .drow:last-child{border-bottom:none}
-  .drow .dk{color:var(--muted)}
-  .drow .dv{font-weight:700;text-align:right}
+  /* Policy slate: one card per authored policy, showing the option in force for this
+     nation and its standing effects, with an entry into the propose flow. */
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:18px}
+  .pcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column}
+  .pcard__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .pcard__hd b{font-weight:800;font-size:16px;letter-spacing:-.01em}
+  .ptype{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--soft);background:var(--chip);padding:4px 9px;border-radius:20px;flex:none;white-space:nowrap}
+  .pcard__desc{color:var(--muted);font-size:13px;line-height:1.5;margin-top:6px}
+  .pforce{margin-top:14px;border-top:1px solid var(--line);padding-top:13px}
+  .pforce__k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .pforce__v{font-weight:800;font-size:16px;letter-spacing:-.01em;margin-top:4px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .pforce__v .opt{color:var(--indigo)}
+  .pdot{width:8px;height:8px;border-radius:50%;background:var(--indigo);flex:none}
+  .peffs{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+  .peff{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12.5px}
+  .peff b{font-weight:800;flex:none}
+  .peff.pos b{color:var(--green)} .peff.neg b{color:var(--red)}
+  .peff .cad{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .peff.none{color:var(--soft);font-style:italic}
+  .pcard__foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex}
+  .pchange{margin-left:auto;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:9px;padding:9px 14px;text-decoration:none;cursor:pointer}
+  .pchange:hover{filter:brightness(.97)}
 
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -92,8 +86,8 @@
       <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
       <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
       <a class="nav__i" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
-      <a class="nav__i active" href="/play/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
-      <a class="nav__i" href="/play/policies/"><svg viewBox="0 0 24 24"><path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/></svg><span class="label">Policies</span></a>
+      <a class="nav__i" href="/play/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
+      <a class="nav__i active" href="/play/policies/"><svg viewBox="0 0 24 24"><path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/></svg><span class="label">Policies</span></a>
       <a class="nav__i" href="/play/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
       <a class="nav__i" href="/play/market/"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
@@ -108,80 +102,57 @@
 
   <main class="main">
     <div class="topbar" id="topbar"></div>
-    <div class="phead"><span class="eye">The Nation</span><h1 id="nhead">…</h1></div>
-    <div id="content"><div class="panel"><div class="empty">Loading the nation…</div></div></div>
+    <div class="phead"><span class="eye">The Nation</span><h1>Policies</h1>
+      <p>Every policy in force across the nation and what it does each month. Propose a change to send it to the chamber.</p>
+    </div>
+    <div id="content"><div class="empty">Loading the policy slate…</div></div>
   </main>
 </div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc, fmtPop, declaredValue } from '/util.js';
-  import { regimeLabel } from '/ladders.js';
+  import { esc } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { fetchPolicies } from '/proposals.js';
+  import { policyOptions, policyOptionIdx, effectText } from '/policies.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
 
-  function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
-  function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+  function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
 
-  // The 5 domestic production resources (Diplomacy is foreign, shown elsewhere).
-  var ECON = ['energy', 'food', 'minerals', 'goods', 'services'];
+  // One policy card: the option in force for THIS nation (its stored override, else the
+  // policy default — same one-source rule the propose page uses) and that option's
+  // standing effects, with a link into the propose flow. pop/pros scale money effects.
+  function policyCard(p, overrides, pop, pros){
+    var def = p.definition || {};
+    var opts = policyOptions(def);
+    var cur = policyOptionIdx(def, overrides, p.id);
+    var o = opts[cur] || {};
+    var effs = (o.effects || []).filter(function(e){ return (e && e.cad) !== 'once'; });  // standing (per-tick) effects
+    var effHtml = effs.length
+      ? effs.map(function(e){ var t = effectText(e, pop, pros); return '<div class="peff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')
+      : '<div class="peff none">No standing effects.</div>';
+    return '<div class="pcard">' +
+      '<div class="pcard__hd"><b>' + esc(def.name || 'Policy') + '</b><span class="ptype">' + esc(def.type || 'policy') + '</span></div>' +
+      (def.desc ? '<div class="pcard__desc">' + esc(def.desc) + '</div>' : '') +
+      '<div class="pforce"><div class="pforce__k">In force now</div>' +
+        '<div class="pforce__v"><span class="pdot"></span><span class="opt">' + esc(o.name || ('Option ' + (cur + 1))) + '</span></div>' +
+        '<div class="peffs">' + effHtml + '</div></div>' +
+      '<div class="pcard__foot"><a class="pchange" href="/play/legislature/propose/">Propose change ▸</a></div>' +
+    '</div>';
+  }
 
-  function render(nation, slots, gov, pmParty, pmPol){
-    var vals = nation.declarations || {};
-    var slotBySlug = {}; slots.forEach(function(s){ slotBySlug[s.slug] = s; });
-    // This slot's current value — via the shared one-source helper (see util.js).
-    function declValue(slug){ return declaredValue(slotBySlug[slug], vals); }
-
-    var eco = nation.economy || {}, prod = nation.production || {};
-    var regime = eco.regime;
-    var regimeTxt = (typeof regime === 'number') ? (regimeLabel(regime) + ' – ' + regime) : (regime || '—');
-    var govType = (gov ? cap(gov.type) : 'No government') + ' (' + regimeTxt + ')';
-    var hog = pmPol ? (esc((pmPol.first_name || '') + ' ' + (pmPol.last_name || '')).trim() + ', ' + (pmPol.age != null ? pmPol.age : '?') + ' (' + esc(pmParty ? pmParty.name : '—') + ')') : '—';
-    var conf = gov ? (gov.confidence + '%') : '—';
-
-    function frow(k, v){ return '<div class="frow"><span class="fk">' + k + '</span><span class="fv">' + v + '</span></div>'; }
-
-    var identity =
-      '<section class="panel"><h2>Nation</h2><div class="idgrid">' +
-        '<div><div class="map__ph">Map</div><div class="maptoggle">' +
-          '<button class="mt on" type="button" data-m="nation">Nation</button>' +
-          '<button class="mt" type="button" data-m="continent">Continent</button>' +
-          '<button class="mt" type="button" data-m="world">World</button></div></div>' +
-        '<div class="facts">' +
-          frow('Official Nation Name', esc(declValue('formal_state_name'))) +
-          frow('Demonym', esc(declValue('demonym'))) +
-          frow('Population', fmtPop(nation.population)) +
-          frow('Capital', esc(declValue('capital_name'))) +
-          frow('Government Type', esc(govType)) +
-          frow('Head of Government', hog) +
-          frow('Government Confidence', conf) +
-        '</div>' +
-      '</div></section>';
-
-    var economy =
-      '<section class="panel"><h2>Domestic Economy</h2><div class="econ">' +
-        ECON.map(function(k){ var v = prod[k]; return '<div class="ecell"><div class="k">' + cap(k) + '</div><div class="v">' + (v != null ? v : '—') + '</div></div>'; }).join('') +
-      '</div></section>';
-
-    // National Identity = every declaration slot's current value, grouped.
-    var groups = [];
-    slots.forEach(function(s){ var g = s.grp || 'Other'; if (groups.indexOf(g) < 0) groups.push(g); });
-    var declHtml = slots.length
-      ? '<div class="decls">' + groups.map(function(g){
-          var rows = slots.filter(function(s){ return (s.grp || 'Other') === g; })
-            .map(function(s){ return '<div class="drow"><span class="dk">' + esc(s.label) + '</span><span class="dv">' + esc(declValue(s.slug)) + '</span></div>'; }).join('');
-          return '<div class="dgrp"><div class="dgrp__h">' + esc(g) + '</div>' + rows + '</div>';
-        }).join('') + '</div>'
-      : '<p class="empty" style="padding:20px">No declarations have been defined yet.</p>';
-    var identityBox = '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
-
-    document.getElementById('content').innerHTML = identity + economy + identityBox;
-    document.querySelectorAll('.maptoggle .mt').forEach(function(b){
-      b.onclick = function(){ document.querySelectorAll('.maptoggle .mt').forEach(function(x){ x.classList.toggle('on', x === b); }); };
-    });
+  function render(policies, nation){
+    var box = document.getElementById('content');
+    if (!policies.length) {
+      box.innerHTML = '<div class="empty">No policies have been set up yet — an admin defines the policy slate first.</div>';
+      return;
+    }
+    var overrides = (nation && nation.policies) || {};
+    var pop = nation && nation.population, pros = nation && nation.stats && nation.stats.prosperity;
+    box.innerHTML = '<div class="pgrid">' + policies.map(function(p){ return policyCard(p, overrides, pop, pros); }).join('') + '</div>';
   }
 
   (async () => {
@@ -192,30 +163,23 @@
       const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations')
-        .select('name, flag, population, economy, production, declarations').eq('id', party.nation_id).single();
-      const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
-      const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
-
-      var pmParty = null, pmPol = null;
-      if (gov && gov.formateur_party_id) {
-        var r1 = await supabase.from('parties').select('name').eq('id', gov.formateur_party_id).maybeSingle();
-        pmParty = r1.data;
-        var r2 = await supabase.from('politicians').select('first_name, last_name, age').eq('party_id', gov.formateur_party_id).eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
-        pmPol = r2.data;
-      }
+        .select('name, flag, economy, population, stats, policies').eq('id', party.nation_id).single();
 
       const nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
-      document.getElementById('nhead').textContent = nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      render(nation || {}, slots || [], gov, pmParty, pmPol);
+
+      var policies;
+      try { policies = await fetchPolicies(); }
+      catch (e) { fail('Couldn’t load the policy slate. Refresh to try again.'); return; }
+      render(policies || [], nation || {});
     } catch (e) {
-      fail('Couldn’t load the nation right now. Refresh to try again.');
+      fail('Couldn’t load the policy slate. Refresh to try again.');
     }
   })();
 </script>
