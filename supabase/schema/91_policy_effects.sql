@@ -112,10 +112,12 @@ begin
   end case;
 end $$;
 
--- Apply an option's effects of a given cadence ('once' on enactment, 'tick' per
--- month). Reads the option array straight from the stored policy definition. p_age
--- is how many ticks the option has been in force (current_tick − enactment tick),
--- or null when there's no active clock; it gates finite-duration tick effects.
+-- Apply an option's effects of a given cadence ('once' on enactment, 'tick' every
+-- month, 'year' every January — see _apply_policy_tick_effects). Reads the option array
+-- straight from the stored policy definition. p_age is how many ticks the option has
+-- been in force (current_tick − enactment tick), or null when there's no active clock;
+-- it gates finite-duration tick effects. 'year' effects apply every January while the
+-- option is in force (the dur window is a per-tick nicety only).
 drop function if exists public._apply_policy_option_effects(text, uuid, int, text);
 create or replace function public._apply_policy_option_effects(p_nation text, p_policy uuid, p_option int, p_cadence text, p_age int default null)
 returns void language plpgsql security definer set search_path = public as $$
@@ -141,12 +143,14 @@ end $$;
 -- The monthly sweep (called once per tick by advance_tick, schema/60): every nation
 -- applies the per-tick effects of whichever option is in force for each policy — its
 -- stored override or the policy default (_nation_policy_option). Standing economics:
--- a policy that's in force keeps pushing its stats each month. p_tick is the current
--- tick, used with nations.policy_since to age each enactment for finite durations.
+-- a policy that's in force keeps pushing its stats each month. 'Per year' effects ride
+-- this same sweep but only land in January (tick 1 = Jan 1980, so (tick−1) mod 12 = 0).
+-- p_tick is the current tick, used with nations.policy_since to age each enactment for
+-- finite durations.
 drop function if exists public._apply_policy_tick_effects();
 create or replace function public._apply_policy_tick_effects(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare r record;
+declare r record; v_jan boolean := (p_tick - 1) % 12 = 0;
 begin
   for r in
     select n.id as nation_id, p.id as policy_id,
@@ -157,6 +161,9 @@ begin
     cross join public.policies p
   loop
     perform public._apply_policy_option_effects(r.nation_id, r.policy_id, r.opt, 'tick', r.age);
+    if v_jan then
+      perform public._apply_policy_option_effects(r.nation_id, r.policy_id, r.opt, 'year', r.age);
+    end if;
   end loop;
 end $$;
 
