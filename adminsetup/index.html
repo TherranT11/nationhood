@@ -157,6 +157,10 @@
   .poltab .achip .ad{width:7px;height:7px;border-radius:50%}
   .poltab .archrow.sup .achip.on{border-color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 12%,var(--surface));color:var(--green,#16915a)}
   .poltab .archrow.opp .achip.on{border-color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B)}
+  .poltab .archrow.tag .achip.on{border-color:var(--indigo,#5546E8);background:color-mix(in srgb,var(--indigo,#5546E8) 12%,var(--surface));color:var(--indigo,#5546E8)}
+  .poltab .pvtagrow{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 2px}
+  .poltab .pvltag{font-size:9.5px;font-weight:700;letter-spacing:.02em;padding:3px 8px;border-radius:14px;background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
+  .poltab .sublab .hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--soft)}
   .poltab .effwrap{margin-bottom:9px}
   .poltab .effrow{display:grid;grid-template-columns:1.6fr .7fr .9fr .95fr 30px;gap:7px;margin-bottom:0;align-items:center}
   @media(max-width:560px){.poltab .effrow{grid-template-columns:1fr 1fr}}
@@ -204,6 +208,7 @@
   .poltab .costwrap{display:flex;align-items:center;gap:8px}
   .poltab .costwrap .dia{font-size:16px;color:var(--indigo)}
   .poltab .ceff{display:grid;grid-template-columns:1.6fr .8fr 30px;gap:8px;align-items:center;margin-bottom:8px}
+  .poltab .ceff.law{grid-template-columns:1.1fr 1.3fr .7fr 30px}
   .poltab .ceff select,.poltab .ceff input{padding:8px 9px;font-size:12.5px}
   .poltab .add{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer}
   .poltab .add:hover{border-color:var(--ink)}
@@ -417,7 +422,7 @@
     import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES, archetypeColor } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
-    import { CONV_ROMAN, convRoman, adoptLines, activeLines } from '/convictions.js';
+    import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -827,6 +832,10 @@
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Tax Burden %','Budget','Debt','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
+    // Identity tags — metadata describing what a law IS (not a popularity score). A
+    // policy option carries any of these; a conviction's "when a tagged law passes"
+    // effect keys off them. ONE source for the policy tag chips + the conviction picker.
+    var IDENTITY_TAGS = ['Tax cut','Tax rise','Values law','Farm / Land law','Trade law','Green law','Nationalisation','Security law','Civil-rights law'];
     function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }
     var POL_SAMPLES = [{n:'2M·P10',pop:2,pros:10},{n:'70M·P14',pop:70,pros:14},{n:'200M·P16',pop:200,pros:16}];
     function polFmtAmt(a){ return (a>=0?'+':'−')+'₣'+Math.abs(a).toFixed(2)+'B'; }
@@ -836,10 +845,10 @@
     var polCache = [], P = null, polEditingId = null;
     function blankPolicy(){ return {
       name:'New policy', desc:'', type:'spectrum', defaultIdx:0, binDefault:1,
-      binary:[ {name:'If Passed',desc:'The policy is in force.',support:[],oppose:[],effects:[]},
-               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',support:[],oppose:[],effects:[]} ],
-      spectrum:[ {name:'Option A',desc:'',support:[],oppose:[],effects:[polEff('Budget',0,'tick',0)]},
-                 {name:'Option B',desc:'',support:[],oppose:[],effects:[]} ]
+      binary:[ {name:'If Passed',desc:'The policy is in force.',support:[],oppose:[],tags:[],effects:[]},
+               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',support:[],oppose:[],tags:[],effects:[]} ],
+      spectrum:[ {name:'Option A',desc:'',support:[],oppose:[],tags:[],effects:[polEff('Budget',0,'tick',0)]},
+                 {name:'Option B',desc:'',support:[],oppose:[],tags:[],effects:[]} ]
     }; }
     function polOpts(){ return policyOptions(P); }
     var polSaving = false;   // double-fire lock for the create/save path
@@ -934,7 +943,7 @@
       box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
       box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
       box.querySelectorAll('#pol-typeSeg span').forEach(function(s){ s.onclick=function(){ P.type=s.dataset.v; renderPolEditor(); renderPolPrev(); }; });
-      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',support:[],oppose:[],effects:[polEff('Budget',0,'tick',0)]}); renderPolEditor(); renderPolPrev(); };
+      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',support:[],oppose:[],tags:[],effects:[polEff('Budget',0,'tick',0)]}); renderPolEditor(); renderPolPrev(); };
       var bdf=box.querySelector('#pol-binDef'); if(bdf)bdf.onchange=function(e){ P.binDefault=+e.target.value; renderPolEditor(); renderPolPrev(); };
     }
     function buildPolOpt(o,i){
@@ -950,8 +959,10 @@
         head+='<input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+(isStart?'<span class="startpill">Default</span>':'');
       }
       head+='</div>';
+      o.tags = o.tags || [];   // older policies predate identity tags
       var supChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.support.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
       var oppChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.oppose.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
+      var tagChips=IDENTITY_TAGS.map(function(t){ return '<span class="achip'+(o.tags.indexOf(t)>=0?' on':'')+'" data-t="'+esc(t)+'">'+esc(t)+'</span>'; }).join('');
       var effHtml=o.effects.map(function(e){
         var scaleRow = isMoneyTarget(e.t) ? '<div class="scalerow"><span class="lbl">Scaled by</span><select class="es"><option value="flat"'+(e.scale==='flat'?' selected':'')+'>Flat amount</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>Per million pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>× Pop × Prosperity</option></select><span class="worked">'+polWorked(e)+'</span></div>' : '';
         return '<div class="effwrap"><div class="effrow">'+polTgtSelect(e.t)+
@@ -964,6 +975,7 @@
         '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
         '<div class="sublab">Archetype support</div><div class="archrow sup">'+supChips+'</div>'+
         '<div class="sublab" style="margin-top:12px">Archetype opposition</div><div class="archrow opp">'+oppChips+'</div>'+
+        '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'</div>'+
         '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
         '<button class="add sm addeff" type="button">+ effect</button>';
 
@@ -973,6 +985,7 @@
       var rm=card.querySelector('.oh .xb'); if(rm)rm.onclick=function(){ P.spectrum.splice(i,1); if(P.defaultIdx>i)P.defaultIdx--; if(P.defaultIdx>=P.spectrum.length)P.defaultIdx=P.spectrum.length-1; if(P.defaultIdx<0)P.defaultIdx=0; renderPolEditor(); renderPolPrev(); };
       card.querySelectorAll('.archrow.sup .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.support.indexOf(a); if(k>=0)o.support.splice(k,1); else{ o.support.push(a); var o2=o.oppose.indexOf(a); if(o2>=0)o.oppose.splice(o2,1); } renderPolEditor(); renderPolPrev(); }; });
       card.querySelectorAll('.archrow.opp .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.oppose.indexOf(a); if(k>=0)o.oppose.splice(k,1); else{ o.oppose.push(a); var s2=o.support.indexOf(a); if(s2>=0)o.support.splice(s2,1); } renderPolEditor(); renderPolPrev(); }; });
+      card.querySelectorAll('.archrow.tag .achip').forEach(function(ch){ ch.onclick=function(){ var t=ch.dataset.t, k=o.tags.indexOf(t); if(k>=0)o.tags.splice(k,1); else o.tags.push(t); renderPolEditor(); renderPolPrev(); }; });
       card.querySelectorAll('.effwrap').forEach(function(wrap,j){
         var e=o.effects[j], row=wrap.querySelector('.effrow');
         row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(isMoneyTarget(e.t)&&!e.scale)e.scale='pop'; renderPolEditor(); renderPolPrev(); };
@@ -1003,8 +1016,9 @@
         var camps=o.support.map(function(a){ return '<span class="pvc sup"><span class="ad" style="background:'+archetypeColor(a)+'"></span>'+esc(a)+'</span>'; })
           .concat(o.oppose.map(function(a){ return '<span class="pvc opp"><span class="ad" style="background:'+archetypeColor(a)+'"></span>'+esc(a)+'</span>'; })).join('');
         var effs=o.effects.length?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';
+        var tags=(o.tags&&o.tags.length)?'<div class="pvtagrow">'+o.tags.map(function(t){ return '<span class="pvltag">'+esc(t)+'</span>'; }).join('')+'</div>':'';
         html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?(i+1)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+
-          (camps?'<div class="pvcamps">'+camps+'</div>':'<div class="pvnone">No archetype lean</div>')+effs+'</div>';
+          (camps?'<div class="pvcamps">'+camps+'</div>':'<div class="pvnone">No archetype lean</div>')+tags+effs+'</div>';
       });
       box.innerHTML=html;
     }
@@ -1018,8 +1032,9 @@
     function cvTrig(stat,dir,per,rt,rv,sym){ return { kind:'trigger', stat:stat, dir:dir, per:per, rt:rt, rv:rv, sym:sym }; }
     function cvStanding(t,v){ return { kind:'standing', t:t, v:v }; }
     function cvOnce(t,v){ return { t:t, v:v }; }
+    function cvLaw(tag,t,v){ return { tag:tag, t:t, v:v }; }
     function blankConviction(){ return { name:'New Conviction', archetype:'Conservative', level:1, cost:1, desc:'',
-      onAdopt:[cvOnce('Party Popularity',3)], whileActive:[cvTrig('Order','rise',1,'Party Popularity',2,true)] }; }
+      onAdopt:[cvOnce('Party Popularity',3)], whileActive:[cvTrig('Order','rise',1,'Party Popularity',2,true)], onLaw:[] }; }
     function cvTgt(cls,sel){ var h='<select class="'+cls+'">'; Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+esc(g)+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }); return h+'</select>'; }
 
     var convCache=[], CV=null, convEditingId=null, convSaving=false;
@@ -1051,6 +1066,7 @@
       CV = Object.assign(blankConviction(), def || {});
       CV.onAdopt = Array.isArray(CV.onAdopt) ? CV.onAdopt : [];
       CV.whileActive = Array.isArray(CV.whileActive) ? CV.whileActive : [];
+      CV.onLaw = Array.isArray(CV.onLaw) ? CV.onLaw : [];
       convEditingId = id || null;
       document.getElementById('convEditorPanel').hidden = false;
       setConvNote('');
@@ -1114,6 +1130,22 @@
       t2.onclick=function(){ c.whileActive.push(cvStanding('Order',1)); renderConvEditor(); renderConvPrev(); };
       wrow.appendChild(t1); wrow.appendChild(t2); wc.appendChild(wrow); box.appendChild(wc);
 
+      var lc=document.createElement('div'); lc.className='card';
+      lc.innerHTML='<div class="subhd"><span>Effect when a tagged law passes <span class="hint" style="text-transform:none;letter-spacing:0">· fires each time a law with this identity tag is enacted</span></span></div>';
+      c.onLaw.forEach(function(e,j){
+        var row=document.createElement('div'); row.className='ceff law';
+        row.innerHTML='<select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
+          cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button>';
+        row.querySelector('.lt').onchange=function(ev){ e.tag=ev.target.value; renderConvPrev(); };
+        row.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
+        row.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+        row.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
+        lc.appendChild(row);
+      });
+      var lAdd=document.createElement('button'); lAdd.className='add'; lAdd.type='button'; lAdd.textContent='+ law effect';
+      lAdd.onclick=function(){ c.onLaw.push(cvLaw(IDENTITY_TAGS[0],'Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
+      lc.appendChild(lAdd); box.appendChild(lc);
+
       var sv=document.createElement('button'); sv.className='save'; sv.type='button'; sv.textContent=convEditingId?'Save changes':'Create conviction';
       sv.onclick=saveConviction; box.appendChild(sv);
 
@@ -1175,7 +1207,7 @@
     function renderConvPrev(){
       var c=CV, a=convArch(c.archetype), box=document.getElementById('convPrev');
       document.documentElement.style.setProperty('--acc', a.color);
-      var aL=adoptLines(c), wL=activeLines(c);
+      var aL=adoptLines(c), wL=activeLines(c), lL=lawLines(c);
       var adopt = aL.length ? aL.map(cvLineHtml).join('') : '<div class="pvnone">—</div>';
       var act   = wL.length ? wL.map(cvLineHtml).join('') : '<div class="pvnone">—</div>';
       box.innerHTML='<div class="pvcard">'+
@@ -1184,6 +1216,7 @@
         '<div class="pvdesc">'+esc(c.desc||'')+'</div>'+
         '<div class="pvsec">On adopt</div>'+adopt+
         '<div class="pvsec">While active</div>'+act+
+        (lL.length ? '<div class="pvsec">On tagged law</div>'+lL.map(cvLineHtml).join('') : '')+
       '</div>';
     }
 
