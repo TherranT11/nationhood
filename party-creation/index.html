@@ -29,7 +29,7 @@
   input.pname.abbr { max-width: 220px; text-transform: uppercase; letter-spacing: 0.18em; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; }
   .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
 
-  .arch-h { margin: 30px 0 12px; }
+  .sec-h { margin: 30px 0 12px; }
   textarea.pdesc {
     width: 100%; font-size: 15px; line-height: 1.5; padding: 14px 16px; border: 1px solid var(--line);
     border-radius: 12px; background: var(--surface); color: var(--ink); outline: none; transition: border-color .15s;
@@ -72,11 +72,11 @@
     <div class="lbl" id="nameLbl">Party name</div>
     <input class="pname" id="pname" type="text" maxlength="48" placeholder="e.g. The People's Front" autocomplete="off">
 
-    <div class="lbl arch-h">Party abbreviation</div>
+    <div class="lbl sec-h">Party abbreviation</div>
     <input class="pname abbr" id="pabbr" type="text" maxlength="4" placeholder="e.g. PFP" autocomplete="off" spellcheck="false">
     <div class="hint">2–4 capital letters. Must be unique within the nation.</div>
 
-    <div class="lbl arch-h">Party description</div>
+    <div class="lbl sec-h">Party description</div>
     <textarea class="pdesc" id="pdesc" maxlength="360" rows="4" placeholder="Describe what your party stands for and who they represent."></textarea>
     <div class="hint"><span id="descCount">0</span> / 360</div>
   </main>
