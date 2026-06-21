@@ -129,6 +129,75 @@
   .declgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px}
   .declrow .decl-custom{margin-top:6px}
 
+  /* ── Policies (authoring) — all scoped under .poltab so the generic class
+     names (.opt/.star/.effrow/.seg/.addopt) never collide with other tabs ── */
+  .poltab .polcols{display:grid;grid-template-columns:1fr 322px;gap:20px;align-items:start}
+  @media(max-width:1040px){.poltab .polcols{grid-template-columns:1fr}}
+  .poltab .card{border:1px solid var(--line);border-radius:14px;padding:20px 22px;background:var(--surface);margin-bottom:18px}
+  .poltab .f{margin-bottom:14px}
+  .poltab .seg{display:inline-flex;background:var(--chip,#F4F3EF);border-radius:9px;padding:3px;gap:3px}
+  .poltab .seg span{padding:9px 15px;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .poltab .seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+  .poltab .opthd{display:flex;align-items:center;justify-content:space-between;margin:24px 0 12px}
+  .poltab .opthd .t{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .poltab .opt{border:1px solid var(--line);border-left:3px solid var(--indigo);border-radius:12px;padding:16px 16px 14px;margin-bottom:13px;background:var(--field,#FCFBF9)}
+  .poltab .opt.binyes{border-left-color:var(--green,#16915a)} .poltab .opt.binno{border-left-color:var(--red,#C42B2B)}
+  .poltab .opt .oh{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .poltab .opt .ord{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--soft);width:22px;flex:none}
+  .poltab .opt .oh input{flex:1;font-weight:700}
+  .poltab .star{width:32px;height:36px;border:1px solid var(--line2);background:var(--surface);border-radius:8px;cursor:pointer;color:var(--soft);font-size:15px;flex:none}
+  .poltab .star:hover{border-color:var(--amber,#E0820E);color:var(--amber,#E0820E)}
+  .poltab .star.on{color:var(--amber,#E0820E);border-color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,var(--surface))}
+  .poltab .xb{width:32px;height:36px;border:1px solid var(--line2);background:var(--surface);border-radius:8px;color:var(--soft);cursor:pointer;font-size:15px;flex:none}
+  .poltab .xb:hover{color:var(--red,#C42B2B);border-color:var(--red,#C42B2B)}
+  .poltab .startpill{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,var(--surface));border-radius:20px;padding:4px 8px;flex:none}
+  .poltab .sublab{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:12px 0 7px}
+  .poltab .archrow{display:flex;flex-wrap:wrap;gap:6px}
+  .poltab .achip{display:flex;align-items:center;gap:6px;padding:6px 9px;border:1.5px solid var(--line);border-radius:18px;cursor:pointer;font-size:11px;font-weight:600;background:var(--surface);user-select:none}
+  .poltab .achip .ad{width:7px;height:7px;border-radius:50%}
+  .poltab .archrow.sup .achip.on{border-color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 12%,var(--surface));color:var(--green,#16915a)}
+  .poltab .archrow.opp .achip.on{border-color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B)}
+  .poltab .effwrap{margin-bottom:9px}
+  .poltab .effrow{display:grid;grid-template-columns:1.6fr .7fr .9fr .95fr 30px;gap:7px;margin-bottom:0;align-items:center}
+  @media(max-width:560px){.poltab .effrow{grid-template-columns:1fr 1fr}}
+  .poltab .effrow select,.poltab .effrow input{padding:8px 9px;font-size:12.5px}
+  .poltab .effrow .dur.hide{visibility:hidden}
+  .poltab .add.sm{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer;margin-top:2px}
+  .poltab .add.sm:hover{border-color:var(--ink)}
+  .poltab .addopt{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:9px;padding:9px 14px;cursor:pointer}
+  .poltab .addopt:hover{border-color:var(--ink)}
+  .poltab .bindefault{display:flex;align-items:center;gap:9px;margin-bottom:13px;font-size:12.5px;color:var(--muted)}
+  .poltab .bindefault select{width:auto;min-width:140px}
+  .poltab .scalerow{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:7px;padding:8px 11px;background:var(--field,#FCFBF9);border:1px solid var(--line);border-radius:9px}
+  .poltab .scalerow .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .poltab .scalerow .es{width:auto;min-width:172px;padding:7px 9px;font-size:12.5px}
+  .poltab .scalerow .worked{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:210px}
+  .poltab .rail{position:sticky;top:20px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .poltab .rail .rh{background:var(--field,#FCFBF9);border-bottom:1px solid var(--line);padding:12px 16px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .poltab .rail .rb{padding:14px 16px;max-height:78vh;overflow:auto}
+  .poltab .pvname{font-weight:800;font-size:16px;letter-spacing:-.01em}
+  .poltab .pvtype{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft,#ECE9FD);border-radius:20px;padding:3px 8px;display:inline-block;margin-top:5px}
+  .poltab .pvopt{border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-top:11px}
+  .poltab .pvopt .on{font-weight:700;font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:center;background:none;color:var(--ink)}
+  .poltab .pvopt .startt{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--amber,#E0820E)}
+  .poltab .pvcamps{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .poltab .pvc{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600}
+  .poltab .pvc .ad{width:7px;height:7px;border-radius:50%}
+  .poltab .pvc.sup{color:var(--green,#16915a)} .poltab .pvc.opp{color:var(--red,#C42B2B)}
+  .poltab .pveff{margin-top:9px;display:flex;flex-direction:column;gap:4px}
+  .poltab .pveff .e{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)}
+  .poltab .pveff .e b{color:var(--ink)} .poltab .pveff .e.pos b{color:var(--green,#16915a)} .poltab .pveff .e.neg b{color:var(--red,#C42B2B)}
+  .poltab .pveff .cad{color:var(--soft)}
+  .poltab .pvnone{font-size:11px;color:var(--soft);font-style:italic;margin-top:6px}
+  .poltab .plcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .poltab .plcard:last-child{margin-bottom:0}
+  .poltab .plcard__name{font-size:15px;font-weight:800}
+  .poltab .plcard__meta{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:3px}
+  .poltab .plcard__btns{display:flex;gap:6px;flex:none}
+  .poltab .plcard .ed,.poltab .plcard .rm{font-size:12px;font-weight:700;border-radius:8px;padding:6px 12px;cursor:pointer}
+  .poltab .plcard .ed{background:var(--indigo-soft,#ECE9FD);color:var(--indigo);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent)}
+  .poltab .plcard .rm{background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B);border:1px solid color-mix(in srgb,var(--red,#C42B2B) 30%,transparent)}
+
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
@@ -260,7 +329,25 @@
           </div>
         </div>
       </div>
-      <div class="tabpane" data-tab="policies" hidden><div class="panel"><h2>Policies</h2><p class="empty">Nothing here yet.</p></div></div>
+      <div class="tabpane" data-tab="policies" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <h2 style="margin:0">Policies</h2>
+              <button class="btn btn-solid" id="polNew" type="button">+ New policy</button>
+            </div>
+            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. A <b>Binary</b> policy is passed or repealed; a <b>Spectrum</b> policy is set to one of several options. Each option carries who supports/opposes it and its structured effects.</p>
+            <div id="polList"><p class="empty">Loading…</p></div>
+          </div>
+          <div class="panel" id="polEditorPanel" hidden>
+            <div class="polcols">
+              <div id="polEditor"></div>
+              <aside><div class="rail"><div class="rh">Preview · how it reads</div><div class="rb" id="polPrev"></div></div></aside>
+            </div>
+            <div class="note" id="polNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
       <div class="tabpane" data-tab="crises" hidden><div class="panel"><h2>Crises</h2><p class="empty">Nothing here yet.</p></div></div>
       <div class="tabpane" data-tab="events" hidden><div class="panel"><h2>Events</h2><p class="empty">Nothing here yet.</p></div></div>
       </div><!-- /tabwrap -->
@@ -621,8 +708,194 @@
         if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
         if (tab === 'nations') loadDeclFields();
         if (tab === 'declarations') loadDeclarations();
+        if (tab === 'policies') loadPolicies();
       });
     });
+
+    // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
+    // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.
+    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Regime'],
+                    Government: ['Government Confidence','Party Popularity'],
+                    Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
+    function polColor(n){ for (var i=0;i<ARCHETYPES.length;i++) if (ARCHETYPES[i].name===n) return ARCHETYPES[i].color; return '#9a9a9a'; }
+    function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }
+    function polIsMoney(t){ return t==='Budget' || t==='Debt'; }
+    var POL_SAMPLES = [{n:'2M·P10',pop:2,pros:10},{n:'70M·P14',pop:70,pros:14},{n:'200M·P16',pop:200,pros:16}];
+    function polMoney(v,mode,pop,pros){ if(mode==='flat')return v; if(mode==='perm')return v*pop; return v*pop*(pros/10); }
+    function polFmtAmt(a){ return (a>=0?'+':'−')+'₣'+Math.abs(a).toFixed(2)+'B'; }
+    function polWorked(e){ if(e.scale==='flat') return 'Fixed · '+polFmtAmt(e.v)+' — same for every nation';
+      return POL_SAMPLES.map(function(s){ return s.n+' '+polFmtAmt(polMoney(e.v,e.scale,s.pop,s.pros))+(e.cad==='tick'?'/t':''); }).join('   ·   '); }
+
+    var polCache = [], P = null, polEditingId = null;
+    function blankPolicy(){ return {
+      name:'New policy', desc:'', type:'spectrum', defaultIdx:0, binDefault:1,
+      binary:[ {name:'If Passed',desc:'The policy is in force.',support:[],oppose:[],effects:[]},
+               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',support:[],oppose:[],effects:[]} ],
+      spectrum:[ {name:'Option A',desc:'',support:[],oppose:[],effects:[polEff('Budget',0,'tick',0)]},
+                 {name:'Option B',desc:'',support:[],oppose:[],effects:[]} ]
+    }; }
+    function polOpts(){ return P.type==='spectrum' ? P.spectrum : P.binary; }
+    function polNote(msg,kind){ var n=document.getElementById('polNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
+
+    async function loadPolicies(){
+      var box=document.getElementById('polList');
+      try{
+        const { data, error } = await supabase.from('policies').select('id, definition').order('created_at', { ascending: true });
+        if (error) throw error;
+        polCache = data || [];
+        renderPolList();
+      }catch(e){ box.innerHTML='<p class="empty">Could not load policies.</p>'; }
+    }
+    function renderPolList(){
+      var box=document.getElementById('polList');
+      if (!polCache.length){ box.innerHTML='<p class="empty">No policies yet. Click “New policy” to create one.</p>'; return; }
+      box.innerHTML = polCache.map(function(row){
+        var d = row.definition || {};
+        var n = d.type==='spectrum' ? ((d.spectrum||[]).length+' options') : 'pass / repeal';
+        return '<div class="plcard"><div><div class="plcard__name">'+esc(d.name||'Untitled policy')+'</div>'+
+          '<div class="plcard__meta">'+esc(d.type||'spectrum')+' · '+n+'</div></div>'+
+          '<div class="plcard__btns"><button class="ed" data-id="'+row.id+'" type="button">Edit</button>'+
+          '<button class="rm" data-id="'+row.id+'" type="button">Remove</button></div></div>';
+      }).join('');
+      box.querySelectorAll('.ed').forEach(function(b){ b.onclick=function(){ var r=polCache.filter(function(x){return x.id===b.dataset.id;})[0]; if(r) openPolicy(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
+      box.querySelectorAll('.rm').forEach(function(b){ b.onclick=function(){ removePolicy(b.dataset.id); }; });
+    }
+    function openPolicy(def, id){
+      P = def || blankPolicy(); polEditingId = id || null;
+      document.getElementById('polEditorPanel').hidden = false;
+      polNote('');
+      renderPolEditor(); renderPolPrev();
+      document.getElementById('polEditorPanel').scrollIntoView({ behavior:'smooth', block:'start' });
+    }
+    async function savePolicy(){
+      try{
+        if (polEditingId){
+          const { error } = await supabase.from('policies').update({ definition: P, updated_at: new Date().toISOString() }).eq('id', polEditingId);
+          if (error) throw error;
+        } else {
+          const { data, error } = await supabase.from('policies').insert({ definition: P }).select('id').single();
+          if (error) throw error; polEditingId = data.id;
+        }
+        polNote('Saved “'+(P.name||'policy')+'”.', 'ok');
+        loadPolicies();
+      }catch(e){ polNote('Save failed: '+(e.message||e), 'error'); }
+    }
+    async function removePolicy(id){
+      if (!confirm('Delete this policy? This removes it for every nation.')) return;
+      try{
+        const { error } = await supabase.from('policies').delete().eq('id', id);
+        if (error) throw error;
+        if (polEditingId===id){ polEditingId=null; document.getElementById('polEditorPanel').hidden=true; }
+        loadPolicies();
+      }catch(e){ alert('Could not remove: '+(e.message||e)); }
+    }
+
+    function polTgtSelect(sel){
+      var h='<select class="et">';
+      Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+g+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+t+'</option>'; }).join('')+'</optgroup>'; });
+      return h+'</select>';
+    }
+    function renderPolEditor(){
+      var box=document.getElementById('polEditor'); box.innerHTML='';
+      var idc=document.createElement('div'); idc.className='card';
+      idc.innerHTML='<div class="f"><label>Policy name</label><input type="text" id="pol-name" value="'+esc(P.name).replace(/"/g,'&quot;')+'"></div>'+
+        '<div class="f"><label>Description</label><textarea id="pol-desc">'+esc(P.desc||'')+'</textarea></div>'+
+        '<div class="f" style="margin-bottom:0"><label>Type</label><div class="seg" id="pol-typeSeg"><span data-v="binary" class="'+(P.type==='binary'?'on':'')+'">Binary</span><span data-v="spectrum" class="'+(P.type==='spectrum'?'on':'')+'">Spectrum</span></div></div>';
+      box.appendChild(idc);
+
+      var oc=document.createElement('div'); oc.className='card';
+      oc.innerHTML='<div class="opthd"><span class="t">'+(P.type==='spectrum'?'Spectrum options':'States')+'</span>'+(P.type==='spectrum'?'<button class="addopt" id="pol-addOpt" type="button">+ add option</button>':'')+'</div>';
+      if (P.type==='binary'){
+        var bd=document.createElement('div'); bd.className='bindefault';
+        bd.innerHTML='<span>Every nation starts:</span><select id="pol-binDef"><option value="0"'+(P.binDefault===0?' selected':'')+'>Passed</option><option value="1"'+(P.binDefault===1?' selected':'')+'>Repealed</option></select>';
+        oc.appendChild(bd);
+      }
+      polOpts().forEach(function(o,i){ oc.appendChild(buildPolOpt(o,i)); });
+      box.appendChild(oc);
+
+      var foot=document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px';
+      var sv=document.createElement('button'); sv.className='btn btn-solid'; sv.type='button'; sv.textContent=polEditingId?'Save changes':'Create policy'; sv.onclick=savePolicy;
+      var cx=document.createElement('button'); cx.className='btn btn-ghost'; cx.type='button'; cx.textContent='Close'; cx.onclick=function(){ document.getElementById('polEditorPanel').hidden=true; };
+      foot.appendChild(sv); foot.appendChild(cx); box.appendChild(foot);
+
+      box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
+      box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
+      box.querySelectorAll('#pol-typeSeg span').forEach(function(s){ s.onclick=function(){ P.type=s.dataset.v; renderPolEditor(); renderPolPrev(); }; });
+      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',support:[],oppose:[],effects:[polEff('Budget',0,'tick',0)]}); renderPolEditor(); renderPolPrev(); };
+      var bdf=box.querySelector('#pol-binDef'); if(bdf)bdf.onchange=function(e){ P.binDefault=+e.target.value; renderPolEditor(); renderPolPrev(); };
+    }
+    function buildPolOpt(o,i){
+      var card=document.createElement('div');
+      card.className='opt'+(P.type==='binary'?(i===0?' binyes':' binno'):'');
+      var isStart = P.type==='spectrum' ? i===P.defaultIdx : i===P.binDefault;
+      var head='<div class="oh">';
+      if (P.type==='spectrum'){
+        head+='<span class="ord">'+(i+1)+'</span><input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+
+          '<button class="star'+(isStart?' on':'')+'" type="button" title="Starting option">'+(isStart?'★':'☆')+'</button>'+
+          (P.spectrum.length>2?'<button class="xb" type="button">×</button>':'');
+      } else {
+        head+='<input type="text" class="onm" value="'+esc(o.name).replace(/"/g,'&quot;')+'">'+(isStart?'<span class="startpill">Default</span>':'');
+      }
+      head+='</div>';
+      var supChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.support.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
+      var oppChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.oppose.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
+      var effHtml=o.effects.map(function(e){
+        var scaleRow = polIsMoney(e.t) ? '<div class="scalerow"><span class="lbl">Scaled by</span><select class="es"><option value="flat"'+(e.scale==='flat'?' selected':'')+'>Flat amount</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>Per million pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>× Pop × Prosperity</option></select><span class="worked">'+polWorked(e)+'</span></div>' : '';
+        return '<div class="effwrap"><div class="effrow">'+polTgtSelect(e.t)+
+          '<input type="number" class="ev" step="any" value="'+e.v+'">'+
+          '<select class="ec"><option value="once"'+(e.cad==='once'?' selected':'')+'>Once</option><option value="tick"'+(e.cad==='tick'?' selected':'')+'>Per tick</option></select>'+
+          '<input type="number" class="dur'+(e.cad!=='tick'?' hide':'')+'" min="0" placeholder="∞ while enacted" value="'+(e.dur?e.dur:'')+'">'+
+          '<button class="xb efx" type="button" title="Remove">×</button></div>'+scaleRow+'</div>';
+      }).join('');
+      card.innerHTML=head+
+        '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
+        '<div class="sublab">Archetype support</div><div class="archrow sup">'+supChips+'</div>'+
+        '<div class="sublab" style="margin-top:12px">Archetype opposition</div><div class="archrow opp">'+oppChips+'</div>'+
+        '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
+        '<button class="add sm addeff" type="button">+ effect</button>';
+
+      card.querySelector('.onm').oninput=function(e){ o.name=e.target.value; renderPolPrev(); };
+      card.querySelector('.odesc').oninput=function(e){ o.desc=e.target.value; };
+      var star=card.querySelector('.star'); if(star && P.type==='spectrum')star.onclick=function(){ P.defaultIdx=i; renderPolEditor(); renderPolPrev(); };
+      var rm=card.querySelector('.oh .xb'); if(rm)rm.onclick=function(){ P.spectrum.splice(i,1); if(P.defaultIdx>=P.spectrum.length)P.defaultIdx=P.spectrum.length-1; renderPolEditor(); renderPolPrev(); };
+      card.querySelectorAll('.archrow.sup .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.support.indexOf(a); if(k>=0)o.support.splice(k,1); else{ o.support.push(a); var o2=o.oppose.indexOf(a); if(o2>=0)o.oppose.splice(o2,1); } renderPolEditor(); renderPolPrev(); }; });
+      card.querySelectorAll('.archrow.opp .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.oppose.indexOf(a); if(k>=0)o.oppose.splice(k,1); else{ o.oppose.push(a); var s2=o.support.indexOf(a); if(s2>=0)o.support.splice(s2,1); } renderPolEditor(); renderPolPrev(); }; });
+      card.querySelectorAll('.effwrap').forEach(function(wrap,j){
+        var e=o.effects[j], row=wrap.querySelector('.effrow');
+        row.querySelector('.et').onchange=function(ev){ e.t=ev.target.value; if(polIsMoney(e.t)&&!e.scale)e.scale='pop'; renderPolEditor(); renderPolPrev(); };
+        row.querySelector('.ev').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
+        row.querySelector('.ec').onchange=function(ev){ e.cad=ev.target.value; if(e.cad==='once')e.dur=null; renderPolEditor(); renderPolPrev(); };
+        var dur=row.querySelector('.dur'); dur.oninput=function(ev){ e.dur=ev.target.value?+ev.target.value:0; renderPolPrev(); };
+        row.querySelector('.efx').onclick=function(){ o.effects.splice(j,1); renderPolEditor(); renderPolPrev(); };
+        var es=wrap.querySelector('.es'); if(es)es.onchange=function(ev){ e.scale=ev.target.value; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
+      });
+      card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget',0,'tick',0)); renderPolEditor(); renderPolPrev(); };
+      return card;
+    }
+    function polEffLine(e){
+      var cad = e.cad==='once' ? 'once' : (e.dur && e.dur>0 ? '/ tick · '+e.dur+'t' : '/ tick · while enacted');
+      if (polIsMoney(e.t)){
+        var mid=polMoney(e.v,e.scale,70,14), modeT=e.scale==='flat'?'flat':e.scale==='perm'?'×pop':'×pop×prosp', s=mid>=0?'+':'−';
+        return '<div class="e '+(mid>0?'pos':mid<0?'neg':'')+'"><b>'+esc(e.t)+' '+s+'₣'+Math.abs(mid).toFixed(2)+'B</b> <span class="cad">'+cad+' · '+modeT+' @ 70M·P14</span></div>';
+      }
+      var sign=e.v>=0?'+':'−', mag=Math.abs(e.v), cls=e.v>0?'pos':e.v<0?'neg':'';
+      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+mag+'</b> <span class="cad">'+cad+'</span></div>';
+    }
+    function renderPolPrev(){
+      var box=document.getElementById('polPrev');
+      var typeLabel=P.type==='spectrum'?('Spectrum · '+P.spectrum.length+' options'):'Binary · pass / repeal';
+      var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
+      polOpts().forEach(function(o,i){
+        var isStart=P.type==='spectrum'? i===P.defaultIdx : i===P.binDefault;
+        var camps=o.support.map(function(a){ return '<span class="pvc sup"><span class="ad" style="background:'+polColor(a)+'"></span>'+esc(a)+'</span>'; })
+          .concat(o.oppose.map(function(a){ return '<span class="pvc opp"><span class="ad" style="background:'+polColor(a)+'"></span>'+esc(a)+'</span>'; })).join('');
+        var effs=o.effects.length?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';
+        html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?(i+1)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+
+          (camps?'<div class="pvcamps">'+camps+'</div>':'<div class="pvnone">No archetype lean</div>')+effs+'</div>';
+      });
+      box.innerHTML=html;
+    }
+    document.getElementById('polNew').onclick=function(){ openPolicy(blankPolicy(), null); };
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
     var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
