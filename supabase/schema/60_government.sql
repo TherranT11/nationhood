@@ -327,7 +327,7 @@ begin
   -- Standing monthly economics: every nation's in-force policy options apply their
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
-  perform public._apply_policy_tick_effects();
+  perform public._apply_policy_tick_effects(v_tick);
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick

@@ -37,6 +37,13 @@ create policy "pol_delete_admin" on public.policies for delete using (public.is_
 -- admin-only write — schema/10).
 alter table public.nations add column if not exists policies jsonb not null default '{}'::jsonb;
 
+-- When the nation's current option for each policy was put in force by a passed law
+-- (schema/92 _apply_law): { "<policy_id>": <tick> }. Powers finite-duration tick
+-- effects (dur > 0) — applied only for their first dur months after enactment. A
+-- policy absent here (default / admin-set baseline) has no active clock, so its timed
+-- effects don't fire; "while enacted" effects (dur 0) apply regardless.
+alter table public.nations add column if not exists policy_since jsonb not null default '{}'::jsonb;
+
 -- ONE source for a policy definition's option array — the 'spectrum' or 'binary'
 -- list, keyed by the policy's own type. Read by the law validator (schema/92) and
 -- the effects engine (schema/91); mirrors polOptList() in the admin tool.

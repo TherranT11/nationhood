@@ -21,9 +21,14 @@
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
+declare v_tick int;
 begin
+  select current_tick into v_tick from public.game_state where id;
+  -- Flip the option AND stamp the enactment tick (policy_since) so finite-duration
+  -- tick effects can age from here; an active enactment starts/resets that clock.
   update public.nations
-     set policies = jsonb_set(coalesce(policies, '{}'::jsonb), array[p_policy::text], to_jsonb(p_option), true)
+     set policies     = jsonb_set(coalesce(policies, '{}'::jsonb),     array[p_policy::text], to_jsonb(p_option), true),
+         policy_since = jsonb_set(coalesce(policy_since, '{}'::jsonb), array[p_policy::text], to_jsonb(v_tick),   true)
    where id = p_nation;
   perform public._apply_policy_option_effects(p_nation, p_policy, p_option, 'once');
 end $$;

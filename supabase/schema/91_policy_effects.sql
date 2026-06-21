@@ -109,10 +109,13 @@ begin
 end $$;
 
 -- Apply an option's effects of a given cadence ('once' on enactment, 'tick' per
--- month). Reads the option array straight from the stored policy definition.
-create or replace function public._apply_policy_option_effects(p_nation text, p_policy uuid, p_option int, p_cadence text)
+-- month). Reads the option array straight from the stored policy definition. p_age
+-- is how many ticks the option has been in force (current_tick − enactment tick),
+-- or null when there's no active clock; it gates finite-duration tick effects.
+drop function if exists public._apply_policy_option_effects(text, uuid, int, text);
+create or replace function public._apply_policy_option_effects(p_nation text, p_policy uuid, p_option int, p_cadence text, p_age int default null)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_def jsonb; v_opts jsonb; v_eff jsonb;
+declare v_def jsonb; v_opts jsonb; v_eff jsonb; v_dur numeric;
 begin
   select definition into v_def from public.policies where id = p_policy;
   if v_def is null then return; end if;
@@ -120,32 +123,36 @@ begin
   if v_opts is null or jsonb_typeof(v_opts) <> 'array'
      or p_option < 0 or p_option >= jsonb_array_length(v_opts) then return; end if;
   for v_eff in select value from jsonb_array_elements(coalesce(v_opts->p_option->'effects', '[]'::jsonb)) loop
-    -- Per-tick effects with a finite duration (dur > 0) would need a per-nation
-    -- enactment-tick clock we don't keep yet, so only "while enacted" tick effects
-    -- (dur 0/blank — the authoring default) are applied; timed ones are skipped
-    -- rather than applied forever. Once-effects ignore dur entirely.
-    if coalesce(v_eff->>'cad', 'tick') = p_cadence
-       and (p_cadence <> 'tick' or coalesce((v_eff->>'dur')::numeric, 0) <= 0) then
-      perform public._apply_policy_effect(p_nation, v_eff);
-    end if;
+    if coalesce(v_eff->>'cad', 'tick') <> p_cadence then continue; end if;
+    -- Once-effects ignore duration. A per-tick effect applies every month while
+    -- enacted (dur 0/blank — the authoring default); a finite one (dur > 0) applies
+    -- only for its first dur months after an active enactment (p_age in 1..dur). A
+    -- timed effect on a default/baseline option (no clock, p_age null) never fires.
+    v_dur := coalesce((v_eff->>'dur')::numeric, 0);
+    if p_cadence = 'tick' and v_dur > 0 and (p_age is null or p_age < 1 or p_age > v_dur) then continue; end if;
+    perform public._apply_policy_effect(p_nation, v_eff);
   end loop;
 end $$;
 
 -- The monthly sweep (called once per tick by advance_tick, schema/60): every nation
 -- applies the per-tick effects of whichever option is in force for each policy — its
 -- stored override or the policy default (_nation_policy_option). Standing economics:
--- a policy that's in force keeps pushing its stats each month.
-create or replace function public._apply_policy_tick_effects()
+-- a policy that's in force keeps pushing its stats each month. p_tick is the current
+-- tick, used with nations.policy_since to age each enactment for finite durations.
+drop function if exists public._apply_policy_tick_effects();
+create or replace function public._apply_policy_tick_effects(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare r record;
 begin
   for r in
     select n.id as nation_id, p.id as policy_id,
-           public._nation_policy_option(n.id, p.id) as opt
+           public._nation_policy_option(n.id, p.id) as opt,
+           case when n.policy_since ? (p.id)::text
+                then p_tick - (n.policy_since->>(p.id)::text)::int else null end as age
     from public.nations n
     cross join public.policies p
   loop
-    perform public._apply_policy_option_effects(r.nation_id, r.policy_id, r.opt, 'tick');
+    perform public._apply_policy_option_effects(r.nation_id, r.policy_id, r.opt, 'tick', r.age);
   end loop;
 end $$;
 
