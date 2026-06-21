@@ -120,9 +120,32 @@ begin
   if v_opts is null or jsonb_typeof(v_opts) <> 'array'
      or p_option < 0 or p_option >= jsonb_array_length(v_opts) then return; end if;
   for v_eff in select value from jsonb_array_elements(coalesce(v_opts->p_option->'effects', '[]'::jsonb)) loop
-    if coalesce(v_eff->>'cad', 'tick') = p_cadence then
+    -- Per-tick effects with a finite duration (dur > 0) would need a per-nation
+    -- enactment-tick clock we don't keep yet, so only "while enacted" tick effects
+    -- (dur 0/blank — the authoring default) are applied; timed ones are skipped
+    -- rather than applied forever. Once-effects ignore dur entirely.
+    if coalesce(v_eff->>'cad', 'tick') = p_cadence
+       and (p_cadence <> 'tick' or coalesce((v_eff->>'dur')::numeric, 0) <= 0) then
       perform public._apply_policy_effect(p_nation, v_eff);
     end if;
+  end loop;
+end $$;
+
+-- The monthly sweep (called once per tick by advance_tick, schema/60): every nation
+-- applies the per-tick effects of whichever option is in force for each policy — its
+-- stored override or the policy default (_nation_policy_option). Standing economics:
+-- a policy that's in force keeps pushing its stats each month.
+create or replace function public._apply_policy_tick_effects()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    select n.id as nation_id, p.id as policy_id,
+           public._nation_policy_option(n.id, p.id) as opt
+    from public.nations n
+    cross join public.policies p
+  loop
+    perform public._apply_policy_option_effects(r.nation_id, r.policy_id, r.opt, 'tick');
   end loop;
 end $$;
 

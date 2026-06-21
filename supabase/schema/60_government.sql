@@ -324,6 +324,10 @@ begin
   -- predicate matches all parties not already at 3 (and is null-safe) — it also
   -- satisfies Postgres' require-a-WHERE-clause guard (sql_safe_updates).
   update public.parties set actions_remaining = 3 where actions_remaining is distinct from 3;
+  -- Standing monthly economics: every nation's in-force policy options apply their
+  -- per-tick effects for this month (schema/91). Runs before the floor close below,
+  -- so a law enacted this tick starts contributing next tick, not the month it passed.
+  perform public._apply_policy_tick_effects();
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick
