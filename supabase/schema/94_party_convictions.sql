@@ -132,8 +132,9 @@ $$;
 -- "while active" effects: a standing modifier applies its flat value each month; a
 -- trigger rewards the movement of its watched stat since last tick — proportional,
 -- reward = rv × (movement-in-direction ÷ per) — plus the mirrored inverse on the
--- opposite move when set. Then the per-nation / per-party snapshots are refreshed (so
--- this tick's own effects don't re-trigger next tick).
+-- opposite move when set. An effect may be role-gated ('when' = gov/opp) so it only
+-- applies while the party governs / sits in opposition. Then the per-nation / per-party
+-- snapshots are refreshed (so this tick's own effects don't re-trigger next tick).
 create or replace function public._apply_conviction_triggers(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare
@@ -142,7 +143,7 @@ declare
 begin
   for r in
     select pc.party_id, p.nation_id, p.popularity as party_pop, p.conv_prev_pop,
-           p.pop_ceiling as party_ceiling, p.conv_prev_ceiling,
+           p.pop_ceiling as party_ceiling, p.conv_prev_ceiling, p.in_government,
            n.stats, n.economy, n.production, n.conv_snapshot,
            c.definition->'whileActive' as wa
     from public.party_convictions pc
@@ -154,6 +155,10 @@ begin
     v_snap := r.conv_snapshot;
     select confidence into v_conf from public.governments where nation_id = r.nation_id and status = 'active';
     for v_eff in select value from jsonb_array_elements(r.wa) loop
+      -- Role gate: an effect scoped to 'gov'/'opp' only applies when the party's
+      -- current role matches (default — no 'when' — applies always).
+      if (v_eff->>'when') = 'gov' and not coalesce(r.in_government, false) then continue; end if;
+      if (v_eff->>'when') = 'opp' and coalesce(r.in_government, false) then continue; end if;
       if (v_eff->>'kind') = 'standing' then
         perform public._apply_conviction_effect(r.party_id, r.nation_id, jsonb_build_object('t', v_eff->>'t', 'v', v_eff->'v'));
       else
