@@ -284,6 +284,11 @@
           <p class="declsec__sub">Per-nation names and titles. Leave “— not set —” to use the shared default (free-text identity slots then show “—” until declared). Choose “+ Add custom…” to type your own value and select it for this nation.</p>
           <div id="declFields" class="declgrid"><p class="empty">Loading declarations…</p></div>
         </div>
+        <div class="declsec">
+          <h3 class="declsec__h">Policies</h3>
+          <p class="declsec__sub">The starting option for each policy. Players can propose changes later. A policy left at its default applies that default automatically.</p>
+          <div id="polFields" class="declgrid"><p class="empty">Loading policies…</p></div>
+        </div>
         <button class="btn btn-solid btn-full" type="submit" id="addBtn">Add</button>
         <button class="btn btn-ghost btn-full" type="button" id="cancelEdit" hidden style="margin-top:8px">Cancel edit</button>
         <div class="note" id="addNote" role="status" aria-live="polite"></div>
@@ -415,6 +420,7 @@
           renderClock();
           await loadNations();
           loadDeclFields();
+          loadPolFields();
           renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []);
           loadModifiers();
         } else if (session) {
@@ -470,6 +476,7 @@
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
       setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
       fillDeclFields(n);
+      fillPolFields(n);
     }
     function startEdit(n) {
       editing = n;
@@ -484,6 +491,7 @@
       editing = null;
       document.getElementById('addForm').reset();
       resetDeclFields();
+      resetPolFields();
       document.getElementById('f-regime').value = '17';
       document.getElementById('formTitle').textContent = 'Add Nation';
       document.getElementById('addBtn').textContent = 'Add';
@@ -569,6 +577,49 @@
         var known = {}; declSlots.forEach(function (s) { known[s.slug] = true; });
         Object.keys(editing.declarations).forEach(function (k) { if (!known[k] && out[k] == null) out[k] = editing.declarations[k]; });
       }
+      return out;
+    }
+
+    // --- Per-nation policy starting option (same pattern as declarations) ----
+    var polNationDefs = [];   // [{id, definition}] for the form's policy dropdowns
+    async function loadPolFields() {
+      var box = document.getElementById('polFields');
+      if (!box) return;
+      try {
+        const { data, error } = await supabase.from('policies').select('id, definition').order('created_at');
+        if (error) throw error;
+        polNationDefs = data || [];
+        if (!polNationDefs.length) { box.innerHTML = '<p class="empty">No policies defined yet — add them in the Policies tab.</p>'; return; }
+        box.innerHTML = polNationDefs.map(function (row) {
+          var d = row.definition || {}, def = polDefIdx(d);
+          var opts = polOptList(d).map(function (o, i) {
+            return '<option value="' + i + '"' + (i === def ? ' selected' : '') + '>' + esc(o.name || ('Option ' + (i + 1))) + (i === def ? ' (default)' : '') + '</option>';
+          }).join('');
+          return '<div class="declrow" data-pid="' + esc(row.id) + '"><label>' + esc(d.name || 'Untitled policy') + '</label><select class="pol-sel">' + opts + '</select></div>';
+        }).join('');
+        if (editing) fillPolFields(editing);   // re-apply the loaded nation's saved options
+      } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load policies.</p>'; }
+    }
+    function fillPolFields(n) {
+      var vals = (n && n.policies) || {};
+      document.querySelectorAll('#polFields .declrow').forEach(function (row) {
+        var sel = row.querySelector('.pol-sel'), v = vals[row.dataset.pid];
+        sel.value = (v != null) ? String(v) : sel.querySelector('option[selected]') ? sel.querySelector('option[selected]').value : '0';
+      });
+    }
+    function resetPolFields() {
+      document.querySelectorAll('#polFields .declrow').forEach(function (row) {
+        var sel = row.querySelector('.pol-sel'), d = sel.querySelector('option[selected]');
+        sel.value = d ? d.value : '0';
+      });
+    }
+    // The form's policy choices as a jsonb map { policy_id: option_idx } — every
+    // policy currently shown is stored explicitly. Deleted policies drop out.
+    function collectNationPolicies() {
+      var out = {};
+      document.querySelectorAll('#polFields .declrow').forEach(function (row) {
+        out[row.dataset.pid] = parseInt(row.querySelector('.pol-sel').value, 10) || 0;
+      });
       return out;
     }
 
@@ -667,7 +718,8 @@
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
           goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy')
         },
-        declarations: collectDeclarations()
+        declarations: collectDeclarations(),
+        policies: collectNationPolicies()
       };
 
       btn.disabled = true;
@@ -693,7 +745,7 @@
         }
         addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
-        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); }
+        if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }
         loadNations();
       } catch (e) { addNote.textContent = 'Couldn’t save the nation. Try again.'; addNote.className = 'note error'; }
       finally { btn.disabled = false; }
@@ -706,7 +758,7 @@
         document.querySelectorAll('.vtab').forEach(function (x) { x.classList.toggle('active', x === t); });
         document.querySelectorAll('.tabpane').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
         if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
-        if (tab === 'nations') loadDeclFields();
+        if (tab === 'nations') { loadDeclFields(); loadPolFields(); }
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
       });
@@ -733,7 +785,9 @@
       spectrum:[ {name:'Option A',desc:'',support:[],oppose:[],effects:[polEff('Budget',0,'tick',0)]},
                  {name:'Option B',desc:'',support:[],oppose:[],effects:[]} ]
     }; }
-    function polOpts(){ return P.type==='spectrum' ? P.spectrum : P.binary; }
+    function polOptList(d){ return (d && d.type==='spectrum') ? (d.spectrum||[]) : (d&&d.binary||[]); }   // a policy's option array
+    function polDefIdx(d){ return (d && d.type==='spectrum') ? (d.defaultIdx||0) : (d&&d.binDefault||0); } // its starting option index
+    function polOpts(){ return polOptList(P); }
     var polSaving = false;   // double-fire lock for the create/save path
     function setPolNote(msg,kind){ var n=document.getElementById('polNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
 

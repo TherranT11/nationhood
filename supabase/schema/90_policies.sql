@@ -26,3 +26,14 @@ drop policy if exists "pol_update_admin" on public.policies;
 create policy "pol_update_admin" on public.policies for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "pol_delete_admin" on public.policies;
 create policy "pol_delete_admin" on public.policies for delete using (public.is_admin());
+
+-- Per-nation policy state (stage 2). The admin sets each nation's starting
+-- option here; players change it later via proposals. Stored as a jsonb map on
+-- the nation row — same shape/precedent as nations.declarations:
+--   { "<policy_id>": <option_idx> }
+-- A policy absent from the map falls back to its own default (spectrum.defaultIdx
+-- / binDefault), so a newly-created policy applies its default to every nation
+-- with no backfill. nations RLS already covers this column (public read,
+-- admin-only write — schema/10).
+alter table public.nations add column if not exists policies jsonb not null default '{}'::jsonb;
+
