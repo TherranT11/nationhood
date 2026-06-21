@@ -358,6 +358,10 @@ begin
   loop
     perform public._resolve_proposal(v_rec.id, true);
   end loop;
+  -- Adopted convictions' "while active" effects: standing modifiers + movement-based
+  -- triggers, measured against last tick's snapshot (schema/94). Runs last, after this
+  -- tick's stat changes, so it rewards the month's net movement.
+  perform public._apply_conviction_triggers(v_tick);
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 grant execute on function public.advance_tick() to authenticated;
