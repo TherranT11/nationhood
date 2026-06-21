@@ -13,12 +13,13 @@ create table if not exists public.identity_tags (
 );
 
 alter table public.identity_tags enable row level security;
+-- Public read (authoring tools); admin-only insert. No delete policy — there's no
+-- remove UI, and an admin clearing a stray tag does it in the SQL editor (service
+-- role, which bypasses RLS). Add a delete policy here if a remove feature lands.
 drop policy if exists "itag_select_all" on public.identity_tags;
 create policy "itag_select_all"   on public.identity_tags for select using (true);
 drop policy if exists "itag_insert_admin" on public.identity_tags;
 create policy "itag_insert_admin" on public.identity_tags for insert with check (public.is_admin());
-drop policy if exists "itag_delete_admin" on public.identity_tags;
-create policy "itag_delete_admin" on public.identity_tags for delete using (public.is_admin());
 
 -- Seed the original nine (idempotent). An admin adds more from the policy / conviction
 -- authoring UI; created_at orders them so the originals stay first.
