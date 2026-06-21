@@ -113,7 +113,7 @@
           Discord
         </a>
         <button class="btn btn-ghost" id="logout" type="button">Log out</button>
-        <span class="gamedate">January, 1980</span>
+        <span class="gamedate"></span>
       </nav>
     </div>
   </header>
@@ -171,6 +171,9 @@
   </div>
 <script type="module">
   import { requireUser, getTutorialProgress, logout } from '/tutorial/shell.js';
+  import { mountGameDate } from '/gamedate.js';
+
+  mountGameDate(document.querySelector('.gamedate')); // live game date (one source)
 
   // Guard + resume state: only signed-in players see this page, and the
   // Tutorial card shows "In Progress" once they've chosen a party.

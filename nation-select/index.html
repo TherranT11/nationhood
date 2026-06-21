@@ -75,7 +75,7 @@
           <span class="btn-label">Discord</span>
         </a>
         <button class="btn btn-ghost" id="logout" type="button">Log out</button>
-        <span class="gamedate">January, 1980</span>
+        <span class="gamedate"></span>
       </nav>
     </div>
   </header>
@@ -94,7 +94,9 @@
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
     import { statLabel, statBand, statName } from '/ladders.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
+    import { mountGameDate } from '/gamedate.js';
 
+    mountGameDate(document.querySelector('.gamedate')); // live game date (one source)
     document.getElementById('logout').addEventListener('click', logout);
 
     var LADDER_STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
