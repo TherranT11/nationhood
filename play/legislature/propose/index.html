@@ -135,6 +135,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw } from '/proposals.js';
   import { policyOptions, policyDefaultIdx, effectText } from '/policies.js';
+  import { ideologyLabel } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -306,7 +307,7 @@
       const nationName = (nation && nation.name) || party.nation_id;
 
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
       var currency = (nation && nation.economy && nation.economy.currency) || '$';

@@ -177,6 +177,7 @@
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes } from '/proposals.js';
+  import { ideologyLabel } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -320,7 +321,7 @@
       (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; if (p.in_government) ST.govBloc += (p.seats || 0); });
 
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       document.getElementById('lhead').textContent = 'National Assembly of ' + nationName;
       if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 

@@ -127,6 +127,7 @@
   import { esc, fmtGdp, fmtPop } from '/util.js';
   import { regimeLabel } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { ideologyLabel } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar();
@@ -230,7 +231,7 @@
 
       const homeName = (home && home.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + homeName;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + homeName;
       document.title = homeName + ' · World';
       if (home && home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
 

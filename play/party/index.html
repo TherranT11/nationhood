@@ -434,7 +434,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
-  import { ARCHETYPES, archetypeColor, partyColor } from '/archetypes.js';
+  import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel } from '/archetypes.js';
   import { convRoman, adoptLines, activeLines, convsByLevel } from '/convictions.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -663,7 +663,7 @@
         '<div class="acard__top"><span class="emblem">' + esc(abbr) + '</span>' +
           '<div class="acard__id"><b>' + esc(p.name) + (abbr ? ' <i>(' + esc(abbr) + ')</i>' : '') + '</b></div>' +
           '<span class="arole ' + roleCls + '">' + (p.in_government ? 'Government' : 'Opposition') + '</span></div>' +
-        '<div class="ideo">' + esc(p.archetype || '') + '</div>' +
+        '<div class="ideo">' + esc(ideologyLabel(p)) + '</div>' +
         '<div class="acard__stats">' +
           '<div><div class="l">Seats</div><div class="v">' + (p.seats || 0) + '<small> / ' + totalSeats + '</small></div></div>' +
           '<div><div class="l">Popularity</div><div class="v">' + (Number(p.popularity) || 0) + '%</div></div>' +
@@ -691,10 +691,12 @@
   }
   function cvRowsFor(arch) { return (ALL_CONV || []).filter(function (r) { return (r.definition || {}).archetype === arch; }); }
   // A party's ideology reads "No Ideology" until it adopts its first conviction; from
-  // then on it shows its archetype. Sets the header badge + the sidebar subtitle.
-  function setIdeology(label){
-    var ab = document.getElementById('archBadge'); ab.textContent = label || 'No Ideology'; ab.style.display = '';
-    document.getElementById('psub').textContent = (label || 'No Ideology') + ' · ' + MF_NATION;
+  // then on it shows its archetype (ideologyLabel is the ONE source). Sets the header
+  // badge + the sidebar subtitle from the party row.
+  function setIdeology(party){
+    var label = ideologyLabel(party);
+    var ab = document.getElementById('archBadge'); ab.textContent = label; ab.style.display = '';
+    document.getElementById('psub').textContent = label + ' · ' + MF_NATION;
   }
   function cvEffHtml(L){ return '<div class="cveff ' + L.cls + '"><b>' + esc(L.reward) + '</b><span>' + esc(L.cond) + '</span></div>'; }
   function mfEmpty(b, s){ return '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg><b>' + b + '</b><span>' + s + '</span></div>'; }
@@ -763,7 +765,7 @@
       } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
       if (CVS.party.archetype) {                       // first conviction unlocks the ideology
         CVS.rows = cvRowsFor(CVS.party.archetype);
-        setIdeology(CVS.party.archetype);
+        setIdeology(CVS.party);
         applyAccent(partyColor(CVS.party));
       }
     } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); }
@@ -785,10 +787,7 @@
       const { data: ad } = await supabase.from('party_convictions').select('conviction_id').eq('party_id', party.id);
       (ad || []).forEach(function (r) { CVS.adopted[r.conviction_id] = true; });
     } catch (e) { box.innerHTML = mfEmpty('Couldn’t load convictions', 'Refresh to try again.'); return; }
-    if (party.archetype) {
-      CVS.rows = cvRowsFor(party.archetype);
-      if (Object.keys(CVS.adopted).length) setIdeology(party.archetype);  // ideology unlocked
-    }
+    if (party.archetype) CVS.rows = cvRowsFor(party.archetype);  // archetype set ⇒ committed
     renderConvictions();
   }
 
@@ -851,11 +850,11 @@
       // Topbar action budget (one source: the party row).
       setTopbarActions(party.actions_remaining);
 
-      // Sidebar + title. Ideology starts at "No Ideology"; initManifesto upgrades it
-      // to the archetype once the party holds a conviction.
+      // Sidebar + title. setIdeology shows the archetype, or "No Ideology" until the
+      // party adopts its first conviction (which sets the archetype).
       document.getElementById('sname').textContent = party.name;
       MF_NATION = nationName;
-      setIdeology('No Ideology');
+      setIdeology(party);
       document.title = party.name + ' · Nationhood';
 
       // Header card.

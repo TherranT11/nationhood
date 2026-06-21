@@ -95,6 +95,7 @@
     import { statLabel, statBand, statName } from '/ladders.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
     import { mountGameDate } from '/gamedate.js';
+    import { ideologyLabel } from '/archetypes.js';
 
     mountGameDate(document.querySelector('.gamedate')); // live game date (one source)
     document.getElementById('logout').addEventListener('click', logout);
@@ -152,7 +153,7 @@
         var inner = list.length
           ? list.map(function (p) {
               return '<div class="prow"><span class="pn">' + esc(p.name) +
-                     '</span><span class="pa">' + esc(p.archetype || '') + '</span></div>';
+                     '</span><span class="pa">' + esc(ideologyLabel(p)) + '</span></div>';
             }).join('')
           : '<div class="pempty">No ' + unit.toLowerCase() + ' yet — be the first to ' + (n.ruling_party ? 'form one' : 'found one') + '.</div>';
         elRoster.innerHTML =

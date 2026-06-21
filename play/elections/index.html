@@ -149,6 +149,7 @@
   import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
   import { tickToDate, esc } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
+  import { ideologyLabel } from '/archetypes.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -178,7 +179,7 @@
 
       // Sidebar + topbar.
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = (party.archetype ? party.archetype + ' · ' : '') + nationName;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
       document.getElementById('kicker').textContent = 'The Assembly · ' + nationName;
       setTopbarActions(party.actions_remaining);
       document.title = 'Elections · ' + nationName;
