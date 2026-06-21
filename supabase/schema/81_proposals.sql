@@ -122,6 +122,8 @@ begin
     update public.proposals set status = 'passed' where id = p_proposal;
     if v_p.kind = 'declaration' then
       perform public._apply_declaration(v_p.nation_id, v_p.payload->>'slug', v_p.payload->>'value');
+    elsif v_p.kind = 'law' then
+      perform public._apply_law(v_p.nation_id, (v_p.payload->>'policy_id')::uuid, (v_p.payload->>'option_idx')::int);
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
