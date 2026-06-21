@@ -2,9 +2,10 @@
 // and the settings gear). ONE source for every signed-in screen: a page drops
 // <div class="topbar" id="topbar"></div> at the top of <main>, calls
 // mountTopbar() once, then feeds live values via the setters as data loads.
-import { supabase, wireDeletePartyMenu, currentTick } from '/supabase.js';
-import { fmtFunds, tickToDate } from '/util.js';
+import { supabase, wireDeletePartyMenu } from '/supabase.js';
+import { fmtFunds } from '/util.js';
 import { partyColor } from '/archetypes.js';
+import { cachedGameDate, liveGameDate } from '/gamedate.js';
 
 const CSS = `
 .topbar{display:flex;align-items:center;justify-content:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:26px}
@@ -45,7 +46,7 @@ const HTML = `
 <a class="tb-discord" href="https://discord.gg/HBvWxJUm8" target="_blank" rel="noopener" aria-label="Join our Discord"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 16.558 3a13.6 13.6 0 0 0-.6 1.23 18.27 18.27 0 0 0-5.487 0A13.6 13.6 0 0 0 9.87 3a19.79 19.79 0 0 0-3.76 1.369C2.72 9.046 1.79 13.605 2.255 18.1a19.9 19.9 0 0 0 6.073 3.058c.49-.668.926-1.377 1.302-2.122a12.93 12.93 0 0 1-2.05-.978c.172-.126.34-.257.502-.392a14.2 14.2 0 0 0 12.036 0c.164.135.332.266.502.392-.654.386-1.343.714-2.052.98.376.743.812 1.452 1.302 2.12a19.86 19.86 0 0 0 6.075-3.058c.546-5.21-.93-9.728-3.93-13.73ZM9.682 15.33c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.955 2.42-2.157 2.42Zm4.636 0c-1.182 0-2.157-1.086-2.157-2.42 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.097 2.157 2.42 0 1.334-.946 2.42-2.157 2.42Z"/></svg></a>
 <span class="tb-funds" id="tbFunds" hidden><span class="tb-funds__l">Funds</span><span class="tb-funds__v" id="tbFundsV">—</span></span>
 <span class="tb-actions" id="tbActions">Party Actions: 3 Available</span>
-<span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v" id="tbDate">January, 1980</span></span>
+<span class="tb-date"><span class="tb-date__l">Date</span><span class="tb-date__v" id="tbDate"></span></span>
 <span class="tb-next"><span class="tb-next__l">Next Month</span><span class="tb-next__v">Not Running</span></span>
 <button class="gear" id="themeBtn" type="button" aria-label="Toggle dark mode"></button>
 <div class="tb-gear">
@@ -79,17 +80,18 @@ export function mountTopbar(){
   wireTheme();             // sun/moon toggle → flips the persistent light/dark theme
   loadChrome();            // accent + funds + action budget on every screen (one source)
 
-  // The game date is owned here — one source, read straight from the live tick.
-  // Re-pull it whenever the page is (re)shown so it never goes stale after a tick
-  // advances elsewhere: on first mount, on bfcache restore (back/forward), and
-  // when a backgrounded tab is refocused.
+  // The game date (the global tick) is shown here. Paint the cached value at once
+  // so there's no placeholder flash, then confirm from the live tick. Re-pull it
+  // whenever the page is (re)shown so it never goes stale after a tick advances
+  // elsewhere: on bfcache restore (back/forward) and when a tab is refocused.
+  setTopbarDate(cachedGameDate());
   refreshTopbarDate();
   window.addEventListener('pageshow', refreshTopbarDate);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshTopbarDate(); });
 }
 
 export async function refreshTopbarDate(){
-  try { setTopbarDate(tickToDate(await currentTick())); } catch (e) { /* keep the last shown date */ }
+  try { setTopbarDate(await liveGameDate()); } catch (e) { /* keep the last shown date */ }
 }
 
 // Live-value setters — no-ops if the topbar isn't mounted on this page.
