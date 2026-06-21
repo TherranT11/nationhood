@@ -229,6 +229,28 @@
   .cvadopt.on{background:transparent;color:var(--green);border-color:var(--green);opacity:1;cursor:default}
   .cvcard.is-adopted{border-left-color:var(--green)}
 
+  /* Add Convictions: a header button + a modal that picks an archetype (chips),
+     then lists that archetype's convictions to adopt. Adopting the first one
+     commits a blank party to that ideology — so a committed party only sees its
+     own archetype. Reuses the .cvcard look from the manifesto. */
+  .cv-add{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);font-weight:700;cursor:pointer;background:none;border:none;padding:0}
+  .cv-add:hover{filter:brightness(1.1)}
+  .cvmodal{position:fixed;inset:0;background:rgba(12,12,18,.45);display:flex;align-items:flex-start;justify-content:center;padding:5vh 20px;z-index:120;overflow:auto}
+  .cvmodal[hidden]{display:none}
+  .cvmodal__card{background:var(--surface);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;padding:22px 24px;margin:auto}
+  .cvmodal__hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+  .cvmodal__hd b{font-weight:900;font-size:19px;letter-spacing:-.01em}
+  .cvmodal__x{background:none;border:none;font-size:22px;line-height:1;color:var(--soft);cursor:pointer}
+  .cvmodal__x:hover{color:var(--ink)}
+  .cvmodal__bal{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  .cvmodal__bal b{color:var(--indigo);font-size:14px}
+  .cvchips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .cvchip{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.03em;padding:8px 13px;border-radius:20px;border:1.5px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;transition:border-color .12s,color .12s,background .12s}
+  .cvchip:hover{border-color:var(--c);color:var(--c)}
+  .cvchip.on{background:var(--c);border-color:var(--c);color:#fff}
+  .cvmodal__note{font-size:12.5px;color:var(--muted);line-height:1.55;margin-bottom:14px}
+  .cvmodal__list{max-height:54vh;overflow:auto}
+
   /* Phone refresh: tighter padding, a header that stacks (logo + name on top, the
      three standings as an even 3-up row), a single-column readout, and a modal
      that fits a small screen. The roster table keeps its horizontal scroll. */
@@ -362,7 +384,12 @@
         </section>
 
         <section class="panel">
-          <div class="glance-hd"><span>Convictions</span><span class="pol-count" id="mfCount"></span></div>
+          <div class="glance-hd"><span>Convictions</span>
+            <span style="display:flex;align-items:center;gap:14px">
+              <span class="pol-count" id="mfCount"></span>
+              <button class="cv-add" id="cvAddBtn" type="button">+ Add Convictions</button>
+            </span>
+          </div>
           <div id="mfList"></div>
         </section>
       </div>
@@ -393,11 +420,21 @@
   </div>
 </div>
 
+<div class="cvmodal" id="cvPickModal" hidden>
+  <div class="cvmodal__card">
+    <div class="cvmodal__hd"><b>Add Convictions</b><button class="cvmodal__x" id="cvX" type="button" aria-label="Close">&times;</button></div>
+    <div class="cvmodal__bal"><b id="cvPickBal">0</b> Conviction to spend</div>
+    <div class="cvchips" id="cvPickChips"></div>
+    <p class="cvmodal__note" id="cvPickNote"></p>
+    <div class="cvmodal__list" id="cvPickList"></div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
-  import { partyColor } from '/archetypes.js';
+  import { ARCHETYPES, archetypeColor, partyColor } from '/archetypes.js';
   import { convRoman, adoptLines, activeLines, convsByLevel } from '/convictions.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -641,7 +678,18 @@
   // Conviction balance is read live from the party row; years-in-power waits on the
   // political calendar.
   var CVS = { party: null, rows: [], adopted: {}, balance: 0, busy: false };
+  var ALL_CONV = null;           // every conviction {id, definition}, fetched once
   var MF_NATION = '';
+  // All convictions, cached. The manifesto and the Add Convictions picker both read
+  // from this one source rather than each hitting the table.
+  async function loadAllConv() {
+    if (ALL_CONV) return ALL_CONV;
+    const { data, error } = await supabase.from('convictions').select('id, definition');
+    if (error) throw error;
+    ALL_CONV = data || [];
+    return ALL_CONV;
+  }
+  function cvRowsFor(arch) { return (ALL_CONV || []).filter(function (r) { return (r.definition || {}).archetype === arch; }); }
   // A party's ideology reads "No Ideology" until it adopts its first conviction; from
   // then on it shows its archetype. Sets the header badge + the sidebar subtitle.
   function setIdeology(label){
@@ -651,30 +699,48 @@
   function cvEffHtml(L){ return '<div class="cveff ' + L.cls + '"><b>' + esc(L.reward) + '</b><span>' + esc(L.cond) + '</span></div>'; }
   function mfEmpty(b, s){ return '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg><b>' + b + '</b><span>' + s + '</span></div>'; }
 
-  function cvCard(r){
+  function cvCard(r, color){
     var d = r.definition || {}, cost = d.cost != null ? d.cost : 0, adopted = !!CVS.adopted[r.id];
     var lines = adoptLines(d).concat(activeLines(d));
     var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
     var btn = adopted
       ? '<button class="cvadopt on" type="button" disabled>✓ Adopted</button>'
       : '<button class="cvadopt" type="button" data-id="' + esc(r.id) + '"' + (CVS.balance < cost ? ' disabled' : '') + '>Adopt <span>◆ ' + cost + '</span></button>';
-    return '<div class="cvcard' + (adopted ? ' is-adopted' : '') + '" style="--c:' + ACCENT + '">' +
+    return '<div class="cvcard' + (adopted ? ' is-adopted' : '') + '" style="--c:' + (color || ACCENT) + '">' +
       '<div class="cvcard__hd"><b>' + esc(d.name || 'Untitled') + '</b><span class="cvcost">◆ ' + cost + '</span></div>' +
       (d.desc ? '<div class="cvcard__desc">' + esc(d.desc) + '</div>' : '') +
       '<div class="cvcard__eff">' + eff + '</div>' + btn + '</div>';
   }
 
-  function renderConvictions(){
-    var box = document.getElementById('mfList');
-    document.getElementById('convBal').textContent = CVS.balance;
-    document.getElementById('mfCount').textContent = CVS.rows.length + (CVS.rows.length === 1 ? ' conviction' : ' convictions');
-    var by = convsByLevel(CVS.rows), html = '';
+  // Render a grouped Level I..V catalogue of conviction rows into a container, wiring
+  // each Adopt button. Shared by the manifesto panel and the Add Convictions modal.
+  function cvCatalogue(box, rows, color) {
+    var by = convsByLevel(rows), html = '';
     [1, 2, 3, 4, 5].forEach(function (lvl) {
       if (!by[lvl].length) return;
-      html += '<div class="cv-lvl">Level ' + convRoman(lvl) + '</div>' + by[lvl].map(cvCard).join('');
+      html += '<div class="cv-lvl">Level ' + convRoman(lvl) + '</div>' +
+        by[lvl].map(function (r) { return cvCard(r, color); }).join('');
     });
     box.innerHTML = html;
     box.querySelectorAll('.cvadopt[data-id]').forEach(function (b) { b.onclick = function () { adoptConviction(b.dataset.id); }; });
+  }
+
+  // The manifesto panel: a committed party's archetype tree; a party with no ideology
+  // yet is pointed at the Add Convictions picker (the header button) to choose one.
+  function renderConvictions(){
+    var box = document.getElementById('mfList');
+    document.getElementById('convBal').textContent = CVS.balance;
+    if (!CVS.party || !CVS.party.archetype) {
+      document.getElementById('mfCount').textContent = '';
+      box.innerHTML = mfEmpty('No ideology yet', 'Open Add Convictions to choose an ideology and adopt your first conviction.');
+      return;
+    }
+    document.getElementById('mfCount').textContent = CVS.rows.length + (CVS.rows.length === 1 ? ' conviction' : ' convictions');
+    if (!CVS.rows.length) {
+      box.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(CVS.party.archetype) + ' parties yet.');
+      return;
+    }
+    cvCatalogue(box, CVS.rows);
   }
 
   async function adoptConviction(id){
@@ -684,16 +750,28 @@
       const res = await supabase.rpc('adopt_conviction', { p_conviction: id });
       if (res.error) throw res.error;
       CVS.adopted[id] = true;
-      if (CVS.party && CVS.party.archetype) setIdeology(CVS.party.archetype);  // first conviction unlocks the ideology
-      // Re-read the party row so the balance + the popularity standing reflect the
-      // on-adopt effects (one source: the party row).
+      // Re-read the party row so the balance, the popularity standing, and the archetype
+      // the first conviction may have just set all reflect the on-adopt effects (one
+      // source: the party row).
       try {
-        const { data: p } = await supabase.from('parties').select('popularity, conviction').eq('id', CVS.party.id).single();
-        if (p) { CVS.balance = Number(p.conviction) || 0; document.getElementById('st-pop').textContent = Number(p.popularity) || 0; }
+        const { data: p } = await supabase.from('parties').select('archetype, popularity, conviction').eq('id', CVS.party.id).single();
+        if (p) {
+          CVS.balance = Number(p.conviction) || 0;
+          CVS.party.archetype = p.archetype; ME.party.archetype = p.archetype;
+          document.getElementById('st-pop').textContent = Number(p.popularity) || 0;
+        }
       } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
+      if (CVS.party.archetype) {                       // first conviction unlocks the ideology
+        CVS.rows = cvRowsFor(CVS.party.archetype);
+        setIdeology(CVS.party.archetype);
+        applyAccent(partyColor(CVS.party));
+      }
+    } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); }
+    finally {
+      CVS.busy = false;
       renderConvictions();
-    } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); renderConvictions(); }
-    finally { CVS.busy = false; }
+      if (!document.getElementById('cvPickModal').hidden) renderPick();
+    }
   }
 
   async function initManifesto(party) {
@@ -702,24 +780,62 @@
     document.getElementById('convYears').textContent = 0;   // no calendar yet → 0 years in power
     var box = document.getElementById('mfList');
     document.getElementById('mfCount').textContent = '';
-    if (!party.archetype) {
-      box.innerHTML = mfEmpty('No convictions', 'A party’s convictions come from its archetype — this party doesn’t have one.');
-      return;
-    }
     try {
-      const { data, error } = await supabase.from('convictions').select('id, definition');
-      if (error) throw error;
-      CVS.rows = (data || []).filter(function (r) { return (r.definition || {}).archetype === party.archetype; });
+      await loadAllConv();
       const { data: ad } = await supabase.from('party_convictions').select('conviction_id').eq('party_id', party.id);
       (ad || []).forEach(function (r) { CVS.adopted[r.conviction_id] = true; });
-      if (party.archetype && Object.keys(CVS.adopted).length) setIdeology(party.archetype);  // ideology unlocked
     } catch (e) { box.innerHTML = mfEmpty('Couldn’t load convictions', 'Refresh to try again.'); return; }
-    if (!CVS.rows.length) {
-      box.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(party.archetype) + ' parties yet.');
-      return;
+    if (party.archetype) {
+      CVS.rows = cvRowsFor(party.archetype);
+      if (Object.keys(CVS.adopted).length) setIdeology(party.archetype);  // ideology unlocked
     }
     renderConvictions();
   }
+
+  // ---- Add Convictions picker (modal): choose an archetype (chips) and adopt one of
+  // its convictions. A party with no ideology sees all archetypes; adopting its first
+  // conviction commits it (see adopt_conviction). A committed party only sees its own.
+  var CVPICK = { arch: null };
+  function renderPick(){
+    var locked = !!(CVS.party && CVS.party.archetype);
+    if (locked) CVPICK.arch = CVS.party.archetype;
+    document.getElementById('cvPickBal').textContent = CVS.balance;
+
+    var list = locked ? ARCHETYPES.filter(function (a) { return a.name === CVS.party.archetype; }) : ARCHETYPES;
+    document.getElementById('cvPickChips').innerHTML = list.map(function (a) {
+      return '<button class="cvchip' + (a.name === CVPICK.arch ? ' on' : '') + '" type="button" data-arch="' +
+        esc(a.name) + '" style="--c:' + a.color + '">' + esc(a.name) + '</button>';
+    }).join('');
+    document.getElementById('cvPickChips').querySelectorAll('.cvchip').forEach(function (b) {
+      b.onclick = function () { CVPICK.arch = b.dataset.arch; renderPick(); };
+    });
+
+    var note = document.getElementById('cvPickNote'), listBox = document.getElementById('cvPickList');
+    if (!CVPICK.arch) {
+      note.textContent = 'Pick an ideology to see its convictions. Adopting your first conviction commits your party to that ideology — choose with care.';
+      listBox.innerHTML = ''; return;
+    }
+    note.textContent = locked
+      ? 'Your party is committed to ' + CVPICK.arch + '. Spend Conviction to adopt from its tree.'
+      : 'Adopting a conviction from ' + CVPICK.arch + ' commits your party to that ideology.';
+    var rows = cvRowsFor(CVPICK.arch);
+    if (!rows.length) { listBox.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(CVPICK.arch) + ' parties yet.'); return; }
+    cvCatalogue(listBox, rows, archetypeColor(CVPICK.arch));
+  }
+  (function wireConvPicker(){
+    var modal = document.getElementById('cvPickModal');
+    async function open(){
+      if (!CVS.party) return;
+      CVPICK.arch = CVS.party.archetype || null;
+      modal.hidden = false; renderPick();
+      try { await loadAllConv(); } catch (e) { /* renderPick already shows graceful empty states */ }
+      renderPick();   // re-render once the catalogue cache is warm (no-op if it already was)
+    }
+    function close(){ modal.hidden = true; }
+    document.getElementById('cvAddBtn').addEventListener('click', open);
+    document.getElementById('cvX').addEventListener('click', close);
+    modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  })();
 
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders

@@ -45,15 +45,20 @@ end $$;
 
 -- Adopt a conviction for the caller's party: validate archetype + cost, spend the
 -- points, record it, and apply the on-adopt effects. Server-authoritative.
+-- A party with no ideology yet (archetype null) commits to the conviction's archetype
+-- on this first adoption; afterwards it's locked to that archetype's tree.
 create or replace function public.adopt_conviction(p_conviction uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_party public.parties%rowtype; v_def jsonb; v_cost int; v_eff jsonb;
+declare v_party public.parties%rowtype; v_def jsonb; v_arch text; v_cost int; v_eff jsonb;
 begin
   v_party := public._lock_party();
   select definition into v_def from public.convictions where id = p_conviction;
   if v_def is null then raise exception 'That conviction no longer exists.'; end if;
-  if v_party.archetype is null or v_party.archetype is distinct from (v_def->>'archetype') then
-    raise exception 'That conviction belongs to a different archetype.';
+  v_arch := v_def->>'archetype';
+  if v_party.archetype is null then
+    update public.parties set archetype = v_arch where id = v_party.id;
+  elsif v_party.archetype is distinct from v_arch then
+    raise exception 'That conviction belongs to a different ideology.';
   end if;
   if exists (select 1 from public.party_convictions where party_id = v_party.id and conviction_id = p_conviction) then
     raise exception 'Your party has already adopted that conviction.';
