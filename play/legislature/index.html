@@ -204,9 +204,6 @@
     var rem = FLOOR_WINDOW - (ST.tick - p.opened_tick);
     return rem > 0 ? ' · ' + rem + ' tick' + (rem === 1 ? '' : 's') + ' left' : ' · resolves next tick';
   }
-  // Mirror of _resolve_proposal's pass rule (schema/81): carries on an outright
-  // chamber majority right away, or a simple majority of the seats cast at close.
-  function wouldCarry(t){ return t.aye >= ST.maj || (t.aye > t.nay && t.aye > 0); }
   // Per-party roll call: who voted, their seats (= their voting weight), how they
   // voted or that they're yet to. Parties with no seats are shown only once voted.
   function rollCall(pid){
@@ -229,8 +226,11 @@
     var cast = t.aye + t.nay, notv = Math.max(0, ST.total - cast);
     var ayePct = ST.total ? Math.min(100, t.aye / ST.total * 100) : 0;
     var nayPct = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0;
-    var carry = wouldCarry(t);
-    var reso = t.aye >= ST.maj
+    // Mirrors _resolve_proposal (schema/81): an outright chamber majority carries it
+    // now; otherwise a simple majority of the seats cast (Aye > Nay) carries at close.
+    var outright = t.aye > 0 && t.aye >= ST.maj;
+    var carry = outright || (t.aye > t.nay && t.aye > 0);
+    var reso = outright
       ? 'Carrying — outright majority of the chamber'
       : (carry ? 'Would pass if voting closed now — Aye leads'
                : (t.aye === t.nay ? 'Would fail if voting closed now — tied' : 'Would fail if voting closed now — Nay leads'));
