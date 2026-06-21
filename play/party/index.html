@@ -202,12 +202,7 @@
   .res__yrs span{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
   .res__acc{font-size:12px;color:var(--muted);line-height:1.6;margin:0}
   .res__acc b{color:var(--ink)}
-  .addbtn{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--indigo);border:1.5px solid var(--indigo);padding:13px 16px;border-radius:11px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .12s,filter .15s}
-  .addbtn:hover{transform:translateY(-1px);filter:brightness(1.07)}
-  .addbtn:disabled{background:#D9D6D0;border-color:#D9D6D0;cursor:not-allowed;transform:none;filter:none}
-  .addbtn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round}
-
-  /* Manifesto list — adopted planks (none yet; adoption waits on the turn system). */
+  /* Manifesto list — empty/loading states and the convictions catalogue. */
   .mf-empty{text-align:center;padding:26px 10px;color:var(--soft)}
   .mf-empty svg{width:32px;height:32px;stroke:var(--soft);fill:none;stroke-width:1.5;margin-bottom:9px}
   .mf-empty b{display:block;color:var(--muted);font-size:14px;margin-bottom:3px}
@@ -220,44 +215,20 @@
   .arow .ab .meta{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:2px}
   .epill{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 12%, var(--surface));padding:5px 11px;border-radius:20px;flex:none;text-align:center}
 
-  /* Add-to-Manifesto modal: a read-only browser of the party's plank tree. */
-  .overlay{position:fixed;inset:0;background:rgba(21,21,27,.46);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:20px;z-index:100}
-  .overlay.open{display:flex}
-  .modal{background:var(--surface);border-radius:18px;max-width:820px;width:100%;max-height:93vh;overflow:auto;box-shadow:0 30px 90px -20px rgba(0,0,0,.55)}
-  .modal__hd{display:flex;align-items:flex-start;gap:12px;padding:20px 24px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
-  .modal__hd .ti{flex:1}
-  .modal__hd .eye{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--indigo)}
-  .modal__hd h2{font-weight:900;font-size:21px;letter-spacing:-.02em;margin-top:3px}
-  .balchip{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:6px 11px;border-radius:20px;flex:none;white-space:nowrap}
-  .xbtn{flex:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
-  .xbtn:hover{color:var(--ink);border-color:var(--ink)}
-  .xbtn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
-  .tiers{display:flex;gap:6px;padding:12px 24px 0}
-  .tier-opt{flex:1;text-align:center;padding:9px 4px;border:1.5px solid var(--line);border-radius:9px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:5px}
-  .tier-opt.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-  .tier-opt.gated{border-style:dashed}
-  .tier-opt svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
-  .gate{padding:10px 24px 2px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);line-height:1.5}
-  .gate .ok{color:var(--green);font-weight:700}
-  .gate .lk{color:var(--amber);font-weight:700}
-  .planks{padding:12px 24px 22px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  @media(max-width:600px){.planks{grid-template-columns:1fr}}
-  .plank{border:1px solid var(--line);border-radius:13px;padding:15px;display:flex;flex-direction:column;background:var(--bg)}
-  .plank.lock{opacity:.62}
-  .plank__hd{display:flex;align-items:flex-start;gap:8px}
-  .plank__hd b{font-weight:800;font-size:15px;letter-spacing:-.01em;flex:1}
-  .lvl{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--c);background:color-mix(in srgb,var(--c) 12%, var(--surface));padding:3px 7px;border-radius:20px;flex:none;white-space:nowrap}
-  .plank__up{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:6px}
-  .plank__desc{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.45;flex:1}
-  .plank__eff{margin-top:11px;padding-top:11px;border-top:1px dashed var(--line)}
-  .plank__eff .cat{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
-  .plank__eff .val{font-weight:800;font-size:14px;color:var(--c);margin-top:2px}
-  .plank__eff .sub{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
-  .down{display:inline-block;margin-top:9px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--red);background:var(--red-soft);padding:4px 9px;border-radius:20px}
-  .plank__btn{margin-top:13px;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--c);border:1.5px solid var(--c);padding:11px;border-radius:9px;display:flex;align-items:center;justify-content:center;gap:7px}
-  .plank__btn.dis{background:#D9D6D0;border-color:#D9D6D0;color:#fff;cursor:not-allowed}
-  .plank__btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  .planks .note{grid-column:1/-1;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);line-height:1.5;text-align:center;padding-top:4px}
+  /* Convictions catalogue — the archetype's convictions grouped by Level (read-only). */
+  .cv-lvl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:16px 0 9px}
+  .cv-lvl:first-child{margin-top:4px}
+  .cvcard{border:1px solid var(--line);border-left:3px solid var(--c,var(--indigo));border-radius:12px;padding:13px 15px;margin-bottom:10px;background:var(--bg)}
+  .cvcard__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .cvcard__hd b{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .cvcost{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;font-weight:700;color:var(--c,var(--indigo));background:color-mix(in srgb,var(--c,#5546E8) 12%, var(--surface));padding:4px 9px;border-radius:20px;flex:none;white-space:nowrap}
+  .cvcard__desc{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.45}
+  .cvcard__eff{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:5px}
+  .cveff{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12px}
+  .cveff b{font-weight:800}
+  .cveff.pos b{color:var(--green)} .cveff.neg b{color:var(--red)}
+  .cveff span{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft);text-align:right;flex:none}
+  .cveff.none{color:var(--soft);font-style:italic}
 
   /* Phone refresh: tighter padding, a header that stacks (logo + name on top, the
      three standings as an even 3-up row), a single-column readout, and a modal
@@ -278,12 +249,6 @@
     .panel{padding:16px 15px;margin-top:12px}
     .pop__readout{flex-direction:column;gap:10px}
     .pop__big{font-size:30px}
-
-    .modal__hd{padding:16px 16px 12px}
-    .tiers{padding:10px 16px 0;gap:4px}
-    .tier-opt{padding:8px 2px;font-size:9px}
-    .gate{padding:10px 16px 2px}
-    .planks{padding:12px 16px 18px}
   }
 
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
@@ -395,36 +360,16 @@
           </div>
           <div class="res__yrs"><b id="convYears">0</b><span>Years in power</span></div>
           <p class="res__acc">Earn <b>+2</b> / year while you hold the Prime Ministership, <b>+1</b> / year otherwise. Conviction begins accruing once the political calendar opens.</p>
-          <button class="addbtn" id="openAdd" type="button"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add to Manifesto</button>
         </section>
 
         <section class="panel">
-          <div class="glance-hd"><span>Your Manifesto</span><span class="pol-count" id="mfCount"></span></div>
+          <div class="glance-hd"><span>Convictions</span><span class="pol-count" id="mfCount"></span></div>
           <div id="mfList"></div>
         </section>
       </div>
     </div>
   </main>
 
-  <!-- Add-to-Manifesto modal: read-only browser of the party's plank tree. -->
-  <div class="overlay" id="overlay">
-    <div class="modal" role="dialog" aria-modal="true">
-      <div class="modal__hd">
-        <div class="ti"><span class="eye">Add a Plank</span><h2 id="mfTreeLabel">Add to Manifesto</h2></div>
-        <span class="balchip" id="balchip">◆ 0 Conviction</span>
-        <button class="xbtn" id="closeX" type="button" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-      </div>
-      <div class="tiers" id="tiers">
-        <span class="tier-opt on" data-tier="1">Level I</span>
-        <span class="tier-opt" data-tier="2">Level II</span>
-        <span class="tier-opt" data-tier="3">Level III</span>
-        <span class="tier-opt" data-tier="4">Level IV</span>
-        <span class="tier-opt" data-tier="5">Level V</span>
-      </div>
-      <div class="gate" id="gate"></div>
-      <div class="planks" id="planks"></div>
-    </div>
-  </div>
 </div>
 
 <div class="epmodal" id="editModal" hidden>
@@ -454,7 +399,7 @@
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
   import { partyColor } from '/archetypes.js';
-  import { PLANKS, GATES, ROMAN, treeForArchetype } from '/manifesto.js';
+  import { convRoman, adoptLines, activeLines, convsByLevel } from '/convictions.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
@@ -547,7 +492,7 @@
         var res = await supabase.from('parties').update({ color: colorIn.value, logo_url: logo }).eq('id', ME.party.id);
         if (res.error) throw new Error(res.error.message);
         ME.party.color = colorIn.value; ME.party.logo_url = logo;
-        applyAccent(colorIn.value); renderCrest(ME.party); MF.color = ACCENT;
+        applyAccent(colorIn.value); renderCrest(ME.party);
         close();
       } catch (e) {
         setNote(e.message || 'Couldn’t save your changes.', 'error');
@@ -691,86 +636,48 @@
     }).join('');
   }
 
-  // ---- The Manifesto (UI shell) --------------------------------------------
-  // A brand-new party has 0 Conviction and 0 years in power, and adoption waits
-  // on the turn system, so this is read-only: you can browse your tree, but the
-  // Adopt buttons are disabled and nothing persists. Conviction is read live from
-  // the party row (new parties start at 0); years-in-power waits on the calendar.
-  var MF = { tree: null, color: '#8d8d95', tier: 1, years: 0, balance: 0 };
-  var overlayEl = document.getElementById('overlay');
-
-  function renderTiers() {
-    document.querySelectorAll('#tiers .tier-opt').forEach(function (o) {
-      var t = +o.dataset.tier, gated = MF.years < GATES[t];
-      o.classList.toggle('gated', gated);
-      o.classList.toggle('on', t === MF.tier);
-      o.innerHTML = 'Level ' + ROMAN[t] + (gated ? ' <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>' : '');
-    });
+  // ---- The Manifesto: the convictions written for this party's archetype, grouped
+  // by Level. Read-only for now (browsing only) — adopting + spending Conviction
+  // comes with a later stage. Conviction balance is read live from the party row;
+  // years-in-power waits on the political calendar.
+  function cvEffHtml(L){ return '<div class="cveff ' + L.cls + '"><b>' + esc(L.reward) + '</b><span>' + esc(L.cond) + '</span></div>'; }
+  function cvCard(d){
+    var lines = adoptLines(d).concat(activeLines(d));
+    var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
+    return '<div class="cvcard" style="--c:' + ACCENT + '">' +
+      '<div class="cvcard__hd"><b>' + esc(d.name || 'Untitled') + '</b><span class="cvcost">◆ ' + (d.cost != null ? d.cost : 0) + '</span></div>' +
+      (d.desc ? '<div class="cvcard__desc">' + esc(d.desc) + '</div>' : '') +
+      '<div class="cvcard__eff">' + eff + '</div></div>';
   }
+  function mfEmpty(b, s){ return '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg><b>' + b + '</b><span>' + s + '</span></div>'; }
 
-  function renderPlanks() {
-    if (!MF.tree) return;
-    var locked = MF.years < GATES[MF.tier];
-    document.getElementById('balchip').textContent = '◆ ' + MF.balance + ' Conviction';
-    var gate = document.getElementById('gate');
-    if (MF.tier === 1) gate.innerHTML = 'Level I — available from the party’s founding.';
-    else if (locked) gate.innerHTML = 'Level ' + ROMAN[MF.tier] + ' — <span class="lk">locked: unlocks at ' + GATES[MF.tier] + ' years in power</span> · you have ' + MF.years + '. Previewing.';
-    else gate.innerHTML = 'Level ' + ROMAN[MF.tier] + ' — <span class="ok">unlocked at ' + GATES[MF.tier] + ' years in power</span> · you have ' + MF.years + '.';
-    var box = document.getElementById('planks'); box.innerHTML = '';
-    MF.tree[MF.tier].forEach(function (p) {
-      var card = document.createElement('div');
-      card.className = 'plank' + (locked ? ' lock' : '');
-      card.style.setProperty('--c', MF.color);
-      var btn = locked
-        ? '<button class="plank__btn dis" disabled><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Locked <span>◆ ' + p.cost + '</span></button>'
-        : '<button class="plank__btn dis" disabled title="Adoption opens with the turn system.">Adopt <span>◆ ' + p.cost + '</span></button>';
-      card.innerHTML = '<div class="plank__hd"><b>' + esc(p.name) + '</b><span class="lvl">Lvl ' + ROMAN[MF.tier] + ' · ◆' + p.cost + '</span></div>' +
-        (p.up ? '<div class="plank__up">↑ Upgrades ' + esc(p.up) + '</div>' : '') +
-        '<div class="plank__desc">' + esc(p.desc) + '</div>' +
-        '<div class="plank__eff"><div class="cat">' + esc(p.cat) + '</div><div class="val">' + esc(p.val) + '</div>' + (p.sub ? '<div class="sub">' + esc(p.sub) + '</div>' : '') + '</div>' +
-        (p.down ? '<span class="down">⚑ ' + esc(p.down) + '</span>' : '') + btn;
-      box.appendChild(card);
-    });
-    box.insertAdjacentHTML('beforeend', '<p class="note">Planks are previewable now — adopting them (and spending Conviction) opens with the political calendar.</p>');
-  }
-
-  function renderManifestoList() {
-    document.getElementById('mfCount').textContent = '0 planks';
-    document.getElementById('mfList').innerHTML =
-      '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg>' +
-      '<b>No planks adopted yet</b><span>Spend Conviction to add your first plank.</span></div>';
-  }
-
-  function initManifesto(party) {
-    MF.tree = null; MF.color = ACCENT; MF.tier = 1;
-    MF.years = 0;     // no calendar yet → 0 years in power
-    MF.balance = Number(party.conviction) || 0; // game-controlled stat; new parties start at 0
-    document.getElementById('convBal').textContent = MF.balance;
-    document.getElementById('convYears').textContent = MF.years;
-    renderManifestoList();
-
-    var key = treeForArchetype(party.archetype);
-    var addBtn = document.getElementById('openAdd');
-    if (!key) {
-      // The other archetypes don't have a tree written yet — honest empty state.
-      document.getElementById('mfList').innerHTML =
-        '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg>' +
-        '<b>Manifesto coming soon</b><span>Plank trees for ' + esc(party.archetype) + ' parties are still being written.</span></div>';
-      addBtn.disabled = true;
+  async function initManifesto(party) {
+    document.getElementById('convBal').textContent = Number(party.conviction) || 0;
+    document.getElementById('convYears').textContent = 0;   // no calendar yet → 0 years in power
+    var box = document.getElementById('mfList'), count = document.getElementById('mfCount');
+    count.textContent = '';
+    if (!party.archetype) {
+      box.innerHTML = mfEmpty('No convictions', 'A party’s convictions come from its archetype — this party doesn’t have one.');
       return;
     }
-    MF.tree = PLANKS[key];
-    document.getElementById('mfTreeLabel').textContent = party.archetype + ' Manifesto';
-    addBtn.addEventListener('click', function () { renderTiers(); renderPlanks(); overlayEl.classList.add('open'); });
+    var rows;
+    try {
+      const { data, error } = await supabase.from('convictions').select('id, definition');
+      if (error) throw error;
+      rows = (data || []).filter(function (r) { return (r.definition || {}).archetype === party.archetype; });
+    } catch (e) { box.innerHTML = mfEmpty('Couldn’t load convictions', 'Refresh to try again.'); return; }
+    if (!rows.length) {
+      box.innerHTML = mfEmpty('Convictions coming soon', 'No convictions have been written for ' + esc(party.archetype) + ' parties yet.');
+      return;
+    }
+    count.textContent = rows.length + (rows.length === 1 ? ' conviction' : ' convictions');
+    var by = convsByLevel(rows), html = '';
+    [1, 2, 3, 4, 5].forEach(function (lvl) {
+      if (!by[lvl].length) return;
+      html += '<div class="cv-lvl">Level ' + convRoman(lvl) + '</div>' + by[lvl].map(function (r) { return cvCard(r.definition); }).join('');
+    });
+    box.innerHTML = html;
   }
-
-  // Modal close + tier switching (safe to wire once; no-ops until a tree loads).
-  document.getElementById('closeX').addEventListener('click', function () { overlayEl.classList.remove('open'); });
-  overlayEl.addEventListener('click', function (e) { if (e.target === overlayEl) overlayEl.classList.remove('open'); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') overlayEl.classList.remove('open'); });
-  document.querySelectorAll('#tiers .tier-opt').forEach(function (o) {
-    o.addEventListener('click', function () { MF.tier = +o.dataset.tier; renderTiers(); renderPlanks(); });
-  });
 
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
