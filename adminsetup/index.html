@@ -299,6 +299,7 @@
           <div><label for="f-order">Starting Order</label><input id="f-order" type="number" step="1"></div>
           <div><label for="f-unemployment">Starting Unemployment</label><input id="f-unemployment" type="number" step="0.1"></div>
           <div><label for="f-inflation">Starting Inflation</label><input id="f-inflation" type="number" step="0.1"></div>
+          <div><label for="f-tax">Starting Tax Burden</label><input id="f-tax" type="number" step="0.1"></div>
           <div><label for="f-budget">Starting Budget</label><input id="f-budget" type="number" step="0.1"></div>
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
           <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
@@ -523,6 +524,7 @@
       setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
       setVal('f-image', s.image); setVal('f-order', s.order);
       setVal('f-unemployment', e.unemployment); setVal('f-inflation', e.inflation);
+      setVal('f-tax', e.tax);
       setVal('f-budget', e.budget); setVal('f-debt', e.debt);
       document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
@@ -709,6 +711,7 @@
               kv('Order', s.order != null ? s.order : '—') +
               kv('Unemployment', e.unemployment != null ? e.unemployment + '%' : '—') +
               kv('Inflation', e.inflation != null ? e.inflation + '%' : '—') +
+              kv('Tax Burden', e.tax != null ? e.tax + '%' : '—') +
               kv('Budget', e.budget != null ? e.budget : '—') +
               kv('Debt', e.debt != null ? e.debt : '—') +
               kv('Energy', pr.energy != null ? pr.energy : '—') +
@@ -764,6 +767,7 @@
         economy: {
           regime: parseInt(document.getElementById('f-regime').value, 10),
           unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
+          tax: num('f-tax', true),
           budget: num('f-budget', true), debt: num('f-debt', true),
           currency: (editing && editing.economy && editing.economy.currency) || '$'
         },
@@ -820,7 +824,7 @@
 
     // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
     // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.
-    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Regime'],
+    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Tax Burden %','Budget','Debt','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     function polEff(t,v,cad,dur,scale){ return { t:t, v:v, cad:cad, dur:dur, scale:scale||'pop' }; }

@@ -73,6 +73,7 @@ begin
     -- Economy
     when 'Unemployment %' then perform public._nation_stat_add(p_nation, 'economy', 'unemployment', v_v, 0, 100);
     when 'Inflation %'    then perform public._nation_stat_add(p_nation, 'economy', 'inflation',    v_v, 0, 100);
+    when 'Tax Burden %'   then perform public._nation_stat_add(p_nation, 'economy', 'tax',          v_v, 0, 100);
     when 'Regime'         then perform public._nation_stat_add(p_nation, 'economy', 'regime',       v_v, 1, 20);
     when 'Budget' then
       select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;

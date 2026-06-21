@@ -115,6 +115,7 @@ returns numeric language sql immutable as $$
     when 'Image' then public._num(p_stats->>'image')
     when 'Unemployment %' then public._num(p_economy->>'unemployment')
     when 'Inflation %' then public._num(p_economy->>'inflation')
+    when 'Tax Burden %' then public._num(p_economy->>'tax')
     when 'Budget' then public._num(p_economy->>'budget')
     when 'Debt' then public._num(p_economy->>'debt')
     when 'Regime' then public._num(p_economy->>'regime')
