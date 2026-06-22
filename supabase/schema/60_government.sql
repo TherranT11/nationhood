@@ -335,16 +335,17 @@ begin
   -- into the debt:  budget' = max(0, budget+income);  debt' = debt + max(0,
   -- -(budget+income)). Flat admin-set figure; only non-zero incomes. Event surfaces it.
   if (v_tick - 1) % 12 = 0 then
-    update public.nations
+    -- raw = budget + income, computed once; budget floors at 0, the rest overflows to debt.
+    update public.nations n
        set economy = jsonb_set(
-             jsonb_set(economy, '{budget}',
-               to_jsonb(round(greatest(0,
-                 coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0)), 1))),
-             '{debt}',
-               to_jsonb(round(
-                 coalesce((economy->>'debt')::numeric, 0) + greatest(0, -(
-                   coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0))), 1)))
-     where coalesce((economy->>'income')::numeric, 0) <> 0;
+             jsonb_set(n.economy, '{budget}', to_jsonb(round(greatest(0, s.raw), 1))),
+             '{debt}', to_jsonb(round(coalesce((n.economy->>'debt')::numeric, 0) + greatest(0, -s.raw), 1)))
+      from (
+        select id, coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0) as raw
+          from public.nations
+         where coalesce((economy->>'income')::numeric, 0) <> 0
+      ) s
+     where n.id = s.id;
     insert into public.events (nation_id, party_id, kind, body, game_date)
     select n.id, null, 'income',
            'Annual income of ' || (case when (n.economy->>'income')::numeric < 0 then '−' else '+' end) ||
