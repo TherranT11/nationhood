@@ -40,18 +40,19 @@
   .logout:hover{color:var(--red)}
   .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
-  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;max-width:1180px}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0}
   .phead{margin-bottom:6px}
   .phead .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
   .phead h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
   .phead p{color:var(--muted);font-size:14px;margin-top:6px;max-width:560px}
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;margin-top:20px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:20px}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
 
   .wcard{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column}
   .wc-top{display:flex;align-items:center;gap:13px}
-  .emb{width:46px;height:46px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:19px;color:#fff;background:var(--acc)}
+  .emb{width:66px;height:66px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:26px;color:#fff;background:var(--acc)}
   .emb.img{object-fit:cover;border:1px solid var(--line);background:var(--chip)}
   .wc-id{flex:1;min-width:0}
   .wc-id h2{font-weight:900;font-size:21px;letter-spacing:-.02em;line-height:1.05}
