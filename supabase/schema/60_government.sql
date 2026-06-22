@@ -259,7 +259,13 @@ begin
    where nation_id = p_nation;
 
   -- ---- RESCHEDULE + DISSOLVE SAVED AGREEMENTS -----------------------------
-  update public.nations set next_election_tick = v_tick + v_freq where id = p_nation;
+  -- Reschedule, and once a restored multiparty nation has held its first free election
+  -- the "democracy restored, file for elections" prompt has been answered — clear the
+  -- former_ruling_party marker (schema/98) that gates it.
+  update public.nations
+     set next_election_tick = v_tick + v_freq,
+         former_ruling_party = case when ruling_party is null then null else former_ruling_party end
+   where id = p_nation;
   update public.negotiations set status = 'closed'
    where nation_id = p_nation and status in ('active', 'committed');
 
@@ -328,6 +334,13 @@ begin
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
   perform public._apply_policy_tick_effects(v_tick);
+  -- Regime is the sole switch between one-party and multiparty. This tick's economics
+  -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
+  -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation
+  -- that just turned one-party then holds a Party Congress instead of an election.
+  for v_n in select id from public.nations loop
+    perform public._sync_one_party_state(v_n);
+  end loop;
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick

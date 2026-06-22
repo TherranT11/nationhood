@@ -13,6 +13,7 @@ create table if not exists public.nations (
   description    text,
   analogous      text,            -- real-world analogue, shown in italics under the description
   ruling_party   text,            -- the sole legal party of a one-party state; null = normal multiparty nation. When set, players join /party-creation as a FACTION of this party.
+  former_ruling_party text,        -- set when a one-party state is dissolved back to multiparty (schema/98); the name of the party that ruled. Gates the "democracy restored, file for elections" home banner and exempts the former ruler from filing. Cleared at the first election after restoration.
   flag           text,            -- asset path, e.g. /assets/Sessau.png
   population     numeric,         -- millions (fractional allowed, e.g. 24.5); formatted on the client
   gdp            bigint,          -- billions; formatted on the client
@@ -35,6 +36,7 @@ alter table public.nations add column if not exists analogous text;
 alter table public.nations add column if not exists production jsonb not null default '{}'::jsonb;
 alter table public.nations add column if not exists next_election_tick int;
 alter table public.nations add column if not exists ruling_party text;
+alter table public.nations add column if not exists former_ruling_party text;
 -- Population may be fractional (millions, e.g. 24.5) — widen the legacy bigint.
 alter table public.nations alter column population type numeric using population::numeric;
 -- The active-party count is derived live from public.parties (one source), not

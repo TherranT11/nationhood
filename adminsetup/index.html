@@ -818,6 +818,10 @@
           addNote.className = 'note error';
           return;
         }
+        // Regime is the sole switch for one-party rule: reconcile ruling_party with the
+        // saved regime now (schema/98) rather than waiting for the next tick. Non-fatal —
+        // the nation is already saved; a tick would apply the same transition regardless.
+        try { await supabase.rpc('admin_sync_one_party', { p_nation: editing ? editing.id : data.id }); } catch (e) { /* applied on next tick */ }
         addNote.textContent = editing ? ('Saved changes to “' + name + '”.') : ('Added “' + name + '”. It’s now joinable on the nation-select screen.');
         addNote.className = 'note ok';
         if (editing) cancelEdit(); else { e.target.reset(); resetDeclFields(); resetPolFields(); }

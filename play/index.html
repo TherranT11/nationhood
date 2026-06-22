@@ -190,6 +190,7 @@
   <main class="main">
     <div class="topbar" id="topbar"></div>
     <div id="inactBan"></div>
+    <div id="restoreBan"></div>
     <div class="kicker" id="kicker">The Instance</div>
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
@@ -643,7 +644,7 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
 
       // Party funds in the topbar, just right of the Discord logo.
@@ -659,6 +660,22 @@
         ban.textContent = '⚠ Your party has been inactive for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
           '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for ' +
           INACTIVE_DELETE_DAYS + '+ days may be removed.';
+      }
+
+      // Democracy restored: when a one-party state returns to multiparty (regime back to
+      // 5+, schema/98), former_ruling_party is set until the first free election. Prompt
+      // players to file — except the former ruling party, who keep their faction + standing.
+      if (nation && nation.ruling_party == null && nation.former_ruling_party) {
+        var rban = document.getElementById('restoreBan');
+        if (party.name === nation.former_ruling_party) {
+          rban.innerHTML = '<div class="invite"><span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
+            '.</b> ' + esc(party.name) + ' keeps its faction and its standing — defend it at the ballot box.</span></div>';
+        } else {
+          rban.innerHTML = '<a class="invite" href="/play/party/">' +
+            '<span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
+            '.</b> Your faction is now a free party again — file for the coming elections.</span>' +
+            '<span class="invite__a"><span class="invite__go">Your Party ▸</span></span></a>';
+        }
       }
 
       document.getElementById('pname').textContent = party.name;
