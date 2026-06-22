@@ -177,6 +177,7 @@
       <a class="nav__i" href="/play/policies/"><svg viewBox="0 0 24 24"><path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/></svg><span class="label">Policies</span></a>
       <a class="nav__i" href="/play/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
       <a class="nav__i" href="/play/market/"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
+      <a class="nav__i" href="/play/corporations/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/></svg><span class="label">Corporations</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
       <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
@@ -190,6 +191,7 @@
   <main class="main">
     <div class="topbar" id="topbar"></div>
     <div id="inactBan"></div>
+    <div id="restoreBan"></div>
     <div class="kicker" id="kicker">The Instance</div>
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
@@ -259,7 +261,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
 
@@ -643,7 +645,7 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
       const nationName = (nation && nation.name) || party.nation_id;
 
       // Party funds in the topbar, just right of the Discord logo.
@@ -651,13 +653,27 @@
       setTopbarFunds(currency, party.funds);
 
       // Dormancy warning: no meaningful action (party.last_active_at, stamped server-side)
-      // in 6+ days. Any action revives it; parties idle 7+ days are removable (admin review).
-      var idleDays = party.last_active_at ? Math.floor((Date.now() - new Date(party.last_active_at).getTime()) / 86400000) : 0;
-      if (idleDays >= 6) {
+      // since INACTIVE_WARN_DAYS. Any action revives it; idle parties are removable (admin).
+      var idleDays = daysIdle(party.last_active_at);
+      if (idleDays >= INACTIVE_WARN_DAYS) {
         var ban = document.getElementById('inactBan');
         ban.className = 'inactban';
         ban.textContent = '⚠ Your party has been inactive for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
-          '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for 7+ days may be removed.';
+          '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for ' +
+          INACTIVE_DELETE_DAYS + '+ days may be removed.';
+      }
+
+      // Democracy restored: when a one-party state returns to multiparty (schema/98),
+      // every non-ruling party is flagged awaiting_relaunch. The prompt stands until the
+      // player relaunches their faction as a full party — it never expires; ignore it and
+      // they simply remain a faction of the former ruling party.
+      if (party.awaiting_relaunch && nation && nation.ruling_party == null) {
+        var rban = document.getElementById('restoreBan');
+        var ofLarger = nation.former_ruling_party ? ' of ' + esc(nation.former_ruling_party) : '';
+        rban.innerHTML = '<a class="invite" href="/party-creation/?nation=' + encodeURIComponent(party.nation_id) + '">' +
+          '<span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
+          '.</b> Your faction can stand on its own now — relaunch it as a full party, or stay a faction' + ofLarger + '.</span>' +
+          '<span class="invite__a"><span class="invite__go">Relaunch party ▸</span></span></a>';
       }
 
       document.getElementById('pname').textContent = party.name;

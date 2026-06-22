@@ -49,6 +49,12 @@ alter table public.parties add column if not exists conviction int not null defa
 -- Defaults to now() so existing + new parties start active. Read by the admin inactivity
 -- review (schema/97) and the in-game dormancy warning.
 alter table public.parties add column if not exists last_active_at timestamptz not null default now();
+-- Set on every non-ruling party when a one-party state returns to multiparty (schema/98):
+-- it marks a faction that may relaunch itself as a full party (rename/re-abbreviate/
+-- redescribe via /party-creation). It STAYS set until the player relaunches — the choice
+-- never expires; ignore it and you simply remain a faction of the former ruling party.
+-- Game-controlled (not in the client write grants); cleared only by party_relaunch().
+alter table public.parties add column if not exists awaiting_relaunch boolean not null default false;
 -- Player-set branding: a crest colour (hex) and an uploaded logo (Storage public
 -- URL). Both nullable — null colour falls back to the archetype colour, null logo
 -- shows the abbreviation. Cosmetic, so they're in the client write-scope below.

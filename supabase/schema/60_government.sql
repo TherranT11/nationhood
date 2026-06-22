@@ -328,6 +328,13 @@ begin
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
   perform public._apply_policy_tick_effects(v_tick);
+  -- Regime is the sole switch between one-party and multiparty. This tick's economics
+  -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
+  -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation
+  -- that just turned one-party then holds a Party Congress instead of an election.
+  for v_n in select id from public.nations loop
+    perform public._sync_one_party_state(v_n);
+  end loop;
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick

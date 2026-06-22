@@ -56,6 +56,16 @@ export function majority(seats) {
   return Math.floor((Number(seats) || 0) / 2) + 1;
 }
 
+// Party inactivity (wall-clock). daysIdle() is the metric over parties.last_active_at
+// (stamped server-side by _lock_party). The in-game dormancy warning shows from
+// INACTIVE_WARN_DAYS; a party is eligible for admin removal from INACTIVE_DELETE_DAYS.
+// ONE source for the home banner and the admin review.
+export const INACTIVE_WARN_DAYS = 6;
+export const INACTIVE_DELETE_DAYS = 7;
+export function daysIdle(ts) {
+  return ts ? Math.floor((Date.now() - new Date(ts).getTime()) / 86400000) : 0;
+}
+
 // The game clock runs one tick per month, tick 1 = January 1980. One source for
 // turning a tick number into its display date (e.g. 5 → "May, 1980"). MIRRORED by
 // public.current_game_date() in schema/40_events.sql (which stamps events from the
