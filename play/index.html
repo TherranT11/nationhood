@@ -671,10 +671,10 @@
           rban.innerHTML = '<div class="invite"><span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
             '.</b> ' + esc(party.name) + ' keeps its faction and its standing — defend it at the ballot box.</span></div>';
         } else {
-          rban.innerHTML = '<a class="invite" href="/play/party/">' +
+          rban.innerHTML = '<a class="invite" href="/party-creation/?nation=' + encodeURIComponent(party.nation_id) + '">' +
             '<span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
-            '.</b> Your faction is now a free party again — file for the coming elections.</span>' +
-            '<span class="invite__a"><span class="invite__go">Your Party ▸</span></span></a>';
+            '.</b> Your faction can stand on its own now — relaunch it as a full party for the coming elections.</span>' +
+            '<span class="invite__a"><span class="invite__go">Relaunch party ▸</span></span></a>';
         }
       }
 

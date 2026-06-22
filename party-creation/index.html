@@ -92,22 +92,22 @@
   </div>
 
   <script type="module">
-    import { supabase, isConfigured, requireUser, logout, currentParty } from '/supabase.js';
+    import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, COMPETENCIES } from '/util.js';
     import { mountGameDate } from '/gamedate.js';
 
     mountGameDate(document.querySelector('.gamedate')); // live game date (one source)
 
-    // Guard: if you already have a party, you can't found another — go to your
-    // instance instead of overwriting it.
-    (async () => { if (await currentParty()) window.location.replace('/play/'); })();
+    // Guard + mode are decided in init() below (it needs the nation's state), so a
+    // faction-holder can be let back in to relaunch after democracy is restored.
 
     document.getElementById('logout').addEventListener('click', logout);
 
     // Which nation are we founding a party in? (?nation=<id>, default sessau.)
     var nationId = new URLSearchParams(location.search).get('nation') || 'sessau';
     // One-party state: set when the nation has a ruling party (you join as a faction).
-    var rulingName = '', noun = 'party';
+    // refound = relaunching an existing faction as a full party (restored multiparty).
+    var rulingName = '', noun = 'party', refound = false;
 
     var pname = document.getElementById('pname');
     var pabbr = document.getElementById('pabbr');
@@ -133,23 +133,59 @@
       else { picked.className = 'picked'; picked.textContent = 'Add a name and a 2–4 letter abbreviation to continue.'; }
     }
 
-    // One-party state: if the admin named a ruling party for this nation, you join
-    // as a FACTION of it. Fetch the nation, then relabel the page — the form,
-    // validation and seeding logic are otherwise identical (a faction is a party row).
+    // Decide the page's mode from the player's party + the nation's state:
+    //  · no party yet → found one (and if the nation is a one-party state, join as a
+    //    FACTION — same form, validation and seeding; a faction is just a party row);
+    //  · already have a party + democracy was just restored here (ruling_party cleared,
+    //    former_ruling_party set) and you're NOT the former ruler → RELAUNCH: prefill
+    //    your faction's details so you can rename/re-abbreviate/redescribe it into a
+    //    full party (the former ruler keeps its faction, so it's sent to /play/);
+    //  · already have a party otherwise → go to your instance (no founding a second).
     (async () => {
       if (!isConfigured) return;
       try {
-        const { data } = await supabase.from('nations').select('name, ruling_party').eq('id', nationId).maybeSingle();
-        if (!data || !data.ruling_party) return;
-        rulingName = data.ruling_party; noun = 'faction';
-        var b = document.getElementById('onepartyBanner');
-        b.innerHTML = 'The nation of <b>' + esc(data.name || 'this nation') + '</b> is a one-party state. New political parties are not legally viable — if you join, you do so as a <b>caucus / faction of ' + esc(rulingName) + '</b>. Name your faction and describe what it stands for; its members are those who support that line.';
-        b.hidden = false;
-        document.getElementById('h1').textContent = 'Create your faction';
-        document.getElementById('sub').textContent = 'Form a faction within ' + rulingName + ' and choose what it stands for.';
-        document.getElementById('nameLbl').textContent = 'Faction name';
-        pname.setAttribute('placeholder', 'e.g. The Reformist Bloc');
-        join.textContent = 'Join ' + rulingName;
+        // Session without forcing login (viewing the form shouldn't redirect).
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session && session.user;
+        const { data: mine } = user ? await supabase.from('parties')
+          .select('id, nation_id, name, abbreviation, description').eq('user_id', user.id).maybeSingle() : { data: null };
+        const { data: nat } = await supabase.from('nations')
+          .select('name, ruling_party, former_ruling_party').eq('id', nationId).maybeSingle();
+
+        if (mine) {
+          var restored = nat && nat.ruling_party == null && nat.former_ruling_party;
+          var isFormerRuler = nat && mine.name === nat.former_ruling_party;
+          if (mine.nation_id === nationId && restored && !isFormerRuler) {
+            refound = true;
+            pname.value = mine.name || '';
+            pabbr.value = (mine.abbreviation || '').toUpperCase();
+            pdesc.value = mine.description || '';
+            descCount.textContent = pdesc.value.length;
+            var rb = document.getElementById('onepartyBanner');
+            rb.innerHTML = '<b>' + esc(nat.name || 'Your nation') + '</b> has restored multiparty politics. Your faction can stand on its own now — rename and rebrand it as a full party to contest the coming elections.';
+            rb.hidden = false;
+            document.getElementById('h1').textContent = 'Relaunch your party';
+            document.getElementById('sub').textContent = 'Your faction is now a free party. Give it its name, abbreviation, and what it stands for.';
+            join.textContent = 'Relaunch party';
+            refresh();
+            return;
+          }
+          window.location.replace('/play/');   // already have a party → your instance
+          return;
+        }
+
+        // No party yet: a one-party nation means you join as a faction of its ruling party.
+        if (nat && nat.ruling_party) {
+          rulingName = nat.ruling_party; noun = 'faction';
+          var b = document.getElementById('onepartyBanner');
+          b.innerHTML = 'The nation of <b>' + esc(nat.name || 'this nation') + '</b> is a one-party state. New political parties are not legally viable — if you join, you do so as a <b>caucus / faction of ' + esc(rulingName) + '</b>. Name your faction and describe what it stands for; its members are those who support that line.';
+          b.hidden = false;
+          document.getElementById('h1').textContent = 'Create your faction';
+          document.getElementById('sub').textContent = 'Form a faction within ' + rulingName + ' and choose what it stands for.';
+          document.getElementById('nameLbl').textContent = 'Faction name';
+          pname.setAttribute('placeholder', 'e.g. The Reformist Bloc');
+          join.textContent = 'Join ' + rulingName;
+        }
       } catch (e) { /* leave the default multiparty copy */ }
     })();
 
@@ -195,7 +231,7 @@
       if (!isConfigured) { fail('Not connected yet.'); return; }
       var user = await requireUser();
       if (!user) return; // redirected to login
-      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = 'Founding ' + name + '…';
+      saving = true; join.disabled = true; picked.className = 'picked'; picked.textContent = (refound ? 'Relaunching ' : 'Founding ') + name + '…';
       try {
         // No two parties in a nation may share a name (case-insensitive) or
         // abbreviation. Pre-check for a clear message; the DB unique indexes are
