@@ -662,20 +662,17 @@
           INACTIVE_DELETE_DAYS + '+ days may be removed.';
       }
 
-      // Democracy restored: when a one-party state returns to multiparty (regime back to
-      // 5+, schema/98), former_ruling_party is set until the first free election. Prompt
-      // players to file — except the former ruling party, who keep their faction + standing.
-      if (nation && nation.ruling_party == null && nation.former_ruling_party) {
+      // Democracy restored: when a one-party state returns to multiparty (schema/98),
+      // every non-ruling party is flagged awaiting_relaunch. The prompt stands until the
+      // player relaunches their faction as a full party — it never expires; ignore it and
+      // they simply remain a faction of the former ruling party.
+      if (party.awaiting_relaunch && nation && nation.ruling_party == null) {
         var rban = document.getElementById('restoreBan');
-        if (party.name === nation.former_ruling_party) {
-          rban.innerHTML = '<div class="invite"><span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
-            '.</b> ' + esc(party.name) + ' keeps its faction and its standing — defend it at the ballot box.</span></div>';
-        } else {
-          rban.innerHTML = '<a class="invite" href="/party-creation/?nation=' + encodeURIComponent(party.nation_id) + '">' +
-            '<span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
-            '.</b> Your faction can stand on its own now — relaunch it as a full party for the coming elections.</span>' +
-            '<span class="invite__a"><span class="invite__go">Relaunch party ▸</span></span></a>';
-        }
+        var ofLarger = nation.former_ruling_party ? ' of ' + esc(nation.former_ruling_party) : '';
+        rban.innerHTML = '<a class="invite" href="/party-creation/?nation=' + encodeURIComponent(party.nation_id) + '">' +
+          '<span class="invite__t">🗳 <b>Multi-party democracy restored in ' + esc(nationName) +
+          '.</b> Your faction can stand on its own now — relaunch it as a full party, or stay a faction' + ofLarger + '.</span>' +
+          '<span class="invite__a"><span class="invite__go">Relaunch party ▸</span></span></a>';
       }
 
       document.getElementById('pname').textContent = party.name;

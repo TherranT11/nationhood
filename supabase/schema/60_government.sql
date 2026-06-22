@@ -259,13 +259,7 @@ begin
    where nation_id = p_nation;
 
   -- ---- RESCHEDULE + DISSOLVE SAVED AGREEMENTS -----------------------------
-  -- Reschedule, and once a restored multiparty nation has held its first free election
-  -- the "democracy restored, file for elections" prompt has been answered — clear the
-  -- former_ruling_party marker (schema/98) that gates it.
-  update public.nations
-     set next_election_tick = v_tick + v_freq,
-         former_ruling_party = case when ruling_party is null then null else former_ruling_party end
-   where id = p_nation;
+  update public.nations set next_election_tick = v_tick + v_freq where id = p_nation;
   update public.negotiations set status = 'closed'
    where nation_id = p_nation and status in ('active', 'committed');
 

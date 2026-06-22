@@ -65,13 +65,18 @@ begin
                 public.current_game_date());
     end if;
   else
-    -- Returning to multiparty. No-op if it already is. Remember who ruled (gates the
-    -- home "file for elections" banner and exempts the former ruler from filing); cleared
-    -- at the first election after restoration (resolve_election, schema/60).
+    -- Returning to multiparty. No-op if it already is. Remember who ruled (former_ruling_party
+    -- names the larger party the lingering factions belong to), and flag every OTHER party as
+    -- a faction that may relaunch itself as a full party. The flag persists until that player
+    -- relaunches (party_relaunch) — the choice never expires; the former ruler is left unflagged
+    -- (it keeps its faction + its raised ceiling).
     if v_ruling is not null then
       update public.nations
          set ruling_party = null, former_ruling_party = v_ruling
        where id = p_nation;
+      update public.parties
+         set awaiting_relaunch = (lower(name) is distinct from lower(v_ruling))
+       where nation_id = p_nation;
       insert into public.events (nation_id, kind, body, game_date)
         values (p_nation, 'government',
                 v_nname || ' has restored multiparty politics.',
@@ -96,5 +101,23 @@ begin
   perform public._sync_one_party_state(p_nation);
 end $$;
 grant execute on function public.admin_sync_one_party(text) to authenticated;
+
+-- A player relaunches their faction as a full party: /party-creation has already
+-- rewritten the (client-granted) name/abbreviation/description on their own row; this
+-- clears the game-controlled awaiting_relaunch flag so the relaunch prompt retires. It
+-- locks the caller's own party (which also stamps the activity heartbeat). No-op if the
+-- flag wasn't set, so calling it spuriously is harmless.
+create or replace function public.party_relaunch()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare v_p public.parties%rowtype;
+begin
+  v_p := public._lock_party();   -- caller's own party, FOR UPDATE; stamps last_active_at
+  update public.parties set awaiting_relaunch = false where id = v_p.id;
+end $$;
+grant execute on function public.party_relaunch() to authenticated;
 
 notify pgrst, 'reload schema';

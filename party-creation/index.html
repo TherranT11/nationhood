@@ -148,21 +148,22 @@
         const { data: { session } } = await supabase.auth.getSession();
         const user = session && session.user;
         const { data: mine } = user ? await supabase.from('parties')
-          .select('id, nation_id, name, abbreviation, description').eq('user_id', user.id).maybeSingle() : { data: null };
+          .select('id, nation_id, name, abbreviation, description, awaiting_relaunch').eq('user_id', user.id).maybeSingle() : { data: null };
         const { data: nat } = await supabase.from('nations')
           .select('name, ruling_party, former_ruling_party').eq('id', nationId).maybeSingle();
 
         if (mine) {
-          var restored = nat && nat.ruling_party == null && nat.former_ruling_party;
-          var isFormerRuler = nat && mine.name === nat.former_ruling_party;
-          if (mine.nation_id === nationId && restored && !isFormerRuler) {
+          // Relaunch is available only to a flagged faction in its own (now-multiparty)
+          // nation — the flag persists until taken, so the option never expires.
+          if (mine.nation_id === nationId && mine.awaiting_relaunch && nat && nat.ruling_party == null) {
             refound = true;
             pname.value = mine.name || '';
             pabbr.value = (mine.abbreviation || '').toUpperCase();
             pdesc.value = mine.description || '';
             descCount.textContent = pdesc.value.length;
             var rb = document.getElementById('onepartyBanner');
-            rb.innerHTML = '<b>' + esc(nat.name || 'Your nation') + '</b> has restored multiparty politics. Your faction can stand on its own now — rename and rebrand it as a full party to contest the coming elections.';
+            var ofLarger = nat.former_ruling_party ? ' of <b>' + esc(nat.former_ruling_party) + '</b>' : '';
+            rb.innerHTML = '<b>' + esc(nat.name || 'Your nation') + '</b> has restored multiparty politics. Your faction can stand on its own now — rename and rebrand it as a full party to contest the coming elections. Leave it as is and you remain a faction' + ofLarger + '.';
             rb.hidden = false;
             document.getElementById('h1').textContent = 'Relaunch your party';
             document.getElementById('sub').textContent = 'Your faction is now a free party. Give it its name, abbreviation, and what it stands for.';
@@ -261,7 +262,8 @@
           .upsert({ user_id: user.id, nation_id: nationId, name: name, abbreviation: abbr, description: pdesc.value.trim() || null }, { onConflict: 'user_id' })
           .select('id').single();
         if (error || !created) { fail('That name or abbreviation is already taken in this nation.'); return; }
-        await seedLeader(created.id);  // give a brand-new party its Party Leader
+        if (refound) { try { await supabase.rpc('party_relaunch'); } catch (e) { /* flag clears on next relaunch attempt */ } }  // retire the relaunch prompt
+        else await seedLeader(created.id);  // a brand-new party gets its Party Leader (a relaunch already has one)
         window.location.href = '/play/';
       } catch (e) {
         fail('Something went wrong. Try again.');
