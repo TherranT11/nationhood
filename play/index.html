@@ -259,7 +259,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
 
@@ -651,13 +651,14 @@
       setTopbarFunds(currency, party.funds);
 
       // Dormancy warning: no meaningful action (party.last_active_at, stamped server-side)
-      // in 6+ days. Any action revives it; parties idle 7+ days are removable (admin review).
-      var idleDays = party.last_active_at ? Math.floor((Date.now() - new Date(party.last_active_at).getTime()) / 86400000) : 0;
-      if (idleDays >= 6) {
+      // since INACTIVE_WARN_DAYS. Any action revives it; idle parties are removable (admin).
+      var idleDays = daysIdle(party.last_active_at);
+      if (idleDays >= INACTIVE_WARN_DAYS) {
         var ban = document.getElementById('inactBan');
         ban.className = 'inactban';
         ban.textContent = '⚠ Your party has been inactive for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
-          '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for 7+ days may be removed.';
+          '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for ' +
+          INACTIVE_DELETE_DAYS + '+ days may be removed.';
       }
 
       document.getElementById('pname').textContent = party.name;
