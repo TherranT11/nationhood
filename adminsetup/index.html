@@ -237,6 +237,86 @@
   .poltab .pvline b.g{color:var(--green,#16915a);font-weight:800} .poltab .pvline b.r{color:var(--red,#C42B2B);font-weight:800}
   .poltab .pvline .mute{color:var(--soft)}
 
+  /* Crises tab — the Crisis Builder. Scoped under .cbuild so its generic class
+     names (.card/.f/.seg/.effrow/.add/.clause/.rail…) don't collide with the
+     other tabs, same approach as .poltab above. Placed after .poltab so it wins
+     on equal specificity for shared names. */
+  .cbuild .cols{display:grid;grid-template-columns:1fr 312px;gap:22px;align-items:start}
+  @media(max-width:1100px){.cbuild .cols{grid-template-columns:1fr}}
+  .cbuild .card{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px 20px;margin-bottom:16px}
+  .cbuild .sechd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+  .cbuild label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}
+  .cbuild .hint{font-weight:400;color:var(--soft);font-size:11px}
+  .cbuild input[type=text],.cbuild textarea,.cbuild select,.cbuild input[type=number]{width:100%;background:var(--field,#FCFBF9);border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;color:var(--ink)}
+  .cbuild textarea{resize:vertical;min-height:44px;line-height:1.45}
+  .cbuild input:focus,.cbuild textarea:focus,.cbuild select:focus{outline:none;border-color:var(--ink);background:var(--surface)}
+  .cbuild .f{margin-bottom:13px}
+  .cbuild .trow{display:grid;grid-template-columns:1.6fr .7fr .7fr 30px;gap:8px;align-items:center;margin-bottom:8px}
+  .cbuild .trow select,.cbuild .trow input{padding:8px 9px;font-size:12.5px}
+  .cbuild .andtag{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);padding:3px 0 7px}
+  .cbuild .xb{width:30px;height:34px;border:1px solid var(--line2);background:var(--surface);border-radius:8px;color:var(--soft);cursor:pointer;font-size:14px}
+  .cbuild .xb:hover{color:var(--red,#C42B2B);border-color:var(--red,#C42B2B)}
+  .cbuild .add{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--ink);background:var(--surface);border:1px dashed var(--line2);border-radius:8px;padding:8px 12px;cursor:pointer}
+  .cbuild .add:hover{border-color:var(--ink)}
+  .cbuild .addrow{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+  .cbuild .stabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .cbuild .stab{flex:1;min-width:90px;border:1px solid var(--line2);background:var(--surface);border-radius:10px;padding:10px 8px;cursor:pointer;text-align:center}
+  .cbuild .stab .k{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .cbuild .stab .v{font-weight:800;font-size:13px;margin-top:2px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cbuild .stab.on{border-color:var(--indigo);background:var(--indigo-soft,#ECE9FD)}
+  .cbuild .stab.on .k{color:var(--indigo)} .cbuild .stab.on .v{color:var(--indigo)}
+  .cbuild .stab.s5{border-style:dashed}
+  .cbuild .stab.s5.on{border-color:var(--red,#C42B2B);background:var(--red-soft,#FBEAE9)} .cbuild .stab.s5.on .k,.cbuild .stab.s5.on .v{color:var(--red,#C42B2B)}
+  .cbuild .grid2{display:grid;grid-template-columns:1fr 160px;gap:12px}
+  @media(max-width:560px){.cbuild .grid2{grid-template-columns:1fr}}
+  .cbuild .growthwrap{display:flex;align-items:center;gap:8px}
+  .cbuild .growthwrap .u{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);white-space:nowrap}
+  .cbuild .tickcalc{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);margin-top:7px}
+  .cbuild .tickcalc b{color:var(--ink)}
+  .cbuild .varies{color:var(--soft);font-weight:400}
+  .cbuild .actionshd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:18px 0 10px}
+  .cbuild .acard{border:1px solid var(--line);border-left:3px solid var(--navy,#2b3a7a);border-radius:12px;background:var(--field,#FCFBF9);padding:14px;margin-bottom:12px}
+  .cbuild .acard.law{border-left-color:var(--amber,#E0820E)}
+  .cbuild .ah{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .cbuild .seg{display:inline-flex;background:var(--chip,#F4F3EF);border-radius:8px;padding:3px;gap:3px}
+  .cbuild .seg span{padding:7px 12px;border-radius:6px;cursor:pointer;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .cbuild .seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .cbuild .ah .rmact{margin-left:auto}
+  .cbuild .clause{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:11px 0 6px}
+  .cbuild .rollline{display:grid;grid-template-columns:1fr 1fr;gap:9px;align-items:center}
+  .cbuild .rollnote{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:10px}
+  .cbuild .rollnote b{color:var(--ink)}
+  .cbuild .branch{border-radius:10px;padding:11px;margin-bottom:9px}
+  .cbuild .branch.succ{background:var(--green-soft,#E5F4EC);border:1px solid #cbe9da}
+  .cbuild .branch.fail{background:var(--red-soft,#FBEAE9);border:1px solid #f3d3d1}
+  .cbuild .branch .bl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin-bottom:7px}
+  .cbuild .branch.succ .bl{color:var(--green,#16915a)} .cbuild .branch.fail .bl{color:var(--red,#C42B2B)}
+  .cbuild .effrow{display:grid;grid-template-columns:1.5fr .7fr 30px;gap:7px;align-items:center;margin-bottom:6px}
+  .cbuild .effrow select,.cbuild .effrow input{padding:7px 8px;font-size:12px;background:var(--surface)}
+  .cbuild .addeff{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted);background:var(--surface);border:1px dashed var(--line2);border-radius:7px;padding:6px 10px;cursor:pointer}
+  .cbuild .addeff:hover{border-color:var(--ink);color:var(--ink)}
+  .cbuild .reso{display:flex;gap:8px;margin-top:6px}
+  .cbuild .reso button{flex:1;border:1.5px solid var(--line2);background:var(--surface);border-radius:10px;padding:11px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  .cbuild .reso button.on{border-color:var(--red,#C42B2B);background:var(--red-soft,#FBEAE9);color:var(--red,#C42B2B)}
+  .cbuild .rail{position:sticky;top:20px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .cbuild .rail .rh{background:var(--field,#FCFBF9);border-bottom:1px solid var(--line);padding:12px 15px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .cbuild .rail .rb{padding:14px 15px;max-height:78vh;overflow:auto}
+  .cbuild .pvname{font-weight:900;font-size:18px;letter-spacing:-.01em}
+  .cbuild .pvdesc{font-size:12px;color:var(--muted);margin:4px 0 12px;line-height:1.45}
+  .cbuild .pvtrig{background:var(--red-soft,#FBEAE9);border:1px solid #f3d3d1;border-radius:9px;padding:9px 11px;font-family:'Space Mono',monospace;font-size:10.5px;color:#7c2020;line-height:1.7;margin-bottom:14px}
+  .cbuild .pvtrig .tl{font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--red,#C42B2B);margin-bottom:5px;font-weight:700}
+  .cbuild .pvstage{border-left:2px solid var(--line2);padding:0 0 12px 12px;margin-left:4px;position:relative}
+  .cbuild .pvstage:before{content:'';position:absolute;left:-5px;top:3px;width:8px;height:8px;border-radius:50%;background:var(--indigo)}
+  .cbuild .pvstage.s5:before{background:var(--red,#C42B2B)}
+  .cbuild .pvstage .sn{font-weight:800;font-size:13px}
+  .cbuild .pvstage .sg{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:1px 0 5px}
+  .cbuild .pvact{font-size:11px;color:var(--muted);margin-bottom:3px;display:flex;gap:6px;align-items:baseline}
+  .cbuild .pvact .dot{font-size:8px;margin-top:1px}
+  .cbuild .pvact .mn{color:var(--navy,#2b3a7a)} .cbuild .pvact .lw{color:var(--amber,#E0820E)}
+  .cbuild .pvend{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:3px}
+  .cbuild .save{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--ink);border:none;border-radius:10px;padding:13px 20px;cursor:pointer}
+  .cbuild .save:hover{filter:brightness(1.15)}
+
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
@@ -422,7 +502,44 @@
           </div>
         </div>
       </div>
-      <div class="tabpane" data-tab="crises" hidden><div class="panel"><h2>Crises</h2><p class="empty">Nothing here yet.</p></div></div>
+      <div class="tabpane" data-tab="crises" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <h2 style="margin:0">Crises</h2>
+              <button class="btn btn-solid" id="cbNew" type="button">+ New crisis</button>
+            </div>
+            <p class="sub" style="margin:8px 0 14px">A crisis fires when all its trigger conditions are met, then climbs a meter through five stages — each stage adds growth per tick, and management actions push it back down. Reaching the terminal stage applies its effect.</p>
+            <div id="cbList"><p class="empty">Loading…</p></div>
+          </div>
+          <div class="panel" id="cbEditorPanel" hidden>
+            <div class="cbuild">
+              <div class="cols">
+                <div>
+                  <div class="card">
+                    <div class="sechd">Identity</div>
+                    <div class="f"><label>Crisis name</label><input type="text" id="cbName"></div>
+                    <div class="f" style="margin-bottom:0"><label>General description</label><textarea id="cbDesc"></textarea></div>
+                  </div>
+                  <div class="card">
+                    <div class="sechd">Trigger conditions <span class="hint">all must be true</span></div>
+                    <div id="cbTriggers"></div>
+                    <div class="addrow"><button class="add" id="cbAddTrig" type="button">+ condition</button></div>
+                  </div>
+                  <div class="card">
+                    <div class="sechd">Stages</div>
+                    <div class="stabs" id="cbStabs"></div>
+                    <div id="cbStage"></div>
+                  </div>
+                  <button class="save" id="cbSave" type="button">Save crisis</button>
+                </div>
+                <aside><div class="rail"><div class="rh">Preview</div><div class="rb" id="cbPrev"></div></div></aside>
+              </div>
+            </div>
+            <div class="note" id="cbNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
       <div class="tabpane" data-tab="events" hidden><div class="panel"><h2>Events</h2><p class="empty">Nothing here yet.</p></div></div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
@@ -842,6 +959,7 @@
         if (tab === 'policies') loadPolicies();
         if (tab === 'convictions') loadConvictions();
         if (tab === 'inactivity') loadInactivity();
+        if (tab === 'crises') loadCrises();
       });
     });
 
@@ -1293,6 +1411,265 @@
     }
 
     document.getElementById('convNew').onclick=function(){ openConviction(blankConviction(), null); };
+
+    // ---- Crises (admin authoring; one JSONB definition per crisis, is_admin RLS) ----
+    // The Crisis Builder. Its UI lives under .cbuild (scoped CSS); everything is kept
+    // inside this IIFE so the builder's generic identifiers (eff, RES, renderStage,
+    // renderPreview…) can't collide with the other tabs. Returns loadCrises().
+    var loadCrises = (function () {
+      var MINISTRIES = ['Interior', 'Foreign Affairs', 'Economic Development', 'Trade', 'Justice', 'Labor', 'Defense'];
+      var PSTATS = ['Charisma', 'Image', 'Acumen', 'Resolve', 'Guile'];
+      var OPS = ['<', '≤', '>', '≥', '='];
+      var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
+      var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES };
+
+      function effTgt(sel) { var h = ''; Object.keys(EFF_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + EFF_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return h; }
+      function trigTgt(sel) {
+        var h = '<optgroup label="National">' + EFF_TGT.National.map(o).join('') + '</optgroup>' +
+          '<optgroup label="Government">' + EFF_TGT.Government.map(o).join('') + '</optgroup>' +
+          '<optgroup label="Resource · production">' + RES.map(function (r) { return o(r + ' production'); }).join('') + '</optgroup>' +
+          '<optgroup label="Resource · on hand">' + RES.map(function (r) { return o(r + ' on hand'); }).join('') + '</optgroup>';
+        function o(t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }
+        return h;
+      }
+      function eff(t, v) { return { t: t, v: v }; }
+      function signed(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }
+      function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B'; if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return e.t + ' ' + signed(e.v); }
+      function newAction(type) { return { type: type, decision: '', ministry: 'Interior', cause: '', mech: 'roll', direct: [eff('Crisis Meter', -2)], stat: 'Charisma', needed: 12, success: [eff('Crisis Meter', -3)], failure: [eff('Order', -1)], eventSuccess: '', eventFail: '', lawName: '', lawEffect: [eff('Crisis Meter', -4)] }; }
+      function blankStage() { return { name: '', desc: '', growth: 1, at: 10, actions: [] }; }
+      function blankCrisis() {
+        return {
+          name: 'New Crisis', desc: '',
+          triggers: [{ target: 'Government Confidence', op: '<', value: 20 }],
+          stages: [blankStage(), blankStage(), blankStage(), blankStage(), { descReached: '', reached: [], resolution: 'ends' }]
+        };
+      }
+
+      var CRISIS = null, activeStage = 0, crisEditingId = null, crisSaving = false, crisCache = [];
+
+      function avgGrowth(g) { return g === 'd3' ? 2 : g; }
+      function ticksToNext(g, at) { var a = avgGrowth(g), T = at || 10; return a > 0 ? Math.ceil(T / a) : '—'; }
+      function growthLabel(g) { return g === 'd3' ? '1D3' : '+' + g; }
+      function tickHtml(g, at) { var T = at || 10, base = ticksToNext(g, T); var extra = (g === 'd3') ? ' <span class="varies">· 1D3, varies ' + Math.ceil(T / 3) + '–' + T + '</span>' : ''; return '≈ <b class="ticksNext">' + base + '</b> ticks to next crisis point' + extra; }
+
+      // ----- list + persistence (crises table; one JSONB definition per row) -----
+      function setCrisNote(msg, kind) { var n = document.getElementById('cbNote'); if (n) { n.textContent = msg || ''; n.className = 'note' + (kind ? ' ' + kind : ''); } }
+      async function loadCrises() {
+        var box = document.getElementById('cbList');
+        try {
+          const { data, error } = await supabase.from('crises').select('id, definition').order('created_at', { ascending: true });
+          if (error) throw error; crisCache = data || [];
+        } catch (e) { box.innerHTML = '<p class="empty">Could not load crises.</p>'; return; }
+        renderCrisList();
+      }
+      function renderCrisList() {
+        var box = document.getElementById('cbList');
+        if (!crisCache.length) { box.innerHTML = '<p class="empty">No crises yet. Click “New crisis” to create one.</p>'; return; }
+        box.innerHTML = crisCache.map(function (row) {
+          var d = row.definition || {}, nt = (d.triggers || []).length;
+          var na = (d.stages || []).slice(0, 4).reduce(function (s, st) { return s + ((st && st.actions || []).length); }, 0);
+          return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled crisis') + '</div>' +
+            '<div class="plcard__meta">' + nt + ' trigger' + (nt === 1 ? '' : 's') + ' · ' + na + ' action' + (na === 1 ? '' : 's') + '</div></div>' +
+            '<div class="plcard__btns"><button class="ed" data-id="' + row.id + '" type="button">Edit</button><button class="rm" data-id="' + row.id + '" type="button">Remove</button></div></div>';
+        }).join('');
+        box.querySelectorAll('.ed').forEach(function (b) { b.onclick = function () { var r = crisCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (r) openCrisis(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
+        box.querySelectorAll('.rm').forEach(function (b) { b.onclick = function () { removeCrisis(b.dataset.id); }; });
+      }
+      async function saveCrisis() {
+        if (crisSaving) return; crisSaving = true; setCrisNote('Saving…');
+        try {
+          if (crisEditingId) { const { error } = await supabase.from('crises').update({ definition: CRISIS }).eq('id', crisEditingId); if (error) throw error; }
+          else { const { data, error } = await supabase.from('crises').insert({ definition: CRISIS }).select('id').single(); if (error) throw error; crisEditingId = data.id; }
+          setCrisNote('Saved “' + (CRISIS.name || 'crisis') + '”.', 'ok');
+          loadCrises();
+        } catch (e) { setCrisNote('Save failed: ' + (e.message || e), 'error'); }
+        crisSaving = false;
+      }
+      async function removeCrisis(id) {
+        if (!confirm('Delete this crisis?')) return;
+        try {
+          const { error } = await supabase.from('crises').delete().eq('id', id); if (error) throw error;
+          if (crisEditingId === id) { crisEditingId = null; document.getElementById('cbEditorPanel').hidden = true; }
+          loadCrises();
+        } catch (e) { setCrisNote('Delete failed: ' + (e.message || e), 'error'); }
+      }
+      function openCrisis(def, id) {
+        CRISIS = def && def.stages ? def : blankCrisis();
+        activeStage = 0; crisEditingId = id || null;
+        var panel = document.getElementById('cbEditorPanel'); panel.hidden = false;
+        setCrisNote('');
+        var cn = document.getElementById('cbName'), cd = document.getElementById('cbDesc');
+        cn.value = CRISIS.name || ''; cd.value = CRISIS.desc || '';
+        cn.oninput = function (e) { CRISIS.name = e.target.value; renderPreview(); };
+        cd.oninput = function (e) { CRISIS.desc = e.target.value; renderPreview(); };
+        renderTriggers(); renderTabs(); renderStage(); renderPreview();
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // ----- triggers -----
+      function renderTriggers() {
+        var box = document.getElementById('cbTriggers'); box.innerHTML = '';
+        CRISIS.triggers.forEach(function (t, i) {
+          if (i > 0) { var a = document.createElement('div'); a.className = 'andtag'; a.textContent = 'AND'; box.appendChild(a); }
+          var row = document.createElement('div'); row.className = 'trow';
+          row.innerHTML = '<select class="tt">' + trigTgt(t.target) + '</select>' +
+            '<select class="to">' + OPS.map(function (op) { return '<option' + (op === t.op ? ' selected' : '') + '>' + op + '</option>'; }).join('') + '</select>' +
+            '<input class="tv" type="number" step="any" value="' + t.value + '"><button class="xb" type="button">×</button>';
+          row.querySelector('.tt').onchange = function (e) { t.target = e.target.value; renderPreview(); };
+          row.querySelector('.to').onchange = function (e) { t.op = e.target.value; renderPreview(); };
+          row.querySelector('.tv').oninput = function (e) { t.value = parseFloat(e.target.value) || 0; renderPreview(); };
+          row.querySelector('.xb').onclick = function () { CRISIS.triggers.splice(i, 1); renderTriggers(); renderPreview(); };
+          box.appendChild(row);
+        });
+      }
+
+      // ----- stage tabs -----
+      function renderTabs() {
+        var box = document.getElementById('cbStabs'); box.innerHTML = '';
+        for (var i = 0; i < 5; i++) {
+          (function (i) {
+            var s = CRISIS.stages[i], isF = (i === 4);
+            var name = isF ? 'Terminal' : (s.name || '—');
+            var el = document.createElement('div'); el.className = 'stab' + (isF ? ' s5' : '') + (i === activeStage ? ' on' : '');
+            el.innerHTML = '<div class="k">Stage ' + (i + 1) + (isF ? ' · final' : '') + '</div><div class="v">' + esc(name) + '</div>';
+            el.onclick = function () { activeStage = i; renderTabs(); renderStage(); };
+            box.appendChild(el);
+          })(i);
+        }
+      }
+
+      // ----- effect-row helpers -----
+      function getList(ai, list) { if (ai === 's5') return CRISIS.stages[4].reached; return CRISIS.stages[activeStage].actions[+ai][list]; }
+      function effRowsHtml(ai, list) {
+        var arr = getList(ai, list);
+        return arr.map(function (e, ri) { return '<div class="effrow" data-ai="' + ai + '" data-list="' + list + '" data-ri="' + ri + '"><select class="et">' + effTgt(e.t) + '</select><input class="ev" type="number" step="any" value="' + e.v + '"><button class="xb erx" type="button">×</button></div>'; }).join('') +
+          '<button class="addeff" data-ai="' + ai + '" data-list="' + list + '" type="button">+ effect</button>';
+      }
+      function wireEffRows(scope) {
+        scope.querySelectorAll('.effrow').forEach(function (row) {
+          var ai = row.dataset.ai, list = row.dataset.list, ri = +row.dataset.ri, arr = getList(ai, list);
+          row.querySelector('.et').onchange = function (e) { arr[ri].t = e.target.value; renderPreview(); };
+          row.querySelector('.ev').oninput = function (e) { arr[ri].v = parseFloat(e.target.value) || 0; renderPreview(); };
+          row.querySelector('.erx').onclick = function () { arr.splice(ri, 1); renderStage(); };
+        });
+        scope.querySelectorAll('.addeff').forEach(function (b) { b.onclick = function () { getList(b.dataset.ai, b.dataset.list).push(eff('Crisis Meter', -2)); renderStage(); }; });
+      }
+
+      // ----- stage editor -----
+      function renderStage() {
+        var box = document.getElementById('cbStage');
+        if (activeStage === 4) { renderStage5(box); return; }
+        var s = CRISIS.stages[activeStage];
+        var h = '<div class="f"><label>Stage name</label><input type="text" class="sname" value="' + (s.name || '').replace(/"/g, '&quot;') + '"></div>' +
+          '<div class="f"><label>Description</label><textarea class="sdesc">' + esc(s.desc || '') + '</textarea></div>' +
+          '<div class="grid2"><div class="f" style="margin-bottom:0"><label>Growth / tick</label><div class="seg growthseg">' +
+          ['1', '2', 'd3'].map(function (g) { var val = (g === 'd3') ? 'd3' : +g; return '<span data-g="' + g + '" class="' + (s.growth == val ? 'on' : '') + '">' + (g === 'd3' ? '1D3' : '+' + g) + '</span>'; }).join('') +
+          '</div></div>' +
+          '<div class="f" style="margin-bottom:0"><label>Escalates at</label><div class="growthwrap"><input type="number" class="sat" min="1" value="' + (s.at || 10) + '"><span class="u">pts</span></div></div></div>' +
+          '<div class="tickcalc">' + tickHtml(s.growth, s.at) + '</div>' +
+          '<div class="actionshd">Management actions</div><div id="cbActions"></div>' +
+          '<div class="addrow"><button class="add" id="cbAddMin" type="button">+ Minister action</button><button class="add" id="cbAddLaw" type="button">+ Law</button></div>';
+        box.innerHTML = h;
+        box.querySelector('.sname').oninput = function (e) { s.name = e.target.value; renderTabs(); renderPreview(); };
+        box.querySelector('.sdesc').oninput = function (e) { s.desc = e.target.value; renderPreview(); };
+        box.querySelectorAll('.growthseg span').forEach(function (sp) { sp.onclick = function () { s.growth = (sp.dataset.g === 'd3') ? 'd3' : +sp.dataset.g; renderStage(); renderPreview(); }; });
+        box.querySelector('.sat').oninput = function (e) { s.at = parseFloat(e.target.value) || 0; box.querySelector('.tickcalc').innerHTML = tickHtml(s.growth, s.at); renderPreview(); };
+        box.querySelector('#cbAddMin').onclick = function () { s.actions.push(newAction('minister')); renderStage(); renderPreview(); };
+        box.querySelector('#cbAddLaw').onclick = function () { s.actions.push(newAction('law')); renderStage(); renderPreview(); };
+        var aw = document.getElementById('cbActions'); aw.innerHTML = '';
+        s.actions.forEach(function (a, ai) { aw.insertAdjacentHTML('beforeend', actionHtml(a, ai)); });
+        wireActions(aw, s);
+        wireEffRows(aw);
+      }
+
+      function actionHtml(a, ai) {
+        var head = '<div class="ah"><div class="seg typeseg"><span data-t="minister" class="' + (a.type === 'minister' ? 'on' : '') + '">Minister</span><span data-t="law" class="' + (a.type === 'law' ? 'on' : '') + '">Law</span></div><button class="xb rmact" data-ai="' + ai + '" type="button">×</button></div>';
+        var body;
+        if (a.type === 'minister') {
+          var mech;
+          if (a.mech === 'roll') {
+            mech = '<div class="rollnote"><b>Roll + ' + a.stat + ' ≥ ' + a.needed + '</b> to succeed</div>' +
+              '<div class="rollline"><div><label>Personality stat</label><select class="statsel">' + PSTATS.map(function (p) { return '<option' + (p === a.stat ? ' selected' : '') + '>' + p + '</option>'; }).join('') + '</select></div>' +
+              '<div><label>Needed result</label><input type="number" class="needed" value="' + a.needed + '"></div></div>' +
+              '<div class="branch succ"><div class="bl">If successful</div>' + effRowsHtml(ai, 'success') + '<div class="clause">Event if success</div><textarea class="evsucc">' + esc(a.eventSuccess || '') + '</textarea></div>' +
+              '<div class="branch fail"><div class="bl">If failure</div>' + effRowsHtml(ai, 'failure') + '<div class="clause">Event if fail</div><textarea class="evfail">' + esc(a.eventFail || '') + '</textarea></div>';
+          } else {
+            mech = '<div class="clause">Effect (applied directly)</div>' + effRowsHtml(ai, 'direct');
+          }
+          body = '<div class="f"><label>Name of decision</label><input type="text" class="decision" value="' + (a.decision || '').replace(/"/g, '&quot;') + '"></div>' +
+            '<div class="grid2" style="grid-template-columns:1fr 1fr"><div class="f"><label>Which minister</label><select class="ministry">' + MINISTRIES.map(function (m) { return '<option' + (m === a.ministry ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div>' +
+            '<div class="f"><label>Cause</label><input type="text" class="cause" value="' + (a.cause || '').replace(/"/g, '&quot;') + '"></div></div>' +
+            '<div class="clause">Resolution</div><div class="seg mechseg" style="margin-bottom:10px"><span data-m="direct" class="' + (a.mech === 'direct' ? 'on' : '') + '">Direct effect</span><span data-m="roll" class="' + (a.mech === 'roll' ? 'on' : '') + '">Die roll</span></div>' +
+            mech;
+        } else {
+          body = '<div class="f"><label>Name of law</label><input type="text" class="lawname" value="' + (a.lawName || '').replace(/"/g, '&quot;') + '"></div>' +
+            '<div class="clause">Effect when passed</div>' + effRowsHtml(ai, 'lawEffect');
+        }
+        return '<div class="acard' + (a.type === 'law' ? ' law' : '') + '" data-ai="' + ai + '">' + head + body + '</div>';
+      }
+
+      function wireActions(scope, s) {
+        scope.querySelectorAll('.acard').forEach(function (card) {
+          var ai = +card.dataset.ai, a = s.actions[ai];
+          card.querySelectorAll('.typeseg span').forEach(function (sp) { sp.onclick = function () { a.type = sp.dataset.t; renderStage(); renderPreview(); }; });
+          card.querySelector('.rmact').onclick = function () { s.actions.splice(ai, 1); renderStage(); renderPreview(); };
+          if (a.type === 'minister') {
+            card.querySelector('.decision').oninput = function (e) { a.decision = e.target.value; renderPreview(); };
+            card.querySelector('.ministry').onchange = function (e) { a.ministry = e.target.value; renderPreview(); };
+            card.querySelector('.cause').oninput = function (e) { a.cause = e.target.value; };
+            card.querySelectorAll('.mechseg span').forEach(function (sp) { sp.onclick = function () { a.mech = sp.dataset.m; renderStage(); }; });
+            if (a.mech === 'roll') {
+              card.querySelector('.statsel').onchange = function (e) { a.stat = e.target.value; renderStage(); };
+              card.querySelector('.needed').oninput = function (e) { a.needed = parseInt(e.target.value, 10) || 0; var n = card.querySelector('.rollnote b'); if (n) n.textContent = 'Roll + ' + a.stat + ' ≥ ' + a.needed; };
+              card.querySelector('.evsucc').oninput = function (e) { a.eventSuccess = e.target.value; };
+              card.querySelector('.evfail').oninput = function (e) { a.eventFail = e.target.value; };
+            }
+          } else {
+            card.querySelector('.lawname').oninput = function (e) { a.lawName = e.target.value; renderPreview(); };
+          }
+        });
+      }
+
+      function renderStage5(box) {
+        var s = CRISIS.stages[4];
+        box.innerHTML = '<div class="f"><label>Description if reached</label><textarea class="s5desc">' + esc(s.descReached || '') + '</textarea></div>' +
+          '<div class="f"><label>Effect when reached</label>' + effRowsHtml('s5', 'reached') + '</div>' +
+          '<div class="f" style="margin-bottom:0"><label>Resolution</label><div class="reso"><button data-r="persistent" class="' + (s.resolution === 'persistent' ? 'on' : '') + '" type="button">Persistent</button><button data-r="ends" class="' + (s.resolution === 'ends' ? 'on' : '') + '" type="button">Ends after effect</button></div></div>';
+        box.querySelector('.s5desc').oninput = function (e) { s.descReached = e.target.value; renderPreview(); };
+        box.querySelectorAll('.reso button').forEach(function (b) { b.onclick = function () { s.resolution = b.dataset.r; renderStage5(box); renderPreview(); }; });
+        wireEffRows(box);
+      }
+
+      // ----- preview -----
+      function renderPreview() {
+        var box = document.getElementById('cbPrev');
+        var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>AND ');
+        var h = '<div class="pvname">' + esc(CRISIS.name || 'Untitled crisis') + '</div><div class="pvdesc">' + esc(CRISIS.desc || '') + '</div>' +
+          '<div class="pvtrig"><div class="tl">Triggers when</div>' + (trig || '—') + '</div>';
+        for (var i = 0; i < 4; i++) {
+          var s = CRISIS.stages[i];
+          h += '<div class="pvstage"><div class="sn">' + (i + 1) + '. ' + esc(s.name || '—') + '</div><div class="sg">climbs ' + growthLabel(s.growth) + '/tick · escalates at ' + (s.at || 10) + ' · ≈' + ticksToNext(s.growth, s.at) + ' ticks</div>';
+          h += s.actions.map(function (a) {
+            if (a.type === 'minister') return '<div class="pvact"><span class="dot mn">◆</span><span><b class="mn">' + esc(a.decision || 'Decision') + '</b> &middot; ' + esc(a.ministry) + (a.mech === 'roll' ? ' &middot; ' + esc(a.stat) + ' ≥ ' + a.needed : ' &middot; direct') + '</span></div>';
+            return '<div class="pvact"><span class="dot lw">◆</span><span><b class="lw">' + esc(a.lawName || 'Law') + '</b> &middot; law</span></div>';
+          }).join('') || '<div class="pvact" style="color:var(--soft)">no actions</div>';
+          h += '</div>';
+        }
+        var s5 = CRISIS.stages[4];
+        h += '<div class="pvstage s5"><div class="sn" style="color:var(--red,#C42B2B)">5. ' + (s5.descReached ? 'Terminal' : 'Terminal (unset)') + '</div>' +
+          '<div class="pvdesc" style="margin:3px 0 5px">' + esc(s5.descReached || '—') + '</div>' +
+          (s5.reached.length ? '<div class="sg">' + s5.reached.map(effStr).map(esc).join(' &middot; ') + '</div>' : '') +
+          '<div class="pvend">' + (s5.resolution === 'persistent' ? '↻ persists after effect' : '■ ends after effect') + '</div></div>';
+        box.innerHTML = h;
+      }
+
+      // New / add-condition / Save buttons live in the static tab markup; wire them once.
+      var nb = document.getElementById('cbNew'); if (nb) nb.onclick = function () { openCrisis(blankCrisis(), null); };
+      var sb = document.getElementById('cbSave'); if (sb) sb.onclick = saveCrisis;
+      var at = document.getElementById('cbAddTrig'); if (at) at.onclick = function () { if (!CRISIS) return; CRISIS.triggers.push({ target: 'Order', op: '<', value: 8 }); renderTriggers(); renderPreview(); };
+
+      return loadCrises;
+    })();
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
     var modEditing = null, modsCache = [], assignCache = {}, effectsCache = {}, condsCache = {};   // *Cache: modifier_id -> [...]
