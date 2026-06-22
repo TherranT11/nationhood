@@ -645,7 +645,13 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
+      // The snapshot only needs name/flag/stats/economy; ruling_party and
+      // former_ruling_party feed the one-party-restored banner. If the full select
+      // errors (e.g. an older DB missing those two columns), fall back to the core
+      // columns so a drifted optional column can't blank the whole nation snapshot.
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
+      var nation = nsel.data;
+      if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
 
       // Party funds in the topbar, just right of the Discord logo.
