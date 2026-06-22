@@ -75,18 +75,14 @@ begin
     when 'Inflation %'    then perform public._nation_stat_add(p_nation, 'economy', 'inflation',    v_v, 0, 100);
     when 'Tax Burden %'   then perform public._nation_stat_add(p_nation, 'economy', 'tax',          v_v, 0, 100);
     when 'Regime'         then perform public._nation_stat_add(p_nation, 'economy', 'regime',       v_v, 1, 20);
-    when 'Budget' then
+    when 'Budget', 'Debt', 'Income' then
+      -- Money targets: scale the authored amount by nation size/wealth, then apply to
+      -- the matching economy key (lower(v_t)). Debt floors at 0; budget & income are
+      -- unbounded (deficits allowed).
       select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;
       v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 10));
-      perform public._nation_stat_add(p_nation, 'economy', 'budget', v_amt, null, null);
-    when 'Debt' then
-      select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;
-      v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 10));
-      perform public._nation_stat_add(p_nation, 'economy', 'debt', v_amt, 0, null);
-    when 'Income' then  -- annual collection figure; unbounded (may be a deficit)
-      select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;
-      v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 10));
-      perform public._nation_stat_add(p_nation, 'economy', 'income', v_amt, null, null);
+      perform public._nation_stat_add(p_nation, 'economy', lower(v_t), v_amt,
+                                      case when v_t = 'Debt' then 0 else null end, null);
     -- Resource production (>= 0)
     when 'Energy'    then perform public._nation_stat_add(p_nation, 'production', 'energy',    v_v, 0, null);
     when 'Food'      then perform public._nation_stat_add(p_nation, 'production', 'food',      v_v, 0, null);
