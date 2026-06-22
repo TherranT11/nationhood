@@ -47,7 +47,11 @@
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo);margin-bottom:14px}
 
   /* party header card */
-  .phead{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+  .phead{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap;position:relative}
+  .onlinebadge{position:absolute;top:14px;right:16px;display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:20px}
+  .onlinebadge .odot{width:8px;height:8px;border-radius:50%}
+  .onlinebadge.on{color:var(--green);background:color-mix(in srgb,var(--green) 13%,var(--surface))} .onlinebadge.on .odot{background:var(--green)}
+  .onlinebadge.off{color:var(--red);background:color-mix(in srgb,var(--red) 13%,var(--surface))} .onlinebadge.off .odot{background:var(--red)}
   .phead__id{display:flex;align-items:center;gap:18px;flex:1;min-width:260px}
   .plogo{width:72px;height:72px;flex:none;border-radius:12px;background:var(--chip);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-weight:700;font-size:19px;letter-spacing:.04em;color:var(--soft);overflow:hidden}
   .plogo img{width:100%;height:100%;object-fit:cover}
@@ -316,6 +320,7 @@
 
     <div class="kicker" id="kicker">Your Party</div>
     <section class="phead">
+      <span class="onlinebadge off" id="onlineBadge"><span class="odot"></span><span id="onlineText">Offline</span></span>
       <div class="phead__id">
         <div class="plogo-wrap">
           <div class="plogo" id="plogo">&mdash;</div>
@@ -465,6 +470,27 @@
     ACCENT = color;     // the crest tint reads this
     setAccent(color);   // remap the page + chrome accent globally (one source: topbar.js)
   }
+  // Online/offline badge: an activity proxy off last_active_at (not live presence) —
+  // green within ONLINE_WINDOW_MIN of the player's last action, red otherwise. Computed
+  // once on load (no timer); the tooltip shows the real last-active time.
+  var ONLINE_WINDOW_MIN = 5;
+  function agoText(ts){
+    if (!ts) return 'never';
+    var s = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (s < 60) return Math.floor(s) + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+    return Math.floor(s / 86400) + 'd ago';
+  }
+  function setOnline(ts){
+    var badge = document.getElementById('onlineBadge'), txt = document.getElementById('onlineText');
+    if (!badge) return;
+    var online = !!ts && (Date.now() - new Date(ts).getTime()) / 60000 < ONLINE_WINDOW_MIN;
+    badge.className = 'onlinebadge ' + (online ? 'on' : 'off');
+    txt.textContent = online ? 'Online' : 'Offline';
+    badge.title = online ? ('Active in the last ' + ONLINE_WINDOW_MIN + ' min') : ('Away · last active ' + agoText(ts));
+  }
+
   function renderCrest(party) {
     var el = document.getElementById('plogo');
     if (party.logo_url) {
@@ -884,6 +910,7 @@
       // Header card.
       document.getElementById('pname').textContent = party.name;
       document.getElementById('pabbr').textContent = party.abbreviation ? '(' + party.abbreviation + ')' : '';
+      setOnline(party.last_active_at);
       ME.user = user; ME.party = party;
       applyAccent(partyColor(party));  // party colour (or archetype default) overrides the page accent
       renderCrest(party);                                            // logo image, else tinted initials
