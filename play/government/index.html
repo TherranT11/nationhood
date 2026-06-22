@@ -422,13 +422,17 @@
         const fm = await import('/formation.js');
         formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
       } catch (e) { /* non-critical enhancement — fall through with no card */ }
-      // The Head of Government: the formateur party's leader (for the cabinet's top row).
+      // The Head of Government: the formateur party's leader (cabinet top row).
+      // Non-critical — if it fails the cabinet falls back to the formateur party name,
+      // so isolate it from the page-load catch.
       var pmLeader = null;
       if (govt && govt.formateur_party_id) {
-        const { data: lead } = await supabase.from('politicians')
-          .select('first_name, last_name').eq('party_id', govt.formateur_party_id)
-          .eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
-        pmLeader = lead;
+        try {
+          const { data: lead } = await supabase.from('politicians')
+            .select('first_name, last_name').eq('party_id', govt.formateur_party_id)
+            .eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
+          pmLeader = lead;
+        } catch (e) { /* non-critical — cabinet shows the formateur party name */ }
       }
       render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader);
       renderNationModifiers(document.getElementById('govMods'), await fetchNationModifiers(NATION_ID), 'No active national modifiers.');
