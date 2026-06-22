@@ -14,6 +14,7 @@
     --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
     --indigo:#5546E8;--indigo-soft:#ECE9FD;
     --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;--blue:#1f86d6;
+    --navy:#2b3a7a;--navy-soft:#E7EAF4;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
@@ -100,6 +101,63 @@
 
   .note{font-size:12.5px;color:var(--soft);font-style:italic;text-align:center;margin-top:8px}
 
+  /* Tabs (Commodities | Corporations) */
+  .tabs{display:flex;gap:6px;margin:6px 0 18px;border-bottom:1px solid var(--line)}
+  .tab{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--soft);background:none;border:none;border-bottom:2px solid transparent;padding:9px 4px;margin-bottom:-1px;cursor:pointer}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--indigo);border-bottom-color:var(--indigo)}
+
+  /* Corporations tab: read-only business climate + firm register */
+  .econ{border:1px solid var(--line);border-radius:16px;background:#fff;margin-bottom:18px;padding:16px 20px}
+  .econ .eh{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .econ .eh .t{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .climate{display:flex;align-items:center;gap:9px;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)}
+  .climate .cv{font-size:16px;font-weight:700}
+  .climate .cv.pos{color:var(--green)} .climate .cv.neg{color:var(--red)} .climate .cv.zero{color:var(--muted)}
+  .climate .word{padding:3px 9px;border-radius:20px;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{border:1px solid var(--line);border-radius:11px;padding:10px 11px;background:var(--field)}
+  .stat .k{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .stat .v{font-weight:800;font-size:16px;letter-spacing:-.01em;margin-top:5px;display:block}
+
+  .card{border:1px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden}
+  .chd{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:15px 20px;border-bottom:1px solid var(--line)}
+  .chd .t{font-weight:800;font-size:16px;letter-spacing:-.01em}
+  .summary{display:flex;gap:16px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)}
+  .summary .s b{color:var(--ink);font-size:13px}
+  .scrollx{overflow-x:auto}
+  .ahdr,.arow{display:grid;grid-template-columns:minmax(170px,1.8fr) minmax(140px,1.4fr) .75fr .8fr .8fr .95fr 120px;gap:13px;align-items:center}
+  .ahdr{padding:11px 20px;border-bottom:1px solid var(--line);background:var(--field);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--soft)}
+  .arow{padding:15px 20px;border-bottom:1px solid var(--line)}
+  .arow:last-child{border-bottom:none}
+  .cell .lbl{display:none}
+  .nm{font-weight:800;font-size:14px;letter-spacing:-.01em}
+  .nm .sec{font-weight:400;font-size:11px;color:var(--soft);font-family:'Space Mono',monospace;letter-spacing:.02em;text-transform:uppercase;display:block;margin-top:2px}
+  .dnm{font-weight:700;font-size:12.5px}
+  .dmeta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:3px}
+  .pty{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:20px;padding:2px 7px;color:var(--navy);background:var(--navy-soft)}
+  .pty.np{color:var(--soft);background:var(--chip)}
+  .dstat{font-family:'Space Mono',monospace;font-size:9px;color:var(--muted)}
+  .dstat b{color:var(--navy)}
+  .typechip{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;border-radius:20px;padding:4px 8px;display:inline-block}
+  .typechip.so{color:var(--navy);background:var(--navy-soft)} .typechip.pr{color:var(--amber);background:var(--amber-soft)}
+  .money{font-family:'Space Mono',monospace;font-size:13.5px;font-weight:700}
+  .debt0{font-family:'Space Mono',monospace;font-size:12px;color:var(--soft)}
+  .debt{font-family:'Space Mono',monospace;font-size:13.5px;font-weight:700;color:var(--red)}
+  .growth{font-family:'Space Mono',monospace;font-size:13.5px;font-weight:700}
+  .growth .arr{font-size:10px;margin-left:3px}
+  .growth.up{color:var(--green)} .growth.down{color:var(--red)} .growth.flat{color:var(--soft)}
+  .acts{display:flex;flex-direction:column;gap:5px}
+  .actbtn{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.03em;text-transform:uppercase;font-weight:700;border-radius:8px;padding:7px 6px;background:#fff;width:100%;text-align:center;border:1px solid var(--line2);color:var(--line2);cursor:not-allowed}
+  @media(max-width:900px){
+    .ahdr{display:none}
+    .arow{grid-template-columns:1fr 1fr;gap:11px 13px;padding:16px}
+    .cell.corp,.cell.actcell{grid-column:1/-1}
+    .acts{flex-direction:row}
+    .cell .lbl{display:block;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:3px}
+  }
+
   @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -135,12 +193,25 @@
     <div class="topbar" id="topbar"></div>
     <div class="phead">
       <div class="topline">
-        <div><span class="eye">Market · World Commodities</span><h1>The Market</h1></div>
+        <div><span class="eye">Market</span><h1>The Market</h1></div>
         <div class="cash"><div class="k">National Treasury</div><div class="v" id="treasury">—</div></div>
       </div>
-      <p class="intro">Prices float on <b>global supply</b> — the total every nation holds on hand. Scarce resources run dear; abundant ones stay cheap. <b>Diplomacy</b> isn't traded here.</p>
     </div>
-    <div id="content"><div class="empty">Loading the market…</div></div>
+
+    <div class="tabs">
+      <button class="tab active" type="button" data-pane="commodities">Commodities</button>
+      <button class="tab" type="button" data-pane="corporations">Corporations</button>
+    </div>
+
+    <div id="commoditiesPane">
+      <p class="intro">Prices float on <b>global supply</b> — the total every nation holds on hand. Scarce resources run dear; abundant ones stay cheap. <b>Diplomacy</b> isn't traded here.</p>
+      <div id="content"><div class="empty">Loading the market…</div></div>
+    </div>
+
+    <div id="corporationsPane" hidden>
+      <p class="intro">Every firm rides the national <b>business climate</b>, then follows its own trajectory. State-owned firms answer to the government; private firms slide into debt and fold if the climate turns. Read-only for now — directing them opens once your government appoints a Minister of Industry.</p>
+      <div id="corpContent"><div class="empty">Loading the register…</div></div>
+    </div>
   </main>
 </div>
 
@@ -149,9 +220,21 @@
   import { esc } from '/util.js';
   import { mountTopbar } from '/topbar.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { businessClimate, climateWord, corpGrowth } from '/corporations.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   mountTopbar();
+
+  // Tab switching (Commodities | Corporations). Both panes render once up front; the
+  // tabs just toggle visibility.
+  document.querySelectorAll('.tab').forEach(function (t){
+    t.addEventListener('click', function (){
+      document.querySelectorAll('.tab').forEach(function (x){ x.classList.toggle('active', x === t); });
+      var pane = t.dataset.pane;
+      document.getElementById('commoditiesPane').hidden = pane !== 'commodities';
+      document.getElementById('corporationsPane').hidden = pane !== 'corporations';
+    });
+  });
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
 
@@ -242,6 +325,69 @@
       '<p class="note">Trading opens once your government appoints a Minister of Trade.</p>';
   }
 
+  // Corporations tab: read-only register. Business climate is read live from the
+  // nation's economy + stats (one source: corporations.js); each firm's growth is
+  // derived from it. Action buttons are shown disabled until a Minister of Industry exists.
+  function renderCorps(home, corps, currency){
+    var box = document.getElementById('corpContent');
+    var stats = (home && home.stats) || {}, eco = (home && home.economy) || {};
+    var climate = businessClimate(stats, eco), w = climateWord(climate);
+    var money = function (v){ var x = Number(v) || 0; return (x < 0 ? '−' : '') + currency + Math.abs(x).toFixed(1) + 'B'; };
+
+    var figs = [
+      { k:'Tax Rate',     v:(num(eco.tax)) + '%' },
+      { k:'Growth',       v:(num(stats.growth)) + '/20' },
+      { k:'Prosperity',   v:(num(stats.prosperity)) + '/20' },
+      { k:'Unemployment', v:(num(eco.unemployment)) + '%' },
+      { k:'Inflation',    v:(num(eco.inflation)) + '%' }
+    ].map(function (d){ return '<div class="stat"><div class="k">' + d.k + '</div><span class="v">' + d.v + '</span></div>'; }).join('');
+
+    var climHtml = '<div class="econ"><div class="eh"><span class="t">The economy · drives every firm</span>' +
+      '<div class="climate">Business climate <span class="cv ' + (climate > 0.2 ? 'pos' : climate < -0.2 ? 'neg' : 'zero') + '">' +
+        (climate >= 0 ? '+' : '') + climate.toFixed(1) + '</span>' +
+        '<span class="word" style="color:' + w.color + ';background:' + w.bg + '">' + w.label + '</span></div></div>' +
+      '<div class="stats">' + figs + '</div></div>';
+
+    if (!corps || !corps.length){
+      box.innerHTML = climHtml + '<div class="card"><div class="empty">No corporations are registered in ' + esc((home && home.name) || 'this nation') + ' yet.</div></div>';
+      return;
+    }
+
+    var so = corps.filter(function (c){ return c.type === 'so'; }).length;
+    var netCash = corps.reduce(function (s, c){ return s + num(c.cash); }, 0);
+    var totDebt = corps.reduce(function (s, c){ return s + num(c.debt); }, 0);
+
+    var rows = corps.map(function (c){
+      var g = corpGrowth(c, climate), gc = g > 0 ? 'up' : g < 0 ? 'down' : 'flat', arr = g > 0 ? '▲' : g < 0 ? '▼' : '–';
+      var pty = c.director_party ? '<span class="pty">' + esc(c.director_party) + '</span>' : '<span class="pty np">Non-player</span>';
+      var typeHtml = c.type === 'so' ? '<span class="typechip so">State</span>' : '<span class="typechip pr">Private</span>';
+      var debtHtml = num(c.debt) > 0 ? '<span class="debt">' + money(c.debt) + '</span>' : '<span class="debt0">—</span>';
+      var acts = (c.type === 'so'
+        ? [['Appoint'], ['Expand'], ['Privatize']]
+        : [['Subsidize'], ['Bail Out'], ['Nationalize']]
+      ).map(function (b){ return '<button class="actbtn" type="button" disabled>' + b[0] + '</button>'; }).join('');
+      return '<div class="arow">' +
+        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.sector) + '</span></div></div>' +
+        '<div class="cell"><span class="lbl">Director</span><div class="dnm">' + esc(c.director_name || '—') + '</div>' +
+          '<div class="dmeta">' + pty + '<span class="dstat">Acu <b>' + (c.director_acu != null ? c.director_acu : '—') + '</b> · ' + (c.director_age != null ? c.director_age : '—') + '</span></div></div>' +
+        '<div class="cell"><span class="lbl">Type</span>' + typeHtml + '</div>' +
+        '<div class="cell"><span class="lbl">Cash</span><span class="money">' + money(c.cash) + '</span></div>' +
+        '<div class="cell"><span class="lbl">Debt</span>' + debtHtml + '</div>' +
+        '<div class="cell"><span class="lbl">Growth</span><span class="growth ' + gc + '">' + (g > 0 ? '+' : '') + g.toFixed(1) + '%<span class="arr">' + arr + '</span></span></div>' +
+        '<div class="cell actcell"><div class="acts">' + acts + '</div></div>';
+    }).join('');
+
+    box.innerHTML = climHtml +
+      '<div class="card"><div class="chd"><span class="t">Assets</span><div class="summary">' +
+        '<span class="s"><b>' + corps.length + '</b> firms</span><span class="s"><b>' + so + '</b> state-owned</span>' +
+        '<span class="s">cash <b>' + currency + netCash.toFixed(1) + 'B</b></span>' +
+        '<span class="s">debt <b style="color:' + (totDebt > 0 ? 'var(--red)' : 'var(--ink)') + '">' + currency + totDebt.toFixed(1) + 'B</b></span>' +
+      '</div></div>' +
+      '<div class="scrollx"><div class="ahdr"><span>Corporation</span><span>Director</span><span>Type</span><span>Cash</span><span>Debt</span><span>Growth</span><span></span></div>' +
+        rows + '</div></div>' +
+      '<p class="note">Corporation actions open once your government appoints a Minister of Industry.</p>';
+  }
+
   (async () => {
     if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
     const user = await requireUser();
@@ -249,9 +395,10 @@
     try {
       const { data: party } = await supabase.from('parties').select('name, archetype, nation_id').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: home } = await supabase.from('nations').select('id, name, flag, economy, on_hand, production').eq('id', party.nation_id).single();
+      const { data: home } = await supabase.from('nations').select('id, name, flag, economy, stats, on_hand, production').eq('id', party.nation_id).single();
       const { data: nations } = await supabase.from('nations').select('id, name, on_hand, production').order('name');
       const { data: market } = await supabase.from('market').select('resource, available, min_price, max_price');
+      const { data: corps } = await supabase.from('corporations').select('*').eq('nation_id', party.nation_id).order('type').order('name');
 
       const nationName = (home && home.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
@@ -265,6 +412,7 @@
       var marketByRes = {};
       (market || []).forEach(function (m){ marketByRes[m.resource] = m; });
       render(home || { id: party.nation_id }, nations || [], marketByRes, currency);
+      renderCorps(home || { id: party.nation_id }, corps || [], currency);
     } catch (e) {
       fail('Couldn’t load the market right now. Refresh to try again.');
     }
