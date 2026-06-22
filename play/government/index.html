@@ -104,6 +104,15 @@
   .empty{text-align:center;padding:46px 20px;color:var(--soft)}
   .empty b{display:block;color:var(--muted);font-size:16px;margin-bottom:5px}
   .muted{color:var(--soft);font-size:13px;font-style:italic}
+  /* The Cabinet: head of government + ministry portfolios */
+  .cabrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .cabrow:last-child{border-bottom:none}
+  .cabrow--hog{border-bottom:2px solid var(--line2);padding-bottom:11px;margin-bottom:2px}
+  .cabrow .cabk{color:var(--muted)}
+  .cabrow--hog .cabk{color:var(--ink);font-weight:700}
+  .cabrow .cabv{font-weight:700;text-align:right}
+  .cabrow .caba{font-weight:400;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px}
+  .cabrow .vac{font-weight:400;font-style:italic;color:var(--soft)}
   .enact{margin-left:10px;flex:none;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
   .enact:hover{filter:brightness(1.06)}
 
@@ -173,6 +182,7 @@
   import { esc, majority } from '/util.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
+  import { MINISTRIES } from '/ministries.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
 
   document.getElementById('logout').addEventListener('click', logout);
@@ -257,7 +267,7 @@
       '<span class="sc">' + (p.seats || 0) + '</span></div>';
   }
 
-  function render(govt, nation, parties, agenda, amPM, formation){
+  function render(govt, nation, parties, agenda, amPM, formation, pmLeader){
     var box = document.getElementById('content');
     if (!govt){
       // Two distinct "no government" reasons: a one-party state never forms a
@@ -294,6 +304,15 @@
                : (govt.type === 'minority' ? 'Minority' : 'Governing');
       return memberRow(p, role, i === 0);
     }).join('');
+
+    // The Cabinet: the Head of Government (the formateur's leader) atop the ministry
+    // portfolios. Ministries come from the one MINISTRIES source; each is Vacant until
+    // the PM's Appoint action fills it (not built yet).
+    var hogName = (pmLeader ? esc(((pmLeader.first_name || '') + ' ' + (pmLeader.last_name || '')).trim()) : '') || esc(formateur.name);
+    var hogAbbr = formateur.abbreviation ? ' <span class="caba">(' + esc(formateur.abbreviation) + ')</span>' : '';
+    var cabinetHtml = '<div class="cabrow cabrow--hog"><span class="cabk">Head of Government</span>' +
+        '<span class="cabv">' + hogName + hogAbbr + '</span></div>' +
+      MINISTRIES.map(function(m){ return '<div class="cabrow"><span class="cabk">Minister of ' + esc(m) + '</span><span class="cabv vac">Vacant</span></div>'; }).join('');
 
     var agendaHtml;
     if (govt.type === 'coalition' && agenda.length){
@@ -364,7 +383,7 @@
       // 4–7 — two columns: Agenda + Cabinet on top, Modifiers + Crises beneath.
       '<div class="govgrid">' +
         '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
-        '<div class="panel"><h2>The Cabinet</h2><p class="muted">No ministers appointed yet.</p></div>' +
+        '<div class="panel"><h2>The Cabinet</h2>' + cabinetHtml + '</div>' +
         '<div class="panel"><h2>National Modifiers</h2><div id="govMods"><p class="muted">No active national modifiers.</p></div></div>' +
         '<div class="panel"><h2>National Crises</h2><p class="muted">No active national crises.</p></div>' +
       '</div>';
@@ -403,7 +422,15 @@
         const fm = await import('/formation.js');
         formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
       } catch (e) { /* non-critical enhancement — fall through with no card */ }
-      render(govt, NATION || {}, parties || [], agenda, amPM, formation);
+      // The Head of Government: the formateur party's leader (for the cabinet's top row).
+      var pmLeader = null;
+      if (govt && govt.formateur_party_id) {
+        const { data: lead } = await supabase.from('politicians')
+          .select('first_name, last_name').eq('party_id', govt.formateur_party_id)
+          .eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
+        pmLeader = lead;
+      }
+      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader);
       renderNationModifiers(document.getElementById('govMods'), await fetchNationModifiers(NATION_ID), 'No active national modifiers.');
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';

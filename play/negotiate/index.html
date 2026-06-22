@@ -247,6 +247,7 @@
   import { archetypeColor, ideologyLabel } from '/archetypes.js';
   import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement, fetchMessages, postMessage } from '/negotiations.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
+  import { MINISTRIES } from '/ministries.js';
 
   document.getElementById('logout').addEventListener('click', logout);
   document.querySelectorAll('.nav__i:not([href])').forEach(function (i) {
@@ -254,7 +255,6 @@
   });
 
   // ---- coalition term catalogue (game content, intentionally static) ----
-  var MINISTRIES = ['Defence', 'Treasury', 'Interior', 'Foreign Affairs', 'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy'];
   var NATIONS = [];  // filled from the DB at boot (mutated in place — TYPES holds this reference)
 
   // Field/editing config per term type; the labels + one-line summary come from

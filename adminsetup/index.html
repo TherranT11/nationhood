@@ -552,6 +552,7 @@
     import { ARCHETYPES, archetypeColor } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
+    import { MINISTRIES } from '/ministries.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -1417,7 +1418,6 @@
     // inside this IIFE so the builder's generic identifiers (eff, RES, renderStage,
     // renderPreview…) can't collide with the other tabs. Returns loadCrises().
     var loadCrises = (function () {
-      var MINISTRIES = ['Interior', 'Foreign Affairs', 'Economic Development', 'Trade', 'Justice', 'Labor', 'Defense'];
       var PSTATS = ['Charisma', 'Image', 'Acumen', 'Resolve', 'Guile'];
       var OPS = ['<', '≤', '>', '≥', '='];
       var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
