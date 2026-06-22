@@ -269,6 +269,7 @@
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
         <button class="vtab" data-tab="convictions" type="button">Convictions</button>
+        <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
       </nav>
@@ -410,6 +411,14 @@
               <aside><div class="rail"><div class="rh">Preview · how it reads</div><div class="rb" id="convPrev"></div></div></aside>
             </div>
             <div class="note" id="convNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="inactivity" hidden>
+        <div class="poltab">
+          <div class="panel"><h2>Party Inactivity</h2>
+            <p class="sub" style="margin:8px 0 14px">Wall-clock since each party's last action (any action, vote, conviction adoption, or proposal). Players are warned in-game at 6 days; eligible for removal at 7. Deletion is permanent — it removes the party entirely and frees its seats.</p>
+            <div id="inactList"><p class="empty">Loading…</p></div>
           </div>
         </div>
       </div>
@@ -828,8 +837,38 @@
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
         if (tab === 'convictions') loadConvictions();
+        if (tab === 'inactivity') loadInactivity();
       });
     });
+
+    // ---- Party Inactivity (admin review + delete) ----
+    async function loadInactivity(){
+      var box = document.getElementById('inactList');
+      try{
+        const { data, error } = await supabase.rpc('admin_inactivity_list');
+        if (error) throw error;
+        var rows = data || [];
+        if (!rows.length){ box.innerHTML = '<p class="empty">No parties yet.</p>'; return; }
+        box.innerHTML = rows.map(function(r){
+          var days = Math.floor((Date.now() - new Date(r.last_active_at).getTime()) / 86400000);
+          var when = new Date(r.last_active_at).toLocaleDateString();
+          var status = days >= 7 ? '<span style="color:#C42B2B;font-weight:700"> · eligible for removal</span>'
+                     : days >= 6 ? '<span style="color:#c0860a;font-weight:700"> · warned</span>' : '';
+          return '<div class="plcard"><div><div class="plcard__name">'+esc(r.party_name||'—')+'</div>'+
+            '<div class="plcard__meta">'+esc(r.owner_email||'—')+' · last active '+esc(when)+' · '+days+' day'+(days===1?'':'s')+' idle'+status+'</div></div>'+
+            '<div class="plcard__btns"><button class="rm" data-id="'+esc(r.party_id)+'" data-name="'+esc(r.party_name||'')+'" type="button">Delete</button></div></div>';
+        }).join('');
+        box.querySelectorAll('.rm').forEach(function(b){ b.onclick=function(){ deleteInactiveParty(b.dataset.id, b.dataset.name); }; });
+      }catch(e){ box.innerHTML = '<p class="empty">Couldn’t load inactivity: '+esc(e.message||e)+'</p>'; }
+    }
+    async function deleteInactiveParty(id, name){
+      if (!confirm('Delete the party “'+(name||id)+'”? This removes it entirely — politicians, convictions, events — and frees its seats. This cannot be undone.')) return;
+      try{
+        const { error } = await supabase.rpc('admin_delete_party', { p_party: id });
+        if (error) throw error;
+        loadInactivity();
+      }catch(e){ alert('Could not delete: '+(e.message||e)); }
+    }
 
     // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
     // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.

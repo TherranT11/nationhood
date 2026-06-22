@@ -65,6 +65,10 @@ begin
   if v_user is null then raise exception 'Not signed in.'; end if;
   select * into v_p from public.parties where user_id = v_user for update;
   if not found then raise exception 'You have no party.'; end if;
+  -- Engagement heartbeat: every action / vote / conviction adoption / proposal flows
+  -- through here, so this one stamp is the single source for the inactivity metric
+  -- (parties.last_active_at, schema/20; read by the admin review, schema/97).
+  update public.parties set last_active_at = now() where id = v_p.id;
   return v_p;
 end $$;
 
