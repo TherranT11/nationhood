@@ -138,9 +138,10 @@ end $$;
 grant execute on function public.party_rally() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- party_organize(): 1d6 + Image, ÷6, then ×0.75 (−25%), added to the popularity
--- FLOOR (capped at ceiling); popularity is pulled up to never sit below the floor.
--- $25K + 1 action.
+-- party_organize(): (1d6 + Image) mapped to a tight floor move — worst −0.1%,
+-- best +0.5% (reached at a 'strong' total of 7+), ~70% smaller than before. The
+-- move applies to the popularity FLOOR, clamped to [0, ceiling]; popularity is
+-- pulled up to never sit below the floor. $25K + 1 action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_organize()
 returns jsonb
@@ -161,8 +162,8 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_com;
   v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 6.0 * 0.75, 1);                    -- (1d6 + Image) / 6, then −25%
-  v_newfloor := least(v_p.pop_floor + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor));  -- floor capped at the crowding-adjusted ceiling
+  v_delta := greatest(-0.1, least(0.5, round(-0.1 + (v_total - 1) * 0.1, 1)));  -- (1d6 + Image) → [−0.1%, +0.5%], +0.5 at total 7+
+  v_newfloor := greatest(0, least(v_p.pop_floor + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));  -- floor in [0, crowding-adjusted ceiling]
   v_delta := v_newfloor - v_p.pop_floor;                                   -- amount actually applied
   v_newpop := greatest(v_p.popularity, v_newfloor);                        -- popularity never below the floor
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
@@ -171,7 +172,7 @@ begin
     when 'strong'   then ' has spent the week organizing, and the ground game took hold. New local chapters opened their doors, volunteers signed up in droves, and a base is forming that no rival attack will pry loose.'
     when 'middling' then ' has been organizing on the ground. A few new chapters found their feet and the volunteer rolls grew — steady, unglamorous work that quietly deepens your roots.'
     else                 ' tried to organize this week, but the effort sputtered. Meetings went half-attended, the paperwork stalled, and little took root.'
-  end || ' Floor +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
+  end || ' Floor ' || trim(to_char(v_delta, 'FMS990.0')) || '%.';
 
   update public.parties set pop_floor = v_newfloor, popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'organize', v_body, public.current_game_date());
