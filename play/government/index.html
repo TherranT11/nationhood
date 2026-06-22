@@ -179,7 +179,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
-  import { esc, majority } from '/util.js';
+  import { esc, majority, declaredValue } from '/util.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
@@ -310,7 +310,7 @@
     // the PM's Appoint action fills it (not built yet).
     var hogName = (pmLeader ? esc(((pmLeader.first_name || '') + ' ' + (pmLeader.last_name || '')).trim()) : '') || esc(formateur.name);
     var hogAbbr = formateur.abbreviation ? ' <span class="caba">(' + esc(formateur.abbreviation) + ')</span>' : '';
-    var cabinetHtml = '<div class="cabrow cabrow--hog"><span class="cabk">Head of Government</span>' +
+    var cabinetHtml = '<div class="cabrow cabrow--hog"><span class="cabk">' + esc(HOG_TITLE) + '</span>' +
         '<span class="cabv">' + hogName + hogAbbr + '</span></div>' +
       MINISTRIES.map(function(m){ return '<div class="cabrow"><span class="cabk">Minister of ' + esc(m) + '</span><span class="cabv vac">Vacant</span></div>'; }).join('');
 
@@ -395,7 +395,7 @@
   }
 
   // --- state shared by the boot + the post-enact refresh ---
-  var MY_PARTY_ID = null, NATION = null, NATION_ID = null, busy = false;
+  var MY_PARTY_ID = null, NATION = null, NATION_ID = null, HOG_TITLE = 'Head of Government', busy = false;
   var toast = document.getElementById('toast'), toastT;
   function ping(h){ toast.textContent = h; toast.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function(){ toast.classList.remove('show'); }, 4200); }
 
@@ -492,8 +492,16 @@
     try {
       const { data: party, error } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
+      // The declared Head of Government title (e.g. "Prime Minister"), via the shared
+      // declaredValue helper — one source. Non-critical: keep the generic label on failure.
+      try {
+        const { data: titleSlot } = await supabase.from('declarations')
+          .select('slug, options, default_index, custom_allowed').eq('slug', 'head_of_government_title').maybeSingle();
+        var hogT = titleSlot ? declaredValue(titleSlot, NATION.declarations) : '';
+        if (hogT && hogT !== '—') HOG_TITLE = hogT;
+      } catch (e) { /* non-critical — keep the generic "Head of Government" label */ }
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
