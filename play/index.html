@@ -205,7 +205,7 @@
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
         <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
-        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Image, ÷6 then −25%, added to your popularity floor (capped at your ceiling). Cost: $25K + 1 action."><b>Organize</b><span class="lead__lane">Image &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
+        <button class="lead" id="act-organize" type="button" title="Roll 1d6 + Image, mapped to a floor move from −0.1% to +0.5% (best on a strong roll), applied to your popularity floor (capped at your ceiling). Cost: $25K + 1 action."><b>Organize</b><span class="lead__lane">Image &middot; The Ground Game</span><span class="lead__desc">Builds your popularity floor.</span></button>
         <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
         <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
         <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
@@ -383,7 +383,7 @@
     btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
   }
   wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
-  wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor +' + d.delta + '%.'; });
+  wireAction(document.getElementById('act-organize'), 'party_organize', function (d) { return 'Organized — floor ' + (d.delta >= 0 ? '+' : '') + d.delta + '%.'; });
   wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
   wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
   wireAction(document.getElementById('act-platform'), 'party_platform', function (d) { return 'Platform set — ceiling +' + d.delta + '%' + (d.pop_penalty > 0 ? ' (−' + d.pop_penalty + '% popularity)' : '') + '.'; });
@@ -645,7 +645,13 @@
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, stats, economy, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
+      // The snapshot only needs name/flag/stats/economy; ruling_party and
+      // former_ruling_party feed the one-party-restored banner. If the full select
+      // errors (e.g. an older DB missing those two columns), fall back to the core
+      // columns so a drifted optional column can't blank the whole nation snapshot.
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
+      var nation = nsel.data;
+      if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
 
       // Party funds in the topbar, just right of the Discord logo.

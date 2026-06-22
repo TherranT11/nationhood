@@ -165,7 +165,8 @@
   @media(max-width:680px){.acards{grid-template-columns:1fr}}
   .acard{border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;background:var(--surface);border-top:3px solid var(--c)}
   .acard__top{display:flex;align-items:center;gap:12px}
-  .emblem{width:46px;height:46px;border-radius:11px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 14%, var(--surface));color:var(--c);font-family:'Space Mono',monospace;font-weight:700;font-size:15px}
+  .emblem{width:58px;height:58px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 14%, var(--surface));color:var(--c);font-family:'Space Mono',monospace;font-weight:700;font-size:19px;overflow:hidden}
+  .emblem img{width:100%;height:100%;object-fit:cover}
   .acard__id{flex:1;min-width:0}
   .acard__id b{font-weight:900;font-size:18px;letter-spacing:-.02em}
   .acard__id b i{font-style:normal;color:var(--soft);font-weight:700;font-size:13px}
@@ -667,8 +668,9 @@
     box.innerHTML = others.map(function (p) {
       var abbr = p.abbreviation || '';
       var roleCls = p.in_government ? 'gov' : 'opp';
+      var crest = p.logo_url ? '<img src="' + esc(p.logo_url) + '" alt="' + esc(p.name) + ' logo">' : esc(abbr);
       return '<div class="acard" style="--c:' + partyColor(p) + '">' +
-        '<div class="acard__top"><span class="emblem">' + esc(abbr) + '</span>' +
+        '<div class="acard__top"><span class="emblem">' + crest + '</span>' +
           '<div class="acard__id"><b>' + esc(p.name) + (abbr ? ' <i>(' + esc(abbr) + ')</i>' : '') + '</b></div>' +
           '<span class="arole ' + roleCls + '">' + (p.in_government ? 'Government' : 'Opposition') + '</span></div>' +
         '<div class="ideo">' + esc(ideologyLabel(p)) + '</div>' +
@@ -919,7 +921,7 @@
       // own funds come from the select('*') own-party query above).
       const totalSeats = (nation && nation.legislature_seats) || 0;
       const { data: allParties } = await supabase.from('parties')
-        .select('id, name, abbreviation, archetype, seats, popularity, in_government, color')
+        .select('id, name, abbreviation, archetype, seats, popularity, in_government, color, logo_url')
         .eq('nation_id', party.nation_id);
       const ap = allParties || [];
       // Archetype crowding trims the ceiling: −2% for every OTHER party sharing your
