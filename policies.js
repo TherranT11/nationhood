@@ -21,8 +21,8 @@ export function policyOptionIdx(def, overrides, id) {
   var stored = overrides && overrides[id];
   return stored == null ? policyDefaultIdx(def) : +stored;
 }
-// Budget/Debt are money targets — their value scales by the nation's size/wealth.
-export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt'; }
+// Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.
+export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt' || t === 'Income'; }
 // Money scaling: flat = v; perm = v × pop(millions); pop = v × pop × prosperity/10.
 export function policyMoney(v, scale, pop, pros) {
   if (scale === 'flat') return v;

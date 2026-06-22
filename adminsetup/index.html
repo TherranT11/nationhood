@@ -997,7 +997,7 @@
 
     // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
     // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.
-    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Tax Burden %','Budget','Debt','Regime'],
+    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Tax Burden %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     // Identity tags — metadata describing what a law IS (not a popularity score). A
@@ -1423,7 +1423,7 @@
       var PSTATS = ['Charisma', 'Image', 'Acumen', 'Resolve', 'Guile'];
       var OPS = ['<', '≤', '>', '≥', '='];
       var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
-      var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES };
+      var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES };
 
       function effTgt(sel) { var h = ''; Object.keys(EFF_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + EFF_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return h; }
       function trigTgt(sel) {
