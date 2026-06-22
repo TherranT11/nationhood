@@ -301,7 +301,7 @@
     if (eco.tax != null) chips.push(chip('Tax Burden', val(eco.tax + '%')));
     var cur = esc(eco.currency || '$');
     if (eco.budget != null) chips.push(chip('Budget', val(cur + eco.budget + 'B')));
-    if (eco.income != null) chips.push(chip('Income', val(cur + eco.income + 'B/yr')));
+    if (eco.income != null) chips.push(chip('Income', val((eco.income < 0 ? '−' : '') + cur + Math.abs(eco.income) + 'B/yr')));
     if (eco.debt != null) chips.push(chip('Debt', val(cur + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }

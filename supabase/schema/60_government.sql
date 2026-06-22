@@ -307,9 +307,9 @@ revoke all on function public.resolve_election(text) from public, anon, authenti
 
 -- ---------------------------------------------------------------------------
 -- advance_tick(): the admin's single lever. Bumps the shared clock one tick,
--- refreshes every party's action budget to 3, collects each nation's annual income
--- into its budget every January, and resolves every nation whose election has come
--- due. Admin-gated; no automation.
+-- refreshes every party's action budget to 3, applies each nation's annual income
+-- to its budget every January (a deficit overflows into debt), and resolves every
+-- nation whose election has come due. Admin-gated; no automation.
 -- ---------------------------------------------------------------------------
 create or replace function public.advance_tick()
 returns jsonb
@@ -329,20 +329,28 @@ begin
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
   perform public._apply_policy_tick_effects(v_tick);
-  -- January (the new month is January when (tick − 1) is a multiple of 12): the
-  -- government collects its annual income into the budget (the bank balance). Flat
-  -- admin-set figure; only nations that have a non-zero income. An event per nation
-  -- surfaces the budget jump so it isn't silent.
+  -- January (the new month is January when (tick − 1) is a multiple of 12): apply
+  -- each nation's annual income to its budget. A surplus fills the bank; a deficit
+  -- (negative income) drains a positive budget, and any shortfall past zero rolls
+  -- into the debt:  budget' = max(0, budget+income);  debt' = debt + max(0,
+  -- -(budget+income)). Flat admin-set figure; only non-zero incomes. Event surfaces it.
   if (v_tick - 1) % 12 = 0 then
     update public.nations
-       set economy = jsonb_set(economy, '{budget}',
-             to_jsonb( round( coalesce((economy->>'budget')::numeric, 0)
-                            + coalesce((economy->>'income')::numeric, 0), 1) ))
+       set economy = jsonb_set(
+             jsonb_set(economy, '{budget}',
+               to_jsonb(round(greatest(0,
+                 coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0)), 1))),
+             '{debt}',
+               to_jsonb(round(
+                 coalesce((economy->>'debt')::numeric, 0) + greatest(0, -(
+                   coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0))), 1)))
      where coalesce((economy->>'income')::numeric, 0) <> 0;
     insert into public.events (nation_id, party_id, kind, body, game_date)
     select n.id, null, 'income',
-           'The treasury collected its annual revenue of ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'income') ||
-           'B. The national budget now stands at ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'budget') || 'B.',
+           'Annual income of ' || (case when (n.economy->>'income')::numeric < 0 then '−' else '+' end) ||
+           coalesce(n.economy->>'currency', '$') || ltrim(n.economy->>'income', '-') ||
+           'B applied — budget ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'budget') ||
+           'B, debt ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'debt') || 'B.',
            public.current_game_date()
       from public.nations n
      where coalesce((n.economy->>'income')::numeric, 0) <> 0;

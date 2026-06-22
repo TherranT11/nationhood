@@ -109,8 +109,9 @@ update public.nations set economy = economy || '{"currency":"$"}'::jsonb
 update public.nations set economy = economy || '{"tax":30}'::jsonb
  where not (economy ? 'tax');
 -- Income: what the government collects each January (vs budget = the bank balance).
--- Seeded for Sessau; set per-nation in /adminsetup. Collected into the budget every
--- January by advance_tick() (schema/60). Idempotent (only un-set rows).
+-- Seeded for Sessau; set per-nation in /adminsetup. Income may be negative (a
+-- deficit). Applied to the budget every January by advance_tick() (schema/60) — a
+-- deficit drains the budget, then overflows into debt. Idempotent (only un-set rows).
 update public.nations set economy = economy || '{"income":4.5}'::jsonb
  where id = 'sessau' and not (economy ? 'income');
 update public.nations set legislature_seats = 280
