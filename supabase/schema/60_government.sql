@@ -307,8 +307,9 @@ revoke all on function public.resolve_election(text) from public, anon, authenti
 
 -- ---------------------------------------------------------------------------
 -- advance_tick(): the admin's single lever. Bumps the shared clock one tick,
--- refreshes every party's action budget to 3, and resolves every nation whose
--- election has come due. Admin-gated; no automation.
+-- refreshes every party's action budget to 3, collects each nation's annual income
+-- into its budget every January, and resolves every nation whose election has come
+-- due. Admin-gated; no automation.
 -- ---------------------------------------------------------------------------
 create or replace function public.advance_tick()
 returns jsonb
@@ -328,6 +329,24 @@ begin
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
   perform public._apply_policy_tick_effects(v_tick);
+  -- January (the new month is January when (tick − 1) is a multiple of 12): the
+  -- government collects its annual income into the budget (the bank balance). Flat
+  -- admin-set figure; only nations that have a non-zero income. An event per nation
+  -- surfaces the budget jump so it isn't silent.
+  if (v_tick - 1) % 12 = 0 then
+    update public.nations
+       set economy = jsonb_set(economy, '{budget}',
+             to_jsonb( round( coalesce((economy->>'budget')::numeric, 0)
+                            + coalesce((economy->>'income')::numeric, 0), 1) ))
+     where coalesce((economy->>'income')::numeric, 0) <> 0;
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+    select n.id, null, 'income',
+           'The treasury collected its annual revenue of ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'income') ||
+           'B. The national budget now stands at ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'budget') || 'B.',
+           public.current_game_date()
+      from public.nations n
+     where coalesce((n.economy->>'income')::numeric, 0) <> 0;
+  end if;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation
