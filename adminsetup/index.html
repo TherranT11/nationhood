@@ -1444,6 +1444,18 @@
           stages: [blankStage(), blankStage(), blankStage(), blankStage(), { descReached: '', reached: [], resolution: 'ends' }]
         };
       }
+      // Guarantee the shape the editor iterates: five stages, an actions array on
+      // 1-4, a terminal stage on 5. Hardens against a partial/older-shaped row so a
+      // load can't hard-crash (effect arrays are filled lazily in getList).
+      function normalizeCrisis(def) {
+        var c = (def && typeof def === 'object') ? def : blankCrisis();
+        c.triggers = Array.isArray(c.triggers) ? c.triggers : [];
+        c.stages = Array.isArray(c.stages) ? c.stages : [];
+        for (var i = 0; i < 4; i++) { var s = c.stages[i] = c.stages[i] || blankStage(); s.actions = Array.isArray(s.actions) ? s.actions : []; }
+        var t = c.stages[4] = c.stages[4] || { descReached: '', reached: [], resolution: 'ends' };
+        t.reached = Array.isArray(t.reached) ? t.reached : [];
+        return c;
+      }
 
       var CRISIS = null, activeStage = 0, crisEditingId = null, crisSaving = false, crisCache = [];
 
@@ -1494,7 +1506,7 @@
         } catch (e) { setCrisNote('Delete failed: ' + (e.message || e), 'error'); }
       }
       function openCrisis(def, id) {
-        CRISIS = def && def.stages ? def : blankCrisis();
+        CRISIS = normalizeCrisis(def);
         activeStage = 0; crisEditingId = id || null;
         var panel = document.getElementById('cbEditorPanel'); panel.hidden = false;
         setCrisNote('');
@@ -1539,7 +1551,7 @@
       }
 
       // ----- effect-row helpers -----
-      function getList(ai, list) { if (ai === 's5') return CRISIS.stages[4].reached; return CRISIS.stages[activeStage].actions[+ai][list]; }
+      function getList(ai, list) { var owner = ai === 's5' ? CRISIS.stages[4] : CRISIS.stages[activeStage].actions[+ai]; if (!Array.isArray(owner[list])) owner[list] = []; return owner[list]; }
       function effRowsHtml(ai, list) {
         var arr = getList(ai, list);
         return arr.map(function (e, ri) { return '<div class="effrow" data-ai="' + ai + '" data-list="' + list + '" data-ri="' + ri + '"><select class="et">' + effTgt(e.t) + '</select><input class="ev" type="number" step="any" value="' + e.v + '"><button class="xb erx" type="button">×</button></div>'; }).join('') +
