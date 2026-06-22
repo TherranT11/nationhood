@@ -44,6 +44,11 @@ alter table public.parties add column if not exists funds bigint not null defaul
 alter table public.parties add column if not exists in_government boolean not null default false;
 alter table public.parties add column if not exists actions_remaining int not null default 3;
 alter table public.parties add column if not exists conviction int not null default 0;
+-- Engagement heartbeat for the inactivity metric: wall-clock of the player's last
+-- meaningful action. Stamped by _lock_party() (schema/40) on every action/vote/adoption.
+-- Defaults to now() so existing + new parties start active. Read by the admin inactivity
+-- review (schema/97) and the in-game dormancy warning.
+alter table public.parties add column if not exists last_active_at timestamptz not null default now();
 -- Player-set branding: a crest colour (hex) and an uploaded logo (Storage public
 -- URL). Both nullable — null colour falls back to the archetype colour, null logo
 -- shows the abbreviation. Cosmetic, so they're in the client write-scope below.

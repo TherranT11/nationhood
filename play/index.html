@@ -47,6 +47,8 @@
 
   /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
   .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--indigo)}
+  /* Dormancy warning — shown when the party hasn't taken a meaningful action in 6+ days. */
+  .inactban{margin-top:14px;padding:13px 16px;border-radius:12px;font-size:14px;font-weight:600;line-height:1.45;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);background:color-mix(in srgb,var(--red) 9%,var(--surface))}
   .main h1{font-weight:900;font-size:clamp(30px,5vw,46px);letter-spacing:-.03em;line-height:1.05;margin:10px 0 14px}
   .main p{color:var(--muted);font-size:16px;line-height:1.6;max-width:60ch}
   .panel{margin-top:28px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px 24px}
@@ -187,6 +189,7 @@
 
   <main class="main">
     <div class="topbar" id="topbar"></div>
+    <div id="inactBan"></div>
     <div class="kicker" id="kicker">The Instance</div>
     <h1 id="welcome">Welcome</h1>
     <p id="lede">Your party is now part of the nation.</p>
@@ -646,6 +649,16 @@
       // Party funds in the topbar, just right of the Discord logo.
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
+
+      // Dormancy warning: no meaningful action (party.last_active_at, stamped server-side)
+      // in 6+ days. Any action revives it; parties idle 7+ days are removable (admin review).
+      var idleDays = party.last_active_at ? Math.floor((Date.now() - new Date(party.last_active_at).getTime()) / 86400000) : 0;
+      if (idleDays >= 6) {
+        var ban = document.getElementById('inactBan');
+        ban.className = 'inactban';
+        ban.textContent = '⚠ Your party has been inactive for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
+          '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for 7+ days may be removed.';
+      }
 
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
