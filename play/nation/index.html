@@ -48,6 +48,17 @@
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-top:16px}
   .panel h2{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
 
+  /* Nation panel header: title + "View Other Nations" dropdown */
+  .nhd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .nhd h2{margin-bottom:0}
+  .viewwrap{position:relative}
+  .viewbtn{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid color-mix(in srgb,var(--indigo) 30%,transparent);border-radius:8px;padding:8px 13px;cursor:pointer}
+  .viewbtn:hover{filter:brightness(.97)}
+  .viewmenu{position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 34px -14px rgba(0,0,0,.32);padding:6px;min-width:210px;max-height:320px;overflow:auto;z-index:30}
+  .viewmenu a{display:block;padding:9px 12px;border-radius:7px;font-size:13.5px;font-weight:600;color:var(--ink);text-decoration:none;white-space:nowrap}
+  .viewmenu a:hover{background:var(--chip)}
+  .viewmenu .vempty{padding:10px 12px;color:var(--soft);font-size:12.5px}
+
   /* identity box: map (left) + facts (right) */
   .idgrid{display:grid;grid-template-columns:390px 1fr;gap:26px;align-items:start}
   @media(max-width:760px){.idgrid{grid-template-columns:1fr}}
@@ -130,7 +141,7 @@
   // The 5 domestic production resources (Diplomacy is foreign, shown elsewhere).
   var ECON = ['energy', 'food', 'minerals', 'goods', 'services'];
 
-  function render(nation, slots, gov, pmParty, pmPol){
+  function render(nation, slots, gov, pmParty, pmPol, others, viewId){
     var vals = nation.declarations || {};
     var slotBySlug = {}; slots.forEach(function(s){ slotBySlug[s.slug] = s; });
     // This slot's current value — via the shared one-source helper (see util.js).
@@ -145,8 +156,14 @@
 
     function frow(k, v){ return '<div class="frow"><span class="fk">' + k + '</span><span class="fv">' + v + '</span></div>'; }
 
+    // "View Other Nations" dropdown — every other nation links to its page (?nation=id).
+    var navItems = (others || []).filter(function(n){ return n.id !== viewId; })
+      .map(function(n){ return '<a href="/play/nation/?nation=' + encodeURIComponent(n.id) + '">' + esc(n.name) + '</a>'; }).join('');
+    var viewMenu = '<div class="viewwrap"><button class="viewbtn" id="viewBtn" type="button">View Other Nations ▾</button>' +
+      '<div class="viewmenu" id="viewMenu" hidden>' + (navItems || '<div class="vempty">No other nations yet.</div>') + '</div></div>';
+
     var identity =
-      '<section class="panel"><h2>Nation</h2><div class="idgrid">' +
+      '<section class="panel"><div class="nhd"><h2>Nation</h2>' + viewMenu + '</div><div class="idgrid">' +
         '<div><div class="map__ph">Map</div><div class="maptoggle">' +
           '<button class="mt on" type="button" data-m="nation">Nation</button>' +
           '<button class="mt" type="button" data-m="continent">Continent</button>' +
@@ -183,6 +200,11 @@
     document.querySelectorAll('.maptoggle .mt').forEach(function(b){
       b.onclick = function(){ document.querySelectorAll('.maptoggle .mt').forEach(function(x){ x.classList.toggle('on', x === b); }); };
     });
+    var vb = document.getElementById('viewBtn'), vm = document.getElementById('viewMenu');
+    if (vb && vm) {
+      vb.onclick = function(e){ e.stopPropagation(); vm.hidden = !vm.hidden; };
+      document.addEventListener('click', function(e){ if (!vm.hidden && e.target !== vb && !vm.contains(e.target)) vm.hidden = true; });
+    }
   }
 
   (async () => {
@@ -192,10 +214,15 @@
     try {
       const { data: party } = await supabase.from('parties').select('name, archetype, nation_id, funds, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
+
+      // Which nation to show: ?nation=<id> lets you view any nation; default is your own.
+      var viewId = new URLSearchParams(location.search).get('nation') || party.nation_id;
       const { data: nation } = await supabase.from('nations')
-        .select('name, flag, population, economy, production, declarations').eq('id', party.nation_id).single();
+        .select('name, flag, population, economy, production, declarations').eq('id', viewId).maybeSingle();
+      if (!nation) { fail('That nation could not be found.'); return; }
       const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
-      const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
+      const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', viewId).eq('status', 'active').maybeSingle();
+      const { data: others } = await supabase.from('nations').select('id, name').order('name');
 
       var pmParty = null, pmPol = null;
       if (gov && gov.formateur_party_id) {
@@ -205,16 +232,21 @@
         pmPol = r2.data;
       }
 
-      const nationName = (nation && nation.name) || party.nation_id;
+      // Sidebar + topbar always reflect YOUR party/home nation, even while viewing another.
+      var home = nation;
+      if (viewId !== party.nation_id) {
+        const { data: h } = await supabase.from('nations').select('name, flag, economy').eq('id', party.nation_id).maybeSingle();
+        home = h || {};
+      }
       document.getElementById('sname').textContent = party.name;
-      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
-      document.getElementById('nhead').textContent = nationName;
-      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (home.name || party.nation_id);
+      document.getElementById('nhead').textContent = nation.name || viewId;
+      if (home.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = home.flag; }
 
-      var currency = (nation && nation.economy && nation.economy.currency) || '$';
+      var currency = (home.economy && home.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      render(nation || {}, slots || [], gov, pmParty, pmPol);
+      render(nation, slots || [], gov, pmParty, pmPol, others || [], viewId);
     } catch (e) {
       fail('Couldn’t load the nation right now. Refresh to try again.');
     }
