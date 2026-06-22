@@ -222,7 +222,7 @@
       if (!nation) { fail('That nation could not be found.'); return; }
       const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
       const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', viewId).eq('status', 'active').maybeSingle();
-      const { data: others } = await supabase.from('nations').select('id, name').order('name');
+      const { data: others } = await supabase.from('nations').select('id, name, flag, economy').order('name');
 
       var pmParty = null, pmPol = null;
       if (gov && gov.formateur_party_id) {
@@ -232,12 +232,9 @@
         pmPol = r2.data;
       }
 
-      // Sidebar + topbar always reflect YOUR party/home nation, even while viewing another.
-      var home = nation;
-      if (viewId !== party.nation_id) {
-        const { data: h } = await supabase.from('nations').select('name, flag, economy').eq('id', party.nation_id).maybeSingle();
-        home = h || {};
-      }
+      // Sidebar + topbar always reflect YOUR party/home nation, even while viewing
+      // another — read from the nations list already fetched for the dropdown.
+      var home = (others || []).filter(function(n){ return n.id === party.nation_id; })[0] || {};
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + (home.name || party.nation_id);
       document.getElementById('nhead').textContent = nation.name || viewId;
