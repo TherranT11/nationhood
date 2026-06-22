@@ -209,7 +209,7 @@
     </div>
 
     <div id="corporationsPane" hidden>
-      <p class="intro">Every firm rides the national <b>business climate</b>, then follows its own trajectory. State-owned firms answer to the government; private firms slide into debt and fold if the climate turns. Read-only for now — directing them opens once your government appoints a Minister of Industry.</p>
+      <p class="intro">Every firm rides the national <b>business climate</b> — read live from your economy below — then follows its own trajectory. State-owned firms answer to the government; private firms slide into debt and fold if the climate turns. The firm list here is a <b>sample</b>: the live register and the power to direct it arrive with the Minister of Economic Development.</p>
       <div id="corpContent"><div class="empty">Loading the register…</div></div>
     </div>
   </main>
@@ -325,11 +325,28 @@
       '<p class="note">Trading opens once your government appoints a Minister of Trade.</p>';
   }
 
-  // Corporations tab: read-only register. Business climate is read live from the
-  // nation's economy + stats (one source: corporations.js); each firm's growth is
-  // derived from it. Action buttons are shown disabled until a Minister of Industry exists.
-  function renderCorps(home, corps, currency){
+  // UI preview only — a sample register so the page/UI is visible. There is no
+  // corporations data layer yet; the live, per-nation register (plus its simulation
+  // and the Minister of Economic Development's actions) is a later build. The business
+  // climate above it IS live, read from the nation's own economy (one source: corporations.js).
+  var CORP_DEMO = [
+    { name:'Sessau Rail Nationale', sector:'Rail',           type:'so', cash:3.0, debt:0,   drift:-1, director_name:'Armand Roux',     director_party:'Front de Sessau',  director_acu:3, director_age:58 },
+    { name:'Compagnie MCF',         sector:'Energy',         type:'pr', cash:6.0, debt:0,   drift:5,  director_name:'Hélène Vasseur',   director_party:'Liberal Alliance', director_acu:4, director_age:51 },
+    { name:'Banque de Sessau',      sector:'Finance',        type:'so', cash:4.0, debt:0,   drift:2,  director_name:'Margot Sève',      director_party:'Front de Sessau',  director_acu:4, director_age:49 },
+    { name:'Télécom Sessau',        sector:'Telecom',        type:'so', cash:2.0, debt:0,   drift:2,  director_name:'Claire Bonnet',    director_party:'Front de Sessau',  director_acu:3, director_age:41 },
+    { name:'Port de Marivaux',      sector:'Ports',          type:'so', cash:2.5, debt:0,   drift:2,  director_name:'Aurélie Brun',     director_party:'Front de Sessau',  director_acu:2, director_age:37 },
+    { name:'Centrale Atomique Vire',sector:'Nuclear',        type:'so', cash:5.0, debt:0,   drift:0,  director_name:'Didier Lampe',     director_party:'Centre Union',     director_acu:4, director_age:60 },
+    { name:'Aciéries du Nord',      sector:'Heavy Industry', type:'so', cash:0.2, debt:0.3, drift:-5, director_name:'L. Caron',         director_party:null,               director_acu:2, director_age:55 },
+    { name:'Vignobles du Sud',      sector:'Agriculture',    type:'pr', cash:0.6, debt:0,   drift:-2, director_name:'Bastien Carrère',  director_party:'National Rally',   director_acu:3, director_age:63 },
+    { name:'Crédit Populaire',      sector:'Finance',        type:'pr', cash:3.5, debt:0,   drift:4,  director_name:'J. Maurel',        director_party:null,               director_acu:3, director_age:47 }
+  ];
+
+  // Read-only Corporations tab. Business climate is read live from the nation's economy +
+  // stats (one source: corporations.js); each firm's growth is derived from it. The firm
+  // rows are a static preview (CORP_DEMO) until the corporations system is built.
+  function renderCorps(home, currency){
     var box = document.getElementById('corpContent');
+    var corps = CORP_DEMO;
     var stats = (home && home.stats) || {}, eco = (home && home.economy) || {};
     var climate = businessClimate(stats, eco), w = climateWord(climate);
     var money = function (v){ var x = Number(v) || 0; return (x < 0 ? '−' : '') + currency + Math.abs(x).toFixed(1) + 'B'; };
@@ -347,11 +364,6 @@
         (climate >= 0 ? '+' : '') + climate.toFixed(1) + '</span>' +
         '<span class="word" style="color:' + w.color + ';background:' + w.bg + '">' + w.label + '</span></div></div>' +
       '<div class="stats">' + figs + '</div></div>';
-
-    if (!corps || !corps.length){
-      box.innerHTML = climHtml + '<div class="card"><div class="empty">No corporations are registered in ' + esc((home && home.name) || 'this nation') + ' yet.</div></div>';
-      return;
-    }
 
     var so = corps.filter(function (c){ return c.type === 'so'; }).length;
     var netCash = corps.reduce(function (s, c){ return s + num(c.cash); }, 0);
@@ -378,14 +390,14 @@
     }).join('');
 
     box.innerHTML = climHtml +
-      '<div class="card"><div class="chd"><span class="t">Assets</span><div class="summary">' +
+      '<div class="card"><div class="chd"><span class="t">Assets <span style="font-family:\'Space Mono\',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);font-weight:700">· sample</span></span><div class="summary">' +
         '<span class="s"><b>' + corps.length + '</b> firms</span><span class="s"><b>' + so + '</b> state-owned</span>' +
         '<span class="s">cash <b>' + currency + netCash.toFixed(1) + 'B</b></span>' +
         '<span class="s">debt <b style="color:' + (totDebt > 0 ? 'var(--red)' : 'var(--ink)') + '">' + currency + totDebt.toFixed(1) + 'B</b></span>' +
       '</div></div>' +
       '<div class="scrollx"><div class="ahdr"><span>Corporation</span><span>Director</span><span>Type</span><span>Cash</span><span>Debt</span><span>Growth</span><span></span></div>' +
         rows + '</div></div>' +
-      '<p class="note">Corporation actions open once your government appoints a Minister of Industry.</p>';
+      '<p class="note">Sample register — the live, per-nation corporations and their actions arrive with the Minister of Economic Development.</p>';
   }
 
   (async () => {
@@ -398,7 +410,6 @@
       const { data: home } = await supabase.from('nations').select('id, name, flag, economy, stats, on_hand, production').eq('id', party.nation_id).single();
       const { data: nations } = await supabase.from('nations').select('id, name, on_hand, production').order('name');
       const { data: market } = await supabase.from('market').select('resource, available, min_price, max_price');
-      const { data: corps } = await supabase.from('corporations').select('*').eq('nation_id', party.nation_id).order('type').order('name');
 
       const nationName = (home && home.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
@@ -412,7 +423,7 @@
       var marketByRes = {};
       (market || []).forEach(function (m){ marketByRes[m.resource] = m; });
       render(home || { id: party.nation_id }, nations || [], marketByRes, currency);
-      renderCorps(home || { id: party.nation_id }, corps || [], currency);
+      renderCorps(home || { id: party.nation_id }, currency);
     } catch (e) {
       fail('Couldn’t load the market right now. Refresh to try again.');
     }
