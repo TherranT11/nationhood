@@ -610,8 +610,10 @@
   function val(t) { return '<span class="chip__v">' + esc(t) + '</span>'; }
 
   // Prime Minister actions — shown ONLY to the party holding the premiership (the
-  // active government's formateur). None are wired yet, so they render as dimmed
-  // scaffolds; when the player isn't PM the container is not rendered at all.
+  // active government's formateur). Coalition opens the coalition-talks flow (the
+  // same one the leader's Negotiate action uses — opening new talks costs 1 action,
+  // charged server-side by coalition_open); the rest aren't wired yet, so they
+  // render as dimmed scaffolds. When the player isn't PM the bar isn't rendered.
   var PM_ACTIONS = [
     ['Coalition', 'Manage the governing coalition.'],
     ['Policy',    'Set the government’s direction.'],
@@ -630,9 +632,14 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        return '<button class="lead" type="button" disabled><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
+        // Coalition is live (opens coalition talks); the rest stay dimmed scaffolds.
+        var coal = a[0] === 'Coalition';
+        return '<button class="lead" type="button"' + (coal ? ' id="pm-coalition"' : ' disabled') +
+          '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
       '</div></section>';
+    var coalBtn = el.querySelector('#pm-coalition');
+    if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
   }
 
   (async () => {
