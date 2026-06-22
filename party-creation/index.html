@@ -136,10 +136,9 @@
     // Decide the page's mode from the player's party + the nation's state:
     //  · no party yet → found one (and if the nation is a one-party state, join as a
     //    FACTION — same form, validation and seeding; a faction is just a party row);
-    //  · already have a party + democracy was just restored here (ruling_party cleared,
-    //    former_ruling_party set) and you're NOT the former ruler → RELAUNCH: prefill
-    //    your faction's details so you can rename/re-abbreviate/redescribe it into a
-    //    full party (the former ruler keeps its faction, so it's sent to /play/);
+    //  · already have a party flagged awaiting_relaunch in this now-multiparty nation →
+    //    RELAUNCH: prefill your faction's details so you can rename/re-abbreviate/redescribe
+    //    it into a full party (the former ruler is never flagged, so it's sent to /play/);
     //  · already have a party otherwise → go to your instance (no founding a second).
     (async () => {
       if (!isConfigured) return;

@@ -10,10 +10,13 @@
 --                                      (its name → nations.ruling_party; its ceiling → 100);
 --                                      everyone else is now a faction of it (a faction IS a
 --                                      party row — no data moves).
---   regime ≥ 5 and currently one-party → restore multiparty: clear ruling_party, remember
---                                        who ruled in former_ruling_party (gates the home
---                                        "file for elections" banner; the former ruler keeps
---                                        its faction and its raised ceiling).
+--   regime ≥ 5 and currently one-party → restore multiparty: clear ruling_party, name the
+--                                        former ruler in former_ruling_party (for the relaunch
+--                                        copy), and flag every OTHER party awaiting_relaunch so
+--                                        it may relaunch as a full party. The former ruler is
+--                                        left unflagged — it keeps its faction and raised ceiling.
+-- The per-party awaiting_relaunch flag (schema/20) is what gates each player's relaunch prompt;
+-- it persists until that player relaunches (party_relaunch), so the choice never expires.
 -- Idempotent: it only acts on a genuine crossing, so it's safe to call for every nation
 -- every tick (advance_tick, schema/60) and after each admin nation save (admin_sync_one_party).
 -- New parties keep their defaults (0% popularity, 5% ceiling, schema/20) — nothing here
