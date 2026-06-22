@@ -171,7 +171,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { esc, majority } from '/util.js';
-  import { archetypeColor, ideologyLabel } from '/archetypes.js';
+  import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
 
@@ -221,7 +221,7 @@
     for (var r2 = 0; r2 < ROWS; r2++){ var n = per[r2], R = radii[r2];
       for (var i = 0; i < n; i++){ var th = Math.PI * (i + 0.5) / n; seats.push({ x: CX - R * Math.cos(th), y: CY - R * Math.sin(th), th: th }); } }
     seats.sort(function(a, b){ return a.th - b.th; });
-    var order = gov.concat(opp).map(function(p){ return { s: p.seats || 0, c: archetypeColor(p.archetype), gov: p.in_government ? 1 : 0 }; })
+    var order = gov.concat(opp).map(function(p){ return { s: p.seats || 0, c: partyColor(p), gov: p.in_government ? 1 : 0 }; })
       .filter(function(p){ return p.s > 0; });
     var circles = '', pi = 0, used = 0, boundary = null;
     seats.forEach(function(s, k){
@@ -245,13 +245,13 @@
   function hemiLegend(gov, opp){
     // Only seated parties — the legend describes the chart, which excludes 0-seat parties.
     return gov.concat(opp).filter(function(p){ return (p.seats || 0) > 0; }).map(function(p){
-      return '<span class="lg' + (p.in_government ? '' : ' opp') + '"><span class="sw" style="background:' + archetypeColor(p.archetype) + '"></span>' +
+      return '<span class="lg' + (p.in_government ? '' : ' opp') + '"><span class="sw" style="background:' + partyColor(p) + '"></span>' +
         (p.in_government ? '<b>' + esc(p.name) + '</b>' : esc(p.name)) + ' ' + (p.seats || 0) + '</span>';
     }).join('');
   }
 
   function memberRow(p, role, lead){
-    return '<div class="mrow"><span class="dot" style="background:' + archetypeColor(p.archetype) + '"></span>' +
+    return '<div class="mrow"><span class="dot" style="background:' + partyColor(p) + '"></span>' +
       '<div class="nm"><b>' + esc(p.name) + '</b><small>' + esc(ideologyLabel(p)) + (p.abbreviation ? ' · ' + esc(p.abbreviation) : '') + '</small></div>' +
       (role ? '<span class="role"' + (lead ? '' : ' style="color:var(--muted);background:var(--chip)"') + '>' + role + '</span>' : '') +
       '<span class="sc">' + (p.seats || 0) + '</span></div>';
@@ -273,7 +273,7 @@
     }
     var byId = {}; parties.forEach(function(p){ byId[p.id] = p; });
     var formateur = byId[govt.formateur_party_id] || { name: 'A party', archetype: '', seats: 0 };
-    var tc = archetypeColor(formateur.archetype);
+    var tc = partyColor(formateur);
     document.documentElement.style.setProperty('--tc', tc);
 
     // Government members: the formateur first, then by seats.
@@ -386,7 +386,7 @@
       const { data: govt } = await supabase.from('governments')
         .select('*').eq('nation_id', NATION_ID).eq('status', 'active').maybeSingle();
       const { data: parties } = await supabase.from('parties')
-        .select('id, name, abbreviation, seats, archetype, in_government').eq('nation_id', NATION_ID);
+        .select('id, name, abbreviation, seats, archetype, in_government, color').eq('nation_id', NATION_ID);
       var agenda = [];
       if (govt) {
         const { data: ag } = await supabase.from('government_agenda')
