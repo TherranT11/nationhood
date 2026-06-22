@@ -22,11 +22,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Assemble the site + domain binding
-        run: |
-          mkdir -p dist
-          cp index.html CNAME .nojekyll site.css *.js dist/   # all root modules — never hand-maintain this list (terms.js/formation.js/negotiations.js were missing before)
-          cp -r assets home login signup startup nation-select party-creation play tutorial adminsetup dist/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Build the bundled site with Vite. Every page's first-party modules + the
+      # Supabase client are bundled/minified/hashed into dist/. Pass-through statics
+      # (theme.js, assets/, CNAME, .nojekyll) come from public/. No hand-maintained
+      # file list — vite.config.js globs every index.html as a page entry.
+      - run: npm ci
+      - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
