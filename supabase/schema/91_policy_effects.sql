@@ -73,7 +73,9 @@ begin
     -- Economy
     when 'Unemployment %' then perform public._nation_stat_add(p_nation, 'economy', 'unemployment', v_v, 0, 100);
     when 'Inflation %'    then perform public._nation_stat_add(p_nation, 'economy', 'inflation',    v_v, 0, 100);
-    when 'Tax Burden %'   then perform public._nation_stat_add(p_nation, 'economy', 'tax',          v_v, 0, 100);
+    -- Tax Burden % is DERIVED (base economy.tax + each policy's in-force option contribution;
+    -- see nationTaxBurden in policies.js, _option_axis_level in schema/92), so it is never
+    -- mutated as a delta here. A legacy effect that still targets it is simply ignored.
     when 'Regime'         then perform public._nation_stat_add(p_nation, 'economy', 'regime',       v_v, 1, 20);
     when 'Budget', 'Debt', 'Income' then
       -- Money targets: scale the authored amount by nation size/wealth, then apply to
