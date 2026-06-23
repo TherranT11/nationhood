@@ -88,8 +88,15 @@ begin
   return v_p;
 end $$;
 
+-- The action cost of a Party Standing action (Rally / Fundraise / Attack / Ad Blitz) — the
+-- one source for that cost. The per-tick budget is 12 (schema/20), so this caps standing
+-- moves at 3 a tick while leaving room for the cheaper organizational actions (cost 1 each).
+create or replace function public._standing_cost()
+returns int language sql immutable as $$ select 4 $$;
+
 -- Lock the player's party (via _lock_party) and confirm it has an action to spend
--- and can afford p_cost. Returns the locked row; raises on failure.
+-- and can afford p_cost. Returns the locked row; raises on failure. Standing actions
+-- additionally gate on >= _standing_cost() before spending it.
 create or replace function public._begin_action(p_cost bigint)
 returns public.parties
 language plpgsql
@@ -128,6 +135,7 @@ declare
   v_cost bigint := 25000;
 begin
   v_p := public._begin_action(v_cost);
+  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_cha := coalesce(v_cha, 0);
@@ -146,9 +154,9 @@ begin
     else                 ', but the seats sat half-empty and the speech fell flat. Those who came went home unmoved, and the press stayed away.'
   end || ' Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
-  update public.parties set popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'rally', v_body, public.current_game_date());
-  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_rally() to authenticated;
@@ -212,6 +220,7 @@ declare
   v_haul bigint; v_tier text; v_body text;
 begin
   v_p := public._begin_action(0);  -- fundraising is free; only the action is spent
+  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select coalesce(cha, 0) into v_cha from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_cha := coalesce(v_cha, 0);
@@ -227,9 +236,9 @@ begin
     else                 ' passed the hat this week, but the donors stayed shy. A thin trickle of small gifts was all the drive could manage.'
   end || ' Funds +$' || (v_haul / 1000) || 'K.';
 
-  update public.parties set funds = funds + v_haul, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set funds = funds + v_haul, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'fundraise', v_body, public.current_game_date());
-  return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'funds', v_p.funds + v_haul, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'funds_gain', v_haul, 'funds', v_p.funds + v_haul, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_fundraise() to authenticated;
@@ -256,6 +265,7 @@ declare
   v_tname text; v_tnation text; v_tarch text; v_toldpop numeric; v_tnewpop numeric;
 begin
   v_p := public._begin_action(v_cost);  -- attacker locked + checked
+  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select name, nation_id, archetype, popularity into v_tname, v_tnation, v_tarch, v_toldpop from public.parties where id = p_target;
   if not found then raise exception 'No such party.'; end if;
   if p_target = v_p.id then raise exception 'You can''t attack your own party.'; end if;
@@ -297,10 +307,10 @@ begin
     v_body := 'The ' || public._bare_party(v_p.name) || ' tried to smear the ' || public._bare_party(v_tname) || ', but the attack rebounded — the line didn''t land, and it was the ' || public._bare_party(v_p.name) || ' that looked desperate. Popularity −' || trim(to_char(v_self_pen::numeric, 'FM990.0')) || '%.';
   end if;
 
-  update public.parties set popularity = v_p_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set popularity = v_p_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'attack', v_body, public.current_game_date());
 
-  return jsonb_build_object('hit', v_hit, 'cut', v_cut, 'self_penalty', v_self_pen, 'target', v_tname, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+  return jsonb_build_object('hit', v_hit, 'cut', v_cut, 'self_penalty', v_self_pen, 'target', v_tname, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_attack(uuid) to authenticated;
@@ -321,6 +331,7 @@ declare
   v_cost bigint := 100000; v_tier text; v_body text;
 begin
   v_p := public._begin_action(v_cost);
+  if v_p.actions_remaining < public._standing_cost() then raise exception 'Not enough actions left this turn (need %).', public._standing_cost(); end if;
   select coalesce(gui, 0) into v_gui from public.politicians
     where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
   v_gui := coalesce(v_gui, 0);
@@ -341,10 +352,10 @@ begin
     else                 ' bought up airtime, but the ads fell flat. Forgettable spots in dead-air slots moved few minds, and the spend bought little more than name recognition.'
   end || ' Popularity +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
 
-  update public.parties set popularity = v_newpop, pop_ceiling = v_newceil, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set popularity = v_newpop, pop_ceiling = v_newceil, funds = funds - v_cost, actions_remaining = actions_remaining - public._standing_cost() where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'adblitz', v_body, public.current_game_date());
 
-  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'ceiling_gain', v_ceilgain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.actions_remaining - 1, 'body', v_body);
+  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'ceiling_gain', v_ceilgain, 'popularity', v_newpop, 'ceiling', v_newceil, 'actions', v_p.actions_remaining - public._standing_cost(), 'body', v_body);
 end $$;
 
 grant execute on function public.party_ad_blitz() to authenticated;

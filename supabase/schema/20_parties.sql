@@ -25,7 +25,7 @@ create table if not exists public.parties (
   pop_ceiling   numeric not null default 5,     -- support ceiling: current reach / cap on popularity, % (fractional — Ad Blitz nudges it)
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition
-  actions_remaining int not null default 3,     -- party actions left this turn; reset to 3 each tick by advance_tick()
+  actions_remaining int not null default 12,    -- party actions left this turn; reset to 12 each tick by advance_tick(). Standing actions cost 4 (schema/40 _standing_cost), the rest cost 1.
   conviction    int     not null default 1,     -- Manifesto currency: earned over time, spent on planks. Every new party starts with 1.
   description   text,                            -- founding identity statement (≤360 chars); replaces the archetype picker at creation
   created_at   timestamptz not null default now(),
@@ -42,7 +42,7 @@ alter table public.parties add column if not exists pop_ceiling numeric not null
 alter table public.parties alter column pop_ceiling type numeric using pop_ceiling::numeric; -- widen int → numeric for fractional ceiling
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
-alter table public.parties add column if not exists actions_remaining int not null default 3;
+alter table public.parties add column if not exists actions_remaining int not null default 12;
 alter table public.parties add column if not exists conviction int not null default 0;
 -- Engagement heartbeat for the inactivity metric: wall-clock of the player's last
 -- meaningful action. Stamped by _lock_party() (schema/40) on every action/vote/adoption.
