@@ -271,8 +271,10 @@
   // coalition deal) staffs its cabinet from its OWN roster. The eligible pool excludes the
   // leader (who is the Head of Government) and field operatives — Mayors / Grassroots
   // Organizers, who are out on local work and take no cabinet seat. The eligible take the
-  // named ministries in roster order; any beyond the last portfolio are Non-Descript
-  // Ministers. Coalition/majority cabinets stay Vacant until negotiated ministry terms fill them.
+  // named ministries in roster order; any portfolio they don't fill shows a Non-Descript
+  // minister (a placeholder, not a real person, so it can't act), and any eligible beyond the
+  // last portfolio are listed as Non-Descript Ministers. Coalition/majority cabinets stay
+  // Vacant until negotiated ministry terms fill them.
   // (Mayor/Grassroots roles aren't live in-game yet, but the exclusion is in place for when they are.)
   var FIELD_ROLES = ['Mayor', 'Grassroots Organizer'];
   function polFullName(p){ return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
@@ -284,7 +286,7 @@
     var eligible = (pols || []).filter(function(p){ return p.status !== 'Party Leader' && FIELD_ROLES.indexOf(p.status) < 0; });
     var rows = MINISTRIES.map(function(m, i){
       return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])))
-                         : cabRow('Minister of ' + m, 'Vacant', 'vac');
+                         : cabRow('Minister of ' + m, 'Non-Descript', 'vac');
     }).join('');
     return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p))); }).join('');
   }
