@@ -101,3 +101,14 @@ export async function loadHogTitleSlot(supabase) {
     return data || null;
   } catch (e) { return null; }
 }
+
+// The display label for an admin event's structured effect (e.g. "Order −2",
+// "Budget +$12B"). One source for the admin composer/feed and the player feed, so
+// the pill always reads the same in both. Budget/Debt are money (billions) and take
+// the nation's currency symbol; every other target is a plain signed number.
+export function eventEffectLabel(target, value, currency) {
+  var v = Number(value) || 0;
+  var sign = v > 0 ? '+' : (v < 0 ? '−' : '');
+  if (target === 'Budget' || target === 'Debt') return target + ' ' + sign + (currency || '$') + Math.abs(v) + 'B';
+  return target + ' ' + sign + Math.abs(v);
+}
