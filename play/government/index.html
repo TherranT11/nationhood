@@ -179,7 +179,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
-  import { esc, majority, declaredValue } from '/util.js';
+  import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
@@ -517,14 +517,12 @@
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
-      // The declared Head of Government title (e.g. "Prime Minister"), via the shared
-      // declaredValue helper — one source. Non-critical: keep the generic label on failure.
-      try {
-        const { data: titleSlot } = await supabase.from('declarations')
-          .select('slug, options, default_index, custom_allowed').eq('slug', 'head_of_government_title').maybeSingle();
-        var hogT = titleSlot ? declaredValue(titleSlot, NATION.declarations) : '';
-        if (hogT && hogT !== '—') HOG_TITLE = hogT;
-      } catch (e) { /* non-critical — keep the generic "Head of Government" label */ }
+      // The declared Head of Government title (e.g. "Prime Minister"), via the
+      // shared slot loader + declaredValue — one source (see util.js). Keeps the
+      // generic label when the nation hasn't declared one.
+      const titleSlot = await loadHogTitleSlot(supabase);
+      var hogT = titleSlot ? declaredValue(titleSlot, NATION.declarations) : '';
+      if (hogT && hogT !== '—') HOG_TITLE = hogT;
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;

@@ -126,7 +126,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc, fmtGdp, fmtPop, declaredValue } from '/util.js';
+  import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
   import { regimeLabel } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -178,8 +178,7 @@
 
       return '<article class="wcard" style="--acc:' + acc + '">' +
         '<div class="wc-top">' + badge +
-          '<div class="wc-id"><h2>' + esc(n.name) + '</h2>' +
-          '</div></div>' +
+          '<div class="wc-id"><h2>' + esc(n.name) + '</h2></div></div>' +
         '<div class="figs">' +
           '<div class="fig"><div class="k">GDP</div><div class="v">' + esc(currency) + (n.gdp != null ? esc(fmtGdp(n.gdp)) : '—') + '</div></div>' +
           '<div class="fig"><div class="k">Population</div><div class="v">' + (n.population != null ? esc(fmtPop(n.population)) : '—') + '</div></div>' +
@@ -218,15 +217,9 @@
         .neq('id', party.nation_id).order('name');
       const nations = others || [];
 
-      // The shared Head of Government title slot (e.g. options like "Prime
-      // Minister"); resolved per-nation against each nation's declarations in
-      // render. Non-critical — fall back to the generic label if it fails.
-      var titleSlot = null;
-      try {
-        const { data: ts } = await supabase.from('declarations')
-          .select('slug, options, default_index, custom_allowed').eq('slug', 'head_of_government_title').maybeSingle();
-        titleSlot = ts || null;
-      } catch (e) { /* keep the generic "Head of Government" label */ }
+      // The Head of Government title slot, resolved per-nation against each
+      // nation's declarations in render (one source — see util.js).
+      const titleSlot = await loadHogTitleSlot(supabase);
 
       // Active governments for those nations (most will have none yet), and the
       // leader of each formateur party for the Head of Government line. Batched.

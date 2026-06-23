@@ -87,3 +87,17 @@ export function declaredValue(slot, values) {
   if (slot && !slot.custom_allowed && (slot.options || [])[slot.default_index] != null) return slot.options[slot.default_index];
   return '—';
 }
+
+// The Head of Government title declaration slot (e.g. "Prime Minister"), the one
+// place that knows its slug + columns — shared by the Government and World pages,
+// each of which resolves it per-nation via declaredValue. Takes the supabase
+// client so this module stays dependency-free. Non-critical: returns null on any
+// failure, so callers fall back to the generic "Head of Government" label.
+export async function loadHogTitleSlot(supabase) {
+  try {
+    const { data } = await supabase.from('declarations')
+      .select('slug, options, default_index, custom_allowed')
+      .eq('slug', 'head_of_government_title').maybeSingle();
+    return data || null;
+  } catch (e) { return null; }
+}
