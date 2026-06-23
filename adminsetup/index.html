@@ -177,15 +177,13 @@
   .poltab .scalerow .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .poltab .scalerow .es{width:auto;min-width:172px;padding:7px 9px;font-size:12.5px}
   .poltab .scalerow .worked{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:210px}
-  /* Directional effect rules — each rule is a card with its controls + a live plain-language echo. */
-  .poltab .dirrule{border:1px solid var(--line);border-radius:11px;background:var(--field,#FCFBF9);padding:11px 12px;margin:8px 0}
-  .poltab .dirrule .dirctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .poltab .dirrule .dscl{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
-  .poltab .dirrule .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
+  /* Per-option transition rules — each is a row with its controls + a live plain-language echo. */
+  .poltab .trrule{border:1px solid var(--line);border-radius:11px;background:var(--field,#FCFBF9);padding:11px 12px;margin:8px 0}
+  .poltab .trrule .dirctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .poltab .trrule .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
   .poltab .echo b{color:var(--ink)}
   .poltab .echo .up{color:var(--green,#16915a);font-weight:700}
   .poltab .echo .dn{color:var(--red,#C42B2B);font-weight:700}
-  .poltab .echo .dim{color:var(--soft)}
   .poltab .rail{position:sticky;top:20px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .poltab .rail .rh{background:var(--field,#FCFBF9);border-bottom:1px solid var(--line);padding:12px 16px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
   .poltab .rail .rb{padding:14px 16px;max-height:78vh;overflow:auto}
@@ -1229,15 +1227,20 @@
     // effect target. Used by the policy directional rules + the conviction directional rules.
     var AXIS_TGT = ['Tax Burden %','Income','Budget','Debt','Unemployment %','Inflation %','Prosperity','Welfare','Growth','Order','Image','Regime'];
     function axisSelect(cls, sel){ return '<select class="'+cls+'">'+AXIS_TGT.map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'; }
-    // The plain-language summary of a directional rule {axis,dir,t,v,scaled} — the ONE
-    // source for the sentence, used by both the editor's live echo and the right-hand
-    // preview so the two never drift. dir 'up' = the axis rising is the favoured move.
-    function dirSentence(d){
-      var fav = d.dir==='up' ? 'rises' : 'falls (a cut)';
-      var v = Number(d.v)||0, up = v>=0;
-      return 'When <b>'+esc(d.axis||'?')+'</b> '+fav+' → <b>'+esc(d.t||'?')+'</b> '+
-        '<span class="'+(up?'up':'dn')+'">'+(up?'increases':'decreases')+' by '+Math.abs(v)+'</span>'+
-        (d.scaled?' · ×size of move':'')+' <span class="dim">· inverse on the opposite move</span>';
+    // The plain-language summary of an option's transition rule {dir,rung,t,v} — the ONE
+    // source for the sentence, shared by the editor's live echo and the right-hand preview.
+    // The rule is relative to its own option: 'to' = leaving for that rung, 'from' = arriving
+    // from it. v is signed; the magnitude shows as increases/decreases.
+    function trSentence(t){
+      var v = Number(t.v)||0, up = v>=0;
+      return 'When moving <b>'+(t.dir==='from'?'from':'to')+'</b> <b>'+esc(t.rung||'?')+'</b> → <b>'+esc(t.t||'?')+'</b> '+
+        '<span class="'+(up?'up':'dn')+'">'+(up?'increases':'decreases')+' by '+Math.abs(v)+'</span>';
+    }
+    // The other options' names (the rungs this option can move to/from), as a <select>.
+    function rungOptions(excludeName, sel){
+      return '<select class="trung">'+polOpts().map(function(o){ return o.name; })
+        .filter(function(n){ return n!==excludeName; })
+        .map(function(n){ return '<option'+(n===sel?' selected':'')+'>'+esc(n)+'</option>'; }).join('')+'</select>';
     }
     // Identity tags — metadata describing what a law IS (not a popularity score). A
     // policy option carries any of these; a conviction's "when a tagged law passes"
@@ -1272,11 +1275,11 @@
 
     var polCache = [], P = null, polEditingId = null;
     function blankPolicy(){ return {
-      name:'New policy', desc:'', type:'spectrum', defaultIdx:0, binDefault:1, directional:[],
-      binary:[ {name:'If Passed',desc:'The policy is in force.',tags:[],effects:[]},
-               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',tags:[],effects:[]} ],
-      spectrum:[ {name:'Option A',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)]},
-                 {name:'Option B',desc:'',tags:[],effects:[]} ]
+      name:'New policy', desc:'', type:'spectrum', defaultIdx:0, binDefault:1,
+      binary:[ {name:'If Passed',desc:'The policy is in force.',tags:[],effects:[],transitions:[]},
+               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',tags:[],effects:[],transitions:[]} ],
+      spectrum:[ {name:'Option A',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)],transitions:[]},
+                 {name:'Option B',desc:'',tags:[],effects:[],transitions:[]} ]
     }; }
     function polOpts(){ return policyOptions(P); }
     var polSaving = false;   // double-fire lock for the create/save path
@@ -1363,37 +1366,6 @@
       polOpts().forEach(function(o,i){ oc.appendChild(buildPolOpt(o,i)); });
       box.appendChild(oc);
 
-      // Policy-level DIRECTIONAL effects: the nation's reaction to which WAY this policy moved.
-      P.directional = Array.isArray(P.directional) ? P.directional : [];
-      var dc=document.createElement('div'); dc.className='card';
-      dc.innerHTML='<div class="opthd"><span class="t">Directional effects</span><button class="addopt" id="pol-addDir" type="button">+ directional effect</button></div>'+
-        '<p class="sub" style="margin:0 0 4px">The nation reacts to the <b>direction</b> this policy moves a figure on enactment — a cut vs a rise. Use these for anything that depends on which way it moved (Government Confidence, Growth…), not a static per-option value that can’t tell None→Moderate (a hike) from High→Moderate (relief).</p>';
-      P.directional.forEach(function(d,i){
-        var v=Number(d.v)||0;
-        var row=document.createElement('div'); row.className='dirrule';
-        row.innerHTML='<div class="dirctl">'+
-            '<span class="clause">When</span>'+axisSelect('da',d.axis)+
-            '<select class="dd"><option value="down"'+(d.dir!=='up'?' selected':'')+'>falls (a cut)</option><option value="up"'+(d.dir==='up'?' selected':'')+'>rises</option></select>'+
-            '<span class="clause">→ then</span>'+polTgtSelect(d.t)+
-            '<select class="dchg"><option value="inc"'+(v>=0?' selected':'')+'>increases by</option><option value="dec"'+(v<0?' selected':'')+'>decreases by</option></select>'+
-            '<input type="number" class="dmag" min="0" step="any" value="'+Math.abs(v)+'" style="max-width:80px">'+
-            '<label class="dscl"><input type="checkbox" class="dsc" '+(d.scaled?'checked':'')+'>scale by size of move</label>'+
-            '<button class="xb" type="button">×</button>'+
-          '</div><div class="echo">'+dirSentence(d)+'</div>';
-        // The model stays signed: increases/decreases + a positive magnitude map onto ±v.
-        function setV(){ var m=Math.abs(parseFloat(row.querySelector('.dmag').value)||0); d.v = row.querySelector('.dchg').value==='dec' ? -m : m; }
-        function sync(){ row.querySelector('.echo').innerHTML=dirSentence(d); renderPolPrev(); }
-        row.querySelector('.da').onchange=function(e){ d.axis=e.target.value; sync(); };
-        row.querySelector('.dd').onchange=function(e){ d.dir=e.target.value; sync(); };
-        row.querySelector('.et').onchange=function(e){ d.t=e.target.value; sync(); };
-        row.querySelector('.dchg').onchange=function(){ setV(); sync(); };
-        row.querySelector('.dmag').oninput=function(){ setV(); sync(); };
-        row.querySelector('.dsc').onchange=function(e){ d.scaled=e.target.checked; sync(); };
-        row.querySelector('.xb').onclick=function(){ P.directional.splice(i,1); renderPolEditor(); renderPolPrev(); };
-        dc.appendChild(row);
-      });
-      box.appendChild(dc);
-
       var foot=document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px';
       var sv=document.createElement('button'); sv.className='btn btn-solid'; sv.type='button'; sv.textContent=polEditingId?'Save changes':'Create policy'; sv.onclick=savePolicy;
       var cx=document.createElement('button'); cx.className='btn btn-ghost'; cx.type='button'; cx.textContent='Close'; cx.onclick=function(){ document.getElementById('polEditorPanel').hidden=true; };
@@ -1402,8 +1374,7 @@
       box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
       box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
       box.querySelectorAll('#pol-typeSeg span').forEach(function(s){ s.onclick=function(){ P.type=s.dataset.v; renderPolEditor(); renderPolPrev(); }; });
-      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)]}); renderPolEditor(); renderPolPrev(); };
-      var adb=box.querySelector('#pol-addDir'); if(adb)adb.onclick=function(){ P.directional.push({axis:'Tax Burden %',dir:'down',t:'Government Confidence',v:2,scaled:true}); renderPolEditor(); renderPolPrev(); };
+      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)],transitions:[]}); renderPolEditor(); renderPolPrev(); };
       var bdf=box.querySelector('#pol-binDef'); if(bdf)bdf.onchange=function(e){ P.binDefault=+e.target.value; renderPolEditor(); renderPolPrev(); };
     }
     function buildPolOpt(o,i){
@@ -1429,13 +1400,29 @@
           '<input type="number" class="dur'+(e.cad!=='tick'?' hide':'')+'" min="0" placeholder="∞ while enacted" value="'+(e.dur?e.dur:'')+'">'+
           '<button class="xb efx" type="button" title="Remove">×</button></div>'+scaleRow+'</div>';
       }).join('');
+      o.transitions = o.transitions || [];   // older policies predate per-option transitions
+      var trHtml=o.transitions.map(function(t,ti){
+        var tv=Number(t.v)||0;
+        return '<div class="trrule" data-ti="'+ti+'"><div class="dirctl">'+
+          '<span class="clause">When moving</span>'+
+          '<select class="tdir"><option value="to"'+(t.dir!=='from'?' selected':'')+'>to</option><option value="from"'+(t.dir==='from'?' selected':'')+'>from</option></select>'+
+          rungOptions(o.name, t.rung)+
+          '<span class="clause">→ then</span>'+polTgtSelect(t.t)+
+          '<select class="tchg"><option value="inc"'+(tv>=0?' selected':'')+'>increases by</option><option value="dec"'+(tv<0?' selected':'')+'>decreases by</option></select>'+
+          '<input type="number" class="tmag" min="0" step="any" value="'+Math.abs(tv)+'" style="max-width:80px">'+
+          '<button class="xb trx" type="button" title="Remove">×</button>'+
+          '</div><div class="echo">'+trSentence(t)+'</div></div>';
+      }).join('');
       card.innerHTML=head+
         '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
         '<div class="sublab">Tax burden contribution <span class="hint">· this option’s share of the nation’s Tax Burden % (summed across tax policies); a level, not a delta</span></div>'+
         '<div class="f" style="margin-bottom:0"><input type="number" class="otax" step="0.1" value="'+(o.taxBurden!=null?o.taxBurden:0)+'" style="max-width:140px"></div>'+
         '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'<button type="button" class="tagadd">+ tag</button></div>'+
         '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
-        '<button class="add sm addeff" type="button">+ effect</button>';
+        '<button class="add sm addeff" type="button">+ effect</button>'+
+        '<div class="sublab" style="margin-top:16px">Transition effects <span class="hint">· a one-time change when the nation moves between rungs, relative to this option</span></div>'+
+        trHtml+
+        '<button class="add sm addtr" type="button">+ transition</button>';
 
       card.querySelector('.onm').oninput=function(e){ o.name=e.target.value; renderPolPrev(); };
       card.querySelector('.odesc').oninput=function(e){ o.desc=e.target.value; };
@@ -1454,6 +1441,22 @@
         var es=wrap.querySelector('.es'); if(es)es.onchange=function(ev){ e.scale=ev.target.value; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
       });
       card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget',0,'tick',0)); renderPolEditor(); renderPolPrev(); };
+      card.querySelectorAll('.trrule').forEach(function(rw){
+        var ti=+rw.dataset.ti, t=o.transitions[ti];
+        // Like the option effects, the model stays signed: increases/decreases + a positive magnitude map onto ±v.
+        function setTv(){ var m=Math.abs(parseFloat(rw.querySelector('.tmag').value)||0); t.v = rw.querySelector('.tchg').value==='dec' ? -m : m; }
+        function syncTr(){ rw.querySelector('.echo').innerHTML=trSentence(t); renderPolPrev(); }
+        rw.querySelector('.tdir').onchange=function(e){ t.dir=e.target.value; syncTr(); };
+        rw.querySelector('.trung').onchange=function(e){ t.rung=e.target.value; syncTr(); };
+        rw.querySelector('.et').onchange=function(e){ t.t=e.target.value; syncTr(); };
+        rw.querySelector('.tchg').onchange=function(){ setTv(); syncTr(); };
+        rw.querySelector('.tmag').oninput=function(){ setTv(); syncTr(); };
+        rw.querySelector('.trx').onclick=function(){ o.transitions.splice(ti,1); renderPolEditor(); renderPolPrev(); };
+      });
+      card.querySelector('.addtr').onclick=function(){
+        var others=polOpts().map(function(x){ return x.name; }).filter(function(n){ return n!==o.name; });
+        o.transitions.push({dir:'to', rung:others[0]||'', t:'Growth', v:-1}); renderPolEditor(); renderPolPrev();
+      };
       return card;
     }
     function polEffLine(e){
@@ -1474,16 +1477,11 @@
         var tb=Number(o.taxBurden)||0;
         var tbLine=tb?'<div class="pveff"><div class="e"><b>Tax burden '+(tb>0?'+':'')+tb+'%</b> <span class="cad">contribution</span></div></div>':'';
         var effs=o.effects.length?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':(tb?'':'<div class="pvnone">No effects</div>');
+        var trs=(o.transitions&&o.transitions.length)?'<div class="pveff">'+o.transitions.map(function(t){ return '<div class="e"><span class="echo">'+trSentence(t)+'</span></div>'; }).join('')+'</div>':'';
         var tags=(o.tags&&o.tags.length)?'<div class="pvtagrow">'+o.tags.map(function(t){ return '<span class="pvltag">'+esc(t)+'</span>'; }).join('')+'</div>':'';
         html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?(i+1)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+
-          tags+tbLine+effs+'</div>';
+          tags+tbLine+effs+trs+'</div>';
       });
-      var dirs=Array.isArray(P.directional)?P.directional:[];
-      if (dirs.length) {
-        html+='<div class="pvopt"><div class="on">Directional reactions</div><div class="pveff">'+dirs.map(function(d){
-          return '<div class="e"><span class="echo">'+dirSentence(d)+'</span></div>';
-        }).join('')+'</div></div>';
-      }
       box.innerHTML=html;
     }
     document.getElementById('polNew').onclick=function(){ openPolicy(blankPolicy(), null); };
