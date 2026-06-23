@@ -56,7 +56,6 @@
   .emb.img{object-fit:contain;border:1px solid var(--line);background:var(--chip)}
   .wc-id{flex:1;min-width:0}
   .wc-id h2{font-weight:900;font-size:21px;letter-spacing:-.02em;line-height:1.05}
-  .wc-id .sub{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:5px}
 
   .figs{display:flex;gap:10px;margin:16px 0}
   .fig{flex:1;border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:var(--field)}
@@ -175,7 +174,6 @@
       return '<article class="wcard" style="--acc:' + acc + '">' +
         '<div class="wc-top">' + badge +
           '<div class="wc-id"><h2>' + esc(n.name) + '</h2>' +
-            (n.analogous ? '<div class="sub">' + esc(n.analogous) + '</div>' : '') +
           '</div></div>' +
         '<div class="figs">' +
           '<div class="fig"><div class="k">GDP</div><div class="v">' + esc(currency) + (n.gdp != null ? esc(fmtGdp(n.gdp)) : '—') + '</div></div>' +
@@ -211,7 +209,7 @@
 
       // Every OTHER nation — these are the cards.
       const { data: others } = await supabase.from('nations')
-        .select('id, name, flag, analogous, population, gdp, economy')
+        .select('id, name, flag, population, gdp, economy')
         .neq('id', party.nation_id).order('name');
       const nations = others || [];
 
