@@ -29,6 +29,11 @@ export async function formationState(party) {
       .select('id').eq('nation_id', party.nation_id).eq('status', 'replaced').eq('formed_tick', tick).limit(1);
     const reshuffled = !!(rs && rs.length);
 
+    // KNOWN LIMITATION: a coalition seated mid-term via coalition_form_government
+    // also stamps formed_tick = the current tick, so it surfaces this election-framed
+    // renege card the same turn it forms. Harmless (reneging just drops back to a
+    // minority, no penalty) but the copy reads as if an election just happened.
+    // A clean fix needs a persistent "from_election" flag on governments — deferred.
     if (govt.type === 'coalition' && !reshuffled && sessionStorage.getItem('govConfirmed') !== govt.id) {
       out.canRenege = true;
     } else if (govt.type === 'minority' && reshuffled) {
