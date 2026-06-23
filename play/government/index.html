@@ -287,12 +287,12 @@
       return MINISTRIES.map(function(m){ return cabRow('Minister of ' + m, 'Vacant', 'vac'); }).join('');
     }
     var eligible = (pols || []).filter(function(p){ return p.status !== 'Party Leader' && FIELD_ROLES.indexOf(p.status) < 0; });
-    var tag = partyTag(formateur);   // a Non-Descript seat is an anonymous minister from the governing party
+    var tag = partyTag(formateur);   // every minister in a minority cabinet is from the governing party
     var rows = MINISTRIES.map(function(m, i){
-      return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])))
+      return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])) + tag)
                          : cabRow('Minister of ' + m, 'Non-Descript' + tag, 'vac');
     }).join('');
-    return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p))); }).join('');
+    return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p)) + tag); }).join('');
   }
 
   function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols){
