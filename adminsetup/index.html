@@ -177,6 +177,15 @@
   .poltab .scalerow .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .poltab .scalerow .es{width:auto;min-width:172px;padding:7px 9px;font-size:12.5px}
   .poltab .scalerow .worked{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:210px}
+  /* Directional effect rules — each rule is a card with its controls + a live plain-language echo. */
+  .poltab .dirrule{border:1px solid var(--line);border-radius:11px;background:var(--field,#FCFBF9);padding:11px 12px;margin:8px 0}
+  .poltab .dirrule .dirctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .poltab .dirrule .dscl{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+  .poltab .dirrule .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
+  .poltab .echo b{color:var(--ink)}
+  .poltab .echo .up{color:var(--green,#16915a);font-weight:700}
+  .poltab .echo .dn{color:var(--red,#C42B2B);font-weight:700}
+  .poltab .echo .dim{color:var(--soft)}
   .poltab .rail{position:sticky;top:20px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
   .poltab .rail .rh{background:var(--field,#FCFBF9);border-bottom:1px solid var(--line);padding:12px 16px;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
   .poltab .rail .rb{padding:14px 16px;max-height:78vh;overflow:auto}
@@ -1220,6 +1229,16 @@
     // effect target. Used by the policy directional rules + the conviction directional rules.
     var AXIS_TGT = ['Tax Burden %','Income','Budget','Debt','Unemployment %','Inflation %','Prosperity','Welfare','Growth','Order','Image','Regime'];
     function axisSelect(cls, sel){ return '<select class="'+cls+'">'+AXIS_TGT.map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'; }
+    // The plain-language summary of a directional rule {axis,dir,t,v,scaled} — the ONE
+    // source for the sentence, used by both the editor's live echo and the right-hand
+    // preview so the two never drift. dir 'up' = the axis rising is the favoured move.
+    function dirSentence(d){
+      var fav = d.dir==='up' ? 'rises' : 'falls (a cut)';
+      var v = Number(d.v)||0, up = v>=0;
+      return 'When <b>'+esc(d.axis||'?')+'</b> '+fav+' → <b>'+esc(d.t||'?')+'</b> '+
+        '<span class="'+(up?'up':'dn')+'">'+(up?'increases':'decreases')+' by '+Math.abs(v)+'</span>'+
+        (d.scaled?' · ×size of move':'')+' <span class="dim">· inverse on the opposite move</span>';
+    }
     // Identity tags — metadata describing what a law IS (not a popularity score). A
     // policy option carries any of these; a conviction's "when a tagged law passes"
     // effect keys off them. Loaded from public.identity_tags (the ONE source — an admin
@@ -1350,17 +1369,26 @@
       dc.innerHTML='<div class="opthd"><span class="t">Directional effects</span><button class="addopt" id="pol-addDir" type="button">+ directional effect</button></div>'+
         '<p class="sub" style="margin:0 0 4px">The nation reacts to the <b>direction</b> this policy moves a figure on enactment — a cut vs a rise. Use these for anything that depends on which way it moved (Government Confidence, Growth…), not a static per-option value that can’t tell None→Moderate (a hike) from High→Moderate (relief).</p>';
       P.directional.forEach(function(d,i){
-        var row=document.createElement('div'); row.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0';
-        row.innerHTML='<span class="clause">When</span>'+axisSelect('da',d.axis)+
-          '<select class="dd"><option value="down"'+(d.dir!=='up'?' selected':'')+'>falls (a cut)</option><option value="up"'+(d.dir==='up'?' selected':'')+'>rises</option></select>'+
-          '<span class="clause">then</span>'+polTgtSelect(d.t)+'<input type="number" class="dv" step="any" value="'+(d.v!=null?d.v:0)+'" style="max-width:90px">'+
-          '<label style="display:inline-flex;align-items:center;gap:5px;font-size:11px"><input type="checkbox" class="dsc" '+(d.scaled?'checked':'')+'>scale by size of move</label>'+
-          '<button class="xb" type="button">×</button>';
-        row.querySelector('.da').onchange=function(e){ d.axis=e.target.value; renderPolPrev(); };
-        row.querySelector('.dd').onchange=function(e){ d.dir=e.target.value; renderPolPrev(); };
-        row.querySelector('.et').onchange=function(e){ d.t=e.target.value; renderPolPrev(); };
-        row.querySelector('.dv').oninput=function(e){ d.v=parseFloat(e.target.value)||0; renderPolPrev(); };
-        row.querySelector('.dsc').onchange=function(e){ d.scaled=e.target.checked; renderPolPrev(); };
+        var v=Number(d.v)||0;
+        var row=document.createElement('div'); row.className='dirrule';
+        row.innerHTML='<div class="dirctl">'+
+            '<span class="clause">When</span>'+axisSelect('da',d.axis)+
+            '<select class="dd"><option value="down"'+(d.dir!=='up'?' selected':'')+'>falls (a cut)</option><option value="up"'+(d.dir==='up'?' selected':'')+'>rises</option></select>'+
+            '<span class="clause">→ then</span>'+polTgtSelect(d.t)+
+            '<select class="dchg"><option value="inc"'+(v>=0?' selected':'')+'>increases by</option><option value="dec"'+(v<0?' selected':'')+'>decreases by</option></select>'+
+            '<input type="number" class="dmag" min="0" step="any" value="'+Math.abs(v)+'" style="max-width:80px">'+
+            '<label class="dscl"><input type="checkbox" class="dsc" '+(d.scaled?'checked':'')+'>scale by size of move</label>'+
+            '<button class="xb" type="button">×</button>'+
+          '</div><div class="echo">'+dirSentence(d)+'</div>';
+        // The model stays signed: increases/decreases + a positive magnitude map onto ±v.
+        function setV(){ var m=Math.abs(parseFloat(row.querySelector('.dmag').value)||0); d.v = row.querySelector('.dchg').value==='dec' ? -m : m; }
+        function sync(){ row.querySelector('.echo').innerHTML=dirSentence(d); renderPolPrev(); }
+        row.querySelector('.da').onchange=function(e){ d.axis=e.target.value; sync(); };
+        row.querySelector('.dd').onchange=function(e){ d.dir=e.target.value; sync(); };
+        row.querySelector('.et').onchange=function(e){ d.t=e.target.value; sync(); };
+        row.querySelector('.dchg').onchange=function(){ setV(); sync(); };
+        row.querySelector('.dmag').oninput=function(){ setV(); sync(); };
+        row.querySelector('.dsc').onchange=function(e){ d.scaled=e.target.checked; sync(); };
         row.querySelector('.xb').onclick=function(){ P.directional.splice(i,1); renderPolEditor(); renderPolPrev(); };
         dc.appendChild(row);
       });
@@ -1453,8 +1481,7 @@
       var dirs=Array.isArray(P.directional)?P.directional:[];
       if (dirs.length) {
         html+='<div class="pvopt"><div class="on">Directional reactions</div><div class="pveff">'+dirs.map(function(d){
-          var fav=d.dir==='up'?'rises':'falls', sc=d.scaled?' ·×move':'';
-          return '<div class="e"><b>'+esc(d.axis||'?')+' '+fav+'</b> <span class="cad">→ '+esc(d.t||'?')+' '+((Number(d.v)||0)>=0?'+':'−')+Math.abs(Number(d.v)||0)+sc+' (inverse on the opposite move)</span></div>';
+          return '<div class="e"><span class="echo">'+dirSentence(d)+'</span></div>';
         }).join('')+'</div></div>';
       }
       box.innerHTML=html;
