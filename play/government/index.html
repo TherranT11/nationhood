@@ -268,11 +268,12 @@
   }
 
   // The cabinet's ministry rows. A MINORITY government (the formateur governing alone, no
-  // coalition deal) staffs its cabinet from its OWN roster: prominent politicians — not a
-  // Mayor or Grassroots Organizer, and not the leader (that's the Head of Government) — take
-  // the named ministries in roster order; field operatives and any overflow are listed as
-  // "Non-Descript Minister". Coalition/majority cabinets stay Vacant until negotiated
-  // ministry terms fill them.
+  // coalition deal) staffs its cabinet from its OWN roster. The eligible pool excludes the
+  // leader (who is the Head of Government) and field operatives — Mayors / Grassroots
+  // Organizers, who are out on local work and take no cabinet seat. The eligible take the
+  // named ministries in roster order; any beyond the last portfolio are Non-Descript
+  // Ministers. Coalition/majority cabinets stay Vacant until negotiated ministry terms fill them.
+  // (Mayor/Grassroots roles aren't live in-game yet, but the exclusion is in place for when they are.)
   var FIELD_ROLES = ['Mayor', 'Grassroots Organizer'];
   function polFullName(p){ return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
   function cabRow(k, v, cls){ return '<div class="cabrow"><span class="cabk">' + esc(k) + '</span><span class="cabv' + (cls ? ' ' + cls : '') + '">' + v + '</span></div>'; }
@@ -280,15 +281,12 @@
     if (govt.type !== 'minority') {
       return MINISTRIES.map(function(m){ return cabRow('Minister of ' + m, 'Vacant', 'vac'); }).join('');
     }
-    var nonLeader = (pols || []).filter(function(p){ return p.status !== 'Party Leader'; });
-    var eligible  = nonLeader.filter(function(p){ return FIELD_ROLES.indexOf(p.status) < 0; });
-    // The rest = field operatives + any prominent politician past the last named ministry.
-    var rest = nonLeader.filter(function(p){ return FIELD_ROLES.indexOf(p.status) >= 0; }).concat(eligible.slice(MINISTRIES.length));
+    var eligible = (pols || []).filter(function(p){ return p.status !== 'Party Leader' && FIELD_ROLES.indexOf(p.status) < 0; });
     var rows = MINISTRIES.map(function(m, i){
       return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])))
                          : cabRow('Minister of ' + m, 'Vacant', 'vac');
     }).join('');
-    return rows + rest.map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p))); }).join('');
+    return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p))); }).join('');
   }
 
   function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols){
