@@ -147,6 +147,10 @@
   .feed__date{font-family:'Space Mono',monospace;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);font-weight:700}
   .feed__flag{width:21px;height:14px;object-fit:cover;border:1px solid var(--line);border-radius:2px;vertical-align:-1px;margin:0 5px 0 1px}
   .feed__evt b{color:var(--ink);font-weight:700}
+  .feed__eff{display:inline-block;margin-left:7px;border-radius:7px;padding:2px 8px;font-size:12px;font-style:italic;font-weight:600;border:1px solid;vertical-align:1px}
+  .feed__eff.pos{color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 13%,transparent);border-color:color-mix(in srgb,var(--green,#16915a) 32%,transparent)}
+  .feed__eff.neg{color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 13%,transparent);border-color:color-mix(in srgb,var(--red,#C42B2B) 32%,transparent)}
+  .feed__eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,transparent);border-color:color-mix(in srgb,var(--amber,#E0820E) 32%,transparent)}
 
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill. Action cards already go 2-up at ≤700. */
@@ -263,7 +267,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { nationTaxBurden } from '/policies.js';
@@ -317,7 +321,7 @@
     var box = document.getElementById('events');
     try {
       const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
-      const { data: evs } = await supabase.from('events').select('body, game_date, created_at').eq('nation_id', nationId);
+      const { data: evs } = await supabase.from('events').select('body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
       // Party Leader names for the formation announcements (one per party).
       var leaderBy = {};
       var pids = (parties || []).map(function (p) { return p.id; });
@@ -332,8 +336,13 @@
         items.push({ created: p.created_at, when: gameDate,
           body: 'The <b>' + esc(p.name) + '</b> has announced its formation' + (leader ? ', led by <b>' + esc(leader) + '</b>' : '') + '.' });
       });
+      var currency = (nation && nation.economy && nation.economy.currency) || '$';
       (evs || []).forEach(function (e) {
-        items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) });
+        // Admin-fired events carry a structured effect → the coloured pill; organic
+        // events (rallies etc.) have none and narrate their outcome in the body.
+        var eff = (e.effect_target != null && e.effect_value != null)
+          ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
+        items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) + eff });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
       if (!items.length) { box.innerHTML = '<p class="empty">No events yet.</p>'; return; }

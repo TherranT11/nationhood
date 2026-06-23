@@ -12,11 +12,18 @@ create table if not exists public.events (
   id         uuid primary key default gen_random_uuid(),
   nation_id  text not null references public.nations (id),
   party_id   uuid references public.parties (id) on delete cascade,
-  kind       text not null,                 -- 'rally', 'fundraise', ...
+  kind       text not null,                 -- 'rally', 'fundraise', 'admin', ...
   body       text not null,                 -- the fully-rendered, plain-text message
   game_date  text,                          -- in-game date the event occurred
   created_at timestamptz not null default now()
 );
+
+-- Admin-fired events (kind = 'admin', written only by admin_fire_event below)
+-- carry a structured effect so the feeds can render the coloured pill. Null on
+-- every organic event (rallies etc.) — those narrate their outcome in the body.
+alter table public.events add column if not exists effect_target text;     -- e.g. 'Order', 'Government Confidence'
+alter table public.events add column if not exists effect_value  numeric;  -- the signed delta that was applied
+alter table public.events add column if not exists tone          text;     -- 'pos' | 'neg' | 'warn' (pill colour)
 
 alter table public.events enable row level security;
 drop policy if exists "events_select_all" on public.events;
@@ -500,3 +507,118 @@ begin
 end $$;
 
 grant execute on function public.party_recruit_hire(text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- admin_fire_event(): the /adminsetup Events tab. Admin-only (is_admin gate, same
+-- as the other admin writes). APPLIES the chosen effect to the target nation —
+-- clamped to that target's band — then logs the descriptive event with its
+-- structured effect so both feeds can render the coloured pill. Writing through a
+-- security-definer function keeps the events table's no-client-write rule intact.
+--
+-- Target → where it lives + its band (one source; mirrors the adminsetup dropdown
+-- and the nations.stats/economy/production layout in schema/10):
+--   stats (rank 1–20, integer): Prosperity, Welfare, Growth, Order, Image
+--   economy: Unemployment %, Inflation % (≥0) · Budget (any) · Debt (≥0) · Regime (rank 1–20)
+--   production (≥0): Energy, Food, Minerals, Goods, Services, Diplomacy
+--   Government Confidence → the nation's active government (0–100); errors if none
+--   Party Popularity      → the chosen party in this nation (0–100); p_party required
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_fire_event(
+  p_nation text,
+  p_body   text,
+  p_target text,
+  p_value  numeric,
+  p_tone   text,
+  p_party  uuid default null
+)
+returns public.events
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_n    public.nations%rowtype;
+  v_col  text;            -- 'stats' | 'economy' | 'production' | '__gov' | '__party'
+  v_key  text;
+  v_min  numeric;         -- null = unbounded
+  v_max  numeric;
+  v_int  boolean := false;
+  v_cur  numeric;
+  v_new  numeric;
+  v_gov  public.governments%rowtype;
+  v_pop  numeric;
+  v_pid  uuid := null;
+  v_ev   public.events%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Admin only.'; end if;
+  if p_body is null or btrim(p_body) = '' then raise exception 'An event needs a description.'; end if;
+  if p_tone not in ('pos', 'neg', 'warn') then raise exception 'Bad tone.'; end if;
+
+  select * into v_n from public.nations where id = p_nation;
+  if not found then raise exception 'No such nation.'; end if;
+
+  case p_target
+    when 'Prosperity'     then v_col := 'stats'; v_key := 'prosperity'; v_min := 1; v_max := 20; v_int := true;
+    when 'Welfare'        then v_col := 'stats'; v_key := 'welfare';    v_min := 1; v_max := 20; v_int := true;
+    when 'Growth'         then v_col := 'stats'; v_key := 'growth';     v_min := 1; v_max := 20; v_int := true;
+    when 'Order'          then v_col := 'stats'; v_key := 'order';      v_min := 1; v_max := 20; v_int := true;
+    when 'Image'          then v_col := 'stats'; v_key := 'image';      v_min := 1; v_max := 20; v_int := true;
+    when 'Unemployment %' then v_col := 'economy'; v_key := 'unemployment'; v_min := 0;
+    when 'Inflation %'    then v_col := 'economy'; v_key := 'inflation';    v_min := 0;
+    when 'Budget'         then v_col := 'economy'; v_key := 'budget';
+    when 'Debt'           then v_col := 'economy'; v_key := 'debt';         v_min := 0;
+    when 'Regime'         then v_col := 'economy'; v_key := 'regime';       v_min := 1; v_max := 20; v_int := true;
+    when 'Energy'    then v_col := 'production'; v_key := 'energy';    v_min := 0;
+    when 'Food'      then v_col := 'production'; v_key := 'food';      v_min := 0;
+    when 'Minerals'  then v_col := 'production'; v_key := 'minerals';  v_min := 0;
+    when 'Goods'     then v_col := 'production'; v_key := 'goods';     v_min := 0;
+    when 'Services'  then v_col := 'production'; v_key := 'services';  v_min := 0;
+    when 'Diplomacy' then v_col := 'production'; v_key := 'diplomacy'; v_min := 0;
+    when 'Government Confidence' then v_col := '__gov';
+    when 'Party Popularity'      then v_col := '__party';
+    else raise exception 'Unknown effect target: %', p_target;
+  end case;
+
+  if v_col in ('stats', 'economy', 'production') then
+    v_cur := public._to_num((case v_col when 'stats' then v_n.stats when 'economy' then v_n.economy else v_n.production end) ->> v_key);
+    if p_target = 'Regime' and v_cur is null then
+      raise exception 'Regime is not a numeric rank for this nation — set it on the Nations tab first.';
+    end if;
+    v_cur := coalesce(v_cur, 0);
+    v_new := v_cur + p_value;
+    if v_min is not null then v_new := greatest(v_new, v_min); end if;
+    if v_max is not null then v_new := least(v_new, v_max); end if;
+    if v_int then v_new := round(v_new); end if;
+    update public.nations set
+      stats      = case when v_col = 'stats'      then jsonb_set(stats,      array[v_key], to_jsonb(v_new)) else stats end,
+      economy    = case when v_col = 'economy'    then jsonb_set(economy,    array[v_key], to_jsonb(v_new)) else economy end,
+      production = case when v_col = 'production' then jsonb_set(production, array[v_key], to_jsonb(v_new)) else production end
+    where id = p_nation;
+
+  elsif v_col = '__gov' then
+    select * into v_gov from public.governments where nation_id = p_nation and status = 'active';
+    if not found then raise exception 'No active government in % to adjust.', v_n.name; end if;
+    update public.governments
+       set confidence = greatest(0, least(100, coalesce(confidence, 0) + p_value))
+     where id = v_gov.id;
+
+  elsif v_col = '__party' then
+    if p_party is null then raise exception 'Pick a party for a Party Popularity event.'; end if;
+    select popularity into v_pop from public.parties where id = p_party and nation_id = p_nation for update;
+    if not found then raise exception 'That party is not in this nation.'; end if;
+    update public.parties
+       set popularity = greatest(0, least(100, coalesce(popularity, 0) + p_value))
+     where id = p_party;
+    v_pid := p_party;
+  end if;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date, effect_target, effect_value, tone)
+  values (p_nation, v_pid, 'admin', btrim(p_body), public.current_game_date(), p_target, p_value, p_tone)
+  returning * into v_ev;
+
+  return v_ev;
+end $$;
+
+grant execute on function public.admin_fire_event(text, text, text, numeric, text, uuid) to authenticated;
+
+notify pgrst, 'reload schema';

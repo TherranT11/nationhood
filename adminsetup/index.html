@@ -311,6 +311,54 @@
   .cbuild .save{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--ink);border:none;border-radius:10px;padding:13px 20px;cursor:pointer}
   .cbuild .save:hover{filter:brightness(1.15)}
 
+  /* Events tab — compose + fire a one-off event at a nation. Scoped under .evtab so
+     the generic names (.card/.f/.effbox/.pill/.feed/.ev…) don't collide with other tabs. */
+  .evtab .evcols{display:grid;grid-template-columns:400px 1fr;gap:22px;align-items:start}
+  @media(max-width:920px){.evtab .evcols{grid-template-columns:1fr}}
+  .evtab .card{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:20px}
+  .evtab .composer{position:sticky;top:24px}
+  .evtab .f{margin-bottom:15px}
+  .evtab label{display:block;font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--muted);margin:0 0 6px;text-transform:none}
+  .evtab textarea{min-height:80px}
+  .evtab .effbox{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center}
+  .evtab .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:var(--surface)}
+  .evtab .stepper button{width:34px;height:42px;border:none;background:var(--surface);cursor:pointer;font-size:18px;color:var(--muted);line-height:1}
+  .evtab .stepper button:hover{background:var(--chip,#F4F3EF);color:var(--ink)}
+  .evtab .stepper input{width:58px;height:42px;border:none;border-left:1px solid var(--line);border-right:1px solid var(--line);border-radius:0;text-align:center;font-family:'Space Mono',monospace;font-size:14px;font-weight:700;color:var(--ink);background:var(--surface)}
+  .evtab .stepper input:focus{outline:none;background:var(--field,#FCFBF9)}
+  .evtab .tonewrap{display:flex;align-items:center;gap:8px}
+  .evtab .toneseg{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;flex:1}
+  .evtab .toneseg button{border:1.5px solid var(--line2);background:var(--surface);border-radius:10px;padding:10px 8px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:7px}
+  .evtab .toneseg button .dot{width:9px;height:9px;border-radius:50%}
+  .evtab .toneseg button.pos .dot{background:var(--green,#16915a)}
+  .evtab .toneseg button.neg .dot{background:var(--red,#C42B2B)}
+  .evtab .toneseg button.warn .dot{background:var(--amber,#E0820E)}
+  .evtab .toneseg button.on.pos{border-color:var(--green,#16915a);background:var(--green-soft,#E5F4EC);color:var(--green,#16915a)}
+  .evtab .toneseg button.on.neg{border-color:var(--red,#C42B2B);background:var(--red-soft,#FBEAE9);color:var(--red,#C42B2B)}
+  .evtab .toneseg button.on.warn{border-color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,var(--surface));color:var(--amber,#E0820E)}
+  .evtab .autohint{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .evtab .pvwrap{margin:14px 0 4px;padding:12px 13px;border:1px dashed var(--line2);border-radius:10px;background:var(--field,#FCFBF9);display:flex;align-items:center;gap:10px}
+  .evtab .pvwrap .pl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .evtab .pill,.evtab .ev .eff{display:inline-block;border-radius:9px;padding:7px 12px;font-size:13px;font-style:italic;font-weight:600;border:1px solid}
+  .evtab .pill.pos,.evtab .ev .eff.pos{color:var(--green,#16915a);background:var(--green-soft,#E5F4EC);border-color:#cbe9da}
+  .evtab .pill.neg,.evtab .ev .eff.neg{color:var(--red,#C42B2B);background:var(--red-soft,#FBEAE9);border-color:#f3d3d1}
+  .evtab .pill.warn,.evtab .ev .eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,var(--surface));border-color:#f3e0bf}
+  .evtab .resolve{width:100%;margin-top:8px;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--ink);border:none;border-radius:11px;padding:14px;cursor:pointer}
+  .evtab .resolve:hover{filter:brightness(1.15)}
+  .evtab .resolve:disabled{background:var(--line2,#D9D6D0);cursor:not-allowed;filter:none}
+  .evtab .feedhd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .evtab .feedhd .ttl{font-weight:800;font-size:17px;letter-spacing:-.01em}
+  .evtab .feedhd .ttl b{color:var(--indigo,#5546E8)}
+  .evtab .feedhd .cnt{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .evtab .feed{display:flex;flex-direction:column;gap:12px}
+  .evtab .ev{border:1px solid var(--line);border-radius:13px;background:var(--surface);padding:15px 17px}
+  .evtab .ev.fresh{border-color:var(--indigo,#5546E8);box-shadow:0 0 0 1px var(--indigo-soft,#ECE9FD)}
+  .evtab .ev .meta{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .evtab .ev .meta .new{color:var(--indigo,#5546E8);background:var(--indigo-soft,#ECE9FD);border-radius:20px;padding:2px 8px}
+  .evtab .ev .desc{font-size:14px;line-height:1.55;color:var(--ink)}
+  .evtab .ev .eff{margin-top:11px}
+  .evtab .feed .empty{border:1px dashed var(--line2);border-radius:13px;padding:34px 18px;text-align:center;color:var(--soft);font-size:13px;font-style:italic}
+
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
 </style>
@@ -535,14 +583,61 @@
           </div>
         </div>
       </div>
-      <div class="tabpane" data-tab="events" hidden><div class="panel"><h2>Events</h2><p class="empty">Nothing here yet.</p></div></div>
+      <div class="tabpane" data-tab="events" hidden>
+        <div class="evtab">
+          <div class="panel">
+            <h2>Events</h2>
+            <p class="sub" style="margin:0 0 16px">Fire a one-off event at a nation. It lands in that nation’s event feed, and the chosen effect is applied to the nation immediately (clamped to that stat’s range).</p>
+            <div class="evcols">
+              <div class="card composer">
+                <div class="f">
+                  <label>Nation</label>
+                  <select id="evNation"></select>
+                </div>
+                <div class="f">
+                  <label>Event</label>
+                  <textarea id="evDesc" placeholder="Describe what happens… e.g. Dock workers at Seyonne walk out over the proposed wage freeze."></textarea>
+                </div>
+                <div class="f">
+                  <label>Effect</label>
+                  <div class="effbox">
+                    <select id="evTarget"></select>
+                    <div class="stepper"><button id="evDec" type="button">−</button><input id="evVal" type="number" step="1" value="-2"><button id="evInc" type="button">+</button></div>
+                  </div>
+                </div>
+                <div class="f" id="evPartyWrap" hidden>
+                  <label>Party <span style="font-weight:400;color:var(--soft);text-transform:none;letter-spacing:0">— whose popularity moves</span></label>
+                  <select id="evParty"></select>
+                </div>
+                <div class="f">
+                  <div class="tonewrap">
+                    <div class="toneseg" id="evTone">
+                      <button class="pos" data-t="pos" type="button"><span class="dot"></span>Positive</button>
+                      <button class="neg" data-t="neg" type="button"><span class="dot"></span>Negative</button>
+                      <button class="warn" data-t="warn" type="button"><span class="dot"></span>Warning</button>
+                    </div>
+                    <span class="autohint" id="evAutohint">auto</span>
+                  </div>
+                </div>
+                <div class="pvwrap"><span class="pl">Preview</span><span class="pill" id="evPvPill"></span></div>
+                <button class="resolve" id="evResolve" type="button">Resolve</button>
+                <div class="note" id="evNote" role="status" aria-live="polite"></div>
+              </div>
+              <div>
+                <div class="feedhd"><div class="ttl"><b id="evFeedNation">—</b> · Event feed</div><div class="cnt" id="evFeedCount"></div></div>
+                <div class="feed" id="evFeed"><p class="empty">Loading…</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
   </div>
 
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
-    import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS } from '/util.js';
+    import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
@@ -957,8 +1052,134 @@
         if (tab === 'convictions') loadConvictions();
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();
+        if (tab === 'events') loadEvents();
       });
     });
+
+    // ---- Events (compose + fire a one-off event; applied + logged server-side) ----
+    // EV holds the composer's effect: target, signed value, tone, and whether the
+    // admin overrode the auto-derived tone. The dropdown/target catalogue MIRRORS
+    // admin_fire_event in schema/40 — keep the two lists in sync.
+    var EV_TGT = { National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Regime'],
+                   Government: ['Government Confidence', 'Party Popularity'],
+                   Resource: ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'] };
+    var EV_GOOD_UP = ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Budget', 'Government Confidence', 'Party Popularity', 'Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
+    var EV_BAD_UP = ['Unemployment %', 'Inflation %', 'Debt'];  // up is bad for the nation; Regime is neutral
+    var EV = { target: 'Order', value: -2, tone: 'neg', manual: false };
+    var evFresh = null;  // id of the just-fired event, for the "New" highlight
+
+    function evNation() { return nationsCache.filter(function (n) { return n.id === document.getElementById('evNation').value; })[0] || null; }
+    function evCurrency() { var n = evNation(); return (n && n.economy && n.economy.currency) || '$'; }
+    function evNationName() { var n = evNation(); return n ? n.name : '—'; }
+
+    // Which way is "good" → the auto tone. A zero move is neutral (warn).
+    function evAutoTone(t, v) {
+      if (v === 0) return 'warn';
+      if (EV_GOOD_UP.indexOf(t) > -1) return v > 0 ? 'pos' : 'neg';
+      if (EV_BAD_UP.indexOf(t) > -1) return v < 0 ? 'pos' : 'neg';
+      return 'warn';
+    }
+    function evFillNations() {
+      var sel = document.getElementById('evNation'), prev = sel.value;
+      sel.innerHTML = nationsCache.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name) + '</option>'; }).join('');
+      if (prev) sel.value = prev;
+    }
+    function evFillTargets() {
+      document.getElementById('evTarget').innerHTML = Object.keys(EV_TGT).map(function (g) {
+        return '<optgroup label="' + g + '">' + EV_TGT[g].map(function (t) {
+          return '<option' + (t === EV.target ? ' selected' : '') + '>' + t + '</option>';
+        }).join('') + '</optgroup>';
+      }).join('');
+    }
+    // The party picker only matters for a Party Popularity event; load the selected
+    // nation's parties on demand and keep it hidden otherwise.
+    async function evLoadParties() {
+      var wrap = document.getElementById('evPartyWrap'), sel = document.getElementById('evParty');
+      if (EV.target !== 'Party Popularity') { wrap.hidden = true; return; }
+      wrap.hidden = false;
+      sel.innerHTML = '<option value="">Loading…</option>';
+      try {
+        const { data, error } = await supabase.from('parties').select('id, name').eq('nation_id', document.getElementById('evNation').value).order('name');
+        if (error) throw error;
+        var list = data || [];
+        sel.innerHTML = list.length
+          ? list.map(function (p) { return '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>'; }).join('')
+          : '<option value="">— no parties in this nation —</option>';
+      } catch (e) { sel.innerHTML = '<option value="">— couldn’t load parties —</option>'; }
+      evValidate();
+    }
+    function evSyncTone() {
+      if (!EV.manual) EV.tone = evAutoTone(EV.target, EV.value);
+      document.querySelectorAll('#evTone button').forEach(function (b) { b.classList.toggle('on', b.dataset.t === EV.tone); });
+      document.getElementById('evAutohint').style.visibility = EV.manual ? 'hidden' : 'visible';
+      var pill = document.getElementById('evPvPill');
+      pill.className = 'pill ' + EV.tone;
+      pill.innerHTML = '<i>' + esc(eventEffectLabel(EV.target, EV.value, evCurrency())) + '</i>';
+    }
+    function evValidate() {
+      var ok = !!document.getElementById('evDesc').value.trim() && !!document.getElementById('evNation').value;
+      if (EV.target === 'Party Popularity') ok = ok && !!document.getElementById('evParty').value;
+      document.getElementById('evResolve').disabled = !ok;
+    }
+    async function renderEvFeed() {
+      var box = document.getElementById('evFeed'), nid = document.getElementById('evNation').value;
+      document.getElementById('evFeedNation').textContent = evNationName();
+      if (!nid) { box.innerHTML = '<p class="empty">Pick a nation.</p>'; document.getElementById('evFeedCount').textContent = ''; return; }
+      try {
+        const { data, error } = await supabase.from('events')
+          .select('id, body, game_date, created_at, effect_target, effect_value, tone')
+          .eq('nation_id', nid).order('created_at', { ascending: false });
+        if (error) throw error;
+        var list = data || [], cur = evCurrency();
+        document.getElementById('evFeedCount').textContent = list.length + (list.length === 1 ? ' event' : ' events');
+        if (!list.length) { box.innerHTML = '<div class="empty">No events yet for ' + esc(evNationName()) + '. Compose one on the left and hit Resolve.</div>'; return; }
+        box.innerHTML = list.map(function (e) {
+          var fresh = e.id === evFresh;
+          var eff = (e.effect_target != null && e.effect_value != null)
+            ? '<div class="eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, cur)) + '</i></div>' : '';
+          return '<div class="ev' + (fresh ? ' fresh' : '') + '">' +
+            '<div class="meta">' + (fresh ? '<span class="new">New</span>' : '') + '<span>' + esc(e.game_date || '—') + '</span></div>' +
+            '<div class="desc">' + esc(e.body) + '</div>' + eff + '</div>';
+        }).join('');
+      } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events: ' + esc(e.message || e) + '</p>'; }
+    }
+    async function loadEvents() {
+      evFillNations(); evFillTargets();
+      await evLoadParties();
+      evSyncTone(); evValidate();
+      await renderEvFeed();
+    }
+    async function evResolve() {
+      var btn = document.getElementById('evResolve'), note = document.getElementById('evNote');
+      if (btn.disabled) return;                 // single-fire: this writes AND applies an effect
+      var nid = document.getElementById('evNation').value, body = document.getElementById('evDesc').value.trim();
+      if (!nid || !body) return;
+      var party = EV.target === 'Party Popularity' ? (document.getElementById('evParty').value || null) : null;
+      btn.disabled = true; note.textContent = 'Resolving…'; note.className = 'note';
+      try {
+        const { data, error } = await supabase.rpc('admin_fire_event', {
+          p_nation: nid, p_body: body, p_target: EV.target, p_value: EV.value, p_tone: EV.tone, p_party: party
+        });
+        if (error) throw error;
+        evFresh = data ? data.id : null;
+        document.getElementById('evDesc').value = '';
+        note.textContent = 'Event resolved into ' + evNationName() + '.'; note.className = 'note ok';
+        await renderEvFeed();
+        loadNations();                          // the effect changed a stat — refresh the cached rows + Nations list
+      } catch (e) { note.textContent = e.message || 'Couldn’t resolve that event.'; note.className = 'note error'; }
+      finally { evValidate(); }
+    }
+
+    // Wire the composer once (the elements exist from page load, hidden until the tab opens).
+    document.getElementById('evNation').addEventListener('change', function () { evFresh = null; evLoadParties(); evSyncTone(); renderEvFeed(); });
+    document.getElementById('evDesc').addEventListener('input', evValidate);
+    document.getElementById('evTarget').addEventListener('change', function (e) { EV.target = e.target.value; EV.manual = false; evLoadParties(); evSyncTone(); evValidate(); });
+    document.getElementById('evVal').addEventListener('input', function (e) { EV.value = parseInt(e.target.value, 10) || 0; EV.manual = false; evSyncTone(); });
+    document.getElementById('evParty').addEventListener('change', evValidate);
+    document.getElementById('evDec').addEventListener('click', function () { EV.value -= 1; document.getElementById('evVal').value = EV.value; EV.manual = false; evSyncTone(); });
+    document.getElementById('evInc').addEventListener('click', function () { EV.value += 1; document.getElementById('evVal').value = EV.value; EV.manual = false; evSyncTone(); });
+    document.querySelectorAll('#evTone button').forEach(function (b) { b.addEventListener('click', function () { EV.tone = b.dataset.t; EV.manual = true; evSyncTone(); }); });
+    document.getElementById('evResolve').addEventListener('click', evResolve);
 
     // ---- Party Inactivity (admin review + delete) ----
     async function loadInactivity(){
