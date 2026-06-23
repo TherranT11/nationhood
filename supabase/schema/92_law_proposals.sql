@@ -38,7 +38,8 @@ $$;
 
 -- The signed amount a directional rule applies: the authored magnitude, ×|Δ| when scaled,
 -- signed + when the axis moved the favoured way (dir 'up'/'down') and − on the opposite.
--- ONE place the directional formula lives — used by both the conviction and policy rules.
+-- ONE place the directional formula lives — used by the conviction onLaw directional rules
+-- (policies moved to per-option transitions; see the transition block in _apply_law).
 create or replace function public._directional_amount(p_v numeric, p_scaled boolean, p_delta numeric, p_dir text)
 returns numeric language sql immutable set search_path = public as $$
   select coalesce(p_v, 0)
