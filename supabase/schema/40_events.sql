@@ -552,6 +552,7 @@ declare
 begin
   if not public.is_admin() then raise exception 'Admin only.'; end if;
   if p_body is null or btrim(p_body) = '' then raise exception 'An event needs a description.'; end if;
+  if p_value is null then raise exception 'An event needs an effect value.'; end if;  -- guard: a null would write JSON null into the stat
   if p_tone not in ('pos', 'neg', 'warn') then raise exception 'Bad tone.'; end if;
 
   select * into v_n from public.nations where id = p_nation;
