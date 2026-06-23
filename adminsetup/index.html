@@ -155,8 +155,6 @@
   .poltab .archrow{display:flex;flex-wrap:wrap;gap:6px}
   .poltab .achip{display:flex;align-items:center;gap:6px;padding:6px 9px;border:1.5px solid var(--line);border-radius:18px;cursor:pointer;font-size:11px;font-weight:600;background:var(--surface);user-select:none}
   .poltab .achip .ad{width:7px;height:7px;border-radius:50%}
-  .poltab .archrow.sup .achip.on{border-color:var(--green,#16915a);background:color-mix(in srgb,var(--green,#16915a) 12%,var(--surface));color:var(--green,#16915a)}
-  .poltab .archrow.opp .achip.on{border-color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 12%,var(--surface));color:var(--red,#C42B2B)}
   .poltab .archrow.tag .achip.on{border-color:var(--indigo,#5546E8);background:color-mix(in srgb,var(--indigo,#5546E8) 12%,var(--surface));color:var(--indigo,#5546E8)}
   .poltab .tagadd{font-family:inherit;font-size:11px;font-weight:700;padding:6px 11px;border:1.5px dashed var(--line2,#D9D6D0);border-radius:18px;background:var(--surface);color:var(--soft);cursor:pointer}
   .poltab .tagadd:hover{border-color:var(--indigo,#5546E8);color:var(--indigo,#5546E8)}
@@ -187,10 +185,6 @@
   .poltab .pvopt{border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-top:11px}
   .poltab .pvopt .on{font-weight:700;font-size:13px;display:flex;justify-content:space-between;gap:8px;align-items:center;background:none;color:var(--ink)}
   .poltab .pvopt .startt{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--amber,#E0820E)}
-  .poltab .pvcamps{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-  .poltab .pvc{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600}
-  .poltab .pvc .ad{width:7px;height:7px;border-radius:50%}
-  .poltab .pvc.sup{color:var(--green,#16915a)} .poltab .pvc.opp{color:var(--red,#C42B2B)}
   .poltab .pveff{margin-top:9px;display:flex;flex-direction:column;gap:4px}
   .poltab .pveff .e{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)}
   .poltab .pveff .e b{color:var(--ink)} .poltab .pveff .e.pos b{color:var(--green,#16915a)} .poltab .pveff .e.neg b{color:var(--red,#C42B2B)}
@@ -464,7 +458,7 @@
               <h2 style="margin:0">Policies</h2>
               <button class="btn btn-solid" id="polNew" type="button">+ New policy</button>
             </div>
-            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. A <b>Binary</b> policy is passed or repealed; a <b>Spectrum</b> policy is set to one of several options. Each option carries who supports/opposes it and its structured effects.</p>
+            <p class="sub" style="margin:8px 0 14px">A policy populates every nation. A <b>Binary</b> policy is passed or repealed; a <b>Spectrum</b> policy is set to one of several options. Each option carries its identity tags and structured effects.</p>
             <div id="polList"><p class="empty">Loading…</p></div>
           </div>
           <div class="panel" id="polEditorPanel" hidden>
@@ -550,7 +544,7 @@
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS } from '/util.js';
     import { regimeLabel, statName } from '/ladders.js';
-    import { ARCHETYPES, archetypeColor } from '/archetypes.js';
+    import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
@@ -1034,10 +1028,10 @@
     var polCache = [], P = null, polEditingId = null;
     function blankPolicy(){ return {
       name:'New policy', desc:'', type:'spectrum', defaultIdx:0, binDefault:1,
-      binary:[ {name:'If Passed',desc:'The policy is in force.',support:[],oppose:[],tags:[],effects:[]},
-               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',support:[],oppose:[],tags:[],effects:[]} ],
-      spectrum:[ {name:'Option A',desc:'',support:[],oppose:[],tags:[],effects:[polEff('Budget',0,'tick',0)]},
-                 {name:'Option B',desc:'',support:[],oppose:[],tags:[],effects:[]} ]
+      binary:[ {name:'If Passed',desc:'The policy is in force.',tags:[],effects:[]},
+               {name:'If Repealed',desc:'The policy is struck down — undo its standing effect.',tags:[],effects:[]} ],
+      spectrum:[ {name:'Option A',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)]},
+                 {name:'Option B',desc:'',tags:[],effects:[]} ]
     }; }
     function polOpts(){ return policyOptions(P); }
     var polSaving = false;   // double-fire lock for the create/save path
@@ -1132,7 +1126,7 @@
       box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
       box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
       box.querySelectorAll('#pol-typeSeg span').forEach(function(s){ s.onclick=function(){ P.type=s.dataset.v; renderPolEditor(); renderPolPrev(); }; });
-      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',support:[],oppose:[],tags:[],effects:[polEff('Budget',0,'tick',0)]}); renderPolEditor(); renderPolPrev(); };
+      var ao=box.querySelector('#pol-addOpt'); if(ao)ao.onclick=function(){ P.spectrum.push({name:'New option',desc:'',tags:[],effects:[polEff('Budget',0,'tick',0)]}); renderPolEditor(); renderPolPrev(); };
       var bdf=box.querySelector('#pol-binDef'); if(bdf)bdf.onchange=function(e){ P.binDefault=+e.target.value; renderPolEditor(); renderPolPrev(); };
     }
     function buildPolOpt(o,i){
@@ -1149,8 +1143,6 @@
       }
       head+='</div>';
       o.tags = o.tags || [];   // older policies predate identity tags
-      var supChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.support.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
-      var oppChips=ARCHETYPES.map(function(a){ return '<span class="achip'+(o.oppose.indexOf(a.name)>=0?' on':'')+'" data-a="'+esc(a.name)+'"><span class="ad" style="background:'+a.color+'"></span>'+esc(a.name)+'</span>'; }).join('');
       var tagChips=IDENTITY_TAGS.map(function(t){ return '<span class="achip'+(o.tags.indexOf(t)>=0?' on':'')+'" data-t="'+esc(t)+'">'+esc(t)+'</span>'; }).join('');
       var effHtml=o.effects.map(function(e){
         var scaleRow = isMoneyTarget(e.t) ? '<div class="scalerow"><span class="lbl">Scaled by</span><select class="es"><option value="flat"'+(e.scale==='flat'?' selected':'')+'>Flat amount</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>Per million pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>× Pop × Prosperity</option></select><span class="worked">'+polWorked(e)+'</span></div>' : '';
@@ -1162,9 +1154,7 @@
       }).join('');
       card.innerHTML=head+
         '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
-        '<div class="sublab">Archetype support</div><div class="archrow sup">'+supChips+'</div>'+
-        '<div class="sublab" style="margin-top:12px">Archetype opposition</div><div class="archrow opp">'+oppChips+'</div>'+
-        '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'<button type="button" class="tagadd">+ tag</button></div>'+
+        '<div class="sublab">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'<button type="button" class="tagadd">+ tag</button></div>'+
         '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
         '<button class="add sm addeff" type="button">+ effect</button>';
 
@@ -1172,8 +1162,6 @@
       card.querySelector('.odesc').oninput=function(e){ o.desc=e.target.value; };
       var star=card.querySelector('.star'); if(star && P.type==='spectrum')star.onclick=function(){ P.defaultIdx=i; renderPolEditor(); renderPolPrev(); };
       var rm=card.querySelector('.oh .xb'); if(rm)rm.onclick=function(){ P.spectrum.splice(i,1); if(P.defaultIdx>i)P.defaultIdx--; if(P.defaultIdx>=P.spectrum.length)P.defaultIdx=P.spectrum.length-1; if(P.defaultIdx<0)P.defaultIdx=0; renderPolEditor(); renderPolPrev(); };
-      card.querySelectorAll('.archrow.sup .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.support.indexOf(a); if(k>=0)o.support.splice(k,1); else{ o.support.push(a); var o2=o.oppose.indexOf(a); if(o2>=0)o.oppose.splice(o2,1); } renderPolEditor(); renderPolPrev(); }; });
-      card.querySelectorAll('.archrow.opp .achip').forEach(function(ch){ ch.onclick=function(){ var a=ch.dataset.a, k=o.oppose.indexOf(a); if(k>=0)o.oppose.splice(k,1); else{ o.oppose.push(a); var s2=o.support.indexOf(a); if(s2>=0)o.support.splice(s2,1); } renderPolEditor(); renderPolPrev(); }; });
       card.querySelectorAll('.archrow.tag .achip').forEach(function(ch){ ch.onclick=function(){ var t=ch.dataset.t, k=o.tags.indexOf(t); if(k>=0)o.tags.splice(k,1); else o.tags.push(t); renderPolEditor(); renderPolPrev(); }; });
       card.querySelector('.archrow.tag .tagadd').onclick=function(){ addIdentityTag(function(name){ if(name&&o.tags.indexOf(name)<0)o.tags.push(name); renderPolEditor(); renderPolPrev(); }); };
       card.querySelectorAll('.effwrap').forEach(function(wrap,j){
@@ -1203,12 +1191,10 @@
       var html='<div class="pvname">'+esc(P.name||'Untitled policy')+'</div><span class="pvtype">'+typeLabel+'</span>';
       polOpts().forEach(function(o,i){
         var isStart=P.type==='spectrum'? i===P.defaultIdx : i===P.binDefault;
-        var camps=o.support.map(function(a){ return '<span class="pvc sup"><span class="ad" style="background:'+archetypeColor(a)+'"></span>'+esc(a)+'</span>'; })
-          .concat(o.oppose.map(function(a){ return '<span class="pvc opp"><span class="ad" style="background:'+archetypeColor(a)+'"></span>'+esc(a)+'</span>'; })).join('');
         var effs=o.effects.length?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':'<div class="pvnone">No effects</div>';
         var tags=(o.tags&&o.tags.length)?'<div class="pvtagrow">'+o.tags.map(function(t){ return '<span class="pvltag">'+esc(t)+'</span>'; }).join('')+'</div>':'';
         html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?(i+1)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+
-          (camps?'<div class="pvcamps">'+camps+'</div>':'<div class="pvnone">No archetype lean</div>')+tags+effs+'</div>';
+          tags+effs+'</div>';
       });
       box.innerHTML=html;
     }
