@@ -111,7 +111,7 @@
   .cabrow .cabk{color:var(--muted)}
   .cabrow--hog .cabk{color:var(--ink);font-weight:700}
   .cabrow .cabv{font-weight:700;text-align:right}
-  .cabrow .caba{font-weight:400;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px}
+  .cabrow .caba{font-weight:400;font-style:normal;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px}
   .cabrow .vac{font-weight:400;font-style:italic;color:var(--soft)}
   .enact{margin-left:10px;flex:none;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
   .enact:hover{filter:brightness(1.06)}
@@ -279,14 +279,18 @@
   var FIELD_ROLES = ['Mayor', 'Grassroots Organizer'];
   function polFullName(p){ return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
   function cabRow(k, v, cls){ return '<div class="cabrow"><span class="cabk">' + esc(k) + '</span><span class="cabv' + (cls ? ' ' + cls : '') + '">' + v + '</span></div>'; }
-  function cabinetMinisters(govt, pols){
+  // The party-abbreviation tag (e.g. " (NPP)") — the one source for the cabinet's party chips,
+  // used by the Head of Government row and the Non-Descript minister placeholders.
+  function partyTag(party){ return (party && party.abbreviation) ? ' <span class="caba">(' + esc(party.abbreviation) + ')</span>' : ''; }
+  function cabinetMinisters(govt, pols, formateur){
     if (govt.type !== 'minority') {
       return MINISTRIES.map(function(m){ return cabRow('Minister of ' + m, 'Vacant', 'vac'); }).join('');
     }
     var eligible = (pols || []).filter(function(p){ return p.status !== 'Party Leader' && FIELD_ROLES.indexOf(p.status) < 0; });
+    var tag = partyTag(formateur);   // a Non-Descript seat is an anonymous minister from the governing party
     var rows = MINISTRIES.map(function(m, i){
       return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])))
-                         : cabRow('Minister of ' + m, 'Non-Descript', 'vac');
+                         : cabRow('Minister of ' + m, 'Non-Descript' + tag, 'vac');
     }).join('');
     return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p))); }).join('');
   }
@@ -333,10 +337,10 @@
     // portfolios. A minority government staffs the portfolios from its roster (cabinetMinisters);
     // other types leave them Vacant until negotiated ministry terms fill them.
     var hogName = (pmLeader ? esc(polFullName(pmLeader)) : '') || esc(formateur.name);
-    var hogAbbr = formateur.abbreviation ? ' <span class="caba">(' + esc(formateur.abbreviation) + ')</span>' : '';
+    var hogAbbr = partyTag(formateur);
     var cabinetHtml = '<div class="cabrow cabrow--hog"><span class="cabk">' + esc(HOG_TITLE) + '</span>' +
         '<span class="cabv">' + hogName + hogAbbr + '</span></div>' +
-      cabinetMinisters(govt, formateurPols);
+      cabinetMinisters(govt, formateurPols, formateur);
 
     var agendaHtml;
     if (govt.type === 'coalition' && agenda.length){
