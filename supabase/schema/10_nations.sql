@@ -103,9 +103,10 @@ update public.nations
  where id = 'sessau' and (economy is null or economy = '{}'::jsonb);
 update public.nations set economy = economy || '{"currency":"$"}'::jsonb
  where id = 'sessau' and not (economy ? 'currency');
--- Tax Burden % is a tracked economic figure (0–100) that the coming tax policies
--- (corporate / income / property) will move. Give every nation a neutral starting
--- value so the figure is real from day one; idempotent (only un-set rows).
+-- Tax Burden % (economy.tax) is now the BASE/floor only — the displayed figure is DERIVED:
+-- base + each tax policy's in-force option contribution (see nationTaxBurden in policies.js,
+-- _option_axis_level in schema/92). Effects no longer mutate it. Seed a neutral base;
+-- idempotent (only un-set rows). Lower it toward 0 as policy contributions fill the figure in.
 update public.nations set economy = economy || '{"tax":30}'::jsonb
  where not (economy ? 'tax');
 -- Income: what the government collects each January (vs budget = the bank balance).

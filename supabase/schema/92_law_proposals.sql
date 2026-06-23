@@ -23,9 +23,17 @@
 -- flip the sign). ONE source: reads the same effects that drive the nation's economy.
 create or replace function public._option_axis_level(p_def jsonb, p_option int, p_axis text)
 returns numeric language sql immutable set search_path = public as $$
-  select coalesce(sum((e->>'v')::numeric), 0)
-  from jsonb_array_elements(coalesce(public._policy_options(p_def) -> p_option -> 'effects', '[]'::jsonb)) e
-  where e->>'t' = p_axis and coalesce(e->>'cad', 'tick') <> 'once';
+  select case
+    -- Tax Burden % is a LEVEL the option carries (its 'taxBurden' contribution), not a
+    -- deltable effect — so the axis level for it is that contribution directly.
+    when p_axis = 'Tax Burden %'
+      then coalesce((public._policy_options(p_def) -> p_option ->> 'taxBurden')::numeric, 0)
+    else coalesce((
+      select sum((e->>'v')::numeric)
+      from jsonb_array_elements(coalesce(public._policy_options(p_def) -> p_option -> 'effects', '[]'::jsonb)) e
+      where e->>'t' = p_axis and coalesce(e->>'cad', 'tick') <> 'once'
+    ), 0)
+  end;
 $$;
 
 -- A passed law sets the nation's chosen option for the policy AND applies that
@@ -34,9 +42,10 @@ $$;
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; r record;
+declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
+  select definition into v_def from public.policies where id = p_policy;
   -- The option in force BEFORE this law, and whether it was an actual prior enactment
   -- (a stored override) rather than the untouched default — only a law that was passed
   -- can later be "repealed". Read both before the flip.
@@ -116,6 +125,31 @@ begin
         jsonb_build_object('t', r.eff->>'t',
           'v', to_jsonb( coalesce((r.eff->>'v')::numeric, 0)
                          * case when (r.delta > 0) = (coalesce(r.eff->>'dir', 'up') = 'up') then 1 else -1 end )));
+    end loop;
+  end if;
+
+  -- Directional policy effects: the policy itself declares how the NATION reacts to the
+  -- direction it moves a figure (v_def.directional = [{axis,dir,t,v,scaled}]) — e.g. Government
+  -- Confidence or Growth rising on a tax cut, falling on a rise. A static per-option value
+  -- can't express this (the meaning is in the transition: High→Moderate is relief, None→Moderate
+  -- a hike). Fire each by the sign of the axis change: the favoured move applies +amount, the
+  -- opposite −amount; amount = v, or v×|Δ| when scaled. Reuses _option_axis_level +
+  -- _apply_policy_effect, so the nation stat/economy/government mapping stays in one place.
+  if v_def is not null and v_old is not null and v_old <> p_option then
+    for r in
+      select e.value as d,
+             public._option_axis_level(v_def, p_option, e.value->>'axis')
+               - public._option_axis_level(v_def, v_old, e.value->>'axis') as delta
+      from jsonb_array_elements(coalesce(v_def -> 'directional', '[]'::jsonb)) e
+      where nullif(e.value->>'axis', '') is not null
+    loop
+      if r.delta = 0 then continue; end if;
+      perform public._apply_policy_effect(p_nation, jsonb_build_object(
+        't', r.d->>'t',
+        'v', to_jsonb(
+          coalesce((r.d->>'v')::numeric, 0)
+          * case when coalesce((r.d->>'scaled')::boolean, false) then abs(r.delta) else 1 end
+          * case when (r.delta > 0) = (coalesce(r.d->>'dir', 'up') = 'up') then 1 else -1 end )));
     end loop;
   end if;
 end $$;

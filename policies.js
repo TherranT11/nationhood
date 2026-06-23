@@ -23,6 +23,22 @@ export function policyOptionIdx(def, overrides, id) {
 }
 // Budget/Debt/Income are money targets — their value scales by the nation's size/wealth.
 export function isMoneyTarget(t) { return t === 'Budget' || t === 'Debt' || t === 'Income'; }
+// One option's contribution to the nation's Tax Burden % (a LEVEL it carries, not a delta).
+export function optionTaxBurden(opt) { return Number(opt && opt.taxBurden) || 0; }
+// A nation's Tax Burden % — DERIVED, the ONE source: the base (economy.tax) plus each
+// policy's in-force option contribution, clamped 0..100. Because it's a sum of levels (not
+// accumulated deltas), switching options never drifts — None→Low→None lands back at None.
+// Pass the nation row (economy + policies) and the full policies list ({id, definition}).
+export function nationTaxBurden(nation, policies) {
+  var eco = (nation && nation.economy) || {};
+  var base = Number(eco.tax) || 0;
+  var overrides = (nation && nation.policies) || {};
+  var sum = (policies || []).reduce(function (acc, p) {
+    var def = p.definition || {};
+    return acc + optionTaxBurden(policyOptions(def)[policyOptionIdx(def, overrides, p.id)]);
+  }, 0);
+  return Math.max(0, Math.min(100, base + sum));
+}
 // Money scaling: flat = v; perm = v × pop(millions); pop = v × pop × prosperity/10.
 export function policyMoney(v, scale, pop, pros) {
   if (scale === 'flat') return v;
