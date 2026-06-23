@@ -126,7 +126,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
-  import { esc, fmtGdp, fmtPop } from '/util.js';
+  import { esc, fmtGdp, fmtPop, declaredValue } from '/util.js';
   import { regimeLabel } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -145,7 +145,7 @@
   // flag-fallback badge tint). Cycled by position.
   var ACCENTS = ['var(--red)', 'var(--blue)', 'var(--amber)', 'var(--green)', 'var(--indigo)'];
 
-  function render(nations, govByNation, leaderByParty){
+  function render(nations, govByNation, leaderByParty, titleSlot){
     if (!nations.length){ fail('No other nations have been founded yet.'); return; }
 
     var cards = nations.map(function(n, i){
@@ -162,6 +162,11 @@
 
       var leader = (g && g.formateur_party_id) ? leaderByParty[g.formateur_party_id] : null;
       var hog = leader ? (esc((leader.first_name || '') + ' ' + (leader.last_name || '')).trim() || '—') : '—';
+
+      // The nation's declared Head of Government title (e.g. "Prime Minister"),
+      // resolved from its own declarations; the generic label is the fallback.
+      var hogTitle = declaredValue(titleSlot, n.declarations);
+      if (!hogTitle || hogTitle === '—') hogTitle = 'Head of Government';
 
       var initial = esc((n.name || '?').charAt(0).toUpperCase());
       var badge = n.flag
@@ -180,7 +185,7 @@
           '<div class="fig"><div class="k">Population</div><div class="v">' + (n.population != null ? esc(fmtPop(n.population)) : '—') + '</div></div>' +
         '</div>' +
         '<div class="gov">' +
-          '<div class="who"><b>' + hog + '</b><span>Head of Government</span></div>' +
+          '<div class="who"><b>' + hog + '</b><span>' + esc(hogTitle) + '</span></div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
         '<div class="acts">' +
@@ -209,9 +214,19 @@
 
       // Every OTHER nation — these are the cards.
       const { data: others } = await supabase.from('nations')
-        .select('id, name, flag, population, gdp, economy')
+        .select('id, name, flag, population, gdp, economy, declarations')
         .neq('id', party.nation_id).order('name');
       const nations = others || [];
+
+      // The shared Head of Government title slot (e.g. options like "Prime
+      // Minister"); resolved per-nation against each nation's declarations in
+      // render. Non-critical — fall back to the generic label if it fails.
+      var titleSlot = null;
+      try {
+        const { data: ts } = await supabase.from('declarations')
+          .select('slug, options, default_index, custom_allowed').eq('slug', 'head_of_government_title').maybeSingle();
+        titleSlot = ts || null;
+      } catch (e) { /* keep the generic "Head of Government" label */ }
 
       // Active governments for those nations (most will have none yet), and the
       // leader of each formateur party for the Head of Government line. Batched.
@@ -239,7 +254,7 @@
       var currency = (home && home.economy && home.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      render(nations, govByNation, leaderByParty);
+      render(nations, govByNation, leaderByParty, titleSlot);
     } catch (e) {
       fail('Couldn’t load the world right now. Refresh to try again.');
     }
