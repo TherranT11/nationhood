@@ -391,6 +391,7 @@
           <div><label for="f-tax">Starting Tax Burden</label><input id="f-tax" type="number" step="0.1"></div>
           <div><label for="f-budget">Starting Budget</label><input id="f-budget" type="number" step="0.1"></div>
           <div><label for="f-debt">Starting Debt</label><input id="f-debt" type="number" step="0.1"></div>
+          <div><label for="f-income">Starting Income <span class="hint">collected each January</span></label><input id="f-income" type="number" step="0.1"></div>
           <div><label for="f-regime">Regime</label><select id="f-regime"></select></div>
           <div><label for="f-seats">Legislature Seats</label><input id="f-seats" type="number" min="0" step="1" placeholder="seats"></div>
           <div><label for="f-elecfreq">Election Frequency</label><input id="f-elecfreq" type="number" min="1" step="1" placeholder="months"></div>
@@ -661,7 +662,7 @@
       setVal('f-image', s.image); setVal('f-order', s.order);
       setVal('f-unemployment', e.unemployment); setVal('f-inflation', e.inflation);
       setVal('f-tax', e.tax);
-      setVal('f-budget', e.budget); setVal('f-debt', e.debt);
+      setVal('f-budget', e.budget); setVal('f-debt', e.debt); setVal('f-income', e.income);
       document.getElementById('f-regime').value = (typeof e.regime === 'number') ? String(e.regime) : '17';
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
@@ -850,6 +851,7 @@
               kv('Tax Burden', e.tax != null ? e.tax + '%' : '—') +
               kv('Budget', e.budget != null ? e.budget : '—') +
               kv('Debt', e.debt != null ? e.debt : '—') +
+              kv('Income', e.income != null ? e.income : '—') +
               kv('Energy', pr.energy != null ? pr.energy : '—') +
               kv('Food', pr.food != null ? pr.food : '—') +
               kv('Minerals', pr.minerals != null ? pr.minerals : '—') +
@@ -904,7 +906,7 @@
           regime: parseInt(document.getElementById('f-regime').value, 10),
           unemployment: num('f-unemployment', true), inflation: num('f-inflation', true),
           tax: num('f-tax', true),
-          budget: num('f-budget', true), debt: num('f-debt', true),
+          budget: num('f-budget', true), debt: num('f-debt', true), income: num('f-income', true),
           currency: (editing && editing.economy && editing.economy.currency) || '$'
         },
         production: {
@@ -995,7 +997,7 @@
 
     // ---- Policies (admin authoring; one JSONB definition per policy, is_admin RLS) ----
     // Stage 1: author + persist. Per-nation state + effects engine + player UI come later.
-    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Tax Burden %','Budget','Debt','Regime'],
+    var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Tax Burden %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
     // Identity tags — metadata describing what a law IS (not a popularity score). A
@@ -1421,7 +1423,7 @@
       var PSTATS = ['Charisma', 'Image', 'Acumen', 'Resolve', 'Guile'];
       var OPS = ['<', '≤', '>', '≥', '='];
       var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
-      var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES };
+      var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES };
 
       function effTgt(sel) { var h = ''; Object.keys(EFF_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + EFF_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return h; }
       function trigTgt(sel) {

@@ -87,10 +87,13 @@ create policy "government_agenda_select_all" on public.government_agenda for sel
 -- sitting government, inserts the new one stamped with the current tick, and
 -- inherits the source coalition's agreed terms as a pending agenda. Returns the
 -- resulting Confidence. INTERNAL — called by resolve_election (a fresh election,
--- penalty 0) and the renege/install RPCs (penalty 5 for breaking the deal).
+-- penalty 0), the renege/install RPCs (penalty 5 for breaking the deal), and
+-- coalition_form_government (p_midterm: a minority PM building a majority mid-term).
 -- ---------------------------------------------------------------------------
+drop function if exists public._seat_government(text, uuid, text, uuid, int);
 create or replace function public._seat_government(
-  p_nation text, p_formateur uuid, p_type text, p_source uuid, p_conf_penalty int default 0)
+  p_nation text, p_formateur uuid, p_type text, p_source uuid, p_conf_penalty int default 0,
+  p_midterm boolean default false)
 returns int
 language plpgsql
 security definer
@@ -132,6 +135,10 @@ begin
   -- most-restrictive confidence ceiling (100 if none).
   v_mod_form := round(public._mod_confidence_formation(p_nation));
   v_ceil     := public._mod_confidence_ceiling(p_nation);
+  -- Mid-term coalition (a minority PM building a majority between elections): always
+  -- starts at 30, contradiction penalties only — no majority bonus, no national
+  -- formation modifier, no penalty. "Starts at 30% + penalties, no bonuses."
+  if p_midterm then v_base := 30; v_maj := 0; v_mod_form := 0; end if;
   v_conf := greatest(0, least(v_ceil, v_base - 2 * v_crises - 4 * v_contra + v_maj - p_conf_penalty + v_mod_form))::int;
 
   -- Retire the sitting government, seat the new one (stamped with the tick it
@@ -150,7 +157,7 @@ begin
 
   return v_conf;
 end $$;
-revoke all on function public._seat_government(text, uuid, text, uuid, int) from public, anon, authenticated;
+revoke all on function public._seat_government(text, uuid, text, uuid, int, boolean) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- resolve_election(nation): the full pipeline for ONE nation. INTERNAL — execute
@@ -307,8 +314,9 @@ revoke all on function public.resolve_election(text) from public, anon, authenti
 
 -- ---------------------------------------------------------------------------
 -- advance_tick(): the admin's single lever. Bumps the shared clock one tick,
--- refreshes every party's action budget to 3, and resolves every nation whose
--- election has come due. Admin-gated; no automation.
+-- refreshes every party's action budget to 3, applies each nation's annual income
+-- to its budget every January (a deficit overflows into debt), and resolves every
+-- nation whose election has come due. Admin-gated; no automation.
 -- ---------------------------------------------------------------------------
 create or replace function public.advance_tick()
 returns jsonb
@@ -328,6 +336,33 @@ begin
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
   perform public._apply_policy_tick_effects(v_tick);
+  -- January (the new month is January when (tick − 1) is a multiple of 12): apply
+  -- each nation's annual income to its budget. A surplus fills the bank; a deficit
+  -- (negative income) drains a positive budget, and any shortfall past zero rolls
+  -- into the debt:  budget' = max(0, budget+income);  debt' = debt + max(0,
+  -- -(budget+income)). Flat admin-set figure; only non-zero incomes. Event surfaces it.
+  if (v_tick - 1) % 12 = 0 then
+    -- raw = budget + income, computed once; budget floors at 0, the rest overflows to debt.
+    update public.nations n
+       set economy = jsonb_set(
+             jsonb_set(n.economy, '{budget}', to_jsonb(round(greatest(0, s.raw), 1))),
+             '{debt}', to_jsonb(round(coalesce((n.economy->>'debt')::numeric, 0) + greatest(0, -s.raw), 1)))
+      from (
+        select id, coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0) as raw
+          from public.nations
+         where coalesce((economy->>'income')::numeric, 0) <> 0
+      ) s
+     where n.id = s.id;
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+    select n.id, null, 'income',
+           'Annual income of ' || (case when (n.economy->>'income')::numeric < 0 then '−' else '+' end) ||
+           coalesce(n.economy->>'currency', '$') || ltrim(n.economy->>'income', '-') ||
+           'B applied — budget ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'budget') ||
+           'B, debt ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'debt') || 'B.',
+           public.current_game_date()
+      from public.nations n
+     where coalesce((n.economy->>'income')::numeric, 0) <> 0;
+  end if;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation
@@ -532,3 +567,65 @@ begin
   return jsonb_build_object('confidence', v_conf, 'popularity', v_newpop, 'pop_delta', v_pophit, 'type', 'coalition');
 end $$;
 grant execute on function public.coalition_install(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- coalition_form_government(neg): the mid-term [Form Government] click. A sitting
+-- MINORITY government's PM (the formateur) seats a committed majority coalition
+-- between elections — no election needed. Unlike the renege→install window this
+-- isn't gated to the formation tick; it's the natural move for a minority that has
+-- finally assembled a majority at the table. The new coalition starts at 30%
+-- Confidence less 4 per contradictory partner (no majority bonus, no modifier — see
+-- _seat_government's p_midterm path); the agreed terms become its pending agenda.
+--
+-- Guard: if a coalition was reneged THIS tick, the penalised install path governs
+-- instead (don't undercut the −5/−5 "defied the voters" cost in that window).
+-- ---------------------------------------------------------------------------
+create or replace function public.coalition_form_government(p_neg uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.negotiations%rowtype;
+  v_tick int; v_conf int;
+begin
+  v_p := public._lock_party();   -- locks the caller's party (serializes; double-fire safe)
+  select current_tick into v_tick from public.game_state where id;
+
+  select * into v_gov from public.governments
+    where nation_id = v_p.nation_id and status = 'active' for update;
+  if not found then raise exception 'There is no sitting government.'; end if;
+  if v_gov.type <> 'minority' then raise exception 'Only a minority government can form a coalition between elections.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the party leading the minority government can form a coalition.';
+  end if;
+  -- Don't undercut the post-election renege→install window (its own −5/−5 cost).
+  if exists (select 1 from public.governments
+               where nation_id = v_p.nation_id and status = 'replaced'
+                 and type = 'coalition' and formed_tick = v_tick) then
+    raise exception 'You walked away from a coalition this turn — use Install New Coalition to seal the replacement.';
+  end if;
+
+  -- The replacement: a committed agreement you host. Its committed status IS the
+  -- majority guarantee — coalition_commit enforced it against the current seats, and
+  -- seats only move at elections (which close every agreement), so nothing to re-check.
+  select * into v_n from public.negotiations where id = p_neg;
+  if not found then raise exception 'That agreement is gone.'; end if;
+  if v_n.host_party_id is distinct from v_p.id then raise exception 'You can only form your own agreement.'; end if;
+  if v_n.status <> 'committed' then raise exception 'Form the coalition agreement before seating it.'; end if;
+
+  -- Seat the coalition mid-term (p_midterm → starts at 30, contradiction penalties
+  -- only). _seat_government retires the minority, inherits the agreed agenda, then we
+  -- close the consumed agreement.
+  v_conf := public._seat_government(v_p.nation_id, v_p.id, 'coalition', p_neg, 0, true);
+  update public.negotiations set status = 'closed' where id = p_neg;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_p.nation_id, v_p.id, 'government',
+            'The ' || v_p.name || ' formed a majority coalition government (Government Confidence ' || v_conf || '%).',
+            public.current_game_date());
+
+  return jsonb_build_object('confidence', v_conf, 'type', 'coalition');
+end $$;
+grant execute on function public.coalition_form_government(uuid) to authenticated;

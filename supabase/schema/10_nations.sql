@@ -22,7 +22,7 @@ create table if not exists public.nations (
   electoral_threshold numeric not null default 0,    -- min vote % to win seats (0 = none)
   next_election_tick int,                            -- game tick of this nation's next general election (null = unscheduled)
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
-  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, tax, budget, debt, currency}
+  economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, tax, budget, debt, income, currency}
   production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
   created_at     timestamptz not null default now()
 );
@@ -108,6 +108,12 @@ update public.nations set economy = economy || '{"currency":"$"}'::jsonb
 -- value so the figure is real from day one; idempotent (only un-set rows).
 update public.nations set economy = economy || '{"tax":30}'::jsonb
  where not (economy ? 'tax');
+-- Income: what the government collects each January (vs budget = the bank balance).
+-- Seeded for Sessau; set per-nation in /adminsetup. Income may be negative (a
+-- deficit). Applied to the budget every January by advance_tick() (schema/60) — a
+-- deficit drains the budget, then overflows into debt. Idempotent (only un-set rows).
+update public.nations set economy = economy || '{"income":4.5}'::jsonb
+ where id = 'sessau' and not (economy ? 'income');
 update public.nations set legislature_seats = 280
  where id = 'sessau' and legislature_seats = 0;
 -- GDP is now stored in billions (was a raw figure). Migrate the legacy value

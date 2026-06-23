@@ -49,6 +49,9 @@ export async function setAgree(termId, agreed) { return unwrap(await supabase.rp
 export async function removeParty(negId, partyId) { return unwrap(await supabase.rpc('coalition_remove_party', { p_neg: negId, p_party: partyId })); }
 export async function commitAgreement(negId) { return unwrap(await supabase.rpc('coalition_commit', { p_neg: negId })); }
 export async function withdrawAgreement(negId) { return unwrap(await supabase.rpc('coalition_withdraw', { p_neg: negId })); }
+// Mid-term [Form Government]: a minority government's PM seats this committed
+// coalition immediately (no election). Server-gated to that exact case.
+export async function formGovernment(negId) { return unwrap(await supabase.rpc('coalition_form_government', { p_neg: negId })); }
 
 // Pending invites for the Home banner, with the host + full invited roster
 // (name + archetype). Server-side because RLS hides co-invitees from a player.

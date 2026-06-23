@@ -245,7 +245,7 @@
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { esc, majority } from '/util.js';
   import { archetypeColor, ideologyLabel } from '/archetypes.js';
-  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement, fetchMessages, postMessage } from '/negotiations.js';
+  import { loadNegotiation, termCounts, inviteParty, respondInvite, addTerm, updateTerm, removeTerm, setAgree, removeParty, commitAgreement, withdrawAgreement, formGovernment, fetchMessages, postMessage } from '/negotiations.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
 
@@ -272,6 +272,9 @@
   // ---- state ----
   var myParty=null, HOST=null, POOL={}, CHAMBER=280, MAJORITY=141, MAXINV=5;
   var neg=null, amHost=false, myStatus=null, active=null, data={}, locked=false;
+  // Mid-term [Form Government]: true only when I lead a sitting MINORITY government and
+  // I'm not in the post-renege window (that uses the government page's Install instead).
+  var CAN_FORM_GOV=false, POST_RENEGE=false;
   var negId=new URLSearchParams(location.search).get('id');
 
   function popOf(p){return Number(p.popularity)||0;}
@@ -464,6 +467,11 @@
     if(locked){
       // Already committed: a saved, locked agreement. Host can reopen to edit.
       html+='<div class="committed">✓ Coalition committed &amp; saved</div>';
+      // A minority government's PM can seat this coalition right now (no election).
+      if(amHost && CAN_FORM_GOV && !POST_RENEGE){
+        html+='<button class="formbtn" id="formGovBtn">Form Government</button>';
+        html+='<div class="formnote">You lead a minority government — seat this coalition now. It starts at 30% Government Confidence, less any contradictory partners.</div>';
+      }
       html+='<button class="formbtn" id="withdrawBtn" style="background:var(--surface);color:var(--ink);border-color:var(--line2)">Reopen for editing</button>';
       html+='<div class="formnote">Saved as a binding agreement — the election resolver will read it. Reopen to make changes.</div>';
     } else {
@@ -485,6 +493,14 @@
     box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){ removeParty(neg.id,x.dataset.id).then(function(){ if(active===x.dataset.id) active=null; return reload(); }).catch(err); };});
     var wb=box.querySelector('#withdrawBtn'), withdrawing=false;
     if(wb) wb.onclick=function(){ if(withdrawing) return; withdrawing=true; withdrawAgreement(neg.id).then(function(){ ping('Agreement reopened for editing.'); return reload(); }).catch(function(e){ withdrawing=false; err(e); }); };
+    var gb=box.querySelector('#formGovBtn'), forming=false;
+    if(gb) gb.onclick=function(){
+      if(forming) return; forming=true;   // this seats a government — never double-fire
+      formGovernment(neg.id).then(function(r){
+        ping('<b>Government formed.</b> A new coalition holds power — Government Confidence '+r.confidence+'%.');
+        setTimeout(function(){ window.location.href='/play/government/'; }, 900);  // the deal is consumed; move to the government page
+      }).catch(function(e){ forming=false; err(e); });
+    };
     var fb=box.querySelector('#formbtn'), committing=false;
     if(fb) fb.onclick=function(){
       if(fb.classList.contains('dis') || committing) return; // gate + double-fire lock (this writes)
@@ -591,6 +607,20 @@
         (ns||[]).forEach(function(n){ NATIONS.push(n.name); });
       } catch(e){ /* leave empty */ }
       if(!NATIONS.length) NATIONS.push('(no other nations yet)');
+
+      // Mid-term Form Government gate: do I lead a sitting minority government, and am
+      // I outside the post-renege formation window? (formationState is the one source
+      // for that window — shared with the government page + home banner.)
+      try {
+        const { data: g } = await supabase.from('governments')
+          .select('type, formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
+        CAN_FORM_GOV = !!(g && g.type === 'minority' && g.formateur_party_id === party.id);
+        if (CAN_FORM_GOV) {
+          const fm = await import('/formation.js');
+          const fs = await fm.formationState({ id: party.id, nation_id: party.nation_id });
+          POST_RENEGE = !!fs.postRenege;
+        }
+      } catch(e){ /* leave the button hidden on any failure */ }
 
       await reload();
     } catch(e){ showMissing('Could not load this negotiation right now.'); }
