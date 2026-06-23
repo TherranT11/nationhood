@@ -647,7 +647,7 @@
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import { regimeLabel, statName } from '/ladders.js';
     import { ARCHETYPES } from '/archetypes.js';
-    import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget } from '/policies.js';
+    import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
 
@@ -1222,14 +1222,8 @@
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
-    // For policies, Party Popularity and Popularity Ceiling apply to every party currently
-    // in government (schema/91 _apply_policy_effect), not all parties in the nation — so label
-    // them with that scope. Display-only: the stored target value stays the canonical string,
-    // so existing policies keep matching. (Convictions reuse POL_TGT but scope differently, so
-    // cvTgt keeps the plain names.)
-    var POL_TGT_LABEL = { 'Party Popularity': 'Party Popularity (parties in govt)',
-                          'Popularity Ceiling': 'Popularity Ceiling (parties in govt)' };
-    function polTgtLabel(t){ return POL_TGT_LABEL[t] || t; }
+    // polTgtLabel (imported from policies.js) scopes Party Popularity / Popularity Ceiling
+    // to "(parties in govt)" — the one source shared with the player-facing effect display.
     // Figures a conviction's DIRECTIONAL onLaw rule can WATCH (its axis) — what an option
     // moves. Tax Burden % lives here (read via each option's contribution) even though it's
     // no longer a deltable effect target. Used by the conviction directional rules (policies
