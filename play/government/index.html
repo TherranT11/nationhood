@@ -179,7 +179,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser, logout } from '/supabase.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
-  import { esc, majority, declaredValue } from '/util.js';
+  import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
   import { MINISTRIES } from '/ministries.js';
@@ -267,7 +267,29 @@
       '<span class="sc">' + (p.seats || 0) + '</span></div>';
   }
 
-  function render(govt, nation, parties, agenda, amPM, formation, pmLeader){
+  // The cabinet's ministry rows. A MINORITY government (the formateur governing alone, no
+  // coalition deal) staffs its cabinet from its OWN roster. The eligible pool excludes the
+  // leader (who is the Head of Government) and field operatives — Mayors / Grassroots
+  // Organizers, who are out on local work and take no cabinet seat. The eligible take the
+  // named ministries in roster order; any beyond the last portfolio are Non-Descript
+  // Ministers. Coalition/majority cabinets stay Vacant until negotiated ministry terms fill them.
+  // (Mayor/Grassroots roles aren't live in-game yet, but the exclusion is in place for when they are.)
+  var FIELD_ROLES = ['Mayor', 'Grassroots Organizer'];
+  function polFullName(p){ return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
+  function cabRow(k, v, cls){ return '<div class="cabrow"><span class="cabk">' + esc(k) + '</span><span class="cabv' + (cls ? ' ' + cls : '') + '">' + v + '</span></div>'; }
+  function cabinetMinisters(govt, pols){
+    if (govt.type !== 'minority') {
+      return MINISTRIES.map(function(m){ return cabRow('Minister of ' + m, 'Vacant', 'vac'); }).join('');
+    }
+    var eligible = (pols || []).filter(function(p){ return p.status !== 'Party Leader' && FIELD_ROLES.indexOf(p.status) < 0; });
+    var rows = MINISTRIES.map(function(m, i){
+      return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])))
+                         : cabRow('Minister of ' + m, 'Vacant', 'vac');
+    }).join('');
+    return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p))); }).join('');
+  }
+
+  function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols){
     var box = document.getElementById('content');
     if (!govt){
       // Two distinct "no government" reasons: a one-party state never forms a
@@ -306,13 +328,13 @@
     }).join('');
 
     // The Cabinet: the Head of Government (the formateur's leader) atop the ministry
-    // portfolios. Ministries come from the one MINISTRIES source; each is Vacant until
-    // the PM's Appoint action fills it (not built yet).
-    var hogName = (pmLeader ? esc(((pmLeader.first_name || '') + ' ' + (pmLeader.last_name || '')).trim()) : '') || esc(formateur.name);
+    // portfolios. A minority government staffs the portfolios from its roster (cabinetMinisters);
+    // other types leave them Vacant until negotiated ministry terms fill them.
+    var hogName = (pmLeader ? esc(polFullName(pmLeader)) : '') || esc(formateur.name);
     var hogAbbr = formateur.abbreviation ? ' <span class="caba">(' + esc(formateur.abbreviation) + ')</span>' : '';
     var cabinetHtml = '<div class="cabrow cabrow--hog"><span class="cabk">' + esc(HOG_TITLE) + '</span>' +
         '<span class="cabv">' + hogName + hogAbbr + '</span></div>' +
-      MINISTRIES.map(function(m){ return '<div class="cabrow"><span class="cabk">Minister of ' + esc(m) + '</span><span class="cabv vac">Vacant</span></div>'; }).join('');
+      cabinetMinisters(govt, formateurPols);
 
     var agendaHtml;
     if (govt.type === 'coalition' && agenda.length){
@@ -422,19 +444,20 @@
         const fm = await import('/formation.js');
         formation = await fm.formationState({ id: MY_PARTY_ID, nation_id: NATION_ID });
       } catch (e) { /* non-critical enhancement — fall through with no card */ }
-      // The Head of Government: the formateur party's leader (cabinet top row).
-      // Non-critical — if it fails the cabinet falls back to the formateur party name,
-      // so isolate it from the page-load catch.
-      var pmLeader = null;
+      // The formateur's roster: the leader is the Head of Government (cabinet top row); for a
+      // minority government the rest staff the cabinet (cabinetMinisters). Non-critical — on
+      // failure the cabinet falls back to the party name + Vacant rows, so isolate it.
+      var pmLeader = null, formateurPols = [];
       if (govt && govt.formateur_party_id) {
         try {
-          const { data: lead } = await supabase.from('politicians')
-            .select('first_name, last_name').eq('party_id', govt.formateur_party_id)
-            .eq('status', 'Party Leader').order('created_at').limit(1).maybeSingle();
-          pmLeader = lead;
+          const { data: pols } = await supabase.from('politicians')
+            .select('first_name, last_name, status').eq('party_id', govt.formateur_party_id)
+            .order('created_at', { ascending: true });
+          formateurPols = pols || [];
+          pmLeader = formateurPols.filter(function(p){ return p.status === 'Party Leader'; })[0] || null;
         } catch (e) { /* non-critical — cabinet shows the formateur party name */ }
       }
-      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader);
+      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols);
       renderNationModifiers(document.getElementById('govMods'), await fetchNationModifiers(NATION_ID), 'No active national modifiers.');
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';
@@ -494,14 +517,12 @@
       if (error || !party) { window.location.replace('/nation-select/'); return; }
       const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, ruling_party, economy, declarations').eq('id', party.nation_id).single();
       MY_PARTY_ID = party.id; NATION_ID = party.nation_id; NATION = nation || {};
-      // The declared Head of Government title (e.g. "Prime Minister"), via the shared
-      // declaredValue helper — one source. Non-critical: keep the generic label on failure.
-      try {
-        const { data: titleSlot } = await supabase.from('declarations')
-          .select('slug, options, default_index, custom_allowed').eq('slug', 'head_of_government_title').maybeSingle();
-        var hogT = titleSlot ? declaredValue(titleSlot, NATION.declarations) : '';
-        if (hogT && hogT !== '—') HOG_TITLE = hogT;
-      } catch (e) { /* non-critical — keep the generic "Head of Government" label */ }
+      // The declared Head of Government title (e.g. "Prime Minister"), via the
+      // shared slot loader + declaredValue — one source (see util.js). Keeps the
+      // generic label when the nation hasn't declared one.
+      const titleSlot = await loadHogTitleSlot(supabase);
+      var hogT = titleSlot ? declaredValue(titleSlot, NATION.declarations) : '';
+      if (hogT && hogT !== '—') HOG_TITLE = hogT;
       var nationName = (nation && nation.name) || party.nation_id;
       document.getElementById('sname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
