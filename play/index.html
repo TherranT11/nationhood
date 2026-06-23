@@ -60,7 +60,9 @@
   .glance-hd{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
   .glance-hd > span{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft)}
   .glance-hd .glance-link{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);font-weight:700;cursor:pointer}
-  .snap{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+  .snap{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+  @media(max-width:1100px){.snap{grid-template-columns:repeat(4,1fr)}}
+  @media(max-width:680px){.snap{grid-template-columns:repeat(2,1fr)}}
   .chip{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:13px 14px;border:1px solid var(--line);border-radius:11px;background:var(--bg)}
   .chip__k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .chip__v{font-weight:800;font-size:18px;letter-spacing:-.02em}
