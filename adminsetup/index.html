@@ -1209,6 +1209,9 @@
     function cvStanding(t,v){ return { kind:'standing', t:t, v:v }; }
     function cvOnce(t,v){ return { t:t, v:v }; }
     function cvLaw(tag,t,v){ return { tag:tag, t:t, v:v }; }
+    // Directional onLaw rule: react to the DIRECTION an effect target moves on enactment
+    // (axis), not a tag. dir = the favoured move ('down'=a cut, 'up'=a rise) → +v; opposite → −v.
+    function cvDir(axis,dir,t,v){ return { axis:axis, dir:dir, t:t, v:v }; }
     function blankConviction(){ return { name:'New Conviction', archetype:'Conservative', level:1, cost:1, desc:'',
       onAdopt:[cvOnce('Party Popularity',3)], whileActive:[cvTrig('Order','rise',1,'Party Popularity',2,true)], onLaw:[] }; }
     function cvTgt(cls,sel){ var h='<select class="'+cls+'">'; Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+esc(g)+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }); return h+'</select>'; }
@@ -1307,22 +1310,38 @@
       wrow.appendChild(t1); wrow.appendChild(t2); wc.appendChild(wrow); box.appendChild(wc);
 
       var lc=document.createElement('div'); lc.className='card';
-      lc.innerHTML='<div class="subhd"><span>Effect when a tagged law passes <span class="hint" style="text-transform:none;letter-spacing:0">· fires each time a law with this identity tag is enacted</span></span><button type="button" class="tagadd">+ new tag</button></div>';
+      lc.innerHTML='<div class="subhd"><span>Effect when a law passes <span class="hint" style="text-transform:none;letter-spacing:0">· a tag rule fires on a law with that identity tag; a directional rule fires by which way a figure moved (a cut vs a rise)</span></span><button type="button" class="tagadd">+ new tag</button></div>';
       c.onLaw.forEach(function(e,j){
         var wrap=document.createElement('div');
-        wrap.innerHTML='<div class="ceff law"><select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
-          cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
-          '<div class="mirror" style="margin:-2px 0 10px"><input type="checkbox" class="lsym" '+(e.sym?'checked':'')+'><span>Reverse it when the law is repealed (give the gain back)</span></div>';
-        wrap.querySelector('.lt').onchange=function(ev){ e.tag=ev.target.value; renderConvPrev(); };
-        wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
-        wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
-        wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
-        wrap.querySelector('.lsym').onchange=function(ev){ e.sym=ev.target.checked; renderConvPrev(); };
+        if (e.axis != null || (e.tag == null && e.dir != null)) {
+          // Directional rule: react to the DIRECTION an effect target moves on enactment.
+          wrap.innerHTML='<div class="ceff law"><span class="clause" style="align-self:center">When</span>'+cvTgt('lax',e.axis)+
+            '<select class="ldir"><option value="down"'+(e.dir!=='up'?' selected':'')+'>falls (a cut)</option><option value="up"'+(e.dir==='up'?' selected':'')+'>rises (a rise)</option></select>'+
+            cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
+            '<div class="mirror" style="margin:-2px 0 10px"><span>The opposite move applies the inverse automatically — no mirror needed.</span></div>';
+          wrap.querySelector('.lax').onchange=function(ev){ e.axis=ev.target.value; renderConvPrev(); };
+          wrap.querySelector('.ldir').onchange=function(ev){ e.dir=ev.target.value; renderConvPrev(); };
+          wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
+          wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+          wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
+        } else {
+          wrap.innerHTML='<div class="ceff law"><select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
+            cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
+            '<div class="mirror" style="margin:-2px 0 10px"><input type="checkbox" class="lsym" '+(e.sym?'checked':'')+'><span>Reverse it when the law is repealed (give the gain back)</span></div>';
+          wrap.querySelector('.lt').onchange=function(ev){ e.tag=ev.target.value; renderConvPrev(); };
+          wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
+          wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+          wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
+          wrap.querySelector('.lsym').onchange=function(ev){ e.sym=ev.target.checked; renderConvPrev(); };
+        }
         lc.appendChild(wrap);
       });
-      var lAdd=document.createElement('button'); lAdd.className='add'; lAdd.type='button'; lAdd.textContent='+ law effect';
+      var lrow=document.createElement('div'); lrow.className='addrow';
+      var lAdd=document.createElement('button'); lAdd.className='add'; lAdd.type='button'; lAdd.textContent='+ tag effect';
       lAdd.onclick=function(){ c.onLaw.push(cvLaw(IDENTITY_TAGS[0]||'','Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
-      lc.appendChild(lAdd); box.appendChild(lc);
+      var dAdd=document.createElement('button'); dAdd.className='add'; dAdd.type='button'; dAdd.textContent='+ directional effect';
+      dAdd.onclick=function(){ c.onLaw.push(cvDir('Tax Burden %','down','Party Popularity',2)); renderConvEditor(); renderConvPrev(); };
+      lrow.appendChild(lAdd); lrow.appendChild(dAdd); lc.appendChild(lrow); box.appendChild(lc);
       lc.querySelector('.subhd .tagadd').onclick=function(){ addIdentityTag(function(){ renderConvEditor(); renderConvPrev(); }); };
 
       var sv=document.createElement('button'); sv.className='save'; sv.type='button'; sv.textContent=convEditingId?'Save changes':'Create conviction';
@@ -1395,7 +1414,7 @@
         '<div class="pvdesc">'+esc(c.desc||'')+'</div>'+
         '<div class="pvsec">On adopt</div>'+adopt+
         '<div class="pvsec">While active</div>'+act+
-        (lL.length ? '<div class="pvsec">On tagged law</div>'+lL.map(cvLineHtml).join('') : '')+
+        (lL.length ? '<div class="pvsec">On a law</div>'+lL.map(cvLineHtml).join('') : '')+
       '</div>';
     }
 

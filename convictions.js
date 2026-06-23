@@ -41,12 +41,23 @@ export function activeLines(c) {
   return out;
 }
 
-// A conviction's "when a tagged law passes" effects as [{ reward, cond, cls }] — each
-// fires once when a law carrying that identity tag is enacted (server: _apply_law). A
-// 'sym' (mirror) effect also gives the inverse back when that law is later repealed.
+// A conviction's "on a law" effects as [{ reward, cond, cls }] (server: _apply_law).
+// Two kinds, distinguished by which key the rule carries:
+//   · tag rule {tag,t,v,sym?} — fires when a law with that identity tag is enacted; a
+//     'sym' mirror also gives the inverse back when that law is later repealed.
+//   · directional rule {axis,dir,t,v} — fires by the DIRECTION a structured effect target
+//     moved on enactment: +v when it moves the favoured way (dir 'up'/'down'), −v the other
+//     way. This is how "tax cut vs tax rise" is modelled (a tag can't, since None→Low is a
+//     rise but High→Low a cut).
 export function lawLines(c) {
   var out = [];
   (c.onLaw || []).forEach(function (e) {
+    if (e.axis) {
+      var fav = e.dir === 'up' ? 'rises' : 'falls', opp = e.dir === 'up' ? 'falls' : 'rises';
+      out.push({ reward: convReward(e.v, e.t), cond: 'when ' + e.axis + ' ' + fav + ' on enactment', cls: pos(e.v) });
+      out.push({ reward: convReward(-e.v, e.t), cond: 'when ' + e.axis + ' ' + opp, cls: pos(-e.v) });
+      return;
+    }
     out.push({ reward: convReward(e.v, e.t), cond: 'when a ' + e.tag + ' passes', cls: pos(e.v) });
     if (e.sym) out.push({ reward: convReward(-e.v, e.t), cond: 'when a ' + e.tag + ' is repealed', cls: pos(-e.v) });
   });

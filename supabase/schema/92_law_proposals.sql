@@ -15,6 +15,19 @@
 -- later per-tick pass.
 -- ===========================================================================
 
+-- The "level" of a structured effect target for one option: the sum of that option's
+-- STANDING (non-'once') effects on that target. Comparing it between the old and new
+-- option gives the DIRECTION a law moves an axis (e.g. Tax Burden falling = a tax cut),
+-- which directional convictions react to — see _apply_law. Only the SIGN matters here,
+-- so raw authored amounts are summed (money scaling is a positive factor that can never
+-- flip the sign). ONE source: reads the same effects that drive the nation's economy.
+create or replace function public._option_axis_level(p_def jsonb, p_option int, p_axis text)
+returns numeric language sql immutable set search_path = public as $$
+  select coalesce(sum((e->>'v')::numeric), 0)
+  from jsonb_array_elements(coalesce(public._policy_options(p_def) -> p_option -> 'effects', '[]'::jsonb)) e
+  where e->>'t' = p_axis and coalesce(e->>'cad', 'tick') <> 'once';
+$$;
+
 -- A passed law sets the nation's chosen option for the policy AND applies that
 -- option's one-time (cadence='once') effects — the "costs money from the treasury"
 -- moment. Per-tick effects are applied each month by the per-tick pass (later).
@@ -77,6 +90,33 @@ begin
           jsonb_build_object('t', r.eff ->> 't', 'v', to_jsonb(- coalesce((r.eff ->> 'v')::numeric, 0))));
       end loop;
     end if;
+  end if;
+
+  -- Directional law: a conviction can react to the DIRECTION a structured effect target
+  -- moves between the old and new option, instead of a static tag — the principled way to
+  -- model "tax cut vs tax rise", which a destination tag can't capture (None→Low is a rise,
+  -- High→Low a cut). For each held conviction onLaw rule that names an axis, compare the new
+  -- vs old option's level on that axis: a move in the rule's favoured dir ('up'/'down')
+  -- applies +v, the opposite move −v. The default in-force option is the 'from' position, so
+  -- a first enactment off the default counts as a real move.
+  if v_old is not null and v_old <> p_option then
+    for r in
+      select pc.party_id, e.value as eff,
+             public._option_axis_level(pol.definition, p_option, e.value->>'axis')
+               - public._option_axis_level(pol.definition, v_old, e.value->>'axis') as delta
+      from public.party_convictions pc
+      join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
+      join public.convictions c  on c.id = pc.conviction_id
+      join public.policies pol   on pol.id = p_policy
+      cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
+      where nullif(e.value->>'axis', '') is not null
+    loop
+      if r.delta = 0 then continue; end if;   -- the law didn't move this axis
+      perform public._apply_conviction_effect(r.party_id, p_nation,
+        jsonb_build_object('t', r.eff->>'t',
+          'v', to_jsonb( coalesce((r.eff->>'v')::numeric, 0)
+                         * case when (r.delta > 0) = (coalesce(r.eff->>'dir', 'up') = 'up') then 1 else -1 end )));
+    end loop;
   end if;
 end $$;
 
