@@ -280,7 +280,7 @@
   function polFullName(p){ return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
   function cabRow(k, v, cls){ return '<div class="cabrow"><span class="cabk">' + esc(k) + '</span><span class="cabv' + (cls ? ' ' + cls : '') + '">' + v + '</span></div>'; }
   // The party-abbreviation tag (e.g. " (NPP)") — the one source for the cabinet's party chips,
-  // used by the Head of Government row and the Non-Descript minister placeholders.
+  // used by the Head of Government row and every minister in a minority cabinet.
   function partyTag(party){ return (party && party.abbreviation) ? ' <span class="caba">(' + esc(party.abbreviation) + ')</span>' : ''; }
   function cabinetMinisters(govt, pols, formateur){
     if (govt.type !== 'minority') {
