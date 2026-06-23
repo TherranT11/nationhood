@@ -448,7 +448,8 @@
       } catch (e) { /* non-critical enhancement — fall through with no card */ }
       // The formateur's roster: the leader is the Head of Government (cabinet top row); for a
       // minority government the rest staff the cabinet (cabinetMinisters). Non-critical — on
-      // failure the cabinet falls back to the party name + Vacant rows, so isolate it.
+      // failure the HoG row falls back to the party name and the roster stays empty (a minority
+      // cabinet then reads all Non-Descript), so isolate it.
       var pmLeader = null, formateurPols = [];
       if (govt && govt.formateur_party_id) {
         try {
