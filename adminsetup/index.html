@@ -1222,6 +1222,14 @@
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
+    // For policies, Party Popularity and Popularity Ceiling apply to every party currently
+    // in government (schema/91 _apply_policy_effect), not all parties in the nation — so label
+    // them with that scope. Display-only: the stored target value stays the canonical string,
+    // so existing policies keep matching. (Convictions reuse POL_TGT but scope differently, so
+    // cvTgt keeps the plain names.)
+    var POL_TGT_LABEL = { 'Party Popularity': 'Party Popularity (parties in govt)',
+                          'Popularity Ceiling': 'Popularity Ceiling (parties in govt)' };
+    function polTgtLabel(t){ return POL_TGT_LABEL[t] || t; }
     // Figures a conviction's DIRECTIONAL onLaw rule can WATCH (its axis) — what an option
     // moves. Tax Burden % lives here (read via each option's contribution) even though it's
     // no longer a deltable effect target. Used by the conviction directional rules (policies
@@ -1234,7 +1242,7 @@
     // from it. v is signed; the magnitude shows as increases/decreases.
     function trSentence(t){
       var v = Number(t.v)||0, up = v>=0;
-      return 'When moving <b>'+(t.dir==='from'?'from':'to')+'</b> <b>'+esc(t.rung||'?')+'</b> → <b>'+esc(t.t||'?')+'</b> '+
+      return 'When moving <b>'+(t.dir==='from'?'from':'to')+'</b> <b>'+esc(t.rung||'?')+'</b> → <b>'+esc(polTgtLabel(t.t||'?'))+'</b> '+
         '<span class="'+(up?'up':'dn')+'">'+(up?'increases':'decreases')+' by '+Math.abs(v)+'</span>';
     }
     // The other options' names (the rungs this option can move to/from), as a <select>.
@@ -1346,7 +1354,7 @@
 
     function polTgtSelect(sel){
       var h='<select class="et">';
-      Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+g+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+t+'</option>'; }).join('')+'</optgroup>'; });
+      Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+g+'">'+POL_TGT[g].map(function(t){ return '<option value="'+esc(t)+'"'+(t===sel?' selected':'')+'>'+esc(polTgtLabel(t))+'</option>'; }).join('')+'</optgroup>'; });
       return h+'</select>';
     }
     function renderPolEditor(){
@@ -1464,10 +1472,10 @@
       var cad = e.cad==='once' ? 'once' : e.cad==='year' ? '/ year' : (e.dur && e.dur>0 ? '/ tick · '+e.dur+'t' : '/ tick · while enacted');
       if (isMoneyTarget(e.t)){
         var mid=policyMoney(e.v,e.scale,70,14), modeT=e.scale==='flat'?'flat':e.scale==='perm'?'×pop':'×pop×prosp', s=mid>=0?'+':'−';
-        return '<div class="e '+(mid>0?'pos':mid<0?'neg':'')+'"><b>'+esc(e.t)+' '+s+'₣'+Math.abs(mid).toFixed(2)+'B</b> <span class="cad">'+cad+' · '+modeT+' @ 70M·P14</span></div>';
+        return '<div class="e '+(mid>0?'pos':mid<0?'neg':'')+'"><b>'+esc(polTgtLabel(e.t))+' '+s+'₣'+Math.abs(mid).toFixed(2)+'B</b> <span class="cad">'+cad+' · '+modeT+' @ 70M·P14</span></div>';
       }
       var sign=e.v>=0?'+':'−', mag=Math.abs(e.v), cls=e.v>0?'pos':e.v<0?'neg':'';
-      return '<div class="e '+cls+'"><b>'+esc(e.t)+' '+sign+mag+'</b> <span class="cad">'+cad+'</span></div>';
+      return '<div class="e '+cls+'"><b>'+esc(polTgtLabel(e.t))+' '+sign+mag+'</b> <span class="cad">'+cad+'</span></div>';
     }
     function renderPolPrev(){
       var box=document.getElementById('polPrev');
