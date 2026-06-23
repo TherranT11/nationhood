@@ -1222,9 +1222,10 @@
     var POL_TGT = { National: ['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'],
                     Government: ['Government Confidence','Party Popularity','Popularity Ceiling'],
                     Resource: ['Energy','Food','Minerals','Goods','Services','Diplomacy'] };
-    // Figures a DIRECTIONAL rule can WATCH (its axis) — what an option moves. Tax Burden %
-    // lives here (read via each option's contribution) even though it's no longer a deltable
-    // effect target. Used by the policy directional rules + the conviction directional rules.
+    // Figures a conviction's DIRECTIONAL onLaw rule can WATCH (its axis) — what an option
+    // moves. Tax Burden % lives here (read via each option's contribution) even though it's
+    // no longer a deltable effect target. Used by the conviction directional rules (policies
+    // moved to per-option transitions).
     var AXIS_TGT = ['Tax Burden %','Income','Budget','Debt','Unemployment %','Inflation %','Prosperity','Welfare','Growth','Order','Image','Regime'];
     function axisSelect(cls, sel){ return '<select class="'+cls+'">'+AXIS_TGT.map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'; }
     // The plain-language summary of an option's transition rule {dir,rung,t,v} — the ONE
