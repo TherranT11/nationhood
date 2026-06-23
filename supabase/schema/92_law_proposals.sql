@@ -36,6 +36,16 @@ returns numeric language sql immutable set search_path = public as $$
   end;
 $$;
 
+-- The signed amount a directional rule applies: the authored magnitude, ×|Δ| when scaled,
+-- signed + when the axis moved the favoured way (dir 'up'/'down') and − on the opposite.
+-- ONE place the directional formula lives — used by both the conviction and policy rules.
+create or replace function public._directional_amount(p_v numeric, p_scaled boolean, p_delta numeric, p_dir text)
+returns numeric language sql immutable set search_path = public as $$
+  select coalesce(p_v, 0)
+       * case when coalesce(p_scaled, false) then abs(p_delta) else 1 end
+       * case when (p_delta > 0) = (coalesce(p_dir, 'up') = 'up') then 1 else -1 end;
+$$;
+
 -- A passed law sets the nation's chosen option for the policy AND applies that
 -- option's one-time (cadence='once') effects — the "costs money from the treasury"
 -- moment. Per-tick effects are applied each month by the per-tick pass (later).
@@ -108,23 +118,21 @@ begin
   -- vs old option's level on that axis: a move in the rule's favoured dir ('up'/'down')
   -- applies +v, the opposite move −v. The default in-force option is the 'from' position, so
   -- a first enactment off the default counts as a real move.
-  if v_old is not null and v_old <> p_option then
+  if v_def is not null and v_old is not null and v_old <> p_option then
     for r in
       select pc.party_id, e.value as eff,
-             public._option_axis_level(pol.definition, p_option, e.value->>'axis')
-               - public._option_axis_level(pol.definition, v_old, e.value->>'axis') as delta
+             public._option_axis_level(v_def, p_option, e.value->>'axis')
+               - public._option_axis_level(v_def, v_old, e.value->>'axis') as delta
       from public.party_convictions pc
       join public.parties p2     on p2.id = pc.party_id and p2.nation_id = p_nation
       join public.convictions c  on c.id = pc.conviction_id
-      join public.policies pol   on pol.id = p_policy
       cross join lateral jsonb_array_elements(coalesce(c.definition -> 'onLaw', '[]'::jsonb)) e
       where nullif(e.value->>'axis', '') is not null
     loop
       if r.delta = 0 then continue; end if;   -- the law didn't move this axis
       perform public._apply_conviction_effect(r.party_id, p_nation,
-        jsonb_build_object('t', r.eff->>'t',
-          'v', to_jsonb( coalesce((r.eff->>'v')::numeric, 0)
-                         * case when (r.delta > 0) = (coalesce(r.eff->>'dir', 'up') = 'up') then 1 else -1 end )));
+        jsonb_build_object('t', r.eff->>'t', 'v', to_jsonb(public._directional_amount(
+          (r.eff->>'v')::numeric, (r.eff->>'scaled')::boolean, r.delta, r.eff->>'dir'))));
     end loop;
   end if;
 
@@ -145,11 +153,8 @@ begin
     loop
       if r.delta = 0 then continue; end if;
       perform public._apply_policy_effect(p_nation, jsonb_build_object(
-        't', r.d->>'t',
-        'v', to_jsonb(
-          coalesce((r.d->>'v')::numeric, 0)
-          * case when coalesce((r.d->>'scaled')::boolean, false) then abs(r.delta) else 1 end
-          * case when (r.delta > 0) = (coalesce(r.d->>'dir', 'up') = 'up') then 1 else -1 end )));
+        't', r.d->>'t', 'v', to_jsonb(public._directional_amount(
+          (r.d->>'v')::numeric, (r.d->>'scaled')::boolean, r.delta, r.d->>'dir'))));
     end loop;
   end if;
 end $$;

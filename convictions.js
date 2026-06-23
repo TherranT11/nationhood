@@ -54,7 +54,8 @@ export function lawLines(c) {
   (c.onLaw || []).forEach(function (e) {
     if (e.axis) {
       var fav = e.dir === 'up' ? 'rises' : 'falls', opp = e.dir === 'up' ? 'falls' : 'rises';
-      out.push({ reward: convReward(e.v, e.t), cond: 'when ' + e.axis + ' ' + fav + ' on enactment', cls: pos(e.v) });
+      var sc = e.scaled ? ' · ×move' : '';
+      out.push({ reward: convReward(e.v, e.t), cond: 'when ' + e.axis + ' ' + fav + sc + ' on enactment', cls: pos(e.v) });
       out.push({ reward: convReward(-e.v, e.t), cond: 'when ' + e.axis + ' ' + opp, cls: pos(-e.v) });
       return;
     }

@@ -1251,7 +1251,8 @@
     function cvLaw(tag,t,v){ return { tag:tag, t:t, v:v }; }
     // Directional onLaw rule: react to the DIRECTION an effect target moves on enactment
     // (axis), not a tag. dir = the favoured move ('down'=a cut, 'up'=a rise) → +v; opposite → −v.
-    function cvDir(axis,dir,t,v){ return { axis:axis, dir:dir, t:t, v:v }; }
+    // scaled = multiply by how far the figure moved (×|Δ|), else a fixed amount per direction.
+    function cvDir(axis,dir,t,v){ return { axis:axis, dir:dir, t:t, v:v, scaled:false }; }
     function blankConviction(){ return { name:'New Conviction', archetype:'Conservative', level:1, cost:1, desc:'',
       onAdopt:[cvOnce('Party Popularity',3)], whileActive:[cvTrig('Order','rise',1,'Party Popularity',2,true)], onLaw:[] }; }
     function cvTgt(cls,sel){ var h='<select class="'+cls+'">'; Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+esc(g)+'">'+POL_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</optgroup>'; }); return h+'</select>'; }
@@ -1358,11 +1359,12 @@
           wrap.innerHTML='<div class="ceff law"><span class="clause" style="align-self:center">When</span>'+axisSelect('lax',e.axis)+
             '<select class="ldir"><option value="down"'+(e.dir!=='up'?' selected':'')+'>falls (a cut)</option><option value="up"'+(e.dir==='up'?' selected':'')+'>rises (a rise)</option></select>'+
             cvTgt('lg',e.t)+'<input type="number" class="lv" step="any" value="'+(e.v!=null?e.v:0)+'"><button class="xb" type="button">×</button></div>'+
-            '<div class="mirror" style="margin:-2px 0 10px"><span>The opposite move applies the inverse automatically — no mirror needed.</span></div>';
+            '<div class="mirror" style="margin:-2px 0 10px"><input type="checkbox" class="lsc" '+(e.scaled?'checked':'')+'><span>Scale by size of move (×how far the figure moved) — the opposite move applies the inverse automatically</span></div>';
           wrap.querySelector('.lax').onchange=function(ev){ e.axis=ev.target.value; renderConvPrev(); };
           wrap.querySelector('.ldir').onchange=function(ev){ e.dir=ev.target.value; renderConvPrev(); };
           wrap.querySelector('.lg').onchange=function(ev){ e.t=ev.target.value; renderConvPrev(); };
           wrap.querySelector('.lv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; renderConvPrev(); };
+          wrap.querySelector('.lsc').onchange=function(ev){ e.scaled=ev.target.checked; renderConvPrev(); };
           wrap.querySelector('.xb').onclick=function(){ c.onLaw.splice(j,1); renderConvEditor(); renderConvPrev(); };
         } else {
           wrap.innerHTML='<div class="ceff law"><select class="lt">'+IDENTITY_TAGS.map(function(t){ return '<option'+(t===e.tag?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>'+
