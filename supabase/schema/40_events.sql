@@ -47,6 +47,15 @@ as $$
   from t;
 $$;
 
+-- A party name with any leading "The " stripped, so the event templates below — which
+-- supply their own article ("The …", "the …") — don't render "The The Archon Congress"
+-- for a party a player named "The Archon Congress". One source for the rule. The \s+
+-- guard means a name like "Theocrats" is left intact (no space → not an article).
+create or replace function public._bare_party(p text)
+returns text language sql immutable as $$
+  select regexp_replace(coalesce(p, ''), '^[Tt]he\s+', '');
+$$;
+
 -- Leader actions are server-authoritative (the client can't write the
 -- game-controlled columns popularity/pop_floor/funds/actions). Each action below
 -- validates + locks the party, rolls 1d6 + a leader stat, applies its own effect,
@@ -131,7 +140,7 @@ begin
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
 
-  v_body := 'The ' || v_p.name || ' has held a local rally' || case v_tier
+  v_body := 'The ' || public._bare_party(v_p.name) || ' has held a local rally' || case v_tier
     when 'strong'   then ', and it drew record-breaking crowds. Supporters spilled into the streets, the speeches landed, and the morning papers couldn''t ignore it.'
     when 'middling' then '. A steady, respectable turnout filled the hall, the faithful left heartened, even if the city beyond barely noticed.'
     else                 ', but the seats sat half-empty and the speech fell flat. Those who came went home unmoved, and the press stayed away.'
@@ -175,7 +184,7 @@ begin
   v_newpop := greatest(v_p.popularity, v_newfloor);                        -- popularity never below the floor
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
 
-  v_body := 'The ' || v_p.name || case v_tier
+  v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
     when 'strong'   then ' has spent the week organizing, and the ground game took hold. New local chapters opened their doors, volunteers signed up in droves, and a base is forming that no rival attack will pry loose.'
     when 'middling' then ' has been organizing on the ground. A few new chapters found their feet and the volunteer rolls grew — steady, unglamorous work that quietly deepens your roots.'
     else                 ' tried to organize this week, but the effort sputtered. Meetings went half-attended, the paperwork stalled, and little took root.'
@@ -212,7 +221,7 @@ begin
   v_tier  := public._action_tier(v_total);
   v_haul  := v_total::bigint * 15000;                              -- (1d6 + Cha) × $15K
 
-  v_body := 'The ' || v_p.name || case v_tier
+  v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
     when 'strong'   then ' has held a fundraising drive, and the cheques poured in. Donors emptied their pockets and new members signed up by the hundred — the war chest has never looked healthier.'
     when 'middling' then ' has been fundraising. A respectable haul came in from the faithful — enough to keep the lights on and a little to spare.'
     else                 ' passed the hat this week, but the donors stayed shy. A thin trickle of small gifts was all the drive could manage.'
@@ -280,12 +289,12 @@ begin
   v_self_pen := round(v_p.popularity - v_p_newpop)::int;  -- honest self-penalty after the floor (0 if grandfathered)
 
   if v_hit then
-    v_body := 'The ' || v_p.name || ' went after the ' || v_tname || '''s record' || case v_tier
-      when 'strong' then ', and the hit landed clean — the press ran with it and the ' || v_tname || ' scrambled to respond.'
+    v_body := 'The ' || public._bare_party(v_p.name) || ' went after the ' || public._bare_party(v_tname) || '''s record' || case v_tier
+      when 'strong' then ', and the hit landed clean — the press ran with it and the ' || public._bare_party(v_tname) || ' scrambled to respond.'
       else '. The charge stuck well enough to leave a mark.'
     end || ' ' || v_tname || ' popularity −' || trim(to_char(v_cut, 'FM990.0')) || '%.';
   else
-    v_body := 'The ' || v_p.name || ' tried to smear the ' || v_tname || ', but the attack rebounded — the line didn''t land, and it was the ' || v_p.name || ' that looked desperate. Popularity −' || trim(to_char(v_self_pen::numeric, 'FM990.0')) || '%.';
+    v_body := 'The ' || public._bare_party(v_p.name) || ' tried to smear the ' || public._bare_party(v_tname) || ', but the attack rebounded — the line didn''t land, and it was the ' || public._bare_party(v_p.name) || ' that looked desperate. Popularity −' || trim(to_char(v_self_pen::numeric, 'FM990.0')) || '%.';
   end if;
 
   update public.parties set popularity = v_p_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
@@ -326,7 +335,7 @@ begin
   if v_roll = 6 then v_ceilgain := 0.5; end if;                         -- natural 6 → +0.5% ceiling
   v_newceil := v_p.pop_ceiling + v_ceilgain;
 
-  v_body := 'The ' || v_p.name || case v_tier
+  v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
     when 'strong'   then ' has launched an ad blitz, and it blanketed the airwaves. The slick spots ran on every channel, the slogans stuck, and the polls jumped almost overnight.'
     when 'middling' then ' has put its ads on the air. The campaign reached plenty of living rooms and nudged the numbers — a solid return for the money spent.'
     else                 ' bought up airtime, but the ads fell flat. Forgettable spots in dead-air slots moved few minds, and the spend bought little more than name recognition.'
@@ -371,7 +380,7 @@ begin
   v_newpop := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype floor (schema/70)
   v_pen := v_p.popularity - v_newpop;                            -- amount actually lost
 
-  v_body := 'The ' || v_p.name || case v_tier
+  v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
     when 'strong'   then ' has staked out a bold new platform, and the nation took notice. A clear stand on the issues of the day cut through the noise, commentators argued it for days, and the party''s reach climbed.'
     when 'middling' then ' has set out its platform. The position drew measured notice and a few new ears — a sensible plank that widens the door a little.'
     else                 ' tried to plant its flag, but the message muddled. A hedged, forgettable stance failed to register, and the wider public looked elsewhere.'
@@ -496,9 +505,9 @@ begin
 
   v_name := (v_c ->> 'first_name') || ' ' || (v_c ->> 'last_name');
   if p_choice = 'newcomer' then
-    v_body := 'The ' || v_p.name || ' has opened its doors to new blood, and the talent came knocking. The ' || v_p.name || ' has announced ' || v_name || ' has just joined their ranks. Remember this name.';
+    v_body := 'The ' || public._bare_party(v_p.name) || ' has opened its doors to new blood, and the talent came knocking. The ' || public._bare_party(v_p.name) || ' has announced ' || v_name || ' has just joined their ranks. Remember this name.';
   else
-    v_body := 'After years working in the party apparatus, ' || v_name || ' has emerged as a name to look out for in the years to come in the ' || v_p.name || '.';
+    v_body := 'After years working in the party apparatus, ' || v_name || ' has emerged as a name to look out for in the years to come in the ' || public._bare_party(v_p.name) || '.';
   end if;
   insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'recruit', v_body, public.current_game_date());
 
