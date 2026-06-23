@@ -21,7 +21,7 @@ create table if not exists public.parties (
   -- logic moves these later. They live here so each page reads one source.
   seats         int     not null default 0,     -- seats held in the legislature
   popularity    numeric not null default 0,     -- public support, % (fractional — actions move it in tenths)
-  pop_floor     numeric not null default 0,     -- support floor: the base attacks can't push below, % (fractional — Organize moves it in tenths)
+  pop_floor     numeric not null default 0,     -- support floor: the base attacks can't push below, % (fractional; starts at 0, no player action currently raises it)
   pop_ceiling   numeric not null default 5,     -- support ceiling: current reach / cap on popularity, % (fractional — Ad Blitz nudges it)
   funds         bigint  not null default 0,      -- party treasury, in the nation's currency
   in_government boolean not null default false, -- governing vs in opposition

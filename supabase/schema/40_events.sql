@@ -162,48 +162,13 @@ end $$;
 grant execute on function public.party_rally() to authenticated;
 
 -- ---------------------------------------------------------------------------
--- party_organize(): (1d6 + Image) mapped to a tight floor move — worst −0.1%,
--- best +0.5% (reached at a 'strong' total of 7+), ~70% smaller than before. The
--- move applies to the popularity FLOOR, clamped to [0, ceiling]; popularity is
--- pulled up to never sit below the floor. $25K + 1 action.
+-- Retired actions: party_organize() (a floor move) and party_platform() (a ceiling
+-- move) were removed from the player UI. Drop the now-orphaned RPCs so they don't
+-- linger on already-provisioned databases. Historical 'organize'/'platform' events
+-- remain and render by their body text like any other event.
 -- ---------------------------------------------------------------------------
-create or replace function public.party_organize()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_p public.parties%rowtype; v_com int; v_roll int; v_total int;
-  v_delta numeric; v_newfloor numeric; v_newpop numeric; v_tier text; v_body text;
-  v_cost bigint := 25000;
-begin
-  v_p := public._begin_action(v_cost);
-  select coalesce(com, 0) into v_com from public.politicians
-    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
-  v_com := coalesce(v_com, 0);
-
-  v_roll  := floor(random() * 6)::int + 1;
-  v_total := v_roll + v_com;
-  v_tier  := public._action_tier(v_total);
-  v_delta := greatest(-0.1, least(0.5, round(-0.1 + (v_total - 1) * 0.1, 1)));  -- (1d6 + Image) → [−0.1%, +0.5%], +0.5 at total 7+
-  v_newfloor := greatest(0, least(v_p.pop_floor + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)));  -- floor in [0, crowding-adjusted ceiling]
-  v_delta := v_newfloor - v_p.pop_floor;                                   -- amount actually applied
-  v_newpop := greatest(v_p.popularity, v_newfloor);                        -- popularity never below the floor
-  v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
-
-  v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
-    when 'strong'   then ' has spent the week organizing, and the ground game took hold. New local chapters opened their doors, volunteers signed up in droves, and a base is forming that no rival attack will pry loose.'
-    when 'middling' then ' has been organizing on the ground. A few new chapters found their feet and the volunteer rolls grew — steady, unglamorous work that quietly deepens your roots.'
-    else                 ' tried to organize this week, but the effort sputtered. Meetings went half-attended, the paperwork stalled, and little took root.'
-  end || ' Floor ' || trim(to_char(v_delta, 'FMS990.0')) || '%.';
-
-  update public.parties set pop_floor = v_newfloor, popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'organize', v_body, public.current_game_date());
-  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'floor', v_newfloor, 'popularity', v_newpop, 'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - 1, 'body', v_body);
-end $$;
-
-grant execute on function public.party_organize() to authenticated;
+drop function if exists public.party_organize();
+drop function if exists public.party_platform();
 
 -- ---------------------------------------------------------------------------
 -- party_fundraise(): 1d6 + Charisma, ×$15K, added to Party Funds. No franc cost —
@@ -359,51 +324,6 @@ begin
 end $$;
 
 grant execute on function public.party_ad_blitz() to authenticated;
-
--- ---------------------------------------------------------------------------
--- party_platform(): 1d6 + Resolve, ÷3, added to the popularity CEILING (your
--- reach). Staking a bold line costs −0.2% popularity (down to the floor). $25K +
--- 1 action. (The spec calls the raised value "Conviction"; the description and
--- event copy both call it the Ceiling, so it raises pop_ceiling.)
--- ---------------------------------------------------------------------------
-create or replace function public.party_platform()
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_p public.parties%rowtype; v_res int; v_roll int; v_total int;
-  v_delta numeric; v_newceil numeric; v_newpop numeric; v_pen numeric;
-  v_cost bigint := 25000; v_tier text; v_body text;
-begin
-  v_p := public._begin_action(v_cost);
-  select coalesce(res, 0) into v_res from public.politicians
-    where party_id = v_p.id and status = 'Party Leader' order by created_at limit 1;
-  v_res := coalesce(v_res, 0);
-
-  v_roll  := floor(random() * 6)::int + 1;
-  v_total := v_roll + v_res;
-  v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 3.0, 1);                 -- (1d6 + Resolve) / 3 → ceiling gain
-  v_newceil := v_p.pop_ceiling + v_delta;
-  v_newpop := greatest(v_p.popularity - 0.2, v_p.pop_floor);     -- bold stance dips popularity 0.2%
-  v_newpop := public._mod_floor_drop(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype floor (schema/70)
-  v_pen := v_p.popularity - v_newpop;                            -- amount actually lost
-
-  v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
-    when 'strong'   then ' has staked out a bold new platform, and the nation took notice. A clear stand on the issues of the day cut through the noise, commentators argued it for days, and the party''s reach climbed.'
-    when 'middling' then ' has set out its platform. The position drew measured notice and a few new ears — a sensible plank that widens the door a little.'
-    else                 ' tried to plant its flag, but the message muddled. A hedged, forgettable stance failed to register, and the wider public looked elsewhere.'
-  end || ' Ceiling +' || trim(to_char(v_delta, 'FM990.0')) || '%.';
-
-  update public.parties set pop_ceiling = v_newceil, popularity = v_newpop, funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-  insert into public.events (nation_id, party_id, kind, body, game_date) values (v_p.nation_id, v_p.id, 'platform', v_body, public.current_game_date());
-
-  return jsonb_build_object('tier', v_tier, 'delta', v_delta, 'pop_penalty', v_pen, 'ceiling', v_newceil, 'popularity', v_newpop, 'actions', v_p.actions_remaining - 1, 'body', v_body);
-end $$;
-
-grant execute on function public.party_platform() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- RECRUIT (Charisma · New Blood) — a two-step action, so it can't reuse the
