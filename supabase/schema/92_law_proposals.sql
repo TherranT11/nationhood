@@ -52,7 +52,7 @@ $$;
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; r record;
+declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; v_oldname text; v_newname text; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
   select definition into v_def from public.policies where id = p_policy;
@@ -136,25 +136,28 @@ begin
     end loop;
   end if;
 
-  -- Directional policy effects: the policy itself declares how the NATION reacts to the
-  -- direction it moves a figure (v_def.directional = [{axis,dir,t,v,scaled}]) — e.g. Government
-  -- Confidence or Growth rising on a tax cut, falling on a rise. A static per-option value
-  -- can't express this (the meaning is in the transition: High→Moderate is relief, None→Moderate
-  -- a hike). Fire each by the sign of the axis change: the favoured move applies +amount, the
-  -- opposite −amount; amount = v, or v×|Δ| when scaled. Reuses _option_axis_level +
-  -- _apply_policy_effect, so the nation stat/economy/government mapping stays in one place.
+  -- Per-option transition effects: each option can declare one-time changes for moving between
+  -- specific rungs, relative to that option (definition.<option>.transitions = [{dir:'to'|'from',
+  -- rung:<option name>, t, v}]). On a move OLD→NEW, fire the NEW option's 'from <OLD>' rules
+  -- (arriving) and the OLD option's 'to <NEW>' rules (leaving), matched by option NAME. v is the
+  -- signed amount (flat — no size-of-move scaling). Reuses _apply_policy_effect so the
+  -- stat/economy/government mapping stays in one place. Skips the never-enacted default.
   if v_def is not null and v_old is not null and v_old <> p_option then
+    v_oldname := public._policy_options(v_def) -> v_old    ->> 'name';
+    v_newname := public._policy_options(v_def) -> p_option ->> 'name';
     for r in
-      select e.value as d,
-             public._option_axis_level(v_def, p_option, e.value->>'axis')
-               - public._option_axis_level(v_def, v_old, e.value->>'axis') as delta
-      from jsonb_array_elements(coalesce(v_def -> 'directional', '[]'::jsonb)) e
-      where nullif(e.value->>'axis', '') is not null
+      select e.value as t
+      from jsonb_array_elements(coalesce(public._policy_options(v_def) -> p_option -> 'transitions', '[]'::jsonb)) e
+      where e.value->>'dir' = 'from' and e.value->>'rung' = v_oldname
     loop
-      if r.delta = 0 then continue; end if;
-      perform public._apply_policy_effect(p_nation, jsonb_build_object(
-        't', r.d->>'t', 'v', to_jsonb(public._directional_amount(
-          (r.d->>'v')::numeric, (r.d->>'scaled')::boolean, r.delta, r.d->>'dir'))));
+      perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+    end loop;
+    for r in
+      select e.value as t
+      from jsonb_array_elements(coalesce(public._policy_options(v_def) -> v_old -> 'transitions', '[]'::jsonb)) e
+      where e.value->>'dir' = 'to' and e.value->>'rung' = v_newname
+    loop
+      perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
     end loop;
   end if;
 end $$;
