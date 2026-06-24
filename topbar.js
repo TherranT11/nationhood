@@ -131,7 +131,7 @@ function fmtCountdown(ms){
   const two = function (n) { return String(n).padStart(2, '0'); };
   return Math.floor(s / 3600) + ':' + two(Math.floor((s % 3600) / 60)) + ':' + two(s % 60);
 }
-export function mountNextTick(el){
+function mountNextTick(el){   // internal: only mountTopbar uses it
   if (!el) return;
   if (nextTickTimer) { clearInterval(nextTickTimer); nextTickTimer = null; }   // never stack intervals
   let remaining = msUntilNextTick(new Date());

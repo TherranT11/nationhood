@@ -375,8 +375,8 @@ revoke all on function public._confidence_collapse(text) from public, anon, auth
 -- the manual admin button calls advance_tick() — the gated wrapper below. Every
 -- per-nation / per-item step runs in its own sub-block: a single failure is logged
 -- (raise warning) and skipped, so one bad nation can never freeze the world clock.
--- Bumps the clock (+ stamps last_tick_at for the next-tick countdown), refreshes every
--- party's action budget to 12, applies monthly policy economics + January income,
+-- Bumps the clock, refreshes every party's action budget to 12, applies monthly
+-- policy economics + January income,
 -- reconciles one-party regimes, resolves due elections, lifts expired modifiers, and
 -- promotes/tallies floor measures.
 -- ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ set search_path = public
 as $$
 declare v_tick int; v_n text; v_count int := 0; v_rec record;
 begin
-  update public.game_state set current_tick = current_tick + 1, last_tick_at = now() where id returning current_tick into v_tick;
+  update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
   -- Every party gets a fresh turn: action budget reset to 12 on each tick. The
   -- predicate matches all parties not already at 12 (and is null-safe) — it also
   -- satisfies Postgres' require-a-WHERE-clause guard (sql_safe_updates).
@@ -490,6 +490,8 @@ grant execute on function public.advance_tick() to authenticated;
 -- and wrapped so a project WITHOUT pg_cron (e.g. local dev) still applies the rest of
 -- the schema. The job runs as the function owner, which clears the admin gate that
 -- advance_tick() enforces for clients.
+-- ONE SOURCE caveat: the topbar's "Next Tick" countdown (TICK_PERIOD_MS in topbar.js)
+-- mirrors this cadence client-side. If you change the schedule here, change it there too.
 -- ---------------------------------------------------------------------------
 do $$
 begin
