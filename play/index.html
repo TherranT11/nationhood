@@ -82,10 +82,13 @@
      Four per row (eight total). */
   .leadbar__grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   @media(max-width:700px){.leadbar__grid{grid-template-columns:repeat(2,1fr)}}
-  .lead{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:pointer;transition:border-color .15s,transform .12s,box-shadow .2s}
+  .lead{position:relative;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 16px;color:var(--muted);font-family:inherit;cursor:pointer;transition:border-color .15s,transform .12s,box-shadow .2s}
   .lead:not(:disabled):hover{border-color:var(--indigo);transform:translateY(-1px);box-shadow:0 12px 26px -18px rgba(85,70,232,.5)}
   .lead:disabled{cursor:not-allowed;opacity:.5;background:var(--chip)}
-  .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px}
+  /* AP cost pill (top-right). The "Soon" variant marks an action not yet wired up. */
+  .lead__cost{position:absolute;top:12px;right:13px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:3px 7px;border-radius:20px;white-space:nowrap}
+  .lead__cost--soon{color:var(--soft);background:var(--chip)}
+  .lead b{display:block;font-weight:800;font-size:17px;letter-spacing:-.01em;color:var(--ink);margin-bottom:7px;padding-right:52px}
   .lead__lane{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .lead__desc{display:block;font-size:12px;line-height:1.4;color:var(--muted);margin-top:8px}
   .leadbar__sub{color:var(--muted);font-size:13px;margin:-6px 0 14px}
@@ -111,6 +114,8 @@
   /* RECRUIT candidate cards (reuse the .amodal shell). */
   .cand{display:flex;flex-direction:column;gap:9px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
   .cand:hover{border-color:var(--indigo)}
+  .cand:disabled{opacity:.5;cursor:not-allowed}
+  .cand:disabled:hover{border-color:var(--line)}
   .cand__top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
   .cand__name b{font-weight:800;font-size:15px;letter-spacing:-.01em}
   .cand__tag{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:4px 9px;border-radius:20px;white-space:nowrap}
@@ -210,14 +215,14 @@
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 4 actions."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
-        <button class="lead" id="act-direct" type="button" title="Direct members of your party to action. (Not yet available.)"><b>Direct</b><span class="lead__lane">The Whip</span><span class="lead__desc">Direct members of your party to action.</span></button>
-        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 4 actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 4 actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 4 actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
-        <button class="lead" id="act-noconfidence" type="button" title="A vote of no confidence against the current government. (Not yet available.)"><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
-        <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
-        <button class="lead" id="act-negotiate" type="button" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
+        <button class="lead" id="act-rally" type="button" data-cost="4" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 4 actions."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
+        <button class="lead" id="act-direct" type="button" data-soon disabled title="Direct members of your party to action. (Not yet available.)"><b>Direct</b><span class="lead__lane">The Whip</span><span class="lead__desc">Direct members of your party to action.</span></button>
+        <button class="lead" id="act-fundraise" type="button" data-cost="4" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 4 actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
+        <button class="lead" id="act-attack" type="button" data-cost="4" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 4 actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
+        <button class="lead" id="act-adblitz" type="button" data-cost="4" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 4 actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-noconfidence" type="button" data-soon disabled title="A vote of no confidence against the current government. (Not yet available.)"><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
+        <button class="lead" id="act-recruit" type="button" data-cost="1" data-cost-label="1–2" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
+        <button class="lead" id="act-negotiate" type="button" data-cost="1" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed. Starting talks costs 1 action."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
       </div>
     </section>
 
@@ -394,24 +399,33 @@
     } catch (e) { ping('Action failed. Try again.'); }
     finally { acting = false; setActions(partyActions); }
   }
-  function wireAction(btn, rpc, okMsg, cost) {
+  function wireAction(btn, rpc, okMsg) {
     if (!btn) return;
-    btn.dataset.cost = cost || 1;
     actionBtns.push(btn);
     btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
   }
-  wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; }, 4);
-  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; }, 4);
-  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; }, 4);
+  wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
+  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
+  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
   // [Direct] (act-direct) and [No Confidence] (act-noconfidence) are intentionally NOT
-  // wired yet — placeholder actions; add wireAction calls when their RPCs exist.
+  // wired yet — placeholder actions (data-soon + disabled in markup); add wireAction
+  // calls and drop the data-soon attribute when their RPCs exist.
+
+  // Stamp every action card with its AP cost, read from the same data-cost the
+  // affordability gate (setActions) uses — one source for the cost. data-cost-label
+  // overrides the text for a variable cost (Recruit: 1–2); data-soon shows "Soon".
+  document.querySelectorAll('.leadbar__grid .lead').forEach(function (b) {
+    var pill = document.createElement('span');
+    if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
+    else { pill.className = 'lead__cost'; pill.textContent = (b.dataset.costLabel || (parseInt(b.dataset.cost, 10) || 1)) + ' AP'; }
+    b.appendChild(pill);
+  });
 
   // ATTACK targets a rival → open a picker (all other parties, with seats +
   // popularity), then call party_attack(targetId). Shares the action lock/budget.
   var attackBtn = document.getElementById('act-attack');
   var attackModal = document.getElementById('attackModal');
   if (attackBtn) {
-    attackBtn.dataset.cost = 4;   // Attack is a Standing action (costs _standing_cost())
     actionBtns.push(attackBtn);
     attackBtn.addEventListener('click', openAttackModal);
   }
@@ -457,12 +471,13 @@
   function candCard(choice, c, acts) {
     if (!c) return '';
     var label = choice === 'seasoned' ? 'Seasoned' : 'Newcomer';
+    var afford = partyActions >= acts;   // enough AP left to hire this candidate?
     var stats = COMPETENCIES.map(function (k) { return '<span class="cand__stat">' + k.abbr + ' <b>' + (c[k.key] || 0) + '</b></span>'; }).join('');
-    return '<button class="cand" type="button" data-choice="' + choice + '">' +
+    return '<button class="cand" type="button" data-choice="' + choice + '"' + (afford ? '' : ' disabled') + '>' +
       '<span class="cand__top"><span class="cand__name"><b>' + esc((c.first_name || '') + ' ' + (c.last_name || '')) + '</b></span><span class="cand__tag">' + label + '</span></span>' +
       '<span class="cand__meta">Age ' + (c.age || 0) + ' &middot; Exp ' + (c.experience || 0) + '</span>' +
       '<span class="cand__stats">' + stats + '</span>' +
-      '<span class="cand__cost">Recruit &middot; ' + acts + ' action' + (acts > 1 ? 's' : '') + '</span></button>';
+      '<span class="cand__cost">Recruit &middot; ' + acts + ' action' + (acts > 1 ? 's' : '') + (afford ? '' : ' &middot; need ' + acts + ' AP') + '</span></button>';
   }
   function renderCandidates(d) {
     var list = document.getElementById('recruitList');
