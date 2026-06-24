@@ -117,7 +117,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_p public.proposals%rowtype; v_maj int; v_aye int; v_nay int; v_pass boolean;
+  v_p public.proposals%rowtype; v_maj int; v_aye int; v_nay int; v_pass boolean; v_absent text;
 begin
   select * into v_p from public.proposals where id = p_proposal for update;
   if not found then return 'gone'; end if;
@@ -133,6 +133,28 @@ begin
   -- early: outright chamber majority (v_maj >= 1, so this implies real seated Ayes);
   -- at close: simple majority of the seats cast.
   v_pass := (v_aye >= v_maj) or (p_final and v_aye > v_nay and v_aye > 0);
+
+  -- Abstention has a cost: at the CLOSE of voting, every SEATED party that never cast a
+  -- vote on this measure loses 1% popularity (floored like any drop — _mod_floor_drop,
+  -- schema/70). Gated on p_final, so a measure that passes EARLY on an outright majority
+  -- (its window cut short) never penalises non-voters. The proposer auto-voted, so it is
+  -- never caught here. One summary event names the absentees so the drop is visible.
+  if p_final then
+    with hit as (
+      update public.parties pp
+         set popularity = public._mod_floor_drop(pp.nation_id, pp.archetype, pp.popularity, greatest(pp.popularity - 1, pp.pop_floor))
+       where pp.nation_id = v_p.nation_id and pp.seats > 0
+         and not exists (select 1 from public.proposal_votes pv where pv.proposal_id = p_proposal and pv.party_id = pp.id)
+      returning pp.name
+    )
+    select string_agg(name, ', ' order by name) into v_absent from hit;
+    if v_absent is not null then
+      insert into public.events (nation_id, party_id, kind, body, game_date)
+        values (v_p.nation_id, null, 'declaration',
+                'Absent from the floor vote on ' || v_p.title || ' — popularity −1%: ' || v_absent || '.',
+                public.current_game_date());
+    end if;
+  end if;
 
   if v_pass then
     update public.proposals set status = 'passed' where id = p_proposal;
