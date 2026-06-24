@@ -271,7 +271,7 @@
       '<div class="composer__row"><span class="composer__as">Posting as <b>' + (t.realm === 'ic' ? 'your party' : (ST.handle ? '@' + esc(ST.handle) : 'your handle')) + '</b></span>' +
       '<button class="btn" id="replyBtn">Reply</button></div></div>';
     if(t.realm === 'ooc' && !ST.handle)
-      composer = '<div class="handlewarn">Set a handle (the gear menu, top-right) to post out of character.</div>';
+      composer = '<div class="handlewarn">Set a nickname (the gear menu, top-right) to post out of character.</div>';
 
     viewEl.innerHTML =
       '<button class="backlink" id="back">‹ ' + esc(b ? b.name : 'Board') + '</button>' +
@@ -314,11 +314,12 @@
   }
   function syncNtAs(){
     var b = boardDef(document.getElementById('ntBoard').value);
-    var as = document.getElementById('ntAs');
-    if(!b){ as.textContent = ''; return; }
-    if(b.realm === 'ic'){ as.innerHTML = 'Posting in character as <b>your party</b>.'; }
+    var as = document.getElementById('ntAs'), blocked = false;
+    if(!b){ as.textContent = ''; }
+    else if(b.realm === 'ic'){ as.innerHTML = 'Posting in character as <b>your party</b>.'; }
     else if(ST.handle){ as.innerHTML = 'Posting as <b>@' + esc(ST.handle) + '</b>.'; }
-    else { as.innerHTML = '<span style="color:var(--amber)">Set a handle (gear menu) to post out of character.</span>'; }
+    else { as.innerHTML = '<span style="color:var(--amber)">Set a nickname (gear menu) to post out of character — you can’t post here without one.</span>'; blocked = true; }
+    document.getElementById('ntSubmit').disabled = blocked;   // OOC posting is gated on a nickname
   }
   document.getElementById('ntSubmit').onclick = async function(){
     if(ST.busy) return;

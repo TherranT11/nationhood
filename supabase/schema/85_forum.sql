@@ -12,12 +12,13 @@
 -- labels for now).
 -- ===========================================================================
 
--- Player handle: the out-of-character identity. Null until the player sets one;
--- unique case-insensitively so a handle can't be impersonated.
+-- Player nickname (the @handle): the out-of-character identity. Null until the player
+-- sets one — and OOC posting is gated on it (_forum_identity raises without one). Unique
+-- case-insensitively so a nickname can't be impersonated.
 alter table public.profiles add column if not exists handle text;
 create unique index if not exists profiles_handle_unique on public.profiles (lower(handle)) where handle is not null;
 
--- Set the caller's handle. 3–20 chars, letters/digits/underscore. Friendly error if
+-- Set the caller's nickname. 2–16 chars, letters/digits/underscore. Friendly error if
 -- taken. SECURITY DEFINER so it writes the caller's own profile column without needing
 -- a broad client UPDATE grant on profiles.
 create or replace function public.set_handle(p_handle text)
@@ -25,7 +26,7 @@ returns text language plpgsql security definer set search_path = public as $$
 declare v_h text := btrim(coalesce(p_handle, ''));
 begin
   if auth.uid() is null then raise exception 'Not signed in.'; end if;
-  if v_h !~ '^[A-Za-z0-9_]{3,20}$' then raise exception 'Handle must be 3–20 letters, digits, or underscores.'; end if;
+  if v_h !~ '^[A-Za-z0-9_]{2,16}$' then raise exception 'Nickname must be 2–16 letters, digits, or underscores.'; end if;
   begin
     update public.profiles set handle = v_h where id = auth.uid();
   exception when unique_violation then
