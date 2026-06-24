@@ -180,11 +180,19 @@
     return '<span class="author">' + dot + esc(row.author) + tag + '</span>';
   }
   function icon(b){ return '<svg viewBox="0 0 24 24">' + (b && b.icon || '') + '</svg>'; }
+  // Reply count (= posts − 1, since the opening post is the thread's first post) + age.
+  function statLine(postCount, ts){
+    var r = Math.max(0, (postCount || 1) - 1);
+    return '<span class="lt-stats">' + r + (r === 1 ? ' reply' : ' replies') + ' · ' + ago(ts) + '</span>';
+  }
 
   // ---- BOARDS VIEW -------------------------------------------------------
   async function renderBoards(){
     var realmBoards = boardsIn(ST.realm);
     var nationFilter = (ST.realm === 'ic' && ST.nation) ? ST.nation : null;
+    // The 200 most recently-active threads in the realm, newest first → the latest per
+    // board. (Approximate at high volume: a board quiet enough to fall past the 200th
+    // thread would show "no threads"; the full list is always one click into the board.)
     var threads = await fetchThreads(realmBoards.map(function(b){ return b.key; }), nationFilter);
     var latest = {};
     threads.forEach(function(t){ if(!latest[t.board]) latest[t.board] = t; });   // first = newest (bumped_at desc)
@@ -199,10 +207,8 @@
 
     var cards = realmBoards.map(function(b){
       var t = latest[b.key];
-      var replies = t ? Math.max(0, (counts[t.id] || 1) - 1) : 0;
       var line = t
-        ? '<div class="latest"><span class="lt-title" data-thread="' + t.id + '">' + esc(t.title) + '</span>' + authorChip(t) +
-            '<span class="lt-stats">' + replies + (replies === 1 ? ' reply' : ' replies') + ' · ' + ago(t.bumped_at) + '</span></div>'
+        ? '<div class="latest"><span class="lt-title" data-thread="' + t.id + '">' + esc(t.title) + '</span>' + authorChip(t) + statLine(counts[t.id], t.bumped_at) + '</div>'
         : '<div class="latest"><span class="lt-empty">' + (nationFilter ? 'No threads from ' + esc(ntag(nationFilter)) + ' yet — be the first.' : 'No threads yet — start one.') + '</span></div>';
       return '<div class="board"><div class="b-top"><div class="b-ic">' + icon(b) + '</div>' +
         '<div class="b-meta"><div class="b-namerow"><span class="b-name" data-board="' + esc(b.key) + '">' + esc(b.name) + '</span>' +
@@ -233,9 +239,7 @@
 
     var rows = threads.length
       ? threads.map(function(t){
-          var replies = Math.max(0, (counts[t.id] || 1) - 1);
-          return '<div class="trow" data-thread="' + t.id + '"><span class="tt">' + esc(t.title) + '</span>' + authorChip(t) +
-            '<span class="lt-stats">' + replies + (replies === 1 ? ' reply' : ' replies') + ' · ' + ago(t.bumped_at) + '</span></div>';
+          return '<div class="trow" data-thread="' + t.id + '"><span class="tt">' + esc(t.title) + '</span>' + authorChip(t) + statLine(counts[t.id], t.bumped_at) + '</div>';
         }).join('')
       : '<span class="lt-empty">No threads here yet — start one.</span>';
 

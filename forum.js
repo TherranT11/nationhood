@@ -43,9 +43,7 @@ export async function postThread(board, title, body) {
 export async function postReply(threadId, body) {
   return unwrap(await supabase.rpc('forum_post_reply', { p_thread: threadId, p_body: body }));
 }
-export async function setHandle(handle) {
-  return unwrap(await supabase.rpc('set_handle', { p_handle: handle }));
-}
+// (Setting the nickname is wired in the shared topbar gear, which calls set_handle directly.)
 
 // Relative "2h" / "40m" / "3d" style age from a timestamp — matches the mockup.
 export function ago(ts) {
