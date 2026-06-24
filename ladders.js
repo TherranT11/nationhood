@@ -55,3 +55,10 @@ export function regimeLabel(value) {
   for (const t of REGIME_TIERS) if (n >= t.value) return t.label; // tiers are high→low
   return REGIME_TIERS[REGIME_TIERS.length - 1].label;
 }
+
+// The player-facing regime line: "Label (N)" for a numeric regime, the stored string
+// for a legacy one, or "—". ONE source for this format — read by the Nation and World
+// pages (the number → label step is regimeLabel above).
+export function regimeText(regime) {
+  return (typeof regime === 'number') ? (regimeLabel(regime) + ' (' + regime + ')') : (regime || '—');
+}
