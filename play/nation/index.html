@@ -138,7 +138,7 @@
 
     var economy =
       '<section class="panel"><h2>Domestic Economy</h2><div class="econ">' +
-        ECON.map(function(k){ var v = prod[k]; return '<div class="ecell"><div class="k">' + cap(k) + '</div><div class="v">' + (v != null ? v : '—') + '</div></div>'; }).join('') +
+        ECON.map(function(k){ var v = prod[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div></div>'; }).join('') +
       '</div></section>';
 
     // National Identity = every declaration slot's current value, grouped.
