@@ -164,8 +164,11 @@
     var parts = [['Base', b.base], ['Crises', b.crises], ['Contradictions', b.contradictions],
                  ['Coalition size', b.majority], ['Reneged', b.renege], ['National modifier', b.modifier]];
     if (b.formed != null) parts.push(['Agenda', (Number(govt.confidence) || 0) - b.formed]);
-    var chips = parts.filter(function(p){ return p[0] === 'Base' || p[1]; }).map(function(p){
-      var n = p[1] || 0, cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
+    // Round each part for display (confidence is numeric now); filter zeros AFTER rounding
+    // so a sub-0.5 movement doesn't show as e.g. "Agenda 0". Base always shows.
+    var chips = parts.map(function(p){ return [p[0], Math.round(p[1] || 0)]; })
+      .filter(function(p){ return p[0] === 'Base' || p[1]; }).map(function(p){
+      var n = p[1], cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
       return '<span class="bk ' + cls + '">' + p[0] + ' ' + (n > 0 ? '+' : '') + n + '</span>';
     });
     return '<div class="conf__break">' + chips.join('') + '</div>';
@@ -344,7 +347,7 @@
     box.innerHTML = cardHtml +
       // 1 — Government Confidence
       '<div class="panel"><h2>Government Confidence</h2>' +
-        '<div class="conf__n" style="color:' + bd.color + '">' + c + '<span>%</span></div>' +
+        '<div class="conf__n" style="color:' + bd.color + '">' + Math.round(c) + '<span>%</span></div>' +
         '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
         '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
         confChips(govt) +
@@ -434,7 +437,7 @@
     try {
       const { data, error } = await supabase.rpc('agenda_enact', { p_item: itemId });
       if (error) throw error;
-      ping('Promise delivered — Government Confidence +' + data.delta + '% (now ' + data.confidence + '%).');
+      ping('Promise delivered — Government Confidence +' + Math.round(data.delta) + '% (now ' + Math.round(data.confidence) + '%).');
       await load();
     } catch (e) { ping(e.message || 'Couldn’t enact that item.'); }
     finally { busy = false; }
@@ -462,7 +465,7 @@
     try {
       const { data, error } = await supabase.rpc('coalition_install', { p_neg: negId });
       if (error) throw error;
-      ping('New coalition installed — Government Confidence ' + data.confidence + '%, Popularity −' + data.pop_delta + '%.');
+      ping('New coalition installed — Government Confidence ' + Math.round(data.confidence) + '%, Popularity −' + data.pop_delta + '%.');
       await load();
     } catch (e) { ping(e.message || 'Couldn’t install that coalition.'); }
     finally { busy = false; }

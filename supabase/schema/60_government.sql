@@ -48,7 +48,7 @@ create table if not exists public.governments (
   nation_id             text not null references public.nations (id),
   formateur_party_id    uuid references public.parties (id) on delete set null,  -- the party that formed + leads it
   type                  text not null,                 -- majority | coalition | minority
-  confidence            int  not null,                 -- 0..100, public approval of this government
+  confidence            numeric not null,               -- 0..100, public approval of this government (numeric so fractional per-tick effects accumulate)
   conf_breakdown        jsonb,                          -- the Confidence formula's parts at formation (base/crises/contradictions/majority/renege/modifier/formed); the panel reads this, never recomputes
   formed_tick           int  not null,                 -- the tick it formed; the formation window (renege) reads this
   source_negotiation_id uuid references public.negotiations (id) on delete set null, -- the committed agreement, if a coalition
@@ -58,6 +58,9 @@ create table if not exists public.governments (
 create unique index if not exists governments_one_active_per_nation
   on public.governments (nation_id) where status = 'active';
 alter table public.governments add column if not exists conf_breakdown jsonb;  -- additive: existing deployments get it on re-apply
+-- Widen int → numeric so a fractional per-tick effect (e.g. a policy's −0.3 Government
+-- Confidence) accumulates instead of rounding straight back to the same integer each tick.
+alter table public.governments alter column confidence type numeric using confidence::numeric;
 
 -- The governing agenda: the agreed coalition terms a government has promised to
 -- enact. Inherited from the committed agreement at formation; NOT applied
