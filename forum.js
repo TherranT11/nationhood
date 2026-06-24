@@ -16,7 +16,9 @@ export async function fetchThreads(boardKeys, nationId) {
   if (!boardKeys.length) return [];
   let q = supabase.from('forum_threads').select('*').in('board', boardKeys)
     .order('bumped_at', { ascending: false }).limit(200);
-  if (nationId) q = q.eq('nation_id', nationId);
+  // A nation filter keeps that nation's threads PLUS international ones (nation_id null),
+  // which are cross-nation and belong under every filter.
+  if (nationId) q = q.or('nation_id.eq.' + nationId + ',nation_id.is.null');
   return unwrap(await q) || [];
 }
 
@@ -37,13 +39,32 @@ export async function fetchPosts(threadId) {
   return unwrap(await supabase.from('forum_posts').select('*').eq('thread_id', threadId).order('created_at')) || [];
 }
 
-export async function postThread(board, title, body) {
-  return unwrap(await supabase.rpc('forum_post_thread', { p_board: board, p_title: title, p_body: body }));
+export async function postThread(board, title, body, international) {
+  return unwrap(await supabase.rpc('forum_post_thread', { p_board: board, p_title: title, p_body: body, p_international: !!international }));
 }
 export async function postReply(threadId, body) {
   return unwrap(await supabase.rpc('forum_post_reply', { p_thread: threadId, p_body: body }));
 }
+export async function editPost(postId, body) {
+  return unwrap(await supabase.rpc('forum_edit_post', { p_post: postId, p_body: body }));
+}
+// Returns 'thread' (the opening post was removed, so the whole thread is gone) or 'post'.
+export async function deletePost(postId) {
+  return unwrap(await supabase.rpc('forum_delete_post', { p_post: postId }));
+}
 // (Setting the nickname is wired in the shared topbar gear, which calls set_handle directly.)
+
+// Upload an image to the public forum bucket, into a folder named by the user's id
+// (matches the storage RLS), and return its public URL to embed in a post.
+export async function uploadImage(file) {
+  var u = (await supabase.auth.getUser()).data.user;
+  if (!u) throw new Error('Not signed in.');
+  var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+  var up = await supabase.storage.from('forum-images').upload(path, file, { cacheControl: '3600', upsert: false });
+  if (up.error) throw new Error(up.error.message);
+  return supabase.storage.from('forum-images').getPublicUrl(path).data.publicUrl;
+}
 
 // Relative "2h" / "40m" / "3d" style age from a timestamp — matches the mockup.
 export function ago(ts) {

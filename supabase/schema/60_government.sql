@@ -166,7 +166,11 @@ revoke all on function public._seat_government(text, uuid, text, uuid, int, bool
 -- resolve_election(nation): the full pipeline for ONE nation. INTERNAL — execute
 -- is revoked from clients; only advance_tick() (admin-gated, same owner) calls it.
 -- ---------------------------------------------------------------------------
-create or replace function public.resolve_election(p_nation text)
+-- p_reason (optional): when set, it replaces the standard "Election results are in…"
+-- lead-in on the results event — the confidence-collapse path passes the forced-
+-- resignation framing so the snap election still reuses this one seat-allocation source.
+drop function if exists public.resolve_election(text);
+create or replace function public.resolve_election(p_nation text, p_reason text default null)
 returns void
 language plpgsql
 security definer
@@ -299,9 +303,10 @@ begin
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (p_nation, v_formateur_id, 'election',
-            (case when v_ruling is not null
-                  then 'The results of the ' || v_year || ' Party Congress for ' || v_nname || ' are in. '
-                  else 'Election results are in for the election of ' || v_year || ' for ' || v_nname || '. ' end)
+            coalesce(p_reason,
+              (case when v_ruling is not null
+                    then 'The results of the ' || v_year || ' Party Congress for ' || v_nname || ' are in. '
+                    else 'Election results are in for the election of ' || v_year || ' for ' || v_nname || '. ' end))
             || v_results || '.',
             public.current_game_date());
   insert into public.events (nation_id, party_id, kind, body, game_date)
@@ -313,7 +318,56 @@ begin
 end $$;
 -- Internal only: clients can never call the resolver directly (advance_tick,
 -- owned by the same role, still can). Revoke the default PUBLIC grant explicitly.
-revoke all on function public.resolve_election(text) from public, anon, authenticated;
+revoke all on function public.resolve_election(text, text) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- _confidence_collapse(nation): when an active government's Confidence falls to
+-- <=10 the head of government is forced to resign. The governing parties take a
+-- popularity hit (the premier's party −5, other coalition members −3, through the
+-- same floor-respecting helper policy effects use), then a snap election runs via
+-- the normal resolver — so seat allocation has ONE source. Called ONLY from the two
+-- paths that LOWER confidence (admin event, policy effect); never from formation,
+-- so a government seated at <=10 doesn't instantly fall and there is no election
+-- loop (the resolver never re-enters those lowering paths). Self-guards: no-ops
+-- unless there is an active government actually at <=10. INTERNAL.
+-- ---------------------------------------------------------------------------
+create or replace function public._confidence_collapse(p_nation text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_gov public.governments%rowtype;
+  v_form_name text; v_leader text; v_title text; v_reason text;
+begin
+  select * into v_gov from public.governments where nation_id = p_nation and status = 'active';
+  if not found or coalesce(v_gov.confidence, 100) > 10 then return; end if;
+
+  -- Who is resigning — captured before the election reseats everything.
+  select name into v_form_name from public.parties where id = v_gov.formateur_party_id;
+  select name into v_leader from public.politicians
+    where party_id = v_gov.formateur_party_id and status = 'Party Leader'
+    order by created_at limit 1;
+  v_title := public.nation_declaration(p_nation, 'head_of_government_title');
+
+  -- Popularity penalty on the governing parties: premier −5, partners −3. Floor-
+  -- respecting (same path as policy effects), then clamp 0..100. Runs BEFORE the
+  -- election so the punished parties carry it into the snap result.
+  update public.parties p
+     set popularity = greatest(0, least(100, public._mod_floor_drop(
+           p_nation, p.archetype, p.popularity,
+           p.popularity - (case when p.id = v_gov.formateur_party_id then 5 else 3 end))))
+   where p.nation_id = p_nation and p.in_government;
+
+  v_reason := 'Following a forced resignation from '
+              || coalesce(nullif(v_title, ''), 'Prime Minister') || ' '
+              || coalesce(v_leader, v_form_name, 'the incumbent')
+              || ', new elections have been held. ';
+
+  perform public.resolve_election(p_nation, v_reason);
+end $$;
+revoke all on function public._confidence_collapse(text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- advance_tick(): the admin's single lever. Bumps the shared clock one tick,

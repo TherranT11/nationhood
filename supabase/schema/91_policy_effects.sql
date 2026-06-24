@@ -97,6 +97,7 @@ begin
       update public.governments
          set confidence = greatest(0, least(100, confidence + v_v))
        where nation_id = p_nation and status = 'active';
+      if v_v < 0 then perform public._confidence_collapse(p_nation); end if;  -- a drop to <=10 forces a snap election
     -- Party Popularity → every party currently IN GOVERNMENT (parties.in_government, set
     -- when the government forms, schema/60), through the canonical archetype ceiling/floor
     -- helpers (same path party actions use), then clamp 0..100. A policy is the government's
