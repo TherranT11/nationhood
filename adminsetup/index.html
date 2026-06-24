@@ -1717,6 +1717,12 @@
     // renderPreview…) can't collide with the other tabs. Returns loadCrises().
     var loadCrises = (function () {
       var PSTATS = ['Charisma', 'Image', 'Acumen', 'Resolve', 'Guile'];
+      // Who a crisis minister-action can fall to: the cabinet portfolios PLUS the head
+      // of government (PM/President), who isn't a portfolio. Derived from MINISTRIES so
+      // the cabinet + coalition "Promise a Ministry" deals still read the plain list and
+      // only crises get this extra actor. (If crises are ever runtime-resolved by the
+      // acting minister's stat, this value needs mapping to the premier.)
+      var CRISIS_ACTORS = MINISTRIES.concat(['Prime Minister/President/Head of Government']);
       var OPS = ['<', '≤', '>', '≥', '='];
       var RES = ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'];
       var EFF_TGT = { Crisis: ['Crisis Meter'], National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'], Government: ['Government Confidence', 'Party Popularity'], Resource: RES };
@@ -1907,7 +1913,7 @@
             mech = '<div class="clause">Effect (applied directly)</div>' + effRowsHtml(ai, 'direct');
           }
           body = '<div class="f"><label>Name of decision</label><input type="text" class="decision" value="' + (a.decision || '').replace(/"/g, '&quot;') + '"></div>' +
-            '<div class="grid2" style="grid-template-columns:1fr 1fr"><div class="f"><label>Which minister</label><select class="ministry">' + MINISTRIES.map(function (m) { return '<option' + (m === a.ministry ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div>' +
+            '<div class="grid2" style="grid-template-columns:1fr 1fr"><div class="f"><label>Which minister</label><select class="ministry">' + CRISIS_ACTORS.map(function (m) { return '<option' + (m === a.ministry ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></div>' +
             '<div class="f"><label>Cause</label><input type="text" class="cause" value="' + (a.cause || '').replace(/"/g, '&quot;') + '"></div></div>' +
             '<div class="clause">Resolution</div><div class="seg mechseg" style="margin-bottom:10px"><span data-m="direct" class="' + (a.mech === 'direct' ? 'on' : '') + '">Direct effect</span><span data-m="roll" class="' + (a.mech === 'roll' ? 'on' : '') + '">Die roll</span></div>' +
             mech;

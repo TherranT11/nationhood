@@ -53,6 +53,7 @@ const HTML = `
   <button class="gear" id="gearBtn" type="button" aria-label="Settings" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
   <div class="gearmenu" id="gearMenu" hidden>
     <div id="gearMain">
+      <button class="gearmenu__item" id="handleBtn" type="button">Set nickname</button>
       <button class="gearmenu__item" id="logoutBtn" type="button">Log out</button>
       <button class="gearmenu__item gearmenu__item--danger" id="delPartyBtn" type="button">Delete Party</button>
     </div>
@@ -80,6 +81,18 @@ export function mountTopbar(){
   wireDeletePartyMenu();   // settings gear → Delete Party (shared; see supabase.js)
   const logoutBtn = document.getElementById('logoutBtn');   // gear → Log out (moved here from the side nav)
   if (logoutBtn) logoutBtn.addEventListener('click', logout);
+  // gear → Set nickname: the player's out-of-character Forum identity (@handle). OOC
+  // posting is gated on having one.
+  const handleBtn = document.getElementById('handleBtn');
+  if (handleBtn) handleBtn.addEventListener('click', async function () {
+    const h = prompt('Choose a nickname — up to 16 letters, digits, or underscores. This is your out-of-character name in the Forum, and you need one to post there.');
+    if (h == null) return;
+    try {
+      const { data, error } = await supabase.rpc('set_handle', { p_handle: h.trim() });
+      if (error) throw error;
+      alert('Nickname set to @' + data);
+    } catch (e) { alert(e.message || 'Couldn’t set that nickname.'); }
+  });
   wireTheme();             // sun/moon toggle → flips the persistent light/dark theme
   loadChrome();            // accent + funds + action budget on every screen (one source)
 
