@@ -131,7 +131,9 @@ begin
 end $$;
 grant execute on function public._assert_negotiation_open(uuid) to authenticated;
 
--- Open talks with a first party (same nation). Costs the host 1 action.
+-- Open talks with a first party (same nation). Free — the action cost is deferred
+-- to bringing in more parties (coalition_invite) or locking the deal (coalition_commit),
+-- so you can start a conversation and chat without spending an action.
 create or replace function public.coalition_open(p_target uuid)
 returns jsonb
 language plpgsql
@@ -140,7 +142,7 @@ set search_path = public
 as $$
 declare v_host public.parties%rowtype; v_target public.parties%rowtype; v_neg uuid;
 begin
-  v_host := public._begin_action(0);   -- locks host, requires >= 1 action
+  v_host := public._lock_party();   -- locks host + stamps activity; no action charged
   select * into v_target from public.parties where id = p_target;
   if not found then raise exception 'That party no longer exists.'; end if;
   if v_target.id = v_host.id then raise exception 'You can''t negotiate with your own party.'; end if;
@@ -148,12 +150,11 @@ begin
 
   insert into public.negotiations (nation_id, host_party_id) values (v_host.nation_id, v_host.id) returning id into v_neg;
   insert into public.negotiation_parties (negotiation_id, party_id) values (v_neg, p_target);
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_host.id;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_host.nation_id, v_host.id, 'coalition',
             'The ' || v_host.name || ' has opened coalition talks with the ' || v_target.name || '.',
             public.current_game_date());
-  return jsonb_build_object('id', v_neg, 'actions', v_host.actions_remaining - 1);
+  return jsonb_build_object('id', v_neg, 'actions', v_host.actions_remaining);
 end $$;
 grant execute on function public.coalition_open(uuid) to authenticated;
 
@@ -331,9 +332,11 @@ grant execute on function public.coalition_remove_party(uuid, uuid) to authentic
 -- Host commits the deal into a saved, locked agreement. Requires every invited
 -- party accepted, at least one term, every term agreed by BOTH sides, and the
 -- members (host + accepted partners) reaching a majority of the legislature. A
--- host may hold only one committed agreement at a time. No action cost — opening
--- and inviting already charged. This is the artifact the election resolver will
--- read later; it does NOT form a government yet.
+-- host may hold only one committed agreement at a time. Costs the host 1 action —
+-- opening talks is free, so the action lands here, when the deal is locked in (the
+-- charge happens only after every check passes, so a rejected commit is never billed).
+-- This is the artifact the election resolver will read later; it does NOT form a
+-- government yet.
 create or replace function public.coalition_commit(p_neg uuid)
 returns void
 language plpgsql
@@ -347,9 +350,10 @@ begin
   if auth.uid() is null then raise exception 'Not signed in.'; end if;
   select * into v_n from public.negotiations where id = p_neg;
   if not found then raise exception 'That negotiation is gone.'; end if;
-  select * into v_host from public.parties where id = v_n.host_party_id;
+  select * into v_host from public.parties where id = v_n.host_party_id for update;
   if v_host.user_id is distinct from auth.uid() then raise exception 'Only the host can form the agreement.'; end if;
   if v_n.status <> 'active' then raise exception 'This agreement is already committed.'; end if;
+  if v_host.actions_remaining < 1 then raise exception 'You need an action to lock in the agreement.'; end if;
 
   if not exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and status = 'accepted') then
     raise exception 'At least one party must be at the table and have accepted.';
@@ -379,6 +383,7 @@ begin
   end if;
 
   update public.negotiations set status = 'committed' where id = p_neg;
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_host.id;   -- the action lands here, on a clean commit
 end $$;
 grant execute on function public.coalition_commit(uuid) to authenticated;
 

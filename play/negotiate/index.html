@@ -285,7 +285,7 @@
       var menu=iw.querySelector('#invmenu');
       menu.innerHTML=invitablePool().map(function(p){return '<div class="io" data-id="'+esc(p.id)+'"><span class="td" style="background:'+colorOf(p)+'"></span><b>'+esc(p.name)+'</b><span>'+(p.seats||0)+' seats · '+popOf(p)+'% · '+esc(ideologyLabel(p))+'</span></div>';}).join('');
       iw.querySelector('#invbtn').onclick=function(e){e.stopPropagation();menu.classList.toggle('open');};
-      menu.querySelectorAll('.io').forEach(function(o){o.onclick=function(){ inviteParty(neg.id,o.dataset.id).then(function(r){ active=o.dataset.id; ping('<b>Invitation sent.</b>'+(r&&r.actions!=null?' '+r.actions+' action'+(r.actions===1?'':'s')+' left.':'')); return reload(); }).catch(err); };});
+      menu.querySelectorAll('.io').forEach(function(o){o.onclick=function(){ inviteParty(neg.id,o.dataset.id).then(function(r){ active=o.dataset.id; if(r&&r.actions!=null) myParty.actions_remaining=r.actions; ping('<b>Invitation sent.</b>'+(r&&r.actions!=null?' '+r.actions+' action'+(r.actions===1?'':'s')+' left.':'')); return reload(); }).catch(err); };});
     }
   }
   document.addEventListener('click',function(){var m=document.getElementById('invmenu');if(m)m.classList.remove('open');});
@@ -432,7 +432,8 @@
       // Mirror the server's coalition_commit rules so the button never lights up
       // when it would be rejected: ALL parties accepted, terms agreed, real majority.
       var allIn=counterIds().length>0 && counterIds().every(function(pid){return partyStatus(pid)==='accepted';});
-      var ok=allIn && c.total>0 && c.agreed===c.total && !rl && maj;
+      var canAfford=(myParty.actions_remaining||0)>=1;   // committing costs the host 1 action (server: coalition_commit)
+      var ok=allIn && c.total>0 && c.agreed===c.total && !rl && maj && canAfford;
       html+='<button class="formbtn'+(ok?'':' dis')+'" id="formbtn">Form Coalition Agreement</button>';
       if(!counterIds().length) html+='<div class="formnote">Invite at least one party to begin.</div>';
       else if(!acceptedIds().length) html+='<div class="formnote">Waiting for a party to enter talks.</div>';
@@ -441,7 +442,8 @@
       else if(rl) html+='<div class="formnote bad">Redline unmet — '+esc(rl)+' will walk unless it’s agreed.</div>';
       else if(c.total===0) html+='<div class="formnote">Add the coalition terms first.</div>';
       else if(c.agreed!==c.total) html+='<div class="formnote">'+(c.total-c.agreed)+' term'+((c.total-c.agreed)===1?'':'s')+' still unresolved.</div>';
-      else html+='<div class="formnote">Every term agreed at a majority. Ready to form.</div>';
+      else if(!canAfford) html+='<div class="formnote bad">You need 1 action to lock in the agreement — none left this turn.</div>';
+      else html+='<div class="formnote">Every term agreed at a majority. Locking it in costs 1 action.</div>';
     }
     box.innerHTML=html;
     box.querySelectorAll('.cx').forEach(function(x){x.onclick=function(){ removeParty(neg.id,x.dataset.id).then(function(){ if(active===x.dataset.id) active=null; return reload(); }).catch(err); };});

@@ -186,7 +186,7 @@
         <button class="lead" id="act-adblitz" type="button" data-standing title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + %COST% actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
         <button class="lead" id="act-noconfidence" type="button" data-soon disabled title="A vote of no confidence against the current government. (Not yet available.)"><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
         <button class="lead" id="act-recruit" type="button" data-cost="1" data-cost-label="1–2" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
-        <button class="lead" id="act-negotiate" type="button" data-cost="1" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed. Starting talks costs 1 action."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
+        <button class="lead" id="act-negotiate" type="button" data-cost-free title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed. Opening talks is free — an action is spent only when you bring in another party or lock in the agreement."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
       </div>
     </section>
 
@@ -381,6 +381,7 @@
     if (b.hasAttribute('data-standing')) { b.dataset.cost = STANDING_COST; b.title = b.title.replace('%COST%', STANDING_COST); }
     var pill = document.createElement('span');
     if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
+    else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }   // cost is deferred (Negotiate: paid on invite/commit, not on open)
     else { pill.className = 'lead__cost'; pill.textContent = (b.dataset.costLabel || (parseInt(b.dataset.cost, 10) || 1)) + ' AP'; }
     b.appendChild(pill);
   });
@@ -473,9 +474,9 @@
 
   // NEGOTIATE opens coalition talks (server-backed — see /negotiations.js): a
   // modal listing the player's active talks plus a Start-New flow that picks a
-  // party and opens the negotiation page. Starting talks costs 1 action (charged
-  // server-side by coalition_open), so the button itself stays out of the AP
-  // lock — viewing existing talks is free.
+  // party and opens the negotiation page. Opening talks is free (the action is
+  // charged later — on coalition_invite or coalition_commit), so the button stays
+  // out of the AP lock; viewing existing talks is free too.
   var negotiateBtn = document.getElementById('act-negotiate');
   var negotiateModal = document.getElementById('negotiateModal');
   var negPool = [];   // other parties in the nation, cached when the modal opens
@@ -509,7 +510,6 @@
   function renderNegList(negs) {
     document.getElementById('negTitle').textContent = 'Coalition Talks';
     var list = document.getElementById('negList');
-    var canStart = partyActions >= 1;
     var html = negs.length ? negs.map(function (n) {
       var c = termCounts(n);
       var label = talkOthers(n).map(negPartyName).join(' + ') || 'Talks';
@@ -518,10 +518,10 @@
         '<span class="atarget__id"><b>' + esc(label) + '</b><span>' + role + '</span></span>' +
         '<span class="atarget__st">' + (n.status === 'committed' ? '✓ committed' : c.agreed + '/' + c.total + ' agreed') + '</span></button>';
     }).join('') : '<p class="empty">No coalition talks yet. Start one to bring a party to the table.</p>';
-    html += '<button class="negnew' + (canStart ? '' : ' dis') + '" id="negNewBtn" type="button">+ Start New Negotiation (1 action)</button>';
+    html += '<button class="negnew" id="negNewBtn" type="button">+ Start New Negotiation</button>';   // opening is free — no AP gate
     list.innerHTML = html;
     list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { window.location.href = '/play/negotiate/?id=' + encodeURIComponent(b.dataset.id); }); });
-    document.getElementById('negNewBtn').addEventListener('click', function () { if (canStart) renderNegPicker(); else ping('No actions left this turn.'); });
+    document.getElementById('negNewBtn').addEventListener('click', renderNegPicker);
   }
 
   function renderNegPicker() {
@@ -538,7 +538,7 @@
     list.querySelectorAll('.atarget').forEach(function (b) { b.addEventListener('click', function () { startNegotiation(b.dataset.id); }); });
   }
   async function startNegotiation(targetId) {
-    if (negStarting) return; // opening costs an action — never let a double-click charge twice
+    if (negStarting) return; // opening is free, but the lock still stops a double-click spawning two talks
     negStarting = true;
     try {
       var res = await openNegotiation(targetId);
@@ -609,8 +609,8 @@
 
   // Prime Minister actions — shown ONLY to the party holding the premiership (the
   // active government's formateur). Coalition opens the coalition-talks flow (the
-  // same one the leader's Negotiate action uses — opening new talks costs 1 action,
-  // charged server-side by coalition_open); the rest aren't wired yet, so they
+  // same one the leader's Negotiate action uses — opening new talks is free, the
+  // action is charged later on invite/commit); the rest aren't wired yet, so they
   // render as dimmed scaffolds. When the player isn't PM the bar isn't rendered.
   var PM_ACTIONS = [
     ['Coalition', 'Build your governing coalition.'],
