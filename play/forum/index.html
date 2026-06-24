@@ -93,6 +93,29 @@
   .btn:disabled{opacity:.55;cursor:not-allowed;filter:none}
   .handlewarn{font-family:'Space Mono',monospace;font-size:11px;line-height:1.5;color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);border-radius:10px;padding:11px 13px;margin-top:14px}
 
+  /* Formatting toolbar — shared by the reply composer, the new-thread modal, and the inline editor. */
+  .fmtbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .fmtbtn{font-family:'Space Mono',monospace;font-size:11px;background:var(--field);border:1px solid var(--line2);border-radius:8px;padding:6px 10px;cursor:pointer;color:var(--muted);line-height:1}
+  .fmtbtn:hover{border-color:var(--ink);color:var(--ink)}
+  /* Post meta (time + edited) and the author's own Edit/Delete actions, top-right of the post. */
+  .post__meta{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+  .pact{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;background:none;border:none;color:var(--soft);cursor:pointer;padding:2px 4px}
+  .pact:hover{color:var(--ink)}
+  /* Images embedded in a post body. */
+  .postimg{max-width:100%;height:auto;border-radius:10px;margin:8px 0;display:block;border:1px solid var(--line)}
+  /* Inline post editor. */
+  .editor{margin-top:2px}
+  .editbody{width:100%;min-height:120px;resize:vertical;background:var(--field);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;font-family:'Archivo',sans-serif;font-size:14px;color:var(--ink);line-height:1.5}
+  .editbody:focus{outline:none;border-color:var(--ink)}
+  .editrow{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
+  .btn--ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line2)}
+  /* International thread: a tag pinned to the top-right of the thread header, plus the modal toggle. */
+  .thead{position:relative}
+  .thead.has-intl{padding-right:104px}
+  .intl-tag{position:absolute;top:0;right:0;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--indigo);border-radius:20px;padding:5px 11px}
+  .intl-toggle{display:flex;align-items:center;gap:8px;font-family:'Archivo',sans-serif;font-size:12.5px;font-weight:400;color:var(--muted);margin-top:12px;cursor:pointer}
+  .intl-toggle b{color:var(--ink)}
+
   /* new-thread modal */
   .modal{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(21,21,27,.45)}
   .modal[hidden]{display:none}
@@ -137,7 +160,9 @@
       <label for="ntTitle">Title</label>
       <input id="ntTitle" type="text" maxlength="140" placeholder="A clear title">
       <label for="ntBody">Post</label>
+      <div class="fmtbar" id="ntFmt"><button type="button" class="fmtbtn" data-fmt="b" title="Bold"><b>B</b></button><button type="button" class="fmtbtn" data-fmt="i" title="Italic"><i>I</i></button><button type="button" class="fmtbtn" data-fmt="u" title="Underline"><u>U</u></button><button type="button" class="fmtbtn" data-fmt="img" title="Insert image">🖼 Image</button><input type="file" accept="image/*" class="fmtfile" hidden></div>
       <textarea id="ntBody" placeholder="Say your piece…"></textarea>
+      <label class="intl-toggle" id="ntIntlWrap" hidden><input type="checkbox" id="ntIntl"> Post to <b>all nations</b> — an International thread visible to every country.</label>
       <div class="composer__as" id="ntAs"></div>
     </div>
     <div class="modal__ft"><button class="btn" id="ntSubmit" type="button">Post Thread</button></div>
@@ -151,7 +176,7 @@
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { esc } from '/util.js';
-  import { fetchBoards, fetchThreads, postCounts, fetchThread, fetchPosts, postThread, postReply, ago } from '/forum.js';
+  import { fetchBoards, fetchThreads, postCounts, fetchThread, fetchPosts, postThread, postReply, editPost, deletePost, uploadImage, ago } from '/forum.js';
 
   mountTopbar();
   mountSidenav();
@@ -164,9 +189,66 @@
     boards:[],            // all board defs
     nationName:{},        // nation_id -> name
     nationsList:[],       // [{id,name}] for the IC filter
-    handle:null, busy:false
+    handle:null, busy:false,
+    userId:null,          // the signed-in user — gates Edit/Delete to your own posts
+    editing:null          // post id being edited inline, or null
   };
   var viewEl = document.getElementById('view');
+
+  // ---- RICH TEXT ---------------------------------------------------------
+  // Render a post body safely: escape ALL html first, then re-introduce only our own
+  // tags — bold/italic/underline and images. Images are pulled out to placeholders
+  // before the formatting passes so an underscore in an image URL can't be mangled,
+  // and only http(s) image URLs are allowed (no javascript: src).
+  function renderBody(raw){
+    var s = esc(raw || ''), imgs = [];
+    s = s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, function(_m, alt, url){
+      imgs.push('<img class="postimg" src="' + url + '" alt="' + alt + '" loading="lazy">');
+      return '\uE000IMG' + (imgs.length - 1) + '\uE000';
+    });
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+         .replace(/__([^_\n]+)__/g, '<u>$1</u>')
+         .replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    return s.replace(/\uE000IMG(\d+)\uE000/g, function(_m, i){ return imgs[+i]; });
+  }
+  // A formatting toolbar (markup + wiring) shared by every composer/editor.
+  function fmtbarHtml(){
+    return '<div class="fmtbar"><button type="button" class="fmtbtn" data-fmt="b" title="Bold"><b>B</b></button>' +
+      '<button type="button" class="fmtbtn" data-fmt="i" title="Italic"><i>I</i></button>' +
+      '<button type="button" class="fmtbtn" data-fmt="u" title="Underline"><u>U</u></button>' +
+      '<button type="button" class="fmtbtn" data-fmt="img" title="Insert image">🖼 Image</button>' +
+      '<input type="file" accept="image/*" class="fmtfile" hidden></div>';
+  }
+  function wrapSel(ta, pre, post){
+    var s = ta.selectionStart, e = ta.selectionEnd, v = ta.value, sel = v.slice(s, e);
+    ta.value = v.slice(0, s) + pre + sel + post + v.slice(e);
+    var caret = s + pre.length + sel.length; ta.focus(); ta.setSelectionRange(caret, caret);
+  }
+  async function insertImage(ta, file){
+    if(!file) return;
+    ping('Uploading image…');
+    try {
+      var url = await uploadImage(file);
+      var s = ta.selectionStart, md = '![image](' + url + ')';
+      ta.value = ta.value.slice(0, s) + md + ta.value.slice(ta.selectionEnd);
+      ta.focus(); ping('Image added.');
+    } catch(e){ ping(esc(e.message || 'Couldn’t upload that image.')); }
+  }
+  // Wire a fmtbar element to its textarea.
+  function wireFmt(bar, ta){
+    if(!bar || !ta) return;
+    var file = bar.querySelector('.fmtfile');
+    bar.querySelectorAll('.fmtbtn').forEach(function(btn){
+      btn.onclick = function(){
+        var f = btn.dataset.fmt;
+        if(f === 'b') wrapSel(ta, '**', '**');
+        else if(f === 'i') wrapSel(ta, '*', '*');
+        else if(f === 'u') wrapSel(ta, '__', '__');
+        else file.click();
+      };
+    });
+    file.onchange = function(){ var f = file.files[0]; file.value = ''; insertImage(ta, f); };
+  }
 
   function boardsIn(realm){ return ST.boards.filter(function(b){ return b.realm === realm; }); }
   function boardDef(key){ return ST.boards.filter(function(b){ return b.key === key; })[0]; }
@@ -267,24 +349,70 @@
     var posts = await fetchPosts(t.id);
 
     var postsHtml = posts.map(function(p, i){
+      if(ST.editing === p.id){
+        return '<div class="post' + (i === 0 ? ' op' : '') + '"><div class="post__hd">' + authorChip(p) + '<span class="post__meta">editing…</span></div>' +
+          '<div class="editor">' + fmtbarHtml() + '<textarea class="editbody"></textarea>' +
+          '<div class="editrow"><button class="btn btn--ghost" data-cancel="1" type="button">Cancel</button><button class="btn" data-save="' + p.id + '" type="button">Save</button></div></div></div>';
+      }
+      var mine = ST.userId && p.user_id === ST.userId;
+      var acts = mine ? '<button class="pact" data-edit="' + p.id + '" type="button">Edit</button><button class="pact" data-del="' + p.id + '" type="button">Delete</button>' : '';
       return '<div class="post' + (i === 0 ? ' op' : '') + '"><div class="post__hd">' + authorChip(p) +
-        '<span class="post__time">' + ago(p.created_at) + '</span></div><div class="post__body">' + esc(p.body) + '</div></div>';
+        '<span class="post__meta"><span class="post__time">' + ago(p.created_at) + (p.edited_at ? ' · edited' : '') + '</span>' + acts + '</span></div>' +
+        '<div class="post__body">' + renderBody(p.body) + '</div></div>';
     }).join('');
 
-    var composer = '<div class="composer"><textarea id="replyBody" placeholder="Write a reply…"></textarea>' +
-      '<div class="composer__row"><span class="composer__as">Posting as <b>' + (t.realm === 'ic' ? 'your party' : (ST.handle ? '@' + esc(ST.handle) : 'your handle')) + '</b></span>' +
-      '<button class="btn" id="replyBtn">Reply</button></div></div>';
-    if(t.realm === 'ooc' && !ST.handle)
+    var composer;
+    if(t.realm === 'ooc' && !ST.handle){
       composer = '<div class="handlewarn">Set a nickname (the gear menu, top-right) to post out of character.</div>';
+    } else {
+      composer = '<div class="composer">' + fmtbarHtml() + '<textarea id="replyBody" placeholder="Write a reply…"></textarea>' +
+        '<div class="composer__row"><span class="composer__as">Posting as <b>' + (t.realm === 'ic' ? 'your party' : '@' + esc(ST.handle)) + '</b></span>' +
+        '<button class="btn" id="replyBtn" type="button">Reply</button></div></div>';
+    }
+    var intl = (t.realm === 'ic' && !t.nation_id) ? '<span class="intl-tag">International</span>' : '';
 
     viewEl.innerHTML =
       '<button class="backlink" id="back">‹ ' + esc(b ? b.name : 'Board') + '</button>' +
-      '<div class="thead"><h2>' + esc(t.title) + '</h2><div class="tsub">' + esc(b ? b.name : '') + ' · started by ' + esc(t.author) + ' · ' + ago(t.created_at) + '</div></div>' +
+      '<div class="thead' + (intl ? ' has-intl' : '') + '">' + intl + '<h2>' + esc(t.title) + '</h2><div class="tsub">' + esc(b ? b.name : '') + ' · started by ' + esc(t.author) + ' · ' + ago(t.created_at) + '</div></div>' +
       '<div class="posts">' + postsHtml + '</div>' + composer;
 
     document.getElementById('back').onclick = function(){ go('board', { board:t.board }); };
     var rb = document.getElementById('replyBtn');
-    if(rb) rb.onclick = function(){ submitReply(t.id); };
+    if(rb){ rb.onclick = function(){ submitReply(t.id); }; wireFmt(viewEl.querySelector('.composer .fmtbar'), document.getElementById('replyBody')); }
+
+    viewEl.querySelectorAll('.pact[data-edit]').forEach(function(btn){ btn.onclick = function(){ ST.editing = btn.dataset.edit; renderThread(); }; });
+    viewEl.querySelectorAll('.pact[data-del]').forEach(function(btn){ btn.onclick = function(){ confirmDelete(btn.dataset.del); }; });
+    var ed = viewEl.querySelector('.editor');
+    if(ed){
+      var eta = ed.querySelector('.editbody');
+      var ep = posts.filter(function(x){ return x.id === ST.editing; })[0];
+      eta.value = ep ? ep.body : '';
+      wireFmt(ed.querySelector('.fmtbar'), eta);
+      ed.querySelector('[data-cancel]').onclick = function(){ ST.editing = null; renderThread(); };
+      ed.querySelector('[data-save]').onclick = function(){ submitEdit(ST.editing, eta.value); };
+      eta.focus();
+    }
+  }
+
+  async function confirmDelete(postId){
+    if(ST.busy) return;
+    if(!window.confirm('Delete this post? This can’t be undone.')) return;
+    ST.busy = true;
+    try {
+      var what = await deletePost(postId);
+      ping('Deleted.');
+      if(what === 'thread') go('board', { board:ST.board }); else await renderThread();
+    } catch(e){ ping(esc(e.message || 'Couldn’t delete that.')); }
+    finally { ST.busy = false; }
+  }
+  async function submitEdit(postId, body){
+    if(ST.busy) return;
+    var v = (body || '').trim();
+    if(!v){ ping('Write something first.'); return; }
+    ST.busy = true;
+    try { await editPost(postId, v); ST.editing = null; await renderThread(); ping('Post updated.'); }
+    catch(e){ ping(esc(e.message || 'Couldn’t save your edit.')); }
+    finally { ST.busy = false; }
   }
 
   async function submitReply(threadId){
@@ -311,6 +439,7 @@
     sel.innerHTML = opts;
     document.getElementById('ntTitle').value = '';
     document.getElementById('ntBody').value = '';
+    document.getElementById('ntIntl').checked = false;
     syncNtAs();
     sel.onchange = syncNtAs;
     ntModal.hidden = false;
@@ -324,7 +453,12 @@
     else if(ST.handle){ as.innerHTML = 'Posting as <b>@' + esc(ST.handle) + '</b>.'; }
     else { as.innerHTML = '<span style="color:var(--amber)">Set a nickname (gear menu) to post out of character — you can’t post here without one.</span>'; blocked = true; }
     document.getElementById('ntSubmit').disabled = blocked;   // OOC posting is gated on a nickname
+    // "All nations" only applies to in-character boards.
+    var intlWrap = document.getElementById('ntIntlWrap');
+    intlWrap.hidden = !(b && b.realm === 'ic');
+    if(intlWrap.hidden) document.getElementById('ntIntl').checked = false;
   }
+  wireFmt(document.getElementById('ntFmt'), document.getElementById('ntBody'));
   document.getElementById('ntSubmit').onclick = async function(){
     if(ST.busy) return;
     var board = document.getElementById('ntBoard').value;
@@ -334,7 +468,7 @@
     if(!body){ ping('Write something in the post.'); return; }
     ST.busy = true; this.disabled = true;
     try {
-      var id = await postThread(board, title, body);
+      var id = await postThread(board, title, body, document.getElementById('ntIntl').checked);
       closeNt();
       ping('Thread posted.');
       go('thread', { threadId:id });
@@ -343,7 +477,7 @@
   };
 
   // ---- ROUTER ------------------------------------------------------------
-  function go(view, patch){ ST.view = view; Object.assign(ST, patch); window.scrollTo(0, 0); render(); }
+  function go(view, patch){ ST.view = view; ST.editing = null; Object.assign(ST, patch); window.scrollTo(0, 0); render(); }
   function render(){
     viewEl.innerHTML = '<p class="empty">Loading…</p>';
     var fn = ST.view === 'board' ? renderBoard : ST.view === 'thread' ? renderThread : renderBoards;
@@ -354,6 +488,7 @@
     if(!isConfigured){ viewEl.innerHTML = '<p class="empty">Supabase isn’t configured.</p>'; return; }
     var user = await requireUser();
     if(!user) return;
+    ST.userId = user.id;
     try {
       ST.boards = await fetchBoards();
       var nations = []; try { var r = await supabase.from('nations').select('id, name').order('name'); nations = r.data || []; } catch(e){}

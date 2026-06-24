@@ -100,6 +100,7 @@ create table if not exists public.forum_posts (
   created_at   timestamptz not null default now()
 );
 create index if not exists forum_posts_thread_idx on public.forum_posts (thread_id, created_at);
+alter table public.forum_posts add column if not exists edited_at timestamptz;   -- set when an author edits; null = never edited
 
 alter table public.forum_threads enable row level security;
 alter table public.forum_posts   enable row level security;
@@ -141,12 +142,16 @@ end $$;
 
 -- Open a new thread: validates the board, snapshots identity for that board's realm,
 -- and writes the thread + its opening post atomically. Returns the new thread id.
-create or replace function public.forum_post_thread(p_board text, p_title text, p_body text)
+-- p_international (IC only): tag the thread as cross-nation — the THREAD carries no
+-- nation (so it surfaces under every nation filter and renders an [International] tag),
+-- while the opening POST still keeps the author's nation for the author chip.
+drop function if exists public.forum_post_thread(text, text, text);
+create or replace function public.forum_post_thread(p_board text, p_title text, p_body text, p_international boolean default false)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_user uuid := auth.uid(); v_realm text;
   v_title text := btrim(coalesce(p_title, '')); v_body text := btrim(coalesce(p_body, ''));
-  v_author text; v_party text; v_color text; v_nation text; v_tid uuid;
+  v_author text; v_party text; v_color text; v_nation text; v_thread_nation text; v_tid uuid;
 begin
   if v_user is null then raise exception 'Not signed in.'; end if;
   if v_title = '' then raise exception 'Give your thread a title.'; end if;
@@ -158,14 +163,15 @@ begin
   select author, author_party, author_color, nation_id into v_author, v_party, v_color, v_nation
     from public._forum_identity(v_realm = 'ic');
 
+  v_thread_nation := case when p_international and v_realm = 'ic' then null else v_nation end;
   insert into public.forum_threads (board, realm, title, user_id, author, author_party, author_color, nation_id)
-    values (p_board, v_realm, v_title, v_user, v_author, v_party, v_color, v_nation)
+    values (p_board, v_realm, v_title, v_user, v_author, v_party, v_color, v_thread_nation)
     returning id into v_tid;
   insert into public.forum_posts (thread_id, user_id, author, author_party, author_color, nation_id, body)
     values (v_tid, v_user, v_author, v_party, v_color, v_nation, v_body);
   return v_tid;
 end $$;
-grant execute on function public.forum_post_thread(text, text, text) to authenticated;
+grant execute on function public.forum_post_thread(text, text, text, boolean) to authenticated;
 
 -- Reply to a thread: snapshots identity for the thread's realm, writes the post, and
 -- bumps the thread's last-activity. Returns the new post id.
@@ -190,5 +196,62 @@ begin
   return v_pid;
 end $$;
 grant execute on function public.forum_post_reply(uuid, text) to authenticated;
+
+-- Edit your own post. Author-only (the row's user_id must be the caller); stamps
+-- edited_at so the UI can show an "edited" marker. Identity is never re-snapshotted.
+create or replace function public.forum_edit_post(p_post uuid, p_body text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_user uuid := auth.uid(); v_body text := btrim(coalesce(p_body, ''));
+begin
+  if v_user is null then raise exception 'Not signed in.'; end if;
+  if v_body = '' then raise exception 'Write something in the post.'; end if;
+  if char_length(v_body) > 8000 then raise exception 'Post is too long.'; end if;
+  update public.forum_posts set body = v_body, edited_at = now()
+   where id = p_post and user_id = v_user;
+  if not found then raise exception 'You can only edit your own posts.'; end if;
+end $$;
+grant execute on function public.forum_edit_post(uuid, text) to authenticated;
+
+-- Delete your own post. Author-only. Deleting a thread's OPENING post (its earliest)
+-- deletes the whole thread — its posts cascade; deleting any other post removes just
+-- that reply. Returns 'thread' or 'post' so the client knows where to navigate.
+create or replace function public.forum_delete_post(p_post uuid)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_user uuid := auth.uid(); v_tid uuid; v_op uuid;
+begin
+  if v_user is null then raise exception 'Not signed in.'; end if;
+  select thread_id into v_tid from public.forum_posts where id = p_post and user_id = v_user;
+  if v_tid is null then raise exception 'You can only delete your own posts.'; end if;
+  select id into v_op from public.forum_posts where thread_id = v_tid order by created_at, id limit 1;
+  if p_post = v_op then
+    delete from public.forum_threads where id = v_tid;   -- forum_posts cascade
+    return 'thread';
+  end if;
+  delete from public.forum_posts where id = p_post;
+  return 'post';
+end $$;
+grant execute on function public.forum_delete_post(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Image uploads. A PUBLIC bucket for forum post images: reads are public (posts embed
+-- the public URL), and an authenticated user may upload only into a folder named by
+-- their own user id, so nobody can clobber another's files. 5 MB, common image types.
+-- Note: storage.* is Supabase-managed — apply this with the project's privileged role.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+  values ('forum-images', 'forum-images', true, 5242880,
+          array['image/png','image/jpeg','image/gif','image/webp'])
+on conflict (id) do update set
+  public = excluded.public, file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "forum_images_read" on storage.objects;
+create policy "forum_images_read" on storage.objects for select using (bucket_id = 'forum-images');
+drop policy if exists "forum_images_upload" on storage.objects;
+create policy "forum_images_upload" on storage.objects for insert to authenticated
+  with check (bucket_id = 'forum-images' and (storage.foldername(name))[1] = auth.uid()::text);
+drop policy if exists "forum_images_delete" on storage.objects;
+create policy "forum_images_delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'forum-images' and owner = auth.uid());
 
 notify pgrst, 'reload schema';
