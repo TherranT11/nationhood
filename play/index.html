@@ -19,27 +19,7 @@
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;-webkit-font-smoothing:antialiased;min-height:100%}
   .app{display:flex;min-height:100vh}
 
-  /* sidebar (same pattern as the tutorial screens, driven by the player's party) */
-  .side{width:236px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:16px 12px;display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
-  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px}
-  .brand__flag{width:42px;height:26px;object-fit:cover;border:1px solid var(--line);border-radius:4px;flex:none}
-  .brand__txt{display:flex;flex-direction:column;line-height:1.25;overflow:hidden}
-  .brand__txt b{font-weight:800;font-size:14px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .brand__txt span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .nav{display:flex;flex-direction:column;gap:2px}
-  .nav__i{display:flex;align-items:center;gap:13px;padding:10px 12px;border-radius:9px;color:var(--muted);text-decoration:none;cursor:pointer;border:1px solid transparent;transition:background .15s,color .15s}
-  .nav__i svg{width:19px;height:19px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-  .nav__i .label{font-family:'Space Mono',monospace;font-size:12.5px;letter-spacing:.04em}
-  .nav__i:hover{color:var(--ink);background:var(--chip)}
-  .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
-  .nav__i.active svg{color:var(--indigo)}
-  .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
-  .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
-  .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
-  .me b{color:var(--ink);font-weight:700}
-  .logout{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:none;cursor:pointer;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-align:left;transition:color .15s}
-  .logout:hover{color:var(--red)}
-  .logout svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
 
   /* main: spans the full width beside the sidebar so the top bar can sit at the
      true far-right of the screen (the instance uses the whole UI). */
@@ -162,42 +142,26 @@
   @media(max-width:560px){
     .main{padding:16px 13px 40px}
     .main h1{font-size:28px;margin:8px 0 12px}
+    .main p{font-size:15px}
     .panel{margin-top:16px;padding:16px 15px}
     .leadbar__grid{gap:10px}
     .lead{padding:13px 14px}
+    .lead b{font-size:15px;padding-right:44px}          /* leave room for the cost pill on the narrower 2-up cards */
+    .lead__cost{top:10px;right:10px;font-size:8.5px;padding:3px 6px}
+    .lead__desc{font-size:11.5px;margin-top:6px}
+    .snap{gap:8px}
+    /* Action pickers open as a bottom sheet — full width, thumb-reachable. */
+    .amodal{padding:0;align-items:flex-end}
+    .amodal__panel{max-width:none;max-height:88vh;border-radius:18px 18px 0 0}
+    .amodal__list{padding-bottom:max(18px,env(safe-area-inset-bottom))}   /* clear the home indicator */
   }
 
-  @media(max-width:820px){.side{width:62px;padding:16px 8px}.nav__i .label,.brand__txt,.me .label,.logout .label{display:none}.logout{justify-content:center}.brand{justify-content:center;padding:6px 0 14px}.brand__flag{width:38px;height:24px}.nav__i{justify-content:center;padding:11px 0}}
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <div class="app">
-  <aside class="side">
-    <div class="brand">
-      <img class="brand__flag" id="flag" alt="Nation flag" hidden>
-      <div class="brand__txt"><b id="pname">…</b><span id="psub"></span></div>
-    </div>
-    <nav class="nav">
-      <a class="nav__i active" href="/play/"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v9h14v-9"/></svg><span class="label">Home</span></a>
-      <a class="nav__i" href="/play/party/"><svg viewBox="0 0 24 24"><path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/></svg><span class="label">Party</span></a>
-      <a class="nav__i" href="/play/elections/"><svg viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M8.5 13l2 2 4-4"/></svg><span class="label">Elections</span></a>
-      <a class="nav__i" href="/play/government/"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5"/><path d="M3 9h18M4 20h16"/><path d="M6 20v-9M10 20v-9M14 20v-9M18 20v-9"/></svg><span class="label">Government</span></a>
-      <a class="nav__i" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V10M9 21V10M15 21V10M19 21V10"/><path d="M12 3l9 5H3z"/></svg><span class="label">Legislature</span></a>
-      <a class="nav__i" href="/play/nation/"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/></svg><span class="label">Nation</span></a>
-      <a class="nav__i" href="/play/policies/"><svg viewBox="0 0 24 24"><path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/></svg><span class="label">Policies</span></a>
-      <a class="nav__i" href="/play/world/"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg><span class="label">World</span></a>
-      <a class="nav__i" href="/play/market/"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/></svg><span class="label">Market</span></a>
-      <a class="nav__i" href="/play/corporations/"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/></svg><span class="label">Corporations</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/></svg><span class="label">Conflict</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/></svg><span class="label">Forum</span></a>
-      <a class="nav__i"><svg viewBox="0 0 24 24"><path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/></svg><span class="label">Wiki</span></a>
-    </nav>
-    <div class="side__foot">
-      <div class="me"><span class="me__dot"></span><span class="label">Leader · <b>You</b></span></div>
-      <button class="logout" id="logout" type="button"><svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Logout</span></button>
-    </div>
-  </aside>
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
 
   <main class="main">
     <div class="topbar" id="topbar"></div>
@@ -215,11 +179,11 @@
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" id="act-rally" type="button" data-cost="4" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 4 actions."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
+        <button class="lead" id="act-rally" type="button" data-standing title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + %COST% actions."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
         <button class="lead" id="act-direct" type="button" data-soon disabled title="Direct members of your party to action. (Not yet available.)"><b>Direct</b><span class="lead__lane">The Whip</span><span class="lead__desc">Direct members of your party to action.</span></button>
-        <button class="lead" id="act-fundraise" type="button" data-cost="4" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 4 actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" id="act-attack" type="button" data-cost="4" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 4 actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" data-cost="4" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 4 actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-fundraise" type="button" data-standing title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: %COST% actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
+        <button class="lead" id="act-attack" type="button" data-standing title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + %COST% actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
+        <button class="lead" id="act-adblitz" type="button" data-standing title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + %COST% actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
         <button class="lead" id="act-noconfidence" type="button" data-soon disabled title="A vote of no confidence against the current government. (Not yet available.)"><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
         <button class="lead" id="act-recruit" type="button" data-cost="1" data-cost-label="1–2" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
         <button class="lead" id="act-negotiate" type="button" data-cost="1" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed. Starting talks costs 1 action."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
@@ -268,22 +232,18 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser, logout, currentTick } from '/supabase.js';
+  import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { nationTaxBurden } from '/policies.js';
 
-  document.getElementById('logout').addEventListener('click', logout);
-  mountTopbar(); // injects the shared top bar into #topbar + wires the settings gear
-
-  // sidebar nav items aren't wired yet (online-game screens not built) — highlight only.
-  document.querySelectorAll('.nav__i').forEach(function (i) {
-    i.addEventListener('click', function () { document.querySelectorAll('.nav__i').forEach(function (x) { x.classList.remove('active'); }); i.classList.add('active'); });
-  });
+  mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
   var flag = document.getElementById('flag');
 
@@ -365,8 +325,9 @@
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
-    // Each button carries its action cost (data-cost; default 1, Standing actions 4), so a
-    // button greys out the moment you can't afford it — not just at zero.
+    // Each button carries its action cost (data-cost; default 1, Standing actions
+    // STANDING_COST — stamped just below), so a button greys out the moment you can't
+    // afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
   }
   var toastEl = document.getElementById('toast'), toastT;
@@ -411,10 +372,13 @@
   // wired yet — placeholder actions (data-soon + disabled in markup); add wireAction
   // calls and drop the data-soon attribute when their RPCs exist.
 
-  // Stamp every action card with its AP cost, read from the same data-cost the
-  // affordability gate (setActions) uses — one source for the cost. data-cost-label
-  // overrides the text for a variable cost (Recruit: 1–2); data-soon shows "Soon".
+  // Stamp every action card with its AP cost. Standing actions (data-standing) take
+  // their cost from STANDING_COST (util.js → mirrors schema/40 _standing_cost()), so the
+  // gate, the pill, and the tooltip all read one source; %COST% in the title resolves to
+  // it. data-cost-label overrides the pill text for a variable cost (Recruit: 1–2);
+  // data-soon marks a not-yet-wired action with a "Soon" pill. The gate is setActions.
   document.querySelectorAll('.leadbar__grid .lead').forEach(function (b) {
+    if (b.hasAttribute('data-standing')) { b.dataset.cost = STANDING_COST; b.title = b.title.replace('%COST%', STANDING_COST); }
     var pill = document.createElement('span');
     if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
     else { pill.className = 'lead__cost'; pill.textContent = (b.dataset.costLabel || (parseInt(b.dataset.cost, 10) || 1)) + ' AP'; }
