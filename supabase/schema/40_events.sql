@@ -542,6 +542,7 @@ begin
     update public.governments
        set confidence = greatest(0, least(100, coalesce(confidence, 0) + p_value))
      where id = v_gov.id;
+    if p_value < 0 then perform public._confidence_collapse(p_nation); end if;  -- a drop to <=10 forces a snap election
 
   elsif v_col = '__party' then
     if p_party is null then raise exception 'Pick a party for a Party Popularity event.'; end if;

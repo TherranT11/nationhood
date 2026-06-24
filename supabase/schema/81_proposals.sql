@@ -199,6 +199,19 @@ begin
   return v_decl;
 end $$;
 
+-- Resolve a nation's CURRENT value for a declaration slug: its chosen value if it
+-- has declared one, else the slot's default option. One source for "what is this
+-- nation's title/name right now", read by the feed/events (e.g. the head-of-government
+-- title in a confidence collapse). Returns null only if the slug itself is undefined.
+create or replace function public.nation_declaration(p_nation text, p_slug text)
+returns text language sql stable security definer set search_path = public as $$
+  select coalesce(
+    nullif((select declarations->>p_slug from public.nations where id = p_nation), ''),
+    (select options->>default_index from public.declarations where slug = p_slug order by sort_order limit 1)
+  );
+$$;
+grant execute on function public.nation_declaration(text, text) to authenticated;
+
 -- Propose a declaration. p_to_floor=false → queue on the agenda (free); true →
 -- open a floor vote now (1 action), proposer auto-votes Aye, then tally.
 create or replace function public.propose_declaration(p_slug text, p_value text, p_to_floor boolean)
