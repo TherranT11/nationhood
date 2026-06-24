@@ -451,7 +451,7 @@
     if(gb) gb.onclick=function(){
       if(forming) return; forming=true;   // this seats a government — never double-fire
       formGovernment(neg.id).then(function(r){
-        ping('<b>Government formed.</b> A new coalition holds power — Government Confidence '+r.confidence+'%.');
+        ping('<b>Government formed.</b> A new coalition holds power — Government Confidence '+Math.round(r.confidence)+'%.');
         setTimeout(function(){ window.location.href='/play/government/'; }, 900);  // the deal is consumed; move to the government page
       }).catch(function(e){ forming=false; err(e); });
     };
