@@ -54,6 +54,13 @@
   .measure__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
   .measure__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
   .measure__by{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  /* A law measure's Current Law → Proposed Change. */
+  .lawchg{margin:11px 0 3px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .lawchg__row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px}
+  .lawchg__row + .lawchg__row{border-top:1px solid var(--line)}
+  .lawchg__k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .lawchg__v{font-weight:700;font-size:14px;color:var(--ink);text-align:right}
+  .lawchg__v.hl{color:var(--indigo)}
   .votebar{display:flex;height:9px;border-radius:6px;overflow:hidden;background:var(--chip);margin:11px 0 7px}
   .votebar .va{background:var(--green)}.votebar .vn{background:var(--red)}
   .votenums{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
@@ -135,8 +142,9 @@
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes } from '/proposals.js';
+  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, fetchPolicies } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { policyOptions, policyOptionIdx } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -151,7 +159,7 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
   var FLOOR_WINDOW = 6;  // ticks a measure stands on the floor before failing — mirrors advance_tick (schema/60)
-  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, proposals:[], votes:[], busy:false };
+  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, busy:false };
 
   function tallyOf(pid){
     var vs = ST.votes.filter(function(v){ return v.proposal_id === pid; });
@@ -180,7 +188,25 @@
           '<span class="ps">' + seats + '</span><span class="pv ' + cls + '">' + lbl + '</span></div>';
       }).join('') + '</div>';
   }
-  function mhead(p){ return '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>'; }
+  function mhead(p){
+    // A law measure titles on the policy itself (e.g. "Income Tax"); the Current/Proposed
+    // options show below via lawChange(). Declarations keep their "Slot → Value" title.
+    var title = (p.kind === 'law' && p.payload && p.payload.policy_name) ? p.payload.policy_name : p.title;
+    return '<div class="measure__hd"><span class="measure__t">' + esc(title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>';
+  }
+  // For a law measure: the option currently in force (Current Law) vs the one it would
+  // switch to (Proposed Change). Current is read the same way the server reads it
+  // (policyOptionIdx mirrors _nation_policy_option); the proposed name rides in the payload.
+  function lawChange(p){
+    if (p.kind !== 'law' || !p.payload) return '';
+    var def = ST.policyDefs[p.payload.policy_id];
+    var proposed = p.payload.option_name || (def && (policyOptions(def)[p.payload.option_idx] || {}).name) || '—';
+    var current = '—';
+    if (def) { var ci = policyOptionIdx(def, ST.nationPolicies, p.payload.policy_id); current = (policyOptions(def)[ci] || {}).name || '—'; }
+    return '<div class="lawchg">' +
+      '<div class="lawchg__row"><span class="lawchg__k">Current Law</span><span class="lawchg__v">' + esc(current) + '</span></div>' +
+      '<div class="lawchg__row"><span class="lawchg__k">Proposed Change</span><span class="lawchg__v hl">' + esc(proposed) + '</span></div></div>';
+  }
   function measureCard(p){
     var t = tallyOf(p.id);
     var cast = t.aye + t.nay, notv = Math.max(0, ST.total - cast);
@@ -194,7 +220,7 @@
       ? 'Carrying — outright majority of the chamber'
       : (carry ? 'Would pass if voting closed now — Aye leads'
                : (t.aye === t.nay ? 'Would fail if voting closed now — tied' : 'Would fail if voting closed now — Nay leads'));
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + lawChange(p) +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
       '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span><b>' + cast + '</b> / ' + ST.total + ' seats cast</span></div>' +
       '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + ticksLeft(p) + '</div>' +
@@ -207,7 +233,7 @@
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
     var when = p.scheduled_tick != null ? tickToDate(p.scheduled_tick) : '—';
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + lawChange(p) +
       '<div class="agwhen">Reaches the floor · <b>' + esc(when) + '</b></div>' +
       '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor now (1 action)</button>' : '<span class="youvote">Awaiting its scheduled month</span>') + '</div></div>';
   }
@@ -270,9 +296,15 @@
     try {
       const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies').eq('id', party.nation_id).single();
       const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
       const nationName = (nation && nation.name) || party.nation_id;
+      // Policy definitions + this nation's in-force options — so a law measure can show
+      // the Current Law it would change (proposed option is already in the proposal payload).
+      // Non-fatal: if the definitions can't load, law measures just show "—" for the
+      // current/proposed option — the chamber and voting still work.
+      ST.nationPolicies = (nation && nation.policies) || {};
+      try { (await fetchPolicies()).forEach(function (r) { ST.policyDefs[r.id] = r.definition; }); } catch (e) { /* leave policyDefs empty → "—" */ }
 
       ST.party = party;
       ST.total = (nation && nation.legislature_seats) || 0;
