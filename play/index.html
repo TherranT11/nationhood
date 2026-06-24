@@ -210,11 +210,11 @@
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
       <div class="leadbar__grid">
-        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 1 action."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
+        <button class="lead" id="act-rally" type="button" title="Roll 1d6 + Charisma, ÷10 then −25%, added to popularity (capped at your ceiling). Cost: $25K + 4 actions."><b>Rally</b><span class="lead__lane">Charisma &middot; The Base</span><span class="lead__desc">Raises party popularity.</span></button>
         <button class="lead" id="act-direct" type="button" title="Direct members of your party to action. (Not yet available.)"><b>Direct</b><span class="lead__lane">The Whip</span><span class="lead__desc">Direct members of your party to action.</span></button>
-        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 1 action."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
-        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 1 action."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
-        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 1 action."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
+        <button class="lead" id="act-fundraise" type="button" title="Roll 1d6 + Charisma, ×$15K, added to your funds. Cost: 4 actions."><b>Fundraise</b><span class="lead__lane">Charisma &middot; The Donors</span><span class="lead__desc">Fills your party funds.</span></button>
+        <button class="lead" id="act-attack" type="button" title="Roll 1d6 + Acumen vs a rival's Resolve; the margin ÷3 cuts their popularity (to their floor). Miss or a natural 1: −1% your own. Cost: $25K + 4 actions."><b>Attack</b><span class="lead__lane">Acumen &middot; A Rival</span><span class="lead__desc">Cuts a rival's standing.</span></button>
+        <button class="lead" id="act-adblitz" type="button" title="Roll 1d6 + Guile, ÷3, added to popularity (capped at ceiling). Natural 6: +0.5% ceiling. Cost: $100K + 4 actions."><b>Ad Blitz</b><span class="lead__lane">Guile &middot; The Airwaves</span><span class="lead__desc">Buys a jolt of popularity.</span></button>
         <button class="lead" id="act-noconfidence" type="button" title="A vote of no confidence against the current government. (Not yet available.)"><b>No Confidence</b><span class="lead__lane">The Chamber</span><span class="lead__desc">A vote of no confidence against the current government.</span></button>
         <button class="lead" id="act-recruit" type="button" title="Opens a recruitment drive ($25K): a Newcomer (1 action) and a Seasoned candidate (2 actions, 1d3 years of experience) step forward — hire one."><b>Recruit</b><span class="lead__lane">Charisma &middot; New Blood</span><span class="lead__desc">Adds a politician to your bench.</span></button>
         <button class="lead" id="act-negotiate" type="button" title="Open coalition talks: invite another party to the table, trade promises term by term, and form a government once everything's agreed."><b>Negotiate</b><span class="lead__lane">Guile &middot; The Backroom</span><span class="lead__desc">Builds a coalition deal.</span></button>
@@ -360,7 +360,9 @@
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
-    actionBtns.forEach(function (b) { b.disabled = n < 1; });
+    // Each button carries its action cost (data-cost; default 1, Standing actions 4), so a
+    // button greys out the moment you can't afford it — not just at zero.
+    actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -392,14 +394,15 @@
     } catch (e) { ping('Action failed. Try again.'); }
     finally { acting = false; setActions(partyActions); }
   }
-  function wireAction(btn, rpc, okMsg) {
+  function wireAction(btn, rpc, okMsg, cost) {
     if (!btn) return;
+    btn.dataset.cost = cost || 1;
     actionBtns.push(btn);
     btn.addEventListener('click', function () { if (!btn.disabled) performAction(function () { return supabase.rpc(rpc); }, okMsg); });
   }
-  wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; });
-  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; });
-  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; });
+  wireAction(document.getElementById('act-rally'), 'party_rally', function (d) { return 'Rally held — popularity +' + d.delta + '%.'; }, 4);
+  wireAction(document.getElementById('act-fundraise'), 'party_fundraise', function (d) { return 'Fundraised — funds +$' + (d.funds_gain / 1000) + 'K.'; }, 4);
+  wireAction(document.getElementById('act-adblitz'), 'party_ad_blitz', function (d) { return 'Ad blitz — popularity +' + d.delta + '%' + (d.ceiling_gain ? ' (ceiling +' + d.ceiling_gain + '%)' : '') + '.'; }, 4);
   // [Direct] (act-direct) and [No Confidence] (act-noconfidence) are intentionally NOT
   // wired yet — placeholder actions; add wireAction calls when their RPCs exist.
 
@@ -408,6 +411,7 @@
   var attackBtn = document.getElementById('act-attack');
   var attackModal = document.getElementById('attackModal');
   if (attackBtn) {
+    attackBtn.dataset.cost = 4;   // Attack is a Standing action (costs _standing_cost())
     actionBtns.push(attackBtn);
     attackBtn.addEventListener('click', openAttackModal);
   }
@@ -718,7 +722,7 @@
       // "Loading…" if the nation row failed to load (e.g. a column drift).
       if (nation) renderGlance(nation);
       else document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures right now. Refresh to try again.</p>';
-      setActions(party.actions_remaining != null ? party.actions_remaining : 3);
+      setActions(party.actions_remaining != null ? party.actions_remaining : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
 

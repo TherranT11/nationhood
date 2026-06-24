@@ -97,18 +97,21 @@ begin
       update public.governments
          set confidence = greatest(0, least(100, confidence + v_v))
        where nation_id = p_nation and status = 'active';
-    -- Party Popularity → every party in the nation, through the canonical archetype
-    -- ceiling/floor helpers (same path party actions use), then clamp 0..100.
+    -- Party Popularity → every party currently IN GOVERNMENT (parties.in_government, set
+    -- when the government forms, schema/60), through the canonical archetype ceiling/floor
+    -- helpers (same path party actions use), then clamp 0..100. A policy is the government's
+    -- own instrument, so its popularity swing lands on the governing parties, not the opposition.
     when 'Party Popularity' then
-      for r in select id, archetype, popularity from public.parties where nation_id = p_nation loop
+      for r in select id, archetype, popularity from public.parties where nation_id = p_nation and in_government loop
         v_old := r.popularity;
         if v_v >= 0 then v_new := public._mod_cap_raise(p_nation, r.archetype, v_old, v_old + v_v);
         else             v_new := public._mod_floor_drop(p_nation, r.archetype, v_old, v_old + v_v); end if;
         update public.parties set popularity = greatest(0, least(100, v_new)) where id = r.id;
       end loop;
-    -- Popularity Ceiling → every party in the nation's support ceiling (0..100)
+    -- Popularity Ceiling → the support ceiling of every party currently IN GOVERNMENT
+    -- (0..100), the same government-only scope as Party Popularity above.
     when 'Popularity Ceiling' then
-      update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where nation_id = p_nation;
+      update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where nation_id = p_nation and in_government;
     else
       null;  -- unknown target
   end case;

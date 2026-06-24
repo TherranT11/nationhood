@@ -45,6 +45,16 @@ export function policyMoney(v, scale, pop, pros) {
   if (scale === 'perm') return v * pop;
   return v * pop * (pros / 10);
 }
+// Two policy targets are scoped to the parties in government (schema/91 _apply_policy_effect),
+// not all parties in the nation — so label them with that scope wherever a policy's effects are
+// shown (the admin authoring tool and the player policy/propose views all read this one source).
+// Display-only: the stored target value stays the canonical string, so existing policies keep
+// matching. (Convictions reuse the same target list but scope to the adopting party, so they
+// keep the plain names.)
+var POL_TGT_LABEL = { 'Party Popularity': 'Party Popularity (parties in govt)',
+                      'Popularity Ceiling': 'Popularity Ceiling (parties in govt)' };
+export function polTgtLabel(t) { return POL_TGT_LABEL[t] || t; }
+
 // One effect as display text for a nation context (pop in millions, prosperity 1–20;
 // the same coalesce(pop,0)/coalesce(pros,10) the server applies). Returns
 // { text, cad, cls } where cls is 'pos' | 'neg' | '' by direction.
@@ -56,9 +66,9 @@ export function effectText(e, pop, pros) {
           : (Number(e.dur) > 0 ? 'per tick · ' + Number(e.dur) + ' mo' : 'per tick');
   if (isMoneyTarget(e.t)) {
     var amt = policyMoney(Number(e.v) || 0, e.scale, Number(pop) || 0, Number(pros) || 10);
-    return { text: e.t + ' ' + (amt >= 0 ? '+' : '−') + '₣' + Math.abs(amt).toFixed(2) + 'B',
+    return { text: polTgtLabel(e.t) + ' ' + (amt >= 0 ? '+' : '−') + '₣' + Math.abs(amt).toFixed(2) + 'B',
              cad: cad, cls: amt > 0 ? 'pos' : amt < 0 ? 'neg' : '' };
   }
   var v = Number(e.v) || 0;
-  return { text: e.t + ' ' + (v >= 0 ? '+' : '−') + Math.abs(v), cad: cad, cls: v > 0 ? 'pos' : v < 0 ? 'neg' : '' };
+  return { text: polTgtLabel(e.t) + ' ' + (v >= 0 ? '+' : '−') + Math.abs(v), cad: cad, cls: v > 0 ? 'pos' : v < 0 ? 'neg' : '' };
 }

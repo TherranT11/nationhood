@@ -328,10 +328,10 @@ declare v_tick int; v_n text; v_count int := 0; v_rec record;
 begin
   if not public.is_admin() then raise exception 'Admin only.'; end if;
   update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
-  -- Every party gets a fresh turn: action budget reset to 3 on each tick. The
-  -- predicate matches all parties not already at 3 (and is null-safe) — it also
+  -- Every party gets a fresh turn: action budget reset to 12 on each tick. The
+  -- predicate matches all parties not already at 12 (and is null-safe) — it also
   -- satisfies Postgres' require-a-WHERE-clause guard (sql_safe_updates).
-  update public.parties set actions_remaining = 3 where actions_remaining is distinct from 3;
+  update public.parties set actions_remaining = 12 where actions_remaining is distinct from 12;
   -- Standing monthly economics: every nation's in-force policy options apply their
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
