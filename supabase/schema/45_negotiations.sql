@@ -352,7 +352,10 @@ begin
   if not found then raise exception 'That negotiation is gone.'; end if;
   select * into v_host from public.parties where id = v_n.host_party_id for update;
   if v_host.user_id is distinct from auth.uid() then raise exception 'Only the host can form the agreement.'; end if;
-  if v_n.status <> 'active' then raise exception 'This agreement is already committed.'; end if;
+  -- Re-read status under the host lock (not the local v_n, read before the lock): two
+  -- concurrent commits serialize on this row, and the loser must see 'committed' here
+  -- so it raises instead of charging a second action for an already-locked deal.
+  if (select status from public.negotiations where id = p_neg) <> 'active' then raise exception 'This agreement is already committed.'; end if;
   if v_host.actions_remaining < 1 then raise exception 'You need an action to lock in the agreement.'; end if;
 
   if not exists (select 1 from public.negotiation_parties where negotiation_id = p_neg and status = 'accepted') then
