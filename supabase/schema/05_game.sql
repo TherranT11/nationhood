@@ -14,6 +14,7 @@ create table if not exists public.game_state (
 );
 
 insert into public.game_state (id, current_tick) values (true, 1) on conflict (id) do nothing;
+alter table public.game_state add column if not exists last_tick_at timestamptz;   -- wall-clock of the last tick → next-tick countdown + missed-tick checks
 
 alter table public.game_state enable row level security;
 

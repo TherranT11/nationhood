@@ -370,12 +370,17 @@ end $$;
 revoke all on function public._confidence_collapse(text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- advance_tick(): the admin's single lever. Bumps the shared clock one tick,
--- refreshes every party's action budget to 3, applies each nation's annual income
--- to its budget every January (a deficit overflows into debt), and resolves every
--- nation whose election has come due. Admin-gated; no automation.
+-- The tick. _advance_tick() is the BODY with NO admin gate, so the pg_cron job
+-- (every 8h, scheduled at the foot of this file) can run it as the function owner;
+-- the manual admin button calls advance_tick() — the gated wrapper below. Every
+-- per-nation / per-item step runs in its own sub-block: a single failure is logged
+-- (raise warning) and skipped, so one bad nation can never freeze the world clock.
+-- Bumps the clock (+ stamps last_tick_at for the next-tick countdown), refreshes every
+-- party's action budget to 12, applies monthly policy economics + January income,
+-- reconciles one-party regimes, resolves due elections, lifts expired modifiers, and
+-- promotes/tallies floor measures.
 -- ---------------------------------------------------------------------------
-create or replace function public.advance_tick()
+create or replace function public._advance_tick()
 returns jsonb
 language plpgsql
 security definer
@@ -383,8 +388,7 @@ set search_path = public
 as $$
 declare v_tick int; v_n text; v_count int := 0; v_rec record;
 begin
-  if not public.is_admin() then raise exception 'Admin only.'; end if;
-  update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
+  update public.game_state set current_tick = current_tick + 1, last_tick_at = now() where id returning current_tick into v_tick;
   -- Every party gets a fresh turn: action budget reset to 12 on each tick. The
   -- predicate matches all parties not already at 12 (and is null-safe) — it also
   -- satisfies Postgres' require-a-WHERE-clause guard (sql_safe_updates).
@@ -392,12 +396,14 @@ begin
   -- Standing monthly economics: every nation's in-force policy options apply their
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
-  perform public._apply_policy_tick_effects(v_tick);
+  begin perform public._apply_policy_tick_effects(v_tick);
+  exception when others then raise warning 'tick %: policy economics failed — %', v_tick, sqlerrm; end;
   -- January (the new month is January when (tick − 1) is a multiple of 12): apply
   -- each nation's annual income to its budget. A surplus fills the bank; a deficit
   -- (negative income) drains a positive budget, and any shortfall past zero rolls
   -- into the debt:  budget' = max(0, budget+income);  debt' = debt + max(0,
   -- -(budget+income)). Flat admin-set figure; only non-zero incomes. Event surfaces it.
+  begin
   if (v_tick - 1) % 12 = 0 then
     -- raw = budget + income, computed once; budget floors at 0, the rest overflows to debt.
     update public.nations n
@@ -420,19 +426,21 @@ begin
       from public.nations n
      where coalesce((n.economy->>'income')::numeric, 0) <> 0;
   end if;
+  exception when others then raise warning 'tick %: annual income failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation
   -- that just turned one-party then holds a Party Congress instead of an election.
   for v_n in select id from public.nations loop
-    perform public._sync_one_party_state(v_n);
+    begin perform public._sync_one_party_state(v_n);
+    exception when others then raise warning 'tick %: party-state sync failed for nation % — %', v_tick, v_n, sqlerrm; end;
   end loop;
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick
   loop
-    perform public.resolve_election(v_n);
-    v_count := v_count + 1;
+    begin perform public.resolve_election(v_n); v_count := v_count + 1;
+    exception when others then raise warning 'tick %: election failed for nation % — %', v_tick, v_n, sqlerrm; end;
   end loop;
   -- Lift any assigned National Modifier whose end conditions are all met (schema/70).
   delete from public.nation_modifiers nm
@@ -455,15 +463,41 @@ begin
     select id from public.proposals
      where status = 'voting' and opened_tick is not null and (v_tick - opened_tick) >= 6
   loop
-    perform public._resolve_proposal(v_rec.id, true);
+    begin perform public._resolve_proposal(v_rec.id, true);
+    exception when others then raise warning 'tick %: proposal % failed — %', v_tick, v_rec.id, sqlerrm; end;
   end loop;
   -- Adopted convictions' "while active" effects: standing modifiers + movement-based
   -- triggers, measured against last tick's snapshot (schema/94). Runs last, after this
   -- tick's stat changes, so it rewards the month's net movement.
-  perform public._apply_conviction_triggers(v_tick);
+  begin perform public._apply_conviction_triggers(v_tick);
+  exception when others then raise warning 'tick %: conviction triggers failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
+revoke all on function public._advance_tick() from public, anon, authenticated;
+
+-- The admin's manual lever: the same work as the cron path, behind the is_admin() gate.
+create or replace function public.advance_tick()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Admin only.'; end if;
+  return public._advance_tick();
+end $$;
 grant execute on function public.advance_tick() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- The 8-hour clock. Schedule _advance_tick() via pg_cron (00:00 / 08:00 / 16:00 UTC).
+-- Idempotent — cron.schedule upserts by job name, so a re-apply re-arms the same job —
+-- and wrapped so a project WITHOUT pg_cron (e.g. local dev) still applies the rest of
+-- the schema. The job runs as the function owner, which clears the admin gate that
+-- advance_tick() enforces for clients.
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  create extension if not exists pg_cron;
+  perform cron.schedule('nationhood-tick', '0 */8 * * *', 'select public._advance_tick();');
+exception when others then
+  raise notice 'pg_cron not configured (%): enable it, then run cron.schedule(''nationhood-tick'', ''0 */8 * * *'', ''select public._advance_tick();'').', sqlerrm;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- agenda_enact(item): the PM (the government's formateur) carries out one pending
