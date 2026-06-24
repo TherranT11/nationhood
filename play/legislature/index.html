@@ -301,8 +301,10 @@
       const nationName = (nation && nation.name) || party.nation_id;
       // Policy definitions + this nation's in-force options — so a law measure can show
       // the Current Law it would change (proposed option is already in the proposal payload).
+      // Non-fatal: if the definitions can't load, law measures just show "—" for the
+      // current/proposed option — the chamber and voting still work.
       ST.nationPolicies = (nation && nation.policies) || {};
-      (await fetchPolicies()).forEach(function (r) { ST.policyDefs[r.id] = r.definition; });
+      try { (await fetchPolicies()).forEach(function (r) { ST.policyDefs[r.id] = r.definition; }); } catch (e) { /* leave policyDefs empty → "—" */ }
 
       ST.party = party;
       ST.total = (nation && nation.legislature_seats) || 0;
