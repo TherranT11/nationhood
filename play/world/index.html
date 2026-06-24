@@ -46,7 +46,7 @@
   .gov{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .gov .who b{font-weight:700;font-size:14.5px}
   .gov .who span{display:block;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-top:1px}
-  .govtype{margin-left:auto;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:20px;background:var(--chip);color:var(--muted)}
+  .govtype{margin-left:auto;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;line-height:1.4;padding:5px 11px;border-radius:20px;background:var(--chip);color:var(--muted);text-align:right}
 
   .acts{display:flex;gap:10px;margin-top:18px}
   .btn{flex:1;text-align:center;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:12px 14px;border-radius:10px;cursor:pointer;border:1.5px solid var(--indigo);transition:transform .12s,filter .15s,background .15s}
@@ -83,7 +83,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
-  import { regimeLabel } from '/ladders.js';
+  import { regimeText } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -110,12 +110,12 @@
       var eco = n.economy || {};
       var currency = eco.currency || '$';
 
-      // Government type: the active government's form if one is seated, else the
-      // nation's regime (numeric ladder value → label, or a stored string).
+      // Government type: the seated government's form PLUS the nation's regime
+      // (regimeText → "Label (N)"), e.g. "Coalition Government — Flawed Democracy (17)".
+      // No seated government → just the regime. Unknown regime → just the form.
       var g = govByNation[n.id];
-      var regime = eco.regime;
-      var regimeTxt = (typeof regime === 'number') ? (regimeLabel(regime) + ' – ' + regime) : (regime || '—');
-      var govType = g ? cap(g.type) : regimeTxt;
+      var regimeTxt = regimeText(eco.regime);
+      var govType = g ? (cap(g.type) + ' Government' + (regimeTxt !== '—' ? ' — ' + regimeTxt : '')) : regimeTxt;
 
       var leader = (g && g.formateur_party_id) ? leaderByParty[g.formateur_party_id] : null;
       var hog = leader ? (esc((leader.first_name || '') + ' ' + (leader.last_name || '')).trim() || '—') : '—';

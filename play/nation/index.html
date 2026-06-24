@@ -84,7 +84,7 @@
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtPop, declaredValue } from '/util.js';
-  import { regimeLabel } from '/ladders.js';
+  import { regimeText } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -105,9 +105,9 @@
     function declValue(slug){ return declaredValue(slotBySlug[slug], vals); }
 
     var eco = nation.economy || {}, prod = nation.production || {};
-    var regime = eco.regime;
-    var regimeTxt = (typeof regime === 'number') ? (regimeLabel(regime) + ' – ' + regime) : (regime || '—');
-    var govType = (gov ? cap(gov.type) : 'No government') + ' (' + regimeTxt + ')';
+    // Regime line via the shared regimeText() (one source) → e.g. "Minority — Electoral Democracy (17)".
+    var regimeTxt = regimeText(eco.regime);
+    var govType = (gov ? cap(gov.type) : 'No government') + (regimeTxt !== '—' ? ' — ' + regimeTxt : '');
     var hog = pmPol ? (esc((pmPol.first_name || '') + ' ' + (pmPol.last_name || '')).trim() + ', ' + (pmPol.age != null ? pmPol.age : '?') + ' (' + esc(pmParty ? pmParty.name : '—') + ')') : '—';
     var conf = gov ? (gov.confidence + '%') : '—';
 
@@ -138,7 +138,7 @@
 
     var economy =
       '<section class="panel"><h2>Domestic Economy</h2><div class="econ">' +
-        ECON.map(function(k){ var v = prod[k]; return '<div class="ecell"><div class="k">' + cap(k) + '</div><div class="v">' + (v != null ? v : '—') + '</div></div>'; }).join('') +
+        ECON.map(function(k){ var v = prod[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div></div>'; }).join('') +
       '</div></section>';
 
     // National Identity = every declaration slot's current value, grouped.
