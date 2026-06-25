@@ -168,7 +168,7 @@
         : [['Subsidize'], ['Bail Out'], ['Nationalize']]
       ).map(function (b){ return '<button class="actbtn" type="button" disabled>' + b[0] + '</button>'; }).join('');
       return '<div class="arow">' +
-        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.category) + '</span></div></div>' +
+        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.category) + (c.size ? ' · ' + esc(c.size) : '') + '</span></div></div>' +
         '<div class="cell"><span class="lbl">Director</span><div class="dnm">' + esc(c.director_name || '—') + '</div>' +
           '<div class="dmeta">' + pty + '<span class="dstat">Acu <b>' + (c.director_acu != null ? c.director_acu : '—') + '</b> · ' + (c.director_age != null ? c.director_age : '—') + '</span></div></div>' +
         '<div class="cell"><span class="lbl">Type</span>' + typeHtml + '</div>' +
