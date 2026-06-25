@@ -189,24 +189,29 @@
       } catch (e) { /* leave the default multiparty copy */ }
     })();
 
-    // A brand-new party starts with one prominent politician — its Party Leader.
-    // Names come from this nation's nation_names pool; age 25–55; experience =
-    // age/10 (floor), which is the number of stat points spread randomly across
-    // the five competencies. Skips if the party already has politicians (so a
-    // re-founding upsert doesn't mint a second leader), and if the nation has no
-    // name pool the roster just starts empty. Non-fatal: a failure here never
-    // blocks party creation.
+    // Generic fallback names: used only when a nation has no name pool of its own, so a
+    // new party — including a faction in an admin-made one-party state with no
+    // <nation>_names seed (schema/50) — ALWAYS gets a named Party Leader.
+    var FALLBACK_FIRSTS  = ['Alex', 'Sam', 'Jordan', 'Morgan', 'Casey', 'Mira', 'Andrei', 'Ilya', 'Sasha', 'Lena', 'Marco', 'Yara', 'Theo', 'Dana', 'Noa', 'Quinn'];
+    var FALLBACK_SURNAMES = ['Hart', 'Vance', 'Mercer', 'Ashford', 'Frost', 'Quint', 'Marsh', 'Doyle', 'Reeve', 'Sloan', 'Kovic', 'Reyes', 'Voss', 'Lund', 'Mata', 'Adler'];
+
+    // A brand-new party (or faction) starts with one prominent politician — its Party
+    // Leader. Names come from this nation's nation_names pool, falling back to the generic
+    // pool above when the nation has none (so a leader is ALWAYS seeded); age 25–55;
+    // experience = age/10 (floor) stat points spread randomly across the five
+    // competencies. Skips if the party already has politicians (so a re-founding upsert
+    // doesn't mint a second leader). Non-fatal: a failure here never blocks party creation.
     async function seedLeader(partyId) {
       try {
         const { count } = await supabase.from('politicians')
           .select('id', { count: 'exact', head: true }).eq('party_id', partyId);
         if (count) return;
-        const { data: names, error } = await supabase.from('nation_names').select('name, kind').eq('nation_id', nationId);
-        if (error || !names) return;
-        var firsts = names.filter(function (n) { return n.kind === 'male' || n.kind === 'female'; });
-        var surs = names.filter(function (n) { return n.kind === 'surname'; });
-        if (!firsts.length || !surs.length) return;
-        var pick = function (a) { return a[Math.floor(Math.random() * a.length)].name; };
+        const { data: names } = await supabase.from('nation_names').select('name, kind').eq('nation_id', nationId);
+        var firsts = (names || []).filter(function (n) { return n.kind === 'male' || n.kind === 'female'; }).map(function (n) { return n.name; });
+        var surs   = (names || []).filter(function (n) { return n.kind === 'surname'; }).map(function (n) { return n.name; });
+        if (!firsts.length) firsts = FALLBACK_FIRSTS;     // no name pool → generic fallback, never leaderless
+        if (!surs.length)   surs   = FALLBACK_SURNAMES;
+        var pick = function (a) { return a[Math.floor(Math.random() * a.length)]; };
 
         var age = 25 + Math.floor(Math.random() * 31);  // 25–55 inclusive
         var exp = Math.floor(age / 10);                  // experience = stat points to spend
