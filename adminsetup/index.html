@@ -379,6 +379,55 @@
 
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
+  /* Corporations tab — admin Creator for firms (corporations table). */
+  .crtab .clayout{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start}
+  @media(max-width:920px){.crtab .clayout{grid-template-columns:1fr}}
+  .crtab .card{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px 20px;margin-bottom:16px}
+  .crtab .ph{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  .crtab .f{margin-bottom:14px}
+  .crtab .crow label{display:block;font-weight:700;font-size:12px;margin-bottom:6px;color:var(--muted)}
+  .crtab .hint{color:var(--soft);font-weight:400;font-size:11px;margin-left:5px}
+  .crtab .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .crtab .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  @media(max-width:560px){.crtab .row2,.crtab .row3{grid-template-columns:1fr}}
+  .crtab input[type=text],.crtab select{width:100%;border:1px solid var(--line2);background:var(--field,#FCFBF9);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;color:var(--ink)}
+  .crtab input:disabled,.crtab select:disabled{background:var(--chip,#F4F3EF);color:var(--soft);cursor:not-allowed}
+  .crtab .seg{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+  .crtab .seg button{border:none;background:var(--surface);padding:9px 16px;font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;color:var(--muted)}
+  .crtab .seg button.on{background:var(--ink);color:#fff;font-weight:700}
+  .crtab .catbonus{margin-top:8px;font-size:11px;color:var(--muted)}
+  .crtab .catbonus .btag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--green);background:var(--green-soft);border-radius:6px;padding:2px 8px;margin-right:6px}
+  .crtab .callout{border:1px dashed var(--amber);background:var(--amber-soft);border-radius:11px;padding:13px 15px;margin:4px 0 14px;display:none}
+  .crtab .callout.show{display:block}
+  .crtab .callout .ct{font-weight:800;font-size:12px;color:#9a5a08;margin-bottom:4px}
+  .crtab .callout p{font-size:11.5px;color:#7c4e10;line-height:1.5}
+  .crtab .callout .dice{font-family:'Space Mono',monospace;font-size:11px;background:#fff;border:1px solid var(--amber);border-radius:7px;padding:3px 8px;color:#9a5a08;display:inline-block;margin-top:8px}
+  .crtab .callout .reroll{margin-left:8px;font-family:'Space Mono',monospace;font-size:10px;color:var(--amber);background:#fff;border:1px solid var(--amber);border-radius:6px;padding:4px 8px;cursor:pointer}
+  .crtab .pcard{border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden;position:sticky;top:18px}
+  .crtab .pc-h{padding:13px 15px;border-bottom:1px solid var(--line);background:var(--field,#FCFBF9)}
+  .crtab .pc-name{font-weight:800;font-size:15px}
+  .crtab .pc-sub{font-family:'Space Mono',monospace;font-size:10px;text-transform:uppercase;color:var(--soft);margin-top:3px}
+  .crtab .pc-body{padding:13px 15px;display:flex;flex-direction:column;gap:9px}
+  .crtab .prow{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .crtab .prow .pk{font-family:'Space Mono',monospace;font-size:10px;text-transform:uppercase;color:var(--soft)}
+  .crtab .prow .pv{font-family:'Space Mono',monospace;font-size:12.5px;font-weight:700}
+  .crtab .pv.green{color:var(--green)} .crtab .pv.red{color:var(--red)} .crtab .pv.soft{color:var(--soft)}
+  .crtab .chip{font-family:'Space Mono',monospace;font-size:9px;text-transform:uppercase;font-weight:700;border-radius:20px;padding:4px 9px}
+  .crtab .chip.so{color:var(--navy,#2b3a7a);background:var(--navy-soft,#E7EAF4)} .crtab .chip.pr{color:var(--amber);background:var(--amber-soft)}
+  .crtab .destiny{padding:10px 15px;border-top:1px solid var(--line);font-family:'Space Mono',monospace;font-size:10px;text-align:center}
+  .crtab .destiny.now{color:var(--green);background:var(--green-soft)} .crtab .destiny.queue{color:var(--amber);background:var(--amber-soft)}
+  .crtab .cbtn{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;cursor:pointer}
+  .crtab .cbtn:disabled{background:var(--line2);cursor:not-allowed}
+  .crtab .lists{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+  @media(max-width:920px){.crtab .lists{grid-template-columns:1fr}}
+  .crtab .listcard h3{font-size:13px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .crtab .listcard h3 .cnt{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);font-weight:400}
+  .crtab .listcard .desc{font-size:11px;color:var(--muted);margin:5px 0 12px}
+  .crtab .li{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .crtab .li .lname{font-weight:700;font-size:12px} .crtab .li .lmeta{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:2px}
+  .crtab .li .lval{font-family:'Space Mono',monospace;font-size:11.5px;font-weight:700;text-align:right;white-space:nowrap}
+  .crtab .li .del{border:none;background:none;color:var(--soft);cursor:pointer;font-size:14px;padding:0 2px} .crtab .li .del:hover{color:var(--red)}
+  .crtab .empty{font-family:'Space Mono',monospace;font-size:11px;color:var(--soft);padding:12px;text-align:center;border:1px dashed var(--line2);border-radius:10px}
 </style>
 </head>
 <body>
@@ -412,6 +461,7 @@
         <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
+        <button class="vtab" data-tab="corporations" type="button">Corporations</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="nations">
@@ -650,6 +700,72 @@
           </div>
         </div>
       </div>
+      <div class="tabpane" data-tab="corporations" hidden>
+        <div class="crtab">
+          <p class="sub" style="margin:0 0 16px">Define a firm and either place it in a nation now, or hand it to that nation’s Growing Economy Generation List, where it enters as a startup once the business climate turns healthy.</p>
+          <div class="clayout">
+            <div>
+              <div class="card">
+                <div class="ph">Details</div>
+                <div class="row2">
+                  <div class="f crow"><label>Nation</label><select id="cfNation"></select></div>
+                  <div class="f crow"><label>Category</label><select id="cfCategory"></select><div class="catbonus" id="cfCatBonus"></div></div>
+                </div>
+                <div class="f crow"><label>Name</label><input type="text" id="cfName" placeholder="e.g. Compagnie Méridienne"></div>
+                <div class="row2">
+                  <div class="f crow"><label>Type</label><div class="seg" id="cfType"><button data-v="pr" class="on" type="button">Private</button><button data-v="so" type="button">State Owned</button></div></div>
+                  <div class="f crow"><label>Size</label><select id="cfSize"></select></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="ph">Starting position</div>
+                <div class="row3">
+                  <div class="f crow"><label>Starting Cash <span class="hint">$B</span></label><input type="text" id="cfCash" value="1.0"></div>
+                  <div class="f crow"><label>Starting Debt <span class="hint">$B</span></label><input type="text" id="cfDebt" value="0.0"></div>
+                  <div class="f crow"><label>Starting Growth <span class="hint">trajectory −9…9</span></label><input type="text" id="cfDrift" value="1"></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="ph">Placement</div>
+                <div class="f crow"><label>Add now?</label><div class="seg" id="cfAdd"><button data-v="yes" class="on" type="button">Yes</button><button data-v="no" type="button">No</button></div></div>
+                <div class="callout" id="cfQueueNote">
+                  <div class="ct">Goes to the Growing Economy Generation List</div>
+                  <p>It enters <b id="cfQNation">—</b> as a <b>Startup</b> once the climate is healthy, seeded with a rolled cash float. Type, Size, Cash, Debt and Growth are overridden.</p>
+                  <span class="dice" id="cfDice">1D60 + 20 (M)</span><button class="reroll" id="cfReroll" type="button">Reroll</button>
+                </div>
+                <button class="cbtn" id="cfCreate" type="button">Create corporation</button>
+                <div class="note" id="cfNote" role="status" aria-live="polite" style="margin-top:12px"></div>
+              </div>
+            </div>
+            <aside>
+              <div class="pcard">
+                <div class="pc-h"><div class="pc-name" id="cpvName">Unnamed firm</div><div class="pc-sub" id="cpvSub">—</div></div>
+                <div class="pc-body">
+                  <div class="prow"><span class="pk">Sector bonus</span><span class="pv green" id="cpvBonus" style="font-size:11px;text-align:right;max-width:170px"></span></div>
+                  <div class="prow"><span class="pk">Type</span><span id="cpvType"></span></div>
+                  <div class="prow"><span class="pk">Size</span><span class="pv" id="cpvSize"></span></div>
+                  <div class="prow"><span class="pk">Cash</span><span class="pv green" id="cpvCash"></span></div>
+                  <div class="prow"><span class="pk">Debt</span><span class="pv soft" id="cpvDebt"></span></div>
+                  <div class="prow"><span class="pk">Growth</span><span class="pv" id="cpvGrowth"></span></div>
+                </div>
+                <div class="destiny now" id="cpvDestiny">Placed in nation immediately</div>
+              </div>
+            </aside>
+          </div>
+          <div class="lists">
+            <div class="listcard">
+              <h3>Created &amp; placed <span class="cnt" id="cCntNow">(0)</span></h3>
+              <p class="desc">Live in their nation’s register now.</p>
+              <div id="cListNow"><div class="empty">None yet</div></div>
+            </div>
+            <div class="listcard">
+              <h3>Growing Economy Generation List <span class="cnt" id="cCntQueue">(0)</span></h3>
+              <p class="desc">Startups waiting to enter when their nation’s climate is healthy.</p>
+              <div id="cListQueue"><div class="empty">None queued</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
   </div>
@@ -658,6 +774,7 @@
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import { regimeLabel, statName } from '/ladders.js';
+    import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
@@ -1058,6 +1175,116 @@
       finally { btn.disabled = false; }
     });
 
+    // ---- Corporations (admin Creator; corporations table, is_admin RLS) -------------
+    var corpCache = [];
+    var CF = { nation:'', category:'Energy', name:'', type:'pr', size:'Moderate', cash:1.0, debt:0.0, drift:1, addNow:true, rollM:48 };
+    var corpSaving = false;
+    function corpRollM(){ CF.rollM = Math.floor(Math.random()*60) + 1 + 20; return CF.rollM; }   // 1D60 + 20 → $M
+    function corpNum(id, def){ var v=parseFloat(document.getElementById(id).value); return isNaN(v)?def:v; }
+    function corpNatName(id){ return (nationsCache.filter(function(n){return n.id===id;})[0]||{}).name || id || '—'; }
+    function setCorpNote(msg, kind){ var n=document.getElementById('cfNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
+
+    function renderCorpForm(){
+      var dis = !CF.addNow;
+      var eff = CF.addNow ? { type:CF.type, size:CF.size, cash:CF.cash, debt:CF.debt, drift:CF.drift }
+                          : { type:'pr', size:'Startup', cash:CF.rollM/1000, debt:0, drift:null };
+      document.getElementById('cpvName').textContent = CF.name || 'Unnamed firm';
+      document.getElementById('cpvSub').textContent = corpNatName(CF.nation) + ' · ' + CF.category;
+      var bonus = CATEGORY_BONUS[CF.category] || { tag:'—', desc:'' };
+      document.getElementById('cfCatBonus').innerHTML = '<span class="btag">'+esc(bonus.tag)+'</span>'+esc(bonus.desc);
+      document.getElementById('cpvBonus').textContent = bonus.tag;
+      document.getElementById('cpvType').innerHTML = '<span class="chip '+eff.type+'">'+(eff.type==='so'?'State Owned':'Private')+'</span>';
+      document.getElementById('cpvSize').textContent = eff.size;
+      var cashEl=document.getElementById('cpvCash'); cashEl.textContent=corpMoney(eff.cash); cashEl.className='pv '+(eff.cash>0?'green':'soft');
+      var debtEl=document.getElementById('cpvDebt'); debtEl.textContent=eff.debt>0?corpMoney(eff.debt):'—'; debtEl.className='pv '+(eff.debt>0?'red':'soft');
+      var grEl=document.getElementById('cpvGrowth');
+      if(eff.drift===null){ grEl.textContent='assigned on entry'; grEl.className='pv soft'; }
+      else { grEl.textContent=(eff.drift>0?'+':'')+eff.drift; grEl.className='pv '+(eff.drift>0?'green':eff.drift<0?'red':'soft'); }
+      var dest=document.getElementById('cpvDestiny');
+      if(CF.addNow){ dest.className='destiny now'; dest.textContent='Placed in '+corpNatName(CF.nation)+' immediately'; }
+      else { dest.className='destiny queue'; dest.textContent='Queued → enters '+corpNatName(CF.nation)+' as a Startup'; }
+      document.getElementById('cfQueueNote').classList.toggle('show', dis);
+      document.getElementById('cfQNation').textContent = corpNatName(CF.nation);
+      document.getElementById('cfDice').textContent = '1D60 + 20 (M) → $'+CF.rollM+'M';
+      document.querySelectorAll('#cfType button').forEach(function(b){ b.disabled=dis; });
+      document.getElementById('cfSize').disabled=dis;
+      document.getElementById('cfCash').disabled=dis; document.getElementById('cfDebt').disabled=dis; document.getElementById('cfDrift').disabled=dis;
+      document.getElementById('cfCreate').textContent = CF.addNow ? 'Create corporation' : 'Add to generation list';
+    }
+
+    function renderCorpLists(){
+      var placed=corpCache.filter(function(c){return c.status!=='queued';});
+      var queued=corpCache.filter(function(c){return c.status==='queued';});
+      document.getElementById('cCntNow').textContent='('+placed.length+')';
+      document.getElementById('cCntQueue').textContent='('+queued.length+')';
+      document.getElementById('cListNow').innerHTML = placed.length ? placed.map(function(c){
+        return '<div class="li"><div><div class="lname">'+esc(c.name)+'</div><div class="lmeta">'+esc(corpNatName(c.nation_id))+' · '+esc(c.category)+' · '+(c.type==='so'?'State Owned':'Private')+' · '+esc(c.size)+'</div></div>'+
+          '<div style="display:flex;align-items:center;gap:8px"><div class="lval">'+corpMoney(c.cash)+(Number(c.debt)>0?'<br><span style="color:var(--red)">debt '+corpMoney(c.debt)+'</span>':'')+'</div><button class="del" data-id="'+esc(c.id)+'" type="button" title="Delete">×</button></div></div>';
+      }).join('') : '<div class="empty">None yet</div>';
+      document.getElementById('cListQueue').innerHTML = queued.length ? queued.map(function(c){
+        return '<div class="li"><div><div class="lname">'+esc(c.name)+'</div><div class="lmeta">'+esc(corpNatName(c.nation_id))+' · '+esc(c.category)+' · Startup</div></div>'+
+          '<div style="display:flex;align-items:center;gap:8px"><div class="lval">$'+(c.roll_m||0)+'M<br><span style="color:var(--soft)">1D60+20</span></div><button class="del" data-id="'+esc(c.id)+'" type="button" title="Delete">×</button></div></div>';
+      }).join('') : '<div class="empty">None queued</div>';
+      document.querySelectorAll('#cListNow .del, #cListQueue .del').forEach(function(b){ b.onclick=function(){ deleteCorp(b.dataset.id); }; });
+    }
+
+    async function loadCorporations(){
+      if(nationsCache.length){
+        if(!CF.nation || !nationsCache.some(function(n){return n.id===CF.nation;})) CF.nation = nationsCache[0].id;
+        document.getElementById('cfNation').innerHTML = nationsCache.map(function(n){ return '<option value="'+esc(n.id)+'"'+(n.id===CF.nation?' selected':'')+'>'+esc(n.name)+'</option>'; }).join('');
+      }
+      if(!document.getElementById('cfCategory').options.length){ document.getElementById('cfCategory').innerHTML = CATEGORIES.map(function(o){return '<option'+(o===CF.category?' selected':'')+'>'+esc(o)+'</option>';}).join(''); }
+      if(!document.getElementById('cfSize').options.length){ document.getElementById('cfSize').innerHTML = SIZES.map(function(o){return '<option'+(o===CF.size?' selected':'')+'>'+esc(o)+'</option>';}).join(''); }
+      renderCorpForm();
+      try{
+        const { data, error } = await supabase.from('corporations').select('id, nation_id, name, category, type, size, cash, debt, drift, status, roll_m').order('created_at', { ascending:false });
+        if(error) throw error;
+        corpCache = data || [];
+      }catch(e){ corpCache=[]; setCorpNote('Could not load corporations: '+(e.message||e), 'err'); }
+      renderCorpLists();
+    }
+
+    async function createCorp(){
+      if(corpSaving) return;
+      if(!CF.nation){ setCorpNote('Pick a nation first.', 'err'); return; }
+      if(!CF.name.trim()){ setCorpNote('Give the corporation a name first.', 'err'); return; }
+      corpSaving=true; var btn=document.getElementById('cfCreate'); btn.disabled=true;
+      try{
+        var row = CF.addNow
+          ? { nation_id:CF.nation, name:CF.name.trim(), category:CF.category, type:CF.type, size:CF.size, cash:CF.cash, debt:CF.debt, drift:CF.drift, status:'placed', roll_m:null }
+          : { nation_id:CF.nation, name:CF.name.trim(), category:CF.category, type:'pr', size:'Startup', cash:CF.rollM/1000, debt:0, drift:0, status:'queued', roll_m:CF.rollM };
+        const { error } = await supabase.from('corporations').insert(row);
+        if(error) throw error;
+        setCorpNote((CF.addNow?'Placed ':'Queued ')+CF.name.trim()+(CF.addNow?' in '+corpNatName(CF.nation)+'.':' — enters '+corpNatName(CF.nation)+' as a $'+CF.rollM+'M startup.'), 'ok');
+        CF.name=''; document.getElementById('cfName').value='';
+        if(!CF.addNow) corpRollM();
+        await loadCorporations();
+      }catch(e){ setCorpNote('Could not create: '+(e.message||e), 'err'); }
+      finally{ corpSaving=false; btn.disabled=false; }
+    }
+
+    async function deleteCorp(id){
+      var c=corpCache.filter(function(x){return x.id===id;})[0];
+      if(!c || !confirm('Delete “'+c.name+'”? This cannot be undone.')) return;
+      try{
+        const { error } = await supabase.from('corporations').delete().eq('id', id);
+        if(error) throw error;
+        await loadCorporations();
+      }catch(e){ setCorpNote('Could not delete: '+(e.message||e), 'err'); }
+    }
+
+    document.getElementById('cfNation').onchange=function(){ CF.nation=this.value; renderCorpForm(); };
+    document.getElementById('cfCategory').onchange=function(){ CF.category=this.value; renderCorpForm(); };
+    document.getElementById('cfSize').onchange=function(){ CF.size=this.value; renderCorpForm(); };
+    document.getElementById('cfName').oninput=function(){ CF.name=this.value; renderCorpForm(); };
+    document.getElementById('cfCash').oninput=function(){ CF.cash=corpNum('cfCash',0); renderCorpForm(); };
+    document.getElementById('cfDebt').oninput=function(){ CF.debt=Math.max(0,corpNum('cfDebt',0)); renderCorpForm(); };
+    document.getElementById('cfDrift').oninput=function(){ CF.drift=Math.max(-9,Math.min(9,Math.round(corpNum('cfDrift',0)))); renderCorpForm(); };
+    document.querySelectorAll('#cfType button').forEach(function(b){ b.onclick=function(){ if(b.disabled)return; CF.type=b.dataset.v; document.querySelectorAll('#cfType button').forEach(function(x){x.classList.toggle('on',x===b);}); renderCorpForm(); }; });
+    document.querySelectorAll('#cfAdd button').forEach(function(b){ b.onclick=function(){ CF.addNow=(b.dataset.v==='yes'); document.querySelectorAll('#cfAdd button').forEach(function(x){x.classList.toggle('on',x===b);}); if(!CF.addNow) corpRollM(); renderCorpForm(); }; });
+    document.getElementById('cfReroll').onclick=function(){ corpRollM(); renderCorpForm(); };
+    document.getElementById('cfCreate').onclick=createCorp;
+
     // ---- Left-hand tab switching ----
     document.querySelectorAll('.vtab').forEach(function (t) {
       t.addEventListener('click', function () {
@@ -1072,6 +1299,7 @@
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();
         if (tab === 'events') loadEvents();
+        if (tab === 'corporations') loadCorporations();
       });
     });
 

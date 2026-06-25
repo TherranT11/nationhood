@@ -112,13 +112,10 @@
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { businessClimate, climateWord, corpGrowth } from '/corporations.js';
-  import { nationTaxBurden } from '/policies.js';
+  import { climateWord, corpMoney } from '/corporations.js';
 
   mountTopbar();
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
-  var CORP_POLICIES = [];   // policy definitions, for the DERIVED Tax Burden the climate reads
-
   var num = function (v) { return Number(v) || 0; };
 
   function fail(msg){ document.getElementById('corpContent').innerHTML = '<div class="empty">' + msg + '</div>'; }
@@ -127,15 +124,15 @@
   // (one source: corporations.js); each firm's growth is derived from it. Every nation
   // starts with no corporations — the register fills (and its rows render below) once the
   // corporations data layer + the Minister of Economic Development land.
-  function renderCorps(home, currency){
+  function renderCorps(home, currency, reg){
     var box = document.getElementById('corpContent');
-    var corps = [];
+    var corps = (reg && reg.firms) || [];
     var stats = (home && home.stats) || {}, eco = (home && home.economy) || {};
-    // Tax Burden is DERIVED (base + each in-force tax option's contribution) — use the real
-    // total for both the headline figure and the climate's tax drag, not the bare base.
-    var tb = nationTaxBurden(home, CORP_POLICIES);
-    var climate = businessClimate(stats, Object.assign({}, eco, { tax: tb })), w = climateWord(climate);
-    var money = function (v){ var x = Number(v) || 0; return (x < 0 ? '−' : '') + currency + Math.abs(x).toFixed(1) + 'B'; };
+    // Climate + the DERIVED tax burden come from the corp_register RPC (one source: schema/47);
+    // each firm arrives with its growth already derived.
+    var tb = num(reg && reg.taxBurden);
+    var climate = num(reg && reg.climate), w = climateWord(climate);
+    var money = function (v){ return corpMoney(v, currency); };   // one source: corporations.js ($M-aware)
 
     var figs = [
       { k:'Tax Rate',     v:tb + '%' },
@@ -162,7 +159,7 @@
     var totDebt = corps.reduce(function (s, c){ return s + num(c.debt); }, 0);
 
     var rows = corps.map(function (c){
-      var g = corpGrowth(c, climate), gc = g > 0 ? 'up' : g < 0 ? 'down' : 'flat', arr = g > 0 ? '▲' : g < 0 ? '▼' : '–';
+      var g = num(c.growth), gc = g > 0 ? 'up' : g < 0 ? 'down' : 'flat', arr = g > 0 ? '▲' : g < 0 ? '▼' : '–';
       var pty = c.director_party ? '<span class="pty">' + esc(c.director_party) + '</span>' : '<span class="pty np">Non-player</span>';
       var typeHtml = c.type === 'so' ? '<span class="typechip so">State</span>' : '<span class="typechip pr">Private</span>';
       var debtHtml = num(c.debt) > 0 ? '<span class="debt">' + money(c.debt) + '</span>' : '<span class="debt0">—</span>';
@@ -171,7 +168,7 @@
         : [['Subsidize'], ['Bail Out'], ['Nationalize']]
       ).map(function (b){ return '<button class="actbtn" type="button" disabled>' + b[0] + '</button>'; }).join('');
       return '<div class="arow">' +
-        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.sector) + '</span></div></div>' +
+        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.category) + '</span></div></div>' +
         '<div class="cell"><span class="lbl">Director</span><div class="dnm">' + esc(c.director_name || '—') + '</div>' +
           '<div class="dmeta">' + pty + '<span class="dstat">Acu <b>' + (c.director_acu != null ? c.director_acu : '—') + '</b> · ' + (c.director_age != null ? c.director_age : '—') + '</span></div></div>' +
         '<div class="cell"><span class="lbl">Type</span>' + typeHtml + '</div>' +
@@ -199,8 +196,7 @@
     try {
       const { data: party } = await supabase.from('parties').select('name, archetype, nation_id').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: home } = await supabase.from('nations').select('id, name, flag, economy, stats, policies').eq('id', party.nation_id).single();
-      try { CORP_POLICIES = (await supabase.from('policies').select('id, definition')).data || []; } catch (e) { CORP_POLICIES = []; }
+      const { data: home } = await supabase.from('nations').select('id, name, flag, economy, stats').eq('id', party.nation_id).single();
 
       const nationName = (home && home.name) || party.nation_id;
       document.getElementById('pname').textContent = party.name;
@@ -211,7 +207,9 @@
       var currency = eco.currency || '$';
       document.getElementById('treasury').textContent = eco.budget != null ? (currency + eco.budget + 'B') : '—';
 
-      renderCorps(home || { id: party.nation_id }, currency);
+      var reg = { climate: 0, taxBurden: 0, firms: [] };
+      try { var rr = await supabase.rpc('corp_register', { p_nation: party.nation_id }); if (!rr.error && rr.data) reg = rr.data; } catch (e) {}
+      renderCorps(home || { id: party.nation_id }, currency, reg);
     } catch (e) {
       fail('Couldn’t load the register right now. Refresh to try again.');
     }
