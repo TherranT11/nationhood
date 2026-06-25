@@ -399,7 +399,7 @@ begin
   begin perform public._apply_policy_tick_effects(v_tick);
   exception when others then raise warning 'tick %: policy economics failed — %', v_tick, sqlerrm; end;
   -- Passive per-tick modifier effects (schema/70): each active modifier's signed stat delta.
-  begin perform public._apply_modifier_tick_effects(v_tick);
+  begin perform public._apply_modifier_tick_effects();
   exception when others then raise warning 'tick %: modifier per-tick effects failed — %', v_tick, sqlerrm; end;
   -- January (the new month is January when (tick − 1) is a multiple of 12): apply
   -- each nation's annual income to its budget. A surplus fills the bank; a deficit

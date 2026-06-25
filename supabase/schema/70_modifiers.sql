@@ -250,7 +250,7 @@ end $$;
 -- Called by advance_tick (schema/60). Unlike the floor/ceiling bounds, this is an additive
 -- mutation — it needs no enforcement chokepoint, it just runs each tick.
 -- ---------------------------------------------------------------------------
-create or replace function public._apply_modifier_tick_effects(p_tick int)
+create or replace function public._apply_modifier_tick_effects()
 returns void language plpgsql security definer set search_path = public as $$
 declare r record;
 begin
@@ -263,6 +263,6 @@ begin
     perform public._nation_stat_add(r.nation_id, 'stats', r.effect_key, r.effect_value, 1, 20);
   end loop;
 end $$;
-revoke all on function public._apply_modifier_tick_effects(int) from public, anon, authenticated;
+revoke all on function public._apply_modifier_tick_effects() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
