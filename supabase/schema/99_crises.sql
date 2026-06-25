@@ -35,3 +35,197 @@ drop policy if exists "crises_update_admin" on public.crises;
 create policy "crises_update_admin" on public.crises for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "crises_delete_admin" on public.crises;
 create policy "crises_delete_admin" on public.crises for delete using (public.is_admin());
+
+-- ===========================================================================
+-- Crisis RUNTIME — Phase 1: firing + escalation (no player actions yet).
+-- A crisis fires on a nation when ALL its triggers are true, then climbs a meter by the
+-- active stage's growth each tick; crossing the stage's `at` escalates to the next stage
+-- and the meter RESETS (each stage is a fresh climb — Phase-1 decision, flagged for
+-- review before the management UI lands). Reaching stage 5 applies its `reached` effects;
+-- 'ends' resolves the instance, 'persistent' leaves it standing. Driven from advance_tick
+-- via _apply_crisis_tick (schema/60). Player management actions (the meter-DOWN side) and
+-- re-fire semantics are Phase 2 — Phase 1 fires once per nation per crisis.
+-- ===========================================================================
+
+-- Per-nation live crisis state. World-readable (like nations/events); NO client writes —
+-- only the security-definer runtime touches it. One row per (nation, crisis): Phase 1
+-- fires once, so a plain UNIQUE holds.
+create table if not exists public.nation_crises (
+  id           uuid primary key default gen_random_uuid(),
+  nation_id    text not null references public.nations (id) on delete cascade,
+  crisis_id    uuid not null references public.crises (id) on delete cascade,
+  stage        int  not null default 1,           -- 1..5 (5 = terminal)
+  meter        numeric not null default 0,        -- climbs by the stage growth; resets on escalation
+  status       text not null default 'active',    -- 'active' | 'resolved'
+  created_at   timestamptz not null default now(),
+  unique (nation_id, crisis_id)
+);
+
+alter table public.nation_crises enable row level security;
+drop policy if exists "nation_crises_select_all" on public.nation_crises;
+create policy "nation_crises_select_all" on public.nation_crises for select using (true);
+-- (No insert/update/delete policy: clients never write; the runtime is security definer.)
+
+-- Read a nation stat by its authored display name, for trigger evaluation. MIRRORS the
+-- target map in _apply_policy_effect (schema/91) — keep the two in sync. Returns null for
+-- unknown/derived targets (Tax Burden %, Business Climate aren't stored), so a trigger on
+-- one simply never passes rather than firing on a value that doesn't exist.
+create or replace function public._nation_stat_get(p_nation text, p_target text)
+returns numeric language plpgsql stable security definer set search_path = public as $$
+declare v_raw text;
+begin
+  case p_target
+    when 'Prosperity'     then select stats->>'prosperity'      into v_raw from public.nations where id = p_nation;
+    when 'Welfare'        then select stats->>'welfare'         into v_raw from public.nations where id = p_nation;
+    when 'Growth'         then select stats->>'growth'          into v_raw from public.nations where id = p_nation;
+    when 'Order'          then select stats->>'order'           into v_raw from public.nations where id = p_nation;
+    when 'Image'          then select stats->>'image'           into v_raw from public.nations where id = p_nation;
+    when 'Unemployment %' then select economy->>'unemployment'  into v_raw from public.nations where id = p_nation;
+    when 'Inflation %'    then select economy->>'inflation'     into v_raw from public.nations where id = p_nation;
+    when 'Regime'         then select economy->>'regime'        into v_raw from public.nations where id = p_nation;
+    when 'Budget'         then select economy->>'budget'        into v_raw from public.nations where id = p_nation;
+    when 'Debt'           then select economy->>'debt'          into v_raw from public.nations where id = p_nation;
+    when 'Income'         then select economy->>'income'        into v_raw from public.nations where id = p_nation;
+    when 'Energy'         then select production->>'energy'      into v_raw from public.nations where id = p_nation;
+    when 'Food'           then select production->>'food'        into v_raw from public.nations where id = p_nation;
+    when 'Minerals'       then select production->>'minerals'    into v_raw from public.nations where id = p_nation;
+    when 'Goods'          then select production->>'goods'        into v_raw from public.nations where id = p_nation;
+    when 'Services'       then select production->>'services'    into v_raw from public.nations where id = p_nation;
+    when 'Diplomacy'      then select production->>'diplomacy'    into v_raw from public.nations where id = p_nation;
+    when 'Government Confidence' then
+      select confidence::text into v_raw from public.governments where nation_id = p_nation and status = 'active';
+    else return null;   -- unknown or derived target → unevaluable
+  end case;
+  if v_raw is null or v_raw !~ '^-?[0-9]+(\.[0-9]+)?$' then return null; end if;
+  return v_raw::numeric;
+end $$;
+revoke all on function public._nation_stat_get(text, text) from public, anon, authenticated;
+
+-- True when ALL of a crisis definition's triggers hold for the nation. A trigger is
+-- {target, op, value}; an unreadable target (null) fails the whole test. A crisis with
+-- no triggers never auto-fires (admin/manual seeding only).
+create or replace function public._crisis_triggers_met(p_nation text, p_def jsonb)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric; v_val numeric; v_op text; v_ok boolean;
+begin
+  if v_trigs is null or jsonb_typeof(v_trigs) <> 'array' or jsonb_array_length(v_trigs) = 0 then
+    return false;
+  end if;
+  for v_t in select value from jsonb_array_elements(v_trigs) loop
+    v_cur := public._nation_stat_get(p_nation, v_t->>'target');
+    if v_cur is null then return false; end if;
+    v_val := coalesce((v_t->>'value')::numeric, 0);
+    v_op  := coalesce(v_t->>'op', '>=');
+    v_ok  := case v_op
+               when '<'  then v_cur <  v_val   when '<=' then v_cur <= v_val
+               when '>'  then v_cur >  v_val   when '>=' then v_cur >= v_val
+               when '='  then v_cur =  v_val   when '==' then v_cur =  v_val
+               when '!=' then v_cur <> v_val   else false
+             end;
+    if not v_ok then return false; end if;
+  end loop;
+  return true;
+end $$;
+revoke all on function public._crisis_triggers_met(text, jsonb) from public, anon, authenticated;
+
+-- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at
+-- 0); every other target rides _apply_policy_effect (schema/91) — the single source for
+-- stat mapping, clamping, money scaling, the confidence-collapse hook, popularity floors.
+create or replace function public._apply_crisis_effect(p_id uuid, p_nation text, p_eff jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if (p_eff->>'t') = 'Crisis Meter' then
+    update public.nation_crises set meter = greatest(0, meter + coalesce((p_eff->>'v')::numeric, 0)) where id = p_id;
+  else
+    perform public._apply_policy_effect(p_nation, p_eff);
+  end if;
+end $$;
+revoke all on function public._apply_crisis_effect(uuid, text, jsonb) from public, anon, authenticated;
+
+-- Reaching stage 5: mark the terminal stage, apply its `reached` effects (via
+-- _apply_crisis_effect), then resolve — 'ends' marks the instance resolved, 'persistent'
+-- leaves it standing at stage 5.
+create or replace function public._crisis_reach_terminal(p_id uuid, p_nation text, p_def jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_term jsonb := p_def->'stages'->4; v_eff jsonb; v_res text;
+begin
+  update public.nation_crises set stage = 5, meter = 0 where id = p_id;
+  for v_eff in select value from jsonb_array_elements(coalesce(v_term->'reached', '[]'::jsonb)) loop
+    perform public._apply_crisis_effect(p_id, p_nation, v_eff);
+  end loop;
+  v_res := coalesce(v_term->>'resolution', 'persistent');
+  if v_res = 'ends' then
+    update public.nation_crises set status = 'resolved' where id = p_id;
+  end if;
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_nation, null, 'crisis',
+          'A crisis has reached its breaking point: ' || coalesce(p_def->>'name', 'Unnamed Crisis') || '.',
+          public.current_game_date(), 'neg');
+end $$;
+revoke all on function public._crisis_reach_terminal(uuid, text, jsonb) from public, anon, authenticated;
+
+-- The per-tick crisis pass (called by advance_tick, schema/60). FIRE: start any crisis
+-- whose triggers are now met on a nation not already running it (fire-once in Phase 1).
+-- GROW: climb each active crisis's meter by its stage growth (1 | 2 | 1d3); crossing the
+-- stage's `at` escalates one stage (meter resets); reaching stage 5 goes terminal. Each
+-- nation/crisis step is isolated so one bad row can't abort the rest; events narrate it.
+create or replace function public._apply_crisis_tick(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_n text; v_c record; v_active record;
+  v_def jsonb; v_stage jsonb; v_growth text; v_inc numeric; v_at numeric;
+begin
+  -- FIRE
+  for v_n in select id from public.nations loop
+    for v_c in select id, definition from public.crises loop
+      begin
+        if exists (select 1 from public.nation_crises where nation_id = v_n and crisis_id = v_c.id) then
+          continue;   -- Phase 1: fire once per nation per crisis
+        end if;
+        if public._crisis_triggers_met(v_n, v_c.definition) then
+          insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id);   -- stage 1, meter 0 by default
+          insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+          values (v_n, null, 'crisis',
+                  'A crisis has emerged: ' || coalesce(v_c.definition->>'name', 'Unnamed Crisis') || '.',
+                  public.current_game_date(), 'warn');
+        end if;
+      exception when others then
+        raise warning 'tick %: crisis-fire failed for nation % crisis % — %', p_tick, v_n, v_c.id, sqlerrm;
+      end;
+    end loop;
+  end loop;
+
+  -- GROW + ESCALATE
+  for v_active in
+    select nc.id, nc.nation_id, nc.stage, nc.meter, c.definition
+      from public.nation_crises nc join public.crises c on c.id = nc.crisis_id
+     where nc.status = 'active'
+  loop
+    begin
+      if v_active.stage >= 5 then continue; end if;   -- terminal: inert until Phase 2
+      v_def    := v_active.definition;
+      v_stage  := v_def->'stages'->(v_active.stage - 1);   -- stages is 0-indexed
+      v_growth := coalesce(v_stage->>'growth', '1');
+      v_inc    := case when v_growth = 'd3' then floor(random() * 3)::int + 1
+                       else coalesce(v_growth::numeric, 1) end;
+      v_at     := nullif(v_stage->>'at', '')::numeric;
+      update public.nation_crises set meter = meter + v_inc where id = v_active.id;
+      if v_at is not null and (v_active.meter + v_inc) >= v_at then
+        if v_active.stage + 1 >= 5 then
+          perform public._crisis_reach_terminal(v_active.id, v_active.nation_id, v_def);
+        else
+          update public.nation_crises set stage = v_active.stage + 1, meter = 0
+           where id = v_active.id;   -- meter resets: each stage is a fresh climb
+          insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+          values (v_active.nation_id, null, 'crisis',
+                  'A crisis has escalated: ' || coalesce(v_def->>'name', 'Unnamed Crisis') || ' — '
+                  || coalesce(v_def->'stages'->v_active.stage->>'name', 'Stage ' || (v_active.stage + 1)) || '.',
+                  public.current_game_date(), 'neg');
+        end if;
+      end if;
+    exception when others then
+      raise warning 'tick %: crisis-grow failed for instance % — %', p_tick, v_active.id, sqlerrm;
+    end;
+  end loop;
+end $$;
+revoke all on function public._apply_crisis_tick(int) from public, anon, authenticated;

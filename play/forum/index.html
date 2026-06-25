@@ -160,7 +160,7 @@
       <label for="ntTitle">Title</label>
       <input id="ntTitle" type="text" maxlength="140" placeholder="A clear title">
       <label for="ntBody">Post</label>
-      <div class="fmtbar" id="ntFmt"><button type="button" class="fmtbtn" data-fmt="b" title="Bold"><b>B</b></button><button type="button" class="fmtbtn" data-fmt="i" title="Italic"><i>I</i></button><button type="button" class="fmtbtn" data-fmt="u" title="Underline"><u>U</u></button><button type="button" class="fmtbtn" data-fmt="img" title="Insert image">🖼 Image</button><input type="file" accept="image/*" class="fmtfile" hidden></div>
+      <div id="ntFmtSlot"></div>
       <textarea id="ntBody" placeholder="Say your piece…"></textarea>
       <label class="intl-toggle" id="ntIntlWrap" hidden><input type="checkbox" id="ntIntl"> Post to <b>all nations</b> — an International thread visible to every country.</label>
       <div class="composer__as" id="ntAs"></div>
@@ -203,7 +203,10 @@
   function renderBody(raw){
     var s = esc(raw || ''), imgs = [];
     s = s.replace(/!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, function(_m, alt, url){
-      imgs.push('<img class="postimg" src="' + url + '" alt="' + alt + '" loading="lazy">');
+      // esc() above handled < > &; quotes still need escaping so an alt/url can't break
+      // out of the attribute (e.g. an alt of  x" onerror="\u2026  would inject a handler).
+      var q = function(z){ return z.replace(/"/g, '&quot;'); };
+      imgs.push('<img class="postimg" src="' + q(url) + '" alt="' + q(alt) + '" loading="lazy">');
       return '\uE000IMG' + (imgs.length - 1) + '\uE000';
     });
     s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
@@ -458,7 +461,8 @@
     intlWrap.hidden = !(b && b.realm === 'ic');
     if(intlWrap.hidden) document.getElementById('ntIntl').checked = false;
   }
-  wireFmt(document.getElementById('ntFmt'), document.getElementById('ntBody'));
+  // Inject the new-thread toolbar from the one source (fmtbarHtml), then wire it.
+  (function(){ var slot = document.getElementById('ntFmtSlot'); slot.innerHTML = fmtbarHtml(); wireFmt(slot.querySelector('.fmtbar'), document.getElementById('ntBody')); })();
   document.getElementById('ntSubmit').onclick = async function(){
     if(ST.busy) return;
     var board = document.getElementById('ntBoard').value;
