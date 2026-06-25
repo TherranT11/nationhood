@@ -97,6 +97,19 @@
   .enact{margin-left:10px;flex:none;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:6px 12px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
   .enact:hover{filter:brightness(1.06)}
 
+  /* National Crises panel */
+  .crisis{padding:13px 0;border-bottom:1px solid var(--line)}
+  .crisis:last-child{border-bottom:none}
+  .crisis__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .crisis__top b{font-weight:800;font-size:14px}
+  .crisis__stg{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--red);background:var(--red-soft);padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .crisis__stgname{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:6px 0 9px}
+  .crisis__meter{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:5px}
+  .crisis__desc{font-size:13px;color:var(--muted);margin-top:9px;line-height:1.5}
+  .crisis__acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .cact{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:8px 12px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
+  .cact:hover{filter:brightness(1.06)} .cact:disabled{opacity:.45;cursor:not-allowed;filter:none}
+
   /* formation-window decision card */
   .decide{border-top:3px solid var(--tc,var(--indigo));margin-bottom:18px}
   .decide__eye{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--indigo);font-weight:700}
@@ -255,6 +268,46 @@
     return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p)) + tag); }).join('');
   }
 
+  // National Crises panel. nation_crises + the embedded crisis definition are both
+  // world-readable, so everyone sees a nation's active crises and their meters; only the
+  // head of government (amPM) gets the management buttons. The stage's `at` is the meter
+  // value that escalates it (schema/99) — the bar fills toward it.
+  function crisisCard(nc, amPM){
+    var def = nc.crises && nc.crises.definition;
+    if (!def) return '';
+    var stage = nc.stage || 1, terminal = stage >= 5;
+    var stages = Array.isArray(def.stages) ? def.stages : [];
+    var st = stages[stage - 1] || {};
+    var meter = Number(nc.meter) || 0, at = Number(st.at) || 0;
+    var pct = terminal ? 100 : (at > 0 ? Math.max(0, Math.min(100, Math.round(meter / at * 100))) : 0);
+    var desc = terminal ? (st.descReached || '') : (st.desc || '');
+    var acts = '';
+    if (!terminal && amPM && Array.isArray(st.actions) && st.actions.length){
+      acts = '<div class="crisis__acts">' + st.actions.map(function(a, ai){
+        var label = a.type === 'law' ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
+        return '<button class="cact" type="button" data-cid="' + esc(nc.id) + '" data-ai="' + ai + '">' + esc(label) + '</button>';
+      }).join('') + '</div>';
+    }
+    return '<div class="crisis">' +
+      '<div class="crisis__top"><b>' + esc(def.name || 'Crisis') + '</b>' +
+        '<span class="crisis__stg">' + (terminal ? 'Terminal' : 'Stage ' + stage + '/5') + '</span></div>' +
+      '<div class="crisis__stgname">' + esc(terminal ? 'Breaking point' : (st.name || ('Stage ' + stage))) + '</div>' +
+      (terminal ? '' :
+        '<div class="conf__bar"><div class="conf__fill" style="width:' + pct + '%;background:var(--red)"></div></div>' +
+        '<div class="crisis__meter">' + meter + (at > 0 ? ' / ' + at + ' to escalation' : '') + '</div>') +
+      (desc ? '<p class="crisis__desc">' + esc(desc) + '</p>' : '') +
+      acts +
+    '</div>';
+  }
+  function renderCrises(el, crises, amPM){
+    if (!el) return;
+    if (!crises || !crises.length){ el.innerHTML = '<p class="muted">No active national crises.</p>'; return; }
+    el.innerHTML = crises.map(function(nc){ return crisisCard(nc, amPM); }).join('');
+    el.querySelectorAll('.cact').forEach(function(b){
+      b.addEventListener('click', function(){ manageCrisis(b.dataset.cid, Number(b.dataset.ai)); });
+    });
+  }
+
   function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols){
     var box = document.getElementById('content');
     if (!govt){
@@ -373,7 +426,7 @@
         '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
         '<div class="panel"><h2>The Cabinet</h2>' + cabinetHtml + '</div>' +
         '<div class="panel"><h2>National Modifiers</h2><div id="govMods"><p class="muted">No active national modifiers.</p></div></div>' +
-        '<div class="panel"><h2>National Crises</h2><p class="muted">No active national crises.</p></div>' +
+        '<div class="panel"><h2>National Crises</h2><div id="govCrises"><p class="muted">No active national crises.</p></div></div>' +
       '</div>';
 
     box.querySelectorAll('.enact').forEach(function(b){ b.addEventListener('click', function(){ enact(b.dataset.id); }); });
@@ -426,6 +479,13 @@
       }
       render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols);
       renderNationModifiers(document.getElementById('govMods'), await fetchNationModifiers(NATION_ID), 'No active national modifiers.');
+      // National Crises — live panel beside Modifiers. Non-critical, so a failed fetch
+      // leaves the static "none" message rather than breaking the page.
+      try {
+        const { data: crises } = await supabase.from('nation_crises')
+          .select('id, stage, meter, crises(definition)').eq('nation_id', NATION_ID).eq('status', 'active');
+        renderCrises(document.getElementById('govCrises'), crises || [], amPM);
+      } catch (e) { /* leave the default "no active national crises" */ }
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';
     }
@@ -440,6 +500,22 @@
       ping('Promise delivered — Government Confidence +' + Math.round(data.delta) + '% (now ' + Math.round(data.confidence) + '%).');
       await load();
     } catch (e) { ping(e.message || 'Couldn’t enact that item.'); }
+    finally { busy = false; }
+  }
+
+  // Head of government manages a crisis: spend 1 action, roll/apply the chosen response
+  // (server-side crisis_act), then reload so the meter/stage and feed update. Busy-locked
+  // against double-fire, same as enact.
+  async function manageCrisis(crisisId, actionIdx){
+    if (busy) return;
+    busy = true;
+    try {
+      const { data, error } = await supabase.rpc('crisis_act', { p_id: crisisId, p_action: actionIdx });
+      if (error) throw error;
+      ping(data.body || (data.ok ? 'The response held.' : 'The response fell short.'));
+      setTopbarActions(data.actions);   // AP just dropped by 1 — keep the pill honest
+      await load();
+    } catch (e) { ping(e.message || 'Couldn’t take that action.'); }
     finally { busy = false; }
   }
 
