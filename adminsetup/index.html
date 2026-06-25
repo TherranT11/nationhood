@@ -2252,11 +2252,12 @@
         });
       }
 
+      function crisNationById(id) { return crisNations.filter(function (x) { return x.id === id; })[0]; }   // ONE source for the lookup
       // Preview card for the dormant nation a 'new_nation' resolution will spawn — "show
       // what that nation is" (name + a few headline figures + a not-dormant warning).
       function newNationPreview(id) {
         if (!id) return '';
-        var n = crisNations.filter(function (x) { return x.id === id; })[0];
+        var n = crisNationById(id);
         if (!n) return '<div class="hint" style="margin-top:8px;color:var(--red)">That nation no longer exists.</div>';
         var st = n.stats || {}, ec = n.economy || {};
         var warn = n.dormant ? '' : '<div class="hint" style="color:var(--amber);margin-top:5px">⚠ This nation isn’t dormant — it’s already live, so nothing will spawn.</div>';
@@ -2293,7 +2294,7 @@
       function renderPreview() {
         var box = document.getElementById('cbPrev');
         var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>AND ');
-        var scopeName = CRISIS.nation ? ((crisNations.filter(function (x) { return x.id === CRISIS.nation; })[0] || {}).name || CRISIS.nation) : '';
+        var scopeName = CRISIS.nation ? ((crisNationById(CRISIS.nation) || {}).name || CRISIS.nation) : '';
         var h = '<div class="pvname">' + esc(CRISIS.name || 'Untitled crisis') + '</div><div class="pvdesc">' + esc(CRISIS.desc || '') + '</div>' +
           '<div class="pvtrig"><div class="tl">Scope</div>' + (scopeName ? esc(scopeName) : 'Any nation (global)') + '</div>' +
           '<div class="pvtrig"><div class="tl">Triggers when</div>' + (trig || '—') + '</div>';
@@ -2313,7 +2314,7 @@
           '<div class="pvend">' + (
             s5.resolution === 'persistent' ? '↻ persists after effect'
             : s5.resolution === 'new_nation'
-              ? '⚑ spawns ' + esc((crisNations.filter(function (x) { return x.id === s5.newNation; })[0] || {}).name || 'a new nation') + ' &amp; ends'
+              ? '⚑ spawns ' + esc((crisNationById(s5.newNation) || {}).name || 'a new nation') + ' &amp; ends'
               : '■ ends after effect'
           ) + '</div></div>';
         box.innerHTML = h;
