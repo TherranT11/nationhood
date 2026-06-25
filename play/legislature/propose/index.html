@@ -95,6 +95,11 @@
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { isMonarchy } from '/ladders.js';
+
+  // The royal Head-of-State titles are reserved for the monarchy band (regime 21–25);
+  // the picker greys them out elsewhere (isMonarchy, ladders.js) — flavour gate only.
+  var ROYAL_TITLES = ['King', 'Queen', 'Emperor'];
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -201,8 +206,9 @@
 
   // ---- Declaration mode: pick a slot + name, then queue it or send to the floor ----
   var declBusy = false;
-  async function renderDeclMode(currentValues) {
+  async function renderDeclMode(currentValues, regime) {
     currentValues = currentValues || {};
+    var monarchy = isMonarchy(regime);
     document.querySelector('.phead .eye').textContent = 'Legislature · Declaration';
     document.querySelector('.phead h1').textContent = 'Make a Declaration';
     document.querySelector('.phead p').textContent = 'A declaration sets a title, emblem, capital, or other name — no mechanical effect, but it still goes through the chamber.';
@@ -236,7 +242,14 @@
     function fillOpts() {
       var d = curDecl();
       document.getElementById('d-current').textContent = declaredValue(d, currentValues);
-      var html = (d.options || []).map(function (o) { return '<option value="' + esc(String(o)).replace(/"/g, '&quot;') + '">' + esc(String(o)) + '</option>'; }).join('');
+      // Royal Head-of-State titles are greyed out unless the nation is a monarchy
+      // (regime 21–25). Only the head_of_state_title slot has royal options to gate.
+      var html = (d.options || []).map(function (o) {
+        var royalLocked = d.slug === 'head_of_state_title' && !monarchy && ROYAL_TITLES.indexOf(String(o)) >= 0;
+        var v = esc(String(o)).replace(/"/g, '&quot;');
+        return '<option value="' + v + '"' + (royalLocked ? ' disabled' : '') + '>' +
+               esc(String(o)) + (royalLocked ? ' (requires monarchy)' : '') + '</option>';
+      }).join('');
       if (d.custom_allowed) html += '<option value="__custom__">Custom name…</option>';
       optSel.innerHTML = html;
       sync();
@@ -274,7 +287,7 @@
   }
 
   (async () => {
-    if (!isConfigured) { if (isDecl) renderDeclMode({}); else renderLawMode({}, {}); return; }
+    if (!isConfigured) { if (isDecl) renderDeclMode({}, null); else renderLawMode({}, {}); return; }
     const user = await requireUser();
     if (!user) return; // redirected to login
     var party = null, nation = null;
@@ -293,7 +306,7 @@
       setTopbarActions(party.actions_remaining);
     } catch (e) { /* chrome is best-effort; the picker below still loads */ }
     // Each mode renders here so it can show the nation's CURRENT value/option.
-    if (isDecl) renderDeclMode((nation && nation.declarations) || {});
+    if (isDecl) renderDeclMode((nation && nation.declarations) || {}, nation && nation.economy && nation.economy.regime);
     else renderLawMode((nation && nation.policies) || {}, nation || {});
   })();
 </script>
