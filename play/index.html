@@ -240,7 +240,6 @@
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { nationTaxBurden } from '/policies.js';
 
   mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -250,7 +249,7 @@
   // Nation at a Glance — same ladder stats + colour bands as /nation-select, so
   // the number is the one source and the word/colour are derived the same way.
   var GLANCE_STATS = ['prosperity', 'welfare', 'growth', 'order', 'image'];
-  var GLANCE_POLICIES = [];   // all policy definitions, for the DERIVED Tax Burden (base + contributions)
+  var GLANCE_TAX = 0;   // the nation's DERIVED Tax Burden %, from the nation_tax_burden RPC (one source: schema/47)
   function renderGlance(nation) {
     var snap = document.getElementById('snap');
     var stats = nation.stats || {};
@@ -271,7 +270,7 @@
     }
     if (eco.inflation != null) chips.push(chip('Inflation', val(eco.inflation + '%')));
     if (eco.unemployment != null) chips.push(chip('Unemployment', val(eco.unemployment + '%')));
-    chips.push(chip('Tax Burden', val(nationTaxBurden(nation, GLANCE_POLICIES) + '%')));
+    chips.push(chip('Tax Burden', val(GLANCE_TAX + '%')));
     var cur = esc(eco.currency || '$');
     if (eco.budget != null) chips.push(chip('Budget', val(cur + eco.budget + 'B')));
     if (eco.income != null) chips.push(chip('Income', val((eco.income < 0 ? '−' : '') + cur + Math.abs(eco.income) + 'B/yr')));
@@ -659,7 +658,7 @@
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
       // Policy definitions for the DERIVED Tax Burden (base + each in-force option's contribution).
-      try { GLANCE_POLICIES = (await supabase.from('policies').select('id, definition')).data || []; } catch (e) { GLANCE_POLICIES = []; }
+      try { var tbr = await supabase.rpc('nation_tax_burden', { p_nation: party.nation_id }); GLANCE_TAX = (tbr && !tbr.error) ? (Number(tbr.data) || 0) : 0; } catch (e) { GLANCE_TAX = 0; }
 
       // Party funds in the topbar, just right of the Discord logo.
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
