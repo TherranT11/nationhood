@@ -59,6 +59,11 @@ update public.proposals set opened_tick = (select current_tick from public.game_
 -- the shared clock reaches that tick. Null once a measure leaves the agenda.
 alter table public.proposals add column if not exists scheduled_tick int;
 
+-- The game tick a measure was resolved (passed/failed), stamped by _resolve_proposal.
+-- Drives the "Date Passed" line in Legislative History (rendered via tickToDate). Null
+-- on still-open measures and on any resolved before this column existed.
+alter table public.proposals add column if not exists resolved_tick int;
+
 -- One vote per party per proposal (changeable while voting is open).
 create table if not exists public.proposal_votes (
   proposal_id uuid not null references public.proposals (id) on delete cascade,
@@ -157,7 +162,7 @@ begin
   end if;
 
   if v_pass then
-    update public.proposals set status = 'passed' where id = p_proposal;
+    update public.proposals set status = 'passed', resolved_tick = (select current_tick from public.game_state where id) where id = p_proposal;
     if v_p.kind = 'declaration' then
       perform public._apply_declaration(v_p.nation_id, v_p.payload->>'slug', v_p.payload->>'value');
     elsif v_p.kind = 'law' then
@@ -170,7 +175,7 @@ begin
   end if;
 
   if p_final then   -- voting closed without a simple majority
-    update public.proposals set status = 'failed' where id = p_proposal;
+    update public.proposals set status = 'failed', resolved_tick = (select current_tick from public.game_state where id) where id = p_proposal;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
               'A measure failed for want of a majority: ' || v_p.title || '.', public.current_game_date());
