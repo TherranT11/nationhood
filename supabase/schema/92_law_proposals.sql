@@ -147,7 +147,7 @@ begin
   if v_def is not null and v_old is not null and v_old <> p_option then
     v_opts := public._policy_options(v_def);
     if jsonb_typeof(v_opts) = 'array'
-       and exists (select 1 from jsonb_array_elements(v_opts) o where o ? 'doorUp' or o ? 'doorDown') then
+       and exists (select 1 from jsonb_array_elements(v_opts) o where o.value ? 'doorUp' or o.value ? 'doorDown') then
       if p_option > v_old then                                  -- climbing: sum the up-doorways crossed
         for v_i in v_old + 1 .. p_option loop
           for r in select value as t from jsonb_array_elements(coalesce(v_opts -> v_i -> 'doorUp', '[]'::jsonb)) loop
