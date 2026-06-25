@@ -57,8 +57,6 @@ create table if not exists public.nation_crises (
   stage        int  not null default 1,           -- 1..5 (5 = terminal)
   meter        numeric not null default 0,        -- climbs by the stage growth; resets on escalation
   status       text not null default 'active',    -- 'active' | 'resolved'
-  started_tick int  not null,
-  updated_tick int,
   created_at   timestamptz not null default now(),
   unique (nation_id, crisis_id)
 );
@@ -185,8 +183,7 @@ begin
           continue;   -- Phase 1: fire once per nation per crisis
         end if;
         if public._crisis_triggers_met(v_n, v_c.definition) then
-          insert into public.nation_crises (nation_id, crisis_id, stage, meter, started_tick, updated_tick)
-          values (v_n, v_c.id, 1, 0, p_tick, p_tick);
+          insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id);   -- stage 1, meter 0 by default
           insert into public.events (nation_id, party_id, kind, body, game_date, tone)
           values (v_n, null, 'crisis',
                   'A crisis has emerged: ' || coalesce(v_c.definition->>'name', 'Unnamed Crisis') || '.',
@@ -212,12 +209,12 @@ begin
       v_inc    := case when v_growth = 'd3' then floor(random() * 3)::int + 1
                        else coalesce(v_growth::numeric, 1) end;
       v_at     := nullif(v_stage->>'at', '')::numeric;
-      update public.nation_crises set meter = meter + v_inc, updated_tick = p_tick where id = v_active.id;
+      update public.nation_crises set meter = meter + v_inc where id = v_active.id;
       if v_at is not null and (v_active.meter + v_inc) >= v_at then
         if v_active.stage + 1 >= 5 then
           perform public._crisis_reach_terminal(v_active.id, v_active.nation_id, v_def);
         else
-          update public.nation_crises set stage = v_active.stage + 1, meter = 0, updated_tick = p_tick
+          update public.nation_crises set stage = v_active.stage + 1, meter = 0
            where id = v_active.id;   -- meter resets: each stage is a fresh climb
           insert into public.events (nation_id, party_id, kind, body, game_date, tone)
           values (v_active.nation_id, null, 'crisis',
