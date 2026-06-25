@@ -20,7 +20,7 @@ create table if not exists public.corporations (
   size        text not null default 'Moderate', -- Startup | Moderate | Enterprise | National Corporation | International Conglomerate
   cash        numeric not null default 0,       -- $B
   debt        numeric not null default 0,       -- $B  (>= 0)
-  growth      int     not null default 0,       -- trajectory; Phase 2 applies it per tick
+  drift       int     not null default 0,       -- the firm's own trajectory; corpGrowth() in corporations.js reads this. Phase 2 applies it per tick
   status      text    not null default 'placed',-- 'placed' | 'queued'
   roll_m      int,                              -- queued: rolled startup cash in $M (1D60+20); null once placed
   created_at  timestamptz not null default now()
