@@ -127,9 +127,9 @@
   // (one source: corporations.js); each firm's growth is derived from it. Every nation
   // starts with no corporations — the register fills (and its rows render below) once the
   // corporations data layer + the Minister of Economic Development land.
-  function renderCorps(home, currency){
+  function renderCorps(home, currency, corps){
     var box = document.getElementById('corpContent');
-    var corps = [];
+    corps = corps || [];
     var stats = (home && home.stats) || {}, eco = (home && home.economy) || {};
     // Tax Burden is DERIVED (base + each in-force tax option's contribution) — use the real
     // total for both the headline figure and the climate's tax drag, not the bare base.
@@ -211,7 +211,9 @@
       var currency = eco.currency || '$';
       document.getElementById('treasury').textContent = eco.budget != null ? (currency + eco.budget + 'B') : '—';
 
-      renderCorps(home || { id: party.nation_id }, currency);
+      var corps = [];
+      try { corps = (await supabase.from('corporations').select('name, type, size, category, cash, debt, drift').eq('nation_id', party.nation_id).eq('status', 'placed').order('created_at')).data || []; } catch (e) { corps = []; }
+      renderCorps(home || { id: party.nation_id }, currency, corps);
     } catch (e) {
       fail('Couldn’t load the register right now. Refresh to try again.');
     }
