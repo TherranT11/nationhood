@@ -87,6 +87,11 @@
   .eff-hint b{color:var(--ink)}
   .mcard__efflist{margin:4px 0 0;padding:0;list-style:none}
   .mcard__efflist li{font-size:12.5px;color:var(--muted);line-height:1.5}
+  .eff-echo{grid-column:1/-1;font-size:12.5px;color:var(--muted);line-height:1.45;margin:0 0 2px}
+  .eff-echo b{color:var(--ink)}
+  .modsummary{border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-top:12px;background:color-mix(in srgb,var(--indigo,#5546E8) 5%,var(--surface))}
+  .modsummary__h{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .modsummary .mcard__efflist li b{color:var(--ink)}
   @media(max-width:560px){.effrow{grid-template-columns:1fr 1fr;}.effrow .eff-del{grid-column:2;justify-self:end;width:42px}}
 
   /* declarations: register (left) + editor (right) */
@@ -480,6 +485,7 @@
             <label style="margin-top:12px">Effects</label>
             <div id="m-effects"></div>
             <button class="btn btn-ghost" type="button" id="m-addEffect" style="margin-top:8px">+ Add effect</button>
+            <div class="modsummary"><div class="modsummary__h">What this modifier does</div><ul id="m-sumList" class="mcard__efflist"></ul></div>
             <label style="margin-top:12px">End conditions <span style="font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0">— the modifier lifts itself once ALL of these are met (none = stays until removed)</span></label>
             <div id="m-endconds"></div>
             <button class="btn btn-ghost" type="button" id="m-addCond" style="margin-top:8px">+ Add end condition</button>
@@ -2008,6 +2014,25 @@
       if (!key) return '';
       return effInfo(type).target === 'archetype' ? key : cap(key); // archetype key is the name (matches parties.archetype)
     }
+    // One-line plain-English read of an effect, MIRRORING the backend semantics in
+    // schema/70: bounds are ABSOLUTE (a ceiling caps at the value, a floor holds at it);
+    // confidence_formation is a signed delta. Drives the per-effect echo + the live summary.
+    function effEcho(e) {
+      var v = (e.effect_value == null || isNaN(e.effect_value)) ? 0 : e.effect_value;
+      var k = esc(keyLabel(e.effect_type, e.effect_key));
+      switch (e.effect_type) {
+        case 'stat_floor':            return '<b>' + k + '</b> can’t fall below <b>' + v + '</b>.';
+        case 'stat_ceiling':          return '<b>' + k + '</b> can’t rise above <b>' + v + '</b>.';
+        case 'regime_floor':          return 'Regime can’t close below <b>' + v + '</b>.';
+        case 'regime_ceiling':        return 'Regime can’t open above <b>' + v + '</b>.';
+        case 'resource_ceiling':      return '<b>' + k + '</b> production can’t rise above <b>' + v + '</b>.';
+        case 'archetype_pop_ceiling': return '<b>' + k + '</b> parties’ popularity is capped at <b>' + v + '</b>.';
+        case 'archetype_pop_floor':   return '<b>' + k + '</b> parties’ popularity is held at or above <b>' + v + '</b>.';
+        case 'confidence_ceiling':    return 'Government Confidence is capped at <b>' + v + '</b>.';
+        case 'confidence_formation':  return 'On forming government: Gov Confidence <b>' + (v >= 0 ? '+' : '') + v + '%</b>.';
+        default: return '';
+      }
+    }
 
     var EFFECT_OPTS = EFFECT_TYPES.map(function (t) { return '<option value="' + t.v + '">' + esc(t.label) + '</option>'; }).join('');
     function keyOpts(target) {
@@ -2041,6 +2066,15 @@
       });
       hint.innerHTML = 'Current ' + esc(cap(key)) + ' — ' + parts.join(' · ');
     }
+    // Read one effect row → the effect object. ONE source, used by the echo and by save.
+    function rowEff(row) {
+      var type = row.querySelector('.eff-type').value;
+      return {
+        effect_type: type,
+        effect_key: effInfo(type).target === 'none' ? null : (row.querySelector('.eff-key').value || null),
+        effect_value: parseFloat(row.querySelector('.eff-value').value) || 0
+      };
+    }
     function addEffectRow(eff) {
       eff = eff || {};
       var row = document.createElement('div');
@@ -2050,35 +2084,43 @@
         '<div><label>Target</label><select class="eff-key"></select></div>' +
         '<div><label>Value</label><input class="eff-value" type="number" step="0.1" value="0"></div>' +
         '<button class="eff-del" type="button" aria-label="Remove effect">&times;</button>' +
+        '<div class="eff-echo"></div>' +
         '<div class="eff-hint"></div>';
       document.getElementById('m-effects').appendChild(row);
       var typeSel = row.querySelector('.eff-type');
       if (eff.effect_type) typeSel.value = eff.effect_type;
-      typeSel.addEventListener('change', function () { syncRowKey(row); effHint(row); });
+      // Refresh this row's echo + the consolidated summary on every change.
+      function refresh() { row.querySelector('.eff-echo').innerHTML = effEcho(rowEff(row)); renderModSummary(); }
+      typeSel.addEventListener('change', function () { syncRowKey(row); effHint(row); refresh(); });
       syncRowKey(row);
       if (eff.effect_key && effInfo(typeSel.value).target !== 'none') row.querySelector('.eff-key').value = eff.effect_key;
       if (eff.effect_value != null) row.querySelector('.eff-value').value = eff.effect_value;
-      row.querySelector('.eff-key').addEventListener('change', function () { effHint(row); });
+      row.querySelector('.eff-key').addEventListener('change', function () { effHint(row); refresh(); });
+      row.querySelector('.eff-value').addEventListener('input', refresh);
       effHint(row);
+      row.querySelector('.eff-echo').innerHTML = effEcho(rowEff(row));
       row.querySelector('.eff-del').addEventListener('click', function () {
         row.remove();
         if (!document.querySelectorAll('#m-effects .effrow').length) addEffectRow(); // always keep at least one row
+        renderModSummary();
       });
       return row;
     }
     function setEffectRows(effs) {
       document.getElementById('m-effects').innerHTML = '';
       if (effs && effs.length) effs.forEach(addEffectRow); else addEffectRow();
+      renderModSummary();
     }
     function readEffectRows() {
-      return Array.prototype.slice.call(document.querySelectorAll('#m-effects .effrow')).map(function (row) {
-        var type = row.querySelector('.eff-type').value;
-        return {
-          effect_type: type,
-          effect_key: effInfo(type).target === 'none' ? null : (row.querySelector('.eff-key').value || null),
-          effect_value: parseFloat(row.querySelector('.eff-value').value) || 0
-        };
-      });
+      return Array.prototype.slice.call(document.querySelectorAll('#m-effects .effrow')).map(rowEff);
+    }
+    // Live "What this modifier does" — the same echoes, consolidated under the effect list.
+    function renderModSummary() {
+      var ul = document.getElementById('m-sumList');
+      if (!ul) return;
+      var effs = readEffectRows();
+      ul.innerHTML = effs.length ? effs.map(function (e) { return '<li>' + effEcho(e) + '</li>'; }).join('')
+                                 : '<li style="color:var(--muted)">No effects yet.</li>';
     }
     document.getElementById('m-addEffect').addEventListener('click', function () { addEffectRow(); });
     setEffectRows();   // start with one empty effect row
