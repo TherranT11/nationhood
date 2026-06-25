@@ -1553,6 +1553,9 @@
       opts.forEach(function(o,i){
         (o.transitions||[]).forEach(function(t){
           var ri=names.indexOf(t.rung), eff={t:t.t, v:Number(t.v)||0};
+          // A rung that no longer exists (renamed/removed option) can't map to a
+          // doorway — flag it instead of indexing opts[-1] (which crashed the editor).
+          if(ri<0){ flagged.push({opt:o.name, rule:trSentence(t)}); return; }
           if(t.dir==='from'){            // arriving at i from rung ri
             if(ri===i-1) o.doorUp.push(eff);
             else if(ri===i+1) o.doorDown.push(eff);
