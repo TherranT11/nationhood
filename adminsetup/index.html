@@ -2003,6 +2003,7 @@
       { v: 'confidence_formation',  label: 'Gov Confidence Penalty/Bonus on Formation', target: 'none' },
       { v: 'stat_ceiling',          label: 'Stat Ceiling',                 target: 'stat' },
       { v: 'stat_floor',            label: 'Stat Floor',                   target: 'stat' },
+      { v: 'stat_tick',             label: 'Passive Per-Tick (stat)',      target: 'stat' },
       { v: 'regime_ceiling',        label: 'Regime Ceiling',               target: 'none' },
       { v: 'regime_floor',          label: 'Regime Floor',                 target: 'none' }
     ];
@@ -2022,6 +2023,7 @@
       var k = esc(keyLabel(e.effect_type, e.effect_key));
       switch (e.effect_type) {
         case 'stat_floor':            return '<b>' + k + '</b> can’t fall below <b>' + v + '</b>.';
+        case 'stat_tick':             return '<b>' + k + '</b> <b>' + (v >= 0 ? '+' : '') + v + '</b> every tick.';
         case 'stat_ceiling':          return '<b>' + k + '</b> can’t rise above <b>' + v + '</b>.';
         case 'regime_floor':          return 'Regime can’t close below <b>' + v + '</b>.';
         case 'regime_ceiling':        return 'Regime can’t open above <b>' + v + '</b>.';
