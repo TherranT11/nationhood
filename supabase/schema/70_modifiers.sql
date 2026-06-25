@@ -30,13 +30,15 @@ create table if not exists public.modifier_effects (
   effect_value  numeric not null default 0       -- the ceiling / floor / penalty-or-bonus amount
 );
 create index if not exists modifier_effects_modifier_idx on public.modifier_effects (modifier_id);
--- effect_type catalogue:
---   archetype_pop_ceiling | archetype_pop_floor   (effect_key = archetype name)
---   resource_ceiling                              (effect_key = production resource)
---   stat_ceiling | stat_floor                     (effect_key = nation stat)
---   confidence_ceiling                            (no key)
---   confidence_formation                          (no key; signed — penalty < 0, bonus > 0)
---   regime_ceiling | regime_floor                 (no key)
+-- effect_type catalogue  (✓ = applied in-game; the rest are authored but NOT yet enforced —
+-- a directional bound needs a mutation chokepoint, which stats/resources/regime lack):
+--   archetype_pop_ceiling | archetype_pop_floor   (effect_key = archetype name)              ✓
+--   confidence_ceiling                            (no key)                                   ✓
+--   confidence_formation                          (no key; signed — penalty < 0, bonus > 0)  ✓
+--   stat_tick                                     (effect_key = nation stat; signed per-tick delta) ✓
+--   resource_ceiling                              (effect_key = production resource)          — inert
+--   stat_ceiling | stat_floor                     (effect_key = nation stat)                  — inert
+--   regime_ceiling | regime_floor                 (no key)                                    — inert
 
 -- One-time migration: earlier the single effect lived as scalar columns on
 -- national_modifiers. Move any such effect into the child table, then drop the
@@ -241,5 +243,26 @@ begin
   end loop;
   return true;   -- every condition satisfied
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- Passive per-tick stat effects: every nation's active modifiers apply their signed
+-- per-tick delta to the named stat each tick (clamped 1..20 by _nation_stat_add, schema/91).
+-- Called by advance_tick (schema/60). Unlike the floor/ceiling bounds, this is an additive
+-- mutation — it needs no enforcement chokepoint, it just runs each tick.
+-- ---------------------------------------------------------------------------
+create or replace function public._apply_modifier_tick_effects()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in
+    select nm.nation_id, e.effect_key, e.effect_value
+      from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where e.effect_type = 'stat_tick' and e.effect_key is not null and e.effect_value <> 0
+  loop
+    perform public._nation_stat_add(r.nation_id, 'stats', r.effect_key, r.effect_value, 1, 20);
+  end loop;
+end $$;
+revoke all on function public._apply_modifier_tick_effects() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
