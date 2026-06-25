@@ -163,6 +163,29 @@ end $$;
 revoke all on function public._seat_government(text, uuid, text, uuid, int, boolean) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Election history: one row per party that took a seat in each resolved election
+-- (scheduled or snap — both go through resolve_election below, the sole writer).
+-- The Elections page reads the most recent few per nation to chart how each
+-- party's seats moved election to election. Public read; no client writes.
+-- ---------------------------------------------------------------------------
+create table if not exists public.election_results (
+  id          uuid primary key default gen_random_uuid(),
+  nation_id   text not null references public.nations (id) on delete cascade,
+  tick        int  not null,                 -- game tick the election resolved on
+  year        int  not null,                 -- in-game year (denormalised for display)
+  party_id    uuid references public.parties (id) on delete set null,  -- null once a party is deleted
+  party_name  text not null,                 -- name snapshot (a party may rename or dissolve)
+  seats       int  not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists election_results_nation_tick_idx on public.election_results (nation_id, tick);
+
+alter table public.election_results enable row level security;
+drop policy if exists "election_results_select_all" on public.election_results;
+create policy "election_results_select_all" on public.election_results for select using (true);
+-- No insert/update/delete policies — resolve_election (security definer) is the sole author.
+
+-- ---------------------------------------------------------------------------
 -- resolve_election(nation): the full pipeline for ONE nation. INTERNAL — execute
 -- is revoked from clients; only advance_tick() (admin-gated, same owner) calls it.
 -- ---------------------------------------------------------------------------
@@ -284,6 +307,14 @@ begin
   select name, ruling_party into v_nname, v_ruling from public.nations where id = p_nation;
   select name into v_fname from public.parties where id = v_formateur_id;
   v_year := 1980 + (v_tick - 1) / 12;   -- tick 1 = January 1980 (mirrors util.js/current_game_date)
+
+  -- Persist the seat result for the Elections-page history (one row per seated
+  -- party; the breakdown accrues forward from this election on).
+  insert into public.election_results (nation_id, tick, year, party_id, party_name, seats)
+  select p_nation, v_tick, v_year, id, name, seats
+    from public.parties
+   where nation_id = p_nation and seats > 0;
+
   select count(*) into v_cnt from public.parties where nation_id = p_nation and seats > 0;
   for rec in
     select name, seats from public.parties
