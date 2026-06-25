@@ -175,7 +175,8 @@
         '<div class="cell"><span class="lbl">Cash</span><span class="money">' + money(c.cash) + '</span></div>' +
         '<div class="cell"><span class="lbl">Debt</span>' + debtHtml + '</div>' +
         '<div class="cell"><span class="lbl">Growth</span><span class="growth ' + gc + '">' + (g > 0 ? '+' : '') + g.toFixed(1) + '%<span class="arr">' + arr + '</span></span></div>' +
-        '<div class="cell actcell"><div class="acts">' + acts + '</div></div>';
+        '<div class="cell actcell"><div class="acts">' + acts + '</div></div>' +
+        '</div>';   // close .arow — was missing, which nested rows into each other
     }).join('');
 
     box.innerHTML = climHtml +
