@@ -285,7 +285,7 @@
     if (!terminal && amPM && Array.isArray(st.actions) && st.actions.length){
       acts = '<div class="crisis__acts">' + st.actions.map(function(a, ai){
         var label = a.type === 'law' ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
-        return '<button class="cact" type="button" data-cid="' + esc(nc.id) + '" data-ai="' + ai + '">' + esc(label) + '</button>';
+        return '<button class="cact" type="button" data-cid="' + esc(nc.id) + '" data-ai="' + ai + '" data-stg="' + stage + '">' + esc(label) + '</button>';
       }).join('') + '</div>';
     }
     return '<div class="crisis">' +
@@ -304,7 +304,7 @@
     if (!crises || !crises.length){ el.innerHTML = '<p class="muted">No active national crises.</p>'; return; }
     el.innerHTML = crises.map(function(nc){ return crisisCard(nc, amPM); }).join('');
     el.querySelectorAll('.cact').forEach(function(b){
-      b.addEventListener('click', function(){ manageCrisis(b.dataset.cid, Number(b.dataset.ai)); });
+      b.addEventListener('click', function(){ manageCrisis(b.dataset.cid, Number(b.dataset.ai), Number(b.dataset.stg)); });
     });
   }
 
@@ -506,11 +506,11 @@
   // Head of government manages a crisis: spend 1 action, roll/apply the chosen response
   // (server-side crisis_act), then reload so the meter/stage and feed update. Busy-locked
   // against double-fire, same as enact.
-  async function manageCrisis(crisisId, actionIdx){
+  async function manageCrisis(crisisId, actionIdx, stage){
     if (busy) return;
     busy = true;
     try {
-      const { data, error } = await supabase.rpc('crisis_act', { p_id: crisisId, p_action: actionIdx });
+      const { data, error } = await supabase.rpc('crisis_act', { p_id: crisisId, p_action: actionIdx, p_stage: stage });
       if (error) throw error;
       ping(data.body || (data.ok ? 'The response held.' : 'The response fell short.'));
       setTopbarActions(data.actions);   // AP just dropped by 1 — keep the pill honest

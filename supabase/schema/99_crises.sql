@@ -240,7 +240,8 @@ revoke all on function public._apply_crisis_tick(int) from public, anon, authent
 -- NOT recomputed here — it stays solely in the tick, so a failure that lifts the meter past
 -- `at` escalates on the next tick. Events narrate the outcome.
 -- ---------------------------------------------------------------------------
-create or replace function public.crisis_act(p_id uuid, p_action int)
+drop function if exists public.crisis_act(uuid, int);   -- superseded by the stage-guarded signature
+create or replace function public.crisis_act(p_id uuid, p_action int, p_stage int)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_nc public.nation_crises%rowtype; v_gov public.governments%rowtype;
@@ -252,6 +253,11 @@ begin
 
   select * into v_nc from public.nation_crises where id = p_id and status = 'active';
   if not found then raise exception 'That crisis is no longer active.'; end if;
+  -- Reject a stale click: if the crisis escalated (on a tick) since the page rendered, the
+  -- action the player saw belongs to a different stage. Make them refresh, don't misapply.
+  if v_nc.stage is distinct from p_stage then
+    raise exception 'This crisis has escalated since you opened it — refresh and try again.';
+  end if;
 
   select * into v_gov from public.governments where nation_id = v_nc.nation_id and status = 'active';
   if not found then raise exception 'There is no sitting government to manage this crisis.'; end if;
@@ -315,4 +321,4 @@ begin
     'meter', v_nc.meter, 'stage', v_nc.stage, 'body', v_body,
     'actions', v_p.actions_remaining - 1);
 end $$;
-grant execute on function public.crisis_act(uuid, int) to authenticated;
+grant execute on function public.crisis_act(uuid, int, int) to authenticated;
