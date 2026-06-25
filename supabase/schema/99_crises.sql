@@ -191,6 +191,18 @@ begin
 end $$;
 revoke all on function public._crisis_reach_terminal(uuid, text, jsonb) from public, anon, authenticated;
 
+-- The "a crisis has emerged" feed line — ONE source, written both when the tick fires a
+-- crisis and when an admin force-fires one (crisis_force_fire).
+create or replace function public._crisis_emerged_event(p_nation text, p_name text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_nation, null, 'crisis',
+          'A crisis has emerged: ' || coalesce(p_name, 'Unnamed Crisis') || '.',
+          public.current_game_date(), 'warn');
+end $$;
+revoke all on function public._crisis_emerged_event(text, text) from public, anon, authenticated;
+
 -- The per-tick crisis pass (called by advance_tick, schema/60). FIRE: start any crisis
 -- whose triggers are now met on a nation not already running it (fire-once in Phase 1).
 -- GROW: climb each active crisis's meter by its stage growth (1 | 2 | 1d3); crossing the
@@ -216,10 +228,7 @@ begin
         end if;
         if public._crisis_triggers_met(v_n, v_c.definition) then
           insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id);   -- stage 1, meter 0 by default
-          insert into public.events (nation_id, party_id, kind, body, game_date, tone)
-          values (v_n, null, 'crisis',
-                  'A crisis has emerged: ' || coalesce(v_c.definition->>'name', 'Unnamed Crisis') || '.',
-                  public.current_game_date(), 'warn');
+          perform public._crisis_emerged_event(v_n, v_c.definition->>'name');
         end if;
       exception when others then
         raise warning 'tick %: crisis-fire failed for nation % crisis % — %', p_tick, v_n, v_c.id, sqlerrm;
@@ -373,10 +382,7 @@ begin
   insert into public.nation_crises (nation_id, crisis_id, stage, meter, status)
        values (p_nation, p_crisis, 1, 0, 'active')
   on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active';
-  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
-  values (p_nation, null, 'crisis',
-          'A crisis has emerged: ' || coalesce(v_name, 'Unnamed Crisis') || '.',
-          public.current_game_date(), 'warn');
+  perform public._crisis_emerged_event(p_nation, v_name);
 end $$;
 grant execute on function public.crisis_force_fire(uuid, text) to authenticated;
 
