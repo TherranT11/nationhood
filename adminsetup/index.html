@@ -489,6 +489,7 @@
           <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
           <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
           <div class="full"><label for="f-ruling">Ruling Party</label><input id="f-ruling" type="text" placeholder="one-party state only — name it and players join as factions; blank = multiparty"></div>
+          <div class="full"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f-dormant" style="width:auto"> <span>Dormant — fully authored but hidden &amp; inert until activated (e.g. a breakaway state a crisis spawns on its terminal stage)</span></label></div>
           <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="0.1" placeholder="in millions (e.g. 24.5)"></div>
           <div><label for="f-gdp">Starting GDP</label><input id="f-gdp" type="number" min="0" step="1" placeholder="in billions"></div>
           <div><label for="f-prosperity">Starting Prosperity</label><input id="f-prosperity" type="number" step="1"></div>
@@ -631,7 +632,8 @@
                   <div class="card">
                     <div class="sechd">Identity</div>
                     <div class="f"><label>Crisis name</label><input type="text" id="cbName"></div>
-                    <div class="f" style="margin-bottom:0"><label>General description</label><textarea id="cbDesc"></textarea></div>
+                    <div class="f"><label>General description</label><textarea id="cbDesc"></textarea></div>
+                    <div class="f" style="margin-bottom:0"><label>Nation <span class="hint">limit this crisis to one nation; leave “Any” for a global crisis</span></label><select id="cbNation"></select></div>
                   </div>
                   <div class="card">
                     <div class="sechd">Trigger conditions <span class="hint">all must be true</span></div>
@@ -882,6 +884,7 @@
       var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
       setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
       setVal('f-ruling', n.ruling_party);
+      document.getElementById('f-dormant').checked = !!n.dormant;
       setVal('f-pop', n.population); setVal('f-gdp', n.gdp);
       setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
       setVal('f-image', s.image); setVal('f-order', s.order);
@@ -1120,6 +1123,7 @@
         description: document.getElementById('f-desc').value.trim() || null,
         analogous: document.getElementById('f-analog').value.trim() || null,
         ruling_party: document.getElementById('f-ruling').value.trim() || null,
+        dormant: document.getElementById('f-dormant').checked,
         population: num('f-pop', true), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
         election_frequency_months: elecfreq > 0 ? elecfreq : 60,
@@ -1153,7 +1157,8 @@
           if (!id) { addNote.textContent = 'Enter a valid nation name.'; addNote.className = 'note error'; return; }
           data.id = id;
           // First election 1d6 ticks (months) out (tick falls back to 1 if unavailable).
-          data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
+          // A dormant nation isn't scheduled — it gets its first election when activated.
+          if (!data.dormant) data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
           ({ error } = await supabase.from('nations').insert(data));
         }
         if (error) {
@@ -2044,7 +2049,7 @@
         return c;
       }
 
-      var CRISIS = null, activeStage = 0, crisEditingId = null, crisSaving = false, crisCache = [];
+      var CRISIS = null, activeStage = 0, crisEditingId = null, crisSaving = false, crisCache = [], crisNations = [];
 
       function avgGrowth(g) { return g === 'd3' ? 2 : g; }
       function ticksToNext(g, at) { var a = avgGrowth(g), T = at || 10; return a > 0 ? Math.ceil(T / a) : '—'; }
@@ -2059,6 +2064,12 @@
           const { data, error } = await supabase.from('crises').select('id, definition').order('created_at', { ascending: true });
           if (error) throw error; crisCache = data || [];
         } catch (e) { box.innerHTML = '<p class="empty">Could not load crises.</p>'; return; }
+        // Nations for the scope dropdown + the dormant-nation picker (a few extra fields
+        // so the new-nation resolution can preview what it will spawn).
+        try {
+          const { data: nn } = await supabase.from('nations').select('id, name, dormant, legislature_seats, stats, economy').order('name');
+          crisNations = nn || [];
+        } catch (e) { crisNations = []; }
         renderCrisList();
       }
       function renderCrisList() {
@@ -2075,6 +2086,13 @@
         box.querySelectorAll('.rm').forEach(function (b) { b.onclick = function () { removeCrisis(b.dataset.id); }; });
       }
       async function saveCrisis() {
+        // The new-nation outcome is restricted to a nation-scoped crisis (so it can't fire
+        // on many nations) and needs a dormant nation chosen to spawn.
+        var t5 = CRISIS.stages[4];
+        if (t5.resolution === 'new_nation') {
+          if (!CRISIS.nation) { setCrisNote('A “Create New Nation” crisis must be scoped to one nation (set Nation in Identity).', 'error'); return; }
+          if (!t5.newNation) { setCrisNote('Pick the dormant nation to spawn on the terminal stage.', 'error'); return; }
+        }
         if (crisSaving) return; crisSaving = true; setCrisNote('Saving…');
         try {
           if (crisEditingId) { const { error } = await supabase.from('crises').update({ definition: CRISIS }).eq('id', crisEditingId); if (error) throw error; }
@@ -2101,6 +2119,11 @@
         cn.value = CRISIS.name || ''; cd.value = CRISIS.desc || '';
         cn.oninput = function (e) { CRISIS.name = e.target.value; renderPreview(); };
         cd.oninput = function (e) { CRISIS.desc = e.target.value; renderPreview(); };
+        var ns = document.getElementById('cbNation');
+        ns.innerHTML = '<option value="">Any nation — global</option>' + crisNations.map(function (n) {
+          return '<option value="' + esc(n.id) + '"' + (CRISIS.nation === n.id ? ' selected' : '') + '>' + esc(n.name || n.id) + (n.dormant ? ' (dormant)' : '') + '</option>';
+        }).join('');
+        ns.onchange = function () { CRISIS.nation = this.value || null; renderPreview(); };
         renderTriggers(); renderTabs(); renderStage(); renderPreview();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -2229,13 +2252,40 @@
         });
       }
 
+      // Preview card for the dormant nation a 'new_nation' resolution will spawn — "show
+      // what that nation is" (name + a few headline figures + a not-dormant warning).
+      function newNationPreview(id) {
+        if (!id) return '';
+        var n = crisNations.filter(function (x) { return x.id === id; })[0];
+        if (!n) return '<div class="hint" style="margin-top:8px;color:var(--red)">That nation no longer exists.</div>';
+        var st = n.stats || {}, ec = n.economy || {};
+        var warn = n.dormant ? '' : '<div class="hint" style="color:var(--amber);margin-top:5px">⚠ This nation isn’t dormant — it’s already live, so nothing will spawn.</div>';
+        return '<div style="margin-top:10px;border:1px solid var(--line);border-radius:10px;padding:11px 13px">' +
+          '<div style="font-weight:800">' + esc(n.name || n.id) + '</div>' +
+          '<div class="hint" style="margin-top:4px">' + (n.legislature_seats || 0) + ' seats · regime ' + (ec.regime != null ? ec.regime : '—') +
+            ' · order ' + (st.order != null ? st.order : '—') + ' · growth ' + (st.growth != null ? st.growth : '—') + '</div>' + warn + '</div>';
+      }
       function renderStage5(box) {
         var s = CRISIS.stages[4];
+        var resBtns = [['persistent', 'Persistent'], ['ends', 'Ends after effect'], ['new_nation', 'Create New Nation']]
+          .map(function (r) { return '<button data-r="' + r[0] + '" class="' + (s.resolution === r[0] ? 'on' : '') + '" type="button">' + r[1] + '</button>'; }).join('');
+        var nnHtml = '';
+        if (s.resolution === 'new_nation') {
+          var dorm = crisNations.filter(function (n) { return n.dormant; });
+          var scopeWarn = CRISIS.nation ? '' : '<div class="hint" style="color:var(--amber);margin-bottom:8px">⚠ This outcome requires a nation scope — set <b>Nation</b> in Identity above.</div>';
+          nnHtml = scopeWarn + (!dorm.length
+            ? '<div class="f" style="margin-bottom:0"><div class="hint" style="color:var(--amber)">No dormant nations exist yet. Create one in the Nations tab (tick “Dormant”) and it’ll appear here to link.</div></div>'
+            : '<div class="f" style="margin-bottom:0"><label>New nation to spawn <span class="hint">a dormant nation, activated when this crisis fails</span></label>' +
+                '<select class="s5nation"><option value="">— pick a dormant nation —</option>' +
+                dorm.map(function (n) { return '<option value="' + esc(n.id) + '"' + (s.newNation === n.id ? ' selected' : '') + '>' + esc(n.name || n.id) + '</option>'; }).join('') +
+                '</select>' + newNationPreview(s.newNation) + '</div>');
+        }
         box.innerHTML = '<div class="f"><label>Description if reached</label><textarea class="s5desc">' + esc(s.descReached || '') + '</textarea></div>' +
           '<div class="f"><label>Effect when reached</label>' + effRowsHtml('s5', 'reached') + '</div>' +
-          '<div class="f" style="margin-bottom:0"><label>Resolution</label><div class="reso"><button data-r="persistent" class="' + (s.resolution === 'persistent' ? 'on' : '') + '" type="button">Persistent</button><button data-r="ends" class="' + (s.resolution === 'ends' ? 'on' : '') + '" type="button">Ends after effect</button></div></div>';
+          '<div class="f"' + (nnHtml ? '' : ' style="margin-bottom:0"') + '><label>Resolution</label><div class="reso">' + resBtns + '</div></div>' + nnHtml;
         box.querySelector('.s5desc').oninput = function (e) { s.descReached = e.target.value; renderPreview(); };
-        box.querySelectorAll('.reso button').forEach(function (b) { b.onclick = function () { s.resolution = b.dataset.r; renderStage5(box); renderPreview(); }; });
+        box.querySelectorAll('.reso button').forEach(function (b) { b.onclick = function () { s.resolution = b.dataset.r; if (b.dataset.r !== 'new_nation') s.newNation = undefined; renderStage5(box); renderPreview(); }; });
+        var sn = box.querySelector('.s5nation'); if (sn) sn.onchange = function () { s.newNation = this.value || undefined; renderStage5(box); renderPreview(); };
         wireEffRows(box);
       }
 
@@ -2243,7 +2293,9 @@
       function renderPreview() {
         var box = document.getElementById('cbPrev');
         var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>AND ');
+        var scopeName = CRISIS.nation ? ((crisNations.filter(function (x) { return x.id === CRISIS.nation; })[0] || {}).name || CRISIS.nation) : '';
         var h = '<div class="pvname">' + esc(CRISIS.name || 'Untitled crisis') + '</div><div class="pvdesc">' + esc(CRISIS.desc || '') + '</div>' +
+          '<div class="pvtrig"><div class="tl">Scope</div>' + (scopeName ? esc(scopeName) : 'Any nation (global)') + '</div>' +
           '<div class="pvtrig"><div class="tl">Triggers when</div>' + (trig || '—') + '</div>';
         for (var i = 0; i < 4; i++) {
           var s = CRISIS.stages[i];
@@ -2258,7 +2310,12 @@
         h += '<div class="pvstage s5"><div class="sn" style="color:var(--red,#C42B2B)">5. ' + (s5.descReached ? 'Terminal' : 'Terminal (unset)') + '</div>' +
           '<div class="pvdesc" style="margin:3px 0 5px">' + esc(s5.descReached || '—') + '</div>' +
           (s5.reached.length ? '<div class="sg">' + s5.reached.map(effStr).map(esc).join(' &middot; ') + '</div>' : '') +
-          '<div class="pvend">' + (s5.resolution === 'persistent' ? '↻ persists after effect' : '■ ends after effect') + '</div></div>';
+          '<div class="pvend">' + (
+            s5.resolution === 'persistent' ? '↻ persists after effect'
+            : s5.resolution === 'new_nation'
+              ? '⚑ spawns ' + esc((crisNations.filter(function (x) { return x.id === s5.newNation; })[0] || {}).name || 'a new nation') + ' &amp; ends'
+              : '■ ends after effect'
+          ) + '</div></div>';
         box.innerHTML = h;
       }
 

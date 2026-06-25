@@ -171,7 +171,7 @@
       // Every OTHER nation — these are the cards.
       const { data: others } = await supabase.from('nations')
         .select('id, name, flag, population, gdp, economy, declarations')
-        .neq('id', party.nation_id).order('name');
+        .neq('id', party.nation_id).eq('dormant', false).order('name');   // hide dormant (unactivated) nations
       const nations = others || [];
 
       // The Head of Government title slot, resolved per-nation against each

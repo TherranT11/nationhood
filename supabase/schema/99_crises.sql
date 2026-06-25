@@ -142,9 +142,33 @@ begin
 end $$;
 revoke all on function public._apply_crisis_effect(uuid, text, jsonb) from public, anon, authenticated;
 
+-- Activate the dormant breakaway nation a 'new_nation' resolution points at: a real,
+-- still-dormant nation (authored in the Nations tab, linked by id) is un-dormanted and
+-- given a first-election schedule, then announced. Idempotent — a re-run finds it already
+-- live and does nothing, so a nation can't be spawned twice.
+create or replace function public._crisis_spawn_nation(p_origin text, p_new_nation text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_tick int; v_name text; v_oname text;
+begin
+  if nullif(p_new_nation, '') is null then return; end if;
+  select name into v_name from public.nations where id = p_new_nation and dormant;
+  if not found then return; end if;   -- not a dormant nation (gone, or already activated)
+  select current_tick into v_tick from public.game_state where id;
+  update public.nations
+     set dormant = false,
+         next_election_tick = coalesce(v_tick, 1) + 1 + floor(random() * 6)::int
+   where id = p_new_nation;
+  select name into v_oname from public.nations where id = p_origin;
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_new_nation, null, 'crisis',
+          'A new nation has emerged from the crisis in ' || coalesce(v_oname, p_origin) || ': ' || v_name || '.',
+          public.current_game_date(), 'warn');
+end $$;
+revoke all on function public._crisis_spawn_nation(text, text) from public, anon, authenticated;
+
 -- Reaching stage 5: mark the terminal stage, apply its `reached` effects (via
 -- _apply_crisis_effect), then resolve — 'ends' marks the instance resolved, 'persistent'
--- leaves it standing at stage 5.
+-- leaves it standing, and 'new_nation' spawns the linked breakaway and resolves.
 create or replace function public._crisis_reach_terminal(p_id uuid, p_nation text, p_def jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_term jsonb := p_def->'stages'->4; v_eff jsonb; v_res text;
@@ -154,7 +178,10 @@ begin
     perform public._apply_crisis_effect(p_id, p_nation, v_eff);
   end loop;
   v_res := coalesce(v_term->>'resolution', 'persistent');
-  if v_res = 'ends' then
+  if v_res = 'new_nation' then
+    perform public._crisis_spawn_nation(p_nation, v_term->>'newNation');
+    update public.nation_crises set status = 'resolved' where id = p_id;   -- the breakaway resolves the crisis
+  elsif v_res = 'ends' then
     update public.nation_crises set status = 'resolved' where id = p_id;
   end if;
   insert into public.events (nation_id, party_id, kind, body, game_date, tone)
@@ -175,10 +202,15 @@ declare
   v_n text; v_c record; v_active record;
   v_def jsonb; v_stage jsonb; v_growth text; v_inc numeric; v_at numeric;
 begin
-  -- FIRE
-  for v_n in select id from public.nations loop
+  -- FIRE  (dormant nations are inert — they neither host crises nor get auto-scheduled)
+  for v_n in select id from public.nations where not coalesce(dormant, false) loop
     for v_c in select id, definition from public.crises loop
       begin
+        -- A nation-scoped crisis (definition.nation set) only fires on its chosen nation;
+        -- an unscoped crisis stays global.
+        if nullif(v_c.definition->>'nation', '') is not null and v_c.definition->>'nation' <> v_n then
+          continue;
+        end if;
         if exists (select 1 from public.nation_crises where nation_id = v_n and crisis_id = v_c.id) then
           continue;   -- Phase 1: fire once per nation per crisis
         end if;
@@ -322,3 +354,5 @@ begin
     'actions', v_p.actions_remaining - 1);
 end $$;
 grant execute on function public.crisis_act(uuid, int, int) to authenticated;
+
+notify pgrst, 'reload schema';

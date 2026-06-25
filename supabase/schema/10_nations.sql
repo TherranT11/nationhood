@@ -24,6 +24,7 @@ create table if not exists public.nations (
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, tax, budget, debt, income, currency}
   production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
+  dormant        boolean not null default false,     -- a fully-authored nation hidden + inert until activated (e.g. a breakaway state a crisis spawns on its terminal stage)
   created_at     timestamptz not null default now()
 );
 -- For installs created before these columns existed.
@@ -37,6 +38,7 @@ alter table public.nations add column if not exists production jsonb not null de
 alter table public.nations add column if not exists next_election_tick int;
 alter table public.nations add column if not exists ruling_party text;
 alter table public.nations add column if not exists former_ruling_party text;
+alter table public.nations add column if not exists dormant boolean not null default false;
 -- Population may be fractional (millions, e.g. 24.5) — widen the legacy bigint.
 alter table public.nations alter column population type numeric using population::numeric;
 -- The active-party count is derived live from public.parties (one source), not
