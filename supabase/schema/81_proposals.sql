@@ -1,7 +1,7 @@
 -- ===========================================================================
 -- 81 · Floor proposals + assembly voting.
 -- Depends on: 10 (nations), 20 (parties), 40 (events + action helpers), 45
--- (_majority), 80 (declarations). Run after 80.
+-- (_majority), 70 (_to_num safe parse), 80 (declarations). Run after 80.
 --
 -- A party proposes a measure (a Declaration for now; Laws reuse this later). It
 -- can be queued on the upcoming agenda (free) or sent straight to the floor
@@ -109,7 +109,7 @@ begin
   if p_target not in (20, 21) then return; end if;
   select economy->>'regime', name into v_raw, v_nname from public.nations where id = p_nation;
   if not found then return; end if;
-  v_cur := case when v_raw ~ '^-?[0-9]+(\.[0-9]+)?$' then v_raw::numeric else null end;
+  v_cur := public._to_num(v_raw);
   if v_cur is null then return; end if;
   -- Proclaim (→21) only from a republic (≤20); abolish (→20) only from a Constitutional
   -- monarchy (21–23). Anything else (already there, or an Absolute monarchy) is a no-op.
@@ -314,7 +314,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_party public.parties%rowtype; v_raw text; v_cur numeric; v_title text;
+  v_party public.parties%rowtype; v_cur numeric; v_title text;
   v_pid uuid; v_res text; v_curtick int; v_sched int;
 begin
   if p_target not in (20, 21) then raise exception 'Unknown regime measure.'; end if;
@@ -329,8 +329,7 @@ begin
     v_party := public._lock_party();
   end if;
 
-  select economy->>'regime' into v_raw from public.nations where id = v_party.nation_id;
-  v_cur := case when v_raw ~ '^-?[0-9]+(\.[0-9]+)?$' then v_raw::numeric else null end;
+  v_cur := public._to_num((select economy->>'regime' from public.nations where id = v_party.nation_id));
   if v_cur is null then raise exception 'This nation''s regime is not a numeric rank — an admin must set it first.'; end if;
   if p_target = 21 then
     if v_cur > 20 then raise exception 'This nation is already a monarchy.'; end if;

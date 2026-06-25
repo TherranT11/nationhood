@@ -309,7 +309,7 @@
       '<div><section class="mod"><div class="mod__hd"><span>Form of State</span><span class="hint">a constitutional change</span></div>' +
         '<label class="lbl">Current regime</label><div class="curval">' + esc(regimeText(isNaN(Number(regime)) ? regime : r)) + '</div>' +
         '<label class="lbl" style="margin-top:14px">Proposed change</label><div class="curval">' + (move ? esc(move.title) : 'No change available') + '</div>' +
-        (move ? '<p class="muted" style="margin-top:12px;font-style:normal;color:var(--muted)">' + esc(move.desc) + '</p>' : '') +
+        (move ? '<p style="margin-top:12px;color:var(--muted);font-size:13px;line-height:1.5">' + esc(move.desc) + '</p>' : '') +
       '</section></div>' +
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
         '<div class="pvcard"><h3 id="r-pv"' + (move ? '' : ' class="empty"') + '>' + (move ? esc(move.title) : 'Nothing to propose') + '</h3></div>' +

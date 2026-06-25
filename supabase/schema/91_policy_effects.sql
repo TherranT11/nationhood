@@ -2,7 +2,7 @@
 -- 91 · Policy effects engine.
 -- Depends on: 10 (nations: stats/economy/production jsonb, population), 20
 -- (parties.popularity/archetype), 60 (governments.confidence, status='active'),
--- 70 (_mod_cap_raise/_mod_floor_drop popularity clamps), 90 (policies). Run after 90.
+-- 70 (_mod_cap_raise/_mod_floor_drop popularity clamps, _to_num safe parse), 90 (policies). Run after 90.
 --
 -- ONE place a policy option's effects are applied. _apply_policy_effect maps a
 -- single authored effect {t,v,cad,dur,scale} onto the right field and clamps it;
@@ -62,7 +62,7 @@ declare
   v_t     text    := p_eff->>'t';
   v_v     numeric := coalesce((p_eff->>'v')::numeric, 0);
   v_scale text    := coalesce(p_eff->>'scale', 'flat');
-  v_pop numeric; v_pros numeric; v_amt numeric; v_old numeric; v_new numeric; v_rraw text; r record;
+  v_pop numeric; v_pros numeric; v_amt numeric; v_old numeric; v_new numeric; r record;
 begin
   if v_t is null or v_v = 0 then return; end if;
 
@@ -84,9 +84,9 @@ begin
       -- monarchy band (21–25) is law/admin-only: a republic can't organically cross into it,
       -- and a nation already in the band is left untouched (so an effect can't crown or
       -- dethrone a nation behind the legislature's back — that's propose_regime_change /
-      -- admin territory). A null/legacy regime is treated as a republic.
-      select economy->>'regime' into v_rraw from public.nations where id = p_nation;
-      if v_rraw is null or v_rraw !~ '^-?[0-9]+(\.[0-9]+)?$' or v_rraw::numeric <= 20 then
+      -- admin territory). A null/legacy regime parses to null → treated as a republic.
+      select public._to_num(economy->>'regime') into v_old from public.nations where id = p_nation;
+      if coalesce(v_old, 0) <= 20 then
         perform public._nation_stat_add(p_nation, 'economy', 'regime', v_v, 1, 20);
       end if;
     when 'Budget', 'Debt', 'Income' then
