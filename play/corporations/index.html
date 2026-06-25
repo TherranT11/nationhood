@@ -112,7 +112,7 @@
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { businessClimate, climateWord, corpGrowth } from '/corporations.js';
+  import { businessClimate, climateWord, corpGrowth, corpMoney } from '/corporations.js';
   import { nationTaxBurden } from '/policies.js';
 
   mountTopbar();
@@ -135,7 +135,7 @@
     // total for both the headline figure and the climate's tax drag, not the bare base.
     var tb = nationTaxBurden(home, CORP_POLICIES);
     var climate = businessClimate(stats, Object.assign({}, eco, { tax: tb })), w = climateWord(climate);
-    var money = function (v){ var x = Number(v) || 0; return (x < 0 ? '−' : '') + currency + Math.abs(x).toFixed(1) + 'B'; };
+    var money = function (v){ return corpMoney(v, currency); };   // one source: corporations.js ($M-aware)
 
     var figs = [
       { k:'Tax Rate',     v:tb + '%' },

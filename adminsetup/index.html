@@ -774,7 +774,7 @@
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import { regimeLabel, statName } from '/ladders.js';
-    import { SIZES, CATEGORIES, CATEGORY_BONUS } from '/corporations.js';
+    import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
@@ -1180,7 +1180,6 @@
     var CF = { nation:'', category:'Energy', name:'', type:'pr', size:'Moderate', cash:1.0, debt:0.0, drift:1, addNow:true, rollM:48 };
     var corpSaving = false;
     function corpRollM(){ CF.rollM = Math.floor(Math.random()*60) + 1 + 20; return CF.rollM; }   // 1D60 + 20 → $M
-    function corpMoney(v){ v=Number(v)||0; if(v===0) return '$0.0B'; if(Math.abs(v)<0.1) return (v<0?'−':'')+'$'+Math.round(Math.abs(v)*1000)+'M'; return (v<0?'−':'')+'$'+Math.abs(v).toFixed(1)+'B'; }
     function corpNum(id, def){ var v=parseFloat(document.getElementById(id).value); return isNaN(v)?def:v; }
     function corpNatName(id){ return (nationsCache.filter(function(n){return n.id===id;})[0]||{}).name || id || '—'; }
     function setCorpNote(msg, kind){ var n=document.getElementById('cfNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }

@@ -58,6 +58,15 @@ export function climateWord(c) {
        :            { label: 'Recession', color: 'var(--red)',   bg: 'var(--red-soft)' };
 }
 
+// Money in $B, shown $M below $0.1B so small firms (a ~$48M startup) don't round to $0.0B.
+// ONE source for the admin Creator + the public register. currency defaults to '$'.
+export function corpMoney(v, currency) {
+  currency = currency || '$'; v = Number(v) || 0;
+  if (v === 0) return currency + '0.0B';
+  if (Math.abs(v) < 0.1) return (v < 0 ? '−' : '') + currency + Math.round(Math.abs(v) * 1000) + 'M';
+  return (v < 0 ? '−' : '') + currency + Math.abs(v).toFixed(1) + 'B';
+}
+
 // A firm's growth = the climate + its own trajectory (drift), dragged down hard by any
 // debt, clamped to ±9%. Display only — nothing is written back.
 export function corpGrowth(corp, climate) {
