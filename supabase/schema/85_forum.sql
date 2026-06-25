@@ -36,6 +36,21 @@ begin
 end $$;
 grant execute on function public.set_handle(text) to authenticated;
 
+-- The OOC nickname of each player-run party in a nation, keyed by party. The @handle
+-- is already public (snapshotted onto every forum post), so surfacing it as a display
+-- label beside a party — e.g. "Centrist Union (Theo)" — is safe even though profiles
+-- themselves are private (00). SECURITY DEFINER so it can read profiles.handle without
+-- a broad client grant; only parties whose owner has set a handle are returned.
+create or replace function public.nation_party_handles(p_nation text)
+returns table (party_id uuid, handle text)
+language sql security definer set search_path = public stable as $$
+  select p.id, pr.handle
+    from public.parties p
+    join public.profiles pr on pr.id = p.user_id
+   where p.nation_id = p_nation and pr.handle is not null;
+$$;
+grant execute on function public.nation_party_handles(text) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Boards: a FIXED set (seeded). key is referenced by threads; realm decides which
 -- identity a thread posts under. World-readable; seeded only (no client writes).
