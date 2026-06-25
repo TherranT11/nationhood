@@ -183,7 +183,9 @@
       if (mine) { window.location.replace('/play/'); return; }
       if (!isConfigured) { err('Nation data isn’t connected yet.'); return; }
       try {
-        const { data, error } = await supabase.from('nations').select('*').order('created_at', { ascending: true });
+        // Dormant nations are hidden — they exist but aren't joinable until activated
+        // (e.g. a breakaway state a crisis spawns).
+        const { data, error } = await supabase.from('nations').select('*').eq('dormant', false).order('created_at', { ascending: true });
         if (error) throw error;
         var nations = data || [];
         if (!nations.length) { note.textContent = 'No nations are open yet.'; note.className = 'note'; return; }

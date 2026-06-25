@@ -33,18 +33,25 @@
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
 
   /* Business climate panel — read live from the nation's economy + stats. */
-  .econ{border:1px solid var(--line);border-radius:16px;background:var(--surface);margin-bottom:18px;padding:16px 20px}
-  .econ .eh{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
-  .econ .eh .t{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
-  .climate{display:flex;align-items:center;gap:9px;font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)}
-  .climate .cv{font-size:16px;font-weight:700}
-  .climate .cv.pos{color:var(--green)} .climate .cv.neg{color:var(--red)} .climate .cv.zero{color:var(--muted)}
-  .climate .word{padding:3px 9px;border-radius:20px;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700}
-  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-  @media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
-  .stat{border:1px solid var(--line);border-radius:11px;padding:10px 11px;background:var(--field)}
-  .stat .k{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
-  .stat .v{font-weight:800;font-size:16px;letter-spacing:-.01em;margin-top:5px;display:block}
+  /* Business-climate panel: descriptor + score, a recession→booming gauge, and each
+     figure's signed contribution (server breakdown, summing to the score). */
+  .econ{border:1px solid var(--line);border-radius:16px;background:var(--surface);margin-bottom:18px;padding:18px 20px}
+  .ehd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .erow{display:flex;align-items:baseline;gap:12px;margin:6px 0 14px}
+  .cword{font-weight:900;font-size:clamp(24px,4vw,32px);letter-spacing:-.02em;line-height:1}
+  .cscore{font-family:'Space Mono',monospace;font-weight:700;font-size:18px;color:var(--ink)}
+  .gauge{position:relative;height:12px;border-radius:7px;background:linear-gradient(90deg,var(--red),var(--amber) 30%,#cfc9bd 50%,var(--green) 78%)}
+  .gauge__mark{position:absolute;top:-4px;bottom:-4px;width:3px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
+  .gauge__lbls{display:flex;justify-content:space-between;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:7px}
+  .cfacs{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:16px}
+  @media(max-width:760px){.cfacs{grid-template-columns:repeat(2,1fr)}}
+  .cfac{border:1px solid var(--line);border-radius:11px;padding:10px 11px;background:var(--field)}
+  .cfac .cfk{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .cfac .cfv{font-weight:800;font-size:16px;letter-spacing:-.01em;margin-top:5px}
+  .cfac .cfv small{font-weight:600;font-size:11px;color:var(--soft)}
+  .cfac .cfc{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.02em;margin-top:7px}
+  .cfac .cfc.pos{color:var(--green)} .cfac .cfc.neg{color:var(--red)} .cfac .cfc.zero{color:var(--soft)}
+  .cnote{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:12px;line-height:1.55}
 
   /* Firm register */
   .card{border:1px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden}
@@ -127,26 +134,29 @@
   function renderCorps(home, currency, reg){
     var box = document.getElementById('corpContent');
     var corps = (reg && reg.firms) || [];
-    var stats = (home && home.stats) || {}, eco = (home && home.economy) || {};
-    // Climate + the DERIVED tax burden come from the corp_register RPC (one source: schema/47);
-    // each firm arrives with its growth already derived.
-    var tb = num(reg && reg.taxBurden);
-    var climate = num(reg && reg.climate), w = climateWord(climate);
     var money = function (v){ return corpMoney(v, currency); };   // one source: corporations.js ($M-aware)
 
-    var figs = [
-      { k:'Tax Rate',     v:tb + '%' },
-      { k:'Growth',       v:(num(stats.growth)) + '/20' },
-      { k:'Prosperity',   v:(num(stats.prosperity)) + '/20' },
-      { k:'Unemployment', v:(num(eco.unemployment)) + '%' },
-      { k:'Inflation',    v:(num(eco.inflation)) + '%' }
-    ].map(function (d){ return '<div class="stat"><div class="k">' + d.k + '</div><span class="v">' + d.v + '</span></div>'; }).join('');
+    // Climate, its descriptor word, and the per-figure breakdown all come from the
+    // corp_register RPC (one source: schema/47). The gauge maps the score across a
+    // recession→booming range (±8 around neutral 0); contributions sum to the score.
+    var climate = num(reg && reg.climate), w = climateWord(climate);
+    var pct = Math.max(0, Math.min(100, (climate + 8) / 16 * 100));
+    var facs = ((reg && reg.climateParts) || []).map(function (p){
+      var contrib = num(p.contrib), cc = contrib > 0 ? 'pos' : contrib < 0 ? 'neg' : 'zero';
+      return '<div class="cfac"><div class="cfk">' + esc(p.label) + '</div>' +
+        '<div class="cfv">' + num(p.value) + '<small>' + esc(p.unit || '') + '</small></div>' +
+        '<div class="cfc ' + cc + '">' + (contrib >= 0 ? '+' : '') + contrib.toFixed(1) + ' to climate</div></div>';
+    }).join('');
 
-    var climHtml = '<div class="econ"><div class="eh"><span class="t">The economy · drives every firm</span>' +
-      '<div class="climate">Business climate <span class="cv ' + (climate > 0.2 ? 'pos' : climate < -0.2 ? 'neg' : 'zero') + '">' +
-        (climate >= 0 ? '+' : '') + climate.toFixed(1) + '</span>' +
-        '<span class="word" style="color:' + w.color + ';background:' + w.bg + '">' + w.label + '</span></div></div>' +
-      '<div class="stats">' + figs + '</div></div>';
+    var climHtml = '<div class="econ">' +
+      '<div class="ehd">Business Climate</div>' +
+      '<div class="erow"><span class="cword" style="color:' + w.color + '">' + esc(w.label) + '</span>' +
+        '<span class="cscore">' + (climate >= 0 ? '+' : '') + climate.toFixed(1) + '</span></div>' +
+      '<div class="gauge"><div class="gauge__mark" style="left:' + pct.toFixed(1) + '%"></div></div>' +
+      '<div class="gauge__lbls"><span>Recession</span><span>Neutral</span><span>Booming</span></div>' +
+      '<div class="cfacs">' + facs + '</div>' +
+      '<p class="cnote">Each figure’s contribution to the climate score is shown above — together they sum to the score.</p>' +
+    '</div>';
 
     if (!corps.length){
       box.innerHTML = climHtml +
@@ -168,7 +178,7 @@
         : [['Subsidize'], ['Bail Out'], ['Nationalize']]
       ).map(function (b){ return '<button class="actbtn" type="button" disabled>' + b[0] + '</button>'; }).join('');
       return '<div class="arow">' +
-        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.category) + '</span></div></div>' +
+        '<div class="cell corp"><div class="nm">' + esc(c.name) + '<span class="sec">' + esc(c.category) + (c.size ? ' · ' + esc(c.size) : '') + '</span></div></div>' +
         '<div class="cell"><span class="lbl">Director</span><div class="dnm">' + esc(c.director_name || '—') + '</div>' +
           '<div class="dmeta">' + pty + '<span class="dstat">Acu <b>' + (c.director_acu != null ? c.director_acu : '—') + '</b> · ' + (c.director_age != null ? c.director_age : '—') + '</span></div></div>' +
         '<div class="cell"><span class="lbl">Type</span>' + typeHtml + '</div>' +

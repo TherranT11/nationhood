@@ -456,7 +456,7 @@ begin
       from (
         select id, coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0) as raw
           from public.nations
-         where coalesce((economy->>'income')::numeric, 0) <> 0
+         where coalesce((economy->>'income')::numeric, 0) <> 0 and not coalesce(dormant, false)
       ) s
      where n.id = s.id;
     insert into public.events (nation_id, party_id, kind, body, game_date)
@@ -467,7 +467,7 @@ begin
            'B, debt ' || coalesce(n.economy->>'currency', '$') || (n.economy->>'debt') || 'B.',
            public.current_game_date()
       from public.nations n
-     where coalesce((n.economy->>'income')::numeric, 0) <> 0;
+     where coalesce((n.economy->>'income')::numeric, 0) <> 0 and not coalesce(n.dormant, false);
   end if;
   exception when others then raise warning 'tick %: annual income failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
@@ -481,6 +481,7 @@ begin
   for v_n in
     select id from public.nations
      where next_election_tick is not null and next_election_tick <= v_tick
+       and not coalesce(dormant, false)   -- dormant nations don't hold elections until activated
   loop
     begin perform public.resolve_election(v_n); v_count := v_count + 1;
     exception when others then raise warning 'tick %: election failed for nation % — %', v_tick, v_n, sqlerrm; end;

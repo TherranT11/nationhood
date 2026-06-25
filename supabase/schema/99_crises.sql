@@ -101,12 +101,27 @@ begin
 end $$;
 revoke all on function public._nation_stat_get(text, text) from public, anon, authenticated;
 
+-- ONE op-comparison for crisis conditions (triggers + the "ends if" resolvers). Accepts
+-- both the ASCII (<=, >=) and the UI's unicode (≤, ≥) forms — the Crisis Builder emits the
+-- unicode ones, so handling them here is what makes ≤/≥ conditions actually evaluate.
+create or replace function public._crisis_cmp(p_cur numeric, p_op text, p_val numeric)
+returns boolean language sql immutable as $$
+  select case p_op
+    when '<'  then p_cur <  p_val
+    when '<=' then p_cur <= p_val   when '≤' then p_cur <= p_val
+    when '>'  then p_cur >  p_val
+    when '>=' then p_cur >= p_val   when '≥' then p_cur >= p_val
+    when '='  then p_cur =  p_val   when '==' then p_cur =  p_val
+    when '!=' then p_cur <> p_val
+    else false end;
+$$;
+
 -- True when ALL of a crisis definition's triggers hold for the nation. A trigger is
 -- {target, op, value}; an unreadable target (null) fails the whole test. A crisis with
 -- no triggers never auto-fires (admin/manual seeding only).
 create or replace function public._crisis_triggers_met(p_nation text, p_def jsonb)
 returns boolean language plpgsql stable security definer set search_path = public as $$
-declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric; v_val numeric; v_op text; v_ok boolean;
+declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric;
 begin
   if v_trigs is null or jsonb_typeof(v_trigs) <> 'array' or jsonb_array_length(v_trigs) = 0 then
     return false;
@@ -114,19 +129,34 @@ begin
   for v_t in select value from jsonb_array_elements(v_trigs) loop
     v_cur := public._nation_stat_get(p_nation, v_t->>'target');
     if v_cur is null then return false; end if;
-    v_val := coalesce((v_t->>'value')::numeric, 0);
-    v_op  := coalesce(v_t->>'op', '>=');
-    v_ok  := case v_op
-               when '<'  then v_cur <  v_val   when '<=' then v_cur <= v_val
-               when '>'  then v_cur >  v_val   when '>=' then v_cur >= v_val
-               when '='  then v_cur =  v_val   when '==' then v_cur =  v_val
-               when '!=' then v_cur <> v_val   else false
-             end;
-    if not v_ok then return false; end if;
+    if not public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
+      return false;
+    end if;
   end loop;
   return true;
 end $$;
 revoke all on function public._crisis_triggers_met(text, jsonb) from public, anon, authenticated;
+
+-- True when ANY of a crisis definition's `endIf` resolvers holds — the "Crisis immediately
+-- ends if" conditions. Same {target, op, value} shape as triggers; an unreadable target is
+-- skipped (doesn't resolve, doesn't block). No endIf → never auto-resolves.
+create or replace function public._crisis_resolve_met(p_nation text, p_def jsonb)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare v_ends jsonb := p_def->'endIf'; v_t jsonb; v_cur numeric;
+begin
+  if v_ends is null or jsonb_typeof(v_ends) <> 'array' or jsonb_array_length(v_ends) = 0 then
+    return false;
+  end if;
+  for v_t in select value from jsonb_array_elements(v_ends) loop
+    v_cur := public._nation_stat_get(p_nation, v_t->>'target');
+    if v_cur is not null
+       and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
+      return true;
+    end if;
+  end loop;
+  return false;
+end $$;
+revoke all on function public._crisis_resolve_met(text, jsonb) from public, anon, authenticated;
 
 -- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at
 -- 0); every other target rides _apply_policy_effect (schema/91) — the single source for
@@ -142,9 +172,33 @@ begin
 end $$;
 revoke all on function public._apply_crisis_effect(uuid, text, jsonb) from public, anon, authenticated;
 
+-- Activate the dormant breakaway nation a 'new_nation' resolution points at: a real,
+-- still-dormant nation (authored in the Nations tab, linked by id) is un-dormanted and
+-- given a first-election schedule, then announced. Idempotent — a re-run finds it already
+-- live and does nothing, so a nation can't be spawned twice.
+create or replace function public._crisis_spawn_nation(p_origin text, p_new_nation text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_tick int; v_name text; v_oname text;
+begin
+  if nullif(p_new_nation, '') is null then return; end if;
+  select name into v_name from public.nations where id = p_new_nation and dormant;
+  if not found then return; end if;   -- not a dormant nation (gone, or already activated)
+  select current_tick into v_tick from public.game_state where id;
+  update public.nations
+     set dormant = false,
+         next_election_tick = coalesce(v_tick, 1) + 1 + floor(random() * 6)::int
+   where id = p_new_nation;
+  select name into v_oname from public.nations where id = p_origin;
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_new_nation, null, 'crisis',
+          'A new nation has emerged from the crisis in ' || coalesce(v_oname, p_origin) || ': ' || v_name || '.',
+          public.current_game_date(), 'warn');
+end $$;
+revoke all on function public._crisis_spawn_nation(text, text) from public, anon, authenticated;
+
 -- Reaching stage 5: mark the terminal stage, apply its `reached` effects (via
 -- _apply_crisis_effect), then resolve — 'ends' marks the instance resolved, 'persistent'
--- leaves it standing at stage 5.
+-- leaves it standing, and 'new_nation' spawns the linked breakaway and resolves.
 create or replace function public._crisis_reach_terminal(p_id uuid, p_nation text, p_def jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_term jsonb := p_def->'stages'->4; v_eff jsonb; v_res text;
@@ -154,7 +208,10 @@ begin
     perform public._apply_crisis_effect(p_id, p_nation, v_eff);
   end loop;
   v_res := coalesce(v_term->>'resolution', 'persistent');
-  if v_res = 'ends' then
+  if v_res = 'new_nation' then
+    perform public._crisis_spawn_nation(p_nation, v_term->>'newNation');
+    update public.nation_crises set status = 'resolved' where id = p_id;   -- the breakaway resolves the crisis
+  elsif v_res = 'ends' then
     update public.nation_crises set status = 'resolved' where id = p_id;
   end if;
   insert into public.events (nation_id, party_id, kind, body, game_date, tone)
@@ -163,6 +220,18 @@ begin
           public.current_game_date(), 'neg');
 end $$;
 revoke all on function public._crisis_reach_terminal(uuid, text, jsonb) from public, anon, authenticated;
+
+-- The "a crisis has emerged" feed line — ONE source, written both when the tick fires a
+-- crisis and when an admin force-fires one (crisis_force_fire).
+create or replace function public._crisis_emerged_event(p_nation text, p_name text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_nation, null, 'crisis',
+          'A crisis has emerged: ' || coalesce(p_name, 'Unnamed Crisis') || '.',
+          public.current_game_date(), 'warn');
+end $$;
+revoke all on function public._crisis_emerged_event(text, text) from public, anon, authenticated;
 
 -- The per-tick crisis pass (called by advance_tick, schema/60). FIRE: start any crisis
 -- whose triggers are now met on a nation not already running it (fire-once in Phase 1).
@@ -175,19 +244,21 @@ declare
   v_n text; v_c record; v_active record;
   v_def jsonb; v_stage jsonb; v_growth text; v_inc numeric; v_at numeric;
 begin
-  -- FIRE
-  for v_n in select id from public.nations loop
+  -- FIRE  (dormant nations are inert — they neither host crises nor get auto-scheduled)
+  for v_n in select id from public.nations where not coalesce(dormant, false) loop
     for v_c in select id, definition from public.crises loop
       begin
+        -- A nation-scoped crisis (definition.nation set) only fires on its chosen nation;
+        -- an unscoped crisis stays global.
+        if nullif(v_c.definition->>'nation', '') is not null and v_c.definition->>'nation' <> v_n then
+          continue;
+        end if;
         if exists (select 1 from public.nation_crises where nation_id = v_n and crisis_id = v_c.id) then
           continue;   -- Phase 1: fire once per nation per crisis
         end if;
         if public._crisis_triggers_met(v_n, v_c.definition) then
           insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id);   -- stage 1, meter 0 by default
-          insert into public.events (nation_id, party_id, kind, body, game_date, tone)
-          values (v_n, null, 'crisis',
-                  'A crisis has emerged: ' || coalesce(v_c.definition->>'name', 'Unnamed Crisis') || '.',
-                  public.current_game_date(), 'warn');
+          perform public._crisis_emerged_event(v_n, v_c.definition->>'name');
         end if;
       exception when others then
         raise warning 'tick %: crisis-fire failed for nation % crisis % — %', p_tick, v_n, v_c.id, sqlerrm;
@@ -202,6 +273,16 @@ begin
      where nc.status = 'active'
   loop
     begin
+      -- "Crisis immediately ends if": resolvers checked first, so even a persistent
+      -- terminal crisis can subside once the nation recovers past an endIf threshold.
+      if public._crisis_resolve_met(v_active.nation_id, v_active.definition) then
+        update public.nation_crises set status = 'resolved' where id = v_active.id;
+        insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+        values (v_active.nation_id, null, 'crisis',
+                'The crisis has subsided: ' || coalesce(v_active.definition->>'name', 'Unnamed Crisis') || '.',
+                public.current_game_date(), 'pos');
+        continue;
+      end if;
       if v_active.stage >= 5 then continue; end if;   -- terminal: inert until Phase 2
       v_def    := v_active.definition;
       v_stage  := v_def->'stages'->(v_active.stage - 1);   -- stages is 0-indexed
@@ -322,3 +403,27 @@ begin
     'actions', v_p.actions_remaining - 1);
 end $$;
 grant execute on function public.crisis_act(uuid, int, int) to authenticated;
+
+-- Admin override: begin a crisis on a chosen nation right now, ignoring its triggers
+-- (the Crisis Builder's "Enable crisis" button). (Re)starts it at stage 1, active, and
+-- announces it — the normal tick takes over the escalation from there. Admin-only;
+-- dormant nations are inert, so they're rejected.
+create or replace function public.crisis_force_fire(p_crisis uuid, p_nation text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_name text; v_dormant boolean;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  select dormant into v_dormant from public.nations where id = p_nation;
+  if not found then raise exception 'That nation does not exist.'; end if;
+  if v_dormant then raise exception 'That nation is dormant — activate it before starting a crisis there.'; end if;
+  select definition->>'name' into v_name from public.crises where id = p_crisis;
+  if not found then raise exception 'That crisis no longer exists.'; end if;
+
+  insert into public.nation_crises (nation_id, crisis_id, stage, meter, status)
+       values (p_nation, p_crisis, 1, 0, 'active')
+  on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active';
+  perform public._crisis_emerged_event(p_nation, v_name);
+end $$;
+grant execute on function public.crisis_force_fire(uuid, text) to authenticated;
+
+notify pgrst, 'reload schema';

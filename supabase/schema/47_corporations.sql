@@ -82,6 +82,27 @@ returns numeric language sql stable security definer set search_path = public as
   from public.nations n where n.id = p_nation;
 $$;
 
+-- The five figures behind the business climate and each one's signed contribution
+-- to the score — the Corporations-page breakdown. The baselines + weights MUST MATCH
+-- _business_climate above (this is the display mirror; _business_climate stays the
+-- authoritative score). Contributions are rounded for display and sum to that score.
+create or replace function public._business_climate_parts(p_nation text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_array(
+    jsonb_build_object('label','Growth',       'unit','/20', 'value', coalesce((n.stats->>'growth')::numeric, 0),
+      'contrib', round((coalesce((n.stats->>'growth')::numeric, 0) - 10), 1)),
+    jsonb_build_object('label','Prosperity',   'unit','/20', 'value', coalesce((n.stats->>'prosperity')::numeric, 0),
+      'contrib', round((coalesce((n.stats->>'prosperity')::numeric, 0) - 12) * 0.3, 1)),
+    jsonb_build_object('label','Tax Rate',     'unit','%',   'value', public._nation_tax_burden(p_nation),
+      'contrib', round(-(public._nation_tax_burden(p_nation) - 25) * 0.04, 1)),
+    jsonb_build_object('label','Inflation',    'unit','%',   'value', coalesce((n.economy->>'inflation')::numeric, 0),
+      'contrib', round(-(coalesce((n.economy->>'inflation')::numeric, 0) - 10) * 0.3, 1)),
+    jsonb_build_object('label','Unemployment', 'unit','%',   'value', coalesce((n.economy->>'unemployment')::numeric, 0),
+      'contrib', round(-(coalesce((n.economy->>'unemployment')::numeric, 0) - 7) * 0.3, 1))
+  )
+  from public.nations n where n.id = p_nation;
+$$;
+
 -- A firm's growth = climate + its drift, minus a hard debt drag, clamped ±9. Mirrors
 -- corpGrowth (corporations.js).
 create or replace function public._corp_growth(p_drift numeric, p_debt numeric, p_climate numeric)
@@ -96,6 +117,7 @@ create or replace function public.corp_register(p_nation text)
 returns jsonb language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'climate',   public._business_climate(p_nation),
+    'climateParts', public._business_climate_parts(p_nation),
     'taxBurden', public._nation_tax_burden(p_nation),
     'firms', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -118,8 +140,9 @@ returns numeric language sql stable security definer set search_path = public as
   select public._nation_tax_burden(p_nation);
 $$;
 
-revoke all on function public._nation_tax_burden(text) from public, anon, authenticated;
-revoke all on function public._business_climate(text)  from public, anon, authenticated;
+revoke all on function public._nation_tax_burden(text)    from public, anon, authenticated;
+revoke all on function public._business_climate(text)     from public, anon, authenticated;
+revoke all on function public._business_climate_parts(text) from public, anon, authenticated;
 grant execute on function public.corp_register(text)     to anon, authenticated;
 grant execute on function public.nation_tax_burden(text) to anon, authenticated;
 
@@ -160,6 +183,26 @@ begin
   perform public._nation_stat_add(p_corp.nation_id, v_col, v_key, v_amt, v_lo, v_hi);
 end $$;
 
+-- One place to write a corporation event to the shared feed (kind 'corporation';
+-- no owning party). All four lifecycle announcements below route through this.
+create or replace function public._corp_event(p_nation text, p_body text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+  values (p_nation, null, 'corporation', p_body, public.current_game_date());
+end $$;
+
+-- The "started operations" announcement — fired wherever a firm becomes placed:
+-- created placed-now (corp_create) OR released from the generation list (the tick).
+create or replace function public._corp_started_event(p_nation text, p_name text, p_category text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  perform public._corp_event(p_nation,
+    p_name || ' has started operations in '
+      || coalesce((select name from public.nations where id = p_nation), p_nation)
+      || ', they are expected to expand operations in the ' || p_category || ' sector.');
+end $$;
+
 -- RPC: admin creates a firm and, if it's placed now, applies its sector bonus atomically.
 create or replace function public.corp_create(p_nation text, p_name text, p_category text, p_type text,
   p_size text, p_cash numeric, p_debt numeric, p_drift int, p_status text, p_roll_m int)
@@ -177,7 +220,10 @@ begin
   values (p_nation, p_name, p_category, p_type, p_size, p_cash, p_debt, p_drift, coalesce(p_status,'placed'), p_roll_m,
           v_director, floor(random() * 4)::int + 1)
   returning * into v_corp;
-  if v_corp.status = 'placed' then perform public._corp_apply_bonus(v_corp, 1); end if;
+  if v_corp.status = 'placed' then
+    perform public._corp_apply_bonus(v_corp, 1);
+    perform public._corp_started_event(v_corp.nation_id, v_corp.name, v_corp.category);  -- a queued firm announces on release instead
+  end if;
   return v_corp.id;
 end $$;
 
@@ -193,9 +239,46 @@ begin
   delete from public.corporations where id = p_corp;
 end $$;
 
+-- RPC: the government buys a PRIVATE firm into public ownership (private → state).
+-- The sector bonus is type-agnostic (size + category only), so ownership flips need
+-- no bonus change; the deal just announces itself to the feed.
+create or replace function public.corp_nationalize(p_corp uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_corp public.corporations;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  select * into v_corp from public.corporations where id = p_corp;
+  if not found then raise exception 'That corporation no longer exists.'; end if;
+  if v_corp.status <> 'placed' then raise exception 'That firm has not started operations yet.'; end if;
+  if v_corp.type = 'so' then raise exception 'That corporation is already state-owned.'; end if;
+  update public.corporations set type = 'so' where id = p_corp;
+  perform public._corp_event(v_corp.nation_id,
+    'The government of ' || coalesce((select name from public.nations where id = v_corp.nation_id), v_corp.nation_id)
+    || ' completed the purchase of ' || v_corp.name || ', expanding government services into the ' || v_corp.category || ' sector.');
+end $$;
+
+-- RPC: the government sells a STATE firm back to investors (state → private). A
+-- privatised firm can now fold like any private one if its cash runs out.
+create or replace function public.corp_privatize(p_corp uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_corp public.corporations;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  select * into v_corp from public.corporations where id = p_corp;
+  if not found then raise exception 'That corporation no longer exists.'; end if;
+  if v_corp.status <> 'placed' then raise exception 'That firm has not started operations yet.'; end if;
+  if v_corp.type = 'pr' then raise exception 'That corporation is already private.'; end if;
+  update public.corporations set type = 'pr' where id = p_corp;
+  perform public._corp_event(v_corp.nation_id,
+    'The government of ' || coalesce((select name from public.nations where id = v_corp.nation_id), v_corp.nation_id)
+    || ' has completed the sale of ' || v_corp.name || ' to investors, bringing in much needed competition into the ' || v_corp.category || ' sector.');
+end $$;
+
 revoke all on function public._corp_apply_bonus(public.corporations, int) from public, anon, authenticated;
 grant execute on function public.corp_create(text, text, text, text, text, numeric, numeric, int, text, int) to authenticated;
 grant execute on function public.corp_delete(uuid) to authenticated;
+grant execute on function public.corp_nationalize(uuid) to authenticated;
+grant execute on function public.corp_privatize(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Phase 2c · The corporations tick (called by advance_tick, schema/60):
@@ -222,6 +305,7 @@ begin
     if coalesce(v_clim, 0) >= 0.5 then
       update public.corporations set status = 'placed', roll_m = null where id = r.id;
       perform public._corp_apply_bonus(r, 1);   -- r still carries size/category/nation_id
+      perform public._corp_started_event(r.nation_id, r.name, r.category);
     end if;
   end loop;
 
@@ -230,6 +314,9 @@ begin
     v_growth  := public._corp_growth(r.drift, r.debt, coalesce(v_clim, 0));
     v_newcash := round(r.cash * (1 + v_growth / 100.0), 4);
     if r.type = 'pr' and v_newcash <= 0 then
+      perform public._corp_event(r.nation_id,
+        'Bad news from ' || coalesce((select name from public.nations where id = r.nation_id), r.nation_id)
+        || ' as ' || r.name || ', a ' || r.category || ' titan, has ceased operations, liquidating its assets and defaulting on its debts.');
       perform public._corp_apply_bonus(r, -1);
       delete from public.corporations where id = r.id;
     else

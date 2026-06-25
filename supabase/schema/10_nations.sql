@@ -24,6 +24,7 @@ create table if not exists public.nations (
   stats          jsonb not null default '{}'::jsonb, -- {prosperity, welfare, order, image, growth}
   economy        jsonb not null default '{}'::jsonb, -- {regime, inflation, unemployment, tax, budget, debt, income, currency}
   production     jsonb not null default '{}'::jsonb, -- {energy, food, minerals, goods, services, diplomacy}
+  dormant        boolean not null default false,     -- a fully-authored nation hidden until activated (e.g. a breakaway a crisis spawns). The tick skips it for crisis-fire, elections + income; passive policy/modifier economics still tick (minor drift) until activation (schema/99).
   created_at     timestamptz not null default now()
 );
 -- For installs created before these columns existed.
@@ -37,6 +38,7 @@ alter table public.nations add column if not exists production jsonb not null de
 alter table public.nations add column if not exists next_election_tick int;
 alter table public.nations add column if not exists ruling_party text;
 alter table public.nations add column if not exists former_ruling_party text;
+alter table public.nations add column if not exists dormant boolean not null default false;
 -- Population may be fractional (millions, e.g. 24.5) — widen the legacy bigint.
 alter table public.nations alter column population type numeric using population::numeric;
 -- The active-party count is derived live from public.parties (one source), not
@@ -44,10 +46,6 @@ alter table public.nations alter column population type numeric using population
 alter table public.nations drop column if exists active_parties;
 
 alter table public.nations enable row level security;
-
--- Anyone may read the nation roster (public game data).
-drop policy if exists "nations_select_all" on public.nations;
-create policy "nations_select_all" on public.nations for select using (true);
 
 -- Is the signed-in user the site admin? Used to gate nation creation from the
 -- /adminsetup page. The admin is identified server-side by email (read from
@@ -66,6 +64,14 @@ as $$
   );
 $$;
 grant execute on function public.is_admin() to authenticated;
+
+-- Read the nation roster (public game data) — EXCEPT dormant nations, which stay
+-- hidden from players until activated; only the admin sees them (to author + link a
+-- breakaway state to a crisis). Security-definer runtime functions bypass RLS, so the
+-- tick and crisis activation read dormant nations regardless. Defined after is_admin().
+drop policy if exists "nations_select_all" on public.nations;
+create policy "nations_select_all" on public.nations for select
+  using (not coalesce(dormant, false) or public.is_admin());
 
 -- Only the admin may add a nation. The base INSERT grant is harmless on its own —
 -- this WITH CHECK is the real gate, so a non-admin's insert is rejected even with
