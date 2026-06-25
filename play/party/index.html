@@ -162,6 +162,14 @@
   .acard__stats .v{font-weight:800;font-size:15px;letter-spacing:-.01em;margin-top:3px}
   .acard__stats .v small{font-weight:700;font-size:10px;color:var(--soft)}
   .acard__stats .v.nm{font-size:12px}
+  /* A rival's adopted convictions — reuses the manifesto's .cvcard look (read-only,
+     no Adopt button). The cards inherit the rival's --c from the parent .acard. */
+  .acv{margin-top:14px;border-top:1px solid var(--line);padding-top:13px}
+  .acv__h{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);font-weight:700;margin-bottom:10px}
+  .acv__h b{color:var(--c)}
+  .acv__none{font-size:12px;color:var(--muted);line-height:1.55;font-style:italic}
+  .acv .cvcard{margin-bottom:8px}
+  .acv .cvcard:last-child{margin-bottom:0}
 
   /* Two-column body: the standings panels on the left, the Manifesto on the right. */
   .cols{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:16px;align-items:start;margin-top:16px}
@@ -632,9 +640,36 @@
     legend.innerHTML = leg;
   }
 
+  // A rival's adopted conviction as a compact, read-only card — same effect wording
+  // and look as the manifesto (cvEffHtml + the conviction helpers are the ONE source),
+  // minus the Adopt button. The badge shows the tree + Level instead of a cost.
+  function rivalConvCard(d) {
+    d = d || {};
+    var lines = adoptLines(d).concat(activeLines(d)).concat(lawLines(d));
+    var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
+    var lvl = Math.min(5, Math.max(1, Number(d.level) || 1));
+    var tag = (d.archetype ? esc(d.archetype) + ' · ' : '') + 'Lv ' + convRoman(lvl);
+    return '<div class="cvcard">' +   // left border inherits the rival's --c (party colour)
+      '<div class="cvcard__hd"><b>' + esc(d.name || 'Untitled') + '</b><span class="cvcost">' + tag + '</span></div>' +
+      (d.desc ? '<div class="cvcard__desc">' + esc(d.desc) + '</div>' : '') +
+      '<div class="cvcard__eff">' + eff + '</div></div>';
+  }
+  // The convictions block for one rival card. rows is that party's adopted convictions
+  // ([{id, definition}]), or undefined when the data couldn't be loaded (omit the block
+  // rather than imply the party has none).
+  function rivalConvSection(rows) {
+    if (!rows) return '';
+    if (!rows.length) return '<div class="acv"><div class="acv__h">Convictions</div>' +
+      '<div class="acv__none">No convictions yet — a pragmatic, unaligned party.</div></div>';
+    var by = convsByLevel(rows), ordered = [];
+    [1, 2, 3, 4, 5].forEach(function (lvl) { ordered = ordered.concat(by[lvl]); });
+    return '<div class="acv"><div class="acv__h">Convictions <b>· ' + rows.length + '</b></div>' +
+      ordered.map(function (r) { return rivalConvCard(r.definition); }).join('') + '</div>';
+  }
+
   // The Other Parties: one card per rival party in the nation (real data only;
   // relations/dossiers aren't modelled yet, so we show what we actually have).
-  function renderOtherParties(parties, myId, totalSeats, leaders) {
+  function renderOtherParties(parties, myId, totalSeats, leaders, convsByParty) {
     var others = parties.filter(function (p) { return p.id !== myId; })
       .sort(function (a, b) { return (b.seats || 0) - (a.seats || 0) || (b.popularity || 0) - (a.popularity || 0); });
     var box = document.getElementById('acards');
@@ -652,7 +687,9 @@
           '<div><div class="l">Seats</div><div class="v">' + (p.seats || 0) + '<small> / ' + totalSeats + '</small></div></div>' +
           '<div><div class="l">Popularity</div><div class="v">' + (Number(p.popularity) || 0) + '%</div></div>' +
           '<div><div class="l">Leader</div><div class="v nm">' + esc(leaders[p.id] || '—') + '</div></div>' +
-        '</div></div>';
+        '</div>' +
+        rivalConvSection(convsByParty && convsByParty[p.id]) +
+        '</div>';
     }).join('');
   }
 
@@ -912,7 +949,28 @@
         (leads || []).forEach(function (l) { leaders[l.party_id] = l.first_name + ' ' + l.last_name; });
       }
       renderAssembly(ap, party.id, totalSeats);
-      renderOtherParties(ap, party.id, totalSeats, leaders);
+
+      // Each rival's adopted convictions, keyed by party. Reuses the cached
+      // convictions catalogue (loadAllConv) to resolve each adoption to its
+      // definition. On any failure, leave it null so the cards omit the section.
+      var convsByParty = null;
+      if (partyIds.length) {
+        try {
+          await loadAllConv();
+          var defById = {};
+          (ALL_CONV || []).forEach(function (r) { defById[r.id] = r.definition; });
+          const { data: pcs, error: pcErr } = await supabase.from('party_convictions')
+            .select('party_id, conviction_id').in('party_id', partyIds);
+          if (pcErr) throw pcErr;
+          convsByParty = {};
+          partyIds.forEach(function (id) { convsByParty[id] = []; });
+          (pcs || []).forEach(function (pc) {
+            var def = defById[pc.conviction_id];
+            if (def && convsByParty[pc.party_id]) convsByParty[pc.party_id].push({ id: pc.conviction_id, definition: def });
+          });
+        } catch (e) { convsByParty = null; }
+      }
+      renderOtherParties(ap, party.id, totalSeats, leaders, convsByParty);
 
       if (nation && nation.flag) {
         var flag = document.getElementById('flag');
