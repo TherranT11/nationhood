@@ -23,9 +23,15 @@ create table if not exists public.corporations (
   drift       int     not null default 0,       -- the firm's own trajectory; corpGrowth() in corporations.js reads this. Phase 2 applies it per tick
   status      text    not null default 'placed',-- 'placed' | 'queued'
   roll_m      int,                              -- queued: rolled startup cash in $M (1D60+20); null once placed
+  director    text,                             -- the NPC director's name, drawn from the nation's name pool at creation
+  acumen      int,                              -- the director's Acumen competency, 1D4 (1–4)
   created_at  timestamptz not null default now()
 );
 create index if not exists corporations_nation_idx on public.corporations (nation_id);
+-- Director columns are additive so existing deployments pick them up on re-apply;
+-- corp_create seeds them, and supabase/backfill_corp_directors.sql fills legacy rows.
+alter table public.corporations add column if not exists director text;
+alter table public.corporations add column if not exists acumen   int;
 
 -- RLS: everyone reads (the World/Corporations register is public); only admins write
 -- directly. The Phase 2 tick functions run security definer, so they bypass these.
@@ -95,7 +101,10 @@ returns jsonb language sql stable security definer set search_path = public as $
       select jsonb_agg(jsonb_build_object(
           'name', c.name, 'type', c.type, 'size', c.size, 'category', c.category,
           'cash', c.cash, 'debt', c.debt,
-          'growth', public._corp_growth(c.drift, c.debt, public._business_climate(p_nation))
+          'growth', public._corp_growth(c.drift, c.debt, public._business_climate(p_nation)),
+          -- Director: an NPC who runs the firm (no player party, no age modelled yet).
+          'director_name', c.director, 'director_acu', c.acumen,
+          'director_party', null, 'director_age', null
         ) order by c.created_at)
       from public.corporations c
       where c.nation_id = p_nation and c.status = 'placed'
@@ -155,11 +164,18 @@ end $$;
 create or replace function public.corp_create(p_nation text, p_name text, p_category text, p_type text,
   p_size text, p_cash numeric, p_debt numeric, p_drift int, p_status text, p_roll_m int)
 returns uuid language plpgsql security definer set search_path = public as $$
-declare v_corp public.corporations;
+declare v_corp public.corporations; v_first text; v_last text; v_director text;
 begin
   if not public.is_admin() then raise exception 'admin only'; end if;
-  insert into public.corporations (nation_id, name, category, type, size, cash, debt, drift, status, roll_m)
-  values (p_nation, p_name, p_category, p_type, p_size, p_cash, p_debt, p_drift, coalesce(p_status,'placed'), p_roll_m)
+  -- Seed an NPC director: a random name from the nation's pool + 1D4 Acumen. Applies
+  -- whether the firm is placed now or queued onto the generation list (it carries the
+  -- director through to release). Null name only if the nation has no names seeded yet.
+  select name into v_first from public.nation_names where nation_id = p_nation and kind in ('male', 'female') order by random() limit 1;
+  select name into v_last  from public.nation_names where nation_id = p_nation and kind = 'surname'          order by random() limit 1;
+  v_director := nullif(btrim(concat_ws(' ', v_first, v_last)), '');
+  insert into public.corporations (nation_id, name, category, type, size, cash, debt, drift, status, roll_m, director, acumen)
+  values (p_nation, p_name, p_category, p_type, p_size, p_cash, p_debt, p_drift, coalesce(p_status,'placed'), p_roll_m,
+          v_director, floor(random() * 4)::int + 1)
   returning * into v_corp;
   if v_corp.status = 'placed' then perform public._corp_apply_bonus(v_corp, 1); end if;
   return v_corp.id;
@@ -222,3 +238,5 @@ begin
   end loop;
 end $$;
 revoke all on function public._apply_corp_tick() from public, anon, authenticated;
+
+notify pgrst, 'reload schema';
