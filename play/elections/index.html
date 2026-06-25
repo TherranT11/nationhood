@@ -50,6 +50,25 @@
   .thresh p{font-size:13.5px;color:var(--muted);line-height:1.5}
   .thresh p b{color:var(--ink)}
 
+  /* Electoral history: a stacked-column trend of the last 5 elections + a
+     breakdown of the most recent result with each party's change in seats. */
+  .eh-empty{font-size:13.5px;color:var(--muted);line-height:1.55}
+  .eh-graph{display:flex;gap:14px;align-items:stretch;height:170px;overflow-x:auto;padding-bottom:4px}
+  .eh-col{flex:1 0 auto;min-width:52px;display:flex;flex-direction:column;gap:8px}
+  .eh-bar{flex:1;width:100%;display:flex;flex-direction:column;border-radius:8px;overflow:hidden;background:var(--chip);border:1px solid var(--line);min-height:0}
+  .eh-seg{width:100%;min-height:2px}
+  .eh-xlbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);text-align:center}
+  .eh-xlbl b{display:block;color:var(--ink);font-size:13px;letter-spacing:-.01em}
+  .eh-bd{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+  .eh-bd-hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
+  .eh-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .eh-row:last-child{border-bottom:none}
+  .eh-sw{width:11px;height:11px;border-radius:3px;flex:none}
+  .eh-nm{flex:1;min-width:0;font-weight:700;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .eh-st{font-family:'Space Mono',monospace;font-weight:700;font-size:14px}
+  .eh-d{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;min-width:48px;text-align:right}
+  .eh-d.up{color:var(--green)} .eh-d.dn{color:var(--red)} .eh-d.flat{color:var(--soft)} .eh-d.new{color:var(--indigo)}
+
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill, and spread the projection stats evenly. */
   @media(max-width:560px){
@@ -99,6 +118,11 @@
       <div class="mod__hd"><span id="freqHd">Electoral Frequency</span><span class="r">National rule</span></div>
       <div class="thresh"><span class="thpill" id="freqPill">—</span><p id="freqText"></p></div>
     </section>
+
+    <section class="mod">
+      <div class="mod__hd"><span id="histHd">Electoral History</span><span class="r">Last 5 elections</span></div>
+      <div id="ehBody"><p class="eh-empty">Loading…</p></div>
+    </section>
   </main>
 </div>
 
@@ -107,10 +131,81 @@
   import { tickToDate, esc } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { ideologyLabel } from '/archetypes.js';
+  import { ideologyLabel, partyColor } from '/archetypes.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
+
+  // ---- Electoral history: the last few elections from election_results, charted
+  // as one stacked seat-column per election plus a breakdown of the most recent
+  // result (each party's seats and its change since the election before). The table
+  // accrues forward — it shows an empty state until the first election resolves.
+  async function renderHistory(nationId, ruling) {
+    var box = document.getElementById('ehBody');
+    if (ruling) document.getElementById('histHd').textContent = 'Congress History';
+    var rows;
+    try {
+      const { data, error } = await supabase.from('election_results')
+        .select('tick, year, party_id, party_name, seats')
+        .eq('nation_id', nationId).order('tick', { ascending: true });
+      if (error) throw error;
+      rows = data || [];
+    } catch (e) { box.innerHTML = '<p class="eh-empty">Couldn’t load the electoral history right now.</p>'; return; }
+    if (!rows.length) {
+      box.innerHTML = '<p class="eh-empty">No ' + (ruling ? 'Party Congress has' : 'elections have') +
+        ' been held yet. Results will appear here once the first ' + (ruling ? 'Congress' : 'general election') + ' resolves.</p>';
+      return;
+    }
+
+    // Colours for parties that still exist (a dissolved party shows neutral grey).
+    var colorById = {};
+    try {
+      const { data: pc } = await supabase.from('parties').select('id, color, archetype').eq('nation_id', nationId);
+      (pc || []).forEach(function (p) { colorById[p.id] = partyColor(p); });
+    } catch (e) { /* colours fall back to grey */ }
+    function colorOf(r) { return (r.party_id && colorById[r.party_id]) || '#8d8d95'; }
+
+    // Group rows into one election per tick, oldest → newest.
+    var byTick = {};
+    rows.forEach(function (r) { (byTick[r.tick] = byTick[r.tick] || { tick: r.tick, year: r.year, parties: [] }).parties.push(r); });
+    var elections = Object.keys(byTick).map(function (k) { return byTick[k]; }).sort(function (a, b) { return a.tick - b.tick; });
+    elections.forEach(function (e) {
+      e.parties.sort(function (a, b) { return b.seats - a.seats; });
+      e.total = e.parties.reduce(function (s, p) { return s + p.seats; }, 0);
+    });
+    var prevOf = {};   // each election → the one immediately before it (for deltas), over the FULL history
+    elections.forEach(function (e, i) { prevOf[e.tick] = i > 0 ? elections[i - 1] : null; });
+    // A party's seats in a given election (0 if it held none — those aren't stored).
+    function seatsIn(e, r) {
+      if (!e) return null;
+      var m = e.parties.filter(function (x) { return (r.party_id && x.party_id === r.party_id) || x.party_name === r.party_name; })[0];
+      return m ? m.seats : 0;
+    }
+
+    var show = elections.slice(-5);   // the last five for the chart
+    var graph = show.map(function (e) {
+      var segs = e.parties.map(function (r) {
+        var pct = e.total > 0 ? (r.seats / e.total * 100) : 0;
+        return '<div class="eh-seg" style="height:' + pct + '%;background:' + colorOf(r) + '" title="' + esc(r.party_name) + ' · ' + r.seats + ' seats"></div>';
+      }).join('');
+      return '<div class="eh-col"><div class="eh-bar">' + segs + '</div><div class="eh-xlbl"><b>' + e.year + '</b>' + e.total + ' seats</div></div>';
+    }).join('');
+
+    // Breakdown of the most recent election: each party's seats + change vs the prior one.
+    var latest = show[show.length - 1], prev = prevOf[latest.tick];
+    var bd = latest.parties.map(function (r) {
+      var before = seatsIn(prev, r), d = (before == null) ? null : r.seats - before;
+      var delta = (d == null) ? '<span class="eh-d new">new</span>'
+        : d > 0 ? '<span class="eh-d up">▲ ' + d + '</span>'
+        : d < 0 ? '<span class="eh-d dn">▼ ' + Math.abs(d) + '</span>'
+        : '<span class="eh-d flat">▬ 0</span>';
+      return '<div class="eh-row"><span class="eh-sw" style="background:' + colorOf(r) + '"></span>' +
+        '<span class="eh-nm">' + esc(r.party_name) + '</span><span class="eh-st">' + r.seats + '</span>' + delta + '</div>';
+    }).join('');
+
+    box.innerHTML = '<div class="eh-graph">' + graph + '</div>' +
+      '<div class="eh-bd"><div class="eh-bd-hd">Most recent · ' + latest.year + (prev ? ' (change since ' + prev.year + ')' : '') + '</div>' + bd + '</div>';
+  }
 
   (async () => {
     if (!isConfigured) return;
@@ -195,6 +290,9 @@
       document.getElementById('freqText').innerHTML = ruling
         ? '<b>' + esc(ruling) + '</b> holds a Party Congress every <b>' + freq + ' months</b>.'
         : 'National elections in <b>' + esc(nationName) + '</b> are held every <b>' + freq + ' months</b>.';
+
+      // Past results (own try/catch + empty state inside — never blocks the page).
+      renderHistory(party.nation_id, ruling);
     } catch (e) {
       document.getElementById('candnote').textContent = 'Could not load the election picture right now. Refresh to try again.';
     }
