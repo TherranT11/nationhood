@@ -2115,12 +2115,11 @@
       return Array.prototype.slice.call(document.querySelectorAll('#m-effects .effrow')).map(rowEff);
     }
     // Live "What this modifier does" — the same echoes, consolidated under the effect list.
+    // The effect list always has at least one row (delete auto-re-adds), so no empty case.
     function renderModSummary() {
       var ul = document.getElementById('m-sumList');
       if (!ul) return;
-      var effs = readEffectRows();
-      ul.innerHTML = effs.length ? effs.map(function (e) { return '<li>' + effEcho(e) + '</li>'; }).join('')
-                                 : '<li style="color:var(--muted)">No effects yet.</li>';
+      ul.innerHTML = readEffectRows().map(function (e) { return '<li>' + effEcho(e) + '</li>'; }).join('');
     }
     document.getElementById('m-addEffect').addEventListener('click', function () { addEffectRow(); });
     setEffectRows();   // start with one empty effect row
