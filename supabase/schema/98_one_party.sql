@@ -3,14 +3,16 @@
 -- (parties.pop_ceiling), 40 (events, current_game_date). Run after 40.
 --
 -- THE RULE: a nation is a one-party state iff its regime is 1–4 (One State / Functional
--- Autocracy's bottom). The admin makes a nation one-party by setting regime ≤ 4; it
--- erodes there organically through policy effects too. ruling_party is DERIVED from the
--- regime — it's never an independent toggle. _sync_one_party_state() reconciles the two:
---   regime ≤ 4 and not yet one-party → install the largest party as the ruling party
+-- Autocracy's bottom) OR 24–25 (an ABSOLUTE MONARCHY — the monarch's party rules alone).
+-- Constitutional monarchies (21–23) are ordinary multiparty democracies. The admin makes a
+-- nation one-party by setting the regime into either band; it erodes to the autocratic
+-- floor organically through policy effects too. ruling_party is DERIVED from the regime —
+-- it's never an independent toggle. _sync_one_party_state() reconciles the two:
+--   regime ≤ 4 or ≥ 24, not yet one-party → install the largest party as the ruling party
 --                                      (its name → nations.ruling_party; its ceiling → 100);
 --                                      everyone else is now a faction of it (a faction IS a
 --                                      party row — no data moves).
---   regime ≥ 5 and currently one-party → restore multiparty: clear ruling_party, name the
+--   regime 5–23 and currently one-party → restore multiparty: clear ruling_party, name the
 --                                        former ruler in former_ruling_party (for the relaunch
 --                                        copy), and flag every OTHER party awaiting_relaunch so
 --                                        it may relaunch as a full party. The former ruler is
@@ -43,7 +45,10 @@ begin
   if v_raw is null or v_raw !~ '^-?[0-9]+(\.[0-9]+)?$' then return; end if;
   v_regime := v_raw::numeric;
 
-  if v_regime <= 4 then
+  -- One-party iff the regime is at the autocratic floor (1–4) OR an ABSOLUTE MONARCHY
+  -- (24–25): both are sole-ruler states where players join as factions of the ruling
+  -- party (the monarch's). Constitutional monarchies (21–23) stay multiparty democracies.
+  if v_regime <= 4 or v_regime >= 24 then
     -- Becoming a one-party state. No-op if it already is one. NOTE (accepted by design):
     -- a non-null ruling_party is treated as AUTHORITATIVE and never re-derived — this is
     -- what lets the admin name the ruling party directly in the /adminsetup form. The
@@ -69,7 +74,9 @@ begin
 
       insert into public.events (nation_id, party_id, kind, body, game_date)
         values (p_nation, v_ruler_id, 'government',
-                'With democracy extinguished, ' || v_nname || ' is now a one-party state under the ' || v_ruler_name || '.',
+                case when v_regime >= 24
+                     then v_nname || ' has been proclaimed an absolute monarchy under the ' || v_ruler_name || '.'
+                     else 'With democracy extinguished, ' || v_nname || ' is now a one-party state under the ' || v_ruler_name || '.' end,
                 public.current_game_date());
     end if;
   else
