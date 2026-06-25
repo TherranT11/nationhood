@@ -355,4 +355,29 @@ begin
 end $$;
 grant execute on function public.crisis_act(uuid, int, int) to authenticated;
 
+-- Admin override: begin a crisis on a chosen nation right now, ignoring its triggers
+-- (the Crisis Builder's "Enable crisis" button). (Re)starts it at stage 1, active, and
+-- announces it — the normal tick takes over the escalation from there. Admin-only;
+-- dormant nations are inert, so they're rejected.
+create or replace function public.crisis_force_fire(p_crisis uuid, p_nation text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_name text; v_dormant boolean;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  select dormant into v_dormant from public.nations where id = p_nation;
+  if not found then raise exception 'That nation does not exist.'; end if;
+  if v_dormant then raise exception 'That nation is dormant — activate it before starting a crisis there.'; end if;
+  select definition->>'name' into v_name from public.crises where id = p_crisis;
+  if not found then raise exception 'That crisis no longer exists.'; end if;
+
+  insert into public.nation_crises (nation_id, crisis_id, stage, meter, status)
+       values (p_nation, p_crisis, 1, 0, 'active')
+  on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active';
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (p_nation, null, 'crisis',
+          'A crisis has emerged: ' || coalesce(v_name, 'Unnamed Crisis') || '.',
+          public.current_game_date(), 'warn');
+end $$;
+grant execute on function public.crisis_force_fire(uuid, text) to authenticated;
+
 notify pgrst, 'reload schema';

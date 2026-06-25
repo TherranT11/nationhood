@@ -646,6 +646,13 @@
                     <div id="cbStage"></div>
                   </div>
                   <button class="save" id="cbSave" type="button">Save crisis</button>
+                  <div class="card" style="margin-top:14px">
+                    <div class="sechd">Begin now <span class="hint">admin override — starts this saved crisis on a nation immediately, ignoring triggers</span></div>
+                    <div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+                      <select id="cbFireNation" style="flex:1;min-width:160px"></select>
+                      <button class="btn btn-solid" id="cbFireBtn" type="button">Enable crisis</button>
+                    </div>
+                  </div>
                 </div>
                 <aside><div class="rail"><div class="rh">Preview</div><div class="rb" id="cbPrev"></div></div></aside>
               </div>
@@ -2049,7 +2056,7 @@
         return c;
       }
 
-      var CRISIS = null, activeStage = 0, crisEditingId = null, crisSaving = false, crisCache = [], crisNations = [];
+      var CRISIS = null, activeStage = 0, crisEditingId = null, crisSaving = false, crisCache = [], crisNations = [], crisFiring = false;
 
       function avgGrowth(g) { return g === 'd3' ? 2 : g; }
       function ticksToNext(g, at) { var a = avgGrowth(g), T = at || 10; return a > 0 ? Math.ceil(T / a) : '—'; }
@@ -2102,6 +2109,20 @@
         } catch (e) { setCrisNote('Save failed: ' + (e.message || e), 'error'); }
         crisSaving = false;
       }
+      // Admin override — begin the (saved) crisis on the chosen nation right now.
+      async function forceFireCrisis() {
+        if (crisFiring) return;
+        if (!crisEditingId) { setCrisNote('Save the crisis first, then begin it.', 'error'); return; }
+        var nat = document.getElementById('cbFireNation').value;
+        if (!nat) { setCrisNote('Pick a live nation to begin the crisis in.', 'error'); return; }
+        crisFiring = true; setCrisNote('Beginning crisis…');
+        try {
+          const { error } = await supabase.rpc('crisis_force_fire', { p_crisis: crisEditingId, p_nation: nat });
+          if (error) throw error;
+          setCrisNote('Crisis “' + (CRISIS.name || 'crisis') + '” begun in ' + ((crisNationById(nat) || {}).name || nat) + '. It escalates from the next tick.', 'ok');
+        } catch (e) { setCrisNote('Couldn’t begin the crisis: ' + (e.message || e), 'error'); }
+        crisFiring = false;
+      }
       async function removeCrisis(id) {
         if (!confirm('Delete this crisis?')) return;
         try {
@@ -2124,6 +2145,11 @@
           return '<option value="' + esc(n.id) + '"' + (CRISIS.nation === n.id ? ' selected' : '') + '>' + esc(n.name || n.id) + (n.dormant ? ' (dormant)' : '') + '</option>';
         }).join('');
         ns.onchange = function () { CRISIS.nation = this.value || null; renderPreview(); };
+        // "Begin now" nation picker — live (non-dormant) nations only.
+        var live = crisNations.filter(function (n) { return !n.dormant; });
+        document.getElementById('cbFireNation').innerHTML = live.length
+          ? live.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('')
+          : '<option value="">— no live nations —</option>';
         renderTriggers(); renderTabs(); renderStage(); renderPreview();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -2323,6 +2349,7 @@
       // New / add-condition / Save buttons live in the static tab markup; wire them once.
       var nb = document.getElementById('cbNew'); if (nb) nb.onclick = function () { openCrisis(blankCrisis(), null); };
       var sb = document.getElementById('cbSave'); if (sb) sb.onclick = saveCrisis;
+      var fb = document.getElementById('cbFireBtn'); if (fb) fb.onclick = forceFireCrisis;
       var at = document.getElementById('cbAddTrig'); if (at) at.onclick = function () { if (!CRISIS) return; CRISIS.triggers.push({ target: 'Order', op: '<', value: 8 }); renderTriggers(); renderPreview(); };
 
       return loadCrises;
