@@ -471,6 +471,11 @@ begin
   -- tick's stat changes, so it rewards the month's net movement.
   begin perform public._apply_conviction_triggers(v_tick);
   exception when others then raise warning 'tick %: conviction triggers failed — %', v_tick, sqlerrm; end;
+  -- Crises (schema/99): fire any whose triggers are now all true, then climb each active
+  -- crisis's meter and escalate stages. Runs last, on this tick's settled stats; its own
+  -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
+  begin perform public._apply_crisis_tick(v_tick);
+  exception when others then raise warning 'tick %: crises failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
