@@ -101,12 +101,27 @@ begin
 end $$;
 revoke all on function public._nation_stat_get(text, text) from public, anon, authenticated;
 
+-- ONE op-comparison for crisis conditions (triggers + the "ends if" resolvers). Accepts
+-- both the ASCII (<=, >=) and the UI's unicode (≤, ≥) forms — the Crisis Builder emits the
+-- unicode ones, so handling them here is what makes ≤/≥ conditions actually evaluate.
+create or replace function public._crisis_cmp(p_cur numeric, p_op text, p_val numeric)
+returns boolean language sql immutable as $$
+  select case p_op
+    when '<'  then p_cur <  p_val
+    when '<=' then p_cur <= p_val   when '≤' then p_cur <= p_val
+    when '>'  then p_cur >  p_val
+    when '>=' then p_cur >= p_val   when '≥' then p_cur >= p_val
+    when '='  then p_cur =  p_val   when '==' then p_cur =  p_val
+    when '!=' then p_cur <> p_val
+    else false end;
+$$;
+
 -- True when ALL of a crisis definition's triggers hold for the nation. A trigger is
 -- {target, op, value}; an unreadable target (null) fails the whole test. A crisis with
 -- no triggers never auto-fires (admin/manual seeding only).
 create or replace function public._crisis_triggers_met(p_nation text, p_def jsonb)
 returns boolean language plpgsql stable security definer set search_path = public as $$
-declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric; v_val numeric; v_op text; v_ok boolean;
+declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric;
 begin
   if v_trigs is null or jsonb_typeof(v_trigs) <> 'array' or jsonb_array_length(v_trigs) = 0 then
     return false;
@@ -114,19 +129,34 @@ begin
   for v_t in select value from jsonb_array_elements(v_trigs) loop
     v_cur := public._nation_stat_get(p_nation, v_t->>'target');
     if v_cur is null then return false; end if;
-    v_val := coalesce((v_t->>'value')::numeric, 0);
-    v_op  := coalesce(v_t->>'op', '>=');
-    v_ok  := case v_op
-               when '<'  then v_cur <  v_val   when '<=' then v_cur <= v_val
-               when '>'  then v_cur >  v_val   when '>=' then v_cur >= v_val
-               when '='  then v_cur =  v_val   when '==' then v_cur =  v_val
-               when '!=' then v_cur <> v_val   else false
-             end;
-    if not v_ok then return false; end if;
+    if not public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
+      return false;
+    end if;
   end loop;
   return true;
 end $$;
 revoke all on function public._crisis_triggers_met(text, jsonb) from public, anon, authenticated;
+
+-- True when ANY of a crisis definition's `endIf` resolvers holds — the "Crisis immediately
+-- ends if" conditions. Same {target, op, value} shape as triggers; an unreadable target is
+-- skipped (doesn't resolve, doesn't block). No endIf → never auto-resolves.
+create or replace function public._crisis_resolve_met(p_nation text, p_def jsonb)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare v_ends jsonb := p_def->'endIf'; v_t jsonb; v_cur numeric;
+begin
+  if v_ends is null or jsonb_typeof(v_ends) <> 'array' or jsonb_array_length(v_ends) = 0 then
+    return false;
+  end if;
+  for v_t in select value from jsonb_array_elements(v_ends) loop
+    v_cur := public._nation_stat_get(p_nation, v_t->>'target');
+    if v_cur is not null
+       and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
+      return true;
+    end if;
+  end loop;
+  return false;
+end $$;
+revoke all on function public._crisis_resolve_met(text, jsonb) from public, anon, authenticated;
 
 -- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at
 -- 0); every other target rides _apply_policy_effect (schema/91) — the single source for
@@ -243,6 +273,16 @@ begin
      where nc.status = 'active'
   loop
     begin
+      -- "Crisis immediately ends if": resolvers checked first, so even a persistent
+      -- terminal crisis can subside once the nation recovers past an endIf threshold.
+      if public._crisis_resolve_met(v_active.nation_id, v_active.definition) then
+        update public.nation_crises set status = 'resolved' where id = v_active.id;
+        insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+        values (v_active.nation_id, null, 'crisis',
+                'The crisis has subsided: ' || coalesce(v_active.definition->>'name', 'Unnamed Crisis') || '.',
+                public.current_game_date(), 'pos');
+        continue;
+      end if;
       if v_active.stage >= 5 then continue; end if;   -- terminal: inert until Phase 2
       v_def    := v_active.definition;
       v_stage  := v_def->'stages'->(v_active.stage - 1);   -- stages is 0-indexed

@@ -641,6 +641,11 @@
                     <div class="addrow"><button class="add" id="cbAddTrig" type="button">+ condition</button></div>
                   </div>
                   <div class="card">
+                    <div class="sechd">Crisis immediately ends if <span class="hint">any of these becomes true — the crisis resolves at once</span></div>
+                    <div id="cbEndIf"></div>
+                    <div class="addrow"><button class="add" id="cbAddEnd" type="button">+ condition</button></div>
+                  </div>
+                  <div class="card">
                     <div class="sechd">Stages</div>
                     <div class="stabs" id="cbStabs"></div>
                     <div id="cbStage"></div>
@@ -2040,6 +2045,7 @@
         return {
           name: 'New Crisis', desc: '',
           triggers: [{ target: 'Government Confidence', op: '<', value: 20 }],
+          endIf: [],
           stages: [blankStage(), blankStage(), blankStage(), blankStage(), { descReached: '', reached: [], resolution: 'ends' }]
         };
       }
@@ -2049,6 +2055,7 @@
       function normalizeCrisis(def) {
         var c = (def && typeof def === 'object') ? def : blankCrisis();
         c.triggers = Array.isArray(c.triggers) ? c.triggers : [];
+        c.endIf = Array.isArray(c.endIf) ? c.endIf : [];
         c.stages = Array.isArray(c.stages) ? c.stages : [];
         for (var i = 0; i < 4; i++) { var s = c.stages[i] = c.stages[i] || blankStage(); s.actions = Array.isArray(s.actions) ? s.actions : []; }
         var t = c.stages[4] = c.stages[4] || { descReached: '', reached: [], resolution: 'ends' };
@@ -2150,15 +2157,15 @@
         document.getElementById('cbFireNation').innerHTML = live.length
           ? live.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name || n.id) + '</option>'; }).join('')
           : '<option value="">— no live nations —</option>';
-        renderTriggers(); renderTabs(); renderStage(); renderPreview();
+        renderTriggers(); renderEndIf(); renderTabs(); renderStage(); renderPreview();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 
-      // ----- triggers -----
-      function renderTriggers() {
-        var box = document.getElementById('cbTriggers'); box.innerHTML = '';
-        CRISIS.triggers.forEach(function (t, i) {
-          if (i > 0) { var a = document.createElement('div'); a.className = 'andtag'; a.textContent = 'AND'; box.appendChild(a); }
+      // ----- condition lists (triggers + "ends if") — one renderer, two callers -----
+      function renderCondList(list, boxId, joinWord, rerender) {
+        var box = document.getElementById(boxId); box.innerHTML = '';
+        list.forEach(function (t, i) {
+          if (i > 0) { var a = document.createElement('div'); a.className = 'andtag'; a.textContent = joinWord; box.appendChild(a); }
           var row = document.createElement('div'); row.className = 'trow';
           row.innerHTML = '<select class="tt">' + trigTgt(t.target) + '</select>' +
             '<select class="to">' + OPS.map(function (op) { return '<option' + (op === t.op ? ' selected' : '') + '>' + op + '</option>'; }).join('') + '</select>' +
@@ -2166,10 +2173,12 @@
           row.querySelector('.tt').onchange = function (e) { t.target = e.target.value; renderPreview(); };
           row.querySelector('.to').onchange = function (e) { t.op = e.target.value; renderPreview(); };
           row.querySelector('.tv').oninput = function (e) { t.value = parseFloat(e.target.value) || 0; renderPreview(); };
-          row.querySelector('.xb').onclick = function () { CRISIS.triggers.splice(i, 1); renderTriggers(); renderPreview(); };
+          row.querySelector('.xb').onclick = function () { list.splice(i, 1); rerender(); renderPreview(); };
           box.appendChild(row);
         });
       }
+      function renderTriggers() { renderCondList(CRISIS.triggers, 'cbTriggers', 'AND', renderTriggers); }
+      function renderEndIf()   { renderCondList(CRISIS.endIf,    'cbEndIf',    'OR',  renderEndIf); }
 
       // ----- stage tabs -----
       function renderTabs() {
@@ -2320,10 +2329,12 @@
       function renderPreview() {
         var box = document.getElementById('cbPrev');
         var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>AND ');
+        var ends = CRISIS.endIf.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>OR ');
         var scopeName = CRISIS.nation ? ((crisNationById(CRISIS.nation) || {}).name || CRISIS.nation) : '';
         var h = '<div class="pvname">' + esc(CRISIS.name || 'Untitled crisis') + '</div><div class="pvdesc">' + esc(CRISIS.desc || '') + '</div>' +
           '<div class="pvtrig"><div class="tl">Scope</div>' + (scopeName ? esc(scopeName) : 'Any nation (global)') + '</div>' +
-          '<div class="pvtrig"><div class="tl">Triggers when</div>' + (trig || '—') + '</div>';
+          '<div class="pvtrig"><div class="tl">Triggers when</div>' + (trig || '—') + '</div>' +
+          (CRISIS.endIf.length ? '<div class="pvtrig"><div class="tl">Ends when</div>' + ends + '</div>' : '');
         for (var i = 0; i < 4; i++) {
           var s = CRISIS.stages[i];
           h += '<div class="pvstage"><div class="sn">' + (i + 1) + '. ' + esc(s.name || '—') + '</div><div class="sg">climbs ' + growthLabel(s.growth) + '/tick · escalates at ' + (s.at || 10) + ' · ≈' + ticksToNext(s.growth, s.at) + ' ticks</div>';
@@ -2351,6 +2362,7 @@
       var sb = document.getElementById('cbSave'); if (sb) sb.onclick = saveCrisis;
       var fb = document.getElementById('cbFireBtn'); if (fb) fb.onclick = forceFireCrisis;
       var at = document.getElementById('cbAddTrig'); if (at) at.onclick = function () { if (!CRISIS) return; CRISIS.triggers.push({ target: 'Order', op: '<', value: 8 }); renderTriggers(); renderPreview(); };
+      var ae = document.getElementById('cbAddEnd'); if (ae) ae.onclick = function () { if (!CRISIS) return; CRISIS.endIf.push({ target: 'Order', op: '≥', value: 12 }); renderEndIf(); renderPreview(); };
 
       return loadCrises;
     })();
