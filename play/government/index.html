@@ -60,6 +60,9 @@
   .mrow .nm small{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
   .mrow .role{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);padding:4px 9px;border-radius:20px;white-space:nowrap}
   .mrow .sc{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--muted);min-width:34px;text-align:right}
+  /* The owner's OOC nickname shown after a party name — "Centrist Union (Theo)". */
+  .pnick{font-weight:600;color:var(--soft)}
+  .gov__id .pnick{font-size:.7em}
   .subhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:18px 0 2px}
 
   /* confidence rail */
@@ -233,9 +236,12 @@
     }).join('');
   }
 
+  // A party's OOC nickname suffix — " (Theo)" — when its owner has set one. ONE source.
+  function nickSuffix(p){ return (p && p.handle) ? ' <span class="pnick">(' + esc(p.handle) + ')</span>' : ''; }
+
   function memberRow(p, role, lead){
     return '<div class="mrow"><span class="dot" style="background:' + partyColor(p) + '"></span>' +
-      '<div class="nm"><b>' + esc(p.name) + '</b><small>' + esc(ideologyLabel(p)) + (p.abbreviation ? ' · ' + esc(p.abbreviation) : '') + '</small></div>' +
+      '<div class="nm"><b>' + esc(p.name) + '</b>' + nickSuffix(p) + '<small>' + esc(ideologyLabel(p)) + (p.abbreviation ? ' · ' + esc(p.abbreviation) : '') + '</small></div>' +
       (role ? '<span class="role"' + (lead ? '' : ' style="color:var(--muted);background:var(--chip)"') + '>' + role + '</span>' : '') +
       '<span class="sc">' + (p.seats || 0) + '</span></div>';
   }
@@ -416,7 +422,7 @@
       // 3 — Government & Coalition
       '<div class="panel gov">' +
         '<div class="gov__top"><span class="gov__emb">' + esc((formateur.abbreviation || formateur.name.slice(0,2)).toUpperCase()) + '</span>' +
-          '<div class="gov__id"><b>' + esc(formateur.name) + '</b><span>Holds the premiership · ' + esc(ideologyLabel(formateur)) + '</span></div>' +
+          '<div class="gov__id"><b>' + esc(formateur.name) + nickSuffix(formateur) + '</b><span>Holds the premiership · ' + esc(ideologyLabel(formateur)) + '</span></div>' +
           '<span class="gtype">' + typeLabel(govt.type) + '</span></div>' +
         '<div class="subhd">In government</div>' + members +
         (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
@@ -447,6 +453,12 @@
         .select('*').eq('nation_id', NATION_ID).eq('status', 'active').maybeSingle();
       const { data: parties } = await supabase.from('parties')
         .select('id, name, abbreviation, seats, archetype, in_government, color').eq('nation_id', NATION_ID);
+      // Owner OOC nicknames, keyed by party (cosmetic — a failure must never block the page).
+      try {
+        const { data: hrows } = await supabase.rpc('nation_party_handles', { p_nation: NATION_ID });
+        var handleById = {}; (hrows || []).forEach(function(h){ handleById[h.party_id] = h.handle; });
+        (parties || []).forEach(function(p){ p.handle = handleById[p.id] || null; });
+      } catch (e) { /* no nicknames shown */ }
       var agenda = [];
       if (govt) {
         const { data: ag } = await supabase.from('government_agenda')
