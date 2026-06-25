@@ -53,7 +53,7 @@ $$;
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; v_oldname text; v_newname text; v_opts jsonb; v_i int; r record;
+declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; v_oldname text; v_newname text; v_opts jsonb; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
   select definition into v_def from public.policies where id = p_policy;
@@ -148,19 +148,10 @@ begin
     v_opts := public._policy_options(v_def);
     if jsonb_typeof(v_opts) = 'array'
        and exists (select 1 from jsonb_array_elements(v_opts) o where o.value ? 'doorUp' or o.value ? 'doorDown') then
-      if p_option > v_old then                                  -- climbing: sum the up-doorways crossed
-        for v_i in v_old + 1 .. p_option loop
-          for r in select value as t from jsonb_array_elements(coalesce(v_opts -> v_i -> 'doorUp', '[]'::jsonb)) loop
-            perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
-          end loop;
-        end loop;
-      else                                                      -- cutting: sum the down-doorways crossed
-        for v_i in p_option .. v_old - 1 loop
-          for r in select value as t from jsonb_array_elements(coalesce(v_opts -> v_i -> 'doorDown', '[]'::jsonb)) loop
-            perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
-          end loop;
-        end loop;
-      end if;
+      -- One source for the walk (also used by law_transition_preview): the crossed doorways.
+      for r in select value as t from jsonb_array_elements(public._doorway_effects(v_def, v_old, p_option)) loop
+        perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+      end loop;
     else
       v_oldname := v_opts -> v_old    ->> 'name';
       v_newname := v_opts -> p_option ->> 'name';
@@ -179,6 +170,31 @@ begin
     end if;
   end if;
 end $$;
+
+-- The doorway effects a move p_from→p_to crosses, as a flat jsonb array of {t,v}: climbing
+-- sums each crossed option's doorUp, cutting each crossed option's doorDown. ONE source for
+-- the walk — _apply_law applies these; law_transition_preview returns them for the proposer.
+-- Empty for no move, or a policy with no doorways (legacy transitions are handled separately).
+create or replace function public._doorway_effects(p_def jsonb, p_from int, p_to int)
+returns jsonb language sql immutable as $$
+  select coalesce(jsonb_agg(e.value), '[]'::jsonb)
+  from generate_series(
+         case when p_to > p_from then p_from + 1 else p_to end,
+         case when p_to > p_from then p_to else p_from - 1 end
+       ) i
+  cross join lateral jsonb_array_elements(
+    coalesce(public._policy_options(p_def) -> i
+             -> (case when p_to > p_from then 'doorUp' else 'doorDown' end), '[]'::jsonb)
+  ) e;
+$$;
+
+-- RPC: the one-time transition (doorway) cost of a proposed move, for the proposal preview.
+-- Returns the flat {t,v} effects; the client renders them with scale 'flat'.
+create or replace function public.law_transition_preview(p_policy uuid, p_from int, p_to int)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select public._doorway_effects(definition, p_from, p_to) from public.policies where id = p_policy;
+$$;
+grant execute on function public.law_transition_preview(uuid, int, int) to anon, authenticated;
 
 -- Validate a policy + option index against the stored definition; return the
 -- policy's and option's display names (for the proposal title/payload).
