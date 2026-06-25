@@ -35,11 +35,16 @@ export function statBand(stat, value) {
   return value >= 11 ? 'good' : '';
 }
 
-// Regime — a single 1–20 democracy↔autocracy scale. Unlike the ladders above it
+// Regime — a single 1–25 democracy↔autocracy scale. Unlike the ladders above it
 // has named tiers at set thresholds (not one word per number); a value takes the
 // label of the highest tier it reaches. The number is the source (stored on the
-// nation); the words follow it. Listed high→low for the admin dropdown.
+// nation); the words follow it. Listed high→low for the admin dropdown. 21–25 are
+// the monarchy band, sitting above the republic tiers (Constitutional = democratic
+// crown; Absolute = a crown above even that). Monarchies are a flavour label — they
+// carry no special mechanics (still multiparty; the one-party switch stays at ≤4).
 export const REGIME_TIERS = [
+  { value: 24, label: 'Absolute Monarchy' },
+  { value: 21, label: 'Constitutional Monarchy' },
   { value: 20, label: 'Full Democracy' },
   { value: 17, label: 'Electoral Democracy' },
   { value: 14, label: 'Flawed Democracy' },

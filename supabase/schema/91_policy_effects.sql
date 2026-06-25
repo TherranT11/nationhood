@@ -10,7 +10,7 @@
 -- Law enactment (schema/92) calls this with 'once'; the per-tick pass will reuse
 -- the same core with 'tick' later — so the mapping/clamping lives in one spot.
 --
--- Clamp ranges: stats & regime 1..20; unemployment/inflation 0..100; budget &
+-- Clamp ranges: stats 1..20; regime 1..25 (21–25 = the monarchy band); unemployment/inflation 0..100; budget &
 -- income unbounded (deficits allowed); debt >= 0; production resources >= 0; government
 -- confidence 0..100; party popularity 0..100 (through the modifier ceiling/floor).
 -- ===========================================================================
@@ -76,7 +76,7 @@ begin
     -- Tax Burden % is DERIVED (base economy.tax + each policy's in-force option contribution;
     -- see nationTaxBurden in policies.js, _option_axis_level in schema/92), so it is never
     -- mutated as a delta here. A legacy effect that still targets it is simply ignored.
-    when 'Regime'         then perform public._nation_stat_add(p_nation, 'economy', 'regime',       v_v, 1, 20);
+    when 'Regime'         then perform public._nation_stat_add(p_nation, 'economy', 'regime',       v_v, 1, 25);  -- 21–25 = monarchy band
     when 'Budget', 'Debt', 'Income' then
       -- Money targets: scale the authored amount by nation size/wealth, then apply to
       -- the matching economy key (lower(v_t)). Debt floors at 0; budget & income are
