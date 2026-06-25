@@ -10,9 +10,12 @@
 -- Law enactment (schema/92) calls this with 'once'; the per-tick pass will reuse
 -- the same core with 'tick' later — so the mapping/clamping lives in one spot.
 --
--- Clamp ranges: stats 1..20; regime 1..25 (21–25 = the monarchy band); unemployment/inflation 0..100; budget &
--- income unbounded (deficits allowed); debt >= 0; production resources >= 0; government
--- confidence 0..100; party popularity 0..100 (through the modifier ceiling/floor).
+-- Clamp ranges: stats 1..20; regime 1..20 for AUTOMATED effects (policies, crises,
+-- convictions all route here) — the monarchy band (21–25) is law/admin-only territory, so
+-- an automated effect can neither crown a republic nor drift a crowned nation, see the
+-- Regime branch; unemployment/inflation 0..100; budget & income unbounded (deficits
+-- allowed); debt >= 0; production resources >= 0; government confidence 0..100; party
+-- popularity 0..100 (through the modifier ceiling/floor).
 -- ===========================================================================
 
 -- Money scaling for Budget/Debt/Income — MUST mirror polMoney() in adminsetup's authoring
@@ -59,7 +62,7 @@ declare
   v_t     text    := p_eff->>'t';
   v_v     numeric := coalesce((p_eff->>'v')::numeric, 0);
   v_scale text    := coalesce(p_eff->>'scale', 'flat');
-  v_pop numeric; v_pros numeric; v_amt numeric; v_old numeric; v_new numeric; r record;
+  v_pop numeric; v_pros numeric; v_amt numeric; v_old numeric; v_new numeric; v_rraw text; r record;
 begin
   if v_t is null or v_v = 0 then return; end if;
 
@@ -76,7 +79,16 @@ begin
     -- Tax Burden % is DERIVED (base economy.tax + each policy's in-force option contribution;
     -- see nationTaxBurden in policies.js, _option_axis_level in schema/92), so it is never
     -- mutated as a delta here. A legacy effect that still targets it is simply ignored.
-    when 'Regime'         then perform public._nation_stat_add(p_nation, 'economy', 'regime',       v_v, 1, 25);  -- 21–25 = monarchy band
+    when 'Regime'         then
+      -- Regime moves only within the republic range (1–20) under an automated effect. The
+      -- monarchy band (21–25) is law/admin-only: a republic can't organically cross into it,
+      -- and a nation already in the band is left untouched (so an effect can't crown or
+      -- dethrone a nation behind the legislature's back — that's propose_regime_change /
+      -- admin territory). A null/legacy regime is treated as a republic.
+      select economy->>'regime' into v_rraw from public.nations where id = p_nation;
+      if v_rraw is null or v_rraw !~ '^-?[0-9]+(\.[0-9]+)?$' or v_rraw::numeric <= 20 then
+        perform public._nation_stat_add(p_nation, 'economy', 'regime', v_v, 1, 20);
+      end if;
     when 'Budget', 'Debt', 'Income' then
       -- Money targets: scale the authored amount by nation size/wealth, then apply to
       -- the matching economy key (lower(v_t)). Debt floors at 0; budget & income are

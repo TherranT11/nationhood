@@ -38,7 +38,7 @@ create table if not exists public.proposals (
   id          uuid primary key default gen_random_uuid(),
   nation_id   text not null references public.nations (id) on delete cascade,
   party_id    uuid not null references public.parties (id) on delete cascade,  -- proposer
-  kind        text not null default 'declaration',   -- declaration | law (later)
+  kind        text not null default 'declaration',   -- declaration | law | regime (the monarchy special law)
   title       text not null,                          -- e.g. "Capital Name → Seyonne"
   payload     jsonb not null default '{}'::jsonb,     -- declaration: {slug, label, value}
   status      text not null default 'voting',         -- agenda | voting | passed | failed
@@ -93,6 +93,40 @@ returns void language sql security definer set search_path = public as $$
      set declarations = jsonb_set(coalesce(declarations, '{}'::jsonb), array[p_slug], to_jsonb(p_value), true)
    where id = p_nation;
 $$;
+
+-- Apply a passed monarchy special law — the only measure that crosses the republic/monarchy
+-- line on the regime scale (which automated effects can't cross; see schema/91). It moves the
+-- regime between 20 (Full Democracy — a republic) and 21 (Constitutional Monarchy) only. The
+-- band above (22–25) is admin-set, and an Absolute monarchy (24–25) is one-party, so the floor
+-- never reaches there. p_target was validated against the current regime in propose_regime_change;
+-- it's re-checked here so a stale measure (regime moved by admin since) can't apply an illegal
+-- jump — an out-of-range crossing is silently dropped (the generic "measure passed" line still
+-- fires, but the regime is left as-is). Announces the change as a government event.
+create or replace function public._apply_regime_change(p_nation text, p_target int)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_raw text; v_cur numeric; v_nname text;
+begin
+  if p_target not in (20, 21) then return; end if;
+  select economy->>'regime', name into v_raw, v_nname from public.nations where id = p_nation;
+  if not found then return; end if;
+  v_cur := case when v_raw ~ '^-?[0-9]+(\.[0-9]+)?$' then v_raw::numeric else null end;
+  if v_cur is null then return; end if;
+  -- Proclaim (→21) only from a republic (≤20); abolish (→20) only from a Constitutional
+  -- monarchy (21–23). Anything else (already there, or an Absolute monarchy) is a no-op.
+  if p_target = 21 and v_cur > 20 then return; end if;
+  if p_target = 20 and (v_cur < 21 or v_cur > 23) then return; end if;
+
+  -- One clamp source: _nation_stat_add applies the delta that lands exactly on p_target.
+  perform public._nation_stat_add(p_nation, 'economy', 'regime', p_target - v_cur, 1, 25);
+  insert into public.events (nation_id, kind, body, game_date)
+    values (p_nation, 'government',
+            case when p_target = 21
+                 then v_nname || ' has proclaimed a constitutional monarchy.'
+                 else v_nname || ' has abolished the monarchy and restored the republic.' end,
+            public.current_game_date());
+end $$;
+-- Internal: only _resolve_proposal calls it (the floor vote is the gate).
+revoke all on function public._apply_regime_change(text, int) from public, anon, authenticated;
 
 -- Seats currently held by parties in a nation — ONE source for the floor's tally
 -- and the vacant-chamber guard (a vote needs an elected, seated assembly).
@@ -167,6 +201,8 @@ begin
       perform public._apply_declaration(v_p.nation_id, v_p.payload->>'slug', v_p.payload->>'value');
     elsif v_p.kind = 'law' then
       perform public._apply_law(v_p.nation_id, (v_p.payload->>'policy_id')::uuid, (v_p.payload->>'option_idx')::int);
+    elsif v_p.kind = 'regime' then
+      perform public._apply_regime_change(v_p.nation_id, (v_p.payload->>'target')::int);
     end if;
     insert into public.events (nation_id, party_id, kind, body, game_date)
       values (v_p.nation_id, v_p.party_id, 'declaration',
@@ -264,6 +300,69 @@ begin
   return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.actions_remaining - 1);
 end $$;
 grant execute on function public.propose_declaration(text, text, boolean) to authenticated;
+
+-- Propose the monarchy special law — the only measure that crosses the republic/monarchy
+-- line on the regime scale. p_target is 21 (proclaim a Constitutional Monarchy, legal from a
+-- republic ≤20) or 20 (abolish it, legal from a Constitutional Monarchy 21–23). Absolute
+-- monarchies (24–25) are admin/one-party territory and have no floor measure. Mirrors
+-- propose_declaration: queue on the agenda (free) or open a floor vote now (1 action),
+-- proposer auto-votes Aye, then tally.
+create or replace function public.propose_regime_change(p_target int, p_to_floor boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_party public.parties%rowtype; v_raw text; v_cur numeric; v_title text;
+  v_pid uuid; v_res text; v_curtick int; v_sched int;
+begin
+  if p_target not in (20, 21) then raise exception 'Unknown regime measure.'; end if;
+  select current_tick into v_curtick from public.game_state where id;
+
+  -- Lock the proposer's party first (resolving their nation), then check the crossing is
+  -- legal from the nation's CURRENT regime. A floor measure also needs a seated chamber.
+  if p_to_floor then
+    v_party := public._begin_action(0);          -- requires >= 1 action
+    if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election before bringing measures to the floor.'; end if;
+  else
+    v_party := public._lock_party();
+  end if;
+
+  select economy->>'regime' into v_raw from public.nations where id = v_party.nation_id;
+  v_cur := case when v_raw ~ '^-?[0-9]+(\.[0-9]+)?$' then v_raw::numeric else null end;
+  if v_cur is null then raise exception 'This nation''s regime is not a numeric rank — an admin must set it first.'; end if;
+  if p_target = 21 then
+    if v_cur > 20 then raise exception 'This nation is already a monarchy.'; end if;
+    v_title := 'Proclaim a Constitutional Monarchy';
+  else
+    if v_cur < 21 or v_cur > 23 then raise exception 'Only a constitutional monarchy can be abolished on the floor.'; end if;
+    v_title := 'Abolish the Monarchy';
+  end if;
+
+  if not p_to_floor then
+    select greatest(v_curtick + 1, coalesce(max(scheduled_tick), v_curtick) + 1)
+      into v_sched from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
+  end if;
+
+  insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
+    values (v_party.nation_id, v_party.id, 'regime', v_title,
+            jsonb_build_object('target', p_target),
+            case when p_to_floor then 'voting' else 'agenda' end,
+            case when p_to_floor then v_curtick else null end,
+            case when p_to_floor then null else v_sched end)
+    returning id into v_pid;
+
+  if not p_to_floor then
+    return jsonb_build_object('id', v_pid, 'status', 'agenda', 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining);
+  end if;
+
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  insert into public.proposal_votes (proposal_id, party_id, aye) values (v_pid, v_party.id, true);
+  v_res := public._resolve_proposal(v_pid);
+  return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.actions_remaining - 1);
+end $$;
+grant execute on function public.propose_regime_change(int, boolean) to authenticated;
 
 -- Bring an agenda item to the floor (1 action). Proposer only; auto-votes Aye.
 create or replace function public.proposal_to_floor(p_proposal uuid)
