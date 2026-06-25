@@ -182,10 +182,8 @@
   .poltab .scalerow .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .poltab .scalerow .es{width:auto;min-width:172px;padding:7px 9px;font-size:12.5px}
   .poltab .scalerow .worked{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:210px}
-  /* Per-option transition rules — each is a row with its controls + a live plain-language echo. */
-  .poltab .trrule{border:1px solid var(--line);border-radius:11px;background:var(--field,#FCFBF9);padding:11px 12px;margin:8px 0}
-  .poltab .trrule .dirctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .poltab .trrule .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
+  /* Plain-language echoes (doorway editor + preview). */
+  .poltab .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
   .poltab .echo b{color:var(--ink)}
   .poltab .echo .up{color:var(--green,#16915a);font-weight:700}
   .poltab .echo .dn{color:var(--red,#C42B2B);font-weight:700}
@@ -201,6 +199,14 @@
   .poltab .pveff .e{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--muted)}
   .poltab .pveff .e b{color:var(--ink)} .poltab .pveff .e.pos b{color:var(--green,#16915a)} .poltab .pveff .e.neg b{color:var(--red,#C42B2B)}
   .poltab .pveff .cad{color:var(--soft)}
+  /* Doorway transition editor */
+  .door{border:1px dashed var(--line,#E7E5E0);border-radius:9px;padding:9px 11px;margin-top:8px}
+  .doorlbl{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft,#8d8d95);margin-bottom:7px}
+  .doorlbl .up{color:var(--green,#16915a)} .doorlbl .dn{color:var(--red,#C42B2B)} .doorlbl b{color:var(--muted,#5b5b63)}
+  .dchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .dchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line,#E7E5E0);border-radius:8px;padding:3px 4px 3px 6px}
+  .door .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft,#8d8d95);margin-top:8px;line-height:1.5}
+  .door .echo b{color:var(--ink)} .door .echo .up{color:var(--green,#16915a);font-weight:700} .door .echo .dn{color:var(--red,#C42B2B);font-weight:700}
   .poltab .pvnone{font-size:11px;color:var(--soft);font-style:italic;margin-top:6px}
   .poltab .plcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}
   .poltab .plcard:last-child{margin-bottom:0}
@@ -1245,12 +1251,6 @@
       return 'When moving <b>'+(t.dir==='from'?'from':'to')+'</b> <b>'+esc(t.rung||'?')+'</b> → <b>'+esc(polTgtLabel(t.t||'?'))+'</b> '+
         '<span class="'+(up?'up':'dn')+'">'+(up?'increases':'decreases')+' by '+Math.abs(v)+'</span>';
     }
-    // The other options' names (the rungs this option can move to/from), as a <select>.
-    function rungOptions(excludeName, sel){
-      return '<select class="trung">'+polOpts().map(function(o){ return o.name; })
-        .filter(function(n){ return n!==excludeName; })
-        .map(function(n){ return '<option'+(n===sel?' selected':'')+'>'+esc(n)+'</option>'; }).join('')+'</select>';
-    }
     // Identity tags — metadata describing what a law IS (not a popularity score). A
     // policy option carries any of these; a conviction's "when a tagged law passes"
     // effect keys off them. Loaded from public.identity_tags (the ONE source — an admin
@@ -1281,6 +1281,63 @@
     function polFmtAmt(a){ return (a>=0?'+':'−')+'₣'+Math.abs(a).toFixed(2)+'B'; }
     function polWorked(e){ if(e.scale==='flat') return 'Fixed · '+polFmtAmt(e.v)+' — same for every nation';
       return POL_SAMPLES.map(function(s){ return s.n+' '+polFmtAmt(policyMoney(e.v,e.scale,s.pop,s.pros))+(e.cad==='tick'?'/t':e.cad==='year'?'/yr':''); }).join('   ·   '); }
+
+    // ---- Doorway transition model (Phase 1: authoring only — _apply_law still reads the
+    // legacy `transitions` until Phase 2, so editing doorways changes nothing live yet). Each
+    // option (rung) owns two doorways: doorUp = effects when stepping UP into it from the rung
+    // below; doorDown = effects when stepping DOWN into it from the rung above. A longer move
+    // sums the doorways it crosses (Phase 2). Effects are flat {t, v} (transitions never scaled).
+    function doorEcho(arr){
+      if(!arr || !arr.length) return '<span class="hint">no change</span>';
+      return arr.map(function(e){ var v=Number(e.v)||0; return '<b>'+esc(polTgtLabel(e.t))+'</b> <span class="'+(v>=0?'up':'dn')+'">'+(v>=0?'+':'−')+Math.abs(v)+'</span>'; }).join(' · ');
+    }
+    // A doorway's effect chips (target + value + remove) and the full up/down section. Pure
+    // (params only) — defined once here, not per option, and reused by buildPolOpt.
+    function doorChips(dir, arr){
+      return arr.map(function(e,ei){
+        return '<span class="dchip" data-dir="'+dir+'" data-ei="'+ei+'">'+polTgtSelect(e.t,'dt')+
+          '<input type="number" class="dv" step="any" value="'+(Number(e.v)||0)+'" style="max-width:64px">'+
+          '<button class="xb dx" type="button" title="Remove">×</button></span>';
+      }).join('');
+    }
+    function doorSection(dir, arr, fromName){
+      return '<div class="door" data-dir="'+dir+'"><div class="doorlbl"><span class="'+(dir==='up'?'up':'dn')+'">'+(dir==='up'?'↑':'↓')+'</span> Step '+dir+' · arriving from <b>'+esc(fromName||'?')+'</b></div>'+
+        '<div class="dchips">'+doorChips(dir,arr)+'<button class="add sm dadd" type="button">+ effect</button></div>'+
+        '<div class="echo">'+doorEcho(arr)+'</div></div>';
+    }
+    // An option's standing (per-tick) effects summed per target — the source the auto-fill derives doorways from.
+    function standingMap(o){ var m={}; (o.effects||[]).forEach(function(e){ if(e.cad==='tick'){ m[e.t]=(m[e.t]||0)+(Number(e.v)||0); } }); return m; }
+    function standingDelta(oTo, oFrom){ var a=standingMap(oTo), b=standingMap(oFrom), keys={}, out=[];
+      Object.keys(a).forEach(function(k){keys[k]=1;}); Object.keys(b).forEach(function(k){keys[k]=1;});
+      Object.keys(keys).forEach(function(k){ var v=(a[k]||0)-(b[k]||0); if(v!==0) out.push({t:k,v:v}); }); return out; }
+    // Fill every doorway from the standing-effect delta between adjacent rungs (overwrites).
+    function autofillDoors(){ var opts=polOpts(); opts.forEach(function(o,i){
+      o.doorUp   = i>0            ? standingDelta(opts[i], opts[i-1]) : [];
+      o.doorDown = i<opts.length-1 ? standingDelta(opts[i], opts[i+1]) : []; }); }
+    // One-time migration of legacy rung-specific transitions → doorways. Adjacent rules map to
+    // the matching doorway; non-adjacent rules are collected (reported, never silently dropped).
+    // Idempotent: skips if doorways already exist (a prior migration/save). Does NOT clear
+    // `transitions` — Phase 1 keeps them so live enactment is unchanged.
+    function migrateDoors(opts){
+      if(opts.some(function(o){ return o.doorUp!==undefined || o.doorDown!==undefined; })) return [];  // already migrated
+      var names=opts.map(function(x){return x.name;}), flagged=[];
+      opts.forEach(function(o){ o.doorUp=[]; o.doorDown=[]; });
+      opts.forEach(function(o,i){
+        (o.transitions||[]).forEach(function(t){
+          var ri=names.indexOf(t.rung), eff={t:t.t, v:Number(t.v)||0};
+          if(t.dir==='from'){            // arriving at i from rung ri
+            if(ri===i-1) o.doorUp.push(eff);
+            else if(ri===i+1) o.doorDown.push(eff);
+            else flagged.push({opt:o.name, rule:trSentence(t)});
+          } else {                       // leaving i for rung ri
+            if(ri===i+1) opts[ri].doorUp.push(eff);
+            else if(ri===i-1) opts[ri].doorDown.push(eff);
+            else flagged.push({opt:o.name, rule:trSentence(t)});
+          }
+        });
+      });
+      return flagged;
+    }
 
     var polCache = [], P = null, polEditingId = null;
     function blankPolicy(){ return {
@@ -1322,7 +1379,9 @@
       // type/options/defaults exist); def's own fields win where present.
       P = Object.assign(blankPolicy(), def || {}); polEditingId = id || null;
       document.getElementById('polEditorPanel').hidden = false;
-      setPolNote('');
+      // Migrate legacy rung-specific transitions → doorways (adjacent map; non-adjacent flagged).
+      var _fl = migrateDoors(policyOptions(P));
+      setPolNote(_fl.length ? (_fl.length + ' transition rule(s) weren’t adjacent and couldn’t auto-map — re-author as doorways: ' + _fl.map(function(f){ return f.opt + ' — ' + f.rule.replace(/<[^>]+>/g,''); }).join('; ')) : '', _fl.length ? 'warn' : '');
       renderPolEditor(); renderPolPrev();
       document.getElementById('polEditorPanel').scrollIntoView({ behavior:'smooth', block:'start' });
     }
@@ -1352,8 +1411,8 @@
       }catch(e){ alert('Could not remove: '+(e.message||e)); }
     }
 
-    function polTgtSelect(sel){
-      var h='<select class="et">';
+    function polTgtSelect(sel, cls){
+      var h='<select class="'+(cls||'et')+'">';
       Object.keys(POL_TGT).forEach(function(g){ h+='<optgroup label="'+g+'">'+POL_TGT[g].map(function(t){ return '<option value="'+esc(t)+'"'+(t===sel?' selected':'')+'>'+esc(polTgtLabel(t))+'</option>'; }).join('')+'</optgroup>'; });
       return h+'</select>';
     }
@@ -1375,10 +1434,11 @@
       polOpts().forEach(function(o,i){ oc.appendChild(buildPolOpt(o,i)); });
       box.appendChild(oc);
 
-      var foot=document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px';
+      var foot=document.createElement('div'); foot.style.display='flex'; foot.style.gap='8px'; foot.style.flexWrap='wrap';
+      var af=document.createElement('button'); af.className='btn btn-ghost'; af.type='button'; af.textContent='✨ Fill doorways from standing deltas'; af.onclick=function(){ autofillDoors(); renderPolEditor(); renderPolPrev(); setPolNote('Doorways filled from the per-tick standing-effect deltas — manual exceptions overwritten.'); };
       var sv=document.createElement('button'); sv.className='btn btn-solid'; sv.type='button'; sv.textContent=polEditingId?'Save changes':'Create policy'; sv.onclick=savePolicy;
       var cx=document.createElement('button'); cx.className='btn btn-ghost'; cx.type='button'; cx.textContent='Close'; cx.onclick=function(){ document.getElementById('polEditorPanel').hidden=true; };
-      foot.appendChild(sv); foot.appendChild(cx); box.appendChild(foot);
+      foot.appendChild(af); foot.appendChild(sv); foot.appendChild(cx); box.appendChild(foot);
 
       box.querySelector('#pol-name').oninput=function(e){ P.name=e.target.value; renderPolPrev(); };
       box.querySelector('#pol-desc').oninput=function(e){ P.desc=e.target.value; };
@@ -1409,19 +1469,10 @@
           '<input type="number" class="dur'+(e.cad!=='tick'?' hide':'')+'" min="0" placeholder="∞ while enacted" value="'+(e.dur?e.dur:'')+'">'+
           '<button class="xb efx" type="button" title="Remove">×</button></div>'+scaleRow+'</div>';
       }).join('');
-      o.transitions = o.transitions || [];   // older policies predate per-option transitions
-      var trHtml=o.transitions.map(function(t,ti){
-        var tv=Number(t.v)||0;
-        return '<div class="trrule" data-ti="'+ti+'"><div class="dirctl">'+
-          '<span class="clause">When moving</span>'+
-          '<select class="tdir"><option value="to"'+(t.dir!=='from'?' selected':'')+'>to</option><option value="from"'+(t.dir==='from'?' selected':'')+'>from</option></select>'+
-          rungOptions(o.name, t.rung)+
-          '<span class="clause">→ then</span>'+polTgtSelect(t.t)+
-          '<select class="tchg"><option value="inc"'+(tv>=0?' selected':'')+'>increases by</option><option value="dec"'+(tv<0?' selected':'')+'>decreases by</option></select>'+
-          '<input type="number" class="tmag" min="0" step="any" value="'+Math.abs(tv)+'" style="max-width:80px">'+
-          '<button class="xb trx" type="button" title="Remove">×</button>'+
-          '</div><div class="echo">'+trSentence(t)+'</div></div>';
-      }).join('');
+      o.doorUp = o.doorUp || []; o.doorDown = o.doorDown || [];   // legacy transitions migrate on open
+      var _opts = polOpts();
+      var doorHtml = (i>0 ? doorSection('up', o.doorUp, _opts[i-1]&&_opts[i-1].name) : '') +
+                     (i<_opts.length-1 ? doorSection('down', o.doorDown, _opts[i+1]&&_opts[i+1].name) : '');
       card.innerHTML=head+
         '<div class="f" style="margin-bottom:10px"><textarea class="odesc" placeholder="What this option means">'+esc(o.desc||'')+'</textarea></div>'+
         '<div class="sublab">Tax burden contribution <span class="hint">· this option’s share of the nation’s Tax Burden % (summed across tax policies); a level, not a delta</span></div>'+
@@ -1429,9 +1480,8 @@
         '<div class="sublab" style="margin-top:14px">Identity tags <span class="hint">· what this law is — metadata that lets tag-keyed convictions fire</span></div><div class="archrow tag">'+tagChips+'<button type="button" class="tagadd">+ tag</button></div>'+
         '<div class="sublab" style="margin-top:14px">Effect if enacted</div>'+effHtml+
         '<button class="add sm addeff" type="button">+ effect</button>'+
-        '<div class="sublab" style="margin-top:16px">Transition effects <span class="hint">· a one-time change when the nation moves between rungs, relative to this option</span></div>'+
-        trHtml+
-        '<button class="add sm addtr" type="button">+ transition</button>';
+        '<div class="sublab" style="margin-top:16px">Doorways <span class="hint">· one-time effects when the nation steps into this rung; a longer move sums the doorways it crosses (live in a later pass)</span></div>'+
+        doorHtml;
 
       card.querySelector('.onm').oninput=function(e){ o.name=e.target.value; renderPolPrev(); };
       card.querySelector('.odesc').oninput=function(e){ o.desc=e.target.value; };
@@ -1450,22 +1500,16 @@
         var es=wrap.querySelector('.es'); if(es)es.onchange=function(ev){ e.scale=ev.target.value; var w=wrap.querySelector('.worked'); if(w)w.textContent=polWorked(e); renderPolPrev(); };
       });
       card.querySelector('.addeff').onclick=function(){ o.effects.push(polEff('Budget',0,'tick',0)); renderPolEditor(); renderPolPrev(); };
-      card.querySelectorAll('.trrule').forEach(function(rw){
-        var ti=+rw.dataset.ti, t=o.transitions[ti];
-        // Like the option effects, the model stays signed: increases/decreases + a positive magnitude map onto ±v.
-        function setTv(){ var m=Math.abs(parseFloat(rw.querySelector('.tmag').value)||0); t.v = rw.querySelector('.tchg').value==='dec' ? -m : m; }
-        function syncTr(){ rw.querySelector('.echo').innerHTML=trSentence(t); renderPolPrev(); }
-        rw.querySelector('.tdir').onchange=function(e){ t.dir=e.target.value; syncTr(); };
-        rw.querySelector('.trung').onchange=function(e){ t.rung=e.target.value; syncTr(); };
-        rw.querySelector('.et').onchange=function(e){ t.t=e.target.value; syncTr(); };
-        rw.querySelector('.tchg').onchange=function(){ setTv(); syncTr(); };
-        rw.querySelector('.tmag').oninput=function(){ setTv(); syncTr(); };
-        rw.querySelector('.trx').onclick=function(){ o.transitions.splice(ti,1); renderPolEditor(); renderPolPrev(); };
+      card.querySelectorAll('.door').forEach(function(ds){
+        var dir=ds.dataset.dir, arr=dir==='up'?o.doorUp:o.doorDown;
+        ds.querySelectorAll('.dchip').forEach(function(ch){
+          var ei=+ch.dataset.ei, e=arr[ei];
+          ch.querySelector('.dt').onchange=function(ev){ e.t=ev.target.value; renderPolEditor(); renderPolPrev(); };
+          ch.querySelector('.dv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; ds.querySelector('.echo').innerHTML=doorEcho(arr); renderPolPrev(); };
+          ch.querySelector('.dx').onclick=function(){ arr.splice(ei,1); renderPolEditor(); renderPolPrev(); };
+        });
+        ds.querySelector('.dadd').onclick=function(){ arr.push({t:'Growth', v:-1}); renderPolEditor(); renderPolPrev(); };
       });
-      card.querySelector('.addtr').onclick=function(){
-        var others=polOpts().map(function(x){ return x.name; }).filter(function(n){ return n!==o.name; });
-        o.transitions.push({dir:'to', rung:others[0]||'', t:'Growth', v:-1}); renderPolEditor(); renderPolPrev();
-      };
       return card;
     }
     function polEffLine(e){
@@ -1486,7 +1530,9 @@
         var tb=Number(o.taxBurden)||0;
         var tbLine=tb?'<div class="pveff"><div class="e"><b>Tax burden '+(tb>0?'+':'')+tb+'%</b> <span class="cad">contribution</span></div></div>':'';
         var effs=o.effects.length?'<div class="pveff">'+o.effects.map(polEffLine).join('')+'</div>':(tb?'':'<div class="pvnone">No effects</div>');
-        var trs=(o.transitions&&o.transitions.length)?'<div class="pveff">'+o.transitions.map(function(t){ return '<div class="e"><span class="echo">'+trSentence(t)+'</span></div>'; }).join('')+'</div>':'';
+        var trs=((o.doorUp&&o.doorUp.length)||(o.doorDown&&o.doorDown.length))?'<div class="pveff">'+
+          (o.doorUp&&o.doorUp.length?'<div class="e"><span class="echo">↑ in · '+doorEcho(o.doorUp)+'</span></div>':'')+
+          (o.doorDown&&o.doorDown.length?'<div class="e"><span class="echo">↓ in · '+doorEcho(o.doorDown)+'</span></div>':'')+'</div>':'';
         var tags=(o.tags&&o.tags.length)?'<div class="pvtagrow">'+o.tags.map(function(t){ return '<span class="pvltag">'+esc(t)+'</span>'; }).join('')+'</div>':'';
         html+='<div class="pvopt"><div class="on">'+(P.type==='spectrum'?(i+1)+'. ':'')+esc(o.name||'—')+(isStart?'<span class="startt">start</span>':'')+'</div>'+
           tags+tbLine+effs+trs+'</div>';

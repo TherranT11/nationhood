@@ -53,7 +53,7 @@ $$;
 -- ONE place the per-nation option flip lives (called from _resolve_proposal on pass).
 create or replace function public._apply_law(p_nation text, p_policy uuid, p_option int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; v_oldname text; v_newname text; r record;
+declare v_tick int; v_had_override boolean; v_old int; v_tags jsonb; v_old_tags jsonb; v_def jsonb; v_oldname text; v_newname text; v_opts jsonb; v_i int; r record;
 begin
   select current_tick into v_tick from public.game_state where id;
   select definition into v_def from public.policies where id = p_policy;
@@ -137,29 +137,46 @@ begin
     end loop;
   end if;
 
-  -- Per-option transition effects: each option can declare one-time changes for moving between
-  -- specific rungs, relative to that option (definition.<option>.transitions = [{dir:'to'|'from',
-  -- rung:<option name>, t, v}]). On a move OLD→NEW, fire the NEW option's 'from <OLD>' rules
-  -- (arriving) and the OLD option's 'to <NEW>' rules (leaving), matched by option NAME. v is the
-  -- signed amount (flat — no size-of-move scaling). Reuses _apply_policy_effect so the
-  -- stat/economy/government mapping stays in one place. Skips the never-enacted default.
+  -- Transition effects on a move OLD→NEW. DOORWAY model: each option owns doorUp (effects when
+  -- stepping UP into it from below) and doorDown (stepping DOWN into it from above); a multi-rung
+  -- move sums the doorways it crosses. Flat (no size-of-move scaling). Reuses _apply_policy_effect
+  -- so the stat/economy/government mapping stays in one place.
+  -- FALLBACK: a policy not yet migrated to doorways (no doorUp/doorDown keys) still fires its
+  -- legacy rung-specific `transitions` — open+save it in adminsetup to migrate; once every policy
+  -- has doorways the else-branch below can be deleted.
   if v_def is not null and v_old is not null and v_old <> p_option then
-    v_oldname := public._policy_options(v_def) -> v_old    ->> 'name';
-    v_newname := public._policy_options(v_def) -> p_option ->> 'name';
-    for r in
-      select e.value as t
-      from jsonb_array_elements(coalesce(public._policy_options(v_def) -> p_option -> 'transitions', '[]'::jsonb)) e
-      where e.value->>'dir' = 'from' and e.value->>'rung' = v_oldname
-    loop
-      perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
-    end loop;
-    for r in
-      select e.value as t
-      from jsonb_array_elements(coalesce(public._policy_options(v_def) -> v_old -> 'transitions', '[]'::jsonb)) e
-      where e.value->>'dir' = 'to' and e.value->>'rung' = v_newname
-    loop
-      perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
-    end loop;
+    v_opts := public._policy_options(v_def);
+    if jsonb_typeof(v_opts) = 'array'
+       and exists (select 1 from jsonb_array_elements(v_opts) o where o.value ? 'doorUp' or o.value ? 'doorDown') then
+      if p_option > v_old then                                  -- climbing: sum the up-doorways crossed
+        for v_i in v_old + 1 .. p_option loop
+          for r in select value as t from jsonb_array_elements(coalesce(v_opts -> v_i -> 'doorUp', '[]'::jsonb)) loop
+            perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+          end loop;
+        end loop;
+      else                                                      -- cutting: sum the down-doorways crossed
+        for v_i in p_option .. v_old - 1 loop
+          for r in select value as t from jsonb_array_elements(coalesce(v_opts -> v_i -> 'doorDown', '[]'::jsonb)) loop
+            perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+          end loop;
+        end loop;
+      end if;
+    else
+      v_oldname := v_opts -> v_old    ->> 'name';
+      v_newname := v_opts -> p_option ->> 'name';
+      for r in
+        select e.value as t from jsonb_array_elements(coalesce(v_opts -> p_option -> 'transitions', '[]'::jsonb)) e
+        where e.value->>'dir' = 'from' and e.value->>'rung' = v_oldname
+      loop
+        perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+      end loop;
+      for r in
+        select e.value as t from jsonb_array_elements(coalesce(v_opts -> v_old -> 'transitions', '[]'::jsonb)) e
+        where e.value->>'dir' = 'to' and e.value->>'rung' = v_newname
+      loop
+        perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+      end loop;
+    end if;
   end if;
 end $$;
 
