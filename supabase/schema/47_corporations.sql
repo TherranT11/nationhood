@@ -180,3 +180,45 @@ end $$;
 revoke all on function public._corp_apply_bonus(public.corporations, int) from public, anon, authenticated;
 grant execute on function public.corp_create(text, text, text, text, text, numeric, numeric, int, text, int) to authenticated;
 grant execute on function public.corp_delete(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Phase 2c · The corporations tick (called by advance_tick, schema/60):
+--   1. Generation-list release — a queued firm enters (placed) when its nation's climate is
+--      healthy (>= 0.5, the climateWord 'Healthy' band), applying its sector bonus.
+--   2. Cash growth — each placed firm's cash compounds by its growth (_corp_growth: climate +
+--      drift − debt drag, ±9%).
+--   3. Fold — a PRIVATE firm whose cash falls to <= 0 goes under: reverse its sector bonus and
+--      remove it. State-owned firms never fold (government-backed).
+-- Climate is snapshotted once per nation up front, so releases are deterministic (a release's
+-- own +prosperity/+growth bonus can't cascade into another release the same tick) and the
+-- expensive climate isn't recomputed per firm.
+-- ---------------------------------------------------------------------------
+create or replace function public._apply_corp_tick()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record; v_clim numeric; v_growth numeric; v_newcash numeric;
+begin
+  drop table if exists _corp_clim;
+  create temp table _corp_clim on commit drop as
+    select id as nation_id, public._business_climate(id) as climate from public.nations;
+
+  for r in select c.* from public.corporations c where c.status = 'queued' loop
+    select climate into v_clim from _corp_clim where nation_id = r.nation_id;
+    if coalesce(v_clim, 0) >= 0.5 then
+      update public.corporations set status = 'placed', roll_m = null where id = r.id;
+      perform public._corp_apply_bonus(r, 1);   -- r still carries size/category/nation_id
+    end if;
+  end loop;
+
+  for r in select c.* from public.corporations c where c.status = 'placed' loop
+    select climate into v_clim from _corp_clim where nation_id = r.nation_id;
+    v_growth  := public._corp_growth(r.drift, r.debt, coalesce(v_clim, 0));
+    v_newcash := round(r.cash * (1 + v_growth / 100.0), 4);
+    if r.type = 'pr' and v_newcash <= 0 then
+      perform public._corp_apply_bonus(r, -1);
+      delete from public.corporations where id = r.id;
+    else
+      update public.corporations set cash = v_newcash where id = r.id;
+    end if;
+  end loop;
+end $$;
+revoke all on function public._apply_corp_tick() from public, anon, authenticated;

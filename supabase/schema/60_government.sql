@@ -488,6 +488,11 @@ begin
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
   begin perform public._apply_crisis_tick(v_tick);
   exception when others then raise warning 'tick %: crises failed — %', v_tick, sqlerrm; end;
+  -- Corporations (schema/47): release queued firms when their nation's climate is healthy
+  -- (applies the sector bonus), compound each placed firm's cash by its growth, and fold
+  -- insolvent private firms (reversing their bonus). Runs on this tick's settled economy.
+  begin perform public._apply_corp_tick();
+  exception when others then raise warning 'tick %: corporations failed — %', v_tick, sqlerrm; end;
   -- Debt→inflation backlog close-out: every $5B of debt ADDED this tick commits 0.2% inflation
   -- to the nation's pending pool (economy.inflation_pending); the pool then releases at most
   -- 0.2%/tick into actual inflation (clamped 0..100). 100B added → 4% that bleeds in over ~20
