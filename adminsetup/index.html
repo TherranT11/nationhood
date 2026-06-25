@@ -1253,7 +1253,7 @@
         var row = CF.addNow
           ? { nation_id:CF.nation, name:CF.name.trim(), category:CF.category, type:CF.type, size:CF.size, cash:CF.cash, debt:CF.debt, drift:CF.drift, status:'placed', roll_m:null }
           : { nation_id:CF.nation, name:CF.name.trim(), category:CF.category, type:'pr', size:'Startup', cash:CF.rollM/1000, debt:0, drift:0, status:'queued', roll_m:CF.rollM };
-        const { error } = await supabase.from('corporations').insert(row);
+        const { error } = await supabase.rpc('corp_create', { p_nation: row.nation_id, p_name: row.name, p_category: row.category, p_type: row.type, p_size: row.size, p_cash: row.cash, p_debt: row.debt, p_drift: row.drift, p_status: row.status, p_roll_m: row.roll_m });
         if(error) throw error;
         setCorpNote((CF.addNow?'Placed ':'Queued ')+CF.name.trim()+(CF.addNow?' in '+corpNatName(CF.nation)+'.':' — enters '+corpNatName(CF.nation)+' as a $'+CF.rollM+'M startup.'), 'ok');
         CF.name=''; document.getElementById('cfName').value='';
@@ -1267,7 +1267,7 @@
       var c=corpCache.filter(function(x){return x.id===id;})[0];
       if(!c || !confirm('Delete “'+c.name+'”? This cannot be undone.')) return;
       try{
-        const { error } = await supabase.from('corporations').delete().eq('id', id);
+        const { error } = await supabase.rpc('corp_delete', { p_corp: id });
         if(error) throw error;
         await loadCorporations();
       }catch(e){ setCorpNote('Could not delete: '+(e.message||e), 'err'); }

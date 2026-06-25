@@ -113,3 +113,112 @@ revoke all on function public._nation_tax_burden(text) from public, anon, authen
 revoke all on function public._business_climate(text)  from public, anon, authenticated;
 grant execute on function public.corp_register(text)     to anon, authenticated;
 grant execute on function public.nation_tax_burden(text) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Phase 2b · Sector bonus — a ONE-TIME amount a placed firm adds to its nation, by SIZE
+-- (Startup +0.1 … International +0.5), to the production resource or stat its sector maps to.
+-- Applied on placement, reversed if the firm folds/is removed (the addition is lost). Firms
+-- never shrink, so a bonus is only ever added once and removed once. Finance/Construction/
+-- Logistics are rule-modifiers with no production/stat target (no-op). ONE source for the
+-- amount+target: the tick (release/fold) and the admin create/delete RPCs all call this.
+-- ---------------------------------------------------------------------------
+create or replace function public._corp_bonus_amount(p_size text)
+returns numeric language sql immutable as $$
+  select case lower(p_size)
+    when 'startup' then 0.1 when 'moderate' then 0.2 when 'enterprise' then 0.3
+    when 'national corporation' then 0.4 when 'international conglomerate' then 0.5 else 0 end;
+$$;
+
+create or replace function public._corp_apply_bonus(p_corp public.corporations, p_sign int)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_amt numeric; v_col text; v_key text; v_lo numeric; v_hi numeric;
+begin
+  v_amt := p_sign * public._corp_bonus_amount(p_corp.size);
+  if v_amt = 0 then return; end if;
+  case p_corp.category
+    when 'Energy','Nuclear'                          then v_col:='production'; v_key:='energy';     v_lo:=0; v_hi:=null;
+    when 'Agriculture'                               then v_col:='production'; v_key:='food';       v_lo:=0; v_hi:=null;
+    when 'Mining'                                    then v_col:='production'; v_key:='minerals';   v_lo:=0; v_hi:=null;
+    when 'Heavy Industry','Shipping','Manufacturing' then v_col:='production'; v_key:='goods';      v_lo:=0; v_hi:=null;
+    when 'Telecom','Services'                        then v_col:='production'; v_key:='services';   v_lo:=0; v_hi:=null;
+    when 'Airline'                                   then v_col:='production'; v_key:='diplomacy';  v_lo:=0; v_hi:=null;
+    when 'Aerospace'                                 then v_col:='stats';      v_key:='image';      v_lo:=1; v_hi:=20;
+    when 'Pharma'                                    then v_col:='stats';      v_key:='welfare';    v_lo:=1; v_hi:=20;
+    when 'Retail'                                    then v_col:='stats';      v_key:='prosperity'; v_lo:=1; v_hi:=20;
+    when 'Rail'                                      then v_col:='stats';      v_key:='growth';     v_lo:=1; v_hi:=20;
+    else return;  -- Finance / Construction / Logistics: rule-modifiers, no production/stat target
+  end case;
+  perform public._nation_stat_add(p_corp.nation_id, v_col, v_key, v_amt, v_lo, v_hi);
+end $$;
+
+-- RPC: admin creates a firm and, if it's placed now, applies its sector bonus atomically.
+create or replace function public.corp_create(p_nation text, p_name text, p_category text, p_type text,
+  p_size text, p_cash numeric, p_debt numeric, p_drift int, p_status text, p_roll_m int)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_corp public.corporations;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  insert into public.corporations (nation_id, name, category, type, size, cash, debt, drift, status, roll_m)
+  values (p_nation, p_name, p_category, p_type, p_size, p_cash, p_debt, p_drift, coalesce(p_status,'placed'), p_roll_m)
+  returning * into v_corp;
+  if v_corp.status = 'placed' then perform public._corp_apply_bonus(v_corp, 1); end if;
+  return v_corp.id;
+end $$;
+
+-- RPC: admin deletes a firm; reverse its sector bonus first if it was placed (the addition is lost).
+create or replace function public.corp_delete(p_corp uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_corp public.corporations;
+begin
+  if not public.is_admin() then raise exception 'admin only'; end if;
+  select * into v_corp from public.corporations where id = p_corp;
+  if not found then return; end if;
+  if v_corp.status = 'placed' then perform public._corp_apply_bonus(v_corp, -1); end if;
+  delete from public.corporations where id = p_corp;
+end $$;
+
+revoke all on function public._corp_apply_bonus(public.corporations, int) from public, anon, authenticated;
+grant execute on function public.corp_create(text, text, text, text, text, numeric, numeric, int, text, int) to authenticated;
+grant execute on function public.corp_delete(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Phase 2c · The corporations tick (called by advance_tick, schema/60):
+--   1. Generation-list release — a queued firm enters (placed) when its nation's climate is
+--      healthy (>= 0.5, the climateWord 'Healthy' band), applying its sector bonus.
+--   2. Cash growth — each placed firm's cash compounds by its growth (_corp_growth: climate +
+--      drift − debt drag, ±9%).
+--   3. Fold — a PRIVATE firm whose cash falls to <= 0 goes under: reverse its sector bonus and
+--      remove it. State-owned firms never fold (government-backed).
+-- Climate is snapshotted once per nation up front, so releases are deterministic (a release's
+-- own +prosperity/+growth bonus can't cascade into another release the same tick) and the
+-- expensive climate isn't recomputed per firm.
+-- ---------------------------------------------------------------------------
+create or replace function public._apply_corp_tick()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record; v_clim numeric; v_growth numeric; v_newcash numeric;
+begin
+  drop table if exists _corp_clim;
+  create temp table _corp_clim on commit drop as
+    select id as nation_id, public._business_climate(id) as climate from public.nations;
+
+  for r in select c.* from public.corporations c where c.status = 'queued' loop
+    select climate into v_clim from _corp_clim where nation_id = r.nation_id;
+    if coalesce(v_clim, 0) >= 0.5 then
+      update public.corporations set status = 'placed', roll_m = null where id = r.id;
+      perform public._corp_apply_bonus(r, 1);   -- r still carries size/category/nation_id
+    end if;
+  end loop;
+
+  for r in select c.* from public.corporations c where c.status = 'placed' loop
+    select climate into v_clim from _corp_clim where nation_id = r.nation_id;
+    v_growth  := public._corp_growth(r.drift, r.debt, coalesce(v_clim, 0));
+    v_newcash := round(r.cash * (1 + v_growth / 100.0), 4);
+    if r.type = 'pr' and v_newcash <= 0 then
+      perform public._corp_apply_bonus(r, -1);
+      delete from public.corporations where id = r.id;
+    else
+      update public.corporations set cash = v_newcash where id = r.id;
+    end if;
+  end loop;
+end $$;
+revoke all on function public._apply_corp_tick() from public, anon, authenticated;
