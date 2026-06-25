@@ -395,9 +395,13 @@ begin
   update public.parties set actions_remaining = 12 where actions_remaining is distinct from 12;
   -- Debt→inflation backlog: snapshot each nation's debt BEFORE this tick's economics, so the
   -- close-out step (end of tick) can measure how much debt was ADDED across the whole tick.
-  drop table if exists _tick_debt0;
-  create temp table _tick_debt0 on commit drop as
-    select id, coalesce((economy->>'debt')::numeric, 0) as debt0 from public.nations;
+  -- Isolated like every other tick step — if the snapshot fails, the backlog simply no-ops
+  -- (its close-out catches the missing table) instead of aborting the whole tick.
+  begin
+    drop table if exists _tick_debt0;
+    create temp table _tick_debt0 on commit drop as
+      select id, coalesce((economy->>'debt')::numeric, 0) as debt0 from public.nations;
+  exception when others then raise warning 'tick %: debt snapshot failed — %', v_tick, sqlerrm; end;
   -- Standing monthly economics: every nation's in-force policy options apply their
   -- per-tick effects for this month (schema/91). Runs before the floor close below,
   -- so a law enacted this tick starts contributing next tick, not the month it passed.
@@ -490,17 +494,19 @@ begin
   -- ticks. Paying debt DOWN doesn't un-commit the pool — only net additions feed it. Runs last,
   -- after every debt-moving step (income, policy, crises).
   begin
-    with calc as (
+    with base as (
       select n.id,
              coalesce((n.economy->>'inflation')::numeric, 0) as infl,
              round(coalesce((n.economy->>'inflation_pending')::numeric, 0)
                    + greatest(0, coalesce((n.economy->>'debt')::numeric, 0) - d.debt0) / 5 * 0.2, 2) as pend
       from public.nations n join _tick_debt0 d on d.id = n.id
+    ), calc as (
+      select id, infl, pend, least(0.2, pend) as rel from base   -- rel: inflation released this tick
     )
     update public.nations n
        set economy = jsonb_set(
-             jsonb_set(n.economy, '{inflation}', to_jsonb(least(100, round(c.infl + least(0.2, c.pend), 2)))),
-             '{inflation_pending}', to_jsonb(round(c.pend - least(0.2, c.pend), 2)))
+             jsonb_set(n.economy, '{inflation}', to_jsonb(least(100, round(c.infl + c.rel, 2)))),
+             '{inflation_pending}', to_jsonb(round(c.pend - c.rel, 2)))
       from calc c
      where c.id = n.id and c.pend > 0;
   exception when others then raise warning 'tick %: debt→inflation backlog failed — %', v_tick, sqlerrm; end;
