@@ -1,7 +1,8 @@
 // Coalition negotiations — the one client-side gateway to the server model in
 // schema/45_negotiations.sql. Every page reads + mutates talks through here, so
-// the rules (host authors terms, each side sets only its own agreement, open +
-// invite cost an action) live server-side and there's a single place to change.
+// the rules (any seated party authors terms, each party signs only its own
+// agreement, open + invite + commit cost an action) live server-side and there's
+// a single place to change.
 
 import { supabase } from '/supabase.js';
 
@@ -77,8 +78,8 @@ export async function withdrawAgreement(negId) { return unwrap(await supabase.rp
 // coalition immediately (no election). Server-gated to that exact case.
 export async function formGovernment(negId) { return unwrap(await supabase.rpc('coalition_form_government', { p_neg: negId })); }
 
-// Pending invites for the Home banner, with the host + full invited roster
-// (name + archetype). Server-side because RLS hides co-invitees from a player.
+// Pending invites for the Home banner: each of the caller's still-pending invites
+// with its host + full invited roster (name + archetype), gathered in one scoped call.
 export async function coalitionInvitesForMe() { return unwrap(await supabase.rpc('coalition_invites_for_me')) || []; }
 
 // ---- coalition chat (per negotiation; participants only) ----

@@ -259,6 +259,14 @@ begin
   update public.negotiation_parties
      set status = case when p_accept then 'accepted' else 'declined' end
    where id = v_np.id;
+  -- Declining clears anything this party had already put on the table (a no-op for
+  -- the usual pending decline) so a now-departed party leaves no orphan terms.
+  if not p_accept then
+    delete from public.negotiation_term_agreements a
+      using public.negotiation_terms t
+     where a.term_id = t.id and t.negotiation_id = p_neg and a.party_id = v_np.party_id;
+    delete from public.negotiation_terms where negotiation_id = p_neg and party_id = v_np.party_id;
+  end if;
 end $$;
 grant execute on function public.coalition_respond(uuid, boolean) to authenticated;
 
@@ -379,6 +387,11 @@ begin
     raise exception 'Only the host can remove a party.';
   end if;
   perform public._assert_negotiation_open(p_neg);
+  -- Drop the party's sign-offs on OTHER parties' terms too, so a later re-invite
+  -- doesn't resurrect stale agreement (their own terms cascade-delete below).
+  delete from public.negotiation_term_agreements a
+    using public.negotiation_terms t
+   where a.term_id = t.id and t.negotiation_id = p_neg and a.party_id = p_party;
   delete from public.negotiation_terms where negotiation_id = p_neg and party_id = p_party;
   delete from public.negotiation_parties where negotiation_id = p_neg and party_id = p_party;
 end $$;
@@ -417,6 +430,11 @@ begin
       or id in (select party_id from public.negotiation_parties
                  where negotiation_id = p_neg and status in ('invited', 'accepted'));
 
+  -- Remove the leaver's sign-offs on others' terms (their own terms cascade-delete),
+  -- so a later re-invite can't resurrect stale agreement.
+  delete from public.negotiation_term_agreements a
+    using public.negotiation_terms t
+   where a.term_id = t.id and t.negotiation_id = p_neg and a.party_id = v_party.id;
   delete from public.negotiation_terms where negotiation_id = p_neg and party_id = v_party.id;
   delete from public.negotiation_parties where negotiation_id = p_neg and party_id = v_party.id;
 

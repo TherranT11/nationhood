@@ -285,7 +285,8 @@
   function termsBySide(side){ return allTerms().filter(function(t){return t.side===side;}); }
   function seatTotal(){ var s=0; seats().forEach(function(pid){ if(POOL[pid]) s+=POOL[pid].seats; }); return s; }
   function redlineUnmet(){ var bad=null; allTerms().forEach(function(t){ if(t.redline && !termAgreed(neg,t) && !bad){ var p=POOL[t.party_id]; bad=p?p.name:'a party'; } }); return bad; }
-  function myUnsigned(){ return allTerms().filter(function(t){ return termAgreedBy(t).indexOf(myParty.id)<0; }).length; }
+  function iAgreed(term){ return termAgreedBy(term).indexOf(myParty.id)>=0; }   // my own sign-off on a term — ONE source
+  function myUnsigned(){ return allTerms().filter(function(t){ return !iAgreed(t); }).length; }
   function invitablePool(){ var taken={}; taken[neg.host_party_id]=1; (neg.negotiation_parties||[]).forEach(function(p){taken[p.party_id]=1;}); return Object.keys(POOL).map(function(id){return POOL[id];}).filter(function(p){return !taken[p.id];}); }
 
   function err(e){ ping('<b class="bad">'+esc((e&&e.message)||'Something went wrong.')+'</b>'); }
@@ -354,7 +355,7 @@
     }
     var xb=card.querySelector('.xb'); if(xb) xb.onclick=function(){ removeTerm(term.id).then(reload).catch(err); };
     if(amSeated && !locked){
-      var myAgreed=termAgreedBy(term).indexOf(myParty.id)>=0;
+      var myAgreed=iAgreed(term);
       card.querySelectorAll('.seg.st span').forEach(function(s){ s.onclick=function(){ var ag=s.dataset.s==='agreed'; if(ag===myAgreed) return; setAgree(term.id,ag).then(reload).catch(err); }; });
     }
     return card;
@@ -364,7 +365,7 @@
   // chip for every OTHER party at the table, and an "Agreed by all" badge once
   // every seated party has signed.
   function agStripHTML(term,full){
-    var signed=termAgreedBy(term), myAgreed=signed.indexOf(myParty.id)>=0;
+    var signed=termAgreedBy(term), myAgreed=iAgreed(term);
     var html='<div class="agstrip">';
     if(amSeated && !locked){
       html+='<span class="agl">You</span><div class="seg st"><span class="'+(!myAgreed?'on':'')+'" data-s="no">No</span><span class="'+(myAgreed?'on':'')+'" data-s="agreed">Agreed</span></div>';
