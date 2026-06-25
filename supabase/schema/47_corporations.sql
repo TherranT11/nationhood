@@ -82,6 +82,27 @@ returns numeric language sql stable security definer set search_path = public as
   from public.nations n where n.id = p_nation;
 $$;
 
+-- The five figures behind the business climate and each one's signed contribution
+-- to the score — the Corporations-page breakdown. The baselines + weights MUST MATCH
+-- _business_climate above (this is the display mirror; _business_climate stays the
+-- authoritative score). Contributions are rounded for display and sum to that score.
+create or replace function public._business_climate_parts(p_nation text)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select jsonb_build_array(
+    jsonb_build_object('label','Growth',       'unit','/20', 'value', coalesce((n.stats->>'growth')::numeric, 0),
+      'contrib', round((coalesce((n.stats->>'growth')::numeric, 0) - 10), 1)),
+    jsonb_build_object('label','Prosperity',   'unit','/20', 'value', coalesce((n.stats->>'prosperity')::numeric, 0),
+      'contrib', round((coalesce((n.stats->>'prosperity')::numeric, 0) - 12) * 0.3, 1)),
+    jsonb_build_object('label','Tax Rate',     'unit','%',   'value', public._nation_tax_burden(p_nation),
+      'contrib', round(-(public._nation_tax_burden(p_nation) - 25) * 0.04, 1)),
+    jsonb_build_object('label','Inflation',    'unit','%',   'value', coalesce((n.economy->>'inflation')::numeric, 0),
+      'contrib', round(-(coalesce((n.economy->>'inflation')::numeric, 0) - 10) * 0.3, 1)),
+    jsonb_build_object('label','Unemployment', 'unit','%',   'value', coalesce((n.economy->>'unemployment')::numeric, 0),
+      'contrib', round(-(coalesce((n.economy->>'unemployment')::numeric, 0) - 7) * 0.3, 1))
+  )
+  from public.nations n where n.id = p_nation;
+$$;
+
 -- A firm's growth = climate + its drift, minus a hard debt drag, clamped ±9. Mirrors
 -- corpGrowth (corporations.js).
 create or replace function public._corp_growth(p_drift numeric, p_debt numeric, p_climate numeric)
@@ -96,6 +117,7 @@ create or replace function public.corp_register(p_nation text)
 returns jsonb language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'climate',   public._business_climate(p_nation),
+    'climateParts', public._business_climate_parts(p_nation),
     'taxBurden', public._nation_tax_burden(p_nation),
     'firms', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -118,8 +140,9 @@ returns numeric language sql stable security definer set search_path = public as
   select public._nation_tax_burden(p_nation);
 $$;
 
-revoke all on function public._nation_tax_burden(text) from public, anon, authenticated;
-revoke all on function public._business_climate(text)  from public, anon, authenticated;
+revoke all on function public._nation_tax_burden(text)    from public, anon, authenticated;
+revoke all on function public._business_climate(text)     from public, anon, authenticated;
+revoke all on function public._business_climate_parts(text) from public, anon, authenticated;
 grant execute on function public.corp_register(text)     to anon, authenticated;
 grant execute on function public.nation_tax_burden(text) to anon, authenticated;
 
