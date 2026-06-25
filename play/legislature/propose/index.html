@@ -148,6 +148,8 @@
       sync();
     }
     var transSeq = 0;
+    // One effect → one preview row. effectText gives the text + colour band; cadLabel is the timing.
+    function effRow(t, cadLabel) { return '<div class="eff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + cadLabel + '</span></div>'; }
     function sync() {
       var def = curDef(), opts = policyOptions(def), idx = +optSel.value, o = opts[idx], cur = inForceIdx();
       var pv = document.getElementById('l-pv');
@@ -157,7 +159,7 @@
       // 'per year' each January, otherwise per tick — all live (advance_tick → _apply_policy_tick_effects).
       var effs = (o && o.effects) || [];
       document.getElementById('l-effs').innerHTML = effs.length
-        ? effs.map(function (e) { var t = effectText(e, pop, pros); return '<div class="eff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + t.cad + '</span></div>'; }).join('')
+        ? effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('')
         : '<p class="none">No mechanical effects — a flavour-only option.</p>';
       // The option already in force is a no-op (and would still cost an action) — block it.
       var same = idx === cur, ok = !!o && !same && !lawBusy;
@@ -176,9 +178,9 @@
         if (myseq !== transSeq) return;
         var fx = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
         box.innerHTML = fx.length
-          ? fx.map(function (e) { var t = effectText({ t: e.t, v: e.v, scale: 'flat', cad: 'once' }, pop, pros); return '<div class="eff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">on change</span></div>'; }).join('')
+          ? fx.map(function (e) { return effRow(effectText({ t: e.t, v: e.v, scale: 'flat', cad: 'once' }, pop, pros), 'on change'); }).join('')
           : '<p class="none">No cost to change to this option.</p>';
-      });
+      }).catch(function () { if (myseq === transSeq) box.innerHTML = '<p class="none">Couldn’t load the cost — reselect to retry.</p>'; });
     }
     polSel.onchange = fillOpts;
     optSel.onchange = sync;
