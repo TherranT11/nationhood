@@ -229,3 +229,96 @@ begin
   end loop;
 end $$;
 revoke all on function public._apply_crisis_tick(int) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- crisis_act(crisis, action): the head of government manages an active crisis. Only the
+-- formateur of the nation's active government may act (same gate as agenda_enact); costs
+-- 1 party action. The action is taken from the crisis's CURRENT stage. A 'law' action
+-- applies its lawEffect; a 'minister' action is either 'direct' (apply direct effects) or
+-- 'roll' — 1d20 + the head of government's competency (the `stat`) >= `needed` picks the
+-- success or failure effects. Effects ride _apply_crisis_effect (one source); escalation is
+-- NOT recomputed here — it stays solely in the tick, so a failure that lifts the meter past
+-- `at` escalates on the next tick. Events narrate the outcome.
+-- ---------------------------------------------------------------------------
+drop function if exists public.crisis_act(uuid, int);   -- superseded by the stage-guarded signature
+create or replace function public.crisis_act(p_id uuid, p_action int, p_stage int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_p public.parties%rowtype; v_nc public.nation_crises%rowtype; v_gov public.governments%rowtype;
+  v_def jsonb; v_stage jsonb; v_acts jsonb; v_a jsonb; v_effs jsonb; v_eff jsonb;
+  v_type text; v_mech text := ''; v_col text; v_stat int := 0; v_roll int := 0;
+  v_needed int := 0; v_total int := 0; v_ok boolean := true; v_body text; v_tone text;
+begin
+  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
+
+  select * into v_nc from public.nation_crises where id = p_id and status = 'active';
+  if not found then raise exception 'That crisis is no longer active.'; end if;
+  -- Reject a stale click: if the crisis escalated (on a tick) since the page rendered, the
+  -- action the player saw belongs to a different stage. Make them refresh, don't misapply.
+  if v_nc.stage is distinct from p_stage then
+    raise exception 'This crisis has escalated since you opened it — refresh and try again.';
+  end if;
+
+  select * into v_gov from public.governments where nation_id = v_nc.nation_id and status = 'active';
+  if not found then raise exception 'There is no sitting government to manage this crisis.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the head of government can manage a national crisis.';
+  end if;
+
+  select definition into v_def from public.crises where id = v_nc.crisis_id;
+  v_stage := v_def->'stages'->(v_nc.stage - 1);
+  v_acts  := v_stage->'actions';
+  if v_acts is null or jsonb_typeof(v_acts) <> 'array' or p_action < 0 or p_action >= jsonb_array_length(v_acts) then
+    raise exception 'That crisis action is unavailable.';
+  end if;
+  v_a := v_acts->p_action;
+  v_type := v_a->>'type';
+
+  if v_type = 'law' then
+    v_effs := coalesce(v_a->'lawEffect', '[]'::jsonb);
+    v_body := 'The government passed ' || coalesce(nullif(v_a->>'lawName', ''), 'emergency legislation')
+              || ' against the ' || coalesce(v_def->>'name', 'crisis') || '.';
+    v_tone := 'pos';
+  else
+    v_mech := coalesce(v_a->>'mech', 'roll');
+    if v_mech = 'direct' then
+      v_effs := coalesce(v_a->'direct', '[]'::jsonb);
+      v_body := coalesce(nullif(v_a->>'eventSuccess', ''),
+                  'The government acted on the ' || coalesce(v_def->>'name', 'crisis') || '.');
+      v_tone := 'pos';
+    else
+      -- 1d20 + the head of government's competency named by `stat` (maps to politicians'
+      -- cha/acu/gui/res/com — mirrors COMPETENCIES in util.js).
+      v_col := case v_a->>'stat' when 'Charisma' then 'cha' when 'Acumen' then 'acu'
+                                 when 'Guile' then 'gui' when 'Resolve' then 'res'
+                                 when 'Image' then 'com' else 'cha' end;
+      execute format('select coalesce(%I, 0) from public.politicians where party_id = $1 and status = ''Party Leader'' order by created_at limit 1', v_col)
+        into v_stat using v_gov.formateur_party_id;
+      v_stat   := coalesce(v_stat, 0);
+      v_roll   := floor(random() * 20)::int + 1;
+      v_needed := coalesce((v_a->>'needed')::int, 12);
+      v_total  := v_roll + v_stat;
+      v_ok     := v_total >= v_needed;
+      v_effs   := coalesce(v_a->(case when v_ok then 'success' else 'failure' end), '[]'::jsonb);
+      v_body   := coalesce(nullif(v_a->>(case when v_ok then 'eventSuccess' else 'eventFail' end), ''),
+                    'The government''s response to the ' || coalesce(v_def->>'name', 'crisis')
+                    || (case when v_ok then ' succeeded.' else ' fell short.' end));
+      v_tone   := case when v_ok then 'pos' else 'neg' end;
+    end if;
+  end if;
+
+  for v_eff in select value from jsonb_array_elements(v_effs) loop
+    perform public._apply_crisis_effect(p_id, v_nc.nation_id, v_eff);
+  end loop;
+
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+  values (v_nc.nation_id, v_p.id, 'crisis', v_body, public.current_game_date(), v_tone);
+
+  select meter, stage into v_nc.meter, v_nc.stage from public.nation_crises where id = p_id;
+  return jsonb_build_object('ok', v_ok, 'type', v_type, 'mech', v_mech,
+    'roll', v_roll, 'stat', v_stat, 'total', v_total, 'needed', v_needed,
+    'meter', v_nc.meter, 'stage', v_nc.stage, 'body', v_body,
+    'actions', v_p.actions_remaining - 1);
+end $$;
+grant execute on function public.crisis_act(uuid, int, int) to authenticated;
