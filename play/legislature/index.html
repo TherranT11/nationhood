@@ -261,10 +261,11 @@
         (agenda.length ? agenda.map(agendaCard).join('') : emptyPanel('Nothing on the agenda', 'Queued measures reach the floor automatically on their scheduled month — one per month.')) +
       '</div><aside class="legrail"><section class="panel"><h2>Legislative History</h2>' +
         (hist.length ? hist.map(function(p){
+          var verb = p.status === 'passed' ? 'Passed' : 'Failed';
           var when = (p.resolved_tick != null) ? tickToDate(p.resolved_tick) : '';   // null on pre-migration rows
           return '<div class="histrow"><div class="histrow__top"><span>' + esc(p.title) + '</span>' +
-            '<span class="pf ' + p.status + '">' + (p.status === 'passed' ? 'Passed' : 'Failed') + '</span></div>' +
-            (when ? '<div class="histrow__d">Date ' + (p.status === 'passed' ? 'Passed' : 'Failed') + ': ' + esc(when) + '</div>' : '') +
+            '<span class="pf ' + p.status + '">' + verb + '</span></div>' +
+            (when ? '<div class="histrow__d">Date ' + verb + ': ' + esc(when) + '</div>' : '') +
           '</div>';
         }).join('') : '<p class="muted">No measures resolved yet.</p>') +
       '</section></aside></div>';
