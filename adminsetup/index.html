@@ -73,6 +73,7 @@
   .wm-tool:hover{color:var(--ink,#15151B)}
   .wm-tool.active{border-color:var(--indigo,#5546E8);background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .wm-nat{border:1.5px solid var(--line2,#D9D6D0);background:var(--surface,#fff);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:13px;color:var(--ink,#15151B);max-width:220px}
+  .wm-contcolor{width:38px;height:34px;padding:2px;border:1.5px solid var(--line2,#D9D6D0);border-radius:9px;background:var(--surface,#fff);cursor:pointer}
   .wm-actions{display:flex;align-items:center;gap:12px}
   .wm-status{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft,#8d8d95)}
   .wm-save{border:none;background:var(--indigo,#5546E8);color:#fff;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
@@ -885,6 +886,7 @@
             <button class="wm-tool" data-tool="sea" type="button">Erase (Sea)</button>
             <button class="wm-tool" data-tool="nation" id="wmAssignBtn" type="button">Assign Nation</button>
             <select id="wmNation" class="wm-nat" title="Nation to assign"></select>
+            <input type="color" id="wmContColor" class="wm-contcolor" title="Colour of the selected continent" hidden>
           </div>
           <div class="wm-actions">
             <span id="wmStatus" class="wm-status"></span>
@@ -1468,6 +1470,7 @@
       var hexes = {}, loaded = {};                  // "q,r" -> hex; loaded = keys present in DB
       var natName = {}, natColor = {}, natOrder = [];
       var tool = 'select', assignNation = '', selKey = null, layer = 'nations', assignContinent = '';
+      var conts = {};   // continent name -> colour (the registry; hexes store the name)
       var painting = false, panning = false, last = { x: 0, y: 0 }, moved = 0, loadedOnce = false;
 
       // ---- geometry (shared module; thin adapters bind the editor's view + ctx) ----
@@ -1483,7 +1486,7 @@
         ctx.clearRect(0, 0, W, H);
         ctx.fillStyle = '#bcd9e6'; ctx.fillRect(0, 0, W, H);   // sea
         // terrain + nation/continent fills (coloured by the active layer)
-        var contColor = layer === 'continents' ? HM.paletteColors(continentList()) : null;
+        var contColor = layer === 'continents' ? contColorMap() : null;
         for (var r = R0; r <= R1; r++) for (var q = Q0; q <= Q1; q++) {
           var p = axialToPix(q, r); if (p.x < -s * 2 || p.x > W + s * 2 || p.y < -s * 2 || p.y > H + s * 2) continue;
           var h = hexes[q + ',' + r], land = h && h.terrain === 'land';
@@ -1519,7 +1522,11 @@
       // ---- data ----
       function isEmpty(h) { return h.terrain === 'sea' && !h.nation_id && !h.name && !h.continent && (h.population == null || h.population === '') && (!h.resources || !Object.keys(h.resources).length); }
       function ensure(q, r) { var k = q + ',' + r; if (!hexes[k]) hexes[k] = { q: q, r: r, terrain: 'sea', nation_id: null, name: null, population: null, resources: {}, continent: null }; return hexes[k]; }
-      function continentList() { var set = {}; Object.keys(hexes).forEach(function (k) { var c = hexes[k].continent; if (c) set[c] = true; }); return Object.keys(set).sort(); }
+      // Every continent in play: the registry (named/coloured) plus any name still painted on a
+      // hex but not yet in the registry (so old text-only continents stay visible/manageable).
+      function continentList() { var set = {}; Object.keys(conts).forEach(function (c) { set[c] = true; }); Object.keys(hexes).forEach(function (k) { var c = hexes[k].continent; if (c) set[c] = true; }); return Object.keys(set).sort(); }
+      // name -> effective colour: the registry colour, else a stable palette colour by position.
+      function contColorMap() { var list = continentList(), m = {}; list.forEach(function (c, i) { m[c] = conts[c] || HM.paletteAt(i); }); return m; }
       function paint(q, r) {
         if (!inBounds(q, r)) return; var k = q + ',' + r;
         if (tool === 'sea') { delete hexes[k]; if (selKey === k) closeInspect(); }
@@ -1542,6 +1549,17 @@
         else { natColor = HM.nationColors(res.data || []); (res.data || []).forEach(function (n) { natName[n.id] = n.name; natOrder.push(n.id); }); }
         fillPicker();
       }
+      async function loadContinents() {
+        var res = await supabase.from('continents').select('name, color');
+        conts = {};
+        if (!res.error) (res.data || []).forEach(function (c) { conts[c.name] = c.color; });
+      }
+      // The colour swatch shows + edits the selected continent's colour (Continents layer only).
+      function syncContColor() {
+        var inp = document.getElementById('wmContColor'), show = layer === 'continents' && !!assignContinent;
+        inp.hidden = !show;
+        if (show) inp.value = conts[assignContinent] || contColorMap()[assignContinent] || '#5546E8';
+      }
       // The Assign picker reflects the active layer: nations, or continents (+ make a new one).
       function fillPicker() {
         var sel = document.getElementById('wmNation');
@@ -1557,6 +1575,7 @@
             natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('');
           sel.value = assignNation;
         }
+        syncContColor();
       }
       function setLayer(l) {
         layer = l;
@@ -1573,6 +1592,10 @@
           var dels = Object.keys(loaded).filter(function (k) { return !hexes[k]; });
           for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
           loaded = {}; Object.keys(hexes).forEach(function (k) { loaded[k] = { q: hexes[k].q, r: hexes[k].r }; });
+          // Persist the continents registry (name + colour) — every continent still in play, with
+          // its effective colour, so old text-only continents pick up a stored colour too.
+          var cl = continentList();
+          if (cl.length) { var cm = contColorMap(); var cu = await supabase.from('continents').upsert(cl.map(function (c) { return { name: c, color: cm[c] }; }), { onConflict: 'name' }); if (cu.error) throw cu.error; }
           status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + '.');
         } catch (e) { status('Save failed: ' + ((e && e.message) || 'error')); }
         btn.disabled = false;
@@ -1633,10 +1656,17 @@
       document.querySelectorAll('.wm-layer').forEach(function (b) { b.addEventListener('click', function () { setLayer(b.dataset.layer); }); });
       document.getElementById('wmNation').addEventListener('change', function () {
         if (layer === 'continents') {
-          if (this.value === '__new__') { var name = (prompt('New continent name:') || '').trim(); if (!name) { this.value = assignContinent; return; } assignContinent = name; fillPicker(); }
-          else assignContinent = this.value;
+          if (this.value === '__new__') {
+            var name = (prompt('New continent name:') || '').trim();
+            if (!name) { this.value = assignContinent; return; }
+            if (!conts[name]) conts[name] = HM.paletteAt(continentList().length);   // default colour
+            assignContinent = name; fillPicker();
+          } else { assignContinent = this.value; syncContColor(); }
           if (assignContinent) setTool('nation');
         } else { assignNation = this.value; if (this.value) setTool('nation'); }
+      });
+      document.getElementById('wmContColor').addEventListener('input', function () {
+        if (layer === 'continents' && assignContinent) { conts[assignContinent] = this.value; draw(); }
       });
       document.getElementById('wmSave').addEventListener('click', save);
       document.getElementById('wmZin').onclick = function () { zoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 1.18); };
@@ -1647,7 +1677,7 @@
       window.addEventListener('resize', function () { if (!document.querySelector('.tabpane[data-tab="world-map"]').hidden) fit(); });
 
       return { onShow: async function () {
-        if (!loadedOnce) { loadedOnce = true; view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; await loadNations(); await load(); }
+        if (!loadedOnce) { loadedOnce = true; view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; await loadNations(); await loadContinents(); await load(); }
         fit();
       } };
     }

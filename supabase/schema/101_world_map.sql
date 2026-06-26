@@ -23,6 +23,24 @@ create table if not exists public.world_hexes (
 -- an existing world_hexes table picks it up.
 alter table public.world_hexes add column if not exists continent text;
 
+-- Continents registry: each painted continent's display name + colour. Hexes reference a
+-- continent by its name (world_hexes.continent); this table just holds the colour. World-read,
+-- admin-write like the hexes.
+create table if not exists public.continents (
+  name       text primary key,
+  color      text not null default '#5546E8',
+  created_at timestamptz not null default now()
+);
+alter table public.continents enable row level security;
+drop policy if exists "cont_select_all" on public.continents;
+create policy "cont_select_all" on public.continents for select using (true);
+drop policy if exists "cont_insert_admin" on public.continents;
+create policy "cont_insert_admin" on public.continents for insert with check (public.is_admin());
+drop policy if exists "cont_update_admin" on public.continents;
+create policy "cont_update_admin" on public.continents for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists "cont_delete_admin" on public.continents;
+create policy "cont_delete_admin" on public.continents for delete using (public.is_admin());
+
 alter table public.world_hexes enable row level security;
 -- World-readable (the board is public).
 drop policy if exists "hex_select_all" on public.world_hexes;

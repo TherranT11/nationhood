@@ -16,6 +16,7 @@ export function axialToPix(q, r, s, ox, oy) { return { x: Math.sqrt(3) * s * (q 
 // Returns { key: '#rrggbb' }. nationColors is the by-name-ordered nation case; continents
 // (and any other layer) reuse paletteColors directly.
 export function paletteColors(keys) { var m = {}; (keys || []).forEach(function (k, i) { if (k != null && k !== '') m[k] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+export function paletteAt(i) { var n = NATION_PALETTE.length; return NATION_PALETTE[((i % n) + n) % n]; }
 export function nationColors(list) { return paletteColors((list || []).map(function (n) { return n.id; })); }
 
 // The border edges of a land hex: each side facing the sea (no land neighbour) or a different
