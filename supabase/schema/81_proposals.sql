@@ -135,6 +135,15 @@ returns int language sql stable security definer set search_path = public as $$
   select coalesce(sum(seats), 0)::int from public.parties where nation_id = p_nation;
 $$;
 
+-- The next free agenda month for a nation — one measure reaches the floor per tick, filling
+-- from the tick after now. ONE source for every propose_* path that queues on the agenda.
+create or replace function public._next_agenda_slot(p_nation text, p_cur int)
+returns int language sql stable security definer set search_path = public as $$
+  select greatest(p_cur + 1, coalesce(max(scheduled_tick), p_cur) + 1)
+    from public.proposals where nation_id = p_nation and status = 'agenda';
+$$;
+revoke all on function public._next_agenda_slot(text, int) from public, anon, authenticated;
+
 -- A measure on the floor PASSES the moment Aye-seats reach a chamber majority.
 -- It does NOT fail here — a measure stands for its full window (6 ticks) and only
 -- fails for want of a majority at tick advance (advance_tick, schema/60). ONE place
@@ -283,9 +292,7 @@ begin
     v_party := public._lock_party();
     -- Queue on the next free month: one agenda slot per tick, filling from the tick
     -- after now. advance_tick carries it to the floor when the clock reaches it.
-    select greatest(v_cur + 1, coalesce(max(scheduled_tick), v_cur) + 1)
-      into v_sched
-      from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
+    v_sched := public._next_agenda_slot(v_party.nation_id, v_cur);
   end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
@@ -347,8 +354,7 @@ begin
   end if;
 
   if not p_to_floor then
-    select greatest(v_curtick + 1, coalesce(max(scheduled_tick), v_curtick) + 1)
-      into v_sched from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
+    v_sched := public._next_agenda_slot(v_party.nation_id, v_curtick);
   end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
@@ -508,8 +514,7 @@ begin
   select name into v_hogname from public.parties where id = v_hog;
 
   -- Queue on the next free agenda month (one slot per tick), same as other agenda measures.
-  select greatest(v_tick + 1, coalesce(max(scheduled_tick), v_tick) + 1)
-    into v_sched from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
+  v_sched := public._next_agenda_slot(v_party.nation_id, v_tick);
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, scheduled_tick)
     values (v_party.nation_id, v_party.id, 'no_confidence',
