@@ -415,11 +415,11 @@
         var sub = esc(TERM_LABELS[a.type] || a.type);
         var action = '';
         if (a.type === 'ministry'){
-          // The promised recipient party (its name snapshotted on the term; fall back to the
-          // live party row by id) and who, if anyone, now holds the seat. Pre-feature promises
-          // carry no recipient — they read "recipient not set" and can't be filled.
+          // The promised recipient party: the live party row by id is the source of truth (a
+          // rename shows through); the term's snapshotted name is only a fallback for a party no
+          // longer listed. Pre-feature promises carry no recipient — "recipient not set", unfillable.
           var recipId = a.params && a.params.to_party;
-          var recipName = (a.params && a.params.to_party_name) || (recipId && byId[recipId] && byId[recipId].name) || null;
+          var recipName = (recipId && byId[recipId] && byId[recipId].name) || (a.params && a.params.to_party_name) || null;
           sub += recipName ? ' · to ' + esc(recipName) : ' · recipient not set';
           if (done){
             sub += a.params && a.params.minister_name ? ' · ' + esc(a.params.minister_name) + (a.params.party_abbr ? ' (' + esc(a.params.party_abbr) + ')' : '') : '';
@@ -431,7 +431,7 @@
                 pool: pool.map(function(p){ return { id: p.id, name: polFullName(p), role: p.status }; }) };
               action = '<button class="enact" type="button" data-fulfill="' + esc(a.id) + '">Fulfill</button>';
             } else {
-              var why = !recipId ? 'No recipient party was set in the deal' : ('No eligible politician in ' + recipName);
+              var why = !recipId ? 'No recipient party was set in the deal' : ('No eligible politician in ' + (recipName || 'that party'));
               action = '<button class="enact" type="button" disabled title="' + esc(why) + '">Fulfill</button>';
             }
           }
@@ -509,6 +509,7 @@
       '</div>';
 
     box.querySelectorAll('.enact').forEach(function(b){
+      if (b.disabled) return;   // a gated Fulfill (no recipient / no eligible politician)
       if (b.dataset.fulfill) b.addEventListener('click', function(){ openFulfill(b.dataset.fulfill); });
       else b.addEventListener('click', function(){ enact(b.dataset.id); });
     });
@@ -596,7 +597,7 @@
         if (govPartyIds.length) {
           try {
             const { data: pols } = await supabase.from('politicians')
-              .select('id, first_name, last_name, status, party_id, acu, created_at')
+              .select('id, first_name, last_name, status, party_id')
               .in('party_id', govPartyIds).order('created_at', { ascending: true });
             (pols || []).forEach(function(p){ (polsByParty[p.party_id] = polsByParty[p.party_id] || []).push(p); });
           } catch (e) { /* non-critical — cabinet shows party names; Fulfill gates off */ }
