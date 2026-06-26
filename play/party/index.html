@@ -433,6 +433,8 @@
   // it tints the crest. Other parties keep their own archetype colour (their --c).
   var ME = { user: null, party: null };
   var NOW_TICK = 0;   // current tick, for the rename cooldown gate (server re-enforces)
+  // The party name appears in the header, the sidebar, and the tab title — one place to set it.
+  function setPartyName(n) { document.getElementById('pname').textContent = n; document.getElementById('phead').textContent = n; document.title = n + ' · Nationhood'; }
   var ACCENT = '#5546E8';
   function applyAccent(color) {
     ACCENT = color;     // the crest tint reads this
@@ -533,9 +535,7 @@
           if (nm.error) throw new Error(nm.error.message);
           ME.party.name = newName;
           if (nm.data && nm.data.until != null) ME.party.name_change_until_tick = nm.data.until;
-          document.getElementById('pname').textContent = newName;
-          document.getElementById('phead').textContent = newName;
-          document.title = newName + ' · Nationhood';
+          setPartyName(newName);
         }
         var logo = removeLogo ? null : (ME.party.logo_url || null);
         if (pendingFile) {
@@ -963,14 +963,12 @@
 
       // Sidebar + title. setIdeology shows the archetype, or "No Ideology" until the
       // party adopts its first conviction (which sets the archetype).
-      document.getElementById('pname').textContent = party.name;
+      setPartyName(party.name);
       MF_NATION = nationName;
       try { NOW_TICK = await currentTick(); } catch (e) { /* cooldown gate is best-effort; server enforces */ }
       setIdeology(party);
-      document.title = party.name + ' · Nationhood';
 
       // Header card.
-      document.getElementById('phead').textContent = party.name;
       document.getElementById('pabbr').textContent = party.abbreviation ? '(' + party.abbreviation + ')' : '';
       setOnline(party.last_active_at);
       ME.user = user; ME.party = party;

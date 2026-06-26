@@ -2,6 +2,12 @@
 -- Renaming a party is a real decision: it costs standing and can't be done often. Routed
 -- through an RPC (not a direct client write) so the penalty + cooldown are server-enforced.
 -- Run after 94 (uses _apply_conviction_effect for the standing penalties).
+--
+-- KNOWN LIMITATION: parties.name is still in the client UPDATE grant (20_parties) because the
+-- founding/relaunch upsert sets it, so a crafted client could rename directly and skip the
+-- penalty. The Edit Party UI always goes through this RPC; to fully lock it down, move the
+-- relaunch rename onto an RPC and drop `name` from the client grant. name_change_until_tick is
+-- NOT granted, so the cooldown itself can't be reset client-side.
 
 alter table public.parties add column if not exists name_change_until_tick int;
 
