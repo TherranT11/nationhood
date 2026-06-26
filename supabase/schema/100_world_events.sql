@@ -158,8 +158,8 @@ begin
   select definition into v_def from public.world_events where id = p_event;
   if v_def is null then raise exception 'No such world event.'; end if;
   v_type := v_def->>'type'; v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
-  if v_type not in ('decision', 'turning_point') then
-    raise exception 'Only Decision and Turning Point events can be fired yet — Mutual Agreement and Competitive come in a later pass.';
+  if v_type not in ('decision', 'turning_point', 'mutual') then
+    raise exception 'Competitive events aren’t playable yet — they come in a later pass.';
   end if;
   select current_tick into v_tick from public.game_state where id;
 
@@ -177,7 +177,9 @@ begin
       insert into public.events (nation_id, kind, body, game_date) values (v_nat, 'world_event', v_body, public.current_game_date());
     else
       insert into public.events (nation_id, kind, body, game_date)
-        values (v_nat, 'world_event', v_body || ' — a decision awaits in World Events.', public.current_game_date());
+        values (v_nat, 'world_event',
+                v_body || (case when v_type = 'mutual' then ' — an agreement awaits in World Events.' else ' — a decision awaits in World Events.' end),
+                public.current_game_date());
     end if;
   end loop;
 
@@ -227,5 +229,70 @@ begin
   return jsonb_build_object('ok', true, 'chose', v_label);
 end $$;
 grant execute on function public.world_event_choose(uuid, int) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Mutual Agreement: every involved nation must agree before the deal goes through. Agreeing
+-- commits a nation to the CONTRIBUTION (its cost) — "a player cannot claim to agree without
+-- contributing"; the BENEFIT (mutual gain) and the contribution are applied to ALL involved
+-- nations together only when the last one agrees. An agreement nobody completes costs nobody
+-- (the spec's "it is assumed they do not act upon it"). No automation, no action cost.
+--   definition.mutual = { contribution:[{t,v}] (each side pays), effects:[{t,v}] (each side gains) }
+-- ---------------------------------------------------------------------------
+create table if not exists public.world_event_agreements (
+  instance_id uuid not null references public.world_event_instances (id) on delete cascade,
+  nation_id   text not null references public.nations (id) on delete cascade,
+  party_id    uuid references public.parties (id) on delete set null,   -- who agreed
+  created_at  timestamptz not null default now(),
+  primary key (instance_id, nation_id)
+);
+alter table public.world_event_agreements enable row level security;
+drop policy if exists "wea_select_all" on public.world_event_agreements;
+create policy "wea_select_all" on public.world_event_agreements for select using (true);
+
+create or replace function public.world_event_agree(p_instance uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb;
+  v_targets text[]; v_agreed int; v_need int; v_nat text; v_nname text;
+begin
+  v_party := public._lock_party();   -- caller's party + nation (no action cost)
+  select * into v_inst from public.world_event_instances where id = p_instance for update;
+  if not found then raise exception 'That event is gone.'; end if;
+  if v_inst.status <> 'active' then raise exception 'That agreement has closed.'; end if;
+  v_def := v_inst.definition;
+  if v_def->>'type' <> 'mutual' then raise exception 'That event is not an agreement.'; end if;
+  if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
+    raise exception 'This agreement does not involve your nation.';
+  end if;
+  if exists (select 1 from public.world_event_agreements where instance_id = p_instance and nation_id = v_party.nation_id) then
+    raise exception 'Your nation has already agreed.';
+  end if;
+
+  insert into public.world_event_agreements (instance_id, nation_id, party_id)
+    values (p_instance, v_party.nation_id, v_party.id);
+  select name into v_nname from public.nations where id = v_party.nation_id;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'world_event',
+            coalesce(nullif(v_def->>'name',''),'A world event') || ' — ' || coalesce(v_nname, v_party.nation_id) || ' agreed to the terms.',
+            public.current_game_date());
+
+  -- The deal seals only when EVERY involved nation has agreed: each pays the contribution
+  -- and gains the benefit, then the instance resolves.
+  v_targets := public._we_targets(v_def);
+  v_need := coalesce(array_length(v_targets, 1), 0);
+  select count(*) into v_agreed from public.world_event_agreements where instance_id = p_instance;
+  if v_need > 0 and v_agreed >= v_need then
+    foreach v_nat in array v_targets loop
+      perform public._apply_we_effects(v_nat, v_def->'mutual'->'contribution');
+      perform public._apply_we_effects(v_nat, v_def->'mutual'->'effects');
+      insert into public.events (nation_id, kind, body, game_date)
+        values (v_nat, 'world_event', coalesce(nullif(v_def->>'name',''),'A world event') || ' — the agreement is sealed; all sides contribute and gain.', public.current_game_date());
+    end loop;
+    update public.world_event_instances set status = 'resolved' where id = p_instance;
+    return jsonb_build_object('ok', true, 'sealed', true);
+  end if;
+  return jsonb_build_object('ok', true, 'sealed', false, 'agreed', v_agreed, 'need', v_need);
+end $$;
+grant execute on function public.world_event_agree(uuid) to authenticated;
 
 notify pgrst, 'reload schema';
