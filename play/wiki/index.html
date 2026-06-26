@@ -7,19 +7,92 @@
 <title>Nationhopedia · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Lora:wght@400;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
     --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
     --indigo:#5546E8;--indigo-soft:#ECE9FD;
     --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
+    --navy:#2b3a7a;--navy-soft:#E7EAF4;--blue:#1f86d6;--blue-soft:#e3f0fb;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.62;-webkit-font-smoothing:antialiased}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
   .app{display:flex;min-height:100vh}
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
-  .main{flex:1;padding:24px clamp(16px,4vw,56px) 70px;min-width:0}
+  .main{flex:1;padding:24px clamp(16px,3vw,40px) 64px;min-width:0;max-width:1040px}
+
+  /* masthead (always visible; logo returns to the index) */
+  .masthead{text-align:center;border-bottom:1px solid var(--line2);padding-bottom:20px;margin-bottom:24px}
+  .masthead .logo{font-family:'Lora',Georgia,serif;font-weight:600;font-size:clamp(28px,5vw,42px);letter-spacing:-.02em;cursor:pointer;display:inline-block}
+  .masthead .logo b{color:var(--indigo);font-weight:600}
+  .masthead .tag{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-top:6px}
+  .search{position:relative;max-width:440px;margin:18px auto 0}
+  .search input{width:100%;background:var(--surface);border:1px solid var(--line2);border-radius:11px;padding:12px 14px 12px 40px;font-family:'Archivo',sans-serif;font-size:14px;color:var(--ink)}
+  .search input:focus{outline:none;border-color:var(--indigo)}
+  .search > svg{position:absolute;left:13px;top:13px;width:17px;height:17px;stroke:var(--soft);fill:none;stroke-width:2}
+  .suggest{position:absolute;top:48px;left:0;right:0;background:var(--surface);border:1px solid var(--line2);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.18);overflow:hidden;display:none;z-index:30;text-align:left}
+  .suggest.show{display:block}
+  .sg{padding:10px 14px;font-size:13.5px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;color:var(--ink)}
+  .sg:hover{background:var(--chip)} .sg .k{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);text-transform:uppercase}
+
+  .grid{display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+
+  .sectionlabel{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
+  .sectionlabel .clearcat{color:var(--indigo);cursor:pointer;text-transform:none;letter-spacing:0;font-size:11px}
+  .shuffle{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--indigo);background:var(--indigo-soft);border:none;border-radius:7px;padding:5px 10px;cursor:pointer}
+  .shuffle:hover{filter:brightness(.97)} .shuffle svg{width:12px;height:12px;stroke:var(--indigo);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .featured{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .feat-body{display:flex;gap:18px;padding:20px 22px}
+  @media(max-width:560px){.feat-body{flex-direction:column}}
+  .feat-thumb{width:150px;flex:none}
+  .thumb-img{width:150px;height:104px;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:var(--chip)}
+  .thumb-img img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb-square{width:150px;height:104px;border-radius:8px;display:grid;place-items:center;color:#fff;font-weight:800;font-size:30px;font-family:'Space Mono',monospace}
+  .feat-thumb .cap{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);text-align:center;margin-top:7px;letter-spacing:.03em}
+  .feat-main{flex:1;min-width:0}
+  .feat-kind{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo)}
+  .feat-title{font-family:'Lora',Georgia,serif;font-weight:600;font-size:24px;letter-spacing:-.01em;margin-top:3px}
+  .feat-lead{font-size:14.5px;line-height:1.65;color:var(--muted);margin-top:9px}
+  .feat-lead .wk-link{color:var(--indigo);text-decoration:none} .feat-lead .wk-link:hover{text-decoration:underline}
+  .feat-read{display:inline-flex;align-items:center;gap:6px;margin-top:13px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--indigo);cursor:pointer}
+  .feat-read svg{width:13px;height:13px;stroke:var(--indigo);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .cta{background:linear-gradient(180deg,var(--indigo-soft),var(--surface));border:1px solid var(--line2);border-radius:14px;padding:18px 20px;margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .cta .ct b{font-weight:800;font-size:15px;display:block} .cta .ct span{font-size:12.5px;color:var(--muted)}
+  .create{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:var(--surface);border:none;border-radius:10px;padding:12px 18px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.04em;cursor:pointer;white-space:nowrap;text-decoration:none}
+  .create:hover{filter:brightness(1.15)} .create svg{width:14px;height:14px;stroke:var(--surface);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+
+  .recent{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .rec-item{display:flex;align-items:flex-start;gap:12px;padding:13px 16px;cursor:pointer;border-top:1px solid var(--line)}
+  .rec-item:first-child{border-top:none} .rec-item:hover{background:var(--field)}
+  .rec-ico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none;margin-top:1px}
+  .rec-ico svg{width:15px;height:15px;stroke-width:1.9;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .ico-nation{background:var(--navy-soft);color:var(--navy)} .ico-party{background:var(--indigo-soft);color:var(--indigo)}
+  .ico-politician{background:var(--amber-soft);color:var(--amber)} .ico-place{background:var(--green-soft);color:var(--green)}
+  .ico-organization{background:var(--blue-soft);color:var(--blue)} .ico-event{background:var(--red-soft);color:var(--red)} .ico-other{background:var(--chip);color:var(--soft)}
+  .rec-main{flex:1;min-width:0}
+  .rec-title{font-weight:700;font-size:14px;color:var(--indigo)}
+  .rec-excerpt{font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
+  .rec-meta{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:4px;letter-spacing:.02em}
+  .rec-time{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);white-space:nowrap;flex:none;padding-top:2px}
+  .rec-empty{padding:26px 18px;text-align:center;color:var(--soft);font-style:italic;font-size:13px}
+
+  .widget{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .widget-h{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:12px}
+  .stat-row{display:flex;align-items:baseline;justify-content:space-between;padding:7px 0;border-top:1px solid var(--line)}
+  .stat-row:first-of-type{border-top:none}
+  .stat-row .sk{font-size:12.5px;color:var(--muted)} .stat-row .sv{font-family:'Space Mono',monospace;font-weight:700;font-size:16px}
+  .catchips{display:flex;flex-wrap:wrap;gap:7px}
+  .catchip{font-size:12px;border:1px solid var(--line2);background:var(--chip);border-radius:20px;padding:6px 12px;cursor:pointer;color:var(--indigo)}
+  .catchip:hover{background:var(--indigo-soft);border-color:var(--indigo)}
+  .catchip.empty{color:var(--soft);border:none;background:none;cursor:default;padding-left:0}
+
+  .backrow{margin-bottom:14px}
+  .backlink{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px;color:var(--indigo);cursor:pointer}
+  .backlink svg{width:13px;height:13px;stroke:var(--indigo);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 </style>
 </head>
 <body>
@@ -27,18 +100,36 @@
   <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
   <main class="main">
     <div class="topbar" id="topbar"></div>
-    <div class="wk-masthead">
-      <div class="wk-mbrand">
-        <span class="wk-globe"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span>
-        <div><b>Nationhopedia</b><span>The free encyclopedia of the world</span></div>
-      </div>
-      <div class="wk-search">
+    <div class="masthead">
+      <div class="logo" id="wkLogo">Nation<b>hopedia</b></div>
+      <div class="tag">The free encyclopedia of the world<span id="wkCount"></span></div>
+      <div class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
         <input id="wkSearch" placeholder="Search Nationhopedia…" autocomplete="off">
-        <div class="wk-suggest" id="wkSuggest"></div>
+        <div class="suggest" id="wkSuggest"></div>
       </div>
     </div>
-    <article class="wk-article" id="wkArticle"><div class="wk-empty">Loading…</div></article>
+
+    <div id="wkLanding" class="grid">
+      <div>
+        <div class="sectionlabel">Featured article
+          <button class="shuffle" id="shuffleBtn"><svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/><path d="M16 21h5v-5"/><path d="M3 3l7 7"/></svg>Shuffle</button>
+        </div>
+        <article class="featured" id="featured"></article>
+        <div class="cta" id="cta" hidden>
+          <div class="ct"><b>Know something the world doesn’t?</b><span>Document a nation, party, leader, or event.</span></div>
+          <a class="create" href="/adminsetup/"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Create New Entry</a>
+        </div>
+        <div class="sectionlabel" id="listLabel" style="margin-top:24px">Recently edited</div>
+        <div class="recent" id="recent"></div>
+      </div>
+      <aside>
+        <div class="widget"><div class="widget-h">By the numbers</div><div id="wkNumbers"></div></div>
+        <div class="widget"><div class="widget-h">Browse by category</div><div class="catchips" id="wkCats"></div></div>
+      </aside>
+    </div>
+
+    <article class="wk-article" id="wkArticle" hidden></article>
   </main>
 </div>
 
@@ -47,53 +138,140 @@
   import { ideologyLabel } from '/archetypes.js';
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { injectWikiCSS, articleHTML, normalizeArticle } from '/wiki.js';
+  import { injectWikiCSS, articleHTML, normalizeArticle, leadHTML, plainText } from '/wiki.js';
 
   mountTopbar();
   mountSidenav();
   injectWikiCSS();
 
-  var ART = document.getElementById('wkArticle');
-  var byTitle = {};          // lower-cased title → row
-  var known = new Set();      // lower-cased titles that exist
+  var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only for the Create CTA; real gate is is_admin() RLS
 
-  function setEmpty(msg) { ART.innerHTML = '<div class="wk-empty">' + msg + '</div>'; }
+  // Per-kind icon + colour class for the recently-edited list and featured thumbnail.
+  var KIND_META = {
+    'Nation':           { key: 'nation',       icon: '<path d="M5 3v18"/><path d="M5 4h12l-2 4 2 4H5"/>',                          color: '#2b3a7a' },
+    'Political party':  { key: 'party',        icon: '<path d="M4 20V8l8-4 8 4v12"/><path d="M9 20v-5h6v5"/>',                     color: '#5546E8' },
+    'Politician':       { key: 'politician',   icon: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>',       color: '#E0820E' },
+    'Place':            { key: 'place',        icon: '<path d="M12 21s-7-6-7-11a7 7 0 0114 0c0 5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>', color: '#16915a' },
+    'Organization':     { key: 'organization', icon: '<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M8 8V5a2 2 0 012-2h4a2 2 0 012 2v3"/>', color: '#1f86d6' },
+    'Event':            { key: 'event',        icon: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/>', color: '#C42B2B' }
+  };
+  function meta(kind) { return KIND_META[kind] || { key: 'other', icon: '<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>', color: '#8d8d95' }; }
 
-  function render(title) {
-    var row = byTitle[String(title).toLowerCase()];
-    if (!row) return;
-    ART.innerHTML = articleHTML(normalizeArticle(row), known);
-    wire();
-    // Reflect the open article in the URL (no reload) so it's shareable / refresh-stable.
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function initials(t) { return String(t || '?').replace(/^(the|a|an)\s+/i, '').split(/\s+/).slice(0, 2).map(function (w) { return w.charAt(0); }).join('').toUpperCase() || '?'; }
+  function relTime(iso) {
+    var t = Date.parse(iso); if (!t) return '';
+    var m = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (m < 60) return (m || 1) + ' min ago';
+    var h = Math.round(m / 60); if (h < 24) return h + (h === 1 ? ' hr ago' : ' hrs ago');
+    var d = Math.round(h / 24); if (d < 7) return d + (d === 1 ? ' day ago' : ' days ago');
+    var w = Math.round(d / 7); if (w < 5) return w + (w === 1 ? ' week ago' : ' weeks ago');
+    var mo = Math.round(d / 30); return mo + (mo === 1 ? ' month ago' : ' months ago');
+  }
+  function leadOf(row) { return (row.definition && row.definition.lead) || ''; }
+  function imageOf(row) { return row.definition && row.definition.box && row.definition.box.image && row.definition.box.image.url; }
+
+  var ROWS = [], byTitle = {}, known = new Set(), featuredIdx = 0;
+  var landing = document.getElementById('wkLanding'), articleEl = document.getElementById('wkArticle');
+
+  // ---------- views ----------
+  function showLanding() {
+    articleEl.hidden = true; landing.hidden = false;
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* non-fatal */ }
+    window.scrollTo({ top: 0 });
+  }
+  function showArticle(title) {
+    var row = byTitle[String(title).toLowerCase()]; if (!row) return;
+    articleEl.innerHTML =
+      '<div class="backrow"><span class="backlink" id="wkBack"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Nationhopedia</span></div>'
+      + articleHTML(normalizeArticle(row), known);
+    landing.hidden = true; articleEl.hidden = false;
+    document.getElementById('wkBack').onclick = showLanding;
+    articleEl.querySelectorAll('[data-link]').forEach(function (el) { el.onclick = function () { if (byTitle[String(el.dataset.link).toLowerCase()]) showArticle(el.dataset.link); }; });
+    articleEl.querySelectorAll('[data-sec]').forEach(function (el) { el.onclick = function () { var s = document.getElementById(el.dataset.sec); if (s) s.scrollIntoView({ behavior: 'smooth' }); }; });
     try { history.replaceState(null, '', '?a=' + encodeURIComponent(row.title)); } catch (e) { /* non-fatal */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function wire() {
-    ART.querySelectorAll('[data-link]').forEach(function (el) {
-      el.onclick = function () { var t = el.dataset.link; if (byTitle[String(t).toLowerCase()]) render(t); };
-    });
-    ART.querySelectorAll('[data-sec]').forEach(function (el) {
-      el.onclick = function () { var s = document.getElementById(el.dataset.sec); if (s) s.scrollIntoView({ behavior: 'smooth' }); };
-    });
+  // ---------- featured ----------
+  function thumbHTML(row) {
+    var url = imageOf(row);
+    if (url) return '<div class="thumb-img"><img src="' + esc(url) + '" alt=""></div>';
+    return '<div class="thumb-square" style="background:' + meta(row.kind).color + '">' + esc(initials(row.title)) + '</div>';
+  }
+  function renderFeatured() {
+    var f = document.getElementById('featured');
+    if (!ROWS.length) { f.innerHTML = '<div class="rec-empty">No articles have been written yet.</div>'; return; }
+    var row = ROWS[featuredIdx];
+    f.innerHTML = '<div class="feat-body"><div class="feat-thumb">' + thumbHTML(row) + '<div class="cap">' + esc(row.kind || 'Article') + '</div></div>'
+      + '<div class="feat-main"><div class="feat-kind">' + esc(row.kind || 'Article') + '</div><div class="feat-title">' + esc(row.title) + '</div>'
+      + '<div class="feat-lead">' + (leadHTML(leadOf(row), known) || '<i>No summary yet.</i>') + '</div>'
+      + '<span class="feat-read">Read full article <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div></div>';
+    f.querySelector('.feat-read').onclick = function () { showArticle(row.title); };
+    f.querySelector('.feat-title').onclick = function () { showArticle(row.title); };
+    f.querySelector('.feat-title').style.cursor = 'pointer';
+    // Inline [[links]] in the teaser navigate to their article (same as in the body).
+    f.querySelectorAll('.feat-lead [data-link]').forEach(function (el) { el.onclick = function () { if (byTitle[String(el.dataset.link).toLowerCase()]) showArticle(el.dataset.link); }; });
+  }
+  function shuffleFeatured() {
+    if (ROWS.length < 2) return;
+    var n; do { n = Math.floor(Math.random() * ROWS.length); } while (n === featuredIdx);
+    featuredIdx = n; renderFeatured();
   }
 
-  // ---- search (title contains) ----
+  // ---------- list (recent / category-filtered) ----------
+  function listItem(row) {
+    var m = meta(row.kind);
+    return '<div class="rec-item" data-go="' + esc(row.title) + '"><div class="rec-ico ico-' + m.key + '"><svg viewBox="0 0 24 24">' + m.icon + '</svg></div>'
+      + '<div class="rec-main"><div class="rec-title">' + esc(row.title) + '</div>'
+      + '<div class="rec-excerpt">' + esc(plainText(leadOf(row))) + '</div>'
+      + '<div class="rec-meta">' + esc(row.kind || 'Article') + '</div></div>'
+      + '<div class="rec-time">' + esc(relTime(row.updated_at || row.created_at)) + '</div></div>';
+  }
+  function renderList(rows, label, clearable) {
+    document.getElementById('listLabel').innerHTML = esc(label) + (clearable ? ' <span class="clearcat" id="clearCat">× clear</span>' : '');
+    var box = document.getElementById('recent');
+    box.innerHTML = rows.length ? rows.map(listItem).join('') : '<div class="rec-empty">No articles here yet.</div>';
+    box.querySelectorAll('[data-go]').forEach(function (el) { el.onclick = function () { showArticle(el.dataset.go); }; });
+    if (clearable) { var c = document.getElementById('clearCat'); if (c) c.onclick = showRecent; }
+  }
+  function showRecent() {
+    var recent = ROWS.slice().sort(function (a, b) { return Date.parse(b.updated_at || b.created_at || 0) - Date.parse(a.updated_at || a.created_at || 0); }).slice(0, 8);
+    renderList(recent, 'Recently edited', false);
+  }
+  function filterCategory(cat) {
+    var rows = ROWS.filter(function (r) { return ((r.definition && r.definition.cats) || []).some(function (c) { return c.toLowerCase() === cat.toLowerCase(); }); });
+    renderList(rows, 'Category · ' + cat, true);
+  }
+
+  // ---------- sidebar widgets ----------
+  function renderWidgets() {
+    var counts = {}; ROWS.forEach(function (r) { var k = r.kind || 'Other'; counts[k] = (counts[k] || 0) + 1; });
+    var stats = [['Articles', ROWS.length]].concat(Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; }).map(function (k) { return [k, counts[k]]; }));
+    document.getElementById('wkNumbers').innerHTML = stats.map(function (s) { return '<div class="stat-row"><span class="sk">' + esc(s[0]) + '</span><span class="sv">' + s[1] + '</span></div>'; }).join('');
+
+    var cats = {}; ROWS.forEach(function (r) { ((r.definition && r.definition.cats) || []).forEach(function (c) { if (c) cats[c] = (cats[c] || 0) + 1; }); });
+    var keys = Object.keys(cats).sort(function (a, b) { return cats[b] - cats[a]; }).slice(0, 14);
+    var el = document.getElementById('wkCats');
+    el.innerHTML = keys.length ? keys.map(function (c) { return '<span class="catchip" data-cat="' + esc(c) + '">' + esc(c) + '</span>'; }).join('') : '<span class="catchip empty">No categories yet.</span>';
+    el.querySelectorAll('[data-cat]').forEach(function (chip) { chip.onclick = function () { window.scrollTo({ top: 0, behavior: 'smooth' }); filterCategory(chip.dataset.cat); }; });
+  }
+
+  // ---------- search ----------
   var sIn = document.getElementById('wkSearch'), sug = document.getElementById('wkSuggest');
   sIn.addEventListener('input', function () {
     var q = this.value.toLowerCase().trim();
     if (!q) { sug.classList.remove('show'); return; }
-    var hits = Object.keys(byTitle).map(function (k) { return byTitle[k]; })
-      .filter(function (r) { return r.title.toLowerCase().indexOf(q) >= 0; })
+    var hits = ROWS.filter(function (r) { return r.title.toLowerCase().indexOf(q) >= 0; })
       .sort(function (a, b) { return a.title.localeCompare(b.title); }).slice(0, 8);
     if (!hits.length) { sug.classList.remove('show'); return; }
-    sug.innerHTML = hits.map(function (r) { return '<div class="wk-sg" data-go="' + encodeURIComponent(r.title) + '">' + r.title + '<span class="wk-kind">' + (r.kind || '') + '</span></div>'; }).join('');
+    sug.innerHTML = hits.map(function (r) { return '<div class="sg" data-go="' + esc(r.title) + '">' + esc(r.title) + '<span class="k">' + esc(r.kind || '') + '</span></div>'; }).join('');
     sug.classList.add('show');
-    sug.querySelectorAll('[data-go]').forEach(function (d) {
-      d.onclick = function () { sIn.value = ''; sug.classList.remove('show'); render(decodeURIComponent(d.dataset.go)); };
-    });
+    sug.querySelectorAll('[data-go]').forEach(function (d) { d.onclick = function () { sIn.value = ''; sug.classList.remove('show'); showArticle(d.dataset.go); }; });
   });
-  document.addEventListener('click', function (e) { if (!e.target.closest('.wk-search')) sug.classList.remove('show'); });
+  document.addEventListener('click', function (e) { if (!e.target.closest('.search')) sug.classList.remove('show'); });
+  document.getElementById('wkLogo').onclick = showLanding;
+  document.getElementById('shuffleBtn').onclick = shuffleFeatured;
 
   // Fill the sidenav brand (flag / party name) like the other in-game pages, best-effort.
   async function setBrand(userId) {
@@ -108,17 +286,21 @@
   }
 
   (async () => {
-    if (!isConfigured) { setEmpty('Nationhopedia isn’t connected yet.'); return; }
+    if (!isConfigured) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Nationhopedia isn’t connected yet.</div>'; return; }
     const user = await requireUser();
     if (!user) return; // redirected to login
     setBrand(user.id);
-    const { data: rows, error } = await supabase.from('wiki_articles').select('id, title, kind, definition').order('title');
-    if (error) { setEmpty('Couldn’t load Nationhopedia. ' + (error.message || '')); return; }
-    if (!rows || !rows.length) { setEmpty('Nationhopedia is empty — no articles have been written yet.'); return; }
-    rows.forEach(function (r) { byTitle[r.title.toLowerCase()] = r; known.add(r.title.toLowerCase()); });
-    // Open the article named in ?a=, else the first by title.
+    if (user.email === ADMIN_EMAIL) document.getElementById('cta').hidden = false;
+    const { data: rows, error } = await supabase.from('wiki_articles').select('id, title, kind, definition, updated_at, created_at').order('title');
+    if (error) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Couldn’t load Nationhopedia. ' + esc(error.message || '') + '</div>'; return; }
+    ROWS = rows || [];
+    ROWS.forEach(function (r) { byTitle[r.title.toLowerCase()] = r; known.add(r.title.toLowerCase()); });
+    document.getElementById('wkCount').textContent = ' · ' + ROWS.length + (ROWS.length === 1 ? ' article' : ' articles');
+    featuredIdx = ROWS.length ? Math.floor(Math.random() * ROWS.length) : 0;
+    renderFeatured(); showRecent(); renderWidgets();
+    // Deep link: ?a=Title opens that article; otherwise the index.
     var want = new URLSearchParams(location.search).get('a');
-    render(want && byTitle[want.toLowerCase()] ? want : rows[0].title);
+    if (want && byTitle[want.toLowerCase()]) showArticle(want);
   })();
 </script>
 </body>

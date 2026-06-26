@@ -111,23 +111,22 @@ export function normalizeArticle(row) {
   };
 }
 
-const WIKI_CSS = `
-.wk-masthead{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:0 0 16px;margin-bottom:8px}
-.wk-mbrand{display:flex;align-items:center;gap:11px}
-.wk-globe{width:34px;height:34px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;color:var(--indigo);flex:none}
-.wk-globe svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.4}
-.wk-mbrand b{font-weight:900;font-size:17px;letter-spacing:-.02em}
-.wk-mbrand span{display:block;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
-.wk-search{position:relative}
-.wk-search input{width:300px;max-width:60vw;background:var(--field);border:1px solid var(--line2);border-radius:8px;padding:9px 12px 9px 32px;font-family:'Archivo',sans-serif;font-size:13.5px;color:var(--ink)}
-.wk-search input:focus{outline:none;border-color:var(--indigo)}
-.wk-search svg{position:absolute;left:10px;top:9px;width:15px;height:15px;stroke:var(--soft);fill:none;stroke-width:2}
-.wk-suggest{position:absolute;top:42px;left:0;right:0;background:var(--surface);border:1px solid var(--line2);border-radius:9px;box-shadow:0 12px 30px rgba(0,0,0,.18);overflow:hidden;display:none;z-index:30}
-.wk-suggest.show{display:block}
-.wk-sg{padding:9px 13px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;color:var(--ink)}
-.wk-sg:hover{background:var(--chip)}
-.wk-sg .wk-kind{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);text-transform:uppercase}
+// First paragraph of a markup field, rendered inline (for the landing's featured preview). Same
+// markup grammar as the article body — one source.
+export function leadHTML(markup, known) {
+  var first = String(markup || '').split(/\n{2,}/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
+  return inlineMd(first.replace(/\n/g, ' '), known);
+}
+// Strip markup to plain text (for one-line excerpts in the recently-edited list).
+export function plainText(markup) {
+  return String(markup || '')
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, function (_, t, l) { return (l != null ? l : t).trim(); })
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\[(\d+)\]/g, '')
+    .replace(/\s+/g, ' ').trim();
+}
 
+const WIKI_CSS = `
 .wk-article{max-width:920px;margin:0 auto}
 .wk-title{font-weight:900;font-size:clamp(26px,4vw,34px);letter-spacing:-.03em;padding-bottom:7px;border-bottom:1px solid var(--line2);line-height:1.15}
 .wk-fromline{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);font-style:italic;margin:6px 0}
