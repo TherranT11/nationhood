@@ -505,11 +505,15 @@ security definer
 set search_path = public
 as $$
 declare
-  v_party public.parties%rowtype; v_hog uuid; v_hogname text; v_tick int; v_sched int; v_pid uuid;
+  v_party public.parties%rowtype; v_hog uuid; v_hogname text; v_tick int; v_sched int; v_pid uuid; v_until int;
 begin
   v_party := public._begin_action(0);   -- requires >= 1 action
   select current_tick into v_tick from public.game_state where id;
-  if coalesce((select no_confidence_until_tick from public.nations where id = v_party.nation_id), 0) > v_tick then
+  -- Lock the nation row: the cooldown is nation-wide, so two parties in the same nation must
+  -- be serialized here (_lock_party only locks the proposer's own row). The second waits, then
+  -- sees the cooldown the first just set, instead of both slipping a motion past at once.
+  select no_confidence_until_tick into v_until from public.nations where id = v_party.nation_id for update;
+  if coalesce(v_until, 0) > v_tick then
     raise exception 'This nation can''t table another no-confidence motion yet (12-tick cooldown).';
   end if;
   select formateur_party_id into v_hog from public.governments where nation_id = v_party.nation_id and status = 'active';
