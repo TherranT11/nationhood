@@ -910,6 +910,10 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_gov public.governments%rowtype; r record; v_pol_nation text; v_grants int := 0;
   c_prestige constant text[] := array['Economic Development', 'Interior', 'Foreign Affairs', 'Trade'];
+  -- Canonical portfolios (mirrors MINISTRIES in ministries.js). The server validates
+  -- independently so a crafted client can't seed junk rows / blow past the 11 real seats.
+  c_ministries constant text[] := array['Defence', 'Treasury', 'Interior', 'Foreign Affairs',
+    'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 begin
   v_party := public._begin_action(0);   -- requires >= 1 action
   select * into v_gov from public.governments where nation_id = v_party.nation_id and status = 'active';
@@ -920,6 +924,7 @@ begin
   for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
              from jsonb_array_elements(coalesce(p_set, '[]'::jsonb)) loop
     if r.ministry is null or r.pol is null then continue; end if;
+    if not (r.ministry = any(c_ministries)) then raise exception 'Unknown ministry: %', r.ministry; end if;
     select p.nation_id into v_pol_nation from public.politicians pol join public.parties p on p.id = pol.party_id where pol.id = r.pol;
     if v_pol_nation is distinct from v_party.nation_id then raise exception 'A chosen politician is not from your nation.'; end if;
   end loop;
