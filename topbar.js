@@ -39,7 +39,7 @@ const CSS = `
 .gearmenu__btn--danger{background:var(--red);border-color:var(--red);color:#fff}
 .gearmenu__btn--danger:hover{filter:brightness(1.05);background:var(--red)}
 .gearmenu__btn:disabled{opacity:.6;cursor:not-allowed}
-@media(max-width:560px){.topbar{gap:10px;margin-bottom:16px}.tb-next{display:none}}
+@media(max-width:560px){.topbar{gap:10px;margin-bottom:16px}}
 `;
 
 const HTML = `

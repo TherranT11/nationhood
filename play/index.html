@@ -149,6 +149,10 @@
   a.invite{text-decoration:none;margin-bottom:14px}
 
   /* Events feed (currently just the party-founding entry). Sized ~15% up. */
+  .evfilter{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+  .evchip{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--soft);background:var(--chip);border:1px solid var(--line);border-radius:20px;padding:5px 12px;cursor:pointer}
+  .evchip:hover{color:var(--ink)}
+  .evchip.active{color:var(--indigo);background:var(--indigo-soft);border-color:color-mix(in srgb,var(--indigo) 30%,transparent)}
   .feed{list-style:none;display:flex;flex-direction:column;gap:12px}
   .feed__evt{font-size:15.5px;color:var(--muted);line-height:1.55}
   .feed__date{font-family:'Space Mono',monospace;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);font-weight:700}
@@ -239,6 +243,12 @@
       </section>
       <section class="panel">
         <div class="glance-hd"><span id="eventsHd">Events</span></div>
+        <div class="evfilter" id="evFilter">
+          <button class="evchip active" data-cat="all" type="button">All</button>
+          <button class="evchip" data-cat="party" type="button">Parties</button>
+          <button class="evchip" data-cat="legislative" type="button">Legislative</button>
+          <button class="evchip" data-cat="government" type="button">Government</button>
+        </div>
         <div id="events"><p class="empty">No events yet.</p></div>
       </section>
     </div>
@@ -336,6 +346,30 @@
     if (eco.debt != null) chips.push(chip('Debt', val(cur + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }
+  // Events split into filterable buckets by their stored `kind`: Parties (a party's own
+  // actions + founding), Legislative (bills on the floor, passing/failing, no-confidence),
+  // and Government (formation, agenda, ministries, regime, elections). Anything else
+  // (income, crises, …) shows only under "All".
+  var PARTY_KINDS = { rally: 1, fundraise: 1, attack: 1, adblitz: 1, recruit: 1, party: 1, conviction: 1 };
+  var LEG_KINDS = { declaration: 1, law: 1, no_confidence: 1 };
+  var GOV_KINDS = { government: 1, agenda: 1, ministry: 1, regime: 1, election: 1 };
+  function eventCat(kind) { return PARTY_KINDS[kind] ? 'party' : (LEG_KINDS[kind] ? 'legislative' : (GOV_KINDS[kind] ? 'government' : 'other')); }
+  var FEED_ITEMS = [], FEED_FLAG = '', evCat = 'all';
+  function renderFeed() {
+    var box = document.getElementById('events');
+    var list = FEED_ITEMS.filter(function (it) { return evCat === 'all' || it.cat === evCat; });
+    if (!list.length) {
+      box.innerHTML = '<p class="empty">' + (evCat === 'party' ? 'No party events yet.' : evCat === 'legislative' ? 'No legislative events yet.' : evCat === 'government' ? 'No government events yet.' : 'No events yet.') + '</p>';
+      return;
+    }
+    box.innerHTML = '<ul class="feed">' + list.map(function (it) {
+      return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + FEED_FLAG + it.body + '</li>';
+    }).join('') + '</ul>';
+  }
+  document.querySelectorAll('.evchip').forEach(function (b) {
+    b.onclick = function () { evCat = b.dataset.cat; document.querySelectorAll('.evchip').forEach(function (x) { x.classList.toggle('active', x === b); }); renderFeed(); };
+  });
+
   // The shared nation feed: party-founding events (derived from each party, one
   // per party) + stored events (rally outcomes, etc. from the events table),
   // merged newest-first. Founding dates use the frozen game date for now; stored
@@ -344,7 +378,7 @@
     var box = document.getElementById('events');
     try {
       const { data: parties } = await supabase.from('parties').select('id, name, created_at').eq('nation_id', nationId);
-      const { data: evs } = await supabase.from('events').select('body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
+      const { data: evs } = await supabase.from('events').select('kind, body, game_date, created_at, effect_target, effect_value, tone').eq('nation_id', nationId);
       // Party Leader names for the formation announcements (one per party).
       var leaderBy = {};
       var pids = (parties || []).map(function (p) { return p.id; });
@@ -356,7 +390,7 @@
       var items = [];
       (parties || []).forEach(function (p) {
         var leader = leaderBy[p.id];
-        items.push({ created: p.created_at, when: gameDate,
+        items.push({ created: p.created_at, when: gameDate, cat: 'party',
           body: 'The <b>' + esc(p.name) + '</b> has announced its formation' + (leader ? ', led by <b>' + esc(leader) + '</b>' : '') + '.' });
       });
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
@@ -365,14 +399,12 @@
         // events (rallies etc.) have none and narrate their outcome in the body.
         var eff = (e.effect_target != null && e.effect_value != null)
           ? ' <span class="feed__eff ' + esc(e.tone || 'warn') + '"><i>' + esc(eventEffectLabel(e.effect_target, e.effect_value, currency)) + '</i></span>' : '';
-        items.push({ created: e.created_at, when: e.game_date || gameDate, body: esc(e.body) + eff });
+        items.push({ created: e.created_at, when: e.game_date || gameDate, cat: eventCat(e.kind), body: esc(e.body) + eff });
       });
       items.sort(function (a, b) { return a.created < b.created ? 1 : (a.created > b.created ? -1 : 0); });
-      if (!items.length) { box.innerHTML = '<p class="empty">No events yet.</p>'; return; }
-      var flagImg = (nation && nation.flag) ? '<img class="feed__flag" src="' + esc(nation.flag) + '" alt="">' : '';
-      box.innerHTML = '<ul class="feed">' + items.map(function (it) {
-        return '<li class="feed__evt"><span class="feed__date">' + esc(it.when) + '</span> &mdash; ' + flagImg + it.body + '</li>';
-      }).join('') + '</ul>';
+      FEED_ITEMS = items;
+      FEED_FLAG = (nation && nation.flag) ? '<img class="feed__flag" src="' + esc(nation.flag) + '" alt="">' : '';
+      renderFeed();
     } catch (e) { box.innerHTML = '<p class="empty">Couldn’t load events.</p>'; }
   }
 
