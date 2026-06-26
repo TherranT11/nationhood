@@ -1,4 +1,4 @@
--- 105 · Nationhopedia (the in-game wiki). Admin-authored articles, world-readable, admin-only
+-- 105 · Nationpedia (the in-game wiki). Admin-authored articles, world-readable, admin-only
 -- writes via is_admin() — the same pattern as world events (100) and crises (99). Each row is
 -- one article: title + kind as columns (for listing, search, and cross-link resolution by title),
 -- with the rich body in a single JSONB `definition` so adding article fields never needs a
