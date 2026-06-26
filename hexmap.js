@@ -13,9 +13,9 @@ function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 
 export function axialToPix(q, r, s, ox, oy) { return { x: Math.sqrt(3) * s * (q + r / 2) + ox, y: 1.5 * s * r + oy }; }
 
 // One palette colour per key, by list order — the ONE place the palette mapping lives.
-// Returns { key: '#rrggbb' }. nationColors is the by-name-ordered nation case; continents
-// (and any other layer) reuse paletteColors directly.
-export function paletteColors(keys) { var m = {}; (keys || []).forEach(function (k, i) { if (k != null && k !== '') m[k] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+// Returns { key: '#rrggbb' }. Internal: nationColors wraps it; callers that need a single
+// colour by index use the exported paletteAt.
+function paletteColors(keys) { var m = {}; (keys || []).forEach(function (k, i) { if (k != null && k !== '') m[k] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
 export function paletteAt(i) { var n = NATION_PALETTE.length; return NATION_PALETTE[((i % n) + n) % n]; }
 export function nationColors(list) { return paletteColors((list || []).map(function (n) { return n.id; })); }
 
