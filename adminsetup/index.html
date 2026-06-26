@@ -1222,11 +1222,13 @@
           goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy'),
           military: num('f-military-prod')
         },
-        // Military is the only on-hand set here; merge it so EDITING never clobbers the base
-        // commodities. KNOWN LIMITATION: base on_hand (energy…services) is seeded only by the
-        // one-time 10_nations migration, so a brand-new nation created here starts with just
-        // Military on hand until that base seeding is extended to creation (out of scope here).
-        on_hand: Object.assign({}, (editing && editing.on_hand) || {}, { military: num('f-military') }),
+        // Starting on-hand equals production, 1:1, for the five base commodities (Energy 1 →
+        // 1 on hand). Military keeps its own starting-stockpile field. Merge so editing never
+        // drops keys that trading may later change.
+        on_hand: Object.assign({}, (editing && editing.on_hand) || {}, {
+          energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
+          goods: num('f-goods'), services: num('f-services'), military: num('f-military')
+        }),
         declarations: collectDeclarations(),
         policies: collectNationPolicies()
       };
