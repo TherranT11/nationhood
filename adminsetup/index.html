@@ -328,6 +328,21 @@
   .cbuild .pvend{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:3px}
   .cbuild .save{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--ink);border:none;border-radius:10px;padding:13px 20px;cursor:pointer}
   .cbuild .save:hover{filter:brightness(1.15)}
+  /* World Events builder — extra widgets (scoped under .cbuild, reusing its card/input styles) */
+  .cbuild .natgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+  .cbuild .natgrid.off{opacity:.5;pointer-events:none}
+  .cbuild .natchk{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:400;background:var(--field,#FCFBF9);border:1px solid var(--line2);border-radius:8px;padding:7px 9px;cursor:pointer;margin:0}
+  .cbuild .natchk input{width:auto}
+  .cbuild .weimg{border:1px dashed var(--line2);border-radius:10px;min-height:90px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--field,#FCFBF9)}
+  .cbuild .weimg img{max-width:100%;max-height:200px;display:block}
+  .cbuild .weimg__none{color:var(--soft);font-size:12px}
+  .cbuild input[type=file]{font-size:12px;padding:6px;width:100%}
+  .cbuild .weopt{border:1px solid var(--line);border-radius:11px;padding:13px;margin-bottom:12px}
+  .cbuild .weside{margin-top:10px}
+  .cbuild .weeffs{display:flex;flex-direction:column;gap:7px}
+  .cbuild .werow{display:flex;gap:7px;align-items:center}
+  .cbuild .werow .we-et{flex:1}
+  .cbuild .pvrow{margin-bottom:7px;font-size:12.5px;word-break:break-word}
 
   /* Events tab — compose + fire a one-off event at a nation. Scoped under .evtab so
      the generic names (.card/.f/.effbox/.pill/.feed/.ev…) don't collide with other tabs. */
@@ -462,6 +477,7 @@
         <button class="vtab" data-tab="crises" type="button">Crises</button>
         <button class="vtab" data-tab="events" type="button">Events</button>
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
+        <button class="vtab" data-tab="world-events" type="button">World Events</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="nations">
@@ -777,6 +793,50 @@
               <p class="desc">Startups waiting to enter when their nation’s climate is healthy.</p>
               <div id="cListQueue"><div class="empty">None queued</div></div>
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="world-events" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <h2 style="margin:0">World Events</h2>
+              <button class="btn btn-solid" id="weNew" type="button">+ New world event</button>
+            </div>
+            <p class="sub" style="margin:8px 0 14px">A world event reaches one or more nations’ event boxes. Author it here — firing and the per-type player resolution (decisions, mutual agreements, secret competitive bids, turning-point broadcast) come in a later pass.</p>
+            <div id="weList"><p class="empty">Loading…</p></div>
+          </div>
+          <div class="panel" id="weEditorPanel" hidden>
+            <div class="cbuild">
+              <div class="cols">
+                <div>
+                  <div class="card">
+                    <div class="sechd">Identity</div>
+                    <div class="f"><label>Event name</label><input type="text" id="weName"></div>
+                    <div class="f"><label>Image <span class="hint">max 2 MB · png/jpg/webp/gif</span></label>
+                      <div class="weimg"><img id="weImg" alt="" hidden><div class="weimg__none" id="weImgNone">No image</div></div>
+                      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+                        <input type="file" id="weImgFile" accept="image/png,image/jpeg,image/webp,image/gif" style="flex:1">
+                        <button class="xb" id="weImgClear" type="button" title="Remove image" hidden>×</button>
+                      </div>
+                      <div class="hint" id="weImgNote"></div>
+                    </div>
+                    <div class="f"><label>Type</label><select id="weType">
+                      <option value="decision">Decision</option>
+                      <option value="mutual">Mutual Agreement</option>
+                      <option value="competitive">Competitive</option>
+                      <option value="turning_point">Turning Point</option>
+                    </select></div>
+                    <div class="f" style="margin-bottom:0"><label>Description <span class="hint" id="weDescHint">the prompt players see</span></label><textarea id="weDesc"></textarea></div>
+                  </div>
+                  <div class="card" id="weNationsCard"><!-- filled by renderNationsCard (varies by type) --></div>
+                  <div class="card" id="weTypeBox"><!-- filled by renderType --></div>
+                  <button class="save" id="weSave" type="button">Save world event</button>
+                </div>
+                <aside><div class="rail"><div class="rh">Preview</div><div class="rb" id="wePrev"></div></div></aside>
+              </div>
+            </div>
+            <div class="note" id="weNote" role="status" aria-live="polite" style="margin-top:14px"></div>
           </div>
         </div>
       </div>
@@ -1318,6 +1378,7 @@
         if (tab === 'crises') loadCrises();
         if (tab === 'events') loadEvents();
         if (tab === 'corporations') loadCorporations();
+        if (tab === 'world-events') loadWorldEvents();
       });
     });
 
@@ -2366,6 +2427,225 @@
       var ae = document.getElementById('cbAddEnd'); if (ae) ae.onclick = function () { if (!CRISIS) return; CRISIS.endIf.push({ target: 'Order', op: '≥', value: 12 }); renderEndIf(); renderPreview(); };
 
       return loadCrises;
+    })();
+
+    // ---- World Events (admin authoring; one JSONB definition per event, is_admin RLS) ----
+    // AUTHORING ONLY: the builder stores each event's definition (schema/100_world_events).
+    // Firing + the per-type player resolution are a later pass. Self-contained IIFE so its
+    // generic identifiers can't collide with the other tabs; returns loadWorldEvents().
+    var loadWorldEvents = (function () {
+      // Targets a world-event effect can move — national stats + production resources (the
+      // 'Budget, Diplomacy, …' the spec names). Read straight off POL_TGT (the one source for
+      // these lists, line ~1545) rather than re-listing them. Government-internal targets are
+      // out of scope for a nation-facing world event, so only these two groups are exposed.
+      var WE_TGT = { National: POL_TGT.National, Resource: POL_TGT.Resource };
+      var WE_STATS = WE_TGT.National.concat(WE_TGT.Resource);   // flat list for the competitive bid stat
+      var TYPE_LABEL = { decision: 'Decision', mutual: 'Mutual Agreement', competitive: 'Competitive', turning_point: 'Turning Point' };
+
+      var WE = null, weEditingId = null, weSaving = false, weCache = [], NATIONS = [];
+
+      function weTgtSelect(sel) { var h = ''; Object.keys(WE_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + WE_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return '<select class="we-et">' + h + '</select>'; }
+      function effStr(e) { var v = Number(e.v) || 0, s = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); return (e.t === 'Budget' || e.t === 'Debt' || e.t === 'Income') ? e.t + ' ' + (v >= 0 ? '+' : '−') + '₣' + Math.abs(v) + 'B' : esc(e.t || '?') + ' ' + s; }
+
+      function blankEvent() {
+        return { name: 'New World Event', image: '', type: 'decision', scope: 'nations', nations: [], desc: '',
+          options: [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }],
+          mutual: { effects: [] }, competitive: { stat: 'Budget', sideA: [], sideB: [] }, turning: { effects: [] } };
+      }
+      // Harden the shape so an older/partial row can't crash the editor.
+      function normalizeEvent(def) {
+        var d = (def && typeof def === 'object') ? def : blankEvent();
+        d.type = TYPE_LABEL[d.type] ? d.type : 'decision';
+        d.scope = d.scope === 'global' ? 'global' : 'nations';
+        d.nations = Array.isArray(d.nations) ? d.nations : [];
+        d.options = (Array.isArray(d.options) && d.options.length >= 2) ? d.options : [{ label: 'Option A', effects: [] }, { label: 'Option B', effects: [] }];
+        d.options.forEach(function (o) { o.label = o.label || ''; o.effects = Array.isArray(o.effects) ? o.effects : []; });
+        d.mutual = (d.mutual && typeof d.mutual === 'object') ? d.mutual : { effects: [] }; d.mutual.effects = Array.isArray(d.mutual.effects) ? d.mutual.effects : [];
+        d.competitive = (d.competitive && typeof d.competitive === 'object') ? d.competitive : { stat: 'Budget', sideA: [], sideB: [] };
+        d.competitive.stat = d.competitive.stat || 'Budget';
+        d.competitive.sideA = Array.isArray(d.competitive.sideA) ? d.competitive.sideA : [];
+        d.competitive.sideB = Array.isArray(d.competitive.sideB) ? d.competitive.sideB : [];
+        d.turning = (d.turning && typeof d.turning === 'object') ? d.turning : { effects: [] }; d.turning.effects = Array.isArray(d.turning.effects) ? d.turning.effects : [];
+        return d;
+      }
+      function nationName(id) { var n = NATIONS.filter(function (x) { return x.id === id; })[0]; return n ? (n.name || n.id) : id; }
+      function setWeNote(msg, kind) { var n = document.getElementById('weNote'); if (n) { n.textContent = msg || ''; n.className = 'note' + (kind ? ' ' + kind : ''); } }
+
+      // ----- list + persistence (world_events table) -----
+      async function loadWorldEvents() {
+        var box = document.getElementById('weList');
+        try {
+          const { data, error } = await supabase.from('world_events').select('id, definition').order('created_at', { ascending: true });
+          if (error) throw error; weCache = data || [];
+        } catch (e) { box.innerHTML = '<p class="empty">Could not load world events.</p>'; return; }
+        try { const { data: nn } = await supabase.from('nations').select('id, name, dormant').order('name'); NATIONS = (nn || []).filter(function (n) { return !n.dormant; }); }
+        catch (e) { NATIONS = []; }
+        renderWeList();
+      }
+      function renderWeList() {
+        var box = document.getElementById('weList');
+        if (!weCache.length) { box.innerHTML = '<p class="empty">No world events yet. Click “New world event” to create one.</p>'; return; }
+        box.innerHTML = weCache.map(function (row) {
+          var d = row.definition || {};
+          var scope = d.scope === 'global' || d.type === 'turning_point' ? 'Global' : ((d.nations || []).length + ' nation' + ((d.nations || []).length === 1 ? '' : 's'));
+          return '<div class="plcard"><div><div class="plcard__name">' + esc(d.name || 'Untitled event') + '</div>' +
+            '<div class="plcard__meta">' + esc(TYPE_LABEL[d.type] || d.type || '—') + ' · ' + scope + '</div></div>' +
+            '<div class="plcard__btns"><button class="ed" data-id="' + row.id + '" type="button">Edit</button><button class="rm" data-id="' + row.id + '" type="button">Remove</button></div></div>';
+        }).join('');
+        box.querySelectorAll('.ed').forEach(function (b) { b.onclick = function () { var r = weCache.filter(function (x) { return x.id === b.dataset.id; })[0]; if (r) openEvent(JSON.parse(JSON.stringify(r.definition)), r.id); }; });
+        box.querySelectorAll('.rm').forEach(function (b) { b.onclick = function () { removeEvent(b.dataset.id); }; });
+      }
+      async function saveEvent() {
+        if (!WE.name || !WE.name.trim()) { setWeNote('Give the event a name.', 'error'); return; }
+        if (WE.type === 'decision' && (!WE.options[0].label.trim() || !WE.options[1].label.trim())) { setWeNote('Both decision options need a label.', 'error'); return; }
+        if (WE.type === 'competitive' && !WE.competitive.stat) { setWeNote('Pick the stat the competitive event is bid on.', 'error'); return; }
+        if (WE.type === 'turning_point') WE.scope = 'global';   // a turning point always hits every nation
+        if (weSaving) return; weSaving = true; setWeNote('Saving…');
+        try {
+          if (weEditingId) { const { error } = await supabase.from('world_events').update({ definition: WE }).eq('id', weEditingId); if (error) throw error; }
+          else { const { data, error } = await supabase.from('world_events').insert({ definition: WE }).select('id').single(); if (error) throw error; weEditingId = data.id; }
+          setWeNote('Saved “' + (WE.name || 'event') + '”.', 'ok'); loadWorldEvents();
+        } catch (e) { setWeNote('Save failed: ' + (e.message || e), 'error'); }
+        weSaving = false;
+      }
+      async function removeEvent(id) {
+        if (!confirm('Delete this world event?')) return;
+        try {
+          const { error } = await supabase.from('world_events').delete().eq('id', id); if (error) throw error;
+          if (weEditingId === id) { weEditingId = null; document.getElementById('weEditorPanel').hidden = true; }
+          loadWorldEvents();
+        } catch (e) { setWeNote('Delete failed: ' + (e.message || e), 'error'); }
+      }
+
+      // ----- editor -----
+      function openEvent(def, id) {
+        WE = normalizeEvent(def); weEditingId = id || null;
+        var panel = document.getElementById('weEditorPanel'); panel.hidden = false; setWeNote('');
+        var nm = document.getElementById('weName'), ds = document.getElementById('weDesc'), ty = document.getElementById('weType');
+        nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type;
+        nm.oninput = function (e) { WE.name = e.target.value; renderPreview(); };
+        ds.oninput = function (e) { WE.desc = e.target.value; renderPreview(); };
+        ty.onchange = function (e) { WE.type = e.target.value; renderDescHint(); renderNationsCard(); renderType(); renderPreview(); };
+        document.getElementById('weImgFile').onchange = function (e) { weUpload(e.target.files && e.target.files[0]); };
+        document.getElementById('weImgClear').onclick = function () { WE.image = ''; renderImg(); renderPreview(); };
+        document.getElementById('weSave').onclick = saveEvent;
+        renderDescHint(); renderImg(); renderNationsCard(); renderType(); renderPreview();
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      function renderDescHint() {
+        var h = document.getElementById('weDescHint');
+        h.textContent = WE.type === 'mutual' ? 'the prompt both nations must act on together'
+          : WE.type === 'competitive' ? 'what the two sides are competing over'
+          : WE.type === 'turning_point' ? 'the moment, announced to every nation' : 'the prompt players see';
+      }
+      function renderImg() {
+        var img = document.getElementById('weImg'), none = document.getElementById('weImgNone'), clr = document.getElementById('weImgClear');
+        if (WE.image) { img.src = WE.image; img.hidden = false; none.hidden = true; clr.hidden = false; }
+        else { img.hidden = true; img.removeAttribute('src'); none.hidden = false; clr.hidden = true; }
+      }
+      async function weUpload(file) {
+        var note = document.getElementById('weImgNote');
+        if (!file) return;
+        if (file.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; return; }
+        note.textContent = 'Uploading…';
+        try {
+          var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
+          var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+          var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+          var up = await supabase.storage.from('world-event-images').upload(path, file, { cacheControl: '3600', upsert: false });
+          if (up.error) throw new Error(up.error.message);
+          WE.image = supabase.storage.from('world-event-images').getPublicUrl(path).data.publicUrl;
+          note.textContent = 'Image uploaded.'; renderImg(); renderPreview();
+        } catch (e) { note.textContent = 'Upload failed: ' + (e.message || e); }
+      }
+
+      // The involved-nations card adapts to the type: turning points hit everyone; a
+      // competitive event's involvement is its two sides; decisions/agreements pick a set.
+      function renderNationsCard() {
+        var card = document.getElementById('weNationsCard');
+        if (WE.type === 'turning_point') { card.innerHTML = '<div class="sechd">Reach</div><p class="hint" style="margin:0">A turning point fires to <b>every nation</b>’s event box — no selection needed.</p>'; return; }
+        if (WE.type === 'competitive') { card.innerHTML = '<div class="sechd">Reach</div><p class="hint" style="margin:0">Involvement is set by the two sides below.</p>'; return; }
+        var isGlobal = WE.scope === 'global';
+        var hint = WE.type === 'mutual' ? 'the nations bound by the agreement (usually two)' : 'the nations this event reaches';
+        card.innerHTML = '<div class="sechd">Involved nations <span class="hint">' + hint + '</span></div>' +
+          '<div style="margin-bottom:10px"><button class="btn' + (isGlobal ? ' btn-solid' : '') + '" id="weGlobal" type="button">🌐 Global — every nation</button></div>' +
+          '<div id="weNations" class="natgrid' + (isGlobal ? ' off' : '') + '">' +
+            (NATIONS.length ? NATIONS.map(function (n) { return natChk(n, WE.nations.indexOf(n.id) >= 0, isGlobal); }).join('') : '<p class="hint">No live nations.</p>') +
+          '</div>';
+        document.getElementById('weGlobal').onclick = function () { WE.scope = isGlobal ? 'nations' : 'global'; renderNationsCard(); renderPreview(); };
+        card.querySelectorAll('.natchk input').forEach(function (c) { c.onchange = function () { toggleIn(WE.nations, c.value, c.checked); renderPreview(); }; });
+      }
+      function toggleIn(arr, v, on) { var i = arr.indexOf(v); if (on && i < 0) arr.push(v); else if (!on && i >= 0) arr.splice(i, 1); }
+      // One nation checkbox — the shared markup for the involved-nations grid and the
+      // competitive side buckets (the caller wires the change handler).
+      function natChk(n, on, dis) { return '<label class="natchk"><input type="checkbox" value="' + esc(n.id) + '"' + (on ? ' checked' : '') + (dis ? ' disabled' : '') + '>' + esc(n.name || n.id) + '</label>'; }
+
+      // ----- effect-list editor (shared by decision options, mutual, turning point) -----
+      // listSel keys the array: 'opt0' | 'opt1' | 'mutual' | 'turning'.
+      function effArr(sel) { return sel === 'opt0' ? WE.options[0].effects : sel === 'opt1' ? WE.options[1].effects : sel === 'mutual' ? WE.mutual.effects : WE.turning.effects; }
+      function effListHtml(sel) {
+        var arr = effArr(sel);
+        return '<div class="weeffs" data-list="' + sel + '">' +
+          arr.map(function (e, i) { return '<div class="werow" data-i="' + i + '">' + weTgtSelect(e.t || 'Order') + '<input class="we-ev" type="number" step="any" value="' + (Number(e.v) || 0) + '" style="max-width:80px">' + '<button class="xb we-ex" type="button" title="Remove">×</button></div>'; }).join('') +
+          '<button class="add sm we-eadd" type="button">+ effect</button></div>';
+      }
+      // Bind one effect list's controls (re-querying within its container).
+      function bindEffList(root, sel) {
+        var arr = effArr(sel);
+        root.querySelectorAll('.werow').forEach(function (row) {
+          var i = +row.dataset.i;
+          row.querySelector('.we-et').onchange = function (e) { arr[i].t = e.target.value; renderPreview(); };
+          row.querySelector('.we-ev').oninput = function (e) { arr[i].v = +e.target.value || 0; renderPreview(); };
+          row.querySelector('.we-ex').onclick = function () { arr.splice(i, 1); renderType(); renderPreview(); };
+        });
+        root.querySelector('.we-eadd').onclick = function () { arr.push({ t: 'Order', v: 1 }); renderType(); renderPreview(); };
+      }
+
+      function renderType() {
+        var box = document.getElementById('weTypeBox');
+        if (WE.type === 'decision') {
+          box.innerHTML = '<div class="sechd">Decision <span class="hint">each nation chooses one of two options; its effects land</span></div>' +
+            WE.options.map(function (o, i) { return '<div class="weopt"><div class="f"><label>Option ' + (i + 1) + ' label</label><input class="we-optlabel" data-i="' + i + '" type="text" value="' + esc(o.label || '') + '"></div><div class="hint" style="margin-bottom:6px">Effects if chosen</div>' + effListHtml('opt' + i) + '</div>'; }).join('');
+          box.querySelectorAll('.we-optlabel').forEach(function (inp) { inp.oninput = function (e) { WE.options[+inp.dataset.i].label = e.target.value; renderPreview(); }; });
+          box.querySelectorAll('.weeffs').forEach(function (el) { bindEffList(el, el.dataset.list); });
+        } else if (WE.type === 'mutual') {
+          box.innerHTML = '<div class="sechd">Mutual Agreement <span class="hint">both nations must agree and contribute, else nothing happens</span></div>' +
+            '<p class="hint" style="margin:0 0 8px">Effects each nation receives once both agree and contribute (a party can’t agree without contributing).</p>' + effListHtml('mutual');
+          bindEffList(box.querySelector('.weeffs'), 'mutual');
+        } else if (WE.type === 'competitive') {
+          box.innerHTML = '<div class="sechd">Competitive <span class="hint">secret bids on a stat; the higher side wins</span></div>' +
+            '<div class="f"><label>Bid stat</label><select id="weBidStat">' + WE_STATS.map(function (s) { return '<option' + (s === WE.competitive.stat ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' +
+            '<div class="weside"><div class="hint">Side A</div><div class="natgrid">' + sideChecks('sideA') + '</div></div>' +
+            '<div class="weside"><div class="hint">Side B</div><div class="natgrid">' + sideChecks('sideB') + '</div></div>';
+          document.getElementById('weBidStat').onchange = function (e) { WE.competitive.stat = e.target.value; renderPreview(); };
+          box.querySelectorAll('.weside').forEach(function (sd, si) { var key = si === 0 ? 'sideA' : 'sideB'; sd.querySelectorAll('.natchk input').forEach(function (c) { c.onchange = function () { toggleIn(WE.competitive[key], c.value, c.checked); renderPreview(); }; }); });
+        } else {   // turning_point
+          box.innerHTML = '<div class="sechd">Turning Point <span class="hint">fires at once with no player action; hits every nation</span></div>' +
+            '<p class="hint" style="margin:0 0 8px">Effects applied to every nation the moment it fires.</p>' + effListHtml('turning');
+          bindEffList(box.querySelector('.weeffs'), 'turning');
+        }
+      }
+      function sideChecks(key) {
+        if (!NATIONS.length) return '<p class="hint">No live nations.</p>';
+        return NATIONS.map(function (n) { return natChk(n, WE.competitive[key].indexOf(n.id) >= 0, false); }).join('');
+      }
+
+      function effEcho(arr) { return arr.length ? arr.map(effStr).join(' · ') : '<span class="hint">no effects</span>'; }
+      function renderPreview() {
+        var p = document.getElementById('wePrev'); if (!p) return;
+        var rows = '<div class="pvrow"><b>' + esc(WE.name || 'Untitled event') + '</b></div>' +
+          '<div class="pvrow hint">' + (TYPE_LABEL[WE.type] || WE.type) + ' · ' + (WE.type === 'turning_point' || WE.scope === 'global' ? 'Global' : (WE.nations.length + ' nation' + (WE.nations.length === 1 ? '' : 's'))) + '</div>';
+        if (WE.image) rows += '<div class="pvrow"><img src="' + esc(WE.image) + '" style="max-width:100%;border-radius:8px"></div>';
+        if (WE.desc) rows += '<div class="pvrow" style="font-size:13px">' + esc(WE.desc) + '</div>';
+        if (WE.type === 'decision') rows += WE.options.map(function (o) { return '<div class="pvrow"><b>' + esc(o.label || '—') + '</b> → ' + effEcho(o.effects); }).join('');
+        else if (WE.type === 'mutual') rows += '<div class="pvrow">Both contribute → ' + effEcho(WE.mutual.effects) + '</div>';
+        else if (WE.type === 'competitive') rows += '<div class="pvrow">Bid on <b>' + esc(WE.competitive.stat) + '</b> · A: ' + (WE.competitive.sideA.map(nationName).map(esc).join(', ') || '—') + ' vs B: ' + (WE.competitive.sideB.map(nationName).map(esc).join(', ') || '—') + '</div>';
+        else rows += '<div class="pvrow">Every nation → ' + effEcho(WE.turning.effects) + '</div>';
+        p.innerHTML = rows;
+      }
+
+      document.getElementById('weNew').onclick = function () { openEvent(blankEvent(), null); };
+      return loadWorldEvents;
     })();
 
     // ---- National Modifiers (admin CRUD; writes go straight to the tables via is_admin RLS) ----
