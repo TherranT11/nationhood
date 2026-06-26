@@ -246,9 +246,10 @@ declare
 begin
   select policy_name, option_name into v_name, v_opt from public._check_law(p_policy, p_option);
   select current_tick into v_cur from public.game_state where id;
-  -- Bill heading: the authored title, else the canonical "Policy → Option" label.
-  v_title := coalesce(nullif(btrim(p_title), ''), v_name || ' → ' || v_opt);
-  v_intro := nullif(btrim(p_intro), '');
+  -- Bill heading: the authored title, else the canonical "Policy → Option" label. Both are
+  -- length-capped server-side (the client also caps) so a crafted call can't store a huge string.
+  v_title := left(coalesce(nullif(btrim(p_title), ''), v_name || ' → ' || v_opt), 120);
+  v_intro := left(nullif(btrim(p_intro), ''), 400);
 
   if p_to_floor then
     v_party := public._begin_action(0);          -- requires >= 1 action

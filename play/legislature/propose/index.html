@@ -182,12 +182,17 @@
 
     // ---- money helpers: one source is the option's authored effects; we just annualize
     // them (per-tick ×12, per-year ×1, one-time excluded) and scale by this nation. ----
-    function annualFactor(cad) { return cad === 'year' ? 1 : cad === 'tick' ? 12 : 0; }
+    // The annual factor for a money effect the fiscal block summarises: per-year ×1, permanent
+    // per-tick ×12, else 0 (one-time and finite-duration money fall through to the effects list
+    // with their own cadence label). ONE predicate so optMoney and the effects filter agree.
+    function fiscalFactor(e) {
+      if (!isMoneyTarget(e.t)) return 0;
+      return e.cad === 'year' ? 1 : (e.cad === 'tick' && !(Number(e.dur) > 0)) ? 12 : 0;
+    }
     function optMoney(o) {   // { Income, Budget, Debt } annual ₣B for being on this rung
       var m = { Income: 0, Budget: 0, Debt: 0 };
       ((o && o.effects) || []).forEach(function (e) {
-        if (!isMoneyTarget(e.t)) return;
-        var f = annualFactor(e.cad); if (!f) return;
+        var f = fiscalFactor(e); if (!f) return;
         m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros) * f;
       });
       return m;
@@ -245,9 +250,9 @@
       var effBox = document.getElementById('l-effs'), tagBox = document.getElementById('l-tags');
       if (sel.proposed == null) { effBox.innerHTML = '<p class="none">—</p>'; tagBox.innerHTML = ''; return; }
       var o = policyOptions(curDef())[sel.proposed] || {};
-      // Show every effect except recurring money — those are summarised in the fiscal block above.
-      // A one-time (once) money effect stays here so nothing the option does goes unshown.
-      var effs = (o.effects || []).filter(function (e) { return !(isMoneyTarget(e.t) && annualFactor(e.cad) > 0); });
+      // Show every effect except the recurring money summarised in the fiscal block above.
+      // One-time and finite-duration money stay here so nothing the option does goes unshown.
+      var effs = (o.effects || []).filter(function (e) { return !fiscalFactor(e); });
       effBox.innerHTML = effs.length
         ? effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('')
         : '<p class="none">No standing effects beyond the budget.</p>';
