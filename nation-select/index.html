@@ -33,6 +33,8 @@
   .nation-desc { color: var(--muted); font-size: 14.5px; line-height: 1.5; margin: 6px 0 4px; }
   .nation-analog { color: var(--muted); font-size: 13px; font-style: italic; margin: 0 0 16px; }
   .onep { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--err); background: color-mix(in srgb, var(--err) 14%, var(--surface)); border-radius: 999px; padding: 4px 11px; margin: 0 0 14px; }
+  .onep.abs { color: #7c5cff; background: color-mix(in srgb, #7c5cff 16%, var(--surface)); margin-bottom: 6px; }
+  .monarchy p { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
   /* Four nations per row, stretched to fill — equal width (1fr) and equal height
      (grid stretches each row). Steps down to 3 / 2 / 1 as the viewport narrows. */
   .nations { width: 100%; max-width: 1480px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; }
@@ -98,7 +100,7 @@
 
   <script type="module">
     import { supabase, isConfigured, logout, currentParty } from '/supabase.js';
-    import { statLabel, statBand, statName } from '/ladders.js';
+    import { statLabel, statBand, statName, regimeLabel } from '/ladders.js';
     import { esc, MAX_PARTIES_PER_NATION as MAX_PARTIES, fmtGdp, fmtPop } from '/util.js';
     import { mountGameDate } from '/gamedate.js';
     import { ideologyLabel } from '/archetypes.js';
@@ -127,6 +129,19 @@
       return rows; // Active Parties is rendered as the collapsible roster header (loadParties)
     }
 
+    // The ruling-power badge for a sole-ruler nation: an absolute monarchy (regime
+    // 24–25) gets its own framing; any other one-party state gets the plain badge.
+    function rulerBadge(n) {
+      if (!n.ruling_party) return '';
+      var r = n.economy && n.economy.regime;
+      if (regimeLabel(r) === 'Absolute Monarchy') {
+        return '<div class="monarchy"><span class="onep abs" title="' + esc(n.ruling_party) + '">Absolute monarchy</span>' +
+          '<p>This nation is an absolute monarchy ruled by the ' + esc(n.ruling_party) +
+          '. Elections may not even be possible, and parliamentary allotments come at the favour of the monarch.</p></div>';
+      }
+      return '<div><span class="onep" title="' + esc(n.ruling_party) + '">One-party state</span></div>';
+    }
+
     function cardHTML(n) {
       return '<article class="nation" data-id="' + esc(n.id) + '">' +
         '<div class="nation-banner">' +
@@ -136,7 +151,7 @@
           '<h2 class="nation-name">' + esc(n.name || 'Unknown') + '</h2>' +
           (n.description ? '<p class="nation-desc">' + esc(n.description) + '</p>' : '') +
           (n.analogous ? '<p class="nation-analog">Analogous to: ' + esc(n.analogous) + '</p>' : '') +
-          (n.ruling_party ? '<div><span class="onep" title="' + esc(n.ruling_party) + '">One-party state</span></div>' : '') +
+          rulerBadge(n) +
           '<div class="nstats">' + statsHTML(n) + '</div>' +
           '<div class="proster"></div>' +
           '<button class="btn btn-solid nation-join">Join Nation</button>' +

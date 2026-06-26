@@ -35,11 +35,19 @@ export function statBand(stat, value) {
   return value >= 11 ? 'good' : '';
 }
 
-// Regime — a single 1–20 democracy↔autocracy scale. Unlike the ladders above it
+// Regime — a single 1–25 democracy↔autocracy scale. Unlike the ladders above it
 // has named tiers at set thresholds (not one word per number); a value takes the
 // label of the highest tier it reaches. The number is the source (stored on the
-// nation); the words follow it. Listed high→low for the admin dropdown.
+// nation); the words follow it. Listed high→low for the admin dropdown. 21–25 are
+// the monarchy band, sitting above the republic tiers (Constitutional = democratic
+// crown; Absolute = a crown above even that). Constitutional monarchies (21–23) are
+// ordinary multiparty democracies; an Absolute monarchy (24–25) is a one-party state
+// ruled by the monarch's party (schema/98). The royal Head-of-State titles
+// (King/Queen/Emperor) are gated to the monarchy band (isMonarchy, used by the
+// declaration picker).
 export const REGIME_TIERS = [
+  { value: 24, label: 'Absolute Monarchy' },
+  { value: 21, label: 'Constitutional Monarchy' },
   { value: 20, label: 'Full Democracy' },
   { value: 17, label: 'Electoral Democracy' },
   { value: 14, label: 'Flawed Democracy' },
@@ -54,6 +62,14 @@ export function regimeLabel(value) {
   if (isNaN(n)) return null;
   for (const t of REGIME_TIERS) if (n >= t.value) return t.label; // tiers are high→low
   return REGIME_TIERS[REGIME_TIERS.length - 1].label;
+}
+
+// Is this regime in the monarchy band (21–25 — Constitutional or Absolute)? ONE
+// source for the "is this a monarchy" test, shared by the royal Head-of-State title
+// gate in the declaration picker (and any other crown-only affordance).
+export function isMonarchy(value) {
+  const n = Number(value);
+  return !isNaN(n) && n >= 21;
 }
 
 // The player-facing regime line: "Label (N)" for a numeric regime, the stored string

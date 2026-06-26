@@ -136,6 +136,7 @@
     <p class="modal__sub">What kind of measure are you bringing to the chamber?</p>
     <button class="choice" id="pmLaw" type="button"><b>Law</b><span>A new law has effects across the nation — it moves stats and other things.</span></button>
     <button class="choice" id="pmDecl" type="button"><b>Declaration</b><span>A declaration changes the name of a title, emblem, capital, etc. It has no mechanical effect in game.</span></button>
+    <button class="choice" id="pmRegime" type="button"><b>Form of State</b><span>Proclaim or abolish a constitutional monarchy — the one measure that can cross between a republic and a crown.</span></button>
   </div>
 </div>
 
@@ -157,6 +158,7 @@
   modal.addEventListener('click', function (e) { if (e.target === modal) modal.hidden = true; });
   document.getElementById('pmLaw').onclick = function () { location.href = '/play/legislature/propose/'; };
   document.getElementById('pmDecl').onclick = function () { location.href = '/play/legislature/propose/?type=declaration'; };
+  document.getElementById('pmRegime').onclick = function () { location.href = '/play/legislature/propose/?type=regime'; };
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 

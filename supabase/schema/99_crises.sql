@@ -115,6 +115,7 @@ returns boolean language sql immutable as $$
     when '!=' then p_cur <> p_val
     else false end;
 $$;
+revoke all on function public._crisis_cmp(numeric, text, numeric) from public, anon, authenticated;
 
 -- True when ALL of a crisis definition's triggers hold for the nation. A trigger is
 -- {target, op, value}; an unreadable target (null) fails the whole test. A crisis with

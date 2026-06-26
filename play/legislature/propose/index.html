@@ -92,14 +92,21 @@
   import { esc, declaredValue } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw } from '/proposals.js';
+  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { isMonarchy, regimeText } from '/ladders.js';
+
+  // The royal Head-of-State titles are reserved for the monarchy band (regime 21–25);
+  // the picker greys them out elsewhere (isMonarchy, ladders.js) — flavour gate only.
+  var ROYAL_TITLES = ['King', 'Queen', 'Emperor'];
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
-  var isDecl = new URLSearchParams(location.search).get('type') === 'declaration';
+  var modeParam = new URLSearchParams(location.search).get('type');
+  var isDecl = modeParam === 'declaration';
+  var isRegime = modeParam === 'regime';
 
   // ---- Law mode: pick a policy + the option to enact, preview its effects for this
   // nation, then queue it or send it to the floor (mirrors the declaration flow). ----
@@ -201,8 +208,9 @@
 
   // ---- Declaration mode: pick a slot + name, then queue it or send to the floor ----
   var declBusy = false;
-  async function renderDeclMode(currentValues) {
+  async function renderDeclMode(currentValues, regime) {
     currentValues = currentValues || {};
+    var monarchy = isMonarchy(regime);
     document.querySelector('.phead .eye').textContent = 'Legislature · Declaration';
     document.querySelector('.phead h1').textContent = 'Make a Declaration';
     document.querySelector('.phead p').textContent = 'A declaration sets a title, emblem, capital, or other name — no mechanical effect, but it still goes through the chamber.';
@@ -236,7 +244,14 @@
     function fillOpts() {
       var d = curDecl();
       document.getElementById('d-current').textContent = declaredValue(d, currentValues);
-      var html = (d.options || []).map(function (o) { return '<option value="' + esc(String(o)).replace(/"/g, '&quot;') + '">' + esc(String(o)) + '</option>'; }).join('');
+      // Royal Head-of-State titles are greyed out unless the nation is a monarchy
+      // (regime 21–25). Only the head_of_state_title slot has royal options to gate.
+      var html = (d.options || []).map(function (o) {
+        var royalLocked = d.slug === 'head_of_state_title' && !monarchy && ROYAL_TITLES.indexOf(String(o)) >= 0;
+        var v = esc(String(o)).replace(/"/g, '&quot;');
+        return '<option value="' + v + '"' + (royalLocked ? ' disabled' : '') + '>' +
+               esc(String(o)) + (royalLocked ? ' (requires monarchy)' : '') + '</option>';
+      }).join('');
       if (d.custom_allowed) html += '<option value="__custom__">Custom name…</option>';
       optSel.innerHTML = html;
       sync();
@@ -273,8 +288,57 @@
     agendaBtn.onclick = function () { submit(false); };
   }
 
+  // ---- Form-of-State mode: the monarchy special law. The one measure that crosses the
+  // republic/monarchy line — proclaim a Constitutional Monarchy (republic ≤20 → 21) or
+  // abolish it (Constitutional 21–23 → 20). Absolute monarchies (24–25) are crown/admin
+  // territory, so the floor offers nothing there. ----
+  var regimeBusy = false;
+  function renderRegimeMode(regime) {
+    document.querySelector('.phead .eye').textContent = 'Legislature · Form of State';
+    document.querySelector('.phead h1').textContent = 'Change the Form of State';
+    document.querySelector('.phead p').textContent = 'The crown is the one regime change the chamber itself can make — a republic may proclaim a constitutional monarchy, and a constitutional monarchy may abolish it. Everything else on the regime scale is set elsewhere.';
+    var grid = document.getElementById('proposeGrid');
+    var r = (regime == null || regime === '') ? 20 : Number(regime);
+    if (isNaN(r)) r = 20;  // demo / legacy non-numeric regime → treat as a republic (server re-validates)
+    // The single legal crossing from here (target value + framing), or null if none.
+    var move = r <= 20 ? { target: 21, title: 'Proclaim a Constitutional Monarchy', desc: 'The head of state becomes a monarch. The crown is ceremonial — the chamber keeps its powers and the nation stays a multiparty democracy.' }
+             : (r >= 21 && r <= 23) ? { target: 20, title: 'Abolish the Monarchy', desc: 'The crown is dissolved and the nation returns to a republic (Full Democracy).' }
+             : null;  // Absolute monarchy (24–25) — no floor measure
+
+    grid.innerHTML =
+      '<div><section class="mod"><div class="mod__hd"><span>Form of State</span><span class="hint">a constitutional change</span></div>' +
+        '<label class="lbl">Current regime</label><div class="curval">' + esc(regimeText(isNaN(Number(regime)) ? regime : r)) + '</div>' +
+        '<label class="lbl" style="margin-top:14px">Proposed change</label><div class="curval">' + (move ? esc(move.title) : 'No change available') + '</div>' +
+        (move ? '<p style="margin-top:12px;color:var(--muted);font-size:13px;line-height:1.5">' + esc(move.desc) + '</p>' : '') +
+      '</section></div>' +
+      '<div class="preview"><div class="pvlabel">Live Preview</div>' +
+        '<div class="pvcard"><h3 id="r-pv"' + (move ? '' : ' class="empty"') + '>' + (move ? esc(move.title) : 'Nothing to propose') + '</h3></div>' +
+        '<div class="proj"><div class="actions">' +
+          '<button class="btn" id="r-floor" type="button"' + (move ? '' : ' disabled') + '>Send to the Floor Now <span class="ac">1 Action</span></button>' +
+          '<button class="btn" id="r-agenda" type="button"' + (move ? '' : ' disabled') + '>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
+          '<div class="proposed-note" id="r-note">' +
+            (move ? 'A simple majority of the chamber carries it.'
+                  : (r >= 24 ? 'An absolute monarchy’s form of state rests with the crown, not the floor.'
+                             : 'There is no form-of-state change available here.')) +
+          '</div>' +
+        '</div></div></div>';
+
+    if (!move) return;
+    var floorBtn = document.getElementById('r-floor'), agendaBtn = document.getElementById('r-agenda'), note = document.getElementById('r-note');
+    function submit(toFloor) {
+      if (regimeBusy) return;
+      regimeBusy = true; floorBtn.disabled = true; agendaBtn.disabled = true;
+      note.textContent = toFloor ? 'Bringing it to the floor…' : 'Adding to the agenda…';
+      proposeRegimeChange(move.target, toFloor)
+        .then(function () { location.href = '/play/legislature/'; })
+        .catch(function (e) { regimeBusy = false; floorBtn.disabled = false; agendaBtn.disabled = false; note.textContent = e.message || 'Couldn’t propose that.'; });
+    }
+    floorBtn.onclick = function () { submit(true); };
+    agendaBtn.onclick = function () { submit(false); };
+  }
+
   (async () => {
-    if (!isConfigured) { if (isDecl) renderDeclMode({}); else renderLawMode({}, {}); return; }
+    if (!isConfigured) { if (isRegime) renderRegimeMode(null); else if (isDecl) renderDeclMode({}, null); else renderLawMode({}, {}); return; }
     const user = await requireUser();
     if (!user) return; // redirected to login
     var party = null, nation = null;
@@ -293,7 +357,9 @@
       setTopbarActions(party.actions_remaining);
     } catch (e) { /* chrome is best-effort; the picker below still loads */ }
     // Each mode renders here so it can show the nation's CURRENT value/option.
-    if (isDecl) renderDeclMode((nation && nation.declarations) || {});
+    var regime = nation && nation.economy && nation.economy.regime;
+    if (isRegime) renderRegimeMode(regime);
+    else if (isDecl) renderDeclMode((nation && nation.declarations) || {}, regime);
     else renderLawMode((nation && nation.policies) || {}, nation || {});
   })();
 </script>

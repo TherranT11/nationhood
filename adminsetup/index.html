@@ -830,10 +830,11 @@
       finally { btn.disabled = false; }
     });
 
-    // Regime dropdown: every value 1–20 (high→low), each shown as "N — Tier"
-    // (the tier label comes from regimeLabel). Defaults to Electoral Democracy (17).
+    // Regime dropdown: every value 1–25 (high→low), each shown as "N — Tier"
+    // (the tier label comes from regimeLabel; 21–25 are the monarchy band). Defaults to
+    // Electoral Democracy (17).
     var regimeOpts = '';
-    for (var rv = 20; rv >= 1; rv--) {
+    for (var rv = 25; rv >= 1; rv--) {
       regimeOpts += '<option value="' + rv + '"' + (rv === 17 ? ' selected' : '') + '>' + rv + ' — ' + esc(regimeLabel(rv)) + '</option>';
     }
     document.getElementById('f-regime').innerHTML = regimeOpts;

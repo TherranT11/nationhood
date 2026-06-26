@@ -255,13 +255,19 @@
   // the shared /terms.js (same source the government agenda renders from).
   var TYPES = {
     legislation:{fields:[{k:'text',kind:'text',ph:'Describe the bill — e.g. the National Industry Act'}]},
-    ministry:{fields:[{k:'ministry',kind:'select',opts:MINISTRIES}]},
+    ministry:{fields:[{k:'ministry',kind:'select',opts:MINISTRIES},{k:'to_party',kind:'party'}]},
     policy:{fields:[{k:'text',kind:'text',ph:'Which policies you’ll back'}]},
     treaty:{fields:[{k:'act',kind:'select',opts:['Sign','Cancel']},{k:'nation',kind:'select',opts:NATIONS},{k:'text',kind:'text',ph:'Agreement name (optional)'}]},
     threshold:{fields:[{k:'pct',kind:'select',opts:['0%','3%','5%','8%','10%','15%']}]},
     regime:{fields:[{k:'dir',kind:'select',opts:['Increase','Decrease']},{k:'by',kind:'stepper',min:1,max:19}]}
   };
-  function defaults(type){var p={};TYPES[type].fields.forEach(function(f){p[f.k]=f.kind==='select'?f.opts[0]:f.kind==='stepper'?f.min:'';});return p;}
+  // A 'party' field defaults to the first seat at the table (the author retargets it);
+  // we snapshot the chosen party's name alongside its id so the summary reads the same
+  // on the government agenda, where the live party pool isn't in scope.
+  function defaults(type){var p={};TYPES[type].fields.forEach(function(f){
+    if(f.kind==='party'){ var s=seats(); p[f.k]=s[0]||''; p[f.k+'_name']=(POOL[s[0]]||{}).name||''; }
+    else p[f.k]=f.kind==='select'?f.opts[0]:f.kind==='stepper'?f.min:'';
+  });return p;}
 
   // ---- state ----
   var myParty=null, HOST=null, POOL={}, CHAMBER=280, MAJORITY=141, MAXINV=5;
@@ -323,7 +329,7 @@
   document.addEventListener('click',function(){var m=document.getElementById('invmenu');if(m)m.classList.remove('open');});
 
   /* ---------- a single term card ---------- */
-  function readParams(card,type){ var p={}; TYPES[type].fields.forEach(function(f){ var el=card.querySelector('.f[data-k="'+f.k+'"]'); if(!el)return; p[f.k]= el.type==='number'? +el.value : el.value; }); return p; }
+  function readParams(card,type){ var p={}; TYPES[type].fields.forEach(function(f){ var el=card.querySelector('.f[data-k="'+f.k+'"]'); if(!el)return; if(f.kind==='party'){ p[f.k]=el.value; p[f.k+'_name']=(POOL[el.value]||{}).name||''; } else p[f.k]= el.type==='number'? +el.value : el.value; }); return p; }
 
   function buildTerm(side,term){
     var def=TYPES[term.type]||TYPES.legislation;
@@ -335,6 +341,9 @@
     var dis=editable?'':' disabled';
     var fieldsHtml=def.fields.map(function(f){
       if(f.kind==='select') return '<select class="f" data-k="'+f.k+'"'+dis+'>'+opt(f.opts,term.params[f.k])+'</select>';
+      // 'party' (ministry recipient): the seated parties, value=id so Fulfill can look up
+      // their roster later; label is the party name.
+      if(f.kind==='party') return '<select class="f" data-k="'+f.k+'"'+dis+'>'+seats().map(function(pid){var pp=POOL[pid]||{name:'?'};return '<option value="'+esc(pid)+'"'+(pid===term.params[f.k]?' selected':'')+'>'+esc(pp.name)+'</option>';}).join('')+'</select>';
       if(f.kind==='stepper') return '<input class="f" type="number" data-k="'+f.k+'" min="'+f.min+'" max="'+f.max+'" value="'+(term.params[f.k]||f.min)+'"'+dis+'>';
       return '<input class="f" type="text" data-k="'+f.k+'" placeholder="'+esc(f.ph||'')+'" value="'+esc(String(term.params[f.k]||'')).replace(/"/g,'&quot;')+'"'+dis+'>';
     }).join('');

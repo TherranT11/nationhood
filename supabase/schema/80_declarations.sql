@@ -38,7 +38,7 @@ create policy "decl_delete_admin" on public.declarations for delete using (publi
 insert into public.declarations (grp, label, slug, options, default_index, custom_allowed, sort_order)
 select v.grp, v.label, v.slug, v.options::jsonb, v.default_index, v.custom_allowed, v.sort_order
 from (values
-  ('Titles & offices',   'Head of State Title',      'head_of_state_title',      '["President","Chairman","Supreme Leader","King","Emperor"]',                 0, false, 1),
+  ('Titles & offices',   'Head of State Title',      'head_of_state_title',      '["President","Chairman","Supreme Leader","King","Queen","Emperor"]',         0, false, 1),
   ('Titles & offices',   'Head of Government Title',  'head_of_government_title',  '["Prime Minister","Chancellor","Premier","First Minister"]',                 0, false, 2),
   ('Titles & offices',   'Legislature Name',          'legislature_name',          '["National Assembly","Parliament","Congress","Senate","Supreme Soviet"]',    0, false, 3),
   ('Titles & offices',   'State Form',                'state_form',                '["Republic","Federation","Union","Empire","Kingdom","People''s Republic"]',   0, false, 4),
@@ -60,5 +60,11 @@ where not exists (select 1 from public.declarations);
 insert into public.declarations (grp, label, slug, options, default_index, custom_allowed, sort_order)
 select 'Names & places', 'Demonym', 'demonym', '["Sessauan"]'::jsonb, 0, true, 7
 where not exists (select 1 from public.declarations where slug = 'demonym');
+
+-- Add Queen to the Head of State Title options idempotently (existing installs too).
+-- The royal titles (King/Queen/Emperor) are gated to monarchies in the picker UI.
+update public.declarations
+   set options = options || '["Queen"]'::jsonb
+ where slug = 'head_of_state_title' and not (options @> '"Queen"'::jsonb);
 
 notify pgrst, 'reload schema';
