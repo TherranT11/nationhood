@@ -172,6 +172,14 @@
   var ROWS = [], byTitle = {}, known = new Set(), featuredIdx = 0;
   var landing = document.getElementById('wkLanding'), articleEl = document.getElementById('wkArticle');
 
+  // Wire [[markup]] cross-links within a container to open their article (if it exists). ONE
+  // place this lives — shared by the article body and the featured teaser.
+  function wireLinks(container) {
+    container.querySelectorAll('[data-link]').forEach(function (el) {
+      el.onclick = function () { if (byTitle[String(el.dataset.link).toLowerCase()]) showArticle(el.dataset.link); };
+    });
+  }
+
   // ---------- views ----------
   function showLanding() {
     articleEl.hidden = true; landing.hidden = false;
@@ -185,7 +193,7 @@
       + articleHTML(normalizeArticle(row), known);
     landing.hidden = true; articleEl.hidden = false;
     document.getElementById('wkBack').onclick = showLanding;
-    articleEl.querySelectorAll('[data-link]').forEach(function (el) { el.onclick = function () { if (byTitle[String(el.dataset.link).toLowerCase()]) showArticle(el.dataset.link); }; });
+    wireLinks(articleEl);
     articleEl.querySelectorAll('[data-sec]').forEach(function (el) { el.onclick = function () { var s = document.getElementById(el.dataset.sec); if (s) s.scrollIntoView({ behavior: 'smooth' }); }; });
     try { history.replaceState(null, '', '?a=' + encodeURIComponent(row.title)); } catch (e) { /* non-fatal */ }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -208,8 +216,7 @@
     f.querySelector('.feat-read').onclick = function () { showArticle(row.title); };
     f.querySelector('.feat-title').onclick = function () { showArticle(row.title); };
     f.querySelector('.feat-title').style.cursor = 'pointer';
-    // Inline [[links]] in the teaser navigate to their article (same as in the body).
-    f.querySelectorAll('.feat-lead [data-link]').forEach(function (el) { el.onclick = function () { if (byTitle[String(el.dataset.link).toLowerCase()]) showArticle(el.dataset.link); }; });
+    wireLinks(f); // inline [[links]] in the teaser navigate, same as in the body
   }
   function shuffleFeatured() {
     if (ROWS.length < 2) return;
