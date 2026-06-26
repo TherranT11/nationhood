@@ -832,6 +832,7 @@
                   <div class="card" id="weNationsCard"><!-- filled by renderNationsCard (varies by type) --></div>
                   <div class="card" id="weTypeBox"><!-- filled by renderType --></div>
                   <button class="save" id="weSave" type="button">Save world event</button>
+                  <div class="card" id="weFireCard" style="margin-top:14px"><!-- filled by renderFire --></div>
                 </div>
                 <aside><div class="rail"><div class="rh">Preview</div><div class="rb" id="wePrev"></div></div></aside>
               </div>
@@ -2442,7 +2443,7 @@
       var WE_STATS = WE_TGT.National.concat(WE_TGT.Resource);   // flat list for the competitive bid stat
       var TYPE_LABEL = { decision: 'Decision', mutual: 'Mutual Agreement', competitive: 'Competitive', turning_point: 'Turning Point' };
 
-      var WE = null, weEditingId = null, weSaving = false, weCache = [], NATIONS = [];
+      var WE = null, weEditingId = null, weSaving = false, weFiring = false, weCache = [], NATIONS = [];
 
       function weTgtSelect(sel) { var h = ''; Object.keys(WE_TGT).forEach(function (g) { h += '<optgroup label="' + g + '">' + WE_TGT[g].map(function (t) { return '<option' + (t === sel ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</optgroup>'; }); return '<select class="we-et">' + h + '</select>'; }
       function effStr(e) { var v = Number(e.v) || 0, s = (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); return (e.t === 'Budget' || e.t === 'Debt' || e.t === 'Income') ? e.t + ' ' + (v >= 0 ? '+' : '−') + '₣' + Math.abs(v) + 'B' : esc(e.t || '?') + ' ' + s; }
@@ -2504,9 +2505,34 @@
         try {
           if (weEditingId) { const { error } = await supabase.from('world_events').update({ definition: WE }).eq('id', weEditingId); if (error) throw error; }
           else { const { data, error } = await supabase.from('world_events').insert({ definition: WE }).select('id').single(); if (error) throw error; weEditingId = data.id; }
-          setWeNote('Saved “' + (WE.name || 'event') + '”.', 'ok'); loadWorldEvents();
+          setWeNote('Saved “' + (WE.name || 'event') + '”.', 'ok'); loadWorldEvents(); renderFire();
         } catch (e) { setWeNote('Save failed: ' + (e.message || e), 'error'); }
         weSaving = false;
+      }
+      // Admin override — fire the saved event to its target nations now. Only Decision and
+      // Turning Point are playable in this phase; the others show why they can't fire yet.
+      function renderFire() {
+        var c = document.getElementById('weFireCard'); if (!c || !WE) return;
+        if (WE.type === 'mutual' || WE.type === 'competitive') {
+          c.innerHTML = '<div class="sechd">Fire now</div><p class="hint" style="margin:0">' + TYPE_LABEL[WE.type] + ' events aren’t playable yet — firing and resolution come in a later pass.</p>'; return;
+        }
+        if (!weEditingId) { c.innerHTML = '<div class="sechd">Fire now</div><p class="hint" style="margin:0">Save the event first, then fire it.</p>'; return; }
+        var reach = (WE.type === 'turning_point' || WE.scope === 'global') ? 'every nation' : (WE.nations.length + ' nation' + (WE.nations.length === 1 ? '' : 's'));
+        c.innerHTML = '<div class="sechd">Fire now <span class="hint">admin override — sends this event to ' + reach + ' immediately</span></div>' +
+          '<button class="btn btn-solid" id="weFireBtn" type="button">Fire to ' + reach + '</button>';
+        document.getElementById('weFireBtn').onclick = fireEvent;
+      }
+      async function fireEvent() {
+        if (weFiring) return;
+        if (WE.type === 'decision' && WE.scope !== 'global' && !WE.nations.length) { setWeNote('Pick at least one involved nation before firing.', 'error'); return; }
+        if (!confirm('Fire “' + (WE.name || 'event') + '” now? This sends it to the target nations’ event boxes.')) return;
+        weFiring = true; setWeNote('Firing…');
+        try {
+          const { data, error } = await supabase.rpc('world_event_fire', { p_event: weEditingId });
+          if (error) throw error;
+          setWeNote('Fired to ' + data.targets + ' nation' + (data.targets === 1 ? '' : 's') + '.', 'ok');
+        } catch (e) { setWeNote('Couldn’t fire: ' + (e.message || e), 'error'); }
+        weFiring = false;
       }
       async function removeEvent(id) {
         if (!confirm('Delete this world event?')) return;
@@ -2525,11 +2551,11 @@
         nm.value = WE.name || ''; ds.value = WE.desc || ''; ty.value = WE.type;
         nm.oninput = function (e) { WE.name = e.target.value; renderPreview(); };
         ds.oninput = function (e) { WE.desc = e.target.value; renderPreview(); };
-        ty.onchange = function (e) { WE.type = e.target.value; renderDescHint(); renderNationsCard(); renderType(); renderPreview(); };
+        ty.onchange = function (e) { WE.type = e.target.value; renderDescHint(); renderNationsCard(); renderType(); renderFire(); renderPreview(); };
         document.getElementById('weImgFile').onchange = function (e) { weUpload(e.target.files && e.target.files[0]); };
         document.getElementById('weImgClear').onclick = function () { WE.image = ''; renderImg(); renderPreview(); };
         document.getElementById('weSave').onclick = saveEvent;
-        renderDescHint(); renderImg(); renderNationsCard(); renderType(); renderPreview();
+        renderDescHint(); renderImg(); renderNationsCard(); renderType(); renderFire(); renderPreview();
         panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       function renderDescHint() {
@@ -2572,8 +2598,8 @@
           '<div id="weNations" class="natgrid' + (isGlobal ? ' off' : '') + '">' +
             (NATIONS.length ? NATIONS.map(function (n) { return natChk(n, WE.nations.indexOf(n.id) >= 0, isGlobal); }).join('') : '<p class="hint">No live nations.</p>') +
           '</div>';
-        document.getElementById('weGlobal').onclick = function () { WE.scope = isGlobal ? 'nations' : 'global'; renderNationsCard(); renderPreview(); };
-        card.querySelectorAll('.natchk input').forEach(function (c) { c.onchange = function () { toggleIn(WE.nations, c.value, c.checked); renderPreview(); }; });
+        document.getElementById('weGlobal').onclick = function () { WE.scope = isGlobal ? 'nations' : 'global'; renderNationsCard(); renderFire(); renderPreview(); };
+        card.querySelectorAll('.natchk input').forEach(function (c) { c.onchange = function () { toggleIn(WE.nations, c.value, c.checked); renderFire(); renderPreview(); }; });
       }
       function toggleIn(arr, v, on) { var i = arr.indexOf(v); if (on && i < 0) arr.push(v); else if (!on && i >= 0) arr.splice(i, 1); }
       // One nation checkbox — the shared markup for the involved-nations grid and the
