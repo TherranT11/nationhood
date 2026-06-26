@@ -43,6 +43,10 @@ alter table public.parties alter column pop_ceiling type numeric using pop_ceili
 alter table public.parties add column if not exists funds bigint not null default 0;
 alter table public.parties add column if not exists in_government boolean not null default false;
 alter table public.parties add column if not exists actions_remaining int not null default 12;
+-- A new party starts with the full 12 actions. The add-column above is a no-op on an
+-- existing DB (it never updates the default), so set it explicitly — otherwise a freshly
+-- founded party falls back to the stale legacy default (3) the column was first created with.
+alter table public.parties alter column actions_remaining set default 12;
 alter table public.parties add column if not exists conviction int not null default 0;
 -- Engagement heartbeat for the inactivity metric: wall-clock of the player's last
 -- meaningful action. Stamped by _lock_party() (schema/40) on every action/vote/adoption.
