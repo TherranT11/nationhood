@@ -168,10 +168,13 @@
       // Home nation drives the sidebar brand + the topbar's currency.
       const { data: home } = await supabase.from('nations').select('name, flag, economy').eq('id', party.nation_id).maybeSingle();
 
-      // Every OTHER nation — these are the cards.
-      const { data: others } = await supabase.from('nations')
+      // Every OTHER nation — these are the cards. A query ERROR (e.g. a schema not yet
+      // applied) must surface loudly, not masquerade as "no nations founded" — Supabase
+      // returns the error rather than throwing, so the outer try/catch never sees it.
+      const { data: others, error: othersErr } = await supabase.from('nations')
         .select('id, name, flag, population, gdp, economy, declarations')
         .neq('id', party.nation_id).eq('dormant', false).order('name');   // hide dormant (unactivated) nations
+      if (othersErr) { fail('Couldn’t load the other nations right now. Refresh to try again.'); return; }
       const nations = others || [];
 
       // The Head of Government title slot, resolved per-nation against each

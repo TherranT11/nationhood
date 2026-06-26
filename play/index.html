@@ -145,6 +145,7 @@
   .wevt__opts{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}
   .wevt__opt{flex:1;min-width:160px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:11px 14px;border-radius:10px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
   .wevt__opt:hover{filter:brightness(1.06)} .wevt__opt:disabled{opacity:.5;cursor:not-allowed;filter:none}
+  .wevt__bid{flex:1;min-width:120px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px}
 
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill. Action cards already go 2-up at ≤700. */
@@ -346,46 +347,85 @@
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
 
-  // World Events panel — active Decisions awaiting THIS nation's answer (Phase-1 runtime).
+  // World Events panel — active Decisions and Mutual Agreements awaiting THIS nation's action.
   // Turning Points apply on fire and surface only in the events feed, so they aren't listed
   // here. The panel hides itself whenever there's nothing to act on.
+  function weEffSummary(arr) { return (arr || []).map(function (e) { var v = Number(e.v) || 0; return esc(e.t) + ' ' + (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }).join(', ') || 'nothing'; }
   async function loadWorldEventsPanel(nationId) {
     var panel = document.getElementById('weventPanel'), box = document.getElementById('wevents');
     if (!nationId) { panel.hidden = true; return; }
-    var insts, answered = {};
+    var insts, answered = {}, agreed = {}, bidded = {};
     try {
       ({ data: insts } = await supabase.from('world_event_instances').select('id, definition').eq('status', 'active'));
-      const { data: mine } = await supabase.from('world_event_choices').select('instance_id').eq('nation_id', nationId);
-      (mine || []).forEach(function (r) { answered[r.instance_id] = true; });
+      const { data: ch } = await supabase.from('world_event_choices').select('instance_id').eq('nation_id', nationId);
+      (ch || []).forEach(function (r) { answered[r.instance_id] = true; });
+      const { data: ag } = await supabase.from('world_event_agreements').select('instance_id').eq('nation_id', nationId);
+      (ag || []).forEach(function (r) { agreed[r.instance_id] = true; });
+      const { data: bd } = await supabase.from('world_event_bids').select('instance_id').eq('nation_id', nationId);
+      (bd || []).forEach(function (r) { bidded[r.instance_id] = true; });
     } catch (e) { panel.hidden = true; return; }
+    // A competitive event's involvement is its two sides; every other type uses scope/nations.
+    function side(d) { var c = d.competitive || {}; return (c.sideA || []).indexOf(nationId) >= 0 ? 'A' : (c.sideB || []).indexOf(nationId) >= 0 ? 'B' : null; }
+    function involved(d) { return d.type === 'competitive' ? !!side(d) : (d.scope === 'global' || (d.nations || []).indexOf(nationId) >= 0); }
     var open = (insts || []).filter(function (i) {
       var d = i.definition || {};
-      if (d.type !== 'decision' || answered[i.id]) return false;
-      return d.scope === 'global' || (d.nations || []).indexOf(nationId) >= 0;
+      if (!involved(d)) return false;
+      if (d.type === 'decision') return !answered[i.id];
+      if (d.type === 'mutual') return !agreed[i.id];
+      if (d.type === 'competitive') return !bidded[i.id];
+      return false;
     });
     if (!open.length) { panel.hidden = true; return; }
+    // Agreement progress for the mutual cards (how many involved nations have agreed so far).
+    var agCount = {}, mutualIds = open.filter(function (i) { return (i.definition || {}).type === 'mutual'; }).map(function (i) { return i.id; });
+    if (mutualIds.length) {
+      try { const { data: alls } = await supabase.from('world_event_agreements').select('instance_id').in('instance_id', mutualIds); (alls || []).forEach(function (r) { agCount[r.instance_id] = (agCount[r.instance_id] || 0) + 1; }); } catch (e) { /* progress is best-effort */ }
+    }
     panel.hidden = false;
     box.innerHTML = open.map(function (i) {
       var d = i.definition || {};
-      var opts = (d.options || []).map(function (o, oi) { return '<button class="wevt__opt" type="button" data-i="' + esc(i.id) + '" data-o="' + oi + '">' + esc(o.label || ('Option ' + (oi + 1))) + '</button>'; }).join('');
-      return '<div class="wevt">' + (d.image ? '<img src="' + esc(d.image) + '" alt="" style="max-width:100%;border-radius:9px;margin-bottom:10px">' : '') +
-        '<div class="wevt__name">' + esc(d.name || 'A decision') + '</div>' +
-        (d.desc ? '<div class="wevt__desc">' + esc(d.desc) + '</div>' : '') +
-        '<div class="wevt__opts">' + opts + '</div></div>';
+      var head = (d.image ? '<img src="' + esc(d.image) + '" alt="" style="max-width:100%;border-radius:9px;margin-bottom:10px">' : '') +
+        '<div class="wevt__name">' + esc(d.name || 'A world event') + '</div>' +
+        (d.desc ? '<div class="wevt__desc">' + esc(d.desc) + '</div>' : '');
+      if (d.type === 'decision') {
+        var opts = (d.options || []).map(function (o, oi) { return '<button class="wevt__opt" type="button" data-act="choose" data-i="' + esc(i.id) + '" data-o="' + oi + '">' + esc(o.label || ('Option ' + (oi + 1))) + '</button>'; }).join('');
+        return '<div class="wevt">' + head + '<div class="wevt__opts">' + opts + '</div></div>';
+      }
+      if (d.type === 'competitive') {
+        var c = d.competitive || {}, mySide = side(d);
+        var cterms = '<div class="wevt__desc" style="margin-top:8px">You’re on <b>Side ' + mySide + '</b>. Stake <b>' + esc(c.stat || 'Budget') + '</b> in a sealed bid — the higher side total wins. Winner gains <b>' + weEffSummary(c.winEffects) + '</b>.</div>';
+        return '<div class="wevt">' + head + cterms +
+          '<div class="wevt__opts"><input class="wevt__bid" type="number" min="0" step="1" placeholder="Your bid"><button class="wevt__opt" type="button" data-act="bid" data-i="' + esc(i.id) + '">Submit sealed bid</button></div></div>';
+      }
+      var m = d.mutual || {};
+      var need = d.scope === 'global' ? null : (d.nations || []).length;
+      var terms = '<div class="wevt__desc" style="margin-top:8px">You contribute <b>' + weEffSummary(m.contribution) + '</b>; both gain <b>' + weEffSummary(m.effects) + '</b>' +
+        (need ? ' · ' + (agCount[i.id] || 0) + ' of ' + need + ' agreed' : '') + '</div>';
+      return '<div class="wevt">' + head + terms +
+        '<div class="wevt__opts"><button class="wevt__opt" type="button" data-act="agree" data-i="' + esc(i.id) + '">Agree &amp; contribute</button></div></div>';
     }).join('');
-    box.querySelectorAll('.wevt__opt').forEach(function (b) { b.onclick = function () { chooseWorldEvent(b.dataset.i, +b.dataset.o, box); }; });
+    box.querySelectorAll('.wevt__opt').forEach(function (b) {
+      b.onclick = function () {
+        if (b.dataset.act === 'agree') actWorldEvent('world_event_agree', { p_instance: b.dataset.i }, box, 'Agreement');
+        else if (b.dataset.act === 'bid') { var inp = b.parentNode.querySelector('.wevt__bid'); actWorldEvent('world_event_bid', { p_instance: b.dataset.i, p_amount: Math.max(0, Math.floor(+(inp && inp.value) || 0)) }, box, 'Bid'); }
+        else actWorldEvent('world_event_choose', { p_instance: b.dataset.i, p_option: +b.dataset.o }, box, 'Decision');
+      };
+    });
   }
-  var weChoosing = false;
-  async function chooseWorldEvent(instanceId, optionIdx, box) {
-    if (weChoosing) return; weChoosing = true;
+  var weActing = false;
+  // One gateway for both world-event actions (choose / agree) — same busy lock + refresh.
+  async function actWorldEvent(rpc, args, box, kind) {
+    if (weActing) return; weActing = true;
     box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = true; });
     try {
-      const { data, error } = await supabase.rpc('world_event_choose', { p_instance: instanceId, p_option: optionIdx });
+      const { data, error } = await supabase.rpc(rpc, args);
       if (error) throw error;
-      ping('Decided: ' + (data.chose || 'done') + '.');
+      ping(rpc === 'world_event_choose' ? ('Decided: ' + (data.chose || 'done') + '.')
+        : rpc === 'world_event_bid' ? (data.resolved ? 'Bid in — the contest resolved.' : 'Sealed bid submitted.')
+        : (data.sealed ? 'Agreement sealed.' : 'Agreed — waiting on the other side.'));
       if (feedCtx) { await loadWorldEventsPanel(feedCtx.nationId); await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate); }
-    } catch (e) { ping((e && e.message) || 'Couldn’t record that.'); box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = false; }); }
-    finally { weChoosing = false; }
+    } catch (e) { ping((e && e.message) || ('Couldn’t record that ' + kind.toLowerCase() + '.')); box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = false; }); }
+    finally { weActing = false; }
   }
 
   // Wire a modal's close affordances (X button, backdrop click, Escape) once and
