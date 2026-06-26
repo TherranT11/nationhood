@@ -551,6 +551,11 @@ begin
       from calc c
      where c.id = n.id and c.pend > 0;
   exception when others then raise warning 'tick %: debt→inflation backlog failed — %', v_tick, sqlerrm; end;
+  -- National-modifier bounds (schema/70): the FINAL stat step — clamp every bounded stat /
+  -- resource to its active floor/ceiling, after all the moves above have settled, so a bound
+  -- is the last word each tick. Isolated like every other step.
+  begin perform public._apply_modifier_bounds();
+  exception when others then raise warning 'tick %: modifier bounds failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
