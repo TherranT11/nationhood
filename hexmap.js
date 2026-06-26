@@ -10,7 +10,22 @@ export function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1]
 
 export function axialToPix(q, r, s, ox, oy) { return { x: Math.sqrt(3) * s * (q + r / 2) + ox, y: 1.5 * s * r + oy }; }
 
-export function hexRound(q, r) {
+// One colour per nation, palette by list order — so every reader that orders nations the same
+// way (by name) paints each nation the SAME colour. Returns { nationId: '#rrggbb' }.
+export function nationColors(list) { var m = {}; (list || []).forEach(function (n, i) { m[n.id] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+
+// The border edges of a land hex: each side facing the sea (no land neighbour) or a different
+// nation. landAt(q,r) returns the land hex at a cell or null. Returns [{ d, sea }] — d is the
+// side (0…5), sea = true for a coastline, false for a nation border. ONE source for "what is a
+// border", shared by the editor and the viewer.
+export function borderEdges(landAt, q, r) {
+  var hh = landAt(q, r); if (!hh) return [];
+  var out = [], nb = neighbors(q, r);
+  for (var d = 0; d < 6; d++) { var nh = landAt(nb[d][0], nb[d][1]); if (!nh) out.push({ d: d, sea: true }); else if (hh.nation_id && nh.nation_id !== hh.nation_id) out.push({ d: d, sea: false }); }
+  return out;
+}
+
+function hexRound(q, r) {
   var x = q, z = r, y = -x - z, rx = Math.round(x), ry = Math.round(y), rz = Math.round(z);
   var dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z);
   if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry;

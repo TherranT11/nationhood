@@ -1466,7 +1466,6 @@
       var painting = false, panning = false, last = { x: 0, y: 0 }, moved = 0, loadedOnce = false;
 
       // ---- geometry (shared module; thin adapters bind the editor's view + ctx) ----
-      var neighbors = HM.neighbors;
       function axialToPix(q, r) { return HM.axialToPix(q, r, SIZE * view.z, view.x, view.y); }
       function pixToAxial(px, py) { return HM.pixToAxial(px, py, SIZE * view.z, view.x, view.y); }
       function hexPath(cx, cy, s) { HM.hexPath(ctx, cx, cy, s); }
@@ -1488,21 +1487,17 @@
           else { ctx.fillStyle = ((q + r) % 2 === 0) ? '#bcd9e6' : '#a9cdde'; ctx.fill(); }
           ctx.lineWidth = 1; ctx.strokeStyle = land ? 'rgba(120,110,90,.22)' : 'rgba(110,150,170,.28)'; ctx.stroke();
         }
-        // coastlines + nation borders
+        // coastlines + nation borders (border rule shared with the viewer via HM.borderEdges)
+        var landAt = function (q, r) { var h = hexes[q + ',' + r]; return h && h.terrain === 'land' ? h : null; };
         for (var r2 = R0; r2 <= R1; r2++) for (var q2 = Q0; q2 <= Q1; q2++) {
-          var hh = hexes[q2 + ',' + r2]; if (!hh || hh.terrain !== 'land') continue;
+          if (!landAt(q2, r2)) continue;
           var p2 = axialToPix(q2, r2); if (p2.x < -s * 2 || p2.x > W + s * 2 || p2.y < -s * 2 || p2.y > H + s * 2) continue;
-          var nb = neighbors(q2, r2);
-          for (var d = 0; d < 6; d++) {
-            var nh = hexes[nb[d][0] + ',' + nb[d][1]], nLand = nh && nh.terrain === 'land';
-            var seaEdge = !nLand, natEdge = hh.nation_id && (!nh || nh.nation_id !== hh.nation_id);
-            if (seaEdge || natEdge) {
-              var e = hexEdge(p2.x, p2.y, s * 0.99, d);
-              ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2);
-              if (seaEdge) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 2.2; } else { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.8; }
-              ctx.stroke();
-            }
-          }
+          HM.borderEdges(landAt, q2, r2).forEach(function (ed) {
+            var e = hexEdge(p2.x, p2.y, s * 0.99, ed.d);
+            ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2);
+            if (ed.sea) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 2.2; } else { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.8; }
+            ctx.stroke();
+          });
         }
         // selected hex highlight
         if (selKey && hexes[selKey]) { var sp = axialToPix(hexes[selKey].q, hexes[selKey].r); hexPath(sp.x, sp.y, s * 0.99); ctx.strokeStyle = '#15151b'; ctx.lineWidth = 3; ctx.stroke(); }
@@ -1535,7 +1530,7 @@
         var res = await supabase.from('nations').select('id, name').order('name');
         natName = {}; natColor = {}; natOrder = [];
         if (res.error) status('Couldn’t load nations.');
-        else (res.data || []).forEach(function (n, i) { natName[n.id] = n.name; natColor[n.id] = HM.NATION_PALETTE[i % HM.NATION_PALETTE.length]; natOrder.push(n.id); });
+        else { natColor = HM.nationColors(res.data || []); (res.data || []).forEach(function (n) { natName[n.id] = n.name; natOrder.push(n.id); }); }
         var sel = document.getElementById('wmNation');
         sel.innerHTML = '<option value="">— pick a nation —</option>' + natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('');
         sel.value = assignNation;
