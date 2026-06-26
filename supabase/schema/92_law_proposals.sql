@@ -233,14 +233,23 @@ $$;
 -- Propose a policy change. p_to_floor=false → queue on the agenda (free); true →
 -- open a floor vote now (1 action), proposer auto-votes Aye, then tally. Mirrors
 -- propose_declaration so the action cost + vote rules stay server-authoritative.
-create or replace function public.propose_law(p_policy uuid, p_option int, p_to_floor boolean)
+-- p_title / p_intro are the optional bill heading + introductory article authored on
+-- the propose page; blank → the title falls back to "Policy → Option" and no intro.
+drop function if exists public.propose_law(uuid, int, boolean);
+create or replace function public.propose_law(p_policy uuid, p_option int, p_to_floor boolean,
+  p_title text default null, p_intro text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_name text; v_opt text;
   v_cur int; v_sched int; v_pid uuid; v_res text;
+  v_title text; v_intro text;
 begin
   select policy_name, option_name into v_name, v_opt from public._check_law(p_policy, p_option);
   select current_tick into v_cur from public.game_state where id;
+  -- Bill heading: the authored title, else the canonical "Policy → Option" label. Both are
+  -- length-capped server-side (the client also caps) so a crafted call can't store a huge string.
+  v_title := left(coalesce(nullif(btrim(p_title), ''), v_name || ' → ' || v_opt), 120);
+  v_intro := left(nullif(btrim(p_intro), ''), 400);
 
   if p_to_floor then
     v_party := public._begin_action(0);          -- requires >= 1 action
@@ -257,10 +266,22 @@ begin
     raise exception 'That policy is already set to that option.';
   end if;
 
+  -- One pending bill per policy. Lock the nation row (the no-confidence idiom) so two parties
+  -- can't both slip in a competing bill for the same policy, then refuse if one is already on
+  -- the floor or the agenda — it must resolve before another can change the same policy.
+  perform 1 from public.nations where id = v_party.nation_id for update;
+  if exists (select 1 from public.proposals
+               where nation_id = v_party.nation_id and kind = 'law'
+                 and status in ('voting', 'agenda')
+                 and payload->>'policy_id' = p_policy::text) then
+    raise exception 'A bill to change this policy is already before the chamber — it must resolve first.';
+  end if;
+
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
     values (v_party.nation_id, v_party.id, 'law',
-            v_name || ' → ' || v_opt,
-            jsonb_build_object('policy_id', p_policy, 'option_idx', p_option, 'policy_name', v_name, 'option_name', v_opt),
+            v_title,
+            jsonb_build_object('policy_id', p_policy, 'option_idx', p_option, 'policy_name', v_name, 'option_name', v_opt)
+              || case when v_intro is null then '{}'::jsonb else jsonb_build_object('intro', v_intro) end,
             case when p_to_floor then 'voting' else 'agenda' end,
             case when p_to_floor then v_cur else null end,
             case when p_to_floor then null else v_sched end)
@@ -275,6 +296,6 @@ begin
   v_res := public._resolve_proposal(v_pid);
   return jsonb_build_object('id', v_pid, 'status', v_res, 'actions', v_party.actions_remaining - 1);
 end $$;
-grant execute on function public.propose_law(uuid, int, boolean) to authenticated;
+grant execute on function public.propose_law(uuid, int, boolean, text, text) to authenticated;
 
 notify pgrst, 'reload schema';

@@ -26,8 +26,9 @@ export async function fetchPolicies() {
 export async function proposeDeclaration(slug, value, toFloor) {
   return unwrap(await supabase.rpc('propose_declaration', { p_slug: slug, p_value: value, p_to_floor: toFloor }));
 }
-export async function proposeLaw(policyId, optionIdx, toFloor) {
-  return unwrap(await supabase.rpc('propose_law', { p_policy: policyId, p_option: optionIdx, p_to_floor: toFloor }));
+export async function proposeLaw(policyId, optionIdx, toFloor, title, intro) {
+  return unwrap(await supabase.rpc('propose_law', { p_policy: policyId, p_option: optionIdx, p_to_floor: toFloor,
+    p_title: title || null, p_intro: intro || null }));
 }
 // The monarchy special law: target 21 (proclaim a Constitutional Monarchy) or 20 (abolish it).
 export async function proposeRegimeChange(target, toFloor) {

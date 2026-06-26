@@ -65,6 +65,31 @@
   .eff b{font-weight:700}.eff.pos b{color:var(--green)}.eff.neg b{color:var(--red)}
   .eff .cad{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);flex:none}
 
+  /* policy ladder — clickable rungs replace the change-to dropdown */
+  .ladder{display:flex;flex-direction:column;gap:6px}
+  .rung{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);background:var(--field);border-radius:10px;padding:10px 13px;cursor:pointer;text-align:left;width:100%;font-family:inherit;color:inherit}
+  .rung:hover{border-color:var(--line2)}
+  .rung:focus-visible{outline:none;border-color:var(--indigo);box-shadow:0 0 0 3px var(--indigo-soft)}
+  .rung.current{border-style:dashed;opacity:.72;cursor:default}
+  .rung.proposed{border-color:var(--indigo);background:var(--indigo-soft)}
+  .rung .rn{font-weight:700;font-size:13.5px}
+  .rung .rmeta{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:2px}
+  .rung .rbadge{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:6px;padding:3px 7px;flex:none}
+  .rbadge.cur{color:var(--soft);background:var(--chip);border:1px solid var(--line2)}
+  .rbadge.prop{color:var(--indigo);background:var(--surface);border:1px solid var(--indigo)}
+
+  /* fiscal impact — structured income/budget/net deltas (one source: the option money effects) */
+  .frow{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+  .frow:last-child{border-bottom:none}
+  .frow.net{border-top:1px solid var(--line2);margin-top:2px}
+  .frow .fk{font-weight:700;font-size:13px}
+  .frow .fk small{display:block;font-family:'Space Mono',monospace;font-weight:400;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .frow .fdir{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;text-align:right}
+  .frow .fval{font-family:'Space Mono',monospace;font-weight:700;font-size:13.5px;text-align:right;min-width:78px}
+  .up{color:var(--green)}.dn{color:var(--red)}.flat{color:var(--soft)}
+  .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .ltag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;color:var(--amber);background:var(--amber-soft);border:1px solid #e8cfa3;border-radius:7px;padding:4px 8px}
+
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -92,8 +117,8 @@
   import { esc, declaredValue } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText } from '/policies.js';
+  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, fetchProposals } from '/proposals.js';
+  import { policyOptions, policyOptionIdx, effectText, isMoneyTarget, policyMoney } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -111,12 +136,13 @@
   // ---- Law mode: pick a policy + the option to enact, preview its effects for this
   // nation, then queue it or send it to the floor (mirrors the declaration flow). ----
   var lawBusy = false;
-  async function renderLawMode(currentPolicies, nation) {
+  async function renderLawMode(currentPolicies, nation, pendingPolicies) {
     currentPolicies = currentPolicies || {};
-    var pop = nation && nation.population, pros = nation && nation.stats && nation.stats.prosperity;
+    pendingPolicies = pendingPolicies || {};   // policyId → true for a bill already on the floor/agenda
+    var pop = Number((nation && nation.population) || 0), pros = Number((nation && nation.stats && nation.stats.prosperity) || 10);
     document.querySelector('.phead .eye').textContent = 'Legislature · Law';
     document.querySelector('.phead h1').textContent = 'Propose a Law';
-    document.querySelector('.phead p').textContent = 'Pick a policy and the option to put to the chamber. If it passes, the nation switches to that option and its effects land.';
+    document.querySelector('.phead p').textContent = 'Pick a policy and climb the ladder to the rung you want to put to the chamber. If it passes, the nation switches to that rung and its effects land.';
     var grid = document.getElementById('proposeGrid');
     var policies;
     try { policies = await fetchPolicies(); }
@@ -127,81 +153,170 @@
       '<div><section class="mod"><div class="mod__hd"><span>Policy</span><span class="hint">one policy per law</span></div>' +
         '<label class="lbl">Policy</label><select id="l-policy" class="inp"></select>' +
         '<label class="lbl" style="margin-top:14px">In force now</label><div id="l-current" class="curval">—</div>' +
-        '<label class="lbl" style="margin-top:14px">Change to</label><select id="l-opt" class="inp"></select>' +
+        '<label class="lbl" style="margin-top:14px">Proposed change <span class="hint" style="text-transform:none;letter-spacing:0">— pick a rung</span></label><div id="l-ladder" class="ladder"></div>' +
+      '</section>' +
+      '<section class="mod"><div class="mod__hd"><span>The Bill</span><span class="hint">filled in for you — edit freely</span></div>' +
+        '<label class="lbl">Bill title</label><input id="l-title" class="inp" type="text" maxlength="120" placeholder="e.g. Public Health Programmes (Amendment)">' +
+        '<label class="lbl" style="margin-top:14px">Introductory article</label><textarea id="l-intro" class="inp" rows="3" maxlength="400" placeholder="An Act to…" style="resize:vertical;line-height:1.55"></textarea>' +
       '</section></div>' +
       '<div class="preview"><div class="pvlabel">Live Preview</div>' +
-        '<div class="pvcard"><h3 id="l-pv" class="empty">Choose a policy</h3>' +
-          '<div class="pvarts"><div class="ac">Effects if enacted</div><div id="l-effs"><p class="none">—</p></div>' +
-            '<div class="ac" style="margin-top:12px">Cost to change <span class="hint">one-time, on enactment</span></div><div id="l-trans"><p class="none">—</p></div></div></div>' +
+        '<div class="pvcard"><h3 id="l-pv" class="empty">Choose a change</h3>' +
+          '<div class="pvarts"><div class="ac">Fiscal impact <span class="hint">vs the rung in force</span></div><div id="l-fiscal"><p class="none">—</p></div>' +
+            '<div class="ac" style="margin-top:14px">Standing effects if enacted</div><div id="l-effs"><p class="none">—</p></div><div id="l-tags" class="tagrow"></div>' +
+            '<div class="ac" style="margin-top:14px">One-time cost to change <span class="hint">on enactment</span></div><div id="l-trans"><p class="none">—</p></div></div></div>' +
         '<div class="proj"><div class="actions">' +
           '<button class="btn" id="l-floor" type="button" disabled>Bring to the Floor Now <span class="ac">1 Action</span></button>' +
           '<button class="btn" id="l-agenda" type="button" disabled>Add to Upcoming Agenda <span class="ac">Free</span></button>' +
-          '<div class="proposed-note" id="l-note">Pick an option to propose it.</div>' +
+          '<div class="proposed-note" id="l-note">Pick a rung to propose it.</div>' +
         '</div></div></div>';
 
-    var polSel = document.getElementById('l-policy'), optSel = document.getElementById('l-opt');
+    var polSel = document.getElementById('l-policy'), titleInp = document.getElementById('l-title'), introInp = document.getElementById('l-intro');
     var floorBtn = document.getElementById('l-floor'), agendaBtn = document.getElementById('l-agenda'), note = document.getElementById('l-note');
     polSel.innerHTML = policies.map(function (p, i) { return '<option value="' + i + '">' + esc((p.definition && p.definition.name) || 'Policy') + '</option>'; }).join('');
 
+    var sel = { proposed: null };          // chosen rung index, or null
+    var touched = { title: false, intro: false };
     function curPolicy() { return policies[+polSel.value] || policies[0]; }
     function curDef() { return curPolicy().definition || {}; }
     // The option in force for this nation (one source: policies.js).
     function inForceIdx() { return policyOptionIdx(curDef(), currentPolicies, curPolicy().id); }
 
-    function fillOpts() {
+    // ---- money helpers: one source is the option's authored effects; we just annualize
+    // them (per-tick ×12, per-year ×1, one-time excluded) and scale by this nation. ----
+    // The annual factor for a money effect the fiscal block summarises: per-year ×1, permanent
+    // per-tick ×12, else 0 (one-time and finite-duration money fall through to the effects list
+    // with their own cadence label). ONE predicate so optMoney and the effects filter agree.
+    function fiscalFactor(e) {
+      if (!isMoneyTarget(e.t)) return 0;
+      return e.cad === 'year' ? 1 : (e.cad === 'tick' && !(Number(e.dur) > 0)) ? 12 : 0;
+    }
+    function optMoney(o) {   // { Income, Budget, Debt } annual ₣B for being on this rung
+      var m = { Income: 0, Budget: 0, Debt: 0 };
+      ((o && o.effects) || []).forEach(function (e) {
+        var f = fiscalFactor(e); if (!f) return;
+        m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros) * f;
+      });
+      return m;
+    }
+    function rungMeta(o) {   // short fiscal summary line under a rung's name
+      var m = optMoney(o), net = m.Income + m.Budget;
+      if (Math.abs(net) < 0.05) return 'no fiscal cost';
+      return net > 0 ? '₣' + net.toFixed(1) + 'B/yr revenue' : '₣' + Math.abs(net).toFixed(1) + 'B/yr cost';
+    }
+
+    function renderLadder() {
       var opts = policyOptions(curDef()), cur = inForceIdx();
       document.getElementById('l-current').textContent = (opts[cur] && opts[cur].name) || '—';
-      optSel.innerHTML = opts.map(function (o, i) { return '<option value="' + i + '"' + (i === cur ? ' selected' : '') + '>' + esc(o.name || ('Option ' + (i + 1))) + (i === cur ? ' · current' : '') + '</option>'; }).join('');
-      sync();
+      var lad = document.getElementById('l-ladder');
+      lad.innerHTML = opts.map(function (o, i) {
+        var isCur = i === cur, isProp = i === sel.proposed;
+        var badge = isCur ? '<span class="rbadge cur">In force</span>' : isProp ? '<span class="rbadge prop">Proposed</span>' : '';
+        return '<button type="button" class="rung' + (isCur ? ' current' : '') + (isProp ? ' proposed' : '') + '" data-i="' + i + '"' + (isCur ? ' disabled' : '') + '>' +
+          '<span><span class="rn">' + esc(o.name || ('Option ' + (i + 1))) + '</span><span class="rmeta">' + esc(rungMeta(o)) + '</span></span>' + badge + '</button>';
+      }).join('');
+      lad.querySelectorAll('.rung').forEach(function (btn) {
+        btn.onclick = function () { var i = +btn.dataset.i; if (i === inForceIdx()) return; sel.proposed = i; autofill(); paint(); };
+      });
     }
-    var transSeq = 0;
+
     // One effect → one preview row. effectText gives the text + colour band; cadLabel is the timing.
     function effRow(t, cadLabel) { return '<div class="eff ' + t.cls + '"><b>' + esc(t.text) + '</b><span class="cad">' + cadLabel + '</span></div>'; }
-    function sync() {
-      var def = curDef(), opts = policyOptions(def), idx = +optSel.value, o = opts[idx], cur = inForceIdx();
-      var pv = document.getElementById('l-pv');
-      pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (idx + 1)))) : 'Choose an option';
-      pv.classList.toggle('empty', !o);
-      // Standing effects of the chosen option, applied while it's in force: 'once' on enactment,
-      // 'per year' each January, otherwise per tick — all live (advance_tick → _apply_policy_tick_effects).
-      var effs = (o && o.effects) || [];
-      document.getElementById('l-effs').innerHTML = effs.length
-        ? effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('')
-        : '<p class="none">No mechanical effects — a flavour-only option.</p>';
-      // The option already in force is a no-op (and would still cost an action) — block it.
-      var same = idx === cur, ok = !!o && !same && !lawBusy;
-      floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
-      if (!lawBusy) note.textContent = same ? 'That option is already in force.' : 'Ready to propose — choose how.';
-      renderTransitionCost(o && !same ? cur : null, idx);
+    function fmtB(v) { return '₣' + Math.abs(v).toFixed(2) + 'B'; }
+    function fRow(label, sub, delta, goodUp, isNet) {
+      var flat = Math.abs(delta) < 0.005, up = delta > 0, good = goodUp ? up : !up;
+      var cls = flat ? 'flat' : good ? 'up' : 'dn';
+      var dir = flat ? 'No change' : up ? '▲ Increase' : '▼ Decrease';
+      var sign = delta > 0 ? '+' : delta < 0 ? '−' : '';
+      return '<div class="frow' + (isNet ? ' net' : '') + '"><div class="fk">' + label + (sub ? '<small>' + sub + '</small>' : '') + '</div>' +
+        '<div class="fdir ' + cls + '">' + dir + '</div><div class="fval ' + cls + '">' + sign + fmtB(delta) + '</div></div>';
     }
-    // The one-time transition (doorway) cost of the move cur→idx, from the server (ONE source:
+    // Fiscal impact = the change in each money target between the rung in force and the proposed
+    // rung (one source: the options' money effects). Debt is a liability, so up is bad there.
+    function renderFiscal() {
+      var box = document.getElementById('l-fiscal');
+      if (sel.proposed == null) { box.innerHTML = '<p class="none">—</p>'; return; }
+      var opts = policyOptions(curDef()), cm = optMoney(opts[inForceIdx()]), pm = optMoney(opts[sel.proposed]);
+      var dInc = pm.Income - cm.Income, dBud = pm.Budget - cm.Budget, dDebt = pm.Debt - cm.Debt;
+      var rows = [];
+      if (Math.abs(dInc) >= 0.005) rows.push(fRow('National Income', 'per year', dInc, true));
+      if (Math.abs(dBud) >= 0.005) rows.push(fRow('Treasury / Budget', 'per year', dBud, true));
+      if (Math.abs(dDebt) >= 0.005) rows.push(fRow('National Debt', 'liability', dDebt, false));
+      if (!rows.length) { box.innerHTML = '<p class="none">No change to the budget.</p>'; return; }
+      var html = rows.join('');
+      if (rows.length >= 2) html += fRow('Net annual change', '', dInc + dBud - dDebt, true, true);
+      box.innerHTML = html;
+    }
+    // Standing (non-money) effects of the proposed rung, with their cadence, plus its identity tags.
+    function renderEffects() {
+      var effBox = document.getElementById('l-effs'), tagBox = document.getElementById('l-tags');
+      if (sel.proposed == null) { effBox.innerHTML = '<p class="none">—</p>'; tagBox.innerHTML = ''; return; }
+      var o = policyOptions(curDef())[sel.proposed] || {};
+      // Show every effect except the recurring money summarised in the fiscal block above.
+      // One-time and finite-duration money stay here so nothing the option does goes unshown.
+      var effs = (o.effects || []).filter(function (e) { return !fiscalFactor(e); });
+      effBox.innerHTML = effs.length
+        ? effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('')
+        : '<p class="none">No standing effects beyond the budget.</p>';
+      tagBox.innerHTML = (o.tags || []).map(function (t) { return '<span class="ltag">' + esc(t) + '</span>'; }).join('');
+    }
+    var transSeq = 0;
+    // The one-time transition (doorway) cost of the move cur→to, from the server (ONE source:
     // _doorway_effects via the law_transition_preview RPC). Each doorway carries its own scale
     // (money targets can be per-million/×pop×prosperity), flat when absent — render with it so the
-    // worked amount matches what enacts. A seq guard drops a stale response if the option changed.
-    function renderTransitionCost(from, to) {
+    // worked amount matches what enacts. A seq guard drops a stale response if the rung changed.
+    function renderTransitionCost() {
       var box = document.getElementById('l-trans'), myseq = ++transSeq;
-      if (from == null) { box.innerHTML = '<p class="none">—</p>'; return; }
+      if (sel.proposed == null) { box.innerHTML = '<p class="none">—</p>'; return; }
+      var from = inForceIdx(), to = sel.proposed;
       box.innerHTML = '<p class="none">…</p>';
       supabase.rpc('law_transition_preview', { p_policy: curPolicy().id, p_from: from, p_to: to }).then(function (r) {
         if (myseq !== transSeq) return;
         var fx = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
         box.innerHTML = fx.length
           ? fx.map(function (e) { return effRow(effectText({ t: e.t, v: e.v, scale: e.scale || 'flat', cad: 'once' }, pop, pros), 'on change'); }).join('')
-          : '<p class="none">No cost to change to this option.</p>';
+          : '<p class="none">No cost to change to this rung.</p>';
       }).catch(function () { if (myseq === transSeq) box.innerHTML = '<p class="none">Couldn’t load the cost — reselect to retry.</p>'; });
     }
-    polSel.onchange = fillOpts;
-    optSel.onchange = sync;
-    fillOpts();
+
+    // Prefill the bill title + introductory article from the chosen move (unless the player
+    // has typed their own — touched flags keep their edits).
+    function autofill() {
+      if (sel.proposed == null) return;
+      var def = curDef(), opts = policyOptions(def), pname = def.name || 'this policy';
+      var cur = opts[inForceIdx()], prop = opts[sel.proposed];
+      if (!touched.title) titleInp.value = pname + ' (Amendment)';
+      if (!touched.intro) introInp.value = 'An Act to amend the ' + pname + ', changing provision from ' +
+        (cur && cur.name || 'the current rung') + ' to ' + (prop && prop.name || 'the proposed rung') + ', with effect from the next session.';
+    }
+
+    function paint() {
+      var def = curDef(), o = sel.proposed == null ? null : policyOptions(def)[sel.proposed];
+      var pv = document.getElementById('l-pv');
+      pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (sel.proposed + 1)))) : 'Choose a change';
+      pv.classList.toggle('empty', !o);
+      renderLadder(); renderFiscal(); renderEffects(); renderTransitionCost();
+      // One pending bill per policy: if this policy already has one on the floor/agenda, the
+      // chamber won't take another until it resolves (the server enforces this too).
+      var blocked = !!pendingPolicies[curPolicy().id];
+      var ok = !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
+      floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
+      if (!lawBusy) note.textContent = blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
+        : ok ? 'Ready to propose — choose how.' : 'Pick a rung to propose it.';
+    }
+
+    polSel.onchange = function () { sel.proposed = null; touched = { title: false, intro: false }; titleInp.value = ''; introInp.value = ''; paint(); };
+    titleInp.oninput = function () { touched.title = true; };
+    introInp.oninput = function () { touched.intro = true; };
+    paint();
 
     function submit(toFloor) {
-      var p = curPolicy(), idx = +optSel.value;
-      if (lawBusy || idx === inForceIdx()) return;  // guard mirrors sync()
+      var p = curPolicy(), idx = sel.proposed;
+      if (lawBusy || idx == null || idx === inForceIdx()) return;  // guard mirrors paint()
       lawBusy = true; floorBtn.disabled = true; agendaBtn.disabled = true;
       note.textContent = toFloor ? 'Bringing it to the floor…' : 'Adding to the agenda…';
-      proposeLaw(p.id, idx, toFloor)
+      proposeLaw(p.id, idx, toFloor, titleInp.value.trim(), introInp.value.trim())
         .then(function () { location.href = '/play/legislature/'; })
-        .catch(function (e) { lawBusy = false; sync(); note.textContent = e.message || 'Couldn’t propose that.'; });
+        .catch(function (e) { lawBusy = false; paint(); note.textContent = e.message || 'Couldn’t propose that.'; });
     }
     floorBtn.onclick = function () { submit(true); };
     agendaBtn.onclick = function () { submit(false); };
@@ -361,7 +476,17 @@
     var regime = nation && nation.economy && nation.economy.regime;
     if (isRegime) renderRegimeMode(regime);
     else if (isDecl) renderDeclMode((nation && nation.declarations) || {}, regime);
-    else renderLawMode((nation && nation.policies) || {}, nation || {});
+    else {
+      // Policies that already have a bill on the floor/agenda — the ladder greys out proposing
+      // for them (the server enforces one pending bill per policy regardless). Non-fatal.
+      var pendingPolicies = {};
+      try {
+        (await fetchProposals(party.nation_id)).forEach(function (p) {
+          if (p.kind === 'law' && (p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
+        });
+      } catch (e) { /* leave empty → server still blocks a duplicate */ }
+      renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies);
+    }
   })();
 </script>
 </body>

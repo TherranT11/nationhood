@@ -595,14 +595,16 @@
   // gate, the pill, and the tooltip all read one source; %COST% in the title resolves to
   // it. data-cost-label overrides the pill text for a variable cost (Recruit: 1–2);
   // data-soon marks a not-yet-wired action with a "Soon" pill. The gate is setActions.
-  document.querySelectorAll('.leadbar__grid .lead').forEach(function (b) {
+  function stampCost(b) {
+    if (b.querySelector('.lead__cost')) return;   // already stamped (PM bar can re-render)
     if (b.hasAttribute('data-standing')) { b.dataset.cost = STANDING_COST; b.title = b.title.replace('%COST%', STANDING_COST); }
     var pill = document.createElement('span');
     if (b.hasAttribute('data-soon')) { pill.className = 'lead__cost lead__cost--soon'; pill.textContent = 'Soon'; }
     else if (b.hasAttribute('data-cost-free')) { pill.className = 'lead__cost'; pill.textContent = 'Free'; }   // cost is deferred (Negotiate: paid on invite/commit, not on open)
     else { pill.className = 'lead__cost'; pill.textContent = (b.dataset.costLabel || (parseInt(b.dataset.cost, 10) || 1)) + ' AP'; }
     b.appendChild(pill);
-  });
+  }
+  document.querySelectorAll('.leadbar__grid .lead').forEach(stampCost);
 
   // ATTACK targets a rival → open a picker (all other parties, with seats +
   // popularity), then call party_attack(targetId). Shares the action lock/budget.
@@ -850,10 +852,14 @@
       PM_ACTIONS.map(function (a) {
         // Coalition (talks) and Appoint (cabinet) are live; the rest stay dimmed scaffolds.
         var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : '';
-        return '<button class="lead" type="button"' + (id || ' disabled') +
+        // Every premiership action spends the single weekly action (1 AP). Coalition is the
+        // exception: opening talks is free, the AP is paid on invite/commit (mirrors Negotiate).
+        var cost = a[0] === 'Coalition' ? ' data-cost-free' : '';
+        return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
       '</div></section>';
+    el.querySelectorAll('.lead').forEach(stampCost);
     var coalBtn = el.querySelector('#pm-coalition');
     if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
     var apptBtn = el.querySelector('#pm-appoint');
