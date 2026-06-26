@@ -43,7 +43,9 @@
   /* identity box: map (left) + facts (right) */
   .idgrid{display:grid;grid-template-columns:390px 1fr;gap:26px;align-items:start}
   @media(max-width:760px){.idgrid{grid-template-columns:1fr}}
-  .map__ph{aspect-ratio:4/3;background:var(--chip);border:1px dashed var(--line2);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .map__ph{position:relative;aspect-ratio:4/3;background:var(--chip);border:1px solid var(--line2);border-radius:12px;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .natmap{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .map__none{position:relative;z-index:1}
   .maptoggle{display:flex;gap:6px;margin-top:10px}
   .mt{flex:1;padding:8px 6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;border:1px solid var(--line2);border-radius:8px;background:var(--surface);color:var(--muted);cursor:pointer}
   .mt.on{background:var(--indigo-soft);border-color:var(--indigo);color:var(--indigo)}
@@ -88,6 +90,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { axialToPix, hexPath, hexEdge, neighbors, NATION_PALETTE } from '/hexmap.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -97,6 +100,50 @@
 
   // The domestic production resources (Diplomacy is foreign, shown elsewhere).
   var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military'];
+
+  // ---- World map mini-view (the Nation panel's Map box; reads the shared world_hexes) ----
+  // NMAP holds the land hexes + a colour per nation; drawNatMap fits the painted world into
+  // the box. Nation mode = THIS nation's hexes in colour, every other land hex greyed, sea
+  // shown; Continent/World colour all nations. Geometry comes from the shared hexmap module.
+  var NMAP = { hexes: [], natColor: {}, viewedId: null, mode: 'nation' };
+  function drawNatMap() {
+    var cv = document.getElementById('natMap'), box = document.getElementById('natMapBox'), none = document.getElementById('natMapNone');
+    if (!cv || !box) return;
+    var land = NMAP.hexes.filter(function (h) { return h.terrain === 'land'; });
+    if (!land.length) { if (none) none.style.display = ''; cv.style.display = 'none'; return; }
+    if (none) none.style.display = 'none'; cv.style.display = 'block';
+    var DPR = window.devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight;
+    cv.width = W * DPR; cv.height = H * DPR; var ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // Fit the land's bounding box (plus a sea margin) into the box → scale s, origin ox/oy.
+    var hmap = {}, qmin = Infinity, qmax = -Infinity, rmin = Infinity, rmax = -Infinity, minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+    land.forEach(function (h) { hmap[h.q + ',' + h.r] = h; var p = axialToPix(h.q, h.r, 1, 0, 0); minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y); qmin = Math.min(qmin, h.q); qmax = Math.max(qmax, h.q); rmin = Math.min(rmin, h.r); rmax = Math.max(rmax, h.r); });
+    var M = 2.5; minx -= M * Math.sqrt(3); maxx += M * Math.sqrt(3); miny -= M * 1.5; maxy += M * 1.5;
+    var pad = 6, bw = (maxx - minx) || 1, bh = (maxy - miny) || 1, s = Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh);
+    var ox = pad - minx * s + ((W - 2 * pad) - bw * s) / 2, oy = pad - miny * s + ((H - 2 * pad) - bh * s) / 2;
+    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#bcd9e6'; ctx.fillRect(0, 0, W, H);
+    var QA = Math.floor(qmin - M - 1), QB = Math.ceil(qmax + M + 1), RA = Math.floor(rmin - M - 1), RB = Math.ceil(rmax + M + 1);
+    for (var r = RA; r <= RB; r++) for (var q = QA; q <= QB; q++) {
+      var p = axialToPix(q, r, s, ox, oy); if (p.x < -s * 2 || p.x > W + s * 2 || p.y < -s * 2 || p.y > H + s * 2) continue;
+      var h = hmap[q + ',' + r];
+      hexPath(ctx, p.x, p.y, s * 0.96);
+      if (h) {
+        if (NMAP.mode === 'nation') ctx.fillStyle = (h.nation_id && h.nation_id === NMAP.viewedId) ? (NMAP.natColor[h.nation_id] || '#5546E8') : '#cdc6b8';
+        else ctx.fillStyle = h.nation_id ? (NMAP.natColor[h.nation_id] || '#9a8f7d') : '#e9e3d4';
+        ctx.fill();
+      } else { ctx.fillStyle = ((q + r) % 2 === 0) ? '#bcd9e6' : '#a9cdde'; ctx.fill(); }
+      ctx.lineWidth = 1; ctx.strokeStyle = h ? 'rgba(120,110,90,.25)' : 'rgba(110,150,170,.28)'; ctx.stroke();
+    }
+    for (var r2 = RA; r2 <= RB; r2++) for (var q2 = QA; q2 <= QB; q2++) {
+      var hh = hmap[q2 + ',' + r2]; if (!hh) continue;
+      var p2 = axialToPix(q2, r2, s, ox, oy); if (p2.x < -s * 2 || p2.x > W + s * 2 || p2.y < -s * 2 || p2.y > H + s * 2) continue;
+      var nb = neighbors(q2, r2);
+      for (var d = 0; d < 6; d++) {
+        var nh = hmap[nb[d][0] + ',' + nb[d][1]], seaEdge = !nh, natEdge = hh.nation_id && (!nh || nh.nation_id !== hh.nation_id);
+        if (seaEdge || natEdge) { var e = hexEdge(p2.x, p2.y, s * 0.96, d); ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); if (seaEdge) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 1.6; } else { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; } ctx.stroke(); }
+      }
+    }
+  }
+  window.addEventListener('resize', function () { if (document.getElementById('natMap')) drawNatMap(); });
 
   function render(nation, slots, gov, pmParty, pmPol, others, viewId){
     var vals = nation.declarations || {};
@@ -121,7 +168,7 @@
 
     var identity =
       '<section class="panel"><div class="nhd"><h2>Nation</h2>' + viewMenu + '</div><div class="idgrid">' +
-        '<div><div class="map__ph">Map</div><div class="maptoggle">' +
+        '<div><div class="map__ph" id="natMapBox"><canvas class="natmap" id="natMap"></canvas><span class="map__none" id="natMapNone">No map yet</span></div><div class="maptoggle">' +
           '<button class="mt on" type="button" data-m="nation">Nation</button>' +
           '<button class="mt" type="button" data-m="continent">Continent</button>' +
           '<button class="mt" type="button" data-m="world">World</button></div></div>' +
@@ -155,8 +202,9 @@
 
     document.getElementById('content').innerHTML = identity + economy + identityBox;
     document.querySelectorAll('.maptoggle .mt').forEach(function(b){
-      b.onclick = function(){ document.querySelectorAll('.maptoggle .mt').forEach(function(x){ x.classList.toggle('on', x === b); }); };
+      b.onclick = function(){ document.querySelectorAll('.maptoggle .mt').forEach(function(x){ x.classList.toggle('on', x === b); }); NMAP.mode = b.dataset.m; drawNatMap(); };
     });
+    drawNatMap();
     var vb = document.getElementById('viewBtn'), vm = document.getElementById('viewMenu');
     if (vb && vm) {
       vb.onclick = function(e){ e.stopPropagation(); vm.hidden = !vm.hidden; };
@@ -200,6 +248,13 @@
       var currency = (home.economy && home.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
+      // World map mini-view: load hexes + per-nation colours (non-fatal — the page still
+      // works before the world_hexes table/data exists). Colours match the editor (palette
+      // by nation name order). render() calls drawNatMap() once the canvas is in the DOM.
+      var hexData = [];
+      try { var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id'); if (!hr.error) hexData = hr.data || []; } catch (e) {}
+      NMAP.hexes = hexData; NMAP.viewedId = viewId; NMAP.mode = 'nation';
+      NMAP.natColor = {}; (others || []).forEach(function (n, i) { NMAP.natColor[n.id] = NATION_PALETTE[i % NATION_PALETTE.length]; });
       render(nation, slots || [], gov, pmParty, pmPol, others || [], viewId);
     } catch (e) {
       fail('Couldn’t load the nation right now. Refresh to try again.');
