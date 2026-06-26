@@ -12,9 +12,11 @@ function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 
 
 export function axialToPix(q, r, s, ox, oy) { return { x: Math.sqrt(3) * s * (q + r / 2) + ox, y: 1.5 * s * r + oy }; }
 
-// One colour per nation, palette by list order — so every reader that orders nations the same
-// way (by name) paints each nation the SAME colour. Returns { nationId: '#rrggbb' }.
-export function nationColors(list) { var m = {}; (list || []).forEach(function (n, i) { m[n.id] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+// One palette colour per key, by list order — the ONE place the palette mapping lives.
+// Returns { key: '#rrggbb' }. nationColors is the by-name-ordered nation case; continents
+// (and any other layer) reuse paletteColors directly.
+export function paletteColors(keys) { var m = {}; (keys || []).forEach(function (k, i) { if (k != null && k !== '') m[k] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+export function nationColors(list) { return paletteColors((list || []).map(function (n) { return n.id; })); }
 
 // The border edges of a land hex: each side facing the sea (no land neighbour) or a different
 // nation. landAt(q,r) returns the land hex at a cell or null. Returns [{ d, sea }] — d is the

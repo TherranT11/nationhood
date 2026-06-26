@@ -105,7 +105,7 @@
   // NMAP holds the land hexes + a colour per nation; drawNatMap fits the painted world into
   // the box. Nation mode = THIS nation's hexes in colour, every other land hex greyed, sea
   // shown; Continent/World colour all nations. Geometry comes from the shared hexmap module.
-  var NMAP = { hexes: [], natColor: {}, viewedId: null, mode: 'nation' };
+  var NMAP = { hexes: [], natColor: {}, viewedId: null, mode: 'nation', focusContinent: null };
   function drawNatMap() {
     var cv = document.getElementById('natMap'), box = document.getElementById('natMapBox'), none = document.getElementById('natMapNone');
     if (!cv || !box) return;
@@ -116,11 +116,14 @@
     cv.width = W * DPR; cv.height = H * DPR; var ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     var hmap = {}; land.forEach(function (h) { hmap[h.q + ',' + h.r] = h; });
     var landAt = function (q, r) { return hmap[q + ',' + r] || null; };
-    // Fit/centre on the FOCUS hexes: in Nation mode the viewed nation's (zoomed in on it),
-    // otherwise the whole painted world. M = hexes of context kept around the focus.
-    var focus = (NMAP.mode === 'nation') ? land.filter(function (h) { return h.nation_id === NMAP.viewedId; }) : land;
-    if (!focus.length) focus = land;   // viewed nation has no hexes → show the world
-    var M = (NMAP.mode === 'nation' && focus !== land) ? 3 : 2.5;
+    // Fit/centre on the FOCUS hexes: Nation = the viewed nation's hexes; Continent = its
+    // continent's hexes; World = the whole painted world. M = hexes of context around the focus.
+    var fc = NMAP.focusContinent;
+    var focused = NMAP.mode === 'nation' ? land.filter(function (h) { return h.nation_id === NMAP.viewedId; })
+                : (NMAP.mode === 'continent' && fc) ? land.filter(function (h) { return h.continent === fc; })
+                : null;
+    var focus = (focused && focused.length) ? focused : land;   // no focus hexes → show the world
+    var M = (focused && focused.length) ? 3 : 2.5;
     var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
     focus.forEach(function (h) { var p = axialToPix(h.q, h.r, 1, 0, 0); minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y); });
     minx -= M * Math.sqrt(3); maxx += M * Math.sqrt(3); miny -= M * 1.5; maxy += M * 1.5;
@@ -138,7 +141,8 @@
       hexPath(ctx, p.x, p.y, s * 0.96);
       if (h) {
         if (NMAP.mode === 'nation') ctx.fillStyle = (h.nation_id && h.nation_id === NMAP.viewedId) ? (NMAP.natColor[h.nation_id] || '#5546E8') : '#cdc6b8';
-        else ctx.fillStyle = h.nation_id ? (NMAP.natColor[h.nation_id] || '#9a8f7d') : '#e9e3d4';
+        else if (NMAP.mode === 'continent' && fc && h.continent !== fc) ctx.fillStyle = '#cdc6b8';   // off-continent land greyed
+        else ctx.fillStyle = h.nation_id ? (NMAP.natColor[h.nation_id] || '#9a8f7d') : '#e9e3d4';    // continent/world: each nation its colour
         ctx.fill();
       } else { ctx.fillStyle = ((q + r) % 2 === 0) ? '#bcd9e6' : '#a9cdde'; ctx.fill(); }
       ctx.lineWidth = 1; ctx.strokeStyle = h ? 'rgba(120,110,90,.25)' : 'rgba(110,150,170,.28)'; ctx.stroke();
@@ -262,9 +266,12 @@
       // works before the world_hexes table/data exists). Colours match the editor (palette
       // by nation name order). render() calls drawNatMap() once the canvas is in the DOM.
       var hexData = [];
-      try { var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id'); if (!hr.error) hexData = hr.data || []; } catch (e) {}
+      try { var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent'); if (!hr.error) hexData = hr.data || []; } catch (e) {}
       NMAP.hexes = hexData; NMAP.viewedId = viewId; NMAP.mode = 'nation';
       NMAP.natColor = nationColors(others || []);   // palette by name order — matches the editor
+      // The viewed nation's continent = the one most of its hexes sit on (drives [Continent]).
+      var cc = {}; hexData.forEach(function (h) { if (h.nation_id === viewId && h.continent) cc[h.continent] = (cc[h.continent] || 0) + 1; });
+      NMAP.focusContinent = Object.keys(cc).sort(function (a, b) { return cc[b] - cc[a]; })[0] || null;
       render(nation, slots || [], gov, pmParty, pmPol, others || [], viewId);
     } catch (e) {
       fail('Couldn’t load the nation right now. Refresh to try again.');

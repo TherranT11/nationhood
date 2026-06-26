@@ -16,8 +16,12 @@ create table if not exists public.world_hexes (
   name       text,
   population numeric,
   resources  jsonb not null default '{}'::jsonb,     -- { energy, food, minerals, goods, services, military, … } any amounts
+  continent  text,                                    -- separate layer: which continent this hex belongs to
   primary key (q, r)
 );
+-- Continent layer (a hex belongs to a nation AND a continent, independently). Added here so
+-- an existing world_hexes table picks it up.
+alter table public.world_hexes add column if not exists continent text;
 
 alter table public.world_hexes enable row level security;
 -- World-readable (the board is public).
