@@ -202,12 +202,14 @@
     var parts = [['Base', b.base], ['Crises', b.crises], ['Contradictions', b.contradictions],
                  ['Coalition size', b.majority], ['Reneged', b.renege], ['National modifier', b.modifier]];
     if (b.formed != null) parts.push(['Agenda', (Number(govt.confidence) || 0) - b.formed]);
-    // Round each part for display (confidence is numeric now); filter zeros AFTER rounding
-    // so a sub-0.5 movement doesn't show as e.g. "Agenda 0". Base always shows.
-    var chips = parts.map(function(p){ return [p[0], Math.round(p[1] || 0)]; })
+    // Round each part to one decimal (confidence is numeric, so movement can be fractional);
+    // filter zeros AFTER rounding so a sub-0.1 movement doesn't show as e.g. "Agenda 0". Whole
+    // numbers render clean (no trailing .0); fractions show one decimal. Base always shows.
+    var chips = parts.map(function(p){ return [p[0], Math.round((p[1] || 0) * 10) / 10]; })
       .filter(function(p){ return p[0] === 'Base' || p[1]; }).map(function(p){
       var n = p[1], cls = n > 0 ? 'pos' : n < 0 ? 'neg' : '';
-      return '<span class="bk ' + cls + '">' + p[0] + ' ' + (n > 0 ? '+' : '') + n + '</span>';
+      var disp = (n % 1 === 0) ? String(n) : n.toFixed(1);
+      return '<span class="bk ' + cls + '">' + p[0] + ' ' + (n > 0 ? '+' : '') + disp + '</span>';
     });
     return '<div class="conf__break">' + chips.join('') + '</div>';
   }
@@ -486,7 +488,7 @@
     box.innerHTML = cardHtml +
       // 1 — Government Confidence
       '<div class="panel"><h2>Government Confidence</h2>' +
-        '<div class="conf__n" style="color:' + bd.color + '">' + Math.round(c) + '<span>%</span></div>' +
+        '<div class="conf__n" style="color:' + bd.color + '">' + c.toFixed(1) + '<span>%</span></div>' +
         '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
         '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
         confChips(govt) +
@@ -557,7 +559,7 @@
       const { data, error } = await supabase.rpc('agenda_fulfill_ministry', { p_item: itemId, p_politician: polId });
       if (error) throw error;
       closeFulfill();
-      ping((data.minister || 'Minister') + ' appointed — Government Confidence +' + data.delta + '% (now ' + Math.round(data.confidence) + '%).');
+      ping((data.minister || 'Minister') + ' appointed — Government Confidence +' + Number(data.delta).toFixed(1) + '% (now ' + Number(data.confidence).toFixed(1) + '%).');
       await load();
     } catch (e) { ping(e.message || 'Couldn’t fill that ministry.'); fulfillModal.querySelectorAll('.polopt').forEach(function(b){ b.disabled = false; }); }
     finally { busy = false; }
@@ -646,7 +648,7 @@
     try {
       const { data, error } = await supabase.rpc('agenda_enact', { p_item: itemId });
       if (error) throw error;
-      ping('Promise delivered — Government Confidence +' + Math.round(data.delta) + '% (now ' + Math.round(data.confidence) + '%).');
+      ping('Promise delivered — Government Confidence +' + Number(data.delta).toFixed(1) + '% (now ' + Number(data.confidence).toFixed(1) + '%).');
       await load();
     } catch (e) { ping(e.message || 'Couldn’t enact that item.'); }
     finally { busy = false; }
@@ -690,7 +692,7 @@
     try {
       const { data, error } = await supabase.rpc('coalition_install', { p_neg: negId });
       if (error) throw error;
-      ping('New coalition installed — Government Confidence ' + Math.round(data.confidence) + '%, Popularity −' + data.pop_delta + '%.');
+      ping('New coalition installed — Government Confidence ' + Number(data.confidence).toFixed(1) + '%, Popularity −' + data.pop_delta + '%.');
       await load();
     } catch (e) { ping(e.message || 'Couldn’t install that coalition.'); }
     finally { busy = false; }
