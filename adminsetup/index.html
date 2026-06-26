@@ -427,7 +427,6 @@
 
   /* Wiki (Nationpedia) authoring tab. Scoped under .wktab so generic names don't collide. */
   .wktab .sub code{font-family:'Space Mono',monospace;font-size:11px;background:var(--chip);padding:1px 5px;border-radius:5px}
-  .wktab .wkhint{color:var(--soft);font-weight:400;font-size:10.5px;font-family:'Space Mono',monospace;text-transform:none;letter-spacing:0}
   /* top bar: new + existing-article chips */
   .wktab .wkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
   .wktab .wknew{flex:none;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid transparent;border-radius:9px;padding:9px 14px;cursor:pointer}
@@ -441,37 +440,7 @@
   .wktab .wkitem span{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
   /* editor | preview split */
   .wktab .wksplit{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:22px;align-items:start}
-  .wktab .wkform{display:flex;flex-direction:column;gap:14px;min-width:0}
-  .wktab .grp{border:1px solid var(--line);border-radius:13px;padding:16px 17px;background:var(--surface)}
-  .wktab .grp-h{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:13px}
-  .wktab .f{margin-bottom:12px}.wktab .f:last-child{margin-bottom:0}
-  .wktab textarea{min-height:74px;line-height:1.55}
-  /* dynamic rows */
-  .wktab .minirow{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px}
-  .wktab .minirow input{flex:1}
-  .wktab .minirow .k{flex:0 0 38%}
-  .wktab .minirow .rn{font-family:'Space Mono',monospace;font-size:12px;color:var(--soft);padding-top:10px;flex:none}
-  .wktab .rm{background:var(--chip);border:1px solid var(--line2);color:var(--soft);border-radius:7px;width:32px;height:34px;flex:none;cursor:pointer;font-size:14px}
-  .wktab .rm:hover{color:var(--red);border-color:var(--red)}
-  .wktab .addbtn{background:transparent;border:1px dashed var(--line2);color:var(--muted);border-radius:8px;padding:8px 12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;font-weight:700;cursor:pointer;width:100%}
-  .wktab .addbtn:hover{border-color:var(--indigo);color:var(--indigo)}
-  .wktab .sec-edit{border:1px solid var(--line2);border-radius:10px;padding:11px;margin-bottom:9px;background:var(--field)}
-  .wktab .sec-edit .stop{display:flex;gap:8px;margin-bottom:7px}
-  .wktab .sec-edit .lvl{flex:0 0 64px}
-  /* uploader */
-  .wktab .uploader{border:1px dashed var(--line2);border-radius:10px;background:var(--field);cursor:pointer}
-  .wktab .uploader:hover{border-color:var(--indigo)}
-  .wktab .up-empty{display:flex;flex-direction:column;align-items:center;gap:5px;padding:22px 14px;color:var(--soft);text-align:center}
-  .wktab .up-empty svg{width:30px;height:30px}
-  .wktab .up-empty span{font-size:12.5px;font-weight:700;color:var(--muted)}
-  .wktab .up-empty small{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em}
-  .wktab .up-has{display:flex;flex-direction:column;align-items:center;gap:9px;padding:14px}
-  .wktab .up-has img{max-width:160px;max-height:140px;border:1px solid var(--line2);border-radius:5px;display:block}
-  .wktab .up-remove{background:var(--chip);border:1px solid var(--line2);color:var(--soft);border-radius:7px;padding:6px 12px;font-family:'Space Mono',monospace;font-size:10px;cursor:pointer}
-  .wktab .up-remove:hover{color:var(--red);border-color:var(--red)}
-  /* buttons + preview */
-  .wktab .wkbtns{display:flex;gap:10px;align-items:center}
-  .wktab .wkdel{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--red);background:var(--red-soft);border:1px solid transparent;border-radius:10px;padding:12px 16px;cursor:pointer}
+  .wktab .wksplit > *{min-width:0}
   .wktab .wkpv-col{position:sticky;top:16px}
   .wktab .wkpv-hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:0 0 10px}
   .wktab .wkpv{border:1px solid var(--line);border-radius:14px;padding:24px clamp(16px,2vw,28px);background:var(--surface);overflow:hidden;max-height:none}
@@ -961,52 +930,7 @@
             <div class="wklist" id="wkList"><span class="empty">Loading…</span></div>
           </div>
           <div class="wksplit">
-            <div class="wkform">
-              <div class="grp">
-                <div class="grp-h">Basics</div>
-                <div class="f"><label>Title</label><input type="text" id="fTitle" placeholder="Republic of Sessau"></div>
-                <div class="f"><label>Kind</label><select id="fKind"></select></div>
-                <div class="f"><label>Hatnote <span class="wkhint">italic note at the top, optional</span></label><input type="text" id="fHat"></div>
-              </div>
-              <div class="grp">
-                <div class="grp-h">Infobox</div>
-                <div class="f"><label>Heading <span class="wkhint">defaults to the title</span></label><input type="text" id="fIbTitle"></div>
-                <div class="f"><label>Image</label>
-                  <div class="uploader" id="wkUploader">
-                    <input type="file" id="fImageInput" accept="image/*" hidden>
-                    <div class="up-empty" id="upEmpty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l5-5 4 4 3-3 4 4"/><circle cx="9" cy="8" r="1.6"/><rect x="3" y="4" width="18" height="16" rx="2"/></svg><span>Click to upload an image</span><small>PNG, JPG, SVG · 2 MB</small></div>
-                    <div class="up-has" id="upHas" style="display:none"><img id="upPreview" alt="preview"><button type="button" class="up-remove" id="upRemove">Remove</button></div>
-                  </div>
-                  <div class="note" id="wkImgNote"></div>
-                </div>
-                <div class="f"><label>Caption <span class="wkhint">under the image</span></label><input type="text" id="fIbCap"></div>
-                <div class="f"><label>Fact rows</label><div id="rowsBox"></div><button class="addbtn" id="addRow" type="button">+ Add fact row</button></div>
-              </div>
-              <div class="grp">
-                <div class="grp-h">Lead</div>
-                <div class="f"><label>Opening paragraph</label><textarea id="fLead" placeholder="The **Republic of Sessau** is a nation in [[Meridia]]…"></textarea></div>
-              </div>
-              <div class="grp">
-                <div class="grp-h">Sections</div>
-                <div id="secsBox"></div>
-                <button class="addbtn" id="addSec" type="button">+ Add section</button>
-              </div>
-              <div class="grp">
-                <div class="grp-h">References</div>
-                <div id="refsBox"></div>
-                <button class="addbtn" id="addRef" type="button">+ Add reference</button>
-              </div>
-              <div class="grp">
-                <div class="grp-h">Links &amp; categories</div>
-                <div class="f"><label>See also <span class="wkhint">comma-separated titles</span></label><input type="text" id="fSee"></div>
-                <div class="f"><label>Categories <span class="wkhint">comma-separated</span></label><input type="text" id="fCats"></div>
-              </div>
-              <div class="wkbtns">
-                <button class="save" id="wkSave" type="button">Save article</button>
-                <button class="wkdel" id="wkDel" type="button" hidden>Delete</button>
-              </div>
-              <div class="note" id="wkNote" role="status" aria-live="polite"></div>
-            </div>
+            <div id="wkFormHost"></div>
             <div class="wkpv-col">
               <div class="wkpv-hd">Live preview</div>
               <div class="wkpv wk-article" id="wkPreview"><div class="wk-empty">Enter a title to preview…</div></div>
@@ -1028,7 +952,7 @@
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
-    import { injectWikiCSS, articleHTML } from '/wiki.js';
+    import { mountWikiEditor } from '/wiki-editor.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -1580,137 +1504,22 @@
       });
     });
 
-    // ---- Wiki (Nationpedia) authoring (admin; wiki_articles table, is_admin RLS) ----------
-    // A structured editor (Basics / Infobox / Lead / Sections / References / Links) whose live
-    // preview renders through the SAME /wiki.js the player page uses — so the editor can't drift
-    // from what players see. The draft S maps onto the JSONB definition (schema/105). Text fields
-    // use the light markup wiki.js parses ([[link]], **bold**, [1], blank-line paragraphs).
-    var WK = { rows: [], editingId: null, inited: false };
-    var WK_KINDS = ['Nation', 'Political party', 'Politician', 'Place', 'Organization', 'Event'];
-    var S = blankDraft();
-    function blankDraft() { return { title: '', kind: 'Nation', hat: '', ibTitle: '', image: null, ibCap: '', rows: [], lead: '', secs: [], refs: [], see: '', cats: '' }; }
-    // Attribute-safe escape (util.js esc skips quotes, which would break value="…").
-    function wkAttr(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-    function setWkNote(t, k) { var n = document.getElementById('wkNote'); n.textContent = t || ''; n.className = 'note' + (k ? ' ' + k : ''); }
-    function splitComma(x) { return String(x || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean); }
-
-    // The draft → the flat article wiki.js renders (and, minus title/kind, the stored definition).
-    function buildArticle() {
-      return {
-        title: S.title, kind: S.kind, hat: S.hat,
-        box: { heading: S.ibTitle, image: S.image ? { url: S.image } : null, cap: S.ibCap, rows: S.rows.filter(function (r) { return r[0] || r[1]; }) },
-        lead: S.lead,
-        sections: S.secs.filter(function (s) { return s.h || s.b; }).map(function (s) { return { lvl: s.lvl, h: s.h, b: s.b }; }),
-        refs: S.refs.filter(Boolean), see: splitComma(S.see), cats: splitComma(S.cats)
-      };
-    }
-    function previewWk() {
-      var pv = document.getElementById('wkPreview');
-      if (!S.title.trim()) { pv.innerHTML = '<div class="wk-empty">Enter a title to preview…</div>'; return; }
-      var known = new Set(WK.rows.map(function (r) { return r.title.toLowerCase(); })); known.add(S.title.toLowerCase());
-      pv.innerHTML = articleHTML(buildArticle(), known);
-    }
+    // ---- Wiki (Nationpedia) authoring (admin; wiki_articles table, RLS) ----------------------
+    // The article list + the shared structured editor (/wiki-editor.js) — the SAME editor the
+    // player page mounts, so there is one source for authoring. Clicking a list chip loads it into
+    // the editor; "+ New article" blanks it. Admins may delete (canDelete) and edit anything (the
+    // is_admin RLS in schema/105 is the real gate).
+    var WK = { rows: [], inited: false };
+    var WK_EDITOR = null;
     function renderWkList() {
       var list = document.getElementById('wkList');
       if (!WK.rows.length) { list.innerHTML = '<span class="empty">No articles yet.</span>'; return; }
       list.innerHTML = WK.rows.map(function (r) {
-        return '<button class="wkitem' + (r.id === WK.editingId ? ' on' : '') + '" type="button" data-id="' + r.id + '"><b>' + esc(r.title) + '</b><span>' + esc(r.kind || '') + '</span></button>';
+        return '<button class="wkitem" type="button" data-id="' + r.id + '"><b>' + esc(r.title) + '</b><span>' + esc(r.kind || '') + '</span></button>';
       }).join('');
-      list.querySelectorAll('[data-id]').forEach(function (b) { b.onclick = function () { editWk(b.dataset.id); }; });
-    }
-
-    // ----- dynamic fact rows / sections / references -----
-    function renderRows() {
-      document.getElementById('rowsBox').innerHTML = S.rows.map(function (r, i) {
-        return '<div class="minirow"><input class="k" data-ri="' + i + '" data-f="0" value="' + wkAttr(r[0]) + '" placeholder="Label"><input data-ri="' + i + '" data-f="1" value="' + wkAttr(r[1]) + '" placeholder="Value"><button class="rm" type="button" data-rmrow="' + i + '">×</button></div>';
-      }).join('');
-      document.querySelectorAll('#rowsBox [data-ri]').forEach(function (el) { el.oninput = function () { S.rows[+el.dataset.ri][+el.dataset.f] = el.value; previewWk(); }; });
-      document.querySelectorAll('#rowsBox [data-rmrow]').forEach(function (b) { b.onclick = function () { S.rows.splice(+b.dataset.rmrow, 1); renderRows(); previewWk(); }; });
-    }
-    function renderSecs() {
-      document.getElementById('secsBox').innerHTML = S.secs.map(function (s, i) {
-        return '<div class="sec-edit"><div class="stop">'
-          + '<select class="lvl" data-si="' + i + '" data-f="lvl"><option value="2"' + (s.lvl == 2 ? ' selected' : '') + '>H2</option><option value="3"' + (s.lvl == 3 ? ' selected' : '') + '>H3</option></select>'
-          + '<input data-si="' + i + '" data-f="h" value="' + wkAttr(s.h) + '" placeholder="Section heading">'
-          + '<button class="rm" type="button" data-rmsec="' + i + '">×</button></div>'
-          + '<textarea data-si="' + i + '" data-f="b" placeholder="Section text… [[link]], **bold**, [1]">' + wkAttr(s.b) + '</textarea></div>';
-      }).join('');
-      document.querySelectorAll('#secsBox [data-si]').forEach(function (el) {
-        var ev = el.tagName === 'SELECT' ? 'change' : 'input';
-        el.addEventListener(ev, function () { var f = el.dataset.f; S.secs[+el.dataset.si][f] = (f === 'lvl') ? +el.value : el.value; previewWk(); });
+      list.querySelectorAll('[data-id]').forEach(function (b) {
+        b.onclick = function () { var r = WK.rows.find(function (x) { return x.id === b.dataset.id; }); if (r && WK_EDITOR) WK_EDITOR.loadRow(r); };
       });
-      document.querySelectorAll('#secsBox [data-rmsec]').forEach(function (b) { b.onclick = function () { S.secs.splice(+b.dataset.rmsec, 1); renderSecs(); previewWk(); }; });
-    }
-    function renderRefs() {
-      document.getElementById('refsBox').innerHTML = S.refs.map(function (r, i) {
-        return '<div class="minirow"><span class="rn">[' + (i + 1) + ']</span><input data-refi="' + i + '" value="' + wkAttr(r) + '" placeholder="Citation"><button class="rm" type="button" data-rmref="' + i + '">×</button></div>';
-      }).join('');
-      document.querySelectorAll('#refsBox [data-refi]').forEach(function (el) { el.oninput = function () { S.refs[+el.dataset.refi] = el.value; previewWk(); }; });
-      document.querySelectorAll('#refsBox [data-rmref]').forEach(function (b) { b.onclick = function () { S.refs.splice(+b.dataset.rmref, 1); renderRefs(); previewWk(); }; });
-    }
-
-    // ----- infobox image (wiki-images bucket) -----
-    function showUpload() {
-      var has = !!S.image;
-      document.getElementById('upEmpty').style.display = has ? 'none' : '';
-      document.getElementById('upHas').style.display = has ? '' : 'none';
-      if (has) document.getElementById('upPreview').src = S.image;
-    }
-    async function wkUpload(file) {
-      var note = document.getElementById('wkImgNote');
-      if (!file) return;
-      if (file.size > 2 * 1024 * 1024) { note.textContent = 'That image is over 2 MB.'; return; }
-      note.textContent = 'Uploading…';
-      try {
-        var u = (await supabase.auth.getUser()).data.user; if (!u) throw new Error('Not signed in.');
-        var ext = ((file.name || '').split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-        var path = u.id + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
-        var up = await supabase.storage.from('wiki-images').upload(path, file, { cacheControl: '3600', upsert: false });
-        if (up.error) throw new Error(up.error.message);
-        S.image = supabase.storage.from('wiki-images').getPublicUrl(path).data.publicUrl;
-        note.textContent = 'Image uploaded.'; showUpload(); previewWk();
-      } catch (e) { note.textContent = 'Upload failed: ' + (e.message || e); }
-    }
-
-    // ----- form sync / load / new -----
-    function ensureKindOption(kind) {
-      var sel = document.getElementById('fKind');
-      if (kind && !Array.prototype.some.call(sel.options, function (o) { return o.value === kind; })) {
-        var o = document.createElement('option'); o.value = kind; o.textContent = kind; sel.appendChild(o);
-      }
-    }
-    function syncForm() {
-      document.getElementById('fTitle').value = S.title;
-      ensureKindOption(S.kind); document.getElementById('fKind').value = S.kind;
-      document.getElementById('fHat').value = S.hat;
-      document.getElementById('fIbTitle').value = S.ibTitle;
-      document.getElementById('fIbCap').value = S.ibCap;
-      document.getElementById('fLead').value = S.lead;
-      document.getElementById('fSee').value = S.see;
-      document.getElementById('fCats').value = S.cats;
-      document.getElementById('wkImgNote').textContent = '';
-      renderRows(); renderSecs(); renderRefs(); showUpload();
-    }
-    function blankWk() {
-      WK.editingId = null; S = blankDraft();
-      document.getElementById('wkDel').hidden = true;
-      setWkNote(''); syncForm(); renderWkList(); previewWk();
-    }
-    function editWk(id) {
-      var r = WK.rows.find(function (x) { return x.id === id; }); if (!r) return;
-      WK.editingId = id;
-      var d = r.definition || {}, box = d.box || {};
-      S = {
-        title: r.title || '', kind: r.kind || 'Nation', hat: d.hat || '',
-        ibTitle: box.heading || '', image: (box.image && box.image.url) || null, ibCap: box.cap || '',
-        rows: (box.rows || []).map(function (x) { return [x[0] || '', x[1] || '']; }),
-        lead: d.lead || '',
-        secs: (d.sections || []).map(function (s) { return { lvl: s.lvl === 3 ? 3 : 2, h: s.h || '', b: s.b || '' }; }),
-        refs: (d.refs || []).slice(),
-        see: (d.see || []).join(', '), cats: (d.cats || []).join(', ')
-      };
-      document.getElementById('wkDel').hidden = false;
-      setWkNote(''); syncForm(); renderWkList(); previewWk();
     }
     async function loadWiki() {
       var list = document.getElementById('wkList'); list.innerHTML = '<span class="empty">Loading…</span>';
@@ -1718,59 +1527,23 @@
       if (error) { list.innerHTML = '<span class="empty">Could not load articles.</span>'; return; }
       WK.rows = data || []; renderWkList();
     }
-    async function saveWk() {
-      if (!S.title.trim()) { setWkNote('Enter a title.', 'error'); return; }
-      var btn = document.getElementById('wkSave'); btn.disabled = true; setWkNote('Saving…');
-      try {
-        var art = buildArticle();
-        var def = { hat: art.hat, box: art.box, lead: art.lead, sections: art.sections, refs: art.refs, see: art.see, cats: art.cats };
-        var row = { title: S.title.trim(), kind: S.kind || 'Article', definition: def, updated_at: new Date().toISOString() };
-        const res = WK.editingId
-          ? await supabase.from('wiki_articles').update(row).eq('id', WK.editingId)
-          : await supabase.from('wiki_articles').insert(row);
-        if (res.error) throw res.error;
-        setWkNote('Saved “' + row.title + '”.', 'ok');
-        await loadWiki();
-        var saved = WK.rows.find(function (r) { return r.title.toLowerCase() === row.title.toLowerCase(); });
-        if (saved) editWk(saved.id);
-      } catch (e) {
-        // Titles are unique case-insensitively (schema/105) — friendly message, not the raw error.
-        if (e && e.code === '23505') setWkNote('An article with that title already exists.', 'error');
-        else setWkNote('Save failed: ' + (e.message || e), 'error');
-      }
-      finally { btn.disabled = false; }
-    }
-    async function delWk() {
-      if (!WK.editingId) return;
-      if (!confirm('Delete this article? This cannot be undone.')) return;
-      var btn = document.getElementById('wkDel'); btn.disabled = true;
-      try {
-        const res = await supabase.from('wiki_articles').delete().eq('id', WK.editingId);
-        if (res.error) throw res.error;
-        blankWk(); await loadWiki(); setWkNote('Article deleted.', 'ok');
-      } catch (e) { setWkNote('Delete failed: ' + (e.message || e), 'error'); }
-      finally { btn.disabled = false; }
-    }
-    function bindWk(id, key) { document.getElementById(id).addEventListener('input', function () { S[key] = this.value; previewWk(); }); }
     function initWiki() {
       if (!WK.inited) {
         WK.inited = true;
-        injectWikiCSS();
-        document.getElementById('fKind').innerHTML = WK_KINDS.map(function (k) { return '<option value="' + wkAttr(k) + '">' + esc(k) + '</option>'; }).join('');
-        bindWk('fTitle', 'title'); bindWk('fHat', 'hat'); bindWk('fIbTitle', 'ibTitle'); bindWk('fIbCap', 'ibCap');
-        bindWk('fLead', 'lead'); bindWk('fSee', 'see'); bindWk('fCats', 'cats');
-        document.getElementById('fKind').addEventListener('change', function () { S.kind = this.value; previewWk(); });
-        var fileInput = document.getElementById('fImageInput');
-        document.getElementById('wkUploader').addEventListener('click', function (e) { if (e.target.id !== 'upRemove') fileInput.click(); });
-        fileInput.addEventListener('change', function () { if (this.files[0]) wkUpload(this.files[0]); this.value = ''; });
-        document.getElementById('upRemove').addEventListener('click', function (e) { e.stopPropagation(); S.image = null; showUpload(); previewWk(); });
-        document.getElementById('addRow').onclick = function () { S.rows.push(['', '']); renderRows(); previewWk(); };
-        document.getElementById('addSec').onclick = function () { S.secs.push({ lvl: 2, h: '', b: '' }); renderSecs(); previewWk(); };
-        document.getElementById('addRef').onclick = function () { S.refs.push(''); renderRefs(); previewWk(); };
-        document.getElementById('wkNew').onclick = blankWk;
-        document.getElementById('wkSave').onclick = saveWk;
-        document.getElementById('wkDel').onclick = delWk;
-        blankWk();
+        WK_EDITOR = mountWikiEditor({
+          supabase: supabase,
+          host: document.getElementById('wkFormHost'),
+          previewEl: document.getElementById('wkPreview'),
+          knownTitles: function () { return new Set(WK.rows.map(function (r) { return r.title.toLowerCase(); })); },
+          userId: null,       // admin inserts: author_id stays null; is_admin RLS bypasses the own-check
+          canDelete: true,
+          onSaved: function (title) {
+            loadWiki().then(function () {
+              if (title) { var saved = WK.rows.find(function (r) { return r.title.toLowerCase() === String(title).toLowerCase(); }); if (saved) WK_EDITOR.loadRow(saved); }
+            });
+          }
+        });
+        document.getElementById('wkNew').onclick = function () { WK_EDITOR.newArticle(); };
       }
       loadWiki();
     }
