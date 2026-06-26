@@ -54,6 +54,7 @@
   .measure__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
   .measure__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
   .measure__by{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .measure__intro{font-size:12.5px;font-style:italic;color:var(--muted);line-height:1.5;margin-top:6px}
   /* A law measure's Current Law → Proposed Change. */
   .lawchg{margin:11px 0 3px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
   .lawchg__row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px}
@@ -193,10 +194,16 @@
       }).join('') + '</div>';
   }
   function mhead(p){
-    // A law measure titles on the policy itself (e.g. "Income Tax"); the Current/Proposed
-    // options show below via lawChange(). Declarations keep their "Slot → Value" title.
-    var title = (p.kind === 'law' && p.payload && p.payload.policy_name) ? p.payload.policy_name : p.title;
-    return '<div class="measure__hd"><span class="measure__t">' + esc(title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>';
+    // The proposal's title is the bill heading — the authored bill name for a law (or its
+    // "Policy → Option" fallback), the "Slot → Value" for a declaration. The Current/Proposed
+    // rows show below via lawChange().
+    return '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>';
+  }
+  // A law bill's introductory article ("An Act to…"), authored on the propose page — shown as a
+  // preamble under the heading when present.
+  function introLine(p){
+    var intro = p.kind === 'law' && p.payload && p.payload.intro;
+    return intro ? '<div class="measure__intro">' + esc(intro) + '</div>' : '';
   }
   // For a law measure: the option currently in force (Current Law) vs the one it would
   // switch to (Proposed Change). Current is read the same way the server reads it
@@ -228,7 +235,7 @@
         ? 'Carrying — outright majority of the chamber'
         : (carry ? 'Would pass if voting closed now — Aye leads'
                  : (t.aye === t.nay ? 'Would fail if voting closed now — tied' : 'Would fail if voting closed now — Nay leads')));
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + lawChange(p) +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
       '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span><b>' + cast + '</b> / ' + ST.total + ' seats cast</span></div>' +
       '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + ticksLeft(p) + '</div>' +
@@ -241,7 +248,7 @@
   function agendaCard(p){
     var mine = p.party_id === ST.party.id;
     var when = p.scheduled_tick != null ? tickToDate(p.scheduled_tick) : '—';
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + lawChange(p) +
+    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) +
       '<div class="agwhen">Reaches the floor · <b>' + esc(when) + '</b></div>' +
       '<div class="mrow">' + (mine ? '<button class="sendfloor" data-send="' + esc(p.id) + '" type="button">Send to the floor now (1 action)</button>' : '<span class="youvote">Awaiting its scheduled month</span>') + '</div></div>';
   }
