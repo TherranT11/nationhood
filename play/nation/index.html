@@ -241,7 +241,9 @@
       if (!nation) { fail('That nation could not be found.'); return; }
       const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
       const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', viewId).eq('status', 'active').maybeSingle();
-      const { data: others } = await supabase.from('nations').select('id, name, flag, economy').order('name');
+      var oRes = await supabase.from('nations').select('id, name, flag, economy, color').order('name');
+      if (oRes.error) oRes = await supabase.from('nations').select('id, name, flag, economy').order('name');   // color not migrated yet
+      const others = oRes.data;
 
       var pmParty = null, pmPol = null;
       if (gov && gov.formateur_party_id) {

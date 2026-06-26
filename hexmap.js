@@ -12,12 +12,13 @@ function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 
 
 export function axialToPix(q, r, s, ox, oy) { return { x: Math.sqrt(3) * s * (q + r / 2) + ox, y: 1.5 * s * r + oy }; }
 
-// One palette colour per key, by list order — the ONE place the palette mapping lives.
-// Returns { key: '#rrggbb' }. Internal: nationColors wraps it; callers that need a single
-// colour by index use the exported paletteAt.
-function paletteColors(keys) { var m = {}; (keys || []).forEach(function (k, i) { if (k != null && k !== '') m[k] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+// A single palette colour by index (the ONE place the palette mapping lives). Used for default
+// colours of nations/continents that don't have an explicit one yet.
 export function paletteAt(i) { var n = NATION_PALETTE.length; return NATION_PALETTE[((i % n) + n) % n]; }
-export function nationColors(list) { return paletteColors((list || []).map(function (n) { return n.id; })); }
+// One colour per nation: its stored map colour (nations.color), else a stable palette colour by
+// list order — so every reader that orders nations the same way (by name) agrees. Pass the nation
+// rows (need .id and .color). Returns { nationId: '#rrggbb' }.
+export function nationColors(list) { var m = {}; (list || []).forEach(function (n, i) { m[n.id] = n.color || paletteAt(i); }); return m; }
 
 // The border edges of a land hex: each side facing the sea (no land neighbour) or a different
 // nation. landAt(q,r) returns the land hex at a cell or null. Returns [{ d, sea }] — d is the

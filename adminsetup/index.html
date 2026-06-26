@@ -538,6 +538,7 @@
           <div class="full"><label for="f-name">Name</label><input id="f-name" type="text" required></div>
           <div class="full"><label for="f-desc">Nation Description</label><textarea id="f-desc"></textarea></div>
           <div class="full"><label for="f-analog">Analogous</label><input id="f-analog" type="text" placeholder="e.g. France"></div>
+          <div><label for="f-color">Map colour</label><input id="f-color" type="color" value="#5546E8" style="width:60px;height:38px;padding:2px"></div>
           <div class="full"><label for="f-ruling">Ruling Party</label><input id="f-ruling" type="text" placeholder="one-party state only — name it and players join as factions; blank = multiparty"></div>
           <div class="full"><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="f-dormant" style="width:auto"> <span>Dormant — fully authored but hidden &amp; inert until activated (e.g. a breakaway state a crisis spawns on its terminal stage)</span></label></div>
           <div><label for="f-pop">Starting Population</label><input id="f-pop" type="number" min="0" step="0.1" placeholder="in millions (e.g. 24.5)"></div>
@@ -1014,10 +1015,20 @@
     // Edit state: the nation currently loaded into the form (null = adding new).
     var editing = null, nationsCache = [];
     function setVal(id, v) { document.getElementById(id).value = (v != null && v !== '') ? v : ''; }
+    // A nation's effective map colour: its stored colour, else the palette colour the map would
+    // use (palette by name order — same as hexmap nationColors), so the form never shows a
+    // surprise default for a nation that's only ever been auto-coloured.
+    function natMapColor(n) {
+      if (n && n.color) return n.color;
+      var byName = nationsCache.slice().sort(function (a, b) { return (a.name || '') < (b.name || '') ? -1 : 1; });
+      var i = byName.findIndex(function (x) { return x.id === (n && n.id); });
+      return HM.paletteAt(i < 0 ? 0 : i);
+    }
     function fillForm(n) {
       var s = n.stats || {}, e = n.economy || {}, pr = n.production || {};
       setVal('f-name', n.name); setVal('f-desc', n.description); setVal('f-analog', n.analogous);
       setVal('f-ruling', n.ruling_party);
+      document.getElementById('f-color').value = natMapColor(n);
       document.getElementById('f-dormant').checked = !!n.dormant;
       setVal('f-pop', n.population); setVal('f-gdp', n.gdp);
       setVal('f-prosperity', s.prosperity); setVal('f-welfare', s.welfare); setVal('f-growth', s.growth);
@@ -1259,6 +1270,7 @@
         description: document.getElementById('f-desc').value.trim() || null,
         analogous: document.getElementById('f-analog').value.trim() || null,
         ruling_party: document.getElementById('f-ruling').value.trim() || null,
+        color: document.getElementById('f-color').value || null,
         dormant: document.getElementById('f-dormant').checked,
         population: num('f-pop', true), gdp: num('f-gdp'),
         legislature_seats: num('f-seats'),
@@ -1543,7 +1555,8 @@
         status('');
       }
       async function loadNations() {
-        var res = await supabase.from('nations').select('id, name').order('name');
+        var res = await supabase.from('nations').select('id, name, color').order('name');
+        if (res.error) res = await supabase.from('nations').select('id, name').order('name');   // color not migrated yet
         natName = {}; natColor = {}; natOrder = [];
         if (res.error) status('Couldn’t load nations.');
         else { natColor = HM.nationColors(res.data || []); (res.data || []).forEach(function (n) { natName[n.id] = n.name; natOrder.push(n.id); }); }
