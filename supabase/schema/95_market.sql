@@ -8,7 +8,7 @@
 -- authorise them, so no client write policy is granted. Run after 10 (nations).
 
 create table if not exists public.market (
-  resource   text primary key,        -- energy | food | minerals | goods | services
+  resource   text primary key,        -- energy | food | minerals | goods | services | military
   available  int not null default 0,  -- units on the market right now (1d6 at seed)
   min_price  numeric not null,         -- price when the resource is abundant
   max_price  numeric not null,         -- price when it's scarce
@@ -35,3 +35,12 @@ where not exists (select 1 from public.market);
 
 -- Energy's ceiling was raised to 20; correct any DB seeded at the old 10.
 update public.market set max_price = 20 where resource = 'energy' and max_price < 20;
+
+-- Military: a tradeable resource priced like the others — global supply (sum of on_hand
+-- 'military') ÷ total Military production, within the [1,20] band. Seeded once with a 1d6
+-- market availability and the band; its production is set per nation in adminsetup.
+insert into public.market (resource, available, min_price, max_price)
+select 'military', (floor(random() * 6) + 1)::int, 1, 20
+where not exists (select 1 from public.market where resource = 'military');
+-- Military on-hand is seeded from production (= production, 1:1) in 10_nations, like the other
+-- commodities — no separate roll here.

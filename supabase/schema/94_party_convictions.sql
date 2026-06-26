@@ -44,6 +44,23 @@ begin
   end if;
 end $$;
 
+-- A party's identity is the archetype it holds the most convictions in (ties → the tree it
+-- committed to earliest); null when it holds none. ONE source — recomputed after every adopt
+-- and drop, read everywhere else (ideologyLabel, accents, manifesto grouping).
+create or replace function public._recompute_party_archetype(p_party uuid)
+returns void language sql security definer set search_path = public as $$
+  update public.parties p set archetype = (
+    select c.definition->>'archetype'
+    from public.party_convictions pc
+    join public.convictions c on c.id = pc.conviction_id
+    where pc.party_id = p_party
+    group by c.definition->>'archetype'
+    order by count(*) desc, min(pc.created_at) asc
+    limit 1
+  ) where p.id = p_party;
+$$;
+revoke all on function public._recompute_party_archetype(uuid) from public, anon, authenticated;
+
 -- Adopt a conviction for the caller's party: validate, spend the points, record it,
 -- apply the on-adopt effects, and announce the new platform. Server-authoritative.
 -- A party is NOT locked to one archetype — it may mix convictions across trees, with
@@ -53,6 +70,7 @@ end $$;
 create or replace function public.adopt_conviction(p_conviction uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_party public.parties%rowtype; v_def jsonb; v_arch text; v_cost int; v_eff jsonb; v_body text;
+        v_level int; v_mult numeric; v_held int;
 begin
   v_party := public._lock_party();
   select definition into v_def from public.convictions where id = p_conviction;
@@ -71,24 +89,23 @@ begin
   ) then
     raise exception 'That conviction contradicts an ideology your party already holds.';
   end if;
-  v_cost := coalesce((v_def->>'cost')::int, 0);
+  -- Scaling cost: each conviction already held at this level multiplies the base cost —
+  -- Level I ×2 per held, Level II ×3 per held, Levels III–V flat. MIRRORS convScaledCost
+  -- (convictions.js), which the manifesto uses to show the same price.
+  v_level := coalesce((v_def->>'level')::int, 1);
+  v_mult  := case v_level when 1 then 2 when 2 then 3 else 1 end;
+  select count(*) into v_held from public.party_convictions pc
+    join public.convictions c on c.id = pc.conviction_id
+    where pc.party_id = v_party.id and coalesce((c.definition->>'level')::int, 1) = v_level;
+  v_cost := round(coalesce((v_def->>'cost')::int, 0) * power(v_mult, v_held))::int;
   if v_party.conviction < v_cost then raise exception 'Not enough conviction points.'; end if;
 
   update public.parties set conviction = conviction - v_cost where id = v_party.id;
   insert into public.party_convictions (party_id, conviction_id) values (v_party.id, p_conviction);
 
-  -- Identity = the archetype this party holds the most convictions in; ties go to the
-  -- tree it committed to earliest. Recompute now (with the new row counted) so the
-  -- on-adopt effects below and every reader see the up-to-date archetype.
-  update public.parties p set archetype = (
-    select c.definition->>'archetype'
-    from public.party_convictions pc
-    join public.convictions c on c.id = pc.conviction_id
-    where pc.party_id = v_party.id
-    group by c.definition->>'archetype'
-    order by count(*) desc, min(pc.created_at) asc
-    limit 1
-  ) where p.id = v_party.id;
+  -- Recompute identity now (with the new row counted) so the on-adopt effects below and
+  -- every reader see the up-to-date archetype.
+  perform public._recompute_party_archetype(v_party.id);
 
   for v_eff in select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb)) loop
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, v_eff);
@@ -109,6 +126,40 @@ begin
   return jsonb_build_object('ok', true, 'conviction', (select conviction from public.parties where id = v_party.id));
 end $$;
 grant execute on function public.adopt_conviction(uuid) to authenticated;
+
+-- Drop a conviction the caller's party holds. Abandoning a platform is costly: −30 party
+-- popularity, −20 popularity ceiling, and (only while the party governs) −20 government
+-- confidence. The spent conviction points are NOT refunded. Penalties run through the same
+-- effect engine as adoption (one source for the target→field mapping, clamps and floors),
+-- then the party's identity archetype is recomputed (null when no convictions remain).
+create or replace function public.drop_conviction(p_conviction uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_party public.parties%rowtype; v_def jsonb;
+begin
+  v_party := public._lock_party();
+  if not exists (select 1 from public.party_convictions where party_id = v_party.id and conviction_id = p_conviction) then
+    raise exception 'Your party has not adopted that conviction.';
+  end if;
+  select definition into v_def from public.convictions where id = p_conviction;
+
+  delete from public.party_convictions where party_id = v_party.id and conviction_id = p_conviction;
+
+  perform public._apply_conviction_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Party Popularity', 'v', -30));
+  perform public._apply_conviction_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Popularity Ceiling', 'v', -20));
+  if v_party.in_government then
+    perform public._apply_conviction_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', -20));
+  end if;
+
+  perform public._recompute_party_archetype(v_party.id);   -- identity follows the remaining convictions (null if none)
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'conviction',
+            v_party.name || ' has abandoned ' || coalesce(v_def->>'name', 'a core conviction') || ', renouncing it from the party platform.',
+            public.current_game_date());
+
+  return jsonb_build_object('ok', true, 'conviction', (select conviction from public.parties where id = v_party.id));
+end $$;
+grant execute on function public.drop_conviction(uuid) to authenticated;
 
 -- ── While-active trigger engine (per tick) ─────────────────────────────────────
 -- Snapshot of each nation's watchable values + each party's prior popularity, taken

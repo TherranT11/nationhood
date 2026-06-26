@@ -528,6 +528,7 @@
           <div><label for="f-goods">Goods (Production)</label><input id="f-goods" type="number" step="1"></div>
           <div><label for="f-services">Services (Production)</label><input id="f-services" type="number" step="1"></div>
           <div><label for="f-diplomacy">Diplomacy (Production)</label><input id="f-diplomacy" type="number" step="1"></div>
+          <div><label for="f-military-prod">Military (Production)</label><input id="f-military-prod" type="number" step="1"></div>
         </div>
         <div class="declsec">
           <h3 class="declsec__h">National Identity &amp; Declarations</h3>
@@ -969,6 +970,7 @@
       setVal('f-seats', n.legislature_seats); setVal('f-elecfreq', n.election_frequency_months);
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
       setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
+      setVal('f-military-prod', pr.military);
       fillDeclFields(n);
       fillPolFields(n);
     }
@@ -1160,6 +1162,7 @@
               kv('Goods', pr.goods != null ? pr.goods : '—') +
               kv('Services', pr.services != null ? pr.services : '—') +
               kv('Diplomacy', pr.diplomacy != null ? pr.diplomacy : '—') +
+              kv('Military', pr.military != null ? pr.military : '—') +
             '</div></div>';
         }).join('');
         box.querySelectorAll('.ed').forEach(function (b) {
@@ -1214,8 +1217,15 @@
         },
         production: {
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
-          goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy')
+          goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy'),
+          military: num('f-military-prod')
         },
+        // Starting on-hand equals production, 1:1, for every tradeable resource (Energy 1 → 1
+        // on hand), Military included. Merge so editing never drops keys trading may change.
+        on_hand: Object.assign({}, (editing && editing.on_hand) || {}, {
+          energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
+          goods: num('f-goods'), services: num('f-services'), military: num('f-military-prod')
+        }),
         declarations: collectDeclarations(),
         policies: collectNationPolicies()
       };

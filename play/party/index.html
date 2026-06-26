@@ -219,6 +219,8 @@
   .cvadopt:hover:not(:disabled){filter:brightness(1.08)}
   .cvadopt:disabled{cursor:not-allowed;opacity:.5}
   .cvadopt.on{background:transparent;color:var(--green);border-color:var(--green);opacity:1;cursor:default}
+  .cvadopt.drop{background:transparent;color:var(--red);border-color:var(--red-soft);opacity:1}
+  .cvadopt.drop:hover:not(:disabled){background:var(--red-soft);border-color:var(--red);filter:none}
   .cvcard.is-adopted{border-left-color:var(--green)}
 
   /* Add Convictions: a header button + a modal that picks an archetype (chips),
@@ -412,7 +414,7 @@
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ARCHETYPES, archetypeColor, partyColor, ideologyLabel, opposes } from '/archetypes.js';
-  import { convRoman, adoptLines, activeLines, lawLines, convsByLevel } from '/convictions.js';
+  import { convRoman, adoptLines, activeLines, lawLines, convsByLevel, convScaledCost } from '/convictions.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -722,12 +724,27 @@
   function cvEffHtml(L){ return '<div class="cveff ' + L.cls + '"><b>' + esc(L.reward) + '</b><span>' + esc(L.cond) + '</span></div>'; }
   function mfEmpty(b, s){ return '<div class="mf-empty"><svg viewBox="0 0 24 24"><path d="M5 4h14v16l-7-3-7 3z"/></svg><b>' + b + '</b><span>' + s + '</span></div>'; }
 
-  function cvCard(r, color){
-    var d = r.definition || {}, cost = d.cost != null ? d.cost : 0, adopted = !!CVS.adopted[r.id];
+  // Convictions the party already holds at a given level — drives the scaling cost
+  // (convScaledCost). Read from the one adopted set + the cached catalogue.
+  function heldCountAtLevel(lvl){
+    var n = 0;
+    (ALL_CONV || []).forEach(function (r) {
+      if (CVS.adopted[r.id] && Math.min(5, Math.max(1, Number((r.definition || {}).level) || 1)) === lvl) n++;
+    });
+    return n;
+  }
+  // allowDrop adds a Drop button on adopted cards (manifesto panel only — not the picker).
+  function cvCard(r, color, allowDrop){
+    var d = r.definition || {}, base = d.cost != null ? d.cost : 0, adopted = !!CVS.adopted[r.id];
+    var lvl = Math.min(5, Math.max(1, Number(d.level) || 1));
+    // Already-adopted cards show the base cost they cost; un-adopted show the scaled price now.
+    var cost = adopted ? base : convScaledCost(base, lvl, heldCountAtLevel(lvl));
     var lines = adoptLines(d).concat(activeLines(d)).concat(lawLines(d));
     var eff = lines.length ? lines.map(cvEffHtml).join('') : '<div class="cveff none">No mechanical effect.</div>';
     var btn = adopted
-      ? '<button class="cvadopt on" type="button" disabled>✓ Adopted</button>'
+      ? (allowDrop
+          ? '<button class="cvadopt drop" type="button" data-drop="' + esc(r.id) + '">Drop Conviction</button>'
+          : '<button class="cvadopt on" type="button" disabled>✓ Adopted</button>')
       : '<button class="cvadopt" type="button" data-id="' + esc(r.id) + '"' + (CVS.balance < cost ? ' disabled' : '') + '>Adopt <span>◆ ' + cost + '</span></button>';
     return '<div class="cvcard' + (adopted ? ' is-adopted' : '') + '" style="--c:' + (color || ACCENT) + '">' +
       '<div class="cvcard__hd"><b>' + esc(d.name || 'Untitled') + '</b><span class="cvcost">◆ ' + cost + '</span></div>' +
@@ -775,9 +792,10 @@
     box.innerHTML = order.map(function (a) {
       var col = archetypeColor(a);
       var cards = byArch[a].sort(function (x, y) { return ((x.definition.level || 1) - (y.definition.level || 1)) || ((x.definition.cost || 0) - (y.definition.cost || 0)); })
-        .map(function (r) { return cvCard(r, col); }).join('');
+        .map(function (r) { return cvCard(r, col, true); }).join('');
       return '<div class="cv-arch" style="--c:' + col + '"><i></i>' + esc(a) + '</div>' + cards;
     }).join('');
+    box.querySelectorAll('.cvadopt[data-drop]').forEach(function (b) { b.onclick = function () { dropConviction(b.dataset.drop); }; });
   }
 
   async function adoptConviction(id){
@@ -803,6 +821,37 @@
       // the popularity value and server-side ceiling are already correct.
       if (CVS.party.archetype) { setIdeology(CVS.party); applyAccent(partyColor(CVS.party)); }
     } catch (e) { alert((e && e.message) || 'Couldn’t adopt that conviction.'); }
+    finally {
+      CVS.busy = false;
+      renderConvictions();
+      if (!document.getElementById('cvPickModal').hidden) renderPick();
+    }
+  }
+
+  // Drop an adopted conviction — a costly renunciation (server applies the penalties).
+  async function dropConviction(id){
+    if (CVS.busy) return;
+    var r = (ALL_CONV || []).filter(function (x) { return x.id === id; })[0];
+    var name = (r && r.definition && r.definition.name) || 'this conviction';
+    if (!confirm('Drop “' + name + '”?\n\nRenouncing it from your platform costs −30% Party Popularity, −20% Popularity Ceiling, and −20% Government Confidence if your party is in government. Conviction points are not refunded.')) return;
+    CVS.busy = true;
+    document.querySelectorAll('.cvadopt').forEach(function (b) { b.disabled = true; });
+    try {
+      const res = await supabase.rpc('drop_conviction', { p_conviction: id });
+      if (res.error) throw res.error;
+      delete CVS.adopted[id];
+      // Re-read the party row: balance, popularity, and the archetype the server recomputed
+      // (most-held, or null when no convictions remain). One source: the party row.
+      try {
+        const { data: p } = await supabase.from('parties').select('archetype, popularity, conviction').eq('id', CVS.party.id).single();
+        if (p) {
+          CVS.balance = Number(p.conviction) || 0;
+          CVS.party.archetype = p.archetype; ME.party.archetype = p.archetype;
+          document.getElementById('st-pop').textContent = Number(p.popularity) || 0;
+        }
+      } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
+      setIdeology(CVS.party); applyAccent(partyColor(CVS.party));   // reverts to "No Ideology" if the last conviction went
+    } catch (e) { alert((e && e.message) || 'Couldn’t drop that conviction.'); }
     finally {
       CVS.busy = false;
       renderConvictions();

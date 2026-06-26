@@ -95,8 +95,8 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
   function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
-  // The 5 domestic production resources (Diplomacy is foreign, shown elsewhere).
-  var ECON = ['energy', 'food', 'minerals', 'goods', 'services'];
+  // The domestic production resources (Diplomacy is foreign, shown elsewhere).
+  var ECON = ['energy', 'food', 'minerals', 'goods', 'services', 'military'];
 
   function render(nation, slots, gov, pmParty, pmPol, others, viewId){
     var vals = nation.declarations || {};

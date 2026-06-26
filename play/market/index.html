@@ -32,8 +32,7 @@
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
 
   .holdhd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--soft);margin-bottom:10px}
-  .holdings{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:26px}
-  @media(max-width:760px){.holdings{grid-template-columns:repeat(2,1fr)}}
+  .holdings{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:26px}
   .hold{border:1px solid var(--line);border-radius:12px;padding:12px 13px;background:var(--surface);display:flex;align-items:center;gap:11px}
   .hold .hico{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--chip);color:var(--muted)}
   .hold .hico svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7}
@@ -113,21 +112,24 @@
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
 
-  // The five tradeable commodities (Diplomacy is influence, not traded). Energy is
-  // the mockup's "Oil". Icons inline; labels drive the cards.
+  // The tradeable commodities (Diplomacy is influence, not traded). Energy is the mockup's
+  // "Oil"; Military is the newest. Every price floats the same way — global on-hand ÷ total
+  // production, within the resource's band. Icons inline; labels drive the cards.
   var I = {
     energy:'<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 3c3 5 5 8 5 11a5 5 0 01-10 0c0-3 2-6 5-11z"/></svg>',
     food:'<svg viewBox="0 0 24 24"><path d="M12 21V8M12 8c0-3 2-5 2-5M12 8c0-3-2-5-2-5M12 12c0-2 3-3 3-3M12 12c0-2-3-3-3-3M12 16c0-2 3-3 3-3M12 16c0-2-3-3-3-3"/></svg>',
     minerals:'<svg viewBox="0 0 24 24"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18M9 3l3 18M15 3l-3 18"/></svg>',
     goods:'<svg viewBox="0 0 24 24"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>',
-    services:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>'
+    services:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2"/></svg>',
+    military:'<svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z"/><path d="M9.5 12l1.8 1.8L15 9.7"/></svg>'
   };
   var COMM = [
     { id:'energy',   name:'Energy',   sub:'primary · energy' },
     { id:'food',     name:'Food',     sub:'primary · staple' },
     { id:'minerals', name:'Minerals', sub:'primary · industry' },
     { id:'goods',    name:'Goods',    sub:'secondary · manufactured' },
-    { id:'services', name:'Services', sub:'secondary · finance & trade' }
+    { id:'services', name:'Services', sub:'secondary · finance & trade' },
+    { id:'military', name:'Military', sub:'strategic · defence' }
   ];
 
   var num = function (v) { return Number(v) || 0; };
