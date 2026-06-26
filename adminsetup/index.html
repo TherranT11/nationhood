@@ -78,6 +78,8 @@
   .wm-status{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft,#8d8d95)}
   .wm-save{border:none;background:var(--indigo,#5546E8);color:#fff;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
   .wm-save:hover{filter:brightness(1.08)} .wm-save:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .wm-eraseall{border:1.5px solid var(--line2,#D9D6D0);background:var(--surface,#fff);color:var(--muted,#5b5b63);border-radius:9px;padding:8px 14px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
+  .wm-eraseall:hover{border-color:var(--red,#C42B2B);color:var(--red,#C42B2B)}
   .wm-help{font-size:12px;color:var(--soft,#8d8d95);margin-bottom:10px} .wm-help b{color:var(--muted,#5b5b63)}
   .wm-stage{position:relative;height:68vh;min-height:420px;border:1px solid var(--line,#E7E5E0);border-radius:14px;overflow:hidden;background:#bcd9e6}
   #wmCanvas{display:block;width:100%;height:100%;cursor:grab}
@@ -908,10 +910,11 @@
             <button class="wm-tool" data-tool="sea" type="button">Erase (Sea)</button>
             <button class="wm-tool" data-tool="nation" id="wmAssignBtn" type="button">Assign Nation</button>
             <select id="wmNation" class="wm-nat" title="Nation to assign"></select>
-            <input type="color" id="wmContColor" class="wm-contcolor" title="Colour of the selected continent" hidden>
+            <input type="color" id="wmContColor" class="wm-contcolor" title="Colour of the selected nation / continent" hidden>
           </div>
           <div class="wm-actions">
             <span id="wmStatus" class="wm-status"></span>
+            <button id="wmEraseAll" class="wm-eraseall" type="button">Erase All Land</button>
             <button id="wmSave" class="wm-save" type="button">Save Map</button>
           </div>
         </div>
@@ -1650,11 +1653,32 @@
         conts = {};
         if (!res.error) (res.data || []).forEach(function (c) { conts[c.name] = c.color; });
       }
-      // The colour swatch shows + edits the selected continent's colour (Continents layer only).
-      function syncContColor() {
-        var inp = document.getElementById('wmContColor'), show = layer === 'continents' && !!assignContinent;
+      // The colour swatch shows + edits the selected nation's (Nations layer) or continent's
+      // (Continents layer) colour.
+      function syncColorSwatch() {
+        var inp = document.getElementById('wmContColor');
+        var show = (layer === 'continents' && !!assignContinent) || (layer === 'nations' && !!assignNation);
         inp.hidden = !show;
-        if (show) inp.value = conts[assignContinent] || contColorMap()[assignContinent] || '#5546E8';
+        if (!show) return;
+        inp.value = (layer === 'continents')
+          ? (conts[assignContinent] || contColorMap()[assignContinent] || '#5546E8')
+          : (natColor[assignNation] || '#5546E8');
+      }
+      // Create a placeholder (dormant) nation so it can be coloured + painted now and fleshed out
+      // later. dormant nations are admin-visible only (schema/10) and need just id + name; the id is
+      // a slug, uniquified against the loaded set.
+      async function addNation() {
+        var name = (prompt('New nation name:') || '').trim();
+        if (!name) { fillPicker(); return; }
+        var base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'nation';
+        var id = base, n = 1; while (natName[id]) { id = base + '-' + (++n); }
+        var color = HM.paletteAt(natOrder.length);
+        status('Adding nation…');
+        var res = await supabase.from('nations').insert({ id: id, name: name, color: color, dormant: true });
+        if (res.error) { status('Couldn’t add nation: ' + (res.error.message || 'error')); fillPicker(); return; }
+        natName[id] = name; natColor[id] = color; natOrder.push(id);
+        assignNation = id; fillPicker(); setTool('nation');
+        status('Added “' + name + '” (dormant). Paint its hexes, then Save Map.');
       }
       // The Assign picker reflects the active layer: nations, or continents (+ make a new one).
       function fillPicker() {
@@ -1668,10 +1692,11 @@
         } else {
           sel.title = 'Nation to assign';
           sel.innerHTML = '<option value="">— pick a nation —</option>' +
-            natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('');
+            natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('') +
+            '<option value="__new__">+ New nation…</option>';
           sel.value = assignNation;
         }
-        syncContColor();
+        syncColorSwatch();
       }
       function setLayer(l) {
         layer = l;
@@ -1686,7 +1711,12 @@
           var rows = Object.keys(hexes).map(function (k) { var h = hexes[k]; return { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id || null, name: (h.name && h.name.trim()) || null, population: (h.population === '' || h.population == null) ? null : Number(h.population), resources: h.resources || {}, continent: (h.continent && h.continent.trim()) || null }; });
           if (rows.length) { var up = await supabase.from('world_hexes').upsert(rows, { onConflict: 'q,r' }); if (up.error) throw up.error; }
           var dels = Object.keys(loaded).filter(function (k) { return !hexes[k]; });
-          for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
+          if (!rows.length && dels.length) {
+            // Whole map cleared (Erase All Land) — one bulk delete instead of a round-trip per hex.
+            var da = await supabase.from('world_hexes').delete().gte('q', -2147483648); if (da.error) throw da.error;
+          } else {
+            for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
+          }
           loaded = {}; Object.keys(hexes).forEach(function (k) { loaded[k] = { q: hexes[k].q, r: hexes[k].r }; });
           // Persist the continents registry (name + colour) — every continent still in play, with
           // its effective colour, so old text-only continents pick up a stored colour too. The hexes
@@ -1763,12 +1793,29 @@
             if (!name) { this.value = assignContinent; return; }
             if (!conts[name]) conts[name] = HM.paletteAt(continentList().length);   // default colour
             assignContinent = name; fillPicker();
-          } else { assignContinent = this.value; syncContColor(); }
+          } else { assignContinent = this.value; syncColorSwatch(); }
           if (assignContinent) setTool('nation');
-        } else { assignNation = this.value; if (this.value) setTool('nation'); }
+        } else {
+          if (this.value === '__new__') { addNation(); return; }
+          assignNation = this.value; if (this.value) setTool('nation'); syncColorSwatch();
+        }
       });
       document.getElementById('wmContColor').addEventListener('input', function () {
         if (layer === 'continents' && assignContinent) { conts[assignContinent] = this.value; draw(); }
+        else if (layer === 'nations' && assignNation) { natColor[assignNation] = this.value; draw(); }
+      });
+      // Nation colours live on the nations row, so persist when the picker closes (continent
+      // colours ride the map Save instead).
+      document.getElementById('wmContColor').addEventListener('change', async function () {
+        if (layer === 'nations' && assignNation) {
+          var res = await supabase.from('nations').update({ color: this.value }).eq('id', assignNation);
+          if (res.error) status('Couldn’t save the nation colour: ' + (res.error.message || 'error'));
+        }
+      });
+      document.getElementById('wmEraseAll').addEventListener('click', function () {
+        if (!Object.keys(hexes).length) { status('The map is already empty.'); return; }
+        if (!confirm('Erase ALL land on the map? Every hex is cleared back to sea. Nothing is permanent until you Save Map.')) return;
+        hexes = {}; closeInspect(); status('All land erased — Save Map to make it permanent.');
       });
       document.getElementById('wmSave').addEventListener('click', save);
       document.getElementById('wmZin').onclick = function () { zoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 1.18); };
