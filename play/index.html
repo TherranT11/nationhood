@@ -247,6 +247,7 @@
           <button class="evchip active" data-cat="all" type="button">All</button>
           <button class="evchip" data-cat="party" type="button">Parties</button>
           <button class="evchip" data-cat="legislative" type="button">Legislative</button>
+          <button class="evchip" data-cat="government" type="button">Government</button>
         </div>
         <div id="events"><p class="empty">No events yet.</p></div>
       </section>
@@ -345,18 +346,20 @@
     if (eco.debt != null) chips.push(chip('Debt', val(cur + eco.debt + 'B')));
     snap.innerHTML = chips.join('') || '<p class="empty">No figures for this nation yet.</p>';
   }
-  // Events split into two filterable buckets by their stored `kind`: Parties (a party's
-  // own actions + founding) and Legislative (bills on the floor, passing/failing, no-conf).
-  // Anything else (income, crises, …) shows only under "All".
+  // Events split into filterable buckets by their stored `kind`: Parties (a party's own
+  // actions + founding), Legislative (bills on the floor, passing/failing, no-confidence),
+  // and Government (formation, agenda, ministries, regime, elections). Anything else
+  // (income, crises, …) shows only under "All".
   var PARTY_KINDS = { rally: 1, fundraise: 1, attack: 1, adblitz: 1, recruit: 1, party: 1, conviction: 1 };
-  var LEG_KINDS = { declaration: 1, law: 1, no_confidence: 1, agenda: 1, government: 1, regime: 1, ministry: 1 };
-  function eventCat(kind) { return PARTY_KINDS[kind] ? 'party' : (LEG_KINDS[kind] ? 'legislative' : 'other'); }
+  var LEG_KINDS = { declaration: 1, law: 1, no_confidence: 1 };
+  var GOV_KINDS = { government: 1, agenda: 1, ministry: 1, regime: 1, election: 1 };
+  function eventCat(kind) { return PARTY_KINDS[kind] ? 'party' : (LEG_KINDS[kind] ? 'legislative' : (GOV_KINDS[kind] ? 'government' : 'other')); }
   var FEED_ITEMS = [], FEED_FLAG = '', evCat = 'all';
   function renderFeed() {
     var box = document.getElementById('events');
     var list = FEED_ITEMS.filter(function (it) { return evCat === 'all' || it.cat === evCat; });
     if (!list.length) {
-      box.innerHTML = '<p class="empty">' + (evCat === 'party' ? 'No party events yet.' : evCat === 'legislative' ? 'No legislative events yet.' : 'No events yet.') + '</p>';
+      box.innerHTML = '<p class="empty">' + (evCat === 'party' ? 'No party events yet.' : evCat === 'legislative' ? 'No legislative events yet.' : evCat === 'government' ? 'No government events yet.' : 'No events yet.') + '</p>';
       return;
     }
     box.innerHTML = '<ul class="feed">' + list.map(function (it) {
