@@ -266,6 +266,17 @@ begin
     raise exception 'That policy is already set to that option.';
   end if;
 
+  -- One pending bill per policy. Lock the nation row (the no-confidence idiom) so two parties
+  -- can't both slip in a competing bill for the same policy, then refuse if one is already on
+  -- the floor or the agenda — it must resolve before another can change the same policy.
+  perform 1 from public.nations where id = v_party.nation_id for update;
+  if exists (select 1 from public.proposals
+               where nation_id = v_party.nation_id and kind = 'law'
+                 and status in ('voting', 'agenda')
+                 and payload->>'policy_id' = p_policy::text) then
+    raise exception 'A bill to change this policy is already before the chamber — it must resolve first.';
+  end if;
+
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
     values (v_party.nation_id, v_party.id, 'law',
             v_title,

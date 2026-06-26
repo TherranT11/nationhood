@@ -117,7 +117,7 @@
   import { esc, declaredValue } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange } from '/proposals.js';
+  import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, fetchProposals } from '/proposals.js';
   import { policyOptions, policyOptionIdx, effectText, isMoneyTarget, policyMoney } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
@@ -136,8 +136,9 @@
   // ---- Law mode: pick a policy + the option to enact, preview its effects for this
   // nation, then queue it or send it to the floor (mirrors the declaration flow). ----
   var lawBusy = false;
-  async function renderLawMode(currentPolicies, nation) {
+  async function renderLawMode(currentPolicies, nation, pendingPolicies) {
     currentPolicies = currentPolicies || {};
+    pendingPolicies = pendingPolicies || {};   // policyId → true for a bill already on the floor/agenda
     var pop = Number((nation && nation.population) || 0), pros = Number((nation && nation.stats && nation.stats.prosperity) || 10);
     document.querySelector('.phead .eye').textContent = 'Legislature · Law';
     document.querySelector('.phead h1').textContent = 'Propose a Law';
@@ -294,9 +295,13 @@
       pv.textContent = o ? ((def.name || 'Policy') + ' → ' + (o.name || ('Option ' + (sel.proposed + 1)))) : 'Choose a change';
       pv.classList.toggle('empty', !o);
       renderLadder(); renderFiscal(); renderEffects(); renderTransitionCost();
-      var ok = sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
+      // One pending bill per policy: if this policy already has one on the floor/agenda, the
+      // chamber won't take another until it resolves (the server enforces this too).
+      var blocked = !!pendingPolicies[curPolicy().id];
+      var ok = !blocked && sel.proposed != null && sel.proposed !== inForceIdx() && !lawBusy;
       floorBtn.disabled = !ok; agendaBtn.disabled = !ok;
-      if (!lawBusy) note.textContent = ok ? 'Ready to propose — choose how.' : 'Pick a rung to propose it.';
+      if (!lawBusy) note.textContent = blocked ? 'A bill to change this policy is already before the chamber — it must resolve first.'
+        : ok ? 'Ready to propose — choose how.' : 'Pick a rung to propose it.';
     }
 
     polSel.onchange = function () { sel.proposed = null; touched = { title: false, intro: false }; titleInp.value = ''; introInp.value = ''; paint(); };
@@ -471,7 +476,17 @@
     var regime = nation && nation.economy && nation.economy.regime;
     if (isRegime) renderRegimeMode(regime);
     else if (isDecl) renderDeclMode((nation && nation.declarations) || {}, regime);
-    else renderLawMode((nation && nation.policies) || {}, nation || {});
+    else {
+      // Policies that already have a bill on the floor/agenda — the ladder greys out proposing
+      // for them (the server enforces one pending bill per policy regardless). Non-fatal.
+      var pendingPolicies = {};
+      try {
+        (await fetchProposals(party.nation_id)).forEach(function (p) {
+          if (p.kind === 'law' && (p.status === 'voting' || p.status === 'agenda') && p.payload && p.payload.policy_id) pendingPolicies[p.payload.policy_id] = true;
+        });
+      } catch (e) { /* leave empty → server still blocks a duplicate */ }
+      renderLawMode((nation && nation.policies) || {}, nation || {}, pendingPolicies);
+    }
   })();
 </script>
 </body>
