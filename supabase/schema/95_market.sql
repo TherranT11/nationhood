@@ -36,10 +36,9 @@ where not exists (select 1 from public.market);
 -- Energy's ceiling was raised to 20; correct any DB seeded at the old 10.
 update public.market set max_price = 20 where resource = 'energy' and max_price < 20;
 
--- Military: a strategic stockpile good (not produced by corporations). Its price floats on
--- GLOBAL SUPPLY (sum of every nation's on_hand 'military') against a FIXED 20-unit reference,
--- so it runs from $20 at 0 supply down to $1 at 20 (the client uses that fixed cap; see
--- play/market COMM.military.cap). Seeded once with a 1d6 market availability and the band.
+-- Military: a tradeable resource priced like the others — global supply (sum of on_hand
+-- 'military') ÷ total Military production, within the [1,20] band. Seeded once with a 1d6
+-- market availability and the band; its production is set per nation in adminsetup.
 insert into public.market (resource, available, min_price, max_price)
 select 'military', (floor(random() * 6) + 1)::int, 1, 20
 where not exists (select 1 from public.market where resource = 'military');

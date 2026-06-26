@@ -113,9 +113,8 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
 
   // The tradeable commodities (Diplomacy is influence, not traded). Energy is the mockup's
-  // "Oil". Military is a strategic stockpile good — it isn't produced, so its price floats on
-  // global on-hand against a FIXED 20-unit reference (cap) rather than total production: $20 at
-  // 0 supply down to $1 at 20. Icons inline; labels drive the cards.
+  // "Oil"; Military is the newest. Every price floats the same way — global on-hand ÷ total
+  // production, within the resource's band. Icons inline; labels drive the cards.
   var I = {
     energy:'<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 3c3 5 5 8 5 11a5 5 0 01-10 0c0-3 2-6 5-11z"/></svg>',
     food:'<svg viewBox="0 0 24 24"><path d="M12 21V8M12 8c0-3 2-5 2-5M12 8c0-3-2-5-2-5M12 12c0-2 3-3 3-3M12 12c0-2-3-3-3-3M12 16c0-2 3-3 3-3M12 16c0-2-3-3-3-3"/></svg>',
@@ -130,7 +129,7 @@
     { id:'minerals', name:'Minerals', sub:'primary · industry' },
     { id:'goods',    name:'Goods',    sub:'secondary · manufactured' },
     { id:'services', name:'Services', sub:'secondary · finance & trade' },
-    { id:'military', name:'Military', sub:'strategic · defence', cap:20 }   // fixed capacity reference (not produced)
+    { id:'military', name:'Military', sub:'strategic · defence' }
   ];
 
   var num = function (v) { return Number(v) || 0; };
@@ -151,9 +150,7 @@
       var mk = marketByRes[c.id] || { available: 0, min_price: 1, max_price: 10 };
       var min = num(mk.min_price), max = num(mk.max_price);
       var supply = nations.reduce(function (s, n){ return s + num((n.on_hand || {})[c.id]); }, 0);
-      // Capacity = the price reference. Produced goods float against total production; a
-      // stockpile good (Military) uses its fixed cap so 0 supply → max price, cap supply → min.
-      var capacity = c.cap != null ? c.cap : nations.reduce(function (s, n){ return s + num((n.production || {})[c.id]); }, 0);
+      var capacity = nations.reduce(function (s, n){ return s + num((n.production || {})[c.id]); }, 0);
       var price = priceOf(supply, capacity, min, max);
       var pos = max > min ? (price - min) / (max - min) * 100 : 50;
       var ratio = capacity > 0 ? supply / capacity : 0;
