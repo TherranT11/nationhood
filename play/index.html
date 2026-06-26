@@ -137,6 +137,15 @@
   .feed__eff.neg{color:var(--red,#C42B2B);background:color-mix(in srgb,var(--red,#C42B2B) 13%,transparent);border-color:color-mix(in srgb,var(--red,#C42B2B) 32%,transparent)}
   .feed__eff.warn{color:var(--amber,#E0820E);background:color-mix(in srgb,var(--amber,#E0820E) 14%,transparent);border-color:color-mix(in srgb,var(--amber,#E0820E) 32%,transparent)}
 
+  /* World Events panel — a fired decision awaiting this nation's answer. */
+  .wevt{border:1px solid var(--line);border-radius:12px;padding:15px 17px;margin-bottom:12px}
+  .wevt:last-child{margin-bottom:0}
+  .wevt__name{font-weight:800;font-size:16px}
+  .wevt__desc{color:var(--muted);font-size:14px;line-height:1.5;margin:5px 0 0}
+  .wevt__opts{display:flex;flex-wrap:wrap;gap:9px;margin-top:13px}
+  .wevt__opt{flex:1;min-width:160px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:11px 14px;border-radius:10px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
+  .wevt__opt:hover{filter:brightness(1.06)} .wevt__opt:disabled{opacity:.5;cursor:not-allowed;filter:none}
+
   /* Phone refresh (matches the Party page): tighter padding, smaller hero, drop
      the placeholder "Next Month" pill. Action cards already go 2-up at ≤700. */
   @media(max-width:560px){
@@ -193,6 +202,11 @@
     <section class="panel" id="glance">
       <div class="glance-hd"><span>The Nation at a Glance</span><a class="glance-link">Nation &#9656;</a></div>
       <div class="snap" id="snap"><p class="empty">Loading the nation&rsquo;s figures&hellip;</p></div>
+    </section>
+
+    <section class="panel" id="weventPanel" hidden>
+      <div class="glance-hd"><span>World Events</span></div>
+      <div id="wevents"></div>
     </section>
 
     <div class="cols">
@@ -331,6 +345,48 @@
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
+
+  // World Events panel — active Decisions awaiting THIS nation's answer (Phase-1 runtime).
+  // Turning Points apply on fire and surface only in the events feed, so they aren't listed
+  // here. The panel hides itself whenever there's nothing to act on.
+  async function loadWorldEventsPanel(nationId) {
+    var panel = document.getElementById('weventPanel'), box = document.getElementById('wevents');
+    if (!nationId) { panel.hidden = true; return; }
+    var insts, answered = {};
+    try {
+      ({ data: insts } = await supabase.from('world_event_instances').select('id, definition').eq('status', 'active'));
+      const { data: mine } = await supabase.from('world_event_choices').select('instance_id').eq('nation_id', nationId);
+      (mine || []).forEach(function (r) { answered[r.instance_id] = true; });
+    } catch (e) { panel.hidden = true; return; }
+    var open = (insts || []).filter(function (i) {
+      var d = i.definition || {};
+      if (d.type !== 'decision' || answered[i.id]) return false;
+      return d.scope === 'global' || (d.nations || []).indexOf(nationId) >= 0;
+    });
+    if (!open.length) { panel.hidden = true; return; }
+    panel.hidden = false;
+    box.innerHTML = open.map(function (i) {
+      var d = i.definition || {};
+      var opts = (d.options || []).map(function (o, oi) { return '<button class="wevt__opt" type="button" data-i="' + esc(i.id) + '" data-o="' + oi + '">' + esc(o.label || ('Option ' + (oi + 1))) + '</button>'; }).join('');
+      return '<div class="wevt">' + (d.image ? '<img src="' + esc(d.image) + '" alt="" style="max-width:100%;border-radius:9px;margin-bottom:10px">' : '') +
+        '<div class="wevt__name">' + esc(d.name || 'A decision') + '</div>' +
+        (d.desc ? '<div class="wevt__desc">' + esc(d.desc) + '</div>' : '') +
+        '<div class="wevt__opts">' + opts + '</div></div>';
+    }).join('');
+    box.querySelectorAll('.wevt__opt').forEach(function (b) { b.onclick = function () { chooseWorldEvent(b.dataset.i, +b.dataset.o, box); }; });
+  }
+  var weChoosing = false;
+  async function chooseWorldEvent(instanceId, optionIdx, box) {
+    if (weChoosing) return; weChoosing = true;
+    box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = true; });
+    try {
+      const { data, error } = await supabase.rpc('world_event_choose', { p_instance: instanceId, p_option: optionIdx });
+      if (error) throw error;
+      ping('Decided: ' + (data.chose || 'done') + '.');
+      if (feedCtx) { await loadWorldEventsPanel(feedCtx.nationId); await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate); }
+    } catch (e) { ping((e && e.message) || 'Couldn’t record that.'); box.querySelectorAll('.wevt__opt').forEach(function (b) { b.disabled = false; }); }
+    finally { weChoosing = false; }
+  }
 
   // Wire a modal's close affordances (X button, backdrop click, Escape) once and
   // return its closer — shared by the Attack and Recruit pickers.
@@ -711,6 +767,7 @@
         renderPMBar(!!(govt && govt.formateur_party_id === party.id));
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
+      loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));

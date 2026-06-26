@@ -66,4 +66,166 @@ drop policy if exists "world_event_images_delete" on storage.objects;
 create policy "world_event_images_delete" on storage.objects for delete to authenticated
   using (bucket_id = 'world-event-images' and public.is_admin());
 
+-- ===========================================================================
+-- World Event RUNTIME — Phase 1: firing + Turning Point + Decision (no automation).
+-- An admin FIRES a saved event: it snapshots the definition into an instance and drops a
+-- notice into each target nation's event box. A Turning Point applies its effects to every
+-- nation at once and resolves immediately. A Decision stays open for each target nation's
+-- leader to choose one of two options, whose effects then apply to that nation. Mutual
+-- Agreement + Competitive are NOT playable yet — their contribution / secret-bid mechanics
+-- and the 3-tick auto-resolve (which would hook advance_tick) are a later, opt-in pass.
+-- Effects ride _apply_policy_effect (schema/91) — the one clamp source, same as crises.
+-- ===========================================================================
+
+-- A fired world event. The definition is SNAPSHOT at fire time, so editing the source
+-- world_events row later never changes a live instance (same stance as proposals).
+create table if not exists public.world_event_instances (
+  id             uuid primary key default gen_random_uuid(),
+  world_event_id uuid references public.world_events (id) on delete set null,
+  definition     jsonb not null,
+  status         text  not null default 'active',   -- active | resolved
+  fired_tick     int,
+  created_at     timestamptz not null default now()
+);
+create index if not exists world_event_instances_status_idx on public.world_event_instances (status);
+
+-- One row per (instance, nation) that has answered a Decision. The option's effects were
+-- applied when the row was written; this just records the pick and bars a second answer.
+create table if not exists public.world_event_choices (
+  instance_id uuid not null references public.world_event_instances (id) on delete cascade,
+  nation_id   text not null references public.nations (id) on delete cascade,
+  option_idx  int  not null,
+  party_id    uuid references public.parties (id) on delete set null,   -- who chose
+  created_at  timestamptz not null default now(),
+  primary key (instance_id, nation_id)
+);
+
+alter table public.world_event_instances enable row level security;
+alter table public.world_event_choices   enable row level security;
+-- World-readable (the world stage is public); NO client writes — only the RPCs below touch them.
+drop policy if exists "wei_select_all" on public.world_event_instances;
+create policy "wei_select_all" on public.world_event_instances for select using (true);
+drop policy if exists "wec_select_all" on public.world_event_choices;
+create policy "wec_select_all" on public.world_event_choices for select using (true);
+
+-- Apply an array of authored {t,v} effects to a nation through the one clamp source.
+create or replace function public._apply_we_effects(p_nation text, p_effects jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_eff jsonb;
+begin
+  for v_eff in select value from jsonb_array_elements(coalesce(p_effects, '[]'::jsonb)) loop
+    perform public._apply_policy_effect(p_nation, jsonb_build_object('t', v_eff->>'t', 'v', v_eff->'v'));
+  end loop;
+end $$;
+revoke all on function public._apply_we_effects(text, jsonb) from public, anon, authenticated;
+
+-- The LIVE target nations of an instance — ONE source, used by both firing and resolution:
+-- a global event or a Turning Point hits every live nation; otherwise the authored involved
+-- set, live only (dormant nations are out of play).
+create or replace function public._we_targets(p_def jsonb)
+returns text[] language sql stable security definer set search_path = public as $$
+  select case when p_def->>'type' = 'turning_point' or p_def->>'scope' = 'global'
+              then (select array_agg(id) from public.nations where coalesce(dormant,false) = false)
+              else (select array_agg(e.value) from jsonb_array_elements_text(coalesce(p_def->'nations','[]'::jsonb)) as e(value)
+                      join public.nations n on n.id = e.value and coalesce(n.dormant,false) = false) end;
+$$;
+
+-- Resolve a Decision instance once every live target nation has answered.
+create or replace function public._maybe_resolve_we(p_instance uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_def jsonb; v_targets int; v_answered int;
+begin
+  select definition into v_def from public.world_event_instances where id = p_instance;
+  if v_def is null then return; end if;
+  v_targets := coalesce(array_length(public._we_targets(v_def), 1), 0);
+  select count(*) into v_answered from public.world_event_choices where instance_id = p_instance;
+  if v_targets > 0 and v_answered >= v_targets then
+    update public.world_event_instances set status = 'resolved' where id = p_instance;
+  end if;
+end $$;
+revoke all on function public._maybe_resolve_we(uuid) from public, anon, authenticated;
+
+-- Admin: fire a saved world event now. Snapshots the definition, drops a notice into each
+-- live target nation's box; a Turning Point also applies its effects everywhere and resolves
+-- at once. Decision/Turning Point only in Phase 1.
+create or replace function public.world_event_fire(p_event uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_def jsonb; v_type text; v_name text; v_iid uuid; v_tick int;
+  v_targets text[]; v_nat text; v_body text;
+begin
+  if not public.is_admin() then raise exception 'Admin only.'; end if;
+  select definition into v_def from public.world_events where id = p_event;
+  if v_def is null then raise exception 'No such world event.'; end if;
+  v_type := v_def->>'type'; v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
+  if v_type not in ('decision', 'turning_point') then
+    raise exception 'Only Decision and Turning Point events can be fired yet — Mutual Agreement and Competitive come in a later pass.';
+  end if;
+  select current_tick into v_tick from public.game_state where id;
+
+  v_targets := public._we_targets(v_def);
+  if v_targets is null or array_length(v_targets, 1) is null then raise exception 'No live target nations for this event.'; end if;
+
+  insert into public.world_event_instances (world_event_id, definition, status, fired_tick)
+    values (p_event, v_def, case when v_type = 'turning_point' then 'resolved' else 'active' end, v_tick)
+    returning id into v_iid;
+
+  v_body := v_name || (case when coalesce(v_def->>'desc','') <> '' then ' — ' || (v_def->>'desc') else '' end);
+  foreach v_nat in array v_targets loop
+    if v_type = 'turning_point' then
+      perform public._apply_we_effects(v_nat, v_def->'turning'->'effects');
+      insert into public.events (nation_id, kind, body, game_date) values (v_nat, 'world_event', v_body, public.current_game_date());
+    else
+      insert into public.events (nation_id, kind, body, game_date)
+        values (v_nat, 'world_event', v_body || ' — a decision awaits in World Events.', public.current_game_date());
+    end if;
+  end loop;
+
+  return jsonb_build_object('instance', v_iid, 'type', v_type, 'targets', array_length(v_targets, 1));
+end $$;
+grant execute on function public.world_event_fire(uuid) to authenticated;
+
+-- Player: a nation's leader answers a Decision. No action cost (it's a one-off world prompt,
+-- not a leader action). Applies the chosen option's effects to the caller's nation, records
+-- the pick (one per nation), and resolves the instance once all targets have answered.
+create or replace function public.world_event_choose(p_instance uuid, p_option int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype;
+  v_def jsonb; v_opt jsonb; v_label text; v_nname text;
+begin
+  v_party := public._lock_party();   -- caller's party + nation (no action cost)
+  select * into v_inst from public.world_event_instances where id = p_instance for update;
+  if not found then raise exception 'That event is gone.'; end if;
+  if v_inst.status <> 'active' then raise exception 'That event has closed.'; end if;
+  v_def := v_inst.definition;
+  if v_def->>'type' <> 'decision' then raise exception 'That event is not a decision.'; end if;
+
+  -- The caller's nation must be in scope (global → everyone; else the involved set).
+  if (v_def->>'scope') <> 'global' and not ((v_def->'nations') ? v_party.nation_id) then
+    raise exception 'This decision does not involve your nation.';
+  end if;
+  if exists (select 1 from public.world_event_choices where instance_id = p_instance and nation_id = v_party.nation_id) then
+    raise exception 'Your nation has already decided.';
+  end if;
+
+  v_opt := v_def->'options'->p_option;
+  if v_opt is null then raise exception 'No such option.'; end if;
+  v_label := coalesce(nullif(v_opt->>'label',''), 'an option');
+
+  insert into public.world_event_choices (instance_id, nation_id, option_idx, party_id)
+    values (p_instance, v_party.nation_id, p_option, v_party.id);
+  perform public._apply_we_effects(v_party.nation_id, v_opt->'effects');
+
+  select name into v_nname from public.nations where id = v_party.nation_id;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'world_event',
+            coalesce(nullif(v_def->>'name',''),'A world event') || ' — ' || coalesce(v_nname, v_party.nation_id) || ' chose: ' || v_label || '.',
+            public.current_game_date());
+
+  perform public._maybe_resolve_we(p_instance);
+  return jsonb_build_object('ok', true, 'chose', v_label);
+end $$;
+grant execute on function public.world_event_choose(uuid, int) to authenticated;
+
 notify pgrst, 'reload schema';
