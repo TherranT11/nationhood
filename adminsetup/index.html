@@ -1218,8 +1218,10 @@
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
           goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy')
         },
-        // Merge Military into the existing on_hand so editing never clobbers the base
-        // commodities (which are seeded server-side); Military is the one on-hand set here.
+        // Military is the only on-hand set here; merge it so EDITING never clobbers the base
+        // commodities. KNOWN LIMITATION: base on_hand (energy…services) is seeded only by the
+        // one-time 10_nations migration, so a brand-new nation created here starts with just
+        // Military on hand until that base seeding is extended to creation (out of scope here).
         on_hand: Object.assign({}, (editing && editing.on_hand) || {}, { military: num('f-military') }),
         declarations: collectDeclarations(),
         policies: collectNationPolicies()
