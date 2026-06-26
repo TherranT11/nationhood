@@ -355,6 +355,9 @@
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
   var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null;
+  // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
+  // action stays disabled for everyone in the nation, on top of the usual AP gate.
+  var NOW_TICK = 0, nocoUntilTick = 0;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
@@ -362,6 +365,7 @@
     // STANDING_COST — stamped just below), so a button greys out the moment you can't
     // afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
+    if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -498,8 +502,23 @@
   var nocoConfirm = document.getElementById('nocoConfirm');
   if (nocoConfirm) nocoConfirm.addEventListener('click', function () {
     closeNoco();
-    performAction(function () { return supabase.rpc('propose_no_confidence'); }, function () { return 'No-confidence motion tabled — it reaches the floor next month.'; });
+    performAction(function () { return supabase.rpc('propose_no_confidence'); }, function (d) {
+      if (d && d.until != null) applyNocoCooldown(NOW_TICK, d.until);   // grey the button out at once
+      return 'No-confidence motion tabled — it reaches the floor next month.';
+    });
   });
+  // Reflect the nation-wide cooldown on the button: disabled + a "Cooldown" pill while it's
+  // active, so every player in the nation sees it greyed (the server is still authoritative).
+  function applyNocoCooldown(now, until) {
+    NOW_TICK = now; nocoUntilTick = until || 0;
+    if (!nocoBtn) return;
+    var left = nocoUntilTick - now, pill = nocoBtn.querySelector('.lead__cost');
+    if (left > 0) {
+      nocoBtn.disabled = true;
+      nocoBtn.title = 'No confidence is on cooldown for this nation — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
+      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
+    }
+  }
 
   // Stamp every action card with its AP cost. Standing actions (data-standing) take
   // their cost from STANDING_COST (util.js → mirrors schema/40 _standing_cost()), so the
@@ -775,7 +794,8 @@
     if (!user) return; // redirected to login
     try {
       // Live game date in the topbar (and the feed), derived from the shared tick.
-      var gameDate = tickToDate(await currentTick()); // for the events feed; the topbar owns its own date
+      var curTick = await currentTick();
+      var gameDate = tickToDate(curTick); // for the events feed; the topbar owns its own date
       // The player's party (one per user). No party yet → send them to choose a nation.
       const { data: party, error } = await supabase.from('parties').select('*').eq('user_id', user.id).single();
       if (error || !party) { window.location.replace('/nation-select/'); return; }
@@ -783,7 +803,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
@@ -830,6 +850,7 @@
       // "Loading…" if the nation row failed to load (e.g. a column drift).
       if (nation) renderGlance(nation);
       else document.getElementById('snap').innerHTML = '<p class="empty">Couldn’t load the nation’s figures right now. Refresh to try again.</p>';
+      applyNocoCooldown(curTick, nation && nation.no_confidence_until_tick);   // nation-wide no-confidence cooldown gate
       setActions(party.actions_remaining != null ? party.actions_remaining : 12);
       feedCtx = { nationId: party.nation_id, nation: nation, gameDate: gameDate };
       myPartyId = party.id;  // used to exclude self from the attack target list
