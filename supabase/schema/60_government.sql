@@ -622,6 +622,80 @@ end $$;
 grant execute on function public.agenda_enact(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- agenda_fulfill_ministry(item, politician): the ministry-specific path of enacting.
+-- The PM seats a chosen politician of the promised RECIPIENT party (params.to_party,
+-- set in the coalition deal) into the matching cabinet portfolio. It marks the promise
+-- done and raises Government Confidence +0.5 (a small, repeatable nudge as the cabinet
+-- fills out — confidence is numeric, so the half-points accumulate). Unlike agenda_enact
+-- it costs NO action — staffing the cabinet you were handed isn't a leader action. It
+-- validates the pick: the politician must belong to the recipient party, must not be a
+-- field operative (Mayor / Grassroots Organizer), and must not already hold another
+-- portfolio in this government. The appointment is recorded on the agenda row
+-- (minister_id/minister_name/party_abbr) and read back by the cabinet (Government page).
+-- PM-only, gated server-side.
+-- ---------------------------------------------------------------------------
+create or replace function public.agenda_fulfill_ministry(p_item uuid, p_politician uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_p public.parties%rowtype; v_item public.government_agenda%rowtype; v_gov public.governments%rowtype;
+  v_recipient uuid; v_pol public.politicians%rowtype; v_min text; v_name text; v_abbr text;
+  v_delta numeric := 0.5; v_newconf numeric;
+begin
+  v_p := public._lock_party();   -- locks the caller's party (no action cost — staffing the cabinet is free)
+  select * into v_item from public.government_agenda where id = p_item;
+  if not found then raise exception 'That agenda item is gone.'; end if;
+  if v_item.status = 'done' then raise exception 'That ministry is already filled.'; end if;
+  if v_item.type <> 'ministry' then raise exception 'That agenda item is not a ministry to fill.'; end if;
+  select * into v_gov from public.governments where id = v_item.government_id;
+  if v_gov.status <> 'active' then raise exception 'That government is no longer in power.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the leading party of the government can fill its cabinet.';
+  end if;
+
+  v_recipient := nullif(v_item.params->>'to_party', '')::uuid;
+  if v_recipient is null then raise exception 'This promise has no recipient party — set one in the coalition deal.'; end if;
+
+  select * into v_pol from public.politicians where id = p_politician;
+  if not found then raise exception 'No such politician.'; end if;
+  if v_pol.party_id <> v_recipient then raise exception 'That politician is not a member of the promised party.'; end if;
+  if v_pol.status in ('Mayor', 'Grassroots Organizer') then
+    raise exception 'A Mayor or Grassroots Organizer takes no cabinet seat.';
+  end if;
+  -- One seat per politician: not already holding another portfolio in this government.
+  if exists (
+    select 1 from public.government_agenda
+     where government_id = v_gov.id and type = 'ministry' and status = 'done'
+       and nullif(params->>'minister_id', '')::uuid = p_politician
+  ) then raise exception 'That politician already holds a portfolio in this cabinet.'; end if;
+
+  v_min  := coalesce(nullif(v_item.params->>'ministry', ''), 'Ministry');
+  v_name := btrim(v_pol.first_name || ' ' || v_pol.last_name);
+  select abbreviation into v_abbr from public.parties where id = v_recipient;
+
+  v_newconf := least(public._mod_confidence_ceiling(v_gov.nation_id), v_gov.confidence + v_delta);
+  v_delta := v_newconf - v_gov.confidence;   -- the gain actually applied (so the cap never overstates)
+
+  update public.government_agenda
+     set status = 'done',
+         params = params || jsonb_build_object('minister_id', p_politician::text, 'minister_name', v_name, 'party_abbr', coalesce(v_abbr, ''))
+   where id = p_item;
+  update public.governments set confidence = v_newconf where id = v_gov.id;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_gov.nation_id, v_p.id, 'agenda',
+            v_name || ' was appointed Minister of ' || v_min || '. Government Confidence +'
+            || v_delta || '% (now ' || round(v_newconf, 1) || '%).',
+            public.current_game_date());
+
+  return jsonb_build_object('delta', v_delta, 'confidence', v_newconf, 'minister', v_name);
+end $$;
+grant execute on function public.agenda_fulfill_ministry(uuid, uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- THE FORMATION-WINDOW CHOICE. Right after an election the formateur may keep
 -- the coalition the voters expected ([Enter Agreed Coalition] = do nothing) or
 -- break it ([Form New Coalition]). Both RPCs are gated to the formation tick

@@ -17,7 +17,7 @@ export function summarizeTerm(type, p) {
   p = p || {};
   switch (type) {
     case 'legislation': return 'Pass flagship legislation' + (p.text ? ': “' + p.text + '”' : ' (unspecified)');
-    case 'ministry':    return 'Hand over the ' + (p.ministry || '…') + ' Ministry';
+    case 'ministry':    return 'Hand over the ' + (p.ministry || '…') + ' Ministry' + (p.to_party_name ? ' to ' + p.to_party_name : '');
     case 'policy':      return 'Support' + (p.text ? ': ' + p.text : ' their policy agenda');
     case 'treaty':      return (p.act || 'Sign') + ' ' + (p.text ? '“' + p.text + '” ' : 'an ') + 'agreement with ' + (p.nation || '…');
     case 'threshold':   return 'Set the electoral threshold to ' + (p.pct || '…');
