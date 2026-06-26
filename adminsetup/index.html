@@ -1537,7 +1537,8 @@
       async function loadNations() {
         var res = await supabase.from('nations').select('id, name').order('name');
         natName = {}; natColor = {}; natOrder = [];
-        (res.data || []).forEach(function (n, i) { natName[n.id] = n.name; natColor[n.id] = WM_PALETTE[i % WM_PALETTE.length]; natOrder.push(n.id); });
+        if (res.error) status('Couldn’t load nations.');
+        else (res.data || []).forEach(function (n, i) { natName[n.id] = n.name; natColor[n.id] = WM_PALETTE[i % WM_PALETTE.length]; natOrder.push(n.id); });
         var sel = document.getElementById('wmNation');
         sel.innerHTML = '<option value="">— pick a nation —</option>' + natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('');
         sel.value = assignNation;
@@ -1585,29 +1586,30 @@
 
       // ---- interaction ----
       function setTool(t) { tool = t; document.querySelectorAll('.wm-tool').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); cv.className = (t === 'select') ? '' : 'paint'; }
+      function mouseHex(e) { var rect = cv.getBoundingClientRect(); return pixToAxial(e.clientX - rect.left, e.clientY - rect.top); }
+      function zoomAt(cx, cy, f) { var nz = Math.max(0.4, Math.min(2.6, view.z * f)), k = nz / view.z; view.x = cx - (cx - view.x) * k; view.y = cy - (cy - view.y) * k; view.z = nz; draw(); }
       cv.addEventListener('mousedown', function (e) {
-        var rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
         moved = 0; last = { x: e.clientX, y: e.clientY };
         if (tool === 'select') { panning = true; }
-        else { painting = true; var a = pixToAxial(mx, my); paint(a[0], a[1]); }
+        else { painting = true; var a = mouseHex(e); paint(a[0], a[1]); }
       });
       window.addEventListener('mousemove', function (e) {
         if (!panning && !painting) return;
         var dx = e.clientX - last.x, dy = e.clientY - last.y; moved += Math.abs(dx) + Math.abs(dy);
         if (panning) { view.x += dx; view.y += dy; last = { x: e.clientX, y: e.clientY }; cv.className = 'drag'; draw(); }
-        else if (painting) { var rect = cv.getBoundingClientRect(), a = pixToAxial(e.clientX - rect.left, e.clientY - rect.top); paint(a[0], a[1]); last = { x: e.clientX, y: e.clientY }; }
+        else { var a = mouseHex(e); paint(a[0], a[1]); last = { x: e.clientX, y: e.clientY }; }
       });
       window.addEventListener('mouseup', function (e) {
-        if (panning && moved < 4) { var rect = cv.getBoundingClientRect(), a = pixToAxial(e.clientX - rect.left, e.clientY - rect.top); if (inBounds(a[0], a[1])) openInspect(a[0], a[1]); else closeInspect(); }
+        if (panning && moved < 4) { var a = mouseHex(e); if (inBounds(a[0], a[1])) openInspect(a[0], a[1]); else closeInspect(); }
         if (panning) cv.className = tool === 'select' ? '' : 'paint';
         panning = false; painting = false;
       });
-      cv.addEventListener('wheel', function (e) { e.preventDefault(); var rect = cv.getBoundingClientRect(), f = e.deltaY < 0 ? 1.12 : 0.89, nz = Math.max(0.4, Math.min(2.6, view.z * f)), k = nz / view.z, cx = e.clientX - rect.left, cy = e.clientY - rect.top; view.x = cx - (cx - view.x) * k; view.y = cy - (cy - view.y) * k; view.z = nz; draw(); }, { passive: false });
+      cv.addEventListener('wheel', function (e) { e.preventDefault(); var rect = cv.getBoundingClientRect(); zoomAt(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1.12 : 0.89); }, { passive: false });
       document.querySelectorAll('.wm-tool').forEach(function (b) { b.addEventListener('click', function () { setTool(b.dataset.tool); }); });
       document.getElementById('wmNation').addEventListener('change', function () { assignNation = this.value; if (this.value) setTool('nation'); });
       document.getElementById('wmSave').addEventListener('click', save);
-      document.getElementById('wmZin').onclick = function () { var W = cv.clientWidth / 2, H = cv.clientHeight / 2, k = 1.18; view.x = W - (W - view.x) * k; view.y = H - (H - view.y) * k; view.z = Math.min(2.6, view.z * k); draw(); };
-      document.getElementById('wmZout').onclick = function () { var W = cv.clientWidth / 2, H = cv.clientHeight / 2, k = 0.85; view.x = W - (W - view.x) * k; view.y = H - (H - view.y) * k; view.z = Math.max(0.4, view.z * k); draw(); };
+      document.getElementById('wmZin').onclick = function () { zoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 1.18); };
+      document.getElementById('wmZout').onclick = function () { zoomAt(cv.clientWidth / 2, cv.clientHeight / 2, 0.85); };
       document.getElementById('wmZreset').onclick = function () { view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; draw(); };
 
       function fit() { var W = cv.clientWidth, H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); draw(); }
