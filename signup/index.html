@@ -47,6 +47,10 @@
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="new-password" minlength="6" required>
       </div>
+      <div class="field">
+        <label for="nickname">Nickname</label>
+        <input id="nickname" name="nickname" type="text" autocomplete="off" maxlength="16" placeholder="2–16 letters, digits, or _" required>
+      </div>
       <div class="actions">
         <a class="btn btn-ghost" href="/" role="button">Go Back</a>
         <button class="btn btn-solid" type="submit" id="submit-btn">Sign Up</button>
@@ -75,9 +79,15 @@
 
       const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
+      const nickname = document.getElementById('nickname').value.trim();
 
-      if (!email || !password) {
-        setMsg('Please enter an e-mail and password.', 'error');
+      if (!email || !password || !nickname) {
+        setMsg('Please enter an e-mail, password, and nickname.', 'error');
+        return;
+      }
+      // Same rule the server enforces (set_handle / the signup trigger).
+      if (!/^[A-Za-z0-9_]{2,16}$/.test(nickname)) {
+        setMsg('Nickname must be 2–16 letters, digits, or underscores.', 'error');
         return;
       }
       if (!isConfigured) {
@@ -90,7 +100,10 @@
       setMsg('Creating your account…', 'ok');
 
       try {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        // The nickname rides along as auth metadata; the profile-creation trigger persists
+        // it to profiles.handle, so the player begins the game with a nickname already set
+        // even when email confirmation delays their first session.
+        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { handle: nickname } } });
         if (error) {
           setMsg(error.message, 'error');
           submitting = false;
