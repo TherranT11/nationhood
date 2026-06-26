@@ -139,8 +139,10 @@ begin
 
   -- Transition effects on a move OLD→NEW. DOORWAY model: each option owns doorUp (effects when
   -- stepping UP into it from below) and doorDown (stepping DOWN into it from above); a multi-rung
-  -- move sums the doorways it crosses. Flat (no size-of-move scaling). Reuses _apply_policy_effect
-  -- so the stat/economy/government mapping stays in one place.
+  -- move sums the doorways it crosses (no size-of-move scaling). Reuses _apply_policy_effect so
+  -- the stat/economy/government mapping stays in one place — and the raw doorway object is passed
+  -- straight through, so a money doorway's own `scale` (flat / per-million / ×pop×prosperity) is
+  -- honored exactly like an enactment effect's.
   -- FALLBACK: a policy not yet migrated to doorways (no doorUp/doorDown keys) still fires its
   -- legacy rung-specific `transitions` — open+save it in adminsetup to migrate; once every policy
   -- has doorways the else-branch below can be deleted.
@@ -149,8 +151,9 @@ begin
     if jsonb_typeof(v_opts) = 'array'
        and exists (select 1 from jsonb_array_elements(v_opts) o where o.value ? 'doorUp' or o.value ? 'doorDown') then
       -- One source for the walk (also used by law_transition_preview): the crossed doorways.
+      -- Pass the raw effect through so its `scale` rides along (flat when absent).
       for r in select value as t from jsonb_array_elements(public._doorway_effects(v_def, v_old, p_option)) loop
-        perform public._apply_policy_effect(p_nation, jsonb_build_object('t', r.t->>'t', 'v', r.t->'v'));
+        perform public._apply_policy_effect(p_nation, r.t);
       end loop;
     else
       v_oldname := v_opts -> v_old    ->> 'name';
@@ -189,7 +192,7 @@ returns jsonb language sql immutable as $$
 $$;
 
 -- RPC: the one-time transition (doorway) cost of a proposed move, for the proposal preview.
--- Returns the flat {t,v} effects; the client renders them with scale 'flat'.
+-- Returns the raw {t, v, scale?} effects; the client renders each with its own scale (flat when absent).
 create or replace function public.law_transition_preview(p_policy uuid, p_from int, p_to int)
 returns jsonb language sql stable security definer set search_path = public as $$
   select public._doorway_effects(definition, p_from, p_to) from public.policies where id = p_policy;

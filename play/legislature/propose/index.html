@@ -175,8 +175,9 @@
       renderTransitionCost(o && !same ? cur : null, idx);
     }
     // The one-time transition (doorway) cost of the move cur→idx, from the server (ONE source:
-    // _doorway_effects via the law_transition_preview RPC). Doorway effects are flat, so render
-    // them with scale 'flat'. A seq guard drops a stale response if the option changed again.
+    // _doorway_effects via the law_transition_preview RPC). Each doorway carries its own scale
+    // (money targets can be per-million/×pop×prosperity), flat when absent — render with it so the
+    // worked amount matches what enacts. A seq guard drops a stale response if the option changed.
     function renderTransitionCost(from, to) {
       var box = document.getElementById('l-trans'), myseq = ++transSeq;
       if (from == null) { box.innerHTML = '<p class="none">—</p>'; return; }
@@ -185,7 +186,7 @@
         if (myseq !== transSeq) return;
         var fx = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
         box.innerHTML = fx.length
-          ? fx.map(function (e) { return effRow(effectText({ t: e.t, v: e.v, scale: 'flat', cad: 'once' }, pop, pros), 'on change'); }).join('')
+          ? fx.map(function (e) { return effRow(effectText({ t: e.t, v: e.v, scale: e.scale || 'flat', cad: 'once' }, pop, pros), 'on change'); }).join('')
           : '<p class="none">No cost to change to this option.</p>';
       }).catch(function () { if (myseq === transSeq) box.innerHTML = '<p class="none">Couldn’t load the cost — reselect to retry.</p>'; });
     }
