@@ -62,6 +62,34 @@
   .vtab.active{background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
   .tabwrap{flex:1;min-width:0}
 
+  /* ---- World Map editor ---- */
+  .wm-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+  .wm-tools{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .wm-tool{border:1.5px solid var(--line2,#D9D6D0);background:var(--surface,#fff);border-radius:9px;padding:8px 12px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted,#5b5b63)}
+  .wm-tool:hover{color:var(--ink,#15151B)}
+  .wm-tool.active{border-color:var(--indigo,#5546E8);background:var(--indigo-soft,#ECE9FD);color:var(--indigo,#5546E8)}
+  .wm-nat{border:1.5px solid var(--line2,#D9D6D0);background:var(--surface,#fff);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:13px;color:var(--ink,#15151B);max-width:220px}
+  .wm-actions{display:flex;align-items:center;gap:12px}
+  .wm-status{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft,#8d8d95)}
+  .wm-save{border:none;background:var(--indigo,#5546E8);color:#fff;border-radius:9px;padding:9px 16px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
+  .wm-save:hover{filter:brightness(1.08)} .wm-save:disabled{opacity:.55;cursor:not-allowed;filter:none}
+  .wm-help{font-size:12px;color:var(--soft,#8d8d95);margin-bottom:10px} .wm-help b{color:var(--muted,#5b5b63)}
+  .wm-stage{position:relative;height:68vh;min-height:420px;border:1px solid var(--line,#E7E5E0);border-radius:14px;overflow:hidden;background:#bcd9e6}
+  #wmCanvas{display:block;width:100%;height:100%;cursor:grab}
+  #wmCanvas.paint{cursor:crosshair} #wmCanvas.drag{cursor:grabbing}
+  .wm-zoom{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:6px}
+  .wm-zoom button{width:34px;height:34px;border:1px solid var(--line2,#D9D6D0);background:var(--surface,#fff);color:var(--ink,#15151B);border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:'Space Mono',monospace}
+  .wm-zoom button:hover{background:var(--chip,#F4F3EF)}
+  .wm-inspect{position:absolute;top:12px;left:12px;width:248px;max-height:calc(100% - 24px);overflow-y:auto;background:rgba(255,255,255,.96);border:1px solid var(--line2,#D9D6D0);border-radius:12px;padding:14px;box-shadow:0 6px 22px rgba(0,0,0,.12)}
+  .wm-inspect h4{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft,#8d8d95);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+  .wm-inspect .wm-x{border:none;background:none;color:var(--soft,#8d8d95);font-size:18px;line-height:1;cursor:pointer}
+  .wm-inspect label{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft,#8d8d95);margin:10px 0 4px}
+  .wm-inspect input,.wm-inspect select{width:100%;border:1px solid var(--line2,#D9D6D0);background:var(--surface,#fff);border-radius:8px;padding:8px 9px;font-family:inherit;font-size:13px;color:var(--ink,#15151B)}
+  .wm-inspect .wm-res{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .wm-inspect .wm-res > div{min-width:0}
+  .wm-clear{margin-top:12px;width:100%;border:1.5px solid var(--red,#C42B2B);color:var(--red,#C42B2B);background:none;border-radius:8px;padding:8px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700}
+  .wm-clear:hover{background:var(--red-soft,#FBEAE9)}
+
   /* modifiers */
   .mcard{border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:12px;border-left:5px solid var(--mc,#9a9a9a)}
   .mcard:last-child{margin-bottom:0}
@@ -478,6 +506,7 @@
         <button class="vtab" data-tab="events" type="button">Events</button>
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
+        <button class="vtab" data-tab="world-map" type="button">World Map</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="nations">
@@ -840,6 +869,28 @@
             </div>
             <div class="note" id="weNote" role="status" aria-live="polite" style="margin-top:14px"></div>
           </div>
+        </div>
+      </div>
+
+      <div class="tabpane" data-tab="world-map" hidden>
+        <div class="wm-bar">
+          <div class="wm-tools">
+            <button class="wm-tool active" data-tool="select" type="button">Select / Pan</button>
+            <button class="wm-tool" data-tool="land" type="button">Paint Land</button>
+            <button class="wm-tool" data-tool="sea" type="button">Erase (Sea)</button>
+            <button class="wm-tool" data-tool="nation" type="button">Assign Nation</button>
+            <select id="wmNation" class="wm-nat" title="Nation to assign"></select>
+          </div>
+          <div class="wm-actions">
+            <span id="wmStatus" class="wm-status"></span>
+            <button id="wmSave" class="wm-save" type="button">Save Map</button>
+          </div>
+        </div>
+        <p class="wm-help">Pick a tool, then click or drag on the map. <b>Select / Pan</b> drags the view and opens a hex’s details; the paint tools edit hexes. Scroll to zoom.</p>
+        <div class="wm-stage">
+          <canvas id="wmCanvas"></canvas>
+          <div class="wm-zoom"><button id="wmZin" type="button">+</button><button id="wmZout" type="button">−</button><button id="wmZreset" type="button" title="Reset view">⌂</button></div>
+          <div class="wm-inspect" id="wmInspect" hidden></div>
         </div>
       </div>
       </div><!-- /tabwrap -->
@@ -1390,8 +1441,183 @@
         if (tab === 'events') loadEvents();
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
+        if (tab === 'world-map') initWorldMap();
       });
     });
+
+    // ---- World Map editor (admin; world_hexes table, is_admin RLS) -------------------
+    // A field of pointy-top axial hexes. A hex row exists only when it's land or carries
+    // data — open sea is the absence of a row. Paint terrain / assign a nation with the
+    // tools, edit a hex's name/pop/resources in the inspector, then Save (upsert changed
+    // rows, delete erased ones). Standalone: nothing here feeds nation totals.
+    var WM = null;
+    var WM_RES = ['energy', 'food', 'minerals', 'goods', 'services', 'military'];
+    var WM_PALETTE = ['#5546E8', '#16915a', '#C42B2B', '#E0820E', '#1f86d6', '#8b46e8',
+                      '#0f9b8e', '#d6457e', '#7a8b1f', '#c98a16', '#3f6fd6', '#9a5b2d'];
+    function initWorldMap() { if (!WM) WM = setupWorldMap(); WM.onShow(); }
+
+    function setupWorldMap() {
+      var cv = document.getElementById('wmCanvas'), ctx = cv.getContext('2d');
+      var DPR = window.devicePixelRatio || 1, SIZE = 24;
+      var view = { x: 0, y: 0, z: 1 };
+      var Q0 = -20, Q1 = 20, R0 = -14, R1 = 14;   // paintable bounds
+      var hexes = {}, loaded = {};                  // "q,r" -> hex; loaded = keys present in DB
+      var natName = {}, natColor = {}, natOrder = [];
+      var tool = 'select', assignNation = '', selKey = null;
+      var painting = false, panning = false, last = { x: 0, y: 0 }, moved = 0, loadedOnce = false;
+
+      // ---- geometry (pointy-top axial) ----
+      function hexW() { return Math.sqrt(3) * SIZE * view.z; }
+      function axialToPix(q, r) { return { x: hexW() * (q + r / 2) + view.x, y: 1.5 * SIZE * view.z * r + view.y }; }
+      function hexPath(cx, cy, s) { ctx.beginPath(); for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * (60 * i - 90), px = cx + s * Math.cos(a), py = cy + s * Math.sin(a); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); }
+      function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 1, r], [q, r - 1], [q + 1, r - 1]]; }
+      function hexEdge(cx, cy, s, d) { var a1 = Math.PI / 180 * (60 * d - 90), a2 = Math.PI / 180 * (60 * (d + 1) - 90); return { x1: cx + s * Math.cos(a1), y1: cy + s * Math.sin(a1), x2: cx + s * Math.cos(a2), y2: cy + s * Math.sin(a2) }; }
+      function hexRound(q, r) { var x = q, z = r, y = -x - z, rx = Math.round(x), ry = Math.round(y), rz = Math.round(z), dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z); if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry; return [rx, rz]; }
+      function pixToAxial(px, py) { var x = px - view.x, y = py - view.y, r = y / (1.5 * SIZE * view.z), q = x / hexW() - r / 2; return hexRound(q, r); }
+      function inBounds(q, r) { return q >= Q0 && q <= Q1 && r >= R0 && r <= R1; }
+
+      // ---- render ----
+      function draw() {
+        var W = cv.clientWidth, H = cv.clientHeight, s = SIZE * view.z;
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#bcd9e6'; ctx.fillRect(0, 0, W, H);   // sea
+        // terrain + nation fills
+        for (var r = R0; r <= R1; r++) for (var q = Q0; q <= Q1; q++) {
+          var p = axialToPix(q, r); if (p.x < -s * 2 || p.x > W + s * 2 || p.y < -s * 2 || p.y > H + s * 2) continue;
+          var h = hexes[q + ',' + r], land = h && h.terrain === 'land';
+          hexPath(p.x, p.y, s * 0.99);
+          if (h && h.nation_id && natColor[h.nation_id]) { ctx.fillStyle = natColor[h.nation_id]; ctx.globalAlpha = 0.85; ctx.fill(); ctx.globalAlpha = 1; }
+          else if (land) { ctx.fillStyle = ((q + r) % 2 === 0) ? '#e9e3d4' : '#e3dcc9'; ctx.fill(); }
+          else { ctx.fillStyle = ((q + r) % 2 === 0) ? '#bcd9e6' : '#a9cdde'; ctx.fill(); }
+          ctx.lineWidth = 1; ctx.strokeStyle = land ? 'rgba(120,110,90,.22)' : 'rgba(110,150,170,.28)'; ctx.stroke();
+        }
+        // coastlines + nation borders
+        for (var r2 = R0; r2 <= R1; r2++) for (var q2 = Q0; q2 <= Q1; q2++) {
+          var hh = hexes[q2 + ',' + r2]; if (!hh || hh.terrain !== 'land') continue;
+          var p2 = axialToPix(q2, r2); if (p2.x < -s * 2 || p2.x > W + s * 2 || p2.y < -s * 2 || p2.y > H + s * 2) continue;
+          var nb = neighbors(q2, r2);
+          for (var d = 0; d < 6; d++) {
+            var nh = hexes[nb[d][0] + ',' + nb[d][1]], nLand = nh && nh.terrain === 'land';
+            var seaEdge = !nLand, natEdge = hh.nation_id && (!nh || nh.nation_id !== hh.nation_id);
+            if (seaEdge || natEdge) {
+              var e = hexEdge(p2.x, p2.y, s * 0.99, d);
+              ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2);
+              if (seaEdge) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 2.2; } else { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.8; }
+              ctx.stroke();
+            }
+          }
+        }
+        // selected hex highlight
+        if (selKey && hexes[selKey]) { var sp = axialToPix(hexes[selKey].q, hexes[selKey].r); hexPath(sp.x, sp.y, s * 0.99); ctx.strokeStyle = '#15151b'; ctx.lineWidth = 3; ctx.stroke(); }
+        // nation labels (at each nation's hex centroid)
+        var cent = {};
+        Object.keys(hexes).forEach(function (k) { var h = hexes[k]; if (!h.nation_id) return; var c = cent[h.nation_id] || (cent[h.nation_id] = { x: 0, y: 0, n: 0 }); var p = axialToPix(h.q, h.r); c.x += p.x; c.y += p.y; c.n++; });
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        Object.keys(cent).forEach(function (nid) { var c = cent[nid]; ctx.font = '700 ' + (12 * Math.min(1.2, view.z)) + 'px Archivo'; ctx.fillStyle = '#15151b'; ctx.fillText(natName[nid] || 'Nation', c.x / c.n, c.y / c.n); });
+        ctx.textAlign = 'left';
+      }
+
+      // ---- data ----
+      function isEmpty(h) { return h.terrain === 'sea' && !h.nation_id && !h.name && (h.population == null || h.population === '') && (!h.resources || !Object.keys(h.resources).length); }
+      function ensure(q, r) { var k = q + ',' + r; if (!hexes[k]) hexes[k] = { q: q, r: r, terrain: 'sea', nation_id: null, name: null, population: null, resources: {} }; return hexes[k]; }
+      function paint(q, r) {
+        if (!inBounds(q, r)) return; var k = q + ',' + r;
+        if (tool === 'sea') { delete hexes[k]; if (selKey === k) closeInspect(); }
+        else if (tool === 'land') { ensure(q, r).terrain = 'land'; }
+        else if (tool === 'nation') { if (!assignNation) { status('Pick a nation to assign first.'); return; } var h = ensure(q, r); h.terrain = 'land'; h.nation_id = assignNation; }
+        draw();
+      }
+      async function load() {
+        status('Loading…'); hexes = {}; loaded = {};
+        var res = await supabase.from('world_hexes').select('*');
+        if (res.error) { status('Couldn’t load the map.'); return; }
+        (res.data || []).forEach(function (h) { var k = h.q + ',' + h.r; hexes[k] = { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id, name: h.name, population: h.population, resources: h.resources || {} }; loaded[k] = { q: h.q, r: h.r }; });
+        status('');
+      }
+      async function loadNations() {
+        var res = await supabase.from('nations').select('id, name').order('name');
+        natName = {}; natColor = {}; natOrder = [];
+        (res.data || []).forEach(function (n, i) { natName[n.id] = n.name; natColor[n.id] = WM_PALETTE[i % WM_PALETTE.length]; natOrder.push(n.id); });
+        var sel = document.getElementById('wmNation');
+        sel.innerHTML = '<option value="">— pick a nation —</option>' + natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('');
+        sel.value = assignNation;
+      }
+      async function save() {
+        var btn = document.getElementById('wmSave'); btn.disabled = true; status('Saving…');
+        try {
+          Object.keys(hexes).forEach(function (k) { if (isEmpty(hexes[k])) delete hexes[k]; });   // prune junk
+          var rows = Object.keys(hexes).map(function (k) { var h = hexes[k]; return { q: h.q, r: h.r, terrain: h.terrain, nation_id: h.nation_id || null, name: (h.name && h.name.trim()) || null, population: (h.population === '' || h.population == null) ? null : Number(h.population), resources: h.resources || {} }; });
+          if (rows.length) { var up = await supabase.from('world_hexes').upsert(rows, { onConflict: 'q,r' }); if (up.error) throw up.error; }
+          var dels = Object.keys(loaded).filter(function (k) { return !hexes[k]; });
+          for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
+          loaded = {}; Object.keys(hexes).forEach(function (k) { loaded[k] = { q: hexes[k].q, r: hexes[k].r }; });
+          status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + '.');
+        } catch (e) { status('Save failed: ' + ((e && e.message) || 'error')); }
+        btn.disabled = false;
+      }
+      function status(t) { document.getElementById('wmStatus').textContent = t; }
+
+      // ---- inspector ----
+      function closeInspect() { if (selKey && hexes[selKey] && isEmpty(hexes[selKey])) delete hexes[selKey]; selKey = null; document.getElementById('wmInspect').hidden = true; draw(); }
+      function openInspect(q, r) {
+        var nk = q + ',' + r;
+        if (selKey && selKey !== nk && hexes[selKey] && isEmpty(hexes[selKey])) delete hexes[selKey];   // drop the prior untouched hex
+        var h = ensure(q, r); selKey = nk;
+        var box = document.getElementById('wmInspect'); box.hidden = false;
+        var natOpts = '<option value="">— none —</option>' + natOrder.map(function (id) { return '<option value="' + esc(id) + '"' + (h.nation_id === id ? ' selected' : '') + '>' + esc(natName[id]) + '</option>'; }).join('');
+        box.innerHTML =
+          '<h4>Hex ' + q + ', ' + r + '<button class="wm-x" id="wmIx" type="button" aria-label="Close">×</button></h4>' +
+          '<label>Terrain</label><select id="wmITerrain"><option value="sea"' + (h.terrain === 'sea' ? ' selected' : '') + '>Sea</option><option value="land"' + (h.terrain === 'land' ? ' selected' : '') + '>Land</option></select>' +
+          '<label>Nation</label><select id="wmINation">' + natOpts + '</select>' +
+          '<label>Name</label><input id="wmIName" type="text" maxlength="60" value="' + esc(h.name || '') + '">' +
+          '<label>Population</label><input id="wmIPop" type="number" min="0" step="1" value="' + (h.population != null ? h.population : '') + '">' +
+          '<label>Resources</label><div class="wm-res">' + WM_RES.map(function (k) { return '<div><label style="margin:0 0 2px">' + (k.charAt(0).toUpperCase() + k.slice(1)) + '</label><input data-res="' + k + '" type="number" step="any" value="' + (h.resources && h.resources[k] != null ? h.resources[k] : '') + '"></div>'; }).join('') + '</div>' +
+          '<button class="wm-clear" id="wmIClear" type="button">Erase hex (→ sea)</button>';
+        box.querySelector('#wmIx').onclick = closeInspect;
+        box.querySelector('#wmITerrain').onchange = function () { h.terrain = this.value; if (h.terrain === 'sea') h.nation_id = null; openInspect(q, r); draw(); };
+        box.querySelector('#wmINation').onchange = function () { h.nation_id = this.value || null; if (h.nation_id) h.terrain = 'land'; draw(); };
+        box.querySelector('#wmIName').oninput = function () { h.name = this.value; };
+        box.querySelector('#wmIPop').oninput = function () { h.population = this.value === '' ? null : Number(this.value); };
+        box.querySelectorAll('[data-res]').forEach(function (inp) { inp.oninput = function () { var v = this.value, key = this.dataset.res; if (v === '' || Number(v) === 0) delete h.resources[key]; else h.resources[key] = Number(v); }; });
+        box.querySelector('#wmIClear').onclick = function () { delete hexes[selKey]; selKey = null; box.hidden = true; draw(); };
+        draw();
+      }
+
+      // ---- interaction ----
+      function setTool(t) { tool = t; document.querySelectorAll('.wm-tool').forEach(function (b) { b.classList.toggle('active', b.dataset.tool === t); }); cv.className = (t === 'select') ? '' : 'paint'; }
+      cv.addEventListener('mousedown', function (e) {
+        var rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        moved = 0; last = { x: e.clientX, y: e.clientY };
+        if (tool === 'select') { panning = true; }
+        else { painting = true; var a = pixToAxial(mx, my); paint(a[0], a[1]); }
+      });
+      window.addEventListener('mousemove', function (e) {
+        if (!panning && !painting) return;
+        var dx = e.clientX - last.x, dy = e.clientY - last.y; moved += Math.abs(dx) + Math.abs(dy);
+        if (panning) { view.x += dx; view.y += dy; last = { x: e.clientX, y: e.clientY }; cv.className = 'drag'; draw(); }
+        else if (painting) { var rect = cv.getBoundingClientRect(), a = pixToAxial(e.clientX - rect.left, e.clientY - rect.top); paint(a[0], a[1]); last = { x: e.clientX, y: e.clientY }; }
+      });
+      window.addEventListener('mouseup', function (e) {
+        if (panning && moved < 4) { var rect = cv.getBoundingClientRect(), a = pixToAxial(e.clientX - rect.left, e.clientY - rect.top); if (inBounds(a[0], a[1])) openInspect(a[0], a[1]); else closeInspect(); }
+        if (panning) cv.className = tool === 'select' ? '' : 'paint';
+        panning = false; painting = false;
+      });
+      cv.addEventListener('wheel', function (e) { e.preventDefault(); var rect = cv.getBoundingClientRect(), f = e.deltaY < 0 ? 1.12 : 0.89, nz = Math.max(0.4, Math.min(2.6, view.z * f)), k = nz / view.z, cx = e.clientX - rect.left, cy = e.clientY - rect.top; view.x = cx - (cx - view.x) * k; view.y = cy - (cy - view.y) * k; view.z = nz; draw(); }, { passive: false });
+      document.querySelectorAll('.wm-tool').forEach(function (b) { b.addEventListener('click', function () { setTool(b.dataset.tool); }); });
+      document.getElementById('wmNation').addEventListener('change', function () { assignNation = this.value; if (this.value) setTool('nation'); });
+      document.getElementById('wmSave').addEventListener('click', save);
+      document.getElementById('wmZin').onclick = function () { var W = cv.clientWidth / 2, H = cv.clientHeight / 2, k = 1.18; view.x = W - (W - view.x) * k; view.y = H - (H - view.y) * k; view.z = Math.min(2.6, view.z * k); draw(); };
+      document.getElementById('wmZout').onclick = function () { var W = cv.clientWidth / 2, H = cv.clientHeight / 2, k = 0.85; view.x = W - (W - view.x) * k; view.y = H - (H - view.y) * k; view.z = Math.max(0.4, view.z * k); draw(); };
+      document.getElementById('wmZreset').onclick = function () { view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; draw(); };
+
+      function fit() { var W = cv.clientWidth, H = cv.clientHeight; cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); draw(); }
+      window.addEventListener('resize', function () { if (!document.querySelector('.tabpane[data-tab="world-map"]').hidden) fit(); });
+
+      return { onShow: async function () {
+        if (!loadedOnce) { loadedOnce = true; view = { x: cv.clientWidth / 2, y: cv.clientHeight / 2, z: 1 }; await loadNations(); await load(); }
+        fit();
+      } };
+    }
 
     // ---- Events (compose + fire a one-off event; applied + logged server-side) ----
     // EV holds the composer's effect: target, signed value, tone, and whether the
