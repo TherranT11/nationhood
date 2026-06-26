@@ -520,6 +520,12 @@ begin
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
   begin perform public._apply_crisis_tick(v_tick);
   exception when others then raise warning 'tick %: crises failed — %', v_tick, sqlerrm; end;
+  -- Minority-government instability (schema/104): each active minority government bleeds −0.3
+  -- Government Confidence this tick, and falls to a snap election (with a standing penalty on the
+  -- head of government's party) if that erosion takes it below 20%. Runs on this tick's settled
+  -- confidence; its own per-nation isolation lives inside _apply_minority_confidence.
+  begin perform public._apply_minority_confidence(v_tick);
+  exception when others then raise warning 'tick %: minority confidence failed — %', v_tick, sqlerrm; end;
   -- World Events (schema/100): resolve any Competitive contest whose 3-tick sealed-bid window
   -- has closed (those where everyone bid early already resolved on the final bid). Isolated.
   begin perform public._resolve_overdue_world_events(v_tick);
