@@ -900,6 +900,7 @@
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
     import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
+    import * as HM from '/hexmap.js';
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
     import { ARCHETYPES } from '/archetypes.js';
@@ -1452,8 +1453,6 @@
     // rows, delete erased ones). Standalone: nothing here feeds nation totals.
     var WM = null;
     var WM_RES = ['energy', 'food', 'minerals', 'goods', 'services', 'military'];
-    var WM_PALETTE = ['#5546E8', '#16915a', '#C42B2B', '#E0820E', '#1f86d6', '#8b46e8',
-                      '#0f9b8e', '#d6457e', '#7a8b1f', '#c98a16', '#3f6fd6', '#9a5b2d'];
     function initWorldMap() { if (!WM) WM = setupWorldMap(); WM.onShow(); }
 
     function setupWorldMap() {
@@ -1466,14 +1465,12 @@
       var tool = 'select', assignNation = '', selKey = null;
       var painting = false, panning = false, last = { x: 0, y: 0 }, moved = 0, loadedOnce = false;
 
-      // ---- geometry (pointy-top axial) ----
-      function hexW() { return Math.sqrt(3) * SIZE * view.z; }
-      function axialToPix(q, r) { return { x: hexW() * (q + r / 2) + view.x, y: 1.5 * SIZE * view.z * r + view.y }; }
-      function hexPath(cx, cy, s) { ctx.beginPath(); for (var i = 0; i < 6; i++) { var a = Math.PI / 180 * (60 * i - 90), px = cx + s * Math.cos(a), py = cy + s * Math.sin(a); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.closePath(); }
-      function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 1, r], [q, r - 1], [q + 1, r - 1]]; }
-      function hexEdge(cx, cy, s, d) { var a1 = Math.PI / 180 * (60 * d - 90), a2 = Math.PI / 180 * (60 * (d + 1) - 90); return { x1: cx + s * Math.cos(a1), y1: cy + s * Math.sin(a1), x2: cx + s * Math.cos(a2), y2: cy + s * Math.sin(a2) }; }
-      function hexRound(q, r) { var x = q, z = r, y = -x - z, rx = Math.round(x), ry = Math.round(y), rz = Math.round(z), dx = Math.abs(rx - x), dy = Math.abs(ry - y), dz = Math.abs(rz - z); if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry; return [rx, rz]; }
-      function pixToAxial(px, py) { var x = px - view.x, y = py - view.y, r = y / (1.5 * SIZE * view.z), q = x / hexW() - r / 2; return hexRound(q, r); }
+      // ---- geometry (shared module; thin adapters bind the editor's view + ctx) ----
+      var neighbors = HM.neighbors;
+      function axialToPix(q, r) { return HM.axialToPix(q, r, SIZE * view.z, view.x, view.y); }
+      function pixToAxial(px, py) { return HM.pixToAxial(px, py, SIZE * view.z, view.x, view.y); }
+      function hexPath(cx, cy, s) { HM.hexPath(ctx, cx, cy, s); }
+      function hexEdge(cx, cy, s, d) { return HM.hexEdge(cx, cy, s, d); }
       function inBounds(q, r) { return q >= Q0 && q <= Q1 && r >= R0 && r <= R1; }
 
       // ---- render ----
@@ -1538,7 +1535,7 @@
         var res = await supabase.from('nations').select('id, name').order('name');
         natName = {}; natColor = {}; natOrder = [];
         if (res.error) status('Couldn’t load nations.');
-        else (res.data || []).forEach(function (n, i) { natName[n.id] = n.name; natColor[n.id] = WM_PALETTE[i % WM_PALETTE.length]; natOrder.push(n.id); });
+        else (res.data || []).forEach(function (n, i) { natName[n.id] = n.name; natColor[n.id] = HM.NATION_PALETTE[i % HM.NATION_PALETTE.length]; natOrder.push(n.id); });
         var sel = document.getElementById('wmNation');
         sel.innerHTML = '<option value="">— pick a nation —</option>' + natOrder.map(function (id) { return '<option value="' + esc(id) + '">' + esc(natName[id]) + '</option>'; }).join('');
         sel.value = assignNation;
