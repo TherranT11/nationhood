@@ -44,6 +44,23 @@ begin
   end if;
 end $$;
 
+-- A party's identity is the archetype it holds the most convictions in (ties → the tree it
+-- committed to earliest); null when it holds none. ONE source — recomputed after every adopt
+-- and drop, read everywhere else (ideologyLabel, accents, manifesto grouping).
+create or replace function public._recompute_party_archetype(p_party uuid)
+returns void language sql security definer set search_path = public as $$
+  update public.parties p set archetype = (
+    select c.definition->>'archetype'
+    from public.party_convictions pc
+    join public.convictions c on c.id = pc.conviction_id
+    where pc.party_id = p_party
+    group by c.definition->>'archetype'
+    order by count(*) desc, min(pc.created_at) asc
+    limit 1
+  ) where p.id = p_party;
+$$;
+revoke all on function public._recompute_party_archetype(uuid) from public, anon, authenticated;
+
 -- Adopt a conviction for the caller's party: validate, spend the points, record it,
 -- apply the on-adopt effects, and announce the new platform. Server-authoritative.
 -- A party is NOT locked to one archetype — it may mix convictions across trees, with
@@ -86,18 +103,9 @@ begin
   update public.parties set conviction = conviction - v_cost where id = v_party.id;
   insert into public.party_convictions (party_id, conviction_id) values (v_party.id, p_conviction);
 
-  -- Identity = the archetype this party holds the most convictions in; ties go to the
-  -- tree it committed to earliest. Recompute now (with the new row counted) so the
-  -- on-adopt effects below and every reader see the up-to-date archetype.
-  update public.parties p set archetype = (
-    select c.definition->>'archetype'
-    from public.party_convictions pc
-    join public.convictions c on c.id = pc.conviction_id
-    where pc.party_id = v_party.id
-    group by c.definition->>'archetype'
-    order by count(*) desc, min(pc.created_at) asc
-    limit 1
-  ) where p.id = v_party.id;
+  -- Recompute identity now (with the new row counted) so the on-adopt effects below and
+  -- every reader see the up-to-date archetype.
+  perform public._recompute_party_archetype(v_party.id);
 
   for v_eff in select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb)) loop
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, v_eff);
@@ -142,17 +150,7 @@ begin
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, jsonb_build_object('t', 'Government Confidence', 'v', -20));
   end if;
 
-  -- Identity = the archetype this party now holds the most convictions in (null if none) —
-  -- mirrors the recompute in adopt_conviction.
-  update public.parties p set archetype = (
-    select c.definition->>'archetype'
-    from public.party_convictions pc
-    join public.convictions c on c.id = pc.conviction_id
-    where pc.party_id = v_party.id
-    group by c.definition->>'archetype'
-    order by count(*) desc, min(pc.created_at) asc
-    limit 1
-  ) where p.id = v_party.id;
+  perform public._recompute_party_archetype(v_party.id);   -- identity follows the remaining convictions (null if none)
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'conviction',

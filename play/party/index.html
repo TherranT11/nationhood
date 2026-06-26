@@ -849,7 +849,7 @@
           CVS.party.archetype = p.archetype; ME.party.archetype = p.archetype;
           document.getElementById('st-pop').textContent = Number(p.popularity) || 0;
         }
-      } catch (_) {}
+      } catch (_) { if (res.data && res.data.conviction != null) CVS.balance = res.data.conviction; }
       setIdeology(CVS.party); applyAccent(partyColor(CVS.party));   // reverts to "No Ideology" if the last conviction went
     } catch (e) { alert((e && e.message) || 'Couldn’t drop that conviction.'); }
     finally {
