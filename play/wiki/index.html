@@ -116,7 +116,7 @@
           <button class="shuffle" id="shuffleBtn"><svg viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/><path d="M16 21h5v-5"/><path d="M3 3l7 7"/></svg>Shuffle</button>
         </div>
         <article class="featured" id="featured"></article>
-        <div class="cta" id="cta" hidden>
+        <div class="cta" id="cta">
           <div class="ct"><b>Know something the world doesn’t?</b><span>Document a nation, party, leader, or event.</span></div>
           <a class="create" href="/adminsetup/"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Create New Entry</a>
         </div>
@@ -143,8 +143,6 @@
   mountTopbar();
   mountSidenav();
   injectWikiCSS();
-
-  var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only for the Create CTA; real gate is is_admin() RLS
 
   // Per-kind icon + colour class for the recently-edited list and featured thumbnail.
   var KIND_META = {
@@ -290,7 +288,6 @@
     const user = await requireUser();
     if (!user) return; // redirected to login
     setBrand(user.id);
-    if (user.email === ADMIN_EMAIL) document.getElementById('cta').hidden = false;
     const { data: rows, error } = await supabase.from('wiki_articles').select('id, title, kind, definition, updated_at, created_at').order('title');
     if (error) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Couldn’t load Nationhopedia. ' + esc(error.message || '') + '</div>'; return; }
     ROWS = rows || [];
