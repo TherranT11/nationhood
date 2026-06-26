@@ -71,6 +71,8 @@
   .pname-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .pname-row h1{font-weight:900;font-size:clamp(24px,3.2vw,34px);letter-spacing:-.02em;line-height:1.05}
   .pabbr{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;color:var(--soft)}
+  /* The owner's OOC nickname shown after the party name — "Centrist Union (Theo)". */
+  .pnick{font-size:15px;font-weight:600;color:var(--soft)}
   .pbadges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:11px}
   .pbadge{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:5px 11px;border-radius:20px;background:var(--indigo-soft);color:var(--indigo)}
   .pbadge--status{display:inline-flex;align-items:center;gap:7px;background:var(--chip);color:var(--muted)}
@@ -295,7 +297,7 @@
           <button class="editparty" id="editPartyBtn" type="button">Edit Party</button>
         </div>
         <div class="phead__txt">
-          <div class="pname-row"><h1 id="phead">&hellip;</h1><span class="pabbr" id="pabbr"></span></div>
+          <div class="pname-row"><h1 id="phead">&hellip;</h1><span class="pabbr" id="pabbr"></span><span class="pnick" id="pnick"></span></div>
           <div class="pbadges">
             <span class="pbadge" id="archBadge">&mdash;</span>
             <span class="pbadge pbadge--status" id="statusBadge"><span class="dot"></span><span id="statusText">Opposition</span></span>
@@ -970,6 +972,11 @@
 
       // Header card.
       document.getElementById('pabbr').textContent = party.abbreviation ? '(' + party.abbreviation + ')' : '';
+      // Owner OOC nickname after the party name (cosmetic — a miss must never block the page).
+      try {
+        const { data: prof } = await supabase.from('profiles').select('handle').eq('id', user.id).single();
+        document.getElementById('pnick').textContent = (prof && prof.handle) ? '(' + prof.handle + ')' : '';
+      } catch (e) { /* no nickname shown */ }
       setOnline(party.last_active_at);
       ME.user = user; ME.party = party;
       applyAccent(partyColor(party));  // party colour (or archetype default) overrides the page accent

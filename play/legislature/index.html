@@ -77,6 +77,8 @@
   .rollhd span:nth-child(2){text-align:right}.rollhd span:nth-child(3){text-align:center}
   .rollr{border-top:1px solid var(--line);padding:6px 0}
   .rollr .pn{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:7px;min-width:0}
+  /* The owner's OOC nickname shown after a party name — "Centrist Union (Theo)". */
+  .pnick{font-weight:600;color:var(--soft)}
   .rollr .ru{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;background:var(--indigo-soft);color:var(--indigo);padding:1px 6px;border-radius:20px;font-weight:700;flex:none}
   .rollr .ps{font-family:'Space Mono',monospace;font-size:11.5px;color:var(--muted);text-align:right}
   .rollr .pv{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;padding:3px 0;border-radius:20px;text-align:center}
@@ -164,7 +166,9 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
   var FLOOR_WINDOW = 6;  // ticks a measure stands on the floor before failing — mirrors advance_tick (schema/60)
-  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, busy:false };
+  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, partyHandle:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, busy:false };
+  // Owner OOC nickname after a party name — "Centrist Union (Theo)". One source for the suffix.
+  function nickSuffix(pid){ var h = ST.partyHandle[pid]; return h ? ' <span class="pnick">(' + esc(h) + ')</span>' : ''; }
 
   function tallyOf(pid){
     var vs = ST.votes.filter(function(v){ return v.proposal_id === pid; });
@@ -189,7 +193,7 @@
       ids.map(function (id) {
         var v = by[id], cls = v === undefined ? 'none' : v ? 'aye' : 'nay', lbl = v === undefined ? 'Awaiting' : v ? 'Aye' : 'Nay';
         var seats = ST.seatsByParty[id] || 0, you = id === ST.party.id ? '<span class="ru">You</span>' : '';
-        return '<div class="rollr"><span class="pn">' + esc(ST.partyName[id]) + you + '</span>' +
+        return '<div class="rollr"><span class="pn">' + esc(ST.partyName[id]) + nickSuffix(id) + you + '</span>' +
           '<span class="ps">' + seats + '</span><span class="pv ' + cls + '">' + lbl + '</span></div>';
       }).join('') + '</div>';
   }
@@ -197,7 +201,7 @@
     // The proposal's title is the bill heading — the authored bill name for a law (or its
     // "Policy → Option" fallback), the "Slot → Value" for a declaration. The Current/Proposed
     // rows show below via lawChange().
-    return '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + '</span></div>';
+    return '<div class="measure__hd"><span class="measure__t">' + esc(p.title) + '</span><span class="measure__by">by ' + esc(ST.partyName[p.party_id] || 'a party') + nickSuffix(p.party_id) + '</span></div>';
   }
   // A law bill's introductory article ("An Act to…"), authored on the propose page — shown as a
   // preamble under the heading when present.
@@ -332,6 +336,11 @@
       ST.total = (nation && nation.legislature_seats) || 0;
       ST.maj = ST.total ? majority(ST.total) : 0;
       (parties || []).forEach(function (p) { ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; if (p.in_government) ST.govBloc += (p.seats || 0); });
+      // Owner OOC nicknames, keyed by party (cosmetic — a failure must never block the chamber).
+      try {
+        const { data: hrows } = await supabase.rpc('nation_party_handles', { p_nation: party.nation_id });
+        (hrows || []).forEach(function (h) { ST.partyHandle[h.party_id] = h.handle; });
+      } catch (e) { /* no nicknames shown */ }
 
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
