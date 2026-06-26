@@ -272,8 +272,19 @@
       supabase.rpc('law_transition_preview', { p_policy: curPolicy().id, p_from: from, p_to: to }).then(function (r) {
         if (myseq !== transSeq) return;
         var fx = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
-        box.innerHTML = fx.length
-          ? fx.map(function (e) { return effRow(effectText({ t: e.t, v: e.v, scale: e.scale || 'flat', cad: 'once' }, pop, pros), 'on change'); }).join('')
+        // Consolidate by target (and scale, since unlike scales aren't summable) so a multi-rung
+        // move shows one net line per stat — "Growth −4" — not every rung's step. Display only:
+        // the server still applies each doorway effect individually (_doorway_effects). Net-zero
+        // targets drop out (no net cost). Keep first-appearance order.
+        var agg = [], pos = {};
+        fx.forEach(function (e) {
+          var scale = e.scale || 'flat', key = e.t + '|' + scale;
+          if (pos[key] == null) { pos[key] = agg.length; agg.push({ t: e.t, v: 0, scale: scale }); }
+          agg[pos[key]].v += (Number(e.v) || 0);
+        });
+        var rows = agg.filter(function (e) { return e.v !== 0; });
+        box.innerHTML = rows.length
+          ? rows.map(function (e) { return effRow(effectText({ t: e.t, v: e.v, scale: e.scale, cad: 'once' }, pop, pros), 'on change'); }).join('')
           : '<p class="none">No cost to change to this rung.</p>';
       }).catch(function () { if (myseq === transSeq) box.innerHTML = '<p class="none">Couldn’t load the cost — reselect to retry.</p>'; });
     }
