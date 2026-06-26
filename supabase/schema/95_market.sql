@@ -42,10 +42,5 @@ update public.market set max_price = 20 where resource = 'energy' and max_price 
 insert into public.market (resource, available, min_price, max_price)
 select 'military', (floor(random() * 6) + 1)::int, 1, 20
 where not exists (select 1 from public.market where resource = 'military');
-
--- Give every nation a 1d6 starting Military stockpile (each rolls its own). Guarded on the key
--- so re-applying never re-rolls a stockpile that trading may have since changed. (Base-commodity
--- on_hand is seeded in 10_nations; Military lives here with the rest of the market feature.)
-update public.nations
-   set on_hand = on_hand || jsonb_build_object('military', (floor(random() * 6) + 1)::int)
- where not (on_hand ? 'military');
+-- Military on-hand is seeded from production (= production, 1:1) in 10_nations, like the other
+-- commodities — no separate roll here.

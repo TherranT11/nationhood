@@ -529,7 +529,6 @@
           <div><label for="f-services">Services (Production)</label><input id="f-services" type="number" step="1"></div>
           <div><label for="f-diplomacy">Diplomacy (Production)</label><input id="f-diplomacy" type="number" step="1"></div>
           <div><label for="f-military-prod">Military (Production)</label><input id="f-military-prod" type="number" step="1"></div>
-          <div><label for="f-military">Military (Starting On Hand)</label><input id="f-military" type="number" min="0" step="1" placeholder="units (e.g. 1–6)"></div>
         </div>
         <div class="declsec">
           <h3 class="declsec__h">National Identity &amp; Declarations</h3>
@@ -972,7 +971,6 @@
       setVal('f-energy', pr.energy); setVal('f-food', pr.food); setVal('f-minerals', pr.minerals);
       setVal('f-goods', pr.goods); setVal('f-services', pr.services); setVal('f-diplomacy', pr.diplomacy);
       setVal('f-military-prod', pr.military);
-      setVal('f-military', (n.on_hand || {}).military);
       fillDeclFields(n);
       fillPolFields(n);
     }
@@ -1222,12 +1220,11 @@
           goods: num('f-goods'), services: num('f-services'), diplomacy: num('f-diplomacy'),
           military: num('f-military-prod')
         },
-        // Starting on-hand equals production, 1:1, for the five base commodities (Energy 1 →
-        // 1 on hand). Military keeps its own starting-stockpile field. Merge so editing never
-        // drops keys that trading may later change.
+        // Starting on-hand equals production, 1:1, for every tradeable resource (Energy 1 → 1
+        // on hand), Military included. Merge so editing never drops keys trading may change.
         on_hand: Object.assign({}, (editing && editing.on_hand) || {}, {
           energy: num('f-energy'), food: num('f-food'), minerals: num('f-minerals'),
-          goods: num('f-goods'), services: num('f-services'), military: num('f-military')
+          goods: num('f-goods'), services: num('f-services'), military: num('f-military-prod')
         }),
         declarations: collectDeclarations(),
         policies: collectNationPolicies()
