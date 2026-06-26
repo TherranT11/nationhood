@@ -90,7 +90,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { axialToPix, hexPath, hexEdge, neighbors, NATION_PALETTE } from '/hexmap.js';
+  import { axialToPix, pixToAxial, hexPath, hexEdge, borderEdges, nationColors } from '/hexmap.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -114,14 +114,24 @@
     if (none) none.style.display = 'none'; cv.style.display = 'block';
     var DPR = window.devicePixelRatio || 1, W = box.clientWidth, H = box.clientHeight;
     cv.width = W * DPR; cv.height = H * DPR; var ctx = cv.getContext('2d'); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    // Fit the land's bounding box (plus a sea margin) into the box → scale s, origin ox/oy.
-    var hmap = {}, qmin = Infinity, qmax = -Infinity, rmin = Infinity, rmax = -Infinity, minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
-    land.forEach(function (h) { hmap[h.q + ',' + h.r] = h; var p = axialToPix(h.q, h.r, 1, 0, 0); minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y); qmin = Math.min(qmin, h.q); qmax = Math.max(qmax, h.q); rmin = Math.min(rmin, h.r); rmax = Math.max(rmax, h.r); });
-    var M = 2.5; minx -= M * Math.sqrt(3); maxx += M * Math.sqrt(3); miny -= M * 1.5; maxy += M * 1.5;
+    var hmap = {}; land.forEach(function (h) { hmap[h.q + ',' + h.r] = h; });
+    var landAt = function (q, r) { return hmap[q + ',' + r] || null; };
+    // Fit/centre on the FOCUS hexes: in Nation mode the viewed nation's (zoomed in on it),
+    // otherwise the whole painted world. M = hexes of context kept around the focus.
+    var focus = (NMAP.mode === 'nation') ? land.filter(function (h) { return h.nation_id === NMAP.viewedId; }) : land;
+    if (!focus.length) focus = land;   // viewed nation has no hexes → show the world
+    var M = (NMAP.mode === 'nation' && focus !== land) ? 3 : 2.5;
+    var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+    focus.forEach(function (h) { var p = axialToPix(h.q, h.r, 1, 0, 0); minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y); });
+    minx -= M * Math.sqrt(3); maxx += M * Math.sqrt(3); miny -= M * 1.5; maxy += M * 1.5;
     var pad = 6, bw = (maxx - minx) || 1, bh = (maxy - miny) || 1, s = Math.min((W - 2 * pad) / bw, (H - 2 * pad) / bh);
     var ox = pad - minx * s + ((W - 2 * pad) - bw * s) / 2, oy = pad - miny * s + ((H - 2 * pad) - bh * s) / 2;
+    // Visible axial window = the box's four corners back-projected (so surrounding land/sea
+    // fill the frame around the focus, whatever the zoom). One extra ring of margin.
+    var cs = [pixToAxial(0, 0, s, ox, oy), pixToAxial(W, 0, s, ox, oy), pixToAxial(0, H, s, ox, oy), pixToAxial(W, H, s, ox, oy)];
+    var qs = cs.map(function (c) { return c[0]; }), rs = cs.map(function (c) { return c[1]; });
+    var QA = Math.min.apply(null, qs) - 1, QB = Math.max.apply(null, qs) + 1, RA = Math.min.apply(null, rs) - 1, RB = Math.max.apply(null, rs) + 1;
     ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#bcd9e6'; ctx.fillRect(0, 0, W, H);
-    var QA = Math.floor(qmin - M - 1), QB = Math.ceil(qmax + M + 1), RA = Math.floor(rmin - M - 1), RB = Math.ceil(rmax + M + 1);
     for (var r = RA; r <= RB; r++) for (var q = QA; q <= QB; q++) {
       var p = axialToPix(q, r, s, ox, oy); if (p.x < -s * 2 || p.x > W + s * 2 || p.y < -s * 2 || p.y > H + s * 2) continue;
       var h = hmap[q + ',' + r];
@@ -134,13 +144,13 @@
       ctx.lineWidth = 1; ctx.strokeStyle = h ? 'rgba(120,110,90,.25)' : 'rgba(110,150,170,.28)'; ctx.stroke();
     }
     for (var r2 = RA; r2 <= RB; r2++) for (var q2 = QA; q2 <= QB; q2++) {
-      var hh = hmap[q2 + ',' + r2]; if (!hh) continue;
+      if (!landAt(q2, r2)) continue;
       var p2 = axialToPix(q2, r2, s, ox, oy); if (p2.x < -s * 2 || p2.x > W + s * 2 || p2.y < -s * 2 || p2.y > H + s * 2) continue;
-      var nb = neighbors(q2, r2);
-      for (var d = 0; d < 6; d++) {
-        var nh = hmap[nb[d][0] + ',' + nb[d][1]], seaEdge = !nh, natEdge = hh.nation_id && (!nh || nh.nation_id !== hh.nation_id);
-        if (seaEdge || natEdge) { var e = hexEdge(p2.x, p2.y, s * 0.96, d); ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2); if (seaEdge) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 1.6; } else { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; } ctx.stroke(); }
-      }
+      borderEdges(landAt, q2, r2).forEach(function (ed) {
+        var e = hexEdge(p2.x, p2.y, s * 0.96, ed.d);
+        ctx.beginPath(); ctx.moveTo(e.x1, e.y1); ctx.lineTo(e.x2, e.y2);
+        if (ed.sea) { ctx.strokeStyle = '#7fa9bd'; ctx.lineWidth = 1.6; } else { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.2; } ctx.stroke();
+      });
     }
   }
   window.addEventListener('resize', function () { if (document.getElementById('natMap')) drawNatMap(); });
@@ -254,7 +264,7 @@
       var hexData = [];
       try { var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id'); if (!hr.error) hexData = hr.data || []; } catch (e) {}
       NMAP.hexes = hexData; NMAP.viewedId = viewId; NMAP.mode = 'nation';
-      NMAP.natColor = {}; (others || []).forEach(function (n, i) { NMAP.natColor[n.id] = NATION_PALETTE[i % NATION_PALETTE.length]; });
+      NMAP.natColor = nationColors(others || []);   // palette by name order — matches the editor
       render(nation, slots || [], gov, pmParty, pmPol, others || [], viewId);
     } catch (e) {
       fail('Couldn’t load the nation right now. Refresh to try again.');
