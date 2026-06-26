@@ -430,10 +430,14 @@ grant execute on function public.cast_floor_vote(uuid, boolean) to authenticated
 -- of voting resolves by ONE rule: it CARRIES unless the head-of-government party cast a No
 -- vote to defend itself (so an absent/inactive government falls automatically). Carrying
 -- punishes the government party (−5% popularity, −3% floor) and calls a fresh election;
--- failing punishes the proposer instead. A 12-tick per-party cooldown caps the spam.
+-- failing punishes the proposer instead. A 12-tick NATION-WIDE cooldown caps the spam (so the
+-- action greys out for every player in the nation while it's active).
 -- ---------------------------------------------------------------------------
--- Per-party cooldown: the tick before which this party can't table another motion.
-alter table public.parties add column if not exists no_confidence_until_tick int;
+-- Per-NATION cooldown: the tick before which NO party in the nation can table another motion.
+-- Nation-scoped (not per-party) so the action greys out for every player in the nation while
+-- it's on cooldown. World-readable (it rides nations) — the dashboard reads it to gate the button.
+alter table public.nations add column if not exists no_confidence_until_tick int;
+alter table public.parties drop column if exists no_confidence_until_tick;   -- moved to nations
 
 -- The no-confidence penalty: −3% support floor (not below 0) and −5% popularity (not below
 -- the new floor, nor below the archetype modifier floor — the canonical drop clamp). ONE place
@@ -505,8 +509,8 @@ declare
 begin
   v_party := public._begin_action(0);   -- requires >= 1 action
   select current_tick into v_tick from public.game_state where id;
-  if coalesce(v_party.no_confidence_until_tick, 0) > v_tick then
-    raise exception 'Your party can''t table another no-confidence motion yet (12-tick cooldown).';
+  if coalesce((select no_confidence_until_tick from public.nations where id = v_party.nation_id), 0) > v_tick then
+    raise exception 'This nation can''t table another no-confidence motion yet (12-tick cooldown).';
   end if;
   select formateur_party_id into v_hog from public.governments where nation_id = v_party.nation_id and status = 'active';
   if v_hog is null then raise exception 'There is no sitting government to challenge.'; end if;
@@ -522,12 +526,13 @@ begin
             '{}'::jsonb, 'agenda', v_sched)
     returning id into v_pid;
 
-  update public.parties set actions_remaining = actions_remaining - 1, no_confidence_until_tick = v_tick + 12 where id = v_party.id;
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  update public.nations set no_confidence_until_tick = v_tick + 12 where id = v_party.nation_id;   -- nation-wide cooldown
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'declaration',
             v_party.name || ' tabled a vote of no confidence in ' || coalesce(v_hogname, 'the government') || '.', public.current_game_date());
 
-  return jsonb_build_object('id', v_pid, 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining - 1);
+  return jsonb_build_object('id', v_pid, 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining - 1, 'until', v_tick + 12);
 end $$;
 grant execute on function public.propose_no_confidence() to authenticated;
 
