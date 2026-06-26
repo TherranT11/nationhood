@@ -6,6 +6,15 @@
 export const CONV_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
 export function convRoman(l) { return CONV_ROMAN[(l || 1) - 1] || l; }
 export function isPctTarget(t) { return t === 'Party Popularity' || t === 'Government Confidence' || t === 'Popularity Ceiling'; }
+
+// Scaling conviction costs: every conviction a party already holds at a level multiplies
+// the price of the NEXT one at that level. Level I doubles (×2 per held), Level II triples
+// (×3 per held); Levels III–V don't scale. MIRRORS adopt_conviction's cost math (schema/94)
+// — the server is authoritative; this is the display + affordability mirror.
+export function convLevelMult(level) { return Number(level) === 1 ? 2 : Number(level) === 2 ? 3 : 1; }
+export function convScaledCost(baseCost, level, heldAtLevel) {
+  return Math.round((Number(baseCost) || 0) * Math.pow(convLevelMult(level), Math.max(0, heldAtLevel | 0)));
+}
 function pos(v) { return (Number(v) || 0) >= 0 ? 'pos' : 'neg'; }
 
 // "+3% Party Popularity" / "−10 Debt" — signed reward with a % only on the pct targets.
