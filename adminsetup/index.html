@@ -1820,7 +1820,7 @@
         var dir=ds.dataset.dir, arr=dir==='up'?o.doorUp:o.doorDown;
         ds.querySelectorAll('.dchip').forEach(function(ch){
           var ei=+ch.dataset.ei, e=arr[ei];
-          ch.querySelector('.dt').onchange=function(ev){ e.t=ev.target.value; renderPolEditor(); renderPolPrev(); };
+          ch.querySelector('.dt').onchange=function(ev){ e.t=ev.target.value; if(!isMoneyTarget(e.t)) delete e.scale; renderPolEditor(); renderPolPrev(); };  // scale only meaningful for money targets
           ch.querySelector('.dv').oninput=function(ev){ e.v=parseFloat(ev.target.value)||0; ds.querySelector('.echo').innerHTML=doorEcho(arr); renderPolPrev(); };
           var dsSel=ch.querySelector('.ds'); if(dsSel)dsSel.onchange=function(ev){ e.scale=ev.target.value; ds.querySelector('.echo').innerHTML=doorEcho(arr); renderPolPrev(); };
           ch.querySelector('.dx').onclick=function(){ arr.splice(ei,1); renderPolEditor(); renderPolPrev(); };
