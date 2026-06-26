@@ -124,10 +124,17 @@ revoke all on function public._apply_we_effects(text, jsonb) from public, anon, 
 -- set, live only (dormant nations are out of play).
 create or replace function public._we_targets(p_def jsonb)
 returns text[] language sql stable security definer set search_path = public as $$
-  select case when p_def->>'type' = 'turning_point' or p_def->>'scope' = 'global'
-              then (select array_agg(id) from public.nations where coalesce(dormant,false) = false)
-              else (select array_agg(e.value) from jsonb_array_elements_text(coalesce(p_def->'nations','[]'::jsonb)) as e(value)
-                      join public.nations n on n.id = e.value and coalesce(n.dormant,false) = false) end;
+  select case
+    when p_def->>'type' = 'competitive' then (   -- the union of the two sides
+      select array_agg(distinct e.value)
+        from (select value from jsonb_array_elements_text(coalesce(p_def->'competitive'->'sideA','[]'::jsonb))
+              union all
+              select value from jsonb_array_elements_text(coalesce(p_def->'competitive'->'sideB','[]'::jsonb))) e
+        join public.nations n on n.id = e.value and coalesce(n.dormant,false) = false)
+    when p_def->>'type' = 'turning_point' or p_def->>'scope' = 'global'
+      then (select array_agg(id) from public.nations where coalesce(dormant,false) = false)
+    else (select array_agg(e.value) from jsonb_array_elements_text(coalesce(p_def->'nations','[]'::jsonb)) as e(value)
+            join public.nations n on n.id = e.value and coalesce(n.dormant,false) = false) end;
 $$;
 
 -- Resolve a Decision instance once every live target nation has answered.
@@ -158,8 +165,8 @@ begin
   select definition into v_def from public.world_events where id = p_event;
   if v_def is null then raise exception 'No such world event.'; end if;
   v_type := v_def->>'type'; v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
-  if v_type not in ('decision', 'turning_point', 'mutual') then
-    raise exception 'Competitive events aren’t playable yet — they come in a later pass.';
+  if v_type not in ('decision', 'turning_point', 'mutual', 'competitive') then
+    raise exception 'Unknown world-event type.';
   end if;
   select current_tick into v_tick from public.game_state where id;
 
@@ -178,7 +185,9 @@ begin
     else
       insert into public.events (nation_id, kind, body, game_date)
         values (v_nat, 'world_event',
-                v_body || (case when v_type = 'mutual' then ' — an agreement awaits in World Events.' else ' — a decision awaits in World Events.' end),
+                v_body || (case v_type when 'mutual' then ' — an agreement awaits in World Events.'
+                                       when 'competitive' then ' — a sealed bid awaits in World Events.'
+                                       else ' — a decision awaits in World Events.' end),
                 public.current_game_date());
     end if;
   end loop;
@@ -294,5 +303,137 @@ begin
   return jsonb_build_object('ok', true, 'sealed', false, 'agreed', v_agreed, 'need', v_need);
 end $$;
 grant execute on function public.world_event_agree(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Competitive: two sides bid SECRETLY on a stat; the higher side total wins. A bid is staked
+-- — it's paid from the bid stat the moment it's submitted (all-pay: losers forfeit their
+-- stake too), so bidding has a real cost. The winning side's nations gain the authored
+-- winner reward. It resolves the instant every involved nation has bid, OR when the 3-tick
+-- window closes (advance_tick → _resolve_overdue_world_events, schema/60). A tie is a draw
+-- (no reward; stakes already spent).
+--   definition.competitive = { stat, sideA:[nation_id...], sideB:[nation_id...], winEffects:[{t,v}] }
+-- ---------------------------------------------------------------------------
+create table if not exists public.world_event_bids (
+  instance_id uuid not null references public.world_event_instances (id) on delete cascade,
+  nation_id   text not null references public.nations (id) on delete cascade,
+  side        text not null,                 -- 'A' | 'B'
+  amount      numeric not null,              -- the staked bid (already paid from the bid stat)
+  party_id    uuid references public.parties (id) on delete set null,
+  created_at  timestamptz not null default now(),
+  primary key (instance_id, nation_id)
+);
+alter table public.world_event_bids enable row level security;
+-- Bids are SECRET while the contest is open: a nation sees only its OWN bid; everyone sees all
+-- bids once the instance resolves (so the result is auditable); the admin always can. Writes
+-- are RPC-only.
+drop policy if exists "web_select" on public.world_event_bids;
+create policy "web_select" on public.world_event_bids for select using (
+  exists (select 1 from public.parties p where p.user_id = auth.uid() and p.nation_id = world_event_bids.nation_id)
+  or exists (select 1 from public.world_event_instances i where i.id = instance_id and i.status = 'resolved')
+  or public.is_admin()
+);
+
+-- Which side a nation is on in a competitive event ('A' / 'B' / null).
+create or replace function public._we_side(p_def jsonb, p_nation text)
+returns text language sql immutable as $$
+  select case when (p_def->'competitive'->'sideA') ? p_nation then 'A'
+              when (p_def->'competitive'->'sideB') ? p_nation then 'B' else null end;
+$$;
+
+-- Tally a competitive instance and resolve it: higher side total wins and its nations gain the
+-- winner reward; a tie is a draw. Idempotent — only acts on a still-active instance.
+create or replace function public._resolve_we_competitive(p_instance uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_def jsonb; v_status text; v_a numeric; v_b numeric; v_winner text; v_nat text; v_name text;
+begin
+  select definition, status into v_def, v_status from public.world_event_instances where id = p_instance for update;
+  if not found or v_status <> 'active' then return; end if;
+  select coalesce(sum(amount) filter (where side = 'A'), 0), coalesce(sum(amount) filter (where side = 'B'), 0)
+    into v_a, v_b from public.world_event_bids where instance_id = p_instance;
+  v_winner := case when v_a > v_b then 'A' when v_b > v_a then 'B' else null end;
+  v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
+
+  if v_winner is not null then
+    foreach v_nat in array coalesce(public._we_targets(v_def), array[]::text[]) loop
+      if public._we_side(v_def, v_nat) = v_winner then
+        perform public._apply_we_effects(v_nat, v_def->'competitive'->'winEffects');
+      end if;
+    end loop;
+  end if;
+
+  update public.world_event_instances set status = 'resolved' where id = p_instance;
+  -- Announce to every involved nation (bids are public now via RLS).
+  foreach v_nat in array coalesce(public._we_targets(v_def), array[]::text[]) loop
+    insert into public.events (nation_id, kind, body, game_date)
+      values (v_nat, 'world_event',
+              v_name || ' — ' || case when v_winner is null then 'the contest ended in a draw'
+                                      else 'Side ' || v_winner || ' won' end
+                     || ' (A ' || round(v_a, 1) || ' · B ' || round(v_b, 1) || ').',
+              public.current_game_date());
+  end loop;
+end $$;
+revoke all on function public._resolve_we_competitive(uuid) from public, anon, authenticated;
+
+-- A nation's leader submits a SEALED bid. No action cost. The bid is capped at what the
+-- nation actually holds of the bid stat and staked immediately (paid, sealed). Resolves the
+-- contest early once every involved nation has bid.
+create or replace function public.world_event_bid(p_instance uuid, p_amount numeric)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb;
+  v_side text; v_stat text; v_have numeric; v_bid numeric; v_nname text; v_targets text[]; v_bidders int;
+begin
+  v_party := public._lock_party();   -- caller's party + nation (no action cost)
+  select * into v_inst from public.world_event_instances where id = p_instance for update;
+  if not found then raise exception 'That event is gone.'; end if;
+  if v_inst.status <> 'active' then raise exception 'Bidding has closed.'; end if;
+  v_def := v_inst.definition;
+  if v_def->>'type' <> 'competitive' then raise exception 'That event is not a competitive bid.'; end if;
+  v_side := public._we_side(v_def, v_party.nation_id);
+  if v_side is null then raise exception 'Your nation is not on either side of this contest.'; end if;
+  if exists (select 1 from public.world_event_bids where instance_id = p_instance and nation_id = v_party.nation_id) then
+    raise exception 'Your nation has already bid.';
+  end if;
+  if p_amount is null or p_amount < 0 then raise exception 'Bid zero or more.'; end if;
+
+  v_stat := coalesce(nullif(v_def->'competitive'->>'stat',''), 'Budget');
+  v_have := coalesce(public._nation_stat_get(v_party.nation_id, v_stat), 0);
+  v_bid  := least(p_amount, greatest(v_have, 0));   -- can't stake more of the stat than you hold
+
+  -- Stake it now (sealed; all-pay — it doesn't come back).
+  perform public._apply_policy_effect(v_party.nation_id, jsonb_build_object('t', v_stat, 'v', -v_bid));
+  insert into public.world_event_bids (instance_id, nation_id, side, amount, party_id)
+    values (p_instance, v_party.nation_id, v_side, v_bid, v_party.id);
+
+  select name into v_nname from public.nations where id = v_party.nation_id;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'world_event',
+            coalesce(nullif(v_def->>'name',''), 'A world event') || ' — ' || coalesce(v_nname, v_party.nation_id) || ' submitted a sealed bid.',
+            public.current_game_date());
+
+  v_targets := public._we_targets(v_def);
+  select count(*) into v_bidders from public.world_event_bids where instance_id = p_instance;
+  if coalesce(array_length(v_targets, 1), 0) > 0 and v_bidders >= array_length(v_targets, 1) then
+    perform public._resolve_we_competitive(p_instance);
+    return jsonb_build_object('ok', true, 'bid', v_bid, 'resolved', true);
+  end if;
+  return jsonb_build_object('ok', true, 'bid', v_bid, 'resolved', false);
+end $$;
+grant execute on function public.world_event_bid(uuid, numeric) to authenticated;
+
+-- Called once per tick by _advance_tick (schema/60): resolve any competitive contest whose
+-- 3-tick bidding window has elapsed (fired at fired_tick → closes at fired_tick + 3). Contests
+-- where everyone bid early already resolved in world_event_bid; this catches the stragglers.
+create or replace function public._resolve_overdue_world_events(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in select id from public.world_event_instances
+            where status = 'active' and (definition->>'type') = 'competitive'
+              and fired_tick is not null and p_tick - fired_tick >= 3 loop
+    perform public._resolve_we_competitive(r.id);
+  end loop;
+end $$;
+revoke all on function public._resolve_overdue_world_events(int) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

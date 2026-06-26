@@ -520,6 +520,10 @@ begin
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
   begin perform public._apply_crisis_tick(v_tick);
   exception when others then raise warning 'tick %: crises failed — %', v_tick, sqlerrm; end;
+  -- World Events (schema/100): resolve any Competitive contest whose 3-tick sealed-bid window
+  -- has closed (those where everyone bid early already resolved on the final bid). Isolated.
+  begin perform public._resolve_overdue_world_events(v_tick);
+  exception when others then raise warning 'tick %: world events failed — %', v_tick, sqlerrm; end;
   -- Corporations (schema/47): release queued firms when their nation's climate is healthy
   -- (applies the sector bonus), compound each placed firm's cash by its growth, and fold
   -- insolvent private firms (reversing their bonus). Runs on this tick's settled economy.
