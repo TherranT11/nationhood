@@ -262,7 +262,7 @@ create or replace function public.world_event_agree(p_instance uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_party public.parties%rowtype; v_inst public.world_event_instances%rowtype; v_def jsonb;
-  v_targets text[]; v_agreed int; v_need int; v_nat text; v_nname text;
+  v_targets text[]; v_agreed int; v_need int; v_nat text; v_nname text; v_name text;
 begin
   v_party := public._lock_party();   -- caller's party + nation (no action cost)
   select * into v_inst from public.world_event_instances where id = p_instance for update;
@@ -276,13 +276,14 @@ begin
   if exists (select 1 from public.world_event_agreements where instance_id = p_instance and nation_id = v_party.nation_id) then
     raise exception 'Your nation has already agreed.';
   end if;
+  v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
 
   insert into public.world_event_agreements (instance_id, nation_id, party_id)
     values (p_instance, v_party.nation_id, v_party.id);
   select name into v_nname from public.nations where id = v_party.nation_id;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_party.nation_id, v_party.id, 'world_event',
-            coalesce(nullif(v_def->>'name',''),'A world event') || ' — ' || coalesce(v_nname, v_party.nation_id) || ' agreed to the terms.',
+            v_name || ' — ' || coalesce(v_nname, v_party.nation_id) || ' agreed to the terms.',
             public.current_game_date());
 
   -- The deal seals only when EVERY involved nation has agreed: each pays the contribution
@@ -295,7 +296,7 @@ begin
       perform public._apply_we_effects(v_nat, v_def->'mutual'->'contribution');
       perform public._apply_we_effects(v_nat, v_def->'mutual'->'effects');
       insert into public.events (nation_id, kind, body, game_date)
-        values (v_nat, 'world_event', coalesce(nullif(v_def->>'name',''),'A world event') || ' — the agreement is sealed; all sides contribute and gain.', public.current_game_date());
+        values (v_nat, 'world_event', v_name || ' — the agreement is sealed; all sides contribute and gain.', public.current_game_date());
     end loop;
     update public.world_event_instances set status = 'resolved' where id = p_instance;
     return jsonb_build_object('ok', true, 'sealed', true);
@@ -344,32 +345,25 @@ $$;
 -- winner reward; a tie is a draw. Idempotent — only acts on a still-active instance.
 create or replace function public._resolve_we_competitive(p_instance uuid)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_def jsonb; v_status text; v_a numeric; v_b numeric; v_winner text; v_nat text; v_name text;
+declare v_def jsonb; v_status text; v_a numeric; v_b numeric; v_winner text; v_targets text[]; v_nat text; v_body text;
 begin
   select definition, status into v_def, v_status from public.world_event_instances where id = p_instance for update;
   if not found or v_status <> 'active' then return; end if;
   select coalesce(sum(amount) filter (where side = 'A'), 0), coalesce(sum(amount) filter (where side = 'B'), 0)
     into v_a, v_b from public.world_event_bids where instance_id = p_instance;
   v_winner := case when v_a > v_b then 'A' when v_b > v_a then 'B' else null end;
-  v_name := coalesce(nullif(v_def->>'name',''), 'A world event');
-
-  if v_winner is not null then
-    foreach v_nat in array coalesce(public._we_targets(v_def), array[]::text[]) loop
-      if public._we_side(v_def, v_nat) = v_winner then
-        perform public._apply_we_effects(v_nat, v_def->'competitive'->'winEffects');
-      end if;
-    end loop;
-  end if;
-
   update public.world_event_instances set status = 'resolved' where id = p_instance;
-  -- Announce to every involved nation (bids are public now via RLS).
+
+  -- One pass over the involved nations: the winning side gains the reward, and everyone gets
+  -- the result announced (bids are public now via RLS).
+  v_body := coalesce(nullif(v_def->>'name',''), 'A world event') || ' — '
+         || (case when v_winner is null then 'the contest ended in a draw' else 'Side ' || v_winner || ' won' end)
+         || ' (A ' || round(v_a, 1) || ' · B ' || round(v_b, 1) || ').';
   foreach v_nat in array coalesce(public._we_targets(v_def), array[]::text[]) loop
-    insert into public.events (nation_id, kind, body, game_date)
-      values (v_nat, 'world_event',
-              v_name || ' — ' || case when v_winner is null then 'the contest ended in a draw'
-                                      else 'Side ' || v_winner || ' won' end
-                     || ' (A ' || round(v_a, 1) || ' · B ' || round(v_b, 1) || ').',
-              public.current_game_date());
+    if v_winner is not null and public._we_side(v_def, v_nat) = v_winner then
+      perform public._apply_we_effects(v_nat, v_def->'competitive'->'winEffects');
+    end if;
+    insert into public.events (nation_id, kind, body, game_date) values (v_nat, 'world_event', v_body, public.current_game_date());
   end loop;
 end $$;
 revoke all on function public._resolve_we_competitive(uuid) from public, anon, authenticated;
