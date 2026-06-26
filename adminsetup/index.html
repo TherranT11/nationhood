@@ -425,6 +425,27 @@
   .evtab .ev .eff{margin-top:11px}
   .evtab .feed .empty{border:1px dashed var(--line2);border-radius:13px;padding:34px 18px;text-align:center;color:var(--soft);font-size:13px;font-style:italic}
 
+  /* Wiki (Nationhopedia) authoring tab. Scoped under .wktab so generic names don't collide. */
+  .wktab .sub code{font-family:'Space Mono',monospace;font-size:11px;background:var(--chip);padding:1px 5px;border-radius:5px}
+  .wktab .card{border:1px solid var(--line);border-radius:14px;padding:18px 20px;background:var(--surface)}
+  .wktab .f{margin-bottom:14px}
+  .wktab .wklayout{display:flex;gap:18px;align-items:flex-start}
+  .wktab .wklist-col{flex:none;width:240px}
+  .wktab .wkedit-col{flex:1;min-width:0}
+  .wktab .wknew{width:100%;margin-bottom:10px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:var(--indigo-soft);border:1px solid transparent;border-radius:10px;padding:11px;cursor:pointer}
+  .wktab .wknew:hover{filter:brightness(.97)}
+  .wktab .wklist{display:flex;flex-direction:column;gap:4px}
+  .wktab .wkitem{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px;cursor:pointer}
+  .wktab .wkitem:hover{border-color:var(--line2)}
+  .wktab .wkitem.on{border-color:var(--indigo);background:var(--indigo-soft)}
+  .wktab .wkitem b{font-size:13.5px;font-weight:700}
+  .wktab .wkitem span{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .wktab .wkjson{width:100%;min-height:300px;resize:vertical;font-family:'Space Mono',monospace;font-size:12px;line-height:1.5}
+  .wktab .wkbtns{display:flex;gap:10px;align-items:center}
+  .wktab .wkdel{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--red);background:var(--red-soft);border:1px solid transparent;border-radius:10px;padding:12px 16px;cursor:pointer}
+  .wktab .wkpv-hd{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:22px 0 0}
+  .wktab .wkpv{border:1px solid var(--line);border-radius:14px;padding:24px clamp(16px,3vw,32px);background:var(--surface);margin-top:10px;overflow:hidden}
+  @media(max-width:720px){.wktab .wklayout{flex-direction:column}.wktab .wklist-col{width:auto}}
   @media(max-width:720px){.adminbody{flex-direction:column}.vtabs{flex-direction:row;flex-wrap:wrap;width:auto;position:static}}
   @media(max-width:560px){.wrap2{padding:28px 16px 64px}}
   /* Corporations tab — admin Creator for firms (corporations table). */
@@ -512,6 +533,7 @@
         <button class="vtab" data-tab="corporations" type="button">Corporations</button>
         <button class="vtab" data-tab="world-events" type="button">World Events</button>
         <button class="vtab" data-tab="world-map" type="button">World Map</button>
+        <button class="vtab" data-tab="wiki" type="button">Wiki</button>
       </nav>
       <div class="tabwrap">
       <div class="tabpane" data-tab="nations">
@@ -901,6 +923,31 @@
           <div class="wm-inspect" id="wmInspect" hidden></div>
         </div>
       </div>
+      <div class="tabpane" data-tab="wiki" hidden>
+        <div class="wktab">
+          <p class="sub" style="margin:0 0 16px">Write Nationhopedia articles. Players read them under <b>Wiki</b>. Each article is a Title, a Kind, and a JSON body (<code>hat</code>, <code>box</code>, <code>lead</code>, <code>sections</code>, <code>see</code>, <code>refs</code>, <code>cats</code>). Cross-link other articles by title with <code>&lt;span class="wk-link" data-link="Other Title"&gt;label&lt;/span&gt;</code>.</p>
+          <div class="wklayout">
+            <div class="wklist-col">
+              <button class="wknew" id="wkNew" type="button">+ New article</button>
+              <div class="wklist" id="wkList"><p class="empty">Loading…</p></div>
+            </div>
+            <div class="wkedit-col">
+              <div class="card">
+                <div class="f"><label>Title</label><input id="wkTitle" type="text" placeholder="Republic of Sessau"></div>
+                <div class="f"><label>Kind</label><input id="wkKind" type="text" placeholder="Nation · Political party · Politician …"></div>
+                <div class="f"><label>Article JSON</label><textarea id="wkBody" class="wkjson" spellcheck="false" placeholder='{&#10;  "box": { "sub": "République de Sessau", "image": { "kind": "square", "color": "#5546E8", "text": "FdS", "cap": "Flag" }, "groups": [ { "rows": [ ["Capital", "Seyonne"] ] } ] },&#10;  "lead": "&lt;p&gt;The &lt;b&gt;Republic of Sessau&lt;/b&gt; is…&lt;/p&gt;",&#10;  "sections": [ { "h": "History", "html": "&lt;p&gt;…&lt;/p&gt;" } ],&#10;  "see": ["Front de Sessau"], "refs": ["Source, 1980."], "cats": ["Nations"]&#10;}'></textarea></div>
+                <div class="wkbtns">
+                  <button class="save" id="wkSave" type="button">Save article</button>
+                  <button class="wkdel" id="wkDel" type="button" hidden>Delete</button>
+                </div>
+                <div class="note" id="wkNote" role="status" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+          <div class="wkpv-hd">Preview</div>
+          <div class="wkpv" id="wkPreview"><div class="wk-empty">Enter a title to preview…</div></div>
+        </div>
+      </div>
       </div><!-- /tabwrap -->
     </div><!-- /adminbody -->
   </div>
@@ -915,6 +962,7 @@
     import { policyOptions, policyDefaultIdx, policyMoney, isMoneyTarget, polTgtLabel } from '/policies.js';
     import { CONV_ROMAN, convRoman, adoptLines, activeLines, lawLines } from '/convictions.js';
     import { MINISTRIES } from '/ministries.js';
+    import { injectWikiCSS, articleHTML, normalizeArticle } from '/wiki.js';
 
     var ADMIN_EMAIL = 'therrant@gmail.com'; // UI gate only; the real gate is the is_admin() RLS policy
     var loginView = document.getElementById('loginView');
@@ -1462,8 +1510,99 @@
         if (tab === 'corporations') loadCorporations();
         if (tab === 'world-events') loadWorldEvents();
         if (tab === 'world-map') initWorldMap();
+        if (tab === 'wiki') initWiki();
       });
     });
+
+    // ---- Wiki (Nationhopedia) authoring (admin; wiki_articles table, is_admin RLS) ----------
+    // List on the left, an editor on the right (Title + Kind + a JSON body), and a live preview
+    // rendered through the SAME /wiki.js the player page uses — so the editor can't drift from
+    // what players see. The body is one JSONB blob (schema/105), so the form never needs new
+    // fields as the article shape grows.
+    var WK = { rows: [], editingId: null, inited: false };
+    function setWkNote(t, k) { var n = document.getElementById('wkNote'); n.textContent = t || ''; n.className = 'note' + (k ? ' ' + k : ''); }
+    function parseWkBody() { var t = document.getElementById('wkBody').value.trim(); return t ? JSON.parse(t) : {}; }  // throws on bad JSON
+    function renderWkList() {
+      var list = document.getElementById('wkList');
+      if (!WK.rows.length) { list.innerHTML = '<p class="empty">No articles yet.</p>'; return; }
+      list.innerHTML = WK.rows.map(function (r) {
+        return '<button class="wkitem' + (r.id === WK.editingId ? ' on' : '') + '" type="button" data-id="' + r.id + '"><b>' + esc(r.title) + '</b><span>' + esc(r.kind || '') + '</span></button>';
+      }).join('');
+      list.querySelectorAll('[data-id]').forEach(function (b) { b.onclick = function () { editWk(b.dataset.id); }; });
+    }
+    function wkPreview() {
+      var pv = document.getElementById('wkPreview');
+      var title = document.getElementById('wkTitle').value.trim();
+      var def; try { def = parseWkBody(); } catch (e) { pv.innerHTML = '<div class="wk-empty">Invalid JSON: ' + esc(e.message) + '</div>'; return; }
+      if (!title) { pv.innerHTML = '<div class="wk-empty">Enter a title to preview…</div>'; return; }
+      var known = new Set(WK.rows.map(function (r) { return r.title.toLowerCase(); })); known.add(title.toLowerCase());
+      pv.innerHTML = articleHTML(normalizeArticle({ title: title, kind: document.getElementById('wkKind').value.trim(), definition: def }), known);
+    }
+    function blankWk() {
+      WK.editingId = null;
+      document.getElementById('wkTitle').value = '';
+      document.getElementById('wkKind').value = 'Article';
+      document.getElementById('wkBody').value = '';
+      document.getElementById('wkDel').hidden = true;
+      setWkNote(''); renderWkList(); wkPreview();
+    }
+    function editWk(id) {
+      var r = WK.rows.find(function (x) { return x.id === id; }); if (!r) return;
+      WK.editingId = id;
+      document.getElementById('wkTitle').value = r.title || '';
+      document.getElementById('wkKind').value = r.kind || 'Article';
+      document.getElementById('wkBody').value = JSON.stringify(r.definition || {}, null, 2);
+      document.getElementById('wkDel').hidden = false;
+      setWkNote(''); renderWkList(); wkPreview();
+    }
+    async function loadWiki() {
+      var list = document.getElementById('wkList'); list.innerHTML = '<p class="empty">Loading…</p>';
+      const { data, error } = await supabase.from('wiki_articles').select('id, title, kind, definition').order('title');
+      if (error) { list.innerHTML = '<p class="empty">Could not load articles.</p>'; return; }
+      WK.rows = data || []; renderWkList();
+    }
+    async function saveWk() {
+      var title = document.getElementById('wkTitle').value.trim();
+      var kind = document.getElementById('wkKind').value.trim() || 'Article';
+      if (!title) { setWkNote('Enter a title.', 'error'); return; }
+      var def; try { def = parseWkBody(); } catch (e) { setWkNote('Invalid JSON: ' + e.message, 'error'); return; }
+      var btn = document.getElementById('wkSave'); btn.disabled = true; setWkNote('Saving…');
+      try {
+        var row = { title: title, kind: kind, definition: def, updated_at: new Date().toISOString() };
+        const res = WK.editingId
+          ? await supabase.from('wiki_articles').update(row).eq('id', WK.editingId)
+          : await supabase.from('wiki_articles').insert(row);
+        if (res.error) throw res.error;
+        setWkNote('Saved “' + title + '”.', 'ok');
+        await loadWiki();
+        var saved = WK.rows.find(function (r) { return r.title.toLowerCase() === title.toLowerCase(); });
+        if (saved) editWk(saved.id);
+      } catch (e) { setWkNote('Save failed: ' + (e.message || e), 'error'); }
+      finally { btn.disabled = false; }
+    }
+    async function delWk() {
+      if (!WK.editingId) return;
+      if (!confirm('Delete this article? This cannot be undone.')) return;
+      var btn = document.getElementById('wkDel'); btn.disabled = true;
+      try {
+        const res = await supabase.from('wiki_articles').delete().eq('id', WK.editingId);
+        if (res.error) throw res.error;
+        blankWk(); await loadWiki(); setWkNote('Article deleted.', 'ok');
+      } catch (e) { setWkNote('Delete failed: ' + (e.message || e), 'error'); }
+      finally { btn.disabled = false; }
+    }
+    function initWiki() {
+      if (!WK.inited) {
+        WK.inited = true;
+        injectWikiCSS();
+        document.getElementById('wkNew').onclick = blankWk;
+        document.getElementById('wkSave').onclick = saveWk;
+        document.getElementById('wkDel').onclick = delWk;
+        ['wkTitle', 'wkKind', 'wkBody'].forEach(function (id) { document.getElementById(id).addEventListener('input', wkPreview); });
+        blankWk();
+      }
+      loadWiki();
+    }
 
     // ---- World Map editor (admin; world_hexes table, is_admin RLS) -------------------
     // A field of pointy-top axial hexes. A hex row exists only when it's land or carries

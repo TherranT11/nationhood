@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Nationhopedia · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--red-soft:#FBEAE9;--amber:#E0820E;--amber-soft:#FBF0DD;--green:#16915a;--green-soft:#E5F4EC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 70px;min-width:0}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <div class="wk-masthead">
+      <div class="wk-mbrand">
+        <span class="wk-globe"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span>
+        <div><b>Nationhopedia</b><span>The free encyclopedia of the world</span></div>
+      </div>
+      <div class="wk-search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="wkSearch" placeholder="Search Nationhopedia…" autocomplete="off">
+        <div class="wk-suggest" id="wkSuggest"></div>
+      </div>
+    </div>
+    <article class="wk-article" id="wkArticle"><div class="wk-empty">Loading…</div></article>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { mountTopbar } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { injectWikiCSS, articleHTML, normalizeArticle } from '/wiki.js';
+
+  mountTopbar();
+  mountSidenav();
+  injectWikiCSS();
+
+  var ART = document.getElementById('wkArticle');
+  var byTitle = {};          // lower-cased title → row
+  var known = new Set();      // lower-cased titles that exist
+  var cur = null;            // current article title
+
+  function setEmpty(msg) { ART.innerHTML = '<div class="wk-empty">' + msg + '</div>'; }
+
+  function render(title) {
+    var row = byTitle[String(title).toLowerCase()];
+    if (!row) return;
+    cur = row.title;
+    ART.innerHTML = articleHTML(normalizeArticle(row), known);
+    wire();
+    // Reflect the open article in the URL (no reload) so it's shareable / refresh-stable.
+    try { history.replaceState(null, '', '?a=' + encodeURIComponent(row.title)); } catch (e) { /* non-fatal */ }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function wire() {
+    ART.querySelectorAll('[data-link]').forEach(function (el) {
+      el.onclick = function () { var t = el.dataset.link; if (byTitle[String(t).toLowerCase()]) render(t); };
+    });
+    ART.querySelectorAll('[data-sec]').forEach(function (el) {
+      el.onclick = function () { var s = document.getElementById(el.dataset.sec); if (s) s.scrollIntoView({ behavior: 'smooth' }); };
+    });
+  }
+
+  // ---- search (title contains) ----
+  var sIn = document.getElementById('wkSearch'), sug = document.getElementById('wkSuggest');
+  sIn.addEventListener('input', function () {
+    var q = this.value.toLowerCase().trim();
+    if (!q) { sug.classList.remove('show'); return; }
+    var hits = Object.keys(byTitle).map(function (k) { return byTitle[k]; })
+      .filter(function (r) { return r.title.toLowerCase().indexOf(q) >= 0; })
+      .sort(function (a, b) { return a.title.localeCompare(b.title); }).slice(0, 8);
+    if (!hits.length) { sug.classList.remove('show'); return; }
+    sug.innerHTML = hits.map(function (r) { return '<div class="wk-sg" data-go="' + encodeURIComponent(r.title) + '">' + r.title + '<span class="wk-kind">' + (r.kind || '') + '</span></div>'; }).join('');
+    sug.classList.add('show');
+    sug.querySelectorAll('[data-go]').forEach(function (d) {
+      d.onclick = function () { sIn.value = ''; sug.classList.remove('show'); render(decodeURIComponent(d.dataset.go)); };
+    });
+  });
+  document.addEventListener('click', function (e) { if (!e.target.closest('.wk-search')) sug.classList.remove('show'); });
+
+  // Fill the sidenav brand (flag / party name) like the other in-game pages, best-effort.
+  async function setBrand(userId) {
+    try {
+      const { data: party } = await supabase.from('parties').select('name, archetype, nation_id').eq('user_id', userId).single();
+      if (!party) return;
+      document.getElementById('pname').textContent = party.name;
+      const { data: nation } = await supabase.from('nations').select('name, flag').eq('id', party.nation_id).single();
+      document.getElementById('psub').textContent = ideologyLabel(party) + (nation && nation.name ? ' · ' + nation.name : '');
+      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function () { f.hidden = false; }; f.src = nation.flag; }
+    } catch (e) { /* brand is cosmetic */ }
+  }
+
+  (async () => {
+    if (!isConfigured) { setEmpty('Nationhopedia isn’t connected yet.'); return; }
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    setBrand(user.id);
+    const { data: rows, error } = await supabase.from('wiki_articles').select('id, title, kind, definition').order('title');
+    if (error) { setEmpty('Couldn’t load Nationhopedia. ' + (error.message || '')); return; }
+    if (!rows || !rows.length) { setEmpty('Nationhopedia is empty — no articles have been written yet.'); return; }
+    rows.forEach(function (r) { byTitle[r.title.toLowerCase()] = r; known.add(r.title.toLowerCase()); });
+    // Open the article named in ?a=, else the first by title.
+    var want = new URLSearchParams(location.search).get('a');
+    render(want && byTitle[want.toLowerCase()] ? want : rows[0].title);
+  })();
+</script>
+</body>
+</html>

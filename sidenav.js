@@ -21,7 +21,7 @@ const NAV = [
   { href: '/play/corporations/',label: 'Corporations', svg: '<path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/>' },
   { href: null,                 label: 'Conflict',     svg: '<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>' },
   { href: '/play/forum/',      label: 'Forum',        svg: '<path d="M4 5h12v8H8l-4 3z"/><path d="M18 9h2v9l-3-2h-5"/>' },
-  { href: null,                 label: 'Wiki',         svg: '<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>' },
+  { href: '/play/wiki/',        label: 'Wiki',         svg: '<path d="M12 5v15"/><path d="M4 4h6a2 2 0 012 2 2 2 0 012-2h6v13h-6a2 2 0 00-2 2 2 2 0 00-2-2H4z"/>' },
 ];
 // Destinations pinned to the mobile bottom bar; everything else falls into the More sheet.
 const PRIMARY = ['/play/', '/play/party/', '/play/government/', '/play/legislature/'];
