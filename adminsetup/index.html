@@ -829,12 +829,8 @@
                     </select></div>
                     <div class="f" style="margin-bottom:0"><label>Description <span class="hint" id="weDescHint">the prompt players see</span></label><textarea id="weDesc"></textarea></div>
                   </div>
-                  <div class="card" id="weNationsCard">
-                    <div class="sechd">Involved nations <span class="hint" id="weNationsHint">pick the nations this event reaches, or make it global</span></div>
-                    <div style="margin-bottom:10px"><button class="btn" id="weGlobal" type="button">🌐 Global — every nation</button></div>
-                    <div id="weNations" class="natgrid"></div>
-                  </div>
-                  <div class="card" id="weTypeBox"></div>
+                  <div class="card" id="weNationsCard"><!-- filled by renderNationsCard (varies by type) --></div>
+                  <div class="card" id="weTypeBox"><!-- filled by renderType --></div>
                   <button class="save" id="weSave" type="button">Save world event</button>
                 </div>
                 <aside><div class="rail"><div class="rh">Preview</div><div class="rb" id="wePrev"></div></div></aside>
@@ -2439,10 +2435,10 @@
     // generic identifiers can't collide with the other tabs; returns loadWorldEvents().
     var loadWorldEvents = (function () {
       // Targets a world-event effect can move — national stats + production resources (the
-      // 'Budget, Diplomacy, …' the spec names). Government-internal targets are out of scope
-      // for a nation-facing world event. Mirrors the crisis/event catalogues' national set.
-      var WE_TGT = { National: ['Prosperity', 'Welfare', 'Growth', 'Order', 'Image', 'Unemployment %', 'Inflation %', 'Budget', 'Debt', 'Income', 'Regime'],
-                     Resource: ['Energy', 'Food', 'Minerals', 'Goods', 'Services', 'Diplomacy'] };
+      // 'Budget, Diplomacy, …' the spec names). Read straight off POL_TGT (the one source for
+      // these lists, line ~1545) rather than re-listing them. Government-internal targets are
+      // out of scope for a nation-facing world event, so only these two groups are exposed.
+      var WE_TGT = { National: POL_TGT.National, Resource: POL_TGT.Resource };
       var WE_STATS = WE_TGT.National.concat(WE_TGT.Resource);   // flat list for the competitive bid stat
       var TYPE_LABEL = { decision: 'Decision', mutual: 'Mutual Agreement', competitive: 'Competitive', turning_point: 'Turning Point' };
 
@@ -2574,12 +2570,15 @@
         card.innerHTML = '<div class="sechd">Involved nations <span class="hint">' + hint + '</span></div>' +
           '<div style="margin-bottom:10px"><button class="btn' + (isGlobal ? ' btn-solid' : '') + '" id="weGlobal" type="button">🌐 Global — every nation</button></div>' +
           '<div id="weNations" class="natgrid' + (isGlobal ? ' off' : '') + '">' +
-            (NATIONS.length ? NATIONS.map(function (n) { return '<label class="natchk"><input type="checkbox" value="' + esc(n.id) + '"' + (WE.nations.indexOf(n.id) >= 0 ? ' checked' : '') + (isGlobal ? ' disabled' : '') + '>' + esc(n.name || n.id) + '</label>'; }).join('') : '<p class="hint">No live nations.</p>') +
+            (NATIONS.length ? NATIONS.map(function (n) { return natChk(n, WE.nations.indexOf(n.id) >= 0, isGlobal); }).join('') : '<p class="hint">No live nations.</p>') +
           '</div>';
         document.getElementById('weGlobal').onclick = function () { WE.scope = isGlobal ? 'nations' : 'global'; renderNationsCard(); renderPreview(); };
         card.querySelectorAll('.natchk input').forEach(function (c) { c.onchange = function () { toggleIn(WE.nations, c.value, c.checked); renderPreview(); }; });
       }
       function toggleIn(arr, v, on) { var i = arr.indexOf(v); if (on && i < 0) arr.push(v); else if (!on && i >= 0) arr.splice(i, 1); }
+      // One nation checkbox — the shared markup for the involved-nations grid and the
+      // competitive side buckets (the caller wires the change handler).
+      function natChk(n, on, dis) { return '<label class="natchk"><input type="checkbox" value="' + esc(n.id) + '"' + (on ? ' checked' : '') + (dis ? ' disabled' : '') + '>' + esc(n.name || n.id) + '</label>'; }
 
       // ----- effect-list editor (shared by decision options, mutual, turning point) -----
       // listSel keys the array: 'opt0' | 'opt1' | 'mutual' | 'turning'.
@@ -2628,7 +2627,7 @@
       }
       function sideChecks(key) {
         if (!NATIONS.length) return '<p class="hint">No live nations.</p>';
-        return NATIONS.map(function (n) { return '<label class="natchk"><input type="checkbox" value="' + esc(n.id) + '"' + (WE.competitive[key].indexOf(n.id) >= 0 ? ' checked' : '') + '>' + esc(n.name || n.id) + '</label>'; }).join('');
+        return NATIONS.map(function (n) { return natChk(n, WE.competitive[key].indexOf(n.id) >= 0, false); }).join('');
       }
 
       function effEcho(arr) { return arr.length ? arr.map(effStr).join(' · ') : '<span class="hint">no effects</span>'; }
