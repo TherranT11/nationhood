@@ -246,13 +246,15 @@ end $$;
 
 -- ---------------------------------------------------------------------------
 -- Passive per-tick stat effects: every nation's active modifiers apply their signed
--- per-tick delta to the named stat each tick (clamped 1..20 by _nation_stat_add, schema/91).
--- Called by advance_tick (schema/60). Unlike the floor/ceiling bounds, this is an additive
--- mutation — it needs no enforcement chokepoint, it just runs each tick.
+-- per-tick delta to the named stat each tick. Most stats live in stats (1..20); the two
+-- economy stats (unemployment / inflation) live in economy (0..100), so route + clamp each
+-- to the right column — one place that mapping is decided. Clamped by _nation_stat_add
+-- (schema/91). Called by advance_tick (schema/60). Unlike the floor/ceiling bounds, this is
+-- an additive mutation — it needs no enforcement chokepoint, it just runs each tick.
 -- ---------------------------------------------------------------------------
 create or replace function public._apply_modifier_tick_effects()
 returns void language plpgsql security definer set search_path = public as $$
-declare r record;
+declare r record; v_econ boolean;
 begin
   for r in
     select nm.nation_id, e.effect_key, e.effect_value
@@ -260,7 +262,12 @@ begin
       join public.modifier_effects e on e.modifier_id = nm.modifier_id
      where e.effect_type = 'stat_tick' and e.effect_key is not null and e.effect_value <> 0
   loop
-    perform public._nation_stat_add(r.nation_id, 'stats', r.effect_key, r.effect_value, 1, 20);
+    v_econ := r.effect_key in ('unemployment', 'inflation');
+    perform public._nation_stat_add(r.nation_id,
+              case when v_econ then 'economy' else 'stats' end,
+              r.effect_key, r.effect_value,
+              case when v_econ then 0 else 1 end,
+              case when v_econ then 100 else 20 end);
   end loop;
 end $$;
 revoke all on function public._apply_modifier_tick_effects() from public, anon, authenticated;

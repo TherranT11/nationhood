@@ -2700,7 +2700,10 @@
       { v: 'regime_floor',          label: 'Regime Floor',                 target: 'none' }
     ];
     var RESOURCES = ['energy', 'food', 'minerals', 'goods', 'services', 'diplomacy'];
-    var STATS = ['prosperity', 'welfare', 'order', 'image', 'growth'];
+    var STATS = ['prosperity', 'welfare', 'order', 'image', 'growth', 'unemployment', 'inflation'];
+    // Unemployment/Inflation live in economy (0–100), not stats (1–20) — handled by the
+    // current-value hint and the per-tick application (schema/70).
+    var ECON_STATS = ['unemployment', 'inflation'];
     function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
     function effInfo(v) { return EFFECT_TYPES.filter(function (x) { return x.v === v; })[0] || { label: v, target: 'none' }; }
     function keyLabel(type, key) {
@@ -2753,7 +2756,7 @@
       var target = effInfo(row.querySelector('.eff-type').value).target;
       var key = row.querySelector('.eff-key').value;
       if ((target !== 'resource' && target !== 'stat') || !key || !nationsCache.length) { hint.innerHTML = ''; return; }
-      var field = target === 'resource' ? 'production' : 'stats';
+      var field = target === 'resource' ? 'production' : (ECON_STATS.indexOf(key) >= 0 ? 'economy' : 'stats');
       var parts = nationsCache.map(function (n) {
         var v = (n[field] || {})[key];
         return esc(n.name) + ' <b>' + (v != null ? v : '—') + '</b>';
