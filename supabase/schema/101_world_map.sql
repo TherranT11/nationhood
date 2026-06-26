@@ -16,7 +16,6 @@ create table if not exists public.world_hexes (
   name       text,
   population numeric,
   resources  jsonb not null default '{}'::jsonb,     -- { energy, food, minerals, goods, services, military, … } any amounts
-  updated_at timestamptz not null default now(),
   primary key (q, r)
 );
 
