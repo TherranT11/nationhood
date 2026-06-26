@@ -8,7 +8,7 @@
 -- authorise them, so no client write policy is granted. Run after 10 (nations).
 
 create table if not exists public.market (
-  resource   text primary key,        -- energy | food | minerals | goods | services
+  resource   text primary key,        -- energy | food | minerals | goods | services | military
   available  int not null default 0,  -- units on the market right now (1d6 at seed)
   min_price  numeric not null,         -- price when the resource is abundant
   max_price  numeric not null,         -- price when it's scarce
@@ -35,3 +35,18 @@ where not exists (select 1 from public.market);
 
 -- Energy's ceiling was raised to 20; correct any DB seeded at the old 10.
 update public.market set max_price = 20 where resource = 'energy' and max_price < 20;
+
+-- Military: a strategic stockpile good (not produced by corporations). Its price floats on
+-- GLOBAL SUPPLY (sum of every nation's on_hand 'military') against a FIXED 20-unit reference,
+-- so it runs from $20 at 0 supply down to $1 at 20 (the client uses that fixed cap; see
+-- play/market COMM.military.cap). Seeded once with a 1d6 market availability and the band.
+insert into public.market (resource, available, min_price, max_price)
+select 'military', (floor(random() * 6) + 1)::int, 1, 20
+where not exists (select 1 from public.market where resource = 'military');
+
+-- Give every nation a 1d6 starting Military stockpile (each rolls its own). Guarded on the key
+-- so re-applying never re-rolls a stockpile that trading may have since changed. (Base-commodity
+-- on_hand is seeded in 10_nations; Military lives here with the rest of the market feature.)
+update public.nations
+   set on_hand = on_hand || jsonb_build_object('military', (floor(random() * 6) + 1)::int)
+ where not (on_hand ? 'military');
