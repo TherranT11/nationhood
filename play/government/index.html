@@ -492,7 +492,8 @@
         '<div class="conf__band" style="color:' + bd.color + '">' + bd.word + '</div>' +
         '<div class="conf__bar"><div class="conf__fill" style="width:' + c + '%;background:' + bd.color + '"></div></div>' +
         confChips(govt) +
-        '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.</div>' +
+        '<div class="conf__note">Public approval of the sitting government. Below 40% it costs incumbents seats at the next election; above 50% it wins them. Carrying out the agenda moves it.' +
+          (govt.type === 'minority' ? ' A minority government also loses 0.3% each tick — if it falls below 20%, the head of government’s party is penalised and a snap election is called.' : '') + '</div>' +
       '</div>' +
       // 2 — The National Assembly (hemicycle)
       '<div class="panel"><h2>The National Assembly</h2>' +

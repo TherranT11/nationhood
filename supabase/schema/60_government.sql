@@ -352,6 +352,30 @@ end $$;
 revoke all on function public.resolve_election(text, text) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- _head_of_government_label(nation, party): the sitting premier as a display
+-- string — "<head-of-government title> <party leader>", e.g. "Prime Minister Jane
+-- Doe". Falls back to the party name, then "the incumbent". ONE source for naming
+-- the head of government in resignation / snap-election notices. INTERNAL.
+-- ---------------------------------------------------------------------------
+create or replace function public._head_of_government_label(p_nation text, p_party uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(nullif(public.nation_declaration(p_nation, 'head_of_government_title'), ''), 'Prime Minister')
+         || ' '
+         || coalesce(
+              (select name from public.politicians
+                 where party_id = p_party and status = 'Party Leader'
+                 order by created_at limit 1),
+              (select name from public.parties where id = p_party),
+              'the incumbent');
+$$;
+revoke all on function public._head_of_government_label(text, uuid) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
 -- _confidence_collapse(nation): when an active government's Confidence falls to
 -- <=10 the head of government is forced to resign. The governing parties take a
 -- popularity hit (the premier's party −5, other coalition members −3, through the
@@ -370,17 +394,10 @@ set search_path = public
 as $$
 declare
   v_gov public.governments%rowtype;
-  v_form_name text; v_leader text; v_title text; v_reason text;
+  v_reason text;
 begin
   select * into v_gov from public.governments where nation_id = p_nation and status = 'active';
   if not found or coalesce(v_gov.confidence, 100) > 10 then return; end if;
-
-  -- Who is resigning — captured before the election reseats everything.
-  select name into v_form_name from public.parties where id = v_gov.formateur_party_id;
-  select name into v_leader from public.politicians
-    where party_id = v_gov.formateur_party_id and status = 'Party Leader'
-    order by created_at limit 1;
-  v_title := public.nation_declaration(p_nation, 'head_of_government_title');
 
   -- Popularity penalty on the governing parties: premier −5, partners −3. Floor-
   -- respecting (same path as policy effects), then clamp 0..100. Runs BEFORE the
@@ -391,9 +408,9 @@ begin
            p.popularity - (case when p.id = v_gov.formateur_party_id then 5 else 3 end))))
    where p.nation_id = p_nation and p.in_government;
 
+  -- Premier named before the election reseats everything (one source: the helper above).
   v_reason := 'Following a forced resignation from '
-              || coalesce(nullif(v_title, ''), 'Prime Minister') || ' '
-              || coalesce(v_leader, v_form_name, 'the incumbent')
+              || public._head_of_government_label(p_nation, v_gov.formateur_party_id)
               || ', new elections have been held. ';
 
   perform public.resolve_election(p_nation, v_reason);
@@ -520,6 +537,12 @@ begin
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.
   begin perform public._apply_crisis_tick(v_tick);
   exception when others then raise warning 'tick %: crises failed — %', v_tick, sqlerrm; end;
+  -- Minority-government instability (schema/104): each active minority government bleeds −0.3
+  -- Government Confidence this tick, and falls to a snap election (with a standing penalty on the
+  -- head of government's party) if that erosion takes it below 20%. Runs on this tick's settled
+  -- confidence; its own per-nation isolation lives inside _apply_minority_confidence.
+  begin perform public._apply_minority_confidence(v_tick);
+  exception when others then raise warning 'tick %: minority confidence failed — %', v_tick, sqlerrm; end;
   -- World Events (schema/100): resolve any Competitive contest whose 3-tick sealed-bid window
   -- has closed (those where everyone bid early already resolved on the final bid). Isolated.
   begin perform public._resolve_overdue_world_events(v_tick);

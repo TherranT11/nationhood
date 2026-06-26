@@ -1606,9 +1606,15 @@
           for (var i = 0; i < dels.length; i++) { var d = loaded[dels[i]]; var dr = await supabase.from('world_hexes').delete().eq('q', d.q).eq('r', d.r); if (dr.error) throw dr.error; }
           loaded = {}; Object.keys(hexes).forEach(function (k) { loaded[k] = { q: hexes[k].q, r: hexes[k].r }; });
           // Persist the continents registry (name + colour) — every continent still in play, with
-          // its effective colour, so old text-only continents pick up a stored colour too.
+          // its effective colour, so old text-only continents pick up a stored colour too. The hexes
+          // above are already saved at this point, so a registry failure is reported on its own (NOT
+          // as a flat "Save failed") — otherwise it reads as if the whole map were lost.
           var cl = continentList();
-          if (cl.length) { var cm = contColorMap(); var cu = await supabase.from('continents').upsert(cl.map(function (c) { return { name: c, color: cm[c] }; }), { onConflict: 'name' }); if (cu.error) throw cu.error; }
+          if (cl.length) {
+            var cm = contColorMap();
+            var cu = await supabase.from('continents').upsert(cl.map(function (c) { return { name: c, color: cm[c] }; }), { onConflict: 'name' });
+            if (cu.error) { status('Hexes saved, but continent colours didn’t: ' + cu.error.message); btn.disabled = false; return; }
+          }
           status('Saved · ' + rows.length + ' hex' + (rows.length === 1 ? '' : 'es') + '.');
         } catch (e) { status('Save failed: ' + ((e && e.message) || 'error')); }
         btn.disabled = false;
