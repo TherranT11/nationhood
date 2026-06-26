@@ -30,14 +30,13 @@ create table if not exists public.modifier_effects (
   effect_value  numeric not null default 0       -- the ceiling / floor / penalty-or-bonus amount
 );
 create index if not exists modifier_effects_modifier_idx on public.modifier_effects (modifier_id);
--- effect_type catalogue  (✓ = applied in-game; the rest are authored but NOT yet enforced —
--- a directional bound needs a mutation chokepoint, which stats/resources/regime lack):
+-- effect_type catalogue  (✓ = applied in-game; the rest are authored but NOT yet enforced):
 --   archetype_pop_ceiling | archetype_pop_floor   (effect_key = archetype name)              ✓
 --   confidence_ceiling                            (no key)                                   ✓
 --   confidence_formation                          (no key; signed — penalty < 0, bonus > 0)  ✓
 --   stat_tick                                     (effect_key = nation stat; signed per-tick delta) ✓
---   resource_ceiling                              (effect_key = production resource)          — inert
---   stat_ceiling | stat_floor                     (effect_key = nation stat)                  — inert
+--   resource_ceiling                              (effect_key = production resource)          ✓ (_apply_modifier_bounds)
+--   stat_ceiling | stat_floor                     (effect_key = nation stat)                  ✓ (_apply_modifier_bounds)
 --   regime_ceiling | regime_floor                 (no key)                                    — inert
 
 -- One-time migration: earlier the single effect lived as scalar columns on
@@ -271,5 +270,45 @@ begin
   end loop;
 end $$;
 revoke all on function public._apply_modifier_tick_effects() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- _apply_modifier_bounds(): the per-tick ENFORCEMENT chokepoint for the absolute bounds —
+-- stat_floor / stat_ceiling (nation stats) and resource_ceiling (production). Runs LAST in
+-- advance_tick (schema/60), after every stat-moving step, so the bound is the final word each
+-- tick: a stat the month's economics pushed past a ceiling is pulled back to it, one held below
+-- a floor is lifted to it. The TIGHTEST bound wins when a nation has several on one stat — the
+-- lowest ceiling, the highest floor. The clamp reuses _nation_stat_add with a zero delta (it
+-- already clamps the existing value into [lo, hi]); the two economy stats (unemployment /
+-- inflation) live in economy, the rest in stats, and resources in production.
+-- ---------------------------------------------------------------------------
+create or replace function public._apply_modifier_bounds()
+returns void language plpgsql security definer set search_path = public as $$
+declare r record; v_econ boolean;
+begin
+  -- Stat floors/ceilings → clamp each bounded nation stat into [tightest floor, tightest ceiling].
+  for r in
+    select nm.nation_id, e.effect_key as stat,
+           max(e.effect_value) filter (where e.effect_type = 'stat_floor')   as flr,
+           min(e.effect_value) filter (where e.effect_type = 'stat_ceiling') as ceil
+      from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where e.effect_type in ('stat_floor', 'stat_ceiling') and e.effect_key is not null
+     group by nm.nation_id, e.effect_key
+  loop
+    v_econ := r.stat in ('unemployment', 'inflation');
+    perform public._nation_stat_add(r.nation_id, case when v_econ then 'economy' else 'stats' end, r.stat, 0, r.flr, r.ceil);
+  end loop;
+  -- Resource ceilings → cap each bounded production resource at its tightest ceiling (floor stays 0).
+  for r in
+    select nm.nation_id, e.effect_key as res, min(e.effect_value) as ceil
+      from public.nation_modifiers nm
+      join public.modifier_effects e on e.modifier_id = nm.modifier_id
+     where e.effect_type = 'resource_ceiling' and e.effect_key is not null
+     group by nm.nation_id, e.effect_key
+  loop
+    perform public._nation_stat_add(r.nation_id, 'production', r.res, 0, null, r.ceil);
+  end loop;
+end $$;
+revoke all on function public._apply_modifier_bounds() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

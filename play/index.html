@@ -95,6 +95,19 @@
   .noco__cancel:hover{color:var(--ink)}
   .noco__confirm{background:var(--red,#C42B2B);border-color:var(--red,#C42B2B);color:#fff}
   .noco__confirm:hover{filter:brightness(1.08)}
+  /* Appoint-cabinet modal */
+  .amodal__panel--wide{max-width:640px}
+  .appoint__row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .appoint__row:last-child{border-bottom:none}
+  .appoint__min{flex:0 0 230px;font-size:13.5px;font-weight:700;color:var(--ink)}
+  .appoint__star{color:var(--amber,#E0820E)}
+  .appoint__sel{flex:1;min-width:0;font-size:12.5px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
+  .appoint__foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:11px}
+  .appoint__note{font-size:12px;color:var(--muted)} .appoint__note b{color:var(--ink)}
+  .appoint__btns{display:flex;gap:9px;justify-content:flex-end}
+  .appoint__btns .noco__btn{flex:0 0 130px}
+  .appoint__ap{font-size:9px;opacity:.85;margin-left:4px}
+  @media(max-width:560px){.appoint__row{flex-direction:column;align-items:stretch;gap:5px}.appoint__min{flex:none}}
   .atarget{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:12px 14px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s}
   .atarget:hover{border-color:var(--indigo)}
   .atarget__id b{font-weight:800;font-size:14.5px;letter-spacing:-.01em}
@@ -255,6 +268,17 @@
   </div>
 </div>
 
+<div class="amodal" id="appointModal" hidden>
+  <div class="amodal__panel amodal__panel--wide">
+    <div class="amodal__hd"><b>Name the Cabinet</b><button class="amodal__x" id="appointClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="appointBody"></div>
+    <div class="appoint__foot">
+      <span class="appoint__note">Economic Development, Interior, Foreign Affairs &amp; Trade grant the appointee <b>+1 Image</b>.</span>
+      <div class="appoint__btns"><button class="noco__btn noco__cancel" id="appointCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="appointConfirm" type="button">Confirm <span class="appoint__ap">1 AP</span></button></div>
+    </div>
+  </div>
+</div>
+
 <div class="amodal" id="nocoModal" hidden>
   <div class="amodal__panel">
     <div class="amodal__hd"><b>Vote of No Confidence</b><button class="amodal__x" id="nocoClose" type="button" aria-label="Close">&times;</button></div>
@@ -274,6 +298,7 @@
   import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
+  import { MINISTRIES } from '/ministries.js';
 
   mountTopbar();   // shared top bar into #topbar + the settings gear (Log out lives there now)
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -519,6 +544,51 @@
       if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
     }
   }
+
+  // APPOINT — the head of government names the whole cabinet in one action. The modal lists
+  // every portfolio with a dropdown of all the nation's prominent politicians (party, archetype,
+  // stats, whether they lead their party); the four prestige posts grant the appointee +1 Image.
+  var PRESTIGE_MIN = ['Economic Development', 'Interior', 'Foreign Affairs', 'Trade'];
+  var appointModal = document.getElementById('appointModal');
+  var closeAppoint = wireModalClose(appointModal, 'appointClose');
+  var appointCancel = document.getElementById('appointCancel'); if (appointCancel) appointCancel.addEventListener('click', closeAppoint);
+  async function openAppointModal() {
+    if (acting || !feedCtx) return;
+    var body = document.getElementById('appointBody');
+    body.innerHTML = '<p class="empty">Loading the bench…</p>';
+    appointModal.hidden = false;
+    try {
+      const { data: nparties } = await supabase.from('parties').select('id, name, abbreviation, archetype').eq('nation_id', feedCtx.nationId);
+      var pmap = {}; (nparties || []).forEach(function (p) { pmap[p.id] = p; });
+      var pids = (nparties || []).map(function (p) { return p.id; }), pols = [];
+      if (pids.length) { const { data: pp } = await supabase.from('politicians').select('id, first_name, last_name, status, age, cha, acu, gui, res, com, party_id').in('party_id', pids).order('created_at'); pols = pp || []; }
+      if (!pols.length) { body.innerHTML = '<p class="empty">No politicians to appoint yet.</p>'; return; }
+      var cur = {};
+      const { data: govt } = await supabase.from('governments').select('id').eq('nation_id', feedCtx.nationId).eq('status', 'active').maybeSingle();
+      if (govt) { const { data: ca } = await supabase.from('cabinet_appointments').select('ministry, politician_id').eq('government_id', govt.id); (ca || []).forEach(function (c) { cur[c.ministry] = c.politician_id; }); }
+      // One option per politician — label carries party · archetype · leader · the five stats.
+      var optList = pols.map(function (p) {
+        var pa = pmap[p.party_id] || {}, name = ((p.first_name || '') + ' ' + (p.last_name || '')).trim();
+        var lbl = name + ' (' + (pa.abbreviation || pa.name || '?') + ') · ' + ideologyLabel(pa) + (p.status === 'Party Leader' ? ' · Leader' : '')
+          + ' · age ' + (p.age || 0) + ' · Cha ' + (p.cha || 0) + ' Acu ' + (p.acu || 0) + ' Gui ' + (p.gui || 0) + ' Res ' + (p.res || 0) + ' Img ' + (p.com || 0);
+        return { id: p.id, label: lbl };
+      });
+      body.innerHTML = MINISTRIES.map(function (m) {
+        var sel = optList.map(function (o) { return '<option value="' + esc(o.id) + '"' + (cur[m] === o.id ? ' selected' : '') + '>' + esc(o.label) + '</option>'; }).join('');
+        return '<div class="appoint__row"><label class="appoint__min">Minister of ' + esc(m) + (PRESTIGE_MIN.indexOf(m) >= 0 ? ' <span class="appoint__star" title="Grants +1 Image">★</span>' : '') + '</label>' +
+          '<select class="appoint__sel" data-m="' + esc(m) + '"><option value="">— Vacant —</option>' + sel + '</select></div>';
+      }).join('');
+    } catch (e) { body.innerHTML = '<p class="empty">Couldn’t load the cabinet.</p>'; }
+  }
+  var appointConfirm = document.getElementById('appointConfirm');
+  if (appointConfirm) appointConfirm.addEventListener('click', function () {
+    var set = [];
+    document.querySelectorAll('#appointBody .appoint__sel').forEach(function (s) { if (s.value) set.push({ ministry: s.dataset.m, politician_id: s.value }); });
+    closeAppoint();
+    performAction(function () { return supabase.rpc('cabinet_appoint', { p_set: set }); }, function (d) {
+      return 'Cabinet named' + (d && d.image_grants ? ' — ' + d.image_grants + ' minister' + (d.image_grants === 1 ? '' : 's') + ' gained Image' : '') + '.';
+    });
+  });
 
   // Stamp every action card with its AP cost. Standing actions (data-standing) take
   // their cost from STANDING_COST (util.js → mirrors schema/40 _standing_cost()), so the
@@ -778,14 +848,16 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition is live (opens coalition talks); the rest stay dimmed scaffolds.
-        var coal = a[0] === 'Coalition';
-        return '<button class="lead" type="button"' + (coal ? ' id="pm-coalition"' : ' disabled') +
+        // Coalition (talks) and Appoint (cabinet) are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : '';
+        return '<button class="lead" type="button"' + (id || ' disabled') +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
       '</div></section>';
     var coalBtn = el.querySelector('#pm-coalition');
     if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
+    var apptBtn = el.querySelector('#pm-appoint');
+    if (apptBtn) apptBtn.addEventListener('click', openAppointModal);
   }
 
   (async () => {

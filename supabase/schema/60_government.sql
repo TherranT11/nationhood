@@ -551,6 +551,11 @@ begin
       from calc c
      where c.id = n.id and c.pend > 0;
   exception when others then raise warning 'tick %: debt→inflation backlog failed — %', v_tick, sqlerrm; end;
+  -- National-modifier bounds (schema/70): the FINAL stat step — clamp every bounded stat /
+  -- resource to its active floor/ceiling, after all the moves above have settled, so a bound
+  -- is the last word each tick. Isolated like every other step.
+  begin perform public._apply_modifier_bounds();
+  exception when others then raise warning 'tick %: modifier bounds failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
@@ -876,3 +881,79 @@ begin
   return jsonb_build_object('confidence', v_conf, 'type', 'coalition');
 end $$;
 grant execute on function public.coalition_form_government(uuid) to authenticated;
+
+-- ===========================================================================
+-- Cabinet appointments — the head of government names ministers directly. One explicit
+-- appointment per (government, portfolio); the Government-page cabinet shows these first and
+-- falls back to the derived defaults (a coalition's fulfilled ministry promises, a minority's
+-- own roster) for any seat left un-appointed. The whole cabinet is set in one action.
+-- ===========================================================================
+create table if not exists public.cabinet_appointments (
+  government_id uuid not null references public.governments (id) on delete cascade,
+  ministry      text not null,
+  politician_id uuid not null references public.politicians (id) on delete cascade,
+  created_at    timestamptz not null default now(),
+  primary key (government_id, ministry)
+);
+alter table public.cabinet_appointments enable row level security;
+-- World-readable (the cabinet is public); writes are RPC-only.
+drop policy if exists "cabinet_appt_select_all" on public.cabinet_appointments;
+create policy "cabinet_appt_select_all" on public.cabinet_appointments for select using (true);
+
+-- cabinet_appoint(set): the HoG sets the whole cabinet in ONE action. `set` is a jsonb array
+-- of { ministry, politician_id } — the new full slate (a ministry absent from the array is
+-- left vacant). Appointing a politician to a PRESTIGE portfolio (Economic Development /
+-- Interior / Foreign Affairs / Trade) they didn't already hold there grants them +1 Image
+-- (com), clamped at 10 so re-appointing can't pump it. PM-only, 1 action, gated server-side.
+create or replace function public.cabinet_appoint(p_set jsonb)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_party public.parties%rowtype; v_gov public.governments%rowtype; r record; v_pol_nation text; v_grants int := 0;
+  c_prestige constant text[] := array['Economic Development', 'Interior', 'Foreign Affairs', 'Trade'];
+  -- Canonical portfolios (mirrors MINISTRIES in ministries.js). The server validates
+  -- independently so a crafted client can't seed junk rows / blow past the 11 real seats.
+  c_ministries constant text[] := array['Defence', 'Treasury', 'Interior', 'Foreign Affairs',
+    'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
+begin
+  v_party := public._begin_action(0);   -- requires >= 1 action
+  select * into v_gov from public.governments where nation_id = v_party.nation_id and status = 'active';
+  if not found then raise exception 'There is no sitting government.'; end if;
+  if v_gov.formateur_party_id is distinct from v_party.id then raise exception 'Only the head of government appoints the cabinet.'; end if;
+
+  -- Validate: each entry is a real portfolio + a politician from THIS nation.
+  for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
+             from jsonb_array_elements(coalesce(p_set, '[]'::jsonb)) loop
+    if r.ministry is null or r.pol is null then continue; end if;
+    if not (r.ministry = any(c_ministries)) then raise exception 'Unknown ministry: %', r.ministry; end if;
+    select p.nation_id into v_pol_nation from public.politicians pol join public.parties p on p.id = pol.party_id where pol.id = r.pol;
+    if v_pol_nation is distinct from v_party.nation_id then raise exception 'A chosen politician is not from your nation.'; end if;
+  end loop;
+
+  -- +1 Image for a genuine NEW appointment to a prestige portfolio (read BEFORE the replace).
+  for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
+             from jsonb_array_elements(coalesce(p_set, '[]'::jsonb)) loop
+    if r.ministry is null or r.pol is null or not (r.ministry = any(c_prestige)) then continue; end if;
+    if r.pol is distinct from (select politician_id from public.cabinet_appointments where government_id = v_gov.id and ministry = r.ministry) then
+      update public.politicians set com = least(10, coalesce(com, 0) + 1) where id = r.pol;
+      v_grants := v_grants + 1;
+    end if;
+  end loop;
+
+  -- Replace the slate: clear, then insert the provided (non-null) appointments. Distinct on
+  -- ministry so a stray duplicate can't violate the per-portfolio primary key.
+  delete from public.cabinet_appointments where government_id = v_gov.id;
+  insert into public.cabinet_appointments (government_id, ministry, politician_id)
+    select distinct on (ministry) v_gov.id, ministry, pol from (
+      select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
+        from jsonb_array_elements(coalesce(p_set, '[]'::jsonb))
+    ) s where ministry is not null and pol is not null;
+
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'government', v_party.name || ' named its cabinet.', public.current_game_date());
+
+  return jsonb_build_object('actions', v_party.actions_remaining - 1, 'image_grants', v_grants);
+end $$;
+grant execute on function public.cabinet_appoint(jsonb) to authenticated;
+
+notify pgrst, 'reload schema';

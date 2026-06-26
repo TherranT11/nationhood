@@ -283,22 +283,29 @@
   // The party-abbreviation tag (e.g. " (NPP)") — the one source for the cabinet's party chips,
   // used by the Head of Government row and every minister in a minority cabinet.
   function partyTag(party){ return (party && party.abbreviation) ? ' <span class="caba">(' + esc(party.abbreviation) + ')</span>' : ''; }
-  // filled: { ministry → {name, abbr} } from this government's DONE ministry promises
-  // (agenda_fulfill_ministry). A coalition/majority cabinet fills the portfolios that have
-  // been fulfilled and leaves the rest Vacant; a minority cabinet staffs from its own roster.
-  function cabinetMinisters(govt, pols, formateur, filled){
+  // appts: { ministry → {name, abbr} } — the HoG's explicit cabinet_appoint choices, the
+  // authoritative source. filled: the DONE ministry promises (agenda_fulfill_ministry). An
+  // explicit appointment wins; else a coalition/majority shows the fulfilled promise (Vacant
+  // otherwise) and a minority staffs the rest from its own roster.
+  function cabRowMin(m, html, cls){ return cabRow('Minister of ' + m, html, cls); }
+  function ministerCell(name, abbr){ return esc(name) + (abbr ? ' <span class="caba">(' + esc(abbr) + ')</span>' : ''); }
+  function cabinetMinisters(govt, pols, formateur, filled, appts){
+    appts = appts || {}; filled = filled || {};
     if (govt.type !== 'minority') {
       return MINISTRIES.map(function(m){
-        var f = filled && filled[m];
-        return f ? cabRow('Minister of ' + m, esc(f.name) + (f.abbr ? ' <span class="caba">(' + esc(f.abbr) + ')</span>' : ''))
-                 : cabRow('Minister of ' + m, 'Vacant', 'vac');
+        var a = appts[m], f = filled[m];
+        return a ? cabRowMin(m, ministerCell(a.name, a.abbr))
+             : f ? cabRowMin(m, ministerCell(f.name, f.abbr))
+                 : cabRowMin(m, 'Vacant', 'vac');
       }).join('');
     }
     var eligible = (pols || []).filter(function(p){ return p.status !== 'Party Leader' && FIELD_ROLES.indexOf(p.status) < 0; });
-    var tag = partyTag(formateur);   // every minister in a minority cabinet is from the governing party
+    var tag = partyTag(formateur);   // a minority's own roster fills any un-appointed seat
     var rows = MINISTRIES.map(function(m, i){
-      return eligible[i] ? cabRow('Minister of ' + m, esc(polFullName(eligible[i])) + tag)
-                         : cabRow('Minister of ' + m, 'Non-Descript' + tag, 'vac');
+      var a = appts[m];
+      return a ? cabRowMin(m, ministerCell(a.name, a.abbr))
+        : eligible[i] ? cabRowMin(m, esc(polFullName(eligible[i])) + tag)
+                      : cabRowMin(m, 'Non-Descript' + tag, 'vac');
     }).join('');
     return rows + eligible.slice(MINISTRIES.length).map(function(p){ return cabRow('Non-Descript Minister', esc(polFullName(p)) + tag); }).join('');
   }
@@ -343,7 +350,7 @@
     });
   }
 
-  function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols, polsByParty){
+  function render(govt, nation, parties, agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts){
     polsByParty = polsByParty || {};
     FULFILL = {};   // rebuilt below for each pending ministry the PM can fill
     var box = document.getElementById('content');
@@ -406,7 +413,7 @@
     var hogAbbr = partyTag(formateur);
     var cabinetHtml = '<div class="cabrow cabrow--hog"><span class="cabk">' + esc(HOG_TITLE) + '</span>' +
         '<span class="cabv">' + hogName + hogAbbr + '</span></div>' +
-      cabinetMinisters(govt, formateurPols, formateur, cabinetFilled);
+      cabinetMinisters(govt, formateurPols, formateur, cabinetFilled, appts);
 
     var agendaHtml;
     if (govt.type === 'coalition' && agenda.length){
@@ -605,7 +612,21 @@
         formateurPols = polsByParty[govt.formateur_party_id] || [];
         pmLeader = formateurPols.filter(function(p){ return p.status === 'Party Leader'; })[0] || null;
       }
-      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols, polsByParty);
+      // Explicit cabinet appointments (cabinet_appoint) — the authoritative cabinet, overriding
+      // the derived defaults. The appointee may be from any party, so resolve name + abbr via the
+      // embedded join. Non-critical: on failure the cabinet falls back to the derived view.
+      var appts = {};
+      if (govt) {
+        try {
+          const { data: ca } = await supabase.from('cabinet_appointments')
+            .select('ministry, politicians(first_name, last_name, parties(abbreviation))').eq('government_id', govt.id);
+          (ca || []).forEach(function(c){
+            var p = c.politicians; if (!p) return;
+            appts[c.ministry] = { name: ((p.first_name || '') + ' ' + (p.last_name || '')).trim(), abbr: (p.parties && p.parties.abbreviation) || '' };
+          });
+        } catch (e) { /* cabinet falls back to the derived view */ }
+      }
+      render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts);
       renderNationModifiers(document.getElementById('govMods'), await fetchNationModifiers(NATION_ID), 'No active national modifiers.');
       // National Crises — live panel beside Modifiers. Non-critical, so a failed fetch
       // leaves the static "none" message rather than breaking the page.
