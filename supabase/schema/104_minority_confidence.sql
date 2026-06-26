@@ -19,7 +19,7 @@ as $$
 declare
   v_gov public.governments%rowtype;
   v_new numeric;
-  v_form_name text; v_leader text; v_title text; v_reason text;
+  v_reason text;
 begin
   -- Per active, non-dormant minority government. Each runs in its own sub-block so one
   -- failure can't freeze the world clock (same discipline as every _advance_tick step).
@@ -41,14 +41,9 @@ begin
         perform public._apply_conviction_effect(v_gov.formateur_party_id, v_gov.nation_id,
                   jsonb_build_object('t', 'Popularity Ceiling', 'v', -3));
 
-        select name into v_form_name from public.parties where id = v_gov.formateur_party_id;
-        select name into v_leader from public.politicians
-          where party_id = v_gov.formateur_party_id and status = 'Party Leader'
-          order by created_at limit 1;
-        v_title := public.nation_declaration(v_gov.nation_id, 'head_of_government_title');
+        -- Premier named via the shared helper (60) — ONE source for this label.
         v_reason := 'Confidence in the minority government has collapsed below 20%. '
-                 || coalesce(nullif(v_title, ''), 'Prime Minister') || ' '
-                 || coalesce(v_leader, v_form_name, 'the incumbent')
+                 || public._head_of_government_label(v_gov.nation_id, v_gov.formateur_party_id)
                  || ' has lost the nation''s confidence, and a snap election has been called. ';
         perform public.resolve_election(v_gov.nation_id, v_reason);
       end if;
