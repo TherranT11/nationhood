@@ -53,6 +53,10 @@
   .ep-fields{flex:1;min-width:0}
   .ep-lbl{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
   .ep-lbl span{text-transform:none;letter-spacing:0;color:var(--soft);font-size:9px}
+  .ep-name{width:100%;font-family:'Archivo',sans-serif;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--bg);color:var(--ink)}
+  .ep-name:disabled{opacity:.55;cursor:not-allowed}
+  .ep-namehint{font-size:11.5px;color:var(--soft);margin-top:6px}
+  .ep-namehint b{color:var(--amber)}
   .ep-color{width:100%;height:40px;padding:3px;border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer}
   .ep-file{width:100%;font-size:12.5px;color:var(--muted)}
   .ep-clear{margin-top:9px;background:none;border:none;color:var(--red);font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;padding:0}
@@ -379,11 +383,14 @@
 <div class="epmodal" id="editModal" hidden>
   <div class="epmodal__card">
     <div class="epmodal__hd"><b>Edit Party</b><button class="epmodal__x" id="epX" type="button" aria-label="Close">&times;</button></div>
-    <p class="epmodal__sub">Set your party colour and crest. Both are visible to everyone in the nation.</p>
+    <p class="epmodal__sub">Set your party name, colour and crest. All are visible to everyone in the nation.</p>
     <div class="ep-body">
       <div class="ep-preview" id="epPreview">&mdash;</div>
       <div class="ep-fields">
-        <label class="ep-lbl" for="epColor">Party colour</label>
+        <label class="ep-lbl" for="epName">Party name</label>
+        <input type="text" id="epName" class="ep-name" maxlength="60">
+        <div class="ep-namehint" id="epNameHint">Renaming costs <b>−10% Party Popularity</b> and <b>−5% Ceiling</b> · 60-tick cooldown.</div>
+        <label class="ep-lbl" for="epColor" style="margin-top:14px">Party colour</label>
         <input type="color" id="epColor" class="ep-color" value="#5546E8">
         <label class="ep-lbl" for="epFile" style="margin-top:14px">Party logo <span>PNG · JPG · WebP · GIF, max 2&nbsp;MB</span></label>
         <input type="file" id="epFile" class="ep-file" accept="image/png,image/jpeg,image/webp,image/gif">
@@ -409,7 +416,7 @@
 </div>
 
 <script type="module">
-  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { esc, COMPETENCIES, fmtFunds, majority as majorityOf } from '/util.js';
   import { mountTopbar, setTopbarActions, setAccent } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -425,6 +432,7 @@
   // every player-side accent (popularity bar, badges, manifesto, …) follows it, and
   // it tints the crest. Other parties keep their own archetype colour (their --c).
   var ME = { user: null, party: null };
+  var NOW_TICK = 0;   // current tick, for the rename cooldown gate (server re-enforces)
   var ACCENT = '#5546E8';
   function applyAccent(color) {
     ACCENT = color;     // the crest tint reads this
@@ -466,6 +474,7 @@
   (function wireEditParty() {
     var modal = document.getElementById('editModal');
     var colorIn = document.getElementById('epColor'), fileIn = document.getElementById('epFile');
+    var nameIn = document.getElementById('epName'), nameHint = document.getElementById('epNameHint');
     var clearBtn = document.getElementById('epClear'), preview = document.getElementById('epPreview');
     var note = document.getElementById('epNote'), saveBtn = document.getElementById('epSave'), cancelBtn = document.getElementById('epCancel');
     var MAX = 2 * 1024 * 1024, pendingFile = null, removeLogo = false, busy = false, objUrl = null;
@@ -489,6 +498,12 @@
       if (!ME.party) return;
       pendingFile = null; removeLogo = false; setNote(''); fileIn.value = '';
       colorIn.value = ME.party.color || ACCENT;
+      nameIn.value = ME.party.name || '';
+      var until = ME.party.name_change_until_tick, left = (until || 0) - NOW_TICK, onCd = until != null && NOW_TICK > 0 && left > 0;
+      nameIn.disabled = onCd;
+      nameHint.innerHTML = onCd
+        ? 'Name locked — renamed recently. Available again in <b>' + left + ' tick' + (left === 1 ? '' : 's') + '</b>.'
+        : 'Renaming costs <b>−10% Party Popularity</b> and <b>−5% Ceiling</b> · 60-tick cooldown.';
       drawPreview(); modal.hidden = false;
     }
     function close() { modal.hidden = true; freeObjUrl(); }
@@ -508,8 +523,20 @@
     });
     saveBtn.addEventListener('click', async function () {
       if (busy || !ME.party) return;
+      var newName = nameIn.value.trim();
+      var renaming = !nameIn.disabled && newName && newName !== ME.party.name;
+      if (renaming && !confirm('Rename your party to “' + newName + '”?\n\nThis costs −10% Party Popularity and −5% Popularity Ceiling, and locks renaming for 60 ticks.')) return;
       busy = true; saveBtn.disabled = true; cancelBtn.disabled = true; setNote('Saving…');
       try {
+        if (renaming) {
+          var nm = await supabase.rpc('change_party_name', { p_name: newName });
+          if (nm.error) throw new Error(nm.error.message);
+          ME.party.name = newName;
+          if (nm.data && nm.data.until != null) ME.party.name_change_until_tick = nm.data.until;
+          document.getElementById('pname').textContent = newName;
+          document.getElementById('phead').textContent = newName;
+          document.title = newName + ' · Nationhood';
+        }
         var logo = removeLogo ? null : (ME.party.logo_url || null);
         if (pendingFile) {
           var ext = ((pendingFile.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '')) || 'png';
@@ -938,6 +965,7 @@
       // party adopts its first conviction (which sets the archetype).
       document.getElementById('pname').textContent = party.name;
       MF_NATION = nationName;
+      try { NOW_TICK = await currentTick(); } catch (e) { /* cooldown gate is best-effort; server enforces */ }
       setIdeology(party);
       document.title = party.name + ' · Nationhood';
 
