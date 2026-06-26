@@ -38,7 +38,7 @@ create table if not exists public.proposals (
   id          uuid primary key default gen_random_uuid(),
   nation_id   text not null references public.nations (id) on delete cascade,
   party_id    uuid not null references public.parties (id) on delete cascade,  -- proposer
-  kind        text not null default 'declaration',   -- declaration | law | regime (the monarchy special law)
+  kind        text not null default 'declaration',   -- declaration | law | regime | no_confidence
   title       text not null,                          -- e.g. "Capital Name → Seyonne"
   payload     jsonb not null default '{}'::jsonb,     -- declaration: {slug, label, value}
   status      text not null default 'voting',         -- agenda | voting | passed | failed
@@ -135,6 +135,15 @@ returns int language sql stable security definer set search_path = public as $$
   select coalesce(sum(seats), 0)::int from public.parties where nation_id = p_nation;
 $$;
 
+-- The next free agenda month for a nation — one measure reaches the floor per tick, filling
+-- from the tick after now. ONE source for every propose_* path that queues on the agenda.
+create or replace function public._next_agenda_slot(p_nation text, p_cur int)
+returns int language sql stable security definer set search_path = public as $$
+  select greatest(p_cur + 1, coalesce(max(scheduled_tick), p_cur) + 1)
+    from public.proposals where nation_id = p_nation and status = 'agenda';
+$$;
+revoke all on function public._next_agenda_slot(text, int) from public, anon, authenticated;
+
 -- A measure on the floor PASSES the moment Aye-seats reach a chamber majority.
 -- It does NOT fail here — a measure stands for its full window (6 ticks) and only
 -- fails for want of a majority at tick advance (advance_tick, schema/60). ONE place
@@ -161,6 +170,13 @@ begin
   select * into v_p from public.proposals where id = p_proposal for update;
   if not found then return 'gone'; end if;
   if v_p.status <> 'voting' then return v_p.status; end if;
+
+  -- A no-confidence motion resolves by its own rule (it carries UNLESS the head-of-government
+  -- party votes No) and only at the close of voting — never on the seat-majority path below.
+  if v_p.kind = 'no_confidence' then
+    if not p_final then return 'voting'; end if;
+    return public._resolve_no_confidence(v_p);
+  end if;
 
   select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = v_p.nation_id;
   select coalesce(sum(p.seats) filter (where pv.aye), 0),
@@ -276,9 +292,7 @@ begin
     v_party := public._lock_party();
     -- Queue on the next free month: one agenda slot per tick, filling from the tick
     -- after now. advance_tick carries it to the floor when the clock reaches it.
-    select greatest(v_cur + 1, coalesce(max(scheduled_tick), v_cur) + 1)
-      into v_sched
-      from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
+    v_sched := public._next_agenda_slot(v_party.nation_id, v_cur);
   end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
@@ -340,8 +354,7 @@ begin
   end if;
 
   if not p_to_floor then
-    select greatest(v_curtick + 1, coalesce(max(scheduled_tick), v_curtick) + 1)
-      into v_sched from public.proposals where nation_id = v_party.nation_id and status = 'agenda';
+    v_sched := public._next_agenda_slot(v_party.nation_id, v_curtick);
   end if;
 
   insert into public.proposals (nation_id, party_id, kind, title, payload, status, opened_tick, scheduled_tick)
@@ -410,5 +423,112 @@ begin
   return jsonb_build_object('status', v_res);
 end $$;
 grant execute on function public.cast_floor_vote(uuid, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Vote of No Confidence. A party spends 1 action to table a motion against the sitting
+-- government; it goes onto the agenda, reaches the floor like any measure, and at the close
+-- of voting resolves by ONE rule: it CARRIES unless the head-of-government party cast a No
+-- vote to defend itself (so an absent/inactive government falls automatically). Carrying
+-- punishes the government party (−5% popularity, −3% floor) and calls a fresh election;
+-- failing punishes the proposer instead. A 12-tick per-party cooldown caps the spam.
+-- ---------------------------------------------------------------------------
+-- Per-party cooldown: the tick before which this party can't table another motion.
+alter table public.parties add column if not exists no_confidence_until_tick int;
+
+-- The no-confidence penalty: −3% support floor (not below 0) and −5% popularity (not below
+-- the new floor, nor below the archetype modifier floor — the canonical drop clamp). ONE place
+-- both the carried (hits the government) and failed (hits the proposer) outcomes apply it.
+create or replace function public._no_confidence_punish(p_party uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_arch text; v_nation text; v_pop numeric; v_floor numeric;
+begin
+  select archetype, nation_id, popularity, pop_floor into v_arch, v_nation, v_pop, v_floor
+    from public.parties where id = p_party;
+  if not found then return; end if;
+  v_floor := greatest(0, coalesce(v_floor, 0) - 3);
+  update public.parties
+     set pop_floor   = v_floor,
+         popularity  = greatest(v_floor, public._mod_floor_drop(v_nation, v_arch, v_pop, coalesce(v_pop, 0) - 5))
+   where id = p_party;
+end $$;
+revoke all on function public._no_confidence_punish(uuid) from public, anon, authenticated;
+
+-- Resolve a no-confidence motion at the close of voting. Carries unless the CURRENT head-of-
+-- government party voted No; a carry punishes the government and calls an election, a failure
+-- punishes the proposer. If no government sits any more (an election intervened), it lapses.
+create or replace function public._resolve_no_confidence(p_p public.proposals)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_hog uuid; v_defended boolean; v_tick int; v_hogname text;
+begin
+  select current_tick into v_tick from public.game_state where id;
+  select formateur_party_id into v_hog from public.governments where nation_id = p_p.nation_id and status = 'active';
+  if v_hog is null then
+    update public.proposals set status = 'failed', resolved_tick = v_tick where id = p_p.id;
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+      values (p_p.nation_id, p_p.party_id, 'declaration', 'The no-confidence motion lapsed — no government sits.', public.current_game_date());
+    return 'failed';
+  end if;
+  select name into v_hogname from public.parties where id = v_hog;
+  -- Defended iff the government party explicitly cast a No vote.
+  v_defended := exists (select 1 from public.proposal_votes pv where pv.proposal_id = p_p.id and pv.party_id = v_hog and pv.aye = false);
+
+  if v_defended then
+    update public.proposals set status = 'failed', resolved_tick = v_tick where id = p_p.id;
+    perform public._no_confidence_punish(p_p.party_id);
+    insert into public.events (nation_id, party_id, kind, body, game_date)
+      values (p_p.nation_id, p_p.party_id, 'declaration',
+              'The vote of no confidence failed — ' || coalesce(v_hogname, 'the government') || ' holds, and the proposer loses standing.', public.current_game_date());
+    return 'failed';
+  end if;
+
+  update public.proposals set status = 'passed', resolved_tick = v_tick where id = p_p.id;
+  perform public._no_confidence_punish(v_hog);   -- punish the government BEFORE the election, so it carries the loss in
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (p_p.nation_id, p_p.party_id, 'declaration',
+            'The vote of no confidence carried — ' || coalesce(v_hogname, 'the government') || ' falls. Fresh elections are called.', public.current_game_date());
+  perform public.resolve_election(p_p.nation_id, 'a successful vote of no confidence');
+  return 'passed';
+end $$;
+revoke all on function public._resolve_no_confidence(public.proposals) from public, anon, authenticated;
+
+-- Table a vote of no confidence (1 action). Goes onto the agenda; advance_tick carries it to
+-- the floor and resolves it at close (_resolve_no_confidence). Needs a sitting government and
+-- a seated chamber; gated by the 12-tick per-party cooldown.
+create or replace function public.propose_no_confidence()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_party public.parties%rowtype; v_hog uuid; v_hogname text; v_tick int; v_sched int; v_pid uuid;
+begin
+  v_party := public._begin_action(0);   -- requires >= 1 action
+  select current_tick into v_tick from public.game_state where id;
+  if coalesce(v_party.no_confidence_until_tick, 0) > v_tick then
+    raise exception 'Your party can''t table another no-confidence motion yet (12-tick cooldown).';
+  end if;
+  select formateur_party_id into v_hog from public.governments where nation_id = v_party.nation_id and status = 'active';
+  if v_hog is null then raise exception 'There is no sitting government to challenge.'; end if;
+  if public._party_seats(v_party.nation_id) = 0 then raise exception 'The assembly is vacant — hold an election first.'; end if;
+  select name into v_hogname from public.parties where id = v_hog;
+
+  -- Queue on the next free agenda month (one slot per tick), same as other agenda measures.
+  v_sched := public._next_agenda_slot(v_party.nation_id, v_tick);
+
+  insert into public.proposals (nation_id, party_id, kind, title, payload, status, scheduled_tick)
+    values (v_party.nation_id, v_party.id, 'no_confidence',
+            'Vote of No Confidence in ' || coalesce(v_hogname, 'the government'),
+            '{}'::jsonb, 'agenda', v_sched)
+    returning id into v_pid;
+
+  update public.parties set actions_remaining = actions_remaining - 1, no_confidence_until_tick = v_tick + 12 where id = v_party.id;
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_party.nation_id, v_party.id, 'declaration',
+            v_party.name || ' tabled a vote of no confidence in ' || coalesce(v_hogname, 'the government') || '.', public.current_game_date());
+
+  return jsonb_build_object('id', v_pid, 'scheduled_tick', v_sched, 'actions', v_party.actions_remaining - 1);
+end $$;
+grant execute on function public.propose_no_confidence() to authenticated;
 
 notify pgrst, 'reload schema';

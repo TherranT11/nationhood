@@ -218,17 +218,21 @@
     var nayPct = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0;
     // Mirrors _resolve_proposal (schema/81): an outright chamber majority carries it
     // now; otherwise a simple majority of the seats cast (Aye > Nay) carries at close.
+    // A no-confidence motion is the exception — it carries UNLESS the government votes No.
+    var noConf = p.kind === 'no_confidence';
     var outright = t.aye > 0 && t.aye >= ST.maj;
-    var carry = outright || (t.aye > t.nay && t.aye > 0);
-    var reso = outright
-      ? 'Carrying — outright majority of the chamber'
-      : (carry ? 'Would pass if voting closed now — Aye leads'
-               : (t.aye === t.nay ? 'Would fail if voting closed now — tied' : 'Would fail if voting closed now — Nay leads'));
+    var carry = noConf ? true : (outright || (t.aye > t.nay && t.aye > 0));
+    var reso = noConf
+      ? 'Carries unless the government votes No before the floor closes'
+      : (outright
+        ? 'Carrying — outright majority of the chamber'
+        : (carry ? 'Would pass if voting closed now — Aye leads'
+                 : (t.aye === t.nay ? 'Would fail if voting closed now — tied' : 'Would fail if voting closed now — Nay leads')));
     return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + lawChange(p) +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
       '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span><b>' + cast + '</b> / ' + ST.total + ' seats cast</span></div>' +
       '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + ticksLeft(p) + '</div>' +
-      '<div class="rolltitle">Roll call · carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright</div>' +
+      '<div class="rolltitle">' + (noConf ? 'Roll call · the government must vote No to survive' : 'Roll call · carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright') + '</div>' +
       rollCall(p.id) +
       '<div class="mrow"><button class="vb aye' + (t.myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Vote Aye</button>' +
         '<button class="vb nay' + (t.myVote === 'nay' ? ' on' : '') + '" data-v="nay" type="button">Vote Nay</button>' +
