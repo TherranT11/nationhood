@@ -49,6 +49,7 @@
   .maptoggle{display:flex;gap:6px;margin-top:10px}
   .mt{flex:1;padding:8px 6px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;border:1px solid var(--line2);border-radius:8px;background:var(--surface);color:var(--muted);cursor:pointer}
   .mt.on{background:var(--indigo-soft);border-color:var(--indigo);color:var(--indigo)}
+  .mt:disabled{opacity:.45;cursor:not-allowed}
   .facts{display:flex;flex-direction:column}
   .frow{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--line)}
   .frow:last-child{border-bottom:none}
@@ -184,8 +185,8 @@
       '<section class="panel"><div class="nhd"><h2>Nation</h2>' + viewMenu + '</div><div class="idgrid">' +
         '<div><div class="map__ph" id="natMapBox"><canvas class="natmap" id="natMap"></canvas><span class="map__none" id="natMapNone">No map yet</span></div><div class="maptoggle">' +
           '<button class="mt on" type="button" data-m="nation">Nation</button>' +
-          '<button class="mt" type="button" data-m="continent">Continent</button>' +
-          '<button class="mt" type="button" data-m="world">World</button></div></div>' +
+          '<button class="mt" type="button" data-m="continent" disabled title="Coming soon">Continent</button>' +
+          '<button class="mt" type="button" data-m="world" disabled title="Coming soon">World</button></div></div>' +
         '<div class="facts">' +
           frow('Official Nation Name', esc(declValue('formal_state_name'))) +
           frow('Demonym', esc(declValue('demonym'))) +
