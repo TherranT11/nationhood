@@ -266,7 +266,13 @@
       // works before the world_hexes table/data exists). Colours match the editor (palette
       // by nation name order). render() calls drawNatMap() once the canvas is in the DOM.
       var hexData = [];
-      try { var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent'); if (!hr.error) hexData = hr.data || []; } catch (e) {}
+      try {
+        var hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id, continent');
+        // Fall back if the continent column isn't migrated yet, so the map (Nation/World) still
+        // works — [Continent] just falls back to the world view until it's applied.
+        if (hr.error) hr = await supabase.from('world_hexes').select('q, r, terrain, nation_id');
+        if (!hr.error) hexData = hr.data || [];
+      } catch (e) {}
       NMAP.hexes = hexData; NMAP.viewedId = viewId; NMAP.mode = 'nation';
       NMAP.natColor = nationColors(others || []);   // palette by name order — matches the editor
       // The viewed nation's continent = the one most of its hexes sit on (drives [Continent]).
