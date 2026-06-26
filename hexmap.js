@@ -2,17 +2,23 @@
 // adminsetup World Map editor and the nation-page map viewer so the math and the colours live
 // in ONE place. `s` is the on-screen hex radius (already scaled for zoom); (ox, oy) the origin.
 
-export const NATION_PALETTE = ['#5546E8', '#16915a', '#C42B2B', '#E0820E', '#1f86d6', '#8b46e8',
+// Nation colour palette + neighbour order are module-internal — read through nationColors()
+// and borderEdges() below (the only things callers need).
+const NATION_PALETTE = ['#5546E8', '#16915a', '#C42B2B', '#E0820E', '#1f86d6', '#8b46e8',
   '#0f9b8e', '#d6457e', '#7a8b1f', '#c98a16', '#3f6fd6', '#9a5b2d'];
 
 // A hex's six axial neighbours, in the edge order hexEdge() uses (d = 0…5).
-export function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 1, r], [q, r - 1], [q + 1, r - 1]]; }
+function neighbors(q, r) { return [[q + 1, r], [q, r + 1], [q - 1, r + 1], [q - 1, r], [q, r - 1], [q + 1, r - 1]]; }
 
 export function axialToPix(q, r, s, ox, oy) { return { x: Math.sqrt(3) * s * (q + r / 2) + ox, y: 1.5 * s * r + oy }; }
 
-// One colour per nation, palette by list order — so every reader that orders nations the same
-// way (by name) paints each nation the SAME colour. Returns { nationId: '#rrggbb' }.
-export function nationColors(list) { var m = {}; (list || []).forEach(function (n, i) { m[n.id] = NATION_PALETTE[i % NATION_PALETTE.length]; }); return m; }
+// A single palette colour by index (the ONE place the palette mapping lives). Used for default
+// colours of nations/continents that don't have an explicit one yet.
+export function paletteAt(i) { var n = NATION_PALETTE.length; return NATION_PALETTE[((i % n) + n) % n]; }
+// One colour per nation: its stored map colour (nations.color), else a stable palette colour by
+// list order — so every reader that orders nations the same way (by name) agrees. Pass the nation
+// rows (need .id and .color). Returns { nationId: '#rrggbb' }.
+export function nationColors(list) { var m = {}; (list || []).forEach(function (n, i) { m[n.id] = n.color || paletteAt(i); }); return m; }
 
 // The border edges of a land hex: each side facing the sea (no land neighbour) or a different
 // nation. landAt(q,r) returns the land hex at a cell or null. Returns [{ d, sea }] — d is the

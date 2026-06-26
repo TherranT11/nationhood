@@ -39,6 +39,7 @@ alter table public.nations add column if not exists next_election_tick int;
 alter table public.nations add column if not exists ruling_party text;
 alter table public.nations add column if not exists former_ruling_party text;
 alter table public.nations add column if not exists dormant boolean not null default false;
+alter table public.nations add column if not exists color text;   -- map colour (null → palette by name order)
 -- Population may be fractional (millions, e.g. 24.5) — widen the legacy bigint.
 alter table public.nations alter column population type numeric using population::numeric;
 -- The active-party count is derived live from public.parties (one source), not
