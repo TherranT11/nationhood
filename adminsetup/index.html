@@ -1577,7 +1577,12 @@
         await loadWiki();
         var saved = WK.rows.find(function (r) { return r.title.toLowerCase() === title.toLowerCase(); });
         if (saved) editWk(saved.id);
-      } catch (e) { setWkNote('Save failed: ' + (e.message || e), 'error'); }
+      } catch (e) {
+        // Titles are unique case-insensitively (schema/105) — give that a friendly message
+        // instead of the raw constraint error.
+        if (e && e.code === '23505') setWkNote('An article with that title already exists.', 'error');
+        else setWkNote('Save failed: ' + (e.message || e), 'error');
+      }
       finally { btn.disabled = false; }
     }
     async function delWk() {

@@ -5,7 +5,7 @@
 // light/dark theme like every other in-game page. Body html (hat, lead, sections, infobox values)
 // is admin-authored and trusted — writes are is_admin-gated in the DB (schema/105).
 
-export function esc(s) {
+function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
@@ -13,7 +13,7 @@ export function esc(s) {
 
 // A cross-link to another article by title. `known` (a Set of lower-cased titles) decides whether
 // it renders live (clickable) or muted (the target doesn't exist yet) — same idea as a red link.
-export function wlink(title, label, known) {
+function wlink(title, label, known) {
   var live = known && known.has(String(title).toLowerCase());
   return '<span class="wk-link' + (live ? '' : ' wk-link--dead') + '" data-link="' + esc(title) + '">'
     + esc(label || title) + '</span>';
@@ -74,7 +74,7 @@ export function articleHTML(a, known) {
     + toc + body + see + refs + cats;
 }
 
-export const WIKI_CSS = `
+const WIKI_CSS = `
 .wk-masthead{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding:0 0 16px;margin-bottom:8px}
 .wk-mbrand{display:flex;align-items:center;gap:11px}
 .wk-globe{width:34px;height:34px;border-radius:50%;border:1px solid var(--line2);display:grid;place-items:center;color:var(--indigo);flex:none}

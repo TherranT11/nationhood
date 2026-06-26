@@ -56,14 +56,12 @@
   var ART = document.getElementById('wkArticle');
   var byTitle = {};          // lower-cased title → row
   var known = new Set();      // lower-cased titles that exist
-  var cur = null;            // current article title
 
   function setEmpty(msg) { ART.innerHTML = '<div class="wk-empty">' + msg + '</div>'; }
 
   function render(title) {
     var row = byTitle[String(title).toLowerCase()];
     if (!row) return;
-    cur = row.title;
     ART.innerHTML = articleHTML(normalizeArticle(row), known);
     wire();
     // Reflect the open article in the URL (no reload) so it's shareable / refresh-stable.
