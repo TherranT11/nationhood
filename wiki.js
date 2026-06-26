@@ -1,4 +1,4 @@
-// wiki.js — Nationhopedia article rendering. ONE source for turning a stored article into HTML,
+// wiki.js — Nationpedia article rendering. ONE source for turning a stored article into HTML,
 // shared by the player page (/play/wiki) and the adminsetup editor's live preview so the two can
 // never drift. Styling uses the shared app tokens (--ink/--surface/--soft/…), so it follows the
 // light/dark theme like every other in-game page.
@@ -95,7 +95,7 @@ export function articleHTML(a, known) {
   var catsHtml = cats.length ? '<div class="wk-cats"><span class="wk-cl">Categories:</span>' + cats.map(function (c) { return '<span class="wk-catchip">' + esc(c) + '</span>'; }).join('') + '</div>' : '';
 
   return '<h1 class="wk-title">' + esc(a.title || 'Untitled') + '</h1>'
-    + '<div class="wk-fromline">From Nationhopedia, the free encyclopedia' + (a.kind ? ' &middot; ' + esc(a.kind) : '') + '</div>'
+    + '<div class="wk-fromline">From Nationpedia, the free encyclopedia' + (a.kind ? ' &middot; ' + esc(a.kind) : '') + '</div>'
     + (a.hat ? '<div class="wk-hatnote">' + inlineMd(a.hat, known) + '</div>' : '')
     + '<div class="wk-body">' + infobox + paras(a.lead, known) + tocBox + body + seeHtml + refsHtml + catsHtml + '</div>';
 }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="/theme.js"></script>
-<title>Nationhopedia · Nationhood</title>
+<title>Nationpedia · Nationhood</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Lora:wght@400;600&display=swap" rel="stylesheet">
@@ -20,7 +20,7 @@
   body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
   .app{display:flex;min-height:100vh}
   /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
-  .main{flex:1;padding:24px clamp(16px,3vw,40px) 64px;min-width:0;max-width:1040px}
+  .main{flex:1;padding:24px clamp(16px,3vw,40px) 64px;min-width:0}
 
   /* masthead (always visible; logo returns to the index) */
   .masthead{text-align:center;border-bottom:1px solid var(--line2);padding-bottom:20px;margin-bottom:24px}
@@ -101,11 +101,11 @@
   <main class="main">
     <div class="topbar" id="topbar"></div>
     <div class="masthead">
-      <div class="logo" id="wkLogo">Nation<b>hopedia</b></div>
+      <div class="logo" id="wkLogo">Nation<b>pedia</b></div>
       <div class="tag">The free encyclopedia of the world<span id="wkCount"></span></div>
       <div class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-        <input id="wkSearch" placeholder="Search Nationhopedia…" autocomplete="off">
+        <input id="wkSearch" placeholder="Search Nationpedia…" autocomplete="off">
         <div class="suggest" id="wkSuggest"></div>
       </div>
     </div>
@@ -189,7 +189,7 @@
   function showArticle(title) {
     var row = byTitle[String(title).toLowerCase()]; if (!row) return;
     articleEl.innerHTML =
-      '<div class="backrow"><span class="backlink" id="wkBack"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Nationhopedia</span></div>'
+      '<div class="backrow"><span class="backlink" id="wkBack"><svg viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>Nationpedia</span></div>'
       + articleHTML(normalizeArticle(row), known);
     landing.hidden = true; articleEl.hidden = false;
     document.getElementById('wkBack').onclick = showLanding;
@@ -291,12 +291,12 @@
   }
 
   (async () => {
-    if (!isConfigured) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Nationhopedia isn’t connected yet.</div>'; return; }
+    if (!isConfigured) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Nationpedia isn’t connected yet.</div>'; return; }
     const user = await requireUser();
     if (!user) return; // redirected to login
     setBrand(user.id);
     const { data: rows, error } = await supabase.from('wiki_articles').select('id, title, kind, definition, updated_at, created_at').order('title');
-    if (error) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Couldn’t load Nationhopedia. ' + esc(error.message || '') + '</div>'; return; }
+    if (error) { document.getElementById('featured').innerHTML = '<div class="rec-empty">Couldn’t load Nationpedia. ' + esc(error.message || '') + '</div>'; return; }
     ROWS = rows || [];
     ROWS.forEach(function (r) { byTitle[r.title.toLowerCase()] = r; known.add(r.title.toLowerCase()); });
     document.getElementById('wkCount').textContent = ' · ' + ROWS.length + (ROWS.length === 1 ? ' article' : ' articles');

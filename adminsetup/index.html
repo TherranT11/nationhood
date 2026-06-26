@@ -425,7 +425,7 @@
   .evtab .ev .eff{margin-top:11px}
   .evtab .feed .empty{border:1px dashed var(--line2);border-radius:13px;padding:34px 18px;text-align:center;color:var(--soft);font-size:13px;font-style:italic}
 
-  /* Wiki (Nationhopedia) authoring tab. Scoped under .wktab so generic names don't collide. */
+  /* Wiki (Nationpedia) authoring tab. Scoped under .wktab so generic names don't collide. */
   .wktab .sub code{font-family:'Space Mono',monospace;font-size:11px;background:var(--chip);padding:1px 5px;border-radius:5px}
   .wktab .wkhint{color:var(--soft);font-weight:400;font-size:10.5px;font-family:'Space Mono',monospace;text-transform:none;letter-spacing:0}
   /* top bar: new + existing-article chips */
@@ -955,7 +955,7 @@
       </div>
       <div class="tabpane" data-tab="wiki" hidden>
         <div class="wktab">
-          <p class="sub" style="margin:0 0 14px">Write Nationhopedia articles — players read them under <b>Wiki</b>. The preview updates as you type. Markup: <code>[[Title]]</code> or <code>[[Title|label]]</code> to link another article, <code>**bold**</code>, <code>[1]</code> for a reference marker, and a blank line for a new paragraph.</p>
+          <p class="sub" style="margin:0 0 14px">Write Nationpedia articles — players read them under <b>Wiki</b>. The preview updates as you type. Markup: <code>[[Title]]</code> or <code>[[Title|label]]</code> to link another article, <code>**bold**</code>, <code>[1]</code> for a reference marker, and a blank line for a new paragraph.</p>
           <div class="wkbar">
             <button class="wknew" id="wkNew" type="button">+ New article</button>
             <div class="wklist" id="wkList"><span class="empty">Loading…</span></div>
@@ -1580,7 +1580,7 @@
       });
     });
 
-    // ---- Wiki (Nationhopedia) authoring (admin; wiki_articles table, is_admin RLS) ----------
+    // ---- Wiki (Nationpedia) authoring (admin; wiki_articles table, is_admin RLS) ----------
     // A structured editor (Basics / Infobox / Lead / Sections / References / Links) whose live
     // preview renders through the SAME /wiki.js the player page uses — so the editor can't drift
     // from what players see. The draft S maps onto the JSONB definition (schema/105). Text fields
