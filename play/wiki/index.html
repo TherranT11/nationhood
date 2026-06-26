@@ -37,6 +37,9 @@
   .sg:hover{background:var(--chip)} .sg .k{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);text-transform:uppercase}
 
   .grid{display:grid;grid-template-columns:1fr 320px;gap:22px;align-items:start}
+  /* .grid's display would otherwise override the [hidden] attribute, leaving the index
+     visible behind an opened article — this makes hiding the landing actually work. */
+  #wkLanding[hidden]{display:none}
   @media(max-width:880px){.grid{grid-template-columns:1fr}}
 
   .sectionlabel{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:11px}
