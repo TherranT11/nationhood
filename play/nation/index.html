@@ -124,7 +124,10 @@
                 : (NMAP.mode === 'continent' && fc) ? land.filter(function (h) { return h.continent === fc; })
                 : null;
     var focus = (focused && focused.length) ? focused : land;   // no focus hexes → show the world
-    var M = (focused && focused.length) ? 3 : 2.5;
+    // M = rings of context around the focus. A tight margin keeps the viewed nation zoomed in
+    // close (a looser one let small/narrow nations like Wesmore swim in sea); the world fallback
+    // keeps a wider frame.
+    var M = (focused && focused.length) ? 1.5 : 2.5;
     var minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
     focus.forEach(function (h) { var p = axialToPix(h.q, h.r, 1, 0, 0); minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x); miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y); });
     minx -= M * Math.sqrt(3); maxx += M * Math.sqrt(3); miny -= M * 1.5; maxy += M * 1.5;
