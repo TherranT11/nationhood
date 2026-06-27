@@ -452,6 +452,35 @@
   /* Corporations tab — admin Creator for firms (corporations table). */
   .crtab .clayout{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start}
   @media(max-width:920px){.crtab .clayout{grid-template-columns:1fr}}
+  /* Cities tab — self-scoped form + list (.citytab .card/.f/.seg/.cbtn/.crow) */
+  .citytab .card{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px 20px;margin-bottom:16px}
+  .citytab .ph{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
+  .citytab .f{margin-bottom:14px}
+  .citytab .f label{display:block;font-weight:700;font-size:12px;margin-bottom:6px;color:var(--muted)}
+  .citytab .hint{color:var(--soft);font-weight:400;font-size:11px;margin-left:5px}
+  .citytab .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:560px){.citytab .row2{grid-template-columns:1fr}}
+  .citytab input[type=text],.citytab select,.citytab textarea{width:100%;border:1px solid var(--line2);background:var(--field,#FCFBF9);border-radius:9px;padding:10px 12px;font-family:inherit;font-size:13.5px;color:var(--ink)}
+  .citytab textarea{min-height:78px;resize:vertical;line-height:1.5}
+  .citytab .seg{display:inline-flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+  .citytab .seg button{border:none;background:var(--surface);padding:9px 16px;font-family:'Space Mono',monospace;font-size:11px;cursor:pointer;color:var(--muted)}
+  .citytab .seg button.on{background:var(--ink);color:#fff;font-weight:700}
+  .citytab .citycols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  @media(max-width:920px){.citytab .citycols{grid-template-columns:1fr}}
+  .citytab .ctbtns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .citytab .cbtn{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;cursor:pointer}
+  .citytab .cbtn:disabled{background:var(--line2);cursor:not-allowed}
+  .citytab .cbtn.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line2)}
+  .citytab .cbtn.danger{background:var(--surface);color:var(--red);border:1px solid var(--red)}
+  .citytab .listhd{font-size:13px;font-weight:700;margin-bottom:12px;color:var(--muted)}
+  .citytab .listhd b{color:var(--ink)}
+  .citytab .listhd .cnt{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);font-weight:400;margin-left:4px}
+  .citytab .crow{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:1px solid var(--line);border-radius:11px;padding:12px 14px;background:var(--surface);margin-bottom:9px;cursor:pointer;width:100%;text-align:left;font-family:inherit;color:inherit}
+  .citytab .crow:hover{border-color:var(--line2)}
+  .citytab .crow.sel{border-color:var(--indigo);background:var(--indigo-soft)}
+  .citytab .crow .cn{font-weight:700;font-size:14px}
+  .citytab .crow .cmeta{display:block;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:3px}
+  .citytab .crow .ccap{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--indigo);flex:none}
   .crtab .card{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:18px 20px;margin-bottom:16px}
   .crtab .ph{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:14px}
   .crtab .f{margin-bottom:14px}
@@ -524,6 +553,7 @@
     <div class="adminbody">
       <nav class="vtabs">
         <button class="vtab active" data-tab="nations" type="button">Nations</button>
+        <button class="vtab" data-tab="cities" type="button">Cities</button>
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
@@ -785,6 +815,33 @@
                 <div class="feedhd"><div class="ttl"><b id="evFeedNation">—</b> · Event feed</div><div class="cnt" id="evFeedCount"></div></div>
                 <div class="feed" id="evFeed"><p class="empty">Loading…</p></div>
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="cities" hidden>
+        <div class="citytab">
+          <p class="sub" style="margin:0 0 16px">Add the cities of a nation — a name, an optional capital marker, its share of the national population, and a short description. Cities are flavour shown on the public Nation page; they have no mechanical effect.</p>
+          <div class="citycols">
+            <div class="card">
+              <div class="ph" id="ctMode">Add New City</div>
+              <div class="f"><label>Nation</label><select id="ctNation"></select></div>
+              <div class="f"><label>Name of City</label><input type="text" id="ctName" placeholder="e.g. Seyonne"></div>
+              <div class="row2">
+                <div class="f"><label>Capital?</label><div class="seg" id="ctCap"><button data-v="no" class="on" type="button">No</button><button data-v="yes" type="button">Yes</button></div></div>
+                <div class="f"><label>% of Population <span class="hint">0–100</span></label><input type="text" id="ctPct" placeholder="e.g. 18"></div>
+              </div>
+              <div class="f"><label>Description</label><textarea id="ctDesc" placeholder="A short description of the city…"></textarea></div>
+              <div class="ctbtns">
+                <button class="cbtn" id="ctSave" type="button">Add city</button>
+                <button class="cbtn ghost" id="ctNew" type="button" hidden>+ New city</button>
+                <button class="cbtn danger" id="ctDelete" type="button" hidden>Delete</button>
+              </div>
+              <div class="note" id="ctNote" role="status" aria-live="polite"></div>
+            </div>
+            <div>
+              <div class="listhd"><b id="ctListNation">—</b> · Cities <span class="cnt" id="ctCount"></span></div>
+              <div id="ctList"><p class="empty">Loading…</p></div>
             </div>
           </div>
         </div>
@@ -1486,6 +1543,97 @@
     document.getElementById('cfReroll').onclick=function(){ corpRollM(); renderCorpForm(); };
     document.getElementById('cfCreate').onclick=createCorp;
 
+    // ---- Cities (admin roster; cities table, RLS) ----------------------------------------------
+    // A per-nation list of cities authored here and shown on the public Nation page. Click a row
+    // to edit it; "+ New city" blanks the form. nationsCache (loaded with the Nations tab) fills
+    // the picker. ONE source: the cities table — the Nation page reads the same rows.
+    var CT = { editId: null, saving: false, inited: false, rows: [] };
+    function ctNationId(){ return document.getElementById('ctNation').value; }
+    function ctSetMode(){
+      document.getElementById('ctMode').textContent = CT.editId ? 'Edit City' : 'Add New City';
+      document.getElementById('ctSave').textContent = CT.editId ? 'Save changes' : 'Add city';
+      document.getElementById('ctNew').hidden = !CT.editId;
+      document.getElementById('ctDelete').hidden = !CT.editId;
+    }
+    function ctSetCap(yes){ document.querySelectorAll('#ctCap button').forEach(function(b){ b.classList.toggle('on', (b.dataset.v === 'yes') === !!yes); }); }
+    function ctCapOn(){ return document.querySelector('#ctCap button.on').dataset.v === 'yes'; }
+    function ctBlank(){
+      CT.editId = null;
+      document.getElementById('ctName').value = ''; document.getElementById('ctPct').value = ''; document.getElementById('ctDesc').value = '';
+      ctSetCap(false); ctSetMode();
+      document.querySelectorAll('#ctList .crow').forEach(function(r){ r.classList.remove('sel'); });
+    }
+    function ctLoadRow(c){
+      CT.editId = c.id;
+      document.getElementById('ctName').value = c.name || '';
+      document.getElementById('ctPct').value = (c.pop_pct == null) ? '' : c.pop_pct;
+      document.getElementById('ctDesc').value = c.description || '';
+      ctSetCap(!!c.is_capital); ctSetMode();
+    }
+    function renderCtList(){
+      var box = document.getElementById('ctList'), n = nationsCache.filter(function(x){ return x.id === ctNationId(); })[0];
+      document.getElementById('ctListNation').textContent = n ? n.name : '—';
+      document.getElementById('ctCount').textContent = CT.rows.length ? '(' + CT.rows.length + ')' : '';
+      if (!CT.rows.length) { box.innerHTML = '<p class="empty">No cities yet for this nation. Add one on the left.</p>'; return; }
+      var sorted = CT.rows.slice().sort(function(a, b){ return (!!b.is_capital) - (!!a.is_capital) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0); });
+      box.innerHTML = sorted.map(function(c){
+        var meta = (c.pop_pct != null && c.pop_pct !== '') ? c.pop_pct + '% of pop' : 'no population set';
+        return '<button class="crow' + (c.id === CT.editId ? ' sel' : '') + '" type="button" data-id="' + esc(c.id) + '">' +
+          '<span><span class="cn">' + esc(c.name || 'City') + '</span><span class="cmeta">' + esc(meta) + '</span></span>' +
+          (c.is_capital ? '<span class="ccap">Capital</span>' : '') + '</button>';
+      }).join('');
+      box.querySelectorAll('.crow').forEach(function(b){
+        b.onclick = function(){ var c = CT.rows.filter(function(x){ return x.id === b.dataset.id; })[0]; if (c) { ctLoadRow(c); renderCtList(); } };
+      });
+    }
+    async function ctFetch(){
+      var box = document.getElementById('ctList'); box.innerHTML = '<p class="empty">Loading…</p>';
+      const { data, error } = await supabase.from('cities').select('id, nation_id, name, is_capital, pop_pct, description').eq('nation_id', ctNationId()).order('created_at');
+      if (error) { box.innerHTML = '<p class="empty">Couldn’t load cities.</p>'; CT.rows = []; return; }
+      CT.rows = data || []; renderCtList();
+    }
+    async function ctSave(){
+      if (CT.saving) return;
+      var note = document.getElementById('ctNote'), nation = ctNationId(), name = document.getElementById('ctName').value.trim();
+      if (!nation) { note.textContent = 'Pick a nation first.'; note.className = 'note error'; return; }
+      if (!name) { note.textContent = 'Give the city a name.'; note.className = 'note error'; return; }
+      var pctRaw = document.getElementById('ctPct').value.trim(), pct = pctRaw === '' ? null : Number(pctRaw);
+      if (pct != null && (isNaN(pct) || pct < 0 || pct > 100)) { note.textContent = 'Population share must be a number from 0 to 100.'; note.className = 'note error'; return; }
+      var row = { nation_id: nation, name: name, is_capital: ctCapOn(), pop_pct: pct, description: document.getElementById('ctDesc').value.trim() || null };
+      CT.saving = true; document.getElementById('ctSave').disabled = true; note.textContent = 'Saving…'; note.className = 'note';
+      var res = CT.editId ? await supabase.from('cities').update(row).eq('id', CT.editId) : await supabase.from('cities').insert(row);
+      CT.saving = false; document.getElementById('ctSave').disabled = false;
+      if (res.error) { note.textContent = res.error.message || 'Couldn’t save.'; note.className = 'note error'; return; }
+      note.textContent = (CT.editId ? 'Saved “' : 'Added “') + name + '”.'; note.className = 'note ok';
+      ctBlank(); await ctFetch();
+    }
+    async function ctDelete(){
+      if (!CT.editId || CT.saving) return;
+      if (!confirm('Delete this city?')) return;
+      var note = document.getElementById('ctNote'), id = CT.editId;
+      CT.saving = true; document.getElementById('ctDelete').disabled = true;
+      var res = await supabase.from('cities').delete().eq('id', id);
+      CT.saving = false; document.getElementById('ctDelete').disabled = false;
+      if (res.error) { note.textContent = res.error.message || 'Couldn’t delete.'; note.className = 'note error'; return; }
+      note.textContent = 'City deleted.'; note.className = 'note ok';
+      ctBlank(); await ctFetch();
+    }
+    function loadCities(){
+      var sel = document.getElementById('ctNation');
+      sel.innerHTML = nationsCache.map(function(n){ return '<option value="' + esc(n.id) + '">' + esc(n.name) + '</option>'; }).join('');
+      if (!CT.inited) {
+        CT.inited = true;
+        sel.addEventListener('change', function(){ ctBlank(); ctFetch(); });
+        document.querySelectorAll('#ctCap button').forEach(function(b){ b.onclick = function(){ ctSetCap(b.dataset.v === 'yes'); }; });
+        document.getElementById('ctSave').onclick = ctSave;
+        document.getElementById('ctNew').onclick = ctBlank;
+        document.getElementById('ctDelete').onclick = ctDelete;
+      }
+      ctBlank();
+      if (nationsCache.length) ctFetch();
+      else document.getElementById('ctList').innerHTML = '<p class="empty">Add a nation first (Nations tab).</p>';
+    }
+
     // ---- Left-hand tab switching ----
     document.querySelectorAll('.vtab').forEach(function (t) {
       t.addEventListener('click', function () {
@@ -1494,6 +1642,7 @@
         document.querySelectorAll('.tabpane').forEach(function (p) { p.hidden = p.dataset.tab !== tab; });
         if (tab === 'modifiers') { renderModNations(modEditing ? (assignCache[modEditing.id] || []) : []); loadModifiers(); }
         if (tab === 'nations') { loadDeclFields(); loadPolFields(); }
+        if (tab === 'cities') loadCities();
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
         if (tab === 'convictions') loadConvictions();
