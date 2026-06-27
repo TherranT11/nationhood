@@ -32,6 +32,33 @@ export function policyMoney(v, scale, pop, pros) {
   if (scale === 'perm') return v * pop;
   return v * pop * (pros / 10);
 }
+// The annual ₣B factor for a money effect the fiscal summary annualizes: per-year ×1,
+// permanent per-tick ×12, else 0 (one-time and finite-duration money fall through to the
+// effects list with their own cadence). ONE predicate so the money summary and the effects
+// filter agree — a money effect belongs in the fiscal block iff this is non-zero, and a
+// standing effect belongs in the effects list iff it is zero.
+export function fiscalFactor(e) {
+  if (!isMoneyTarget(e.t)) return 0;
+  return e.cad === 'year' ? 1 : (e.cad === 'tick' && !(Number(e.dur) > 0)) ? 12 : 0;
+}
+// { Income, Budget, Debt } annual ₣B for a nation being on this option's rung — its recurring
+// money effects, annualized (fiscalFactor) and scaled to the nation (policyMoney). ONE source
+// for the propose preview and the Legislature bill view.
+export function optMoney(o, pop, pros) {
+  var m = { Income: 0, Budget: 0, Debt: 0 };
+  ((o && o.effects) || []).forEach(function (e) {
+    var f = fiscalFactor(e); if (!f) return;
+    m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros) * f;
+  });
+  return m;
+}
+// The fiscal CHANGE from the rung in force to the proposed rung (proposed − current), per
+// money target — what enacting the bill does to the budget. ONE source for both views.
+export function fiscalDelta(curOpt, propOpt, pop, pros) {
+  var cm = optMoney(curOpt, pop, pros), pm = optMoney(propOpt, pop, pros);
+  return { Income: pm.Income - cm.Income, Budget: pm.Budget - cm.Budget, Debt: pm.Debt - cm.Debt };
+}
+
 // Two policy targets are scoped to the parties in government (schema/91 _apply_policy_effect),
 // not all parties in the nation — so label them with that scope wherever a policy's effects are
 // shown (the admin authoring tool and the player policy/propose views all read this one source).

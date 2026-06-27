@@ -118,7 +118,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, isMoneyTarget, policyMoney } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, optMoney } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -182,25 +182,10 @@
     // The option in force for this nation (one source: policies.js).
     function inForceIdx() { return policyOptionIdx(curDef(), currentPolicies, curPolicy().id); }
 
-    // ---- money helpers: one source is the option's authored effects; we just annualize
-    // them (per-tick ×12, per-year ×1, one-time excluded) and scale by this nation. ----
-    // The annual factor for a money effect the fiscal block summarises: per-year ×1, permanent
-    // per-tick ×12, else 0 (one-time and finite-duration money fall through to the effects list
-    // with their own cadence label). ONE predicate so optMoney and the effects filter agree.
-    function fiscalFactor(e) {
-      if (!isMoneyTarget(e.t)) return 0;
-      return e.cad === 'year' ? 1 : (e.cad === 'tick' && !(Number(e.dur) > 0)) ? 12 : 0;
-    }
-    function optMoney(o) {   // { Income, Budget, Debt } annual ₣B for being on this rung
-      var m = { Income: 0, Budget: 0, Debt: 0 };
-      ((o && o.effects) || []).forEach(function (e) {
-        var f = fiscalFactor(e); if (!f) return;
-        m[e.t] += policyMoney(Number(e.v) || 0, e.scale, pop, pros) * f;
-      });
-      return m;
-    }
+    // Money helpers (fiscalFactor/optMoney/fiscalDelta) live in policies.js — ONE source shared
+    // with the Legislature bill view. They scale by THIS nation's pop/prosperity, passed in here.
     function rungMeta(o) {   // short fiscal summary line under a rung's name
-      var m = optMoney(o), net = m.Income + m.Budget;
+      var m = optMoney(o, pop, pros), net = m.Income + m.Budget;
       if (Math.abs(net) < 0.05) return 'no fiscal cost';
       return net > 0 ? '₣' + net.toFixed(1) + 'B/yr revenue' : '₣' + Math.abs(net).toFixed(1) + 'B/yr cost';
     }
@@ -236,7 +221,7 @@
     function renderFiscal() {
       var box = document.getElementById('l-fiscal');
       if (sel.proposed == null) { box.innerHTML = '<p class="none">—</p>'; return; }
-      var opts = policyOptions(curDef()), cm = optMoney(opts[inForceIdx()]), pm = optMoney(opts[sel.proposed]);
+      var opts = policyOptions(curDef()), cm = optMoney(opts[inForceIdx()], pop, pros), pm = optMoney(opts[sel.proposed], pop, pros);
       var dInc = pm.Income - cm.Income, dBud = pm.Budget - cm.Budget, dDebt = pm.Debt - cm.Debt;
       var rows = [];
       if (Math.abs(dInc) >= 0.005) rows.push(fRow('National Income', 'per year', dInc, true));
