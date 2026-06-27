@@ -173,13 +173,14 @@
   }
   window.addEventListener('resize', function () { if (document.getElementById('natMap')) drawNatMap(); });
 
-  // Cities roster — capital first, then by population share (desc), then name. Each shows its
-  // share of the nation's population and the derived headcount (one source: the stored pct ×
-  // nation.population). Flavour only.
-  function citiesBox(cities, population){
+  // Cities roster — capital first, then by population share (desc), then name. The capital is
+  // NOT stored on the city: it's the one whose name matches the declared capital_name (ONE
+  // source — the declaration). Each city shows its share of the nation's population and the
+  // derived headcount (stored pct × nation.population). Flavour only.
+  function citiesBox(cities, population, capitalName){
+    function isCap(c){ return !!capitalName && !!c.name && c.name.trim().toLowerCase() === String(capitalName).trim().toLowerCase(); }
     var list = (cities || []).slice().sort(function(a, b){
-      if (!!b.is_capital - !!a.is_capital) return (!!b.is_capital) - (!!a.is_capital);
-      return (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0) || ((a.name || '') < (b.name || '') ? -1 : 1);
+      return ((isCap(b) ? 1 : 0) - (isCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0) || ((a.name || '') < (b.name || '') ? -1 : 1);
     });
     var body = list.length
       ? '<div class="citygrid">' + list.map(function(c){
@@ -188,7 +189,7 @@
           var pctLine = pct != null ? '<div class="citypct"><b>' + pct + '%</b> of population' + head + '</div>' : '';
           var desc = c.description ? '<div class="citydesc">' + esc(c.description) + '</div>' : '';
           return '<div class="citycard"><div class="citycard__hd"><span class="cityname">' + esc(c.name || 'City') + '</span>' +
-            (c.is_capital ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + '</div>';
+            (isCap(c) ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + '</div>';
         }).join('') + '</div>'
       : '<p class="empty" style="padding:20px">No cities have been added yet.</p>';
     return '<section class="panel"><h2>Cities</h2>' + body + '</section>';
@@ -249,7 +250,7 @@
       : '<p class="empty" style="padding:20px">No declarations have been defined yet.</p>';
     var identityBox = '<section class="panel"><h2>National Identity</h2>' + declHtml + '</section>';
 
-    document.getElementById('content').innerHTML = identity + economy + identityBox + citiesBox(cities, nation.population);
+    document.getElementById('content').innerHTML = identity + economy + identityBox + citiesBox(cities, nation.population, declValue('capital_name'));
     document.querySelectorAll('.maptoggle .mt').forEach(function(b){
       b.onclick = function(){ document.querySelectorAll('.maptoggle .mt').forEach(function(x){ x.classList.toggle('on', x === b); }); NMAP.mode = b.dataset.m; drawNatMap(); };
     });
@@ -278,7 +279,7 @@
       // Cities roster (non-fatal: if the table isn't migrated yet, the Cities panel shows its
       // empty state rather than failing the whole page).
       var cities = [];
-      try { var cRes = await supabase.from('cities').select('id, name, is_capital, pop_pct, description').eq('nation_id', viewId); if (!cRes.error) cities = cRes.data || []; } catch (e) {}
+      try { var cRes = await supabase.from('cities').select('id, name, pop_pct, description').eq('nation_id', viewId); if (!cRes.error) cities = cRes.data || []; } catch (e) {}
       const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', viewId).eq('status', 'active').maybeSingle();
       var oRes = await supabase.from('nations').select('id, name, flag, economy, color').order('name');
       if (oRes.error) oRes = await supabase.from('nations').select('id, name, flag, economy').order('name');   // color not migrated yet
