@@ -148,9 +148,10 @@ revoke all on function public._next_agenda_slot(text, int) from public, anon, au
 -- It does NOT fail here — a measure stands for its full window (6 ticks) and only
 -- fails for want of a majority at tick advance (advance_tick, schema/60). ONE place
 -- the pass rule lives (propose + cast_vote call it). Returns the status.
--- Drop the pre-simple-majority single-arg version so re-running the schema doesn't
--- leave an ambiguous overload beside the (uuid, boolean) signature below.
+-- Drop earlier overloads so re-running the schema doesn't leave an ambiguous set of
+-- signatures beside the (uuid, boolean, boolean) one below.
 drop function if exists public._resolve_proposal(uuid);
+drop function if exists public._resolve_proposal(uuid, boolean);
 
 -- Tally a floor measure. Called after every vote (p_final=false) and once more at
 -- the close of voting (p_final=true, from advance_tick). The pass rule is a simple
@@ -158,7 +159,10 @@ drop function if exists public._resolve_proposal(uuid);
 -- close. Before the close we still pass early the moment an outright majority of
 -- the whole chamber backs it, since that result can no longer be overturned and so
 -- never contradicts the simple-majority rule. A measure only fails at the close.
-create or replace function public._resolve_proposal(p_proposal uuid, p_final boolean default false)
+-- p_penalize gates the absent-from-the-floor popularity hit: true for a natural close,
+-- false when the window was cut short (an outright-majority lock resolving early — the
+-- non-voters were denied their full window, so they aren't punished).
+create or replace function public._resolve_proposal(p_proposal uuid, p_final boolean default false, p_penalize boolean default true)
 returns text
 language plpgsql
 security definer
@@ -191,10 +195,11 @@ begin
 
   -- Abstention has a cost: at the CLOSE of voting, every SEATED party that never cast a
   -- vote on this measure loses 1% popularity (floored like any drop — _mod_floor_drop,
-  -- schema/70). Gated on p_final, so a measure that passes EARLY on an outright majority
-  -- (its window cut short) never penalises non-voters. The proposer auto-voted, so it is
-  -- never caught here. One summary event names the absentees so the drop is visible.
-  if p_final then
+  -- schema/70). Gated on p_final AND p_penalize, so a measure whose window was cut short —
+  -- passing EARLY on an outright majority, or an outright-lock resolving on the next tick —
+  -- never penalises non-voters. The proposer auto-voted, so it is never caught here. One
+  -- summary event names the absentees so the drop is visible.
+  if p_final and p_penalize then
     with hit as (
       update public.parties pp
          set popularity = public._mod_floor_drop(pp.nation_id, pp.archetype, pp.popularity, greatest(pp.popularity - 1, pp.pop_floor))
@@ -237,6 +242,29 @@ begin
   end if;
   return 'voting';
 end $$;
+
+-- True when a floor measure's outcome is already locked by an outright chamber majority, so it
+-- can resolve on the NEXT tick instead of waiting out its window (advance_tick, schema/60). An
+-- outright Aye majority on ANY measure (it passes / a no-confidence motion carries — neither can
+-- be overturned), or an outright Nay majority on a non-no-confidence measure (it can no longer
+-- reach the Aye majority it needs, so it will fail). ONE source for the early-resolution gate;
+-- the client mirrors it in proposalLocked (proposals.js) only to label the card.
+create or replace function public._proposal_locked(p_proposal uuid)
+returns boolean language plpgsql stable security definer set search_path = public as $$
+declare v_p public.proposals%rowtype; v_maj int; v_aye int; v_nay int;
+begin
+  select * into v_p from public.proposals where id = p_proposal;
+  if not found or v_p.status <> 'voting' then return false; end if;
+  select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = v_p.nation_id;
+  if coalesce(v_maj, 0) < 1 then return false; end if;
+  select coalesce(sum(p.seats) filter (where pv.aye), 0),
+         coalesce(sum(p.seats) filter (where not pv.aye), 0)
+    into v_aye, v_nay
+    from public.proposal_votes pv join public.parties p on p.id = pv.party_id
+   where pv.proposal_id = p_proposal;
+  return v_aye >= v_maj or (v_p.kind <> 'no_confidence' and v_nay >= v_maj);
+end $$;
+revoke all on function public._proposal_locked(uuid) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- RPCs (server-authoritative). The proposer's action cost is charged here so it

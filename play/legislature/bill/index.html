@@ -131,7 +131,7 @@
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome } from '/proposals.js';
+  import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
   import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta } from '/policies.js';
 
@@ -244,10 +244,13 @@
     var noConf = p.kind === 'no_confidence';
     var oc = proposalOutcome(t.aye, t.nay, ST.maj, p.kind);
     var outright = oc.outright, carry = oc.carry;
+    // Locked by an outright majority → the tick resolves it next (mirrors _proposal_locked).
+    var locked = p.status === 'voting' && proposalLocked(t.aye, t.nay, ST.maj, p.kind);
     var verdict = noConf ? '✓ Carries unless the government votes No before the floor closes'
       : (outright ? '✓ Passes — outright majority of the chamber reached'
         : (carry ? '✓ Would pass if voting closed now — Aye leads'
           : (t.aye === t.nay ? '✕ Would fail if voting closed now — tied' : '✕ Would fail if voting closed now — Nay leads')));
+    if (locked) verdict += ' · resolves next tick';
     var rule = noConf ? 'Carries unless the government votes No · ' + ST.total + ' seats'
       : 'Carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright · ' + ST.total + ' seats';
     var canVote = p.status === 'voting';

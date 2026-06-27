@@ -71,3 +71,12 @@ export function proposalOutcome(aye, nay, maj, kind) {
   var outright = aye > 0 && aye >= maj;
   return { outright: outright, carry: outright || (aye > nay && aye > 0) };
 }
+
+// Is the outcome already locked by an outright chamber majority, so it resolves on the NEXT
+// tick rather than waiting out its floor window? DISPLAY mirror of _proposal_locked (schema/81),
+// used only to label the card "resolves next tick": an outright Aye majority on any measure, or
+// an outright Nay majority on a non-no-confidence one. The server stays the resolution authority.
+export function proposalLocked(aye, nay, maj, kind) {
+  if (!(maj >= 1)) return false;
+  return aye >= maj || (kind !== 'no_confidence' && nay >= maj);
+}
