@@ -35,3 +35,18 @@ alter table public.nation_names enable row level security;
 
 drop policy if exists "nation_names_select_all" on public.nation_names;
 create policy "nation_names_select_all" on public.nation_names for select using (true);
+
+-- ONE source for a generated NPC name: a random first name + surname from a nation's pool.
+-- Returns the two parts separately (independent random draws, as before) — callers that want a
+-- full name concat them. Used by generated politicians (schema/40), corporation directors
+-- (/47) and city mayors (/108), so every NPC is named the same way. Either part is null if the
+-- nation has no seeded names of that kind. Internal: only the security-definer callers use it.
+-- VOLATILE (it calls random()): each call must re-draw, so a single statement that names many
+-- rows — e.g. a backfill — gives each its own name rather than reusing one cached result.
+create or replace function public._random_name(p_nation text, out first_name text, out last_name text)
+language sql volatile security definer set search_path = public as $$
+  select
+    (select name from public.nation_names where nation_id = p_nation and kind in ('male', 'female') order by random() limit 1),
+    (select name from public.nation_names where nation_id = p_nation and kind = 'surname'          order by random() limit 1);
+$$;
+revoke all on function public._random_name(text) from public, anon, authenticated;

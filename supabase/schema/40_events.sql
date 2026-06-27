@@ -350,8 +350,7 @@ as $$
 declare
   v_first text; v_last text; s int[] := array[0, 0, 0, 0, 0]; i int; k int;
 begin
-  select name into v_first from public.nation_names where nation_id = p_nation and kind in ('male', 'female') order by random() limit 1;
-  select name into v_last  from public.nation_names where nation_id = p_nation and kind = 'surname'          order by random() limit 1;
+  select first_name, last_name into v_first, v_last from public._random_name(p_nation);   -- shared draw (schema/50)
   for i in 1..greatest(p_points, 0) loop
     k := floor(random() * 5)::int + 1;
     s[k] := s[k] + 1;
