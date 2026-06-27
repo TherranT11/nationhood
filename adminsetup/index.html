@@ -1578,7 +1578,7 @@
       if (!CT.rows.length) { box.innerHTML = '<p class="empty">No cities yet for this nation. Add one on the left.</p>'; return; }
       var sorted = CT.rows.slice().sort(function(a, b){ return ((ctIsCap(b) ? 1 : 0) - (ctIsCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0); });
       box.innerHTML = sorted.map(function(c){
-        var meta = (c.pop_pct != null && c.pop_pct !== '') ? c.pop_pct + '% of pop' : 'no population set';
+        var meta = [(c.pop_pct != null && c.pop_pct !== '') ? c.pop_pct + '% of pop' : 'no population set', c.mayor_name ? 'Mayor ' + c.mayor_name : null].filter(Boolean).join(' · ');
         return '<button class="crow' + (c.id === CT.editId ? ' sel' : '') + '" type="button" data-id="' + esc(c.id) + '">' +
           '<span><span class="cn">' + esc(c.name || 'City') + '</span><span class="cmeta">' + esc(meta) + '</span></span>' +
           (ctIsCap(c) ? '<span class="ccap">Capital</span>' : '') + '</button>';
@@ -1589,7 +1589,7 @@
     }
     async function ctFetch(){
       var box = document.getElementById('ctList'), nid = ctNationId(); box.innerHTML = '<p class="empty">Loading…</p>';
-      const { data, error } = await supabase.from('cities').select('id, nation_id, name, pop_pct, description').eq('nation_id', nid).order('created_at');
+      const { data, error } = await supabase.from('cities').select('id, nation_id, name, pop_pct, description, mayor_name').eq('nation_id', nid).order('created_at');
       if (error) { box.innerHTML = '<p class="empty">Couldn’t load cities.</p>'; CT.rows = []; return; }
       CT.rows = data || [];
       // The declared capital (override or default) via the ONE source — non-fatal.
@@ -1606,7 +1606,11 @@
       if (pct != null && (isNaN(pct) || pct < 0 || pct > 100)) { note.textContent = 'Population share must be a number from 0 to 100.'; note.className = 'note error'; return; }
       var row = { nation_id: nation, name: name, pop_pct: pct, description: document.getElementById('ctDesc').value.trim() || null };
       CT.saving = true; document.getElementById('ctSave').disabled = true; note.textContent = 'Saving…'; note.className = 'note';
-      var res = CT.editId ? await supabase.from('cities').update(row).eq('id', CT.editId) : await supabase.from('cities').insert(row);
+      // New city: city_create (RPC) generates the NPC mayor + rolls the first election. Editing
+      // stays a plain update — name/pct/description change; the mayor + election persist.
+      var res = CT.editId
+        ? await supabase.from('cities').update(row).eq('id', CT.editId)
+        : await supabase.rpc('city_create', { p_nation: row.nation_id, p_name: row.name, p_pct: row.pop_pct, p_description: row.description });
       CT.saving = false; document.getElementById('ctSave').disabled = false;
       if (res.error) { note.textContent = res.error.message || 'Couldn’t save.'; note.className = 'note error'; return; }
       note.textContent = (CT.editId ? 'Saved “' : 'Added “') + name + '”.'; note.className = 'note ok';
