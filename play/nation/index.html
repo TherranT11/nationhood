@@ -79,6 +79,10 @@
   .citypct{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);margin-top:5px}
   .citypct b{color:var(--ink);font-weight:700}
   .citydesc{font-size:13px;color:var(--muted);line-height:1.5;margin-top:8px}
+  .citygov{margin-top:9px;padding-top:9px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:5px}
+  .citygov .g{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .citygov .gk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+  .citygov .gv{font-weight:700;font-size:13px;text-align:right}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -96,7 +100,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, fmtPop, declaredValue } from '/util.js';
+  import { esc, fmtPop, declaredValue, tickToDate } from '/util.js';
   import { regimeText } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -188,8 +192,13 @@
           var head = (pct != null && population) ? ' · ' + fmtPop(Math.round(population * pct / 100)) : '';
           var pctLine = pct != null ? '<div class="citypct"><b>' + pct + '%</b> of population' + head + '</div>' : '';
           var desc = c.description ? '<div class="citydesc">' + esc(c.description) + '</div>' : '';
+          // Mayor (NPC) + next election date — shown when present (cities predating mayors have none).
+          var govRows = '';
+          if (c.mayor_name) govRows += '<div class="g"><span class="gk">Mayor</span><span class="gv">' + esc(c.mayor_name) + '</span></div>';
+          if (c.mayor_election_tick != null) govRows += '<div class="g"><span class="gk">Next election</span><span class="gv">' + esc(tickToDate(c.mayor_election_tick)) + '</span></div>';
+          var gov = govRows ? '<div class="citygov">' + govRows + '</div>' : '';
           return '<div class="citycard"><div class="citycard__hd"><span class="cityname">' + esc(c.name || 'City') + '</span>' +
-            (isCap(c) ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + '</div>';
+            (isCap(c) ? '<span class="citycap">Capital</span>' : '') + '</div>' + pctLine + desc + gov + '</div>';
         }).join('') + '</div>'
       : '<p class="empty" style="padding:20px">No cities have been added yet.</p>';
     return '<section class="panel"><h2>Cities</h2>' + body + '</section>';
@@ -279,7 +288,7 @@
       // Cities roster (non-fatal: if the table isn't migrated yet, the Cities panel shows its
       // empty state rather than failing the whole page).
       var cities = [];
-      try { var cRes = await supabase.from('cities').select('id, name, pop_pct, description').eq('nation_id', viewId); if (!cRes.error) cities = cRes.data || []; } catch (e) {}
+      try { var cRes = await supabase.from('cities').select('id, name, pop_pct, description, mayor_name, mayor_election_tick').eq('nation_id', viewId); if (!cRes.error) cities = cRes.data || []; } catch (e) {}
       const { data: gov } = await supabase.from('governments').select('type, confidence, formateur_party_id').eq('nation_id', viewId).eq('status', 'active').maybeSingle();
       var oRes = await supabase.from('nations').select('id, name, flag, economy, color').order('name');
       if (oRes.error) oRes = await supabase.from('nations').select('id, name, flag, economy').order('name');   // color not migrated yet
