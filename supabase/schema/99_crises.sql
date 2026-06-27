@@ -315,7 +315,7 @@ revoke all on function public._apply_crisis_tick(int) from public, anon, authent
 -- ---------------------------------------------------------------------------
 -- crisis_act(crisis, action): the head of government manages an active crisis. Only the
 -- formateur of the nation's active government may act (same gate as agenda_enact); costs
--- 1 party action. The action is taken from the crisis's CURRENT stage. A 'law' action
+-- 2 party actions. The action is taken from the crisis's CURRENT stage. A 'law' action
 -- applies its lawEffect; a 'minister' action is either 'direct' (apply direct effects) or
 -- 'roll' — 1d20 + the head of government's competency (the `stat`) >= `needed` picks the
 -- success or failure effects. Effects ride _apply_crisis_effect (one source); escalation is
@@ -332,6 +332,7 @@ declare
   v_needed int := 0; v_total int := 0; v_ok boolean := true; v_body text; v_tone text;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
+  if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
 
   select * into v_nc from public.nation_crises where id = p_id and status = 'active';
   if not found then raise exception 'That crisis is no longer active.'; end if;
@@ -393,7 +394,7 @@ begin
     perform public._apply_crisis_effect(p_id, v_nc.nation_id, v_eff);
   end loop;
 
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;
   insert into public.events (nation_id, party_id, kind, body, game_date, tone)
   values (v_nc.nation_id, v_p.id, 'crisis', v_body, public.current_game_date(), v_tone);
 
@@ -401,7 +402,7 @@ begin
   return jsonb_build_object('ok', v_ok, 'type', v_type, 'mech', v_mech,
     'roll', v_roll, 'stat', v_stat, 'total', v_total, 'needed', v_needed,
     'meter', v_nc.meter, 'stage', v_nc.stage, 'body', v_body,
-    'actions', v_p.actions_remaining - 1);
+    'actions', v_p.actions_remaining - 2);
 end $$;
 grant execute on function public.crisis_act(uuid, int, int) to authenticated;
 
