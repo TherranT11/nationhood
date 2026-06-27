@@ -61,6 +61,7 @@
   .ecell{flex:1;min-width:118px;border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--field)}
   .ecell .k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
   .ecell .v{font-weight:800;font-size:19px;letter-spacing:-.01em;margin-top:3px}
+  .ecell .oh{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
 
   /* national identity (declarations) */
   .decls{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:16px 26px}
@@ -210,7 +211,7 @@
     // This slot's current value — via the shared one-source helper (see util.js).
     function declValue(slug){ return declaredValue(slotBySlug[slug], vals); }
 
-    var eco = nation.economy || {}, prod = nation.production || {};
+    var eco = nation.economy || {}, prod = nation.production || {}, onhand = nation.on_hand || {};
     // Regime line via the shared regimeText() (one source) → e.g. "Minority — Electoral Democracy (17)".
     var regimeTxt = regimeText(eco.regime);
     var govType = (gov ? cap(gov.type) : 'No government') + (regimeTxt !== '—' ? ' — ' + regimeTxt : '');
@@ -245,7 +246,7 @@
 
     var economy =
       '<section class="panel"><h2>Domestic Economy</h2><div class="econ">' +
-        ECON.map(function(k){ var v = prod[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div></div>'; }).join('') +
+        ECON.map(function(k){ var v = prod[k], oh = onhand[k]; return '<div class="ecell"><div class="k">' + cap(k) + ' Production</div><div class="v">' + (v != null ? v : '—') + '</div><div class="oh">On hand · ' + (oh != null ? oh : '—') + '</div></div>'; }).join('') +
       '</div></section>';
 
     // National Identity = every declaration slot's current value, grouped.
@@ -283,7 +284,7 @@
       // Which nation to show: ?nation=<id> lets you view any nation; default is your own.
       var viewId = new URLSearchParams(location.search).get('nation') || party.nation_id;
       const { data: nation } = await supabase.from('nations')
-        .select('name, flag, population, gdp, economy, production, declarations').eq('id', viewId).maybeSingle();
+        .select('name, flag, population, gdp, economy, production, on_hand, declarations').eq('id', viewId).maybeSingle();
       if (!nation) { fail('That nation could not be found.'); return; }
       const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
       // Cities roster (non-fatal: if the table isn't migrated yet, the Cities panel shows its
