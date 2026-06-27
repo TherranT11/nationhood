@@ -159,7 +159,6 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { esc, majority, declaredValue, loadHogTitleSlot } from '/util.js';
   import { partyColor, ideologyLabel } from '/archetypes.js';
   import { TERM_LABELS, summarizeTerm } from '/terms.js';
@@ -458,12 +457,11 @@
         '<div class="subhd">In government</div>' + members +
         (opp.length ? '<div class="subhd">Opposition</div>' + opp.map(function(p){ return memberRow(p, '', false); }).join('') : '') +
       '</div>' +
-      // 4–6 — two columns: Agenda + Cabinet on top, Modifiers beneath. (National
-      // Crises moved to the home dashboard.)
+      // 4–5 — two columns: Agenda + Cabinet. (National Modifiers and National Crises
+      // both live on the home dashboard.)
       '<div class="govgrid">' +
         '<div class="panel"><h2>Governing Agenda</h2>' + agendaHtml + '</div>' +
         '<div class="panel"><h2>The Cabinet</h2>' + cabinetHtml + '</div>' +
-        '<div class="panel"><h2>National Modifiers</h2><div id="govMods"><p class="muted">No active national modifiers.</p></div></div>' +
       '</div>';
 
     box.querySelectorAll('.enact').forEach(function(b){
@@ -578,7 +576,6 @@
         } catch (e) { /* cabinet falls back to the derived view */ }
       }
       render(govt, NATION || {}, parties || [], agenda, amPM, formation, pmLeader, formateurPols, polsByParty, appts);
-      renderNationModifiers(document.getElementById('govMods'), await fetchNationModifiers(NATION_ID), 'No active national modifiers.');
     } catch (e) {
       document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">Couldn’t load the government right now. Refresh to try again.</div></div>';
     }
