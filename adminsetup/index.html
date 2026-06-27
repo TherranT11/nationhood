@@ -467,6 +467,8 @@
   .citytab .seg button.on{background:var(--ink);color:#fff;font-weight:700}
   .citytab .citycols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   @media(max-width:920px){.citytab .citycols{grid-template-columns:1fr}}
+  .citytab .ctcaphint{font-size:11.5px;color:var(--soft);line-height:1.5;margin:-4px 0 14px}
+  .citytab .ctcaphint b{color:var(--muted);font-weight:700}
   .citytab .ctbtns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .citytab .cbtn{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-family:'Space Mono',monospace;font-size:12px;font-weight:700;cursor:pointer}
   .citytab .cbtn:disabled{background:var(--line2);cursor:not-allowed}
@@ -827,10 +829,8 @@
               <div class="ph" id="ctMode">Add New City</div>
               <div class="f"><label>Nation</label><select id="ctNation"></select></div>
               <div class="f"><label>Name of City</label><input type="text" id="ctName" placeholder="e.g. Seyonne"></div>
-              <div class="row2">
-                <div class="f"><label>Capital?</label><div class="seg" id="ctCap"><button data-v="no" class="on" type="button">No</button><button data-v="yes" type="button">Yes</button></div></div>
-                <div class="f"><label>% of Population <span class="hint">0–100</span></label><input type="text" id="ctPct" placeholder="e.g. 18"></div>
-              </div>
+              <div class="f"><label>% of Population <span class="hint">0–100</span></label><input type="text" id="ctPct" placeholder="e.g. 18"></div>
+              <p class="ctcaphint">The capital is set by the <b>Capital Name</b> declaration, not here. Whichever city matches the declared capital name is marked <b>Capital</b> automatically.</p>
               <div class="f"><label>Description</label><textarea id="ctDesc" placeholder="A short description of the city…"></textarea></div>
               <div class="ctbtns">
                 <button class="cbtn" id="ctSave" type="button">Add city</button>
@@ -1547,20 +1547,21 @@
     // A per-nation list of cities authored here and shown on the public Nation page. Click a row
     // to edit it; "+ New city" blanks the form. nationsCache (loaded with the Nations tab) fills
     // the picker. ONE source: the cities table — the Nation page reads the same rows.
-    var CT = { editId: null, saving: false, inited: false, rows: [] };
+    var CT = { editId: null, saving: false, inited: false, rows: [], capital: '' };
     function ctNationId(){ return document.getElementById('ctNation').value; }
+    // The declared capital is THE source for which city is the capital — a city is marked
+    // Capital iff its name matches it (the 'capital_name' declaration; no per-city flag).
+    function ctIsCap(c){ return !!CT.capital && !!c.name && c.name.trim().toLowerCase() === String(CT.capital).trim().toLowerCase(); }
     function ctSetMode(){
       document.getElementById('ctMode').textContent = CT.editId ? 'Edit City' : 'Add New City';
       document.getElementById('ctSave').textContent = CT.editId ? 'Save changes' : 'Add city';
       document.getElementById('ctNew').hidden = !CT.editId;
       document.getElementById('ctDelete').hidden = !CT.editId;
     }
-    function ctSetCap(yes){ document.querySelectorAll('#ctCap button').forEach(function(b){ b.classList.toggle('on', (b.dataset.v === 'yes') === !!yes); }); }
-    function ctCapOn(){ return document.querySelector('#ctCap button.on').dataset.v === 'yes'; }
     function ctBlank(){
       CT.editId = null;
       document.getElementById('ctName').value = ''; document.getElementById('ctPct').value = ''; document.getElementById('ctDesc').value = '';
-      ctSetCap(false); ctSetMode();
+      ctSetMode();
       document.querySelectorAll('#ctList .crow').forEach(function(r){ r.classList.remove('sel'); });
     }
     function ctLoadRow(c){
@@ -1568,29 +1569,33 @@
       document.getElementById('ctName').value = c.name || '';
       document.getElementById('ctPct').value = (c.pop_pct == null) ? '' : c.pop_pct;
       document.getElementById('ctDesc').value = c.description || '';
-      ctSetCap(!!c.is_capital); ctSetMode();
+      ctSetMode();
     }
     function renderCtList(){
       var box = document.getElementById('ctList'), n = nationsCache.filter(function(x){ return x.id === ctNationId(); })[0];
       document.getElementById('ctListNation').textContent = n ? n.name : '—';
       document.getElementById('ctCount').textContent = CT.rows.length ? '(' + CT.rows.length + ')' : '';
       if (!CT.rows.length) { box.innerHTML = '<p class="empty">No cities yet for this nation. Add one on the left.</p>'; return; }
-      var sorted = CT.rows.slice().sort(function(a, b){ return (!!b.is_capital) - (!!a.is_capital) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0); });
+      var sorted = CT.rows.slice().sort(function(a, b){ return ((ctIsCap(b) ? 1 : 0) - (ctIsCap(a) ? 1 : 0)) || (Number(b.pop_pct) || 0) - (Number(a.pop_pct) || 0); });
       box.innerHTML = sorted.map(function(c){
         var meta = (c.pop_pct != null && c.pop_pct !== '') ? c.pop_pct + '% of pop' : 'no population set';
         return '<button class="crow' + (c.id === CT.editId ? ' sel' : '') + '" type="button" data-id="' + esc(c.id) + '">' +
           '<span><span class="cn">' + esc(c.name || 'City') + '</span><span class="cmeta">' + esc(meta) + '</span></span>' +
-          (c.is_capital ? '<span class="ccap">Capital</span>' : '') + '</button>';
+          (ctIsCap(c) ? '<span class="ccap">Capital</span>' : '') + '</button>';
       }).join('');
       box.querySelectorAll('.crow').forEach(function(b){
         b.onclick = function(){ var c = CT.rows.filter(function(x){ return x.id === b.dataset.id; })[0]; if (c) { ctLoadRow(c); renderCtList(); } };
       });
     }
     async function ctFetch(){
-      var box = document.getElementById('ctList'); box.innerHTML = '<p class="empty">Loading…</p>';
-      const { data, error } = await supabase.from('cities').select('id, nation_id, name, is_capital, pop_pct, description').eq('nation_id', ctNationId()).order('created_at');
+      var box = document.getElementById('ctList'), nid = ctNationId(); box.innerHTML = '<p class="empty">Loading…</p>';
+      const { data, error } = await supabase.from('cities').select('id, nation_id, name, pop_pct, description').eq('nation_id', nid).order('created_at');
       if (error) { box.innerHTML = '<p class="empty">Couldn’t load cities.</p>'; CT.rows = []; return; }
-      CT.rows = data || []; renderCtList();
+      CT.rows = data || [];
+      // The declared capital (override or default) via the ONE source — non-fatal.
+      CT.capital = '';
+      try { var cr = await supabase.rpc('nation_declaration', { p_nation: nid, p_slug: 'capital_name' }); if (!cr.error && cr.data) CT.capital = cr.data; } catch (e) {}
+      renderCtList();
     }
     async function ctSave(){
       if (CT.saving) return;
@@ -1599,7 +1604,7 @@
       if (!name) { note.textContent = 'Give the city a name.'; note.className = 'note error'; return; }
       var pctRaw = document.getElementById('ctPct').value.trim(), pct = pctRaw === '' ? null : Number(pctRaw);
       if (pct != null && (isNaN(pct) || pct < 0 || pct > 100)) { note.textContent = 'Population share must be a number from 0 to 100.'; note.className = 'note error'; return; }
-      var row = { nation_id: nation, name: name, is_capital: ctCapOn(), pop_pct: pct, description: document.getElementById('ctDesc').value.trim() || null };
+      var row = { nation_id: nation, name: name, pop_pct: pct, description: document.getElementById('ctDesc').value.trim() || null };
       CT.saving = true; document.getElementById('ctSave').disabled = true; note.textContent = 'Saving…'; note.className = 'note';
       var res = CT.editId ? await supabase.from('cities').update(row).eq('id', CT.editId) : await supabase.from('cities').insert(row);
       CT.saving = false; document.getElementById('ctSave').disabled = false;
@@ -1624,7 +1629,6 @@
       if (!CT.inited) {
         CT.inited = true;
         sel.addEventListener('change', function(){ ctBlank(); ctFetch(); });
-        document.querySelectorAll('#ctCap button').forEach(function(b){ b.onclick = function(){ ctSetCap(b.dataset.v === 'yes'); }; });
         document.getElementById('ctSave').onclick = ctSave;
         document.getElementById('ctNew').onclick = ctBlank;
         document.getElementById('ctDelete').onclick = ctDelete;
