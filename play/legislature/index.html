@@ -140,6 +140,7 @@
     <button class="choice" id="pmLaw" type="button"><b>Law</b><span>A new law has effects across the nation — it moves stats and other things.</span></button>
     <button class="choice" id="pmDecl" type="button"><b>Declaration</b><span>A declaration changes the name of a title, emblem, capital, etc. It has no mechanical effect in game.</span></button>
     <button class="choice" id="pmRegime" type="button"><b>Form of State</b><span>Proclaim or abolish a constitutional monarchy — the one measure that can cross between a republic and a crown.</span></button>
+    <button class="choice" id="pmThreshold" type="button"><b>Electoral Threshold</b><span>Set the minimum vote share a party must clear to win any seats. Raising the bar weakens the democracy.</span></button>
   </div>
 </div>
 
@@ -162,6 +163,7 @@
   document.getElementById('pmLaw').onclick = function () { location.href = '/play/legislature/propose/'; };
   document.getElementById('pmDecl').onclick = function () { location.href = '/play/legislature/propose/?type=declaration'; };
   document.getElementById('pmRegime').onclick = function () { location.href = '/play/legislature/propose/?type=regime'; };
+  document.getElementById('pmThreshold').onclick = function () { location.href = '/play/legislature/propose/?type=threshold'; };
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
