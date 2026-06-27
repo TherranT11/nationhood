@@ -20,61 +20,49 @@
 -- rolls 1D10. Win → steal one seat (you +1, them −1, so the chamber total is unchanged)
 -- and +1% popularity for you / −1% for them. Lose → only the action + spend are forfeit.
 -- 1 action (the player's choice for Direct) + the optional campaign spend.
+-- SCHEDULES a parliamentary run (it no longer resolves on the spot — see schema/111). The rival
+-- party + its leader are locked NOW; the contest resolves 1D3 ticks out in _resolve_parliamentary_
+-- runs. 1 action + the optional campaign spend. The member must not already be standing for office
+-- (Parliament or Mayor) and must be off the 12-tick MP cooldown.
 create or replace function public.direct_parliament(p_member uuid, p_spend int default 0)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_image int; v_mname text; v_spend int := greatest(0, coalesce(p_spend, 0));
-  v_cost bigint; v_you int; v_field int; v_win boolean;
-  v_riv record; v_newpop numeric; v_body text; v_oppname text; v_leg text;
+  v_cost bigint; v_riv record; v_oppname text; v_leg text; v_tick int; v_resolve int; v_until int;
 begin
   v_cost := v_spend::bigint * 25000;
   v_p := public._begin_action(v_cost);   -- locks party, requires ≥1 action + funds ≥ spend
-  select btrim(first_name || ' ' || last_name), coalesce(com, 0) into v_mname, v_image
+  select btrim(first_name || ' ' || last_name), coalesce(com, 0), coalesce(mp_until_tick, 0)
+    into v_mname, v_image, v_until
     from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
+  if public._politician_busy(p_member) then raise exception '%', v_mname || ' is already standing for office — wait until it resolves.'; end if;
+  select current_tick into v_tick from public.game_state where id;
+  if v_until > v_tick then raise exception '%', v_mname || ' can''t stand for Parliament again yet (cooldown: ' || (v_until - v_tick) || ' ticks).'; end if;
 
-  -- A random rival in the nation that actually holds a seat to contest. Only id + name are
-  -- needed — the drop below reads the rival's live row, so the contest stays race-safe.
+  -- Lock the rival now (a random seat-holder) + name its leader + the chamber's name.
   select id, name into v_riv
     from public.parties where nation_id = v_p.nation_id and id <> v_p.id and seats >= 1
     order by random() limit 1;
   if not found then raise exception 'No rival party holds a seat to contest.'; end if;
-
-  -- The named opponent is the rival party's leader; the chamber's name is the nation's
-  -- Legislature Name declaration (one source — schema/81 nation_declaration).
   select btrim(first_name || ' ' || last_name) into v_oppname
     from public.politicians where party_id = v_riv.id and status = 'Party Leader' order by created_at limit 1;
   v_oppname := coalesce(nullif(v_oppname, ''), 'their leader');
   v_leg := coalesce(nullif(public.nation_declaration(v_p.nation_id, 'legislature_name'), ''), 'the legislature');
+  v_resolve := v_tick + 1 + floor(random() * 3)::int;   -- 1D3 ticks out (1..3)
 
-  v_you   := floor(random() * 6)::int + 1 + v_image + v_spend;
-  v_field := floor(random() * 10)::int + 1;
-  v_win   := v_you > v_field;
+  insert into public.mp_candidacies (party_id, politician_id, candidate_name, candidate_image, opponent_party_id, opponent_name, spend, resolve_tick)
+    values (v_p.id, p_member, v_mname, v_image, v_riv.id, v_oppname, v_spend, v_resolve);
+  update public.parties set funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
 
-  if v_win then
-    v_newpop := least(v_p.popularity + 1, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor));
-    v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop);
-    update public.parties set seats = seats + 1, popularity = v_newpop, funds = funds - v_cost,
-           actions_remaining = actions_remaining - 1 where id = v_p.id;
-    update public.parties
-       set seats = greatest(0, seats - 1),
-           popularity = public._mod_floor_drop(nation_id, archetype, popularity, greatest(popularity - 1, pop_floor))
-     where id = v_riv.id;
-    v_body := v_mname || ' of the ' || public._bare_party(v_p.name) || ' stood for ' || v_leg || ' against '
-           || v_oppname || ' of the ' || public._bare_party(v_riv.name) || ' — and won the seat (rolled ' || v_you
-           || ' vs ' || v_field || '). +1 seat, +1% popularity; ' || v_riv.name || ' −1 seat, −1% popularity.';
-  else
-    update public.parties set funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-    v_body := v_mname || ' of the ' || public._bare_party(v_p.name) || ' stood for ' || v_leg || ' against '
-           || v_oppname || ' of the ' || public._bare_party(v_riv.name) || ', but lost the seat (rolled ' || v_you
-           || ' vs ' || v_field || ').';
-  end if;
   insert into public.events (nation_id, party_id, kind, body, game_date)
-    values (v_p.nation_id, v_p.id, 'party', v_body, public.current_game_date());
+    values (v_p.nation_id, v_p.id, 'party',
+            v_mname || ' of the ' || public._bare_party(v_p.name) || ' has announced they are standing for ' || v_leg
+            || ' against ' || v_oppname || ' of the ' || public._bare_party(v_riv.name) || '.',
+            public.current_game_date());
 
-  return jsonb_build_object('win', v_win, 'you', v_you, 'field', v_field, 'opponent', v_riv.name,
-    'seats', v_p.seats + (case when v_win then 1 else 0 end), 'funds', v_p.funds - v_cost,
-    'actions', v_p.actions_remaining - 1);
+  return jsonb_build_object('opponent', v_riv.name, 'resolve_tick', v_resolve,
+    'funds', v_p.funds - v_cost, 'actions', v_p.actions_remaining - 1);
 end $$;
 grant execute on function public.direct_parliament(uuid, int) to authenticated;
 
@@ -89,6 +77,7 @@ begin
   v_p := public._begin_action(0);
   perform 1 from public.politicians where id = p_member and party_id = v_p.id;   -- a member is directed, but the wing is the party's
   if not found then raise exception 'That isn''t one of your members.'; end if;
+  if public._politician_busy(p_member) then raise exception 'That member is standing for office — they can''t be directed elsewhere yet.'; end if;
 
   v_newceil := greatest(v_p.pop_floor, v_p.pop_ceiling - 3);                                  -- ceiling ≥ floor
   v_eff     := public._effective_ceiling(v_p.nation_id, v_p.archetype, v_newceil, v_p.pop_floor);
@@ -122,6 +111,7 @@ begin
   select btrim(first_name || ' ' || last_name), status into v_mname, v_status
     from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
+  if public._politician_busy(p_member) then raise exception '%', v_mname || ' is standing for office — they can''t be directed elsewhere yet.'; end if;
 
   if p_appoint then
     if v_status = 'Party Leader' then raise exception 'The Party Leader can''t also be Deputy.'; end if;

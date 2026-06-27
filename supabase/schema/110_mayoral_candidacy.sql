@@ -43,6 +43,7 @@ begin
   v_p := public._begin_action(v_cost);   -- locks party, requires ≥1 action + funds ≥ cost
   select btrim(first_name || ' ' || last_name) into v_mname from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
+  if public._politician_busy(p_member) then raise exception '%', v_mname || ' is already standing for office — wait until it resolves.'; end if;
   select id, name, nation_id, mayor_election_tick into v_city from public.cities where id = p_city;
   if not found then raise exception 'No such city.'; end if;
   if v_city.nation_id <> v_p.nation_id then raise exception 'That city isn''t in your nation.'; end if;

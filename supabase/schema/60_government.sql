@@ -465,6 +465,10 @@ begin
   -- NPC mayor; a winner takes the chair and lifts their party's popularity floor by the city prize.
   begin perform public._resolve_mayoral_elections(v_tick);
   exception when others then raise warning 'tick %: mayoral elections failed — %', v_tick, sqlerrm; end;
+  -- Parliamentary runs that have come due (schema/111): the scheduled 1D6 + Image + spend contest
+  -- vs the locked rival; a win steals a seat and the candidate goes on a 12-tick MP cooldown.
+  begin perform public._resolve_parliamentary_runs(v_tick);
+  exception when others then raise warning 'tick %: parliamentary runs failed — %', v_tick, sqlerrm; end;
   -- January (the new month is January when (tick − 1) is a multiple of 12): apply
   -- each nation's annual income to its budget. A surplus fills the bank; a deficit
   -- (negative income) drains a positive budget, and any shortfall past zero rolls
