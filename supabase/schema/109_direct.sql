@@ -25,7 +25,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_image int; v_mname text; v_spend int := greatest(0, coalesce(p_spend, 0));
   v_cost bigint; v_you int; v_field int; v_win boolean;
-  v_riv record; v_newpop numeric; v_rivpop numeric; v_body text; v_oppname text; v_leg text;
+  v_riv record; v_newpop numeric; v_body text; v_oppname text; v_leg text;
 begin
   v_cost := v_spend::bigint * 25000;
   v_p := public._begin_action(v_cost);   -- locks party, requires ≥1 action + funds ≥ spend
@@ -59,7 +59,7 @@ begin
     update public.parties
        set seats = greatest(0, seats - 1),
            popularity = public._mod_floor_drop(nation_id, archetype, popularity, greatest(popularity - 1, pop_floor))
-     where id = v_riv.id returning popularity into v_rivpop;
+     where id = v_riv.id;
     v_body := v_mname || ' of the ' || public._bare_party(v_p.name) || ' stood for ' || v_leg || ' against '
            || v_oppname || ' of the ' || public._bare_party(v_riv.name) || ' — and won the seat (rolled ' || v_you
            || ' vs ' || v_field || '). +1 seat, +1% popularity; ' || v_riv.name || ' −1 seat, −1% popularity.';
