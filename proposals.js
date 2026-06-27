@@ -60,3 +60,14 @@ export function tallyVotes(votes, seatsByParty) {
   votes.forEach(function (v) { var s = seatsByParty[v.party_id] || 0; if (v.aye) aye += s; else nay += s; });
   return { aye: aye, nay: nay };
 }
+
+// Would this measure carry? DISPLAY mirror of _resolve_proposal (schema/81): an outright
+// chamber majority (aye ≥ maj) carries now; otherwise a simple majority of seats cast
+// (aye > nay) carries at close. A no-confidence motion is the exception — it carries UNLESS
+// the government votes No. ONE source for the Legislature card and the bill page (the server
+// stays authoritative for the actual resolution). Returns { outright, carry }.
+export function proposalOutcome(aye, nay, maj, kind) {
+  if (kind === 'no_confidence') return { outright: false, carry: true };
+  var outright = aye > 0 && aye >= maj;
+  return { outright: outright, carry: outright || (aye > nay && aye > 0) };
+}

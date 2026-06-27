@@ -153,7 +153,7 @@
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, fetchPolicies } from '/proposals.js';
+  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, proposalOutcome, fetchPolicies } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
   import { policyOptions, policyOptionIdx } from '/policies.js';
 
@@ -237,12 +237,11 @@
     var cast = t.aye + t.nay, notv = Math.max(0, ST.total - cast);
     var ayePct = ST.total ? Math.min(100, t.aye / ST.total * 100) : 0;
     var nayPct = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0;
-    // Mirrors _resolve_proposal (schema/81): an outright chamber majority carries it
-    // now; otherwise a simple majority of the seats cast (Aye > Nay) carries at close.
-    // A no-confidence motion is the exception — it carries UNLESS the government votes No.
+    // Carry/outright from the shared mirror of _resolve_proposal (proposals.js). A
+    // no-confidence motion is the exception — it carries UNLESS the government votes No.
     var noConf = p.kind === 'no_confidence';
-    var outright = t.aye > 0 && t.aye >= ST.maj;
-    var carry = noConf ? true : (outright || (t.aye > t.nay && t.aye > 0));
+    var oc = proposalOutcome(t.aye, t.nay, ST.maj, p.kind);
+    var outright = oc.outright, carry = oc.carry;
     var reso = noConf
       ? 'Carries unless the government votes No before the floor closes'
       : (outright

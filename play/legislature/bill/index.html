@@ -131,7 +131,7 @@
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes } from '/proposals.js';
+  import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
   import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta } from '/policies.js';
 
@@ -153,7 +153,7 @@
   // A one-line "An Act to…" preamble, synthesised from the change (so it reads even when the
   // sponsor wrote no introduction). Falls back to the bill title for non-law measures.
   function preamble(p, cur, prop){
-    if (p.kind === 'law' && cur && prop)
+    if (p.kind === 'law' && cur && prop && cur !== '—' && prop !== '—')
       return 'An Act to amend ' + esc(p.payload && p.payload.policy_name ? p.payload.policy_name : 'the law') +
              ', changing provision from ' + esc(cur) + ' to ' + esc(prop) + ', with effect from the next session.';
     return '';
@@ -240,11 +240,10 @@
     var myVote = mine ? (mine.aye ? 'aye' : 'nay') : null;
     var cast = t.aye + t.nay, nv = Math.max(0, ST.total - cast);
     var ayeP = ST.total ? Math.min(100, t.aye / ST.total * 100) : 0, nayP = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0, nvP = Math.max(0, 100 - ayeP - nayP);
-    // Mirrors _resolve_proposal (schema/81): an outright chamber majority carries now; else a
-    // simple majority of seats cast (Aye > Nay) carries at close. No-confidence is the exception.
+    // Carry/outright from the shared mirror of _resolve_proposal (proposals.js).
     var noConf = p.kind === 'no_confidence';
-    var outright = t.aye > 0 && t.aye >= ST.maj;
-    var carry = noConf ? true : (outright || (t.aye > t.nay && t.aye > 0));
+    var oc = proposalOutcome(t.aye, t.nay, ST.maj, p.kind);
+    var outright = oc.outright, carry = oc.carry;
     var verdict = noConf ? '✓ Carries unless the government votes No before the floor closes'
       : (outright ? '✓ Passes — outright majority of the chamber reached'
         : (carry ? '✓ Would pass if voting closed now — Aye leads'
