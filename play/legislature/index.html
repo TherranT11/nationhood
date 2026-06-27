@@ -101,6 +101,43 @@
   .histrow .pf{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;flex:none}
   .pf.passed{color:var(--green)}.pf.failed{color:var(--red)}
 
+  /* ---- expanded "full bill" view (law measures only) ---- */
+  .billtoggle{margin-top:12px;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--indigo);background:none;border:none;cursor:pointer;padding:2px 0}
+  .billtoggle:hover{text-decoration:underline}
+  .measure.open{border-color:var(--line2)}
+  .billmeta{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:6px 0 2px}
+  .billsec{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+  .billsec__h{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+  .billsec__by{margin-left:auto;text-transform:none;letter-spacing:.02em;color:var(--muted)}
+  .billart{font-size:13.5px;line-height:1.7;color:var(--muted)}
+  .billart p{margin-bottom:10px}.billart p:last-child{margin-bottom:0}
+  /* policy spectrum: every rung, with Now / Proposed pins */
+  .spectrum{margin-top:13px}
+  .spec-track{display:flex;gap:3px}
+  .spec-seg{flex:1;min-height:34px;border:1px solid var(--line);border-radius:5px;background:var(--field);display:flex;align-items:center;justify-content:center;text-align:center;font-size:8.5px;line-height:1.15;color:var(--soft);padding:6px 2px 2px;position:relative}
+  .spec-seg.cur{border-color:var(--ink);color:var(--ink);background:var(--chip)}
+  .spec-seg.prop{border-color:var(--indigo);color:var(--indigo);background:var(--indigo-soft)}
+  .spec-pin{position:absolute;top:-7px;font-family:'Space Mono',monospace;font-size:7px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--surface);padding:0 4px}
+  .spec-seg.cur .spec-pin{color:var(--ink)}.spec-seg.prop .spec-pin{color:var(--indigo)}
+  .spec-dir{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--muted);text-align:center;margin-top:9px}
+  /* projected impact: fiscal + effects, two columns */
+  .impact{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:560px){.impact{grid-template-columns:1fr}}
+  .impact__k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  .irow,.effrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .irow:last-child,.effrow:last-child{border-bottom:none}
+  .irow.net{border-top:1px solid var(--line2);border-bottom:none;margin-top:2px;padding-top:10px}
+  .irow.net .ik{color:var(--ink);font-weight:700}
+  .ik,.ek{font-size:12.5px;color:var(--muted)}
+  .ik small{color:var(--soft);font-size:11px}
+  .iv{font-family:'Space Mono',monospace;font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:5px}
+  .iv .arw{font-size:10px}
+  .up{color:var(--green)}.dn{color:var(--red)}.flat{color:var(--soft)}
+  .ecad{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .inone{color:var(--soft);font-style:italic;font-size:12.5px;padding:8px 0}
+  .btags{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+  .btag{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--amber);background:var(--amber-soft);border:1px solid #e8cfa3;border-radius:6px;padding:4px 8px}
+
   /* propose modal */
   .modal{position:fixed;inset:0;background:rgba(12,12,18,.45);display:flex;align-items:center;justify-content:center;padding:20px;z-index:100}
   .modal[hidden]{display:none}
@@ -151,7 +188,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, fetchPolicies } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { policyOptions, policyOptionIdx } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
@@ -168,7 +205,7 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="panel"><div class="empty">' + msg + '</div></div>'; }
 
   var FLOOR_WINDOW = 6;  // ticks a measure stands on the floor before failing — mirrors advance_tick (schema/60)
-  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, partyHandle:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, busy:false };
+  var ST = { party:null, session:'', tick:0, total:0, maj:0, govBloc:0, seatsByParty:{}, partyName:{}, partyHandle:{}, proposals:[], votes:[], policyDefs:{}, nationPolicies:{}, pop:0, pros:10, billNo:{}, openBill:null, busy:false };
   // Owner OOC nickname after a party name — "Centrist Union (Theo)". One source for the suffix.
   function nickSuffix(pid){ var h = ST.partyHandle[pid]; return h ? ' <span class="pnick">(' + esc(h) + ')</span>' : ''; }
 
@@ -224,6 +261,84 @@
       '<div class="lawchg__row"><span class="lawchg__k">Current Law</span><span class="lawchg__v">' + esc(current) + '</span></div>' +
       '<div class="lawchg__row"><span class="lawchg__k">Proposed Change</span><span class="lawchg__v hl">' + esc(proposed) + '</span></div></div>';
   }
+  // ---- Expanded "full bill" view — law measures only. Each section reuses ONE source: the
+  // policy definition (rungs/effects) + the shared fiscal helpers in policies.js (same math the
+  // propose page shows), so a bill reads here exactly as it was costed when proposed. ----
+  function billMeta(p){
+    var no = ST.billNo[p.id];
+    var label = p.status === 'voting' ? 'Division' : p.status === 'agenda' ? 'On the agenda' : p.status === 'passed' ? 'Passed' : 'Failed';
+    var tk = p.opened_tick != null ? p.opened_tick : (p.resolved_tick != null ? p.resolved_tick : p.scheduled_tick);
+    var date = tk != null ? tickToDate(tk) : '';
+    return '<div class="billmeta">' + (no ? 'Bill №' + no : 'Bill') + (date ? ' · ' + esc(date) : '') + ' · ' + label + '</div>';
+  }
+  // The sponsor's introductory article ("An Act to…"), authored on the propose page, as paragraphs.
+  function sponsorIntro(p){
+    var intro = (p.payload && p.payload.intro || '').trim();
+    if (!intro) return '';
+    var paras = intro.split(/\n+/).map(function(s){ return '<p>' + esc(s.trim()) + '</p>'; }).join('');
+    return '<div class="billsec"><div class="billsec__h">Sponsor’s Introduction <span class="billsec__by">' + esc(ST.partyName[p.party_id] || 'the sponsor') + '</span></div><div class="billart">' + paras + '</div></div>';
+  }
+  // Current → Proposed plus the policy spectrum (every rung, with Now / Proposed pins). Falls
+  // back to the payload names if the policy definition didn't load (spectrum then omitted).
+  function billChange(p){
+    if (!p.payload) return '';
+    var def = ST.policyDefs[p.payload.policy_id], opts = null, ci = -1, pi = -1;
+    var current = '—', proposed = p.payload.option_name || '—';
+    if (def) {
+      opts = policyOptions(def);
+      ci = policyOptionIdx(def, ST.nationPolicies, p.payload.policy_id);
+      pi = (p.payload.option_idx != null) ? +p.payload.option_idx : -1;
+      current = (opts[ci] || {}).name || '—';
+      proposed = (opts[pi] || {}).name || proposed;
+    }
+    var rows = '<div class="lawchg">' +
+      '<div class="lawchg__row"><span class="lawchg__k">Current Law</span><span class="lawchg__v">' + esc(current) + '</span></div>' +
+      '<div class="lawchg__row"><span class="lawchg__k">Proposed Change</span><span class="lawchg__v hl">' + esc(proposed) + '</span></div></div>';
+    var spec = '';
+    if (opts && opts.length && ci >= 0 && pi >= 0) {
+      var segs = opts.map(function(o, i){
+        var cls = i === ci ? 'cur' : i === pi ? 'prop' : '';
+        var pin = i === ci ? '<span class="spec-pin">Now</span>' : i === pi ? '<span class="spec-pin">Proposed</span>' : '';
+        return '<div class="spec-seg ' + cls + '">' + pin + '<span>' + esc(o.name || ('Option ' + (i + 1))) + '</span></div>';
+      }).join('');
+      var d = pi - ci, dir = d === 0 ? 'No movement on the ladder' : Math.abs(d) + ' rung' + (Math.abs(d) === 1 ? '' : 's') + ' toward ' + esc(proposed);
+      spec = '<div class="spectrum"><div class="spec-track">' + segs + '</div><div class="spec-dir">' + dir + '</div></div>';
+    }
+    return '<div class="billsec"><div class="billsec__h">The Change</div>' + rows + spec + '</div>';
+  }
+  function fmtB(v){ return '₣' + Math.abs(v).toFixed(1) + 'B'; }
+  function fiscalRow(label, sub, delta, goodUp, isNet){
+    var flat = Math.abs(delta) < 0.05, up = delta > 0, good = goodUp ? up : !up;
+    var cls = flat ? 'flat' : good ? 'up' : 'dn', arw = flat ? '' : up ? '▲' : '▼', sign = delta > 0 ? '+' : delta < 0 ? '−' : '';
+    return '<div class="irow' + (isNet ? ' net' : '') + '"><span class="ik">' + label + (sub ? ' <small>' + sub + '</small>' : '') + '</span>' +
+      '<span class="iv ' + cls + '">' + (arw ? '<span class="arw">' + arw + '</span>' : '') + sign + fmtB(delta) + '</span></div>';
+  }
+  // Fiscal delta (vs the rung in force) + the proposed rung's standing effects + its tags. Reads
+  // the same policies.js helpers as the propose preview, scaled by this nation's pop × prosperity.
+  function billImpact(p){
+    if (!p.payload) return '';
+    var def = ST.policyDefs[p.payload.policy_id];
+    if (!def) return '';   // no definition → skip (the change card still shows names)
+    var opts = policyOptions(def), ci = policyOptionIdx(def, ST.nationPolicies, p.payload.policy_id), pi = +p.payload.option_idx;
+    var co = opts[ci], po = opts[pi];
+    if (!po) return '';
+    var d = fiscalDelta(co, po, ST.pop, ST.pros), frows = [];
+    if (Math.abs(d.Income) >= 0.05) frows.push(fiscalRow('National Income', 'per year', d.Income, true));
+    if (Math.abs(d.Budget) >= 0.05) frows.push(fiscalRow('Treasury / Budget', 'per year', d.Budget, true));
+    if (Math.abs(d.Debt) >= 0.05) frows.push(fiscalRow('National Debt', 'liability', d.Debt, false));
+    if (frows.length >= 2) frows.push(fiscalRow('Net annual change', '', d.Income + d.Budget - d.Debt, true, true));
+    var fiscalHtml = frows.length ? frows.join('') : '<div class="inone">No change to the budget.</div>';
+    var effs = (po.effects || []).filter(function(e){ return !fiscalFactor(e); });
+    var effHtml = effs.length ? effs.map(function(e){
+      var tx = effectText(e, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
+      return '<div class="effrow"><span class="ek ' + c + '">' + esc(tx.text) + '</span><span class="ecad">' + esc(tx.cad) + '</span></div>';
+    }).join('') : '<div class="inone">No standing effects beyond the budget.</div>';
+    var tags = (po.tags || []).map(function(t){ return '<span class="btag">' + esc(t) + '</span>'; }).join('');
+    return '<div class="billsec"><div class="billsec__h">Projected Impact <span class="billsec__by">if enacted</span></div>' +
+      '<div class="impact"><div><div class="impact__k">Fiscal</div>' + fiscalHtml + '</div>' +
+      '<div><div class="impact__k">Effects on the nation</div>' + effHtml + (tags ? '<div class="btags">' + tags + '</div>' : '') + '</div></div></div>';
+  }
+
   function measureCard(p){
     var t = tallyOf(p.id);
     var cast = t.aye + t.nay, notv = Math.max(0, ST.total - cast);
@@ -241,7 +356,13 @@
         ? 'Carrying — outright majority of the chamber'
         : (carry ? 'Would pass if voting closed now — Aye leads'
                  : (t.aye === t.nay ? 'Would fail if voting closed now — tied' : 'Would fail if voting closed now — Nay leads')));
-    return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + introLine(p) + lawChange(p) +
+    // Law measures can expand into the full bill (sponsor's introduction, the policy spectrum,
+    // projected impact). Other kinds keep the compact card. The division below is shared.
+    var isLaw = p.kind === 'law';
+    var open = isLaw && ST.openBill === p.id;
+    var top = open ? (billMeta(p) + sponsorIntro(p) + billChange(p) + billImpact(p)) : (introLine(p) + lawChange(p));
+    var toggle = isLaw ? '<button type="button" class="billtoggle" data-bill="' + esc(p.id) + '">' + (open ? 'Hide full bill ▴' : 'View full bill ▾') + '</button>' : '';
+    return '<div class="measure' + (open ? ' open' : '') + '" data-id="' + esc(p.id) + '">' + mhead(p) + top + toggle +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
       '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span><b>' + cast + '</b> / ' + ST.total + ' seats cast</span></div>' +
       '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + ticksLeft(p) + '</div>' +
@@ -290,6 +411,9 @@
       '</section></aside></div>';
 
     document.getElementById('proposeBtn').onclick = function () { modal.hidden = false; };
+    content.querySelectorAll('.billtoggle').forEach(function (btn) {
+      btn.onclick = function () { ST.openBill = (ST.openBill === btn.dataset.bill) ? null : btn.dataset.bill; renderBody(); };
+    });
     content.querySelectorAll('.measure .vb').forEach(function (btn) {
       btn.onclick = function () {
         if (ST.busy) return;
@@ -313,6 +437,11 @@
     try {
       ST.proposals = await fetchProposals(ST.party.nation_id);
       ST.votes = await fetchVotes(ST.proposals.map(function (p) { return p.id; }));
+      // Derived display ordinal: number every measure by creation order (oldest = №1). Display
+      // only — nothing stored; it shifts only if a measure is deleted, which never happens.
+      ST.billNo = {};
+      ST.proposals.slice().sort(function (a, b) { return new Date(a.created_at) - new Date(b.created_at); })
+        .forEach(function (p, i) { ST.billNo[p.id] = i + 1; });
       renderBody();
     } catch (e) { fail('Couldn’t load the chamber’s measures. Refresh to try again.'); }
   }
@@ -324,7 +453,7 @@
     try {
       const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies').eq('id', party.nation_id).single();
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
       const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
       const nationName = (nation && nation.name) || party.nation_id;
       // Policy definitions + this nation's in-force options — so a law measure can show
@@ -332,6 +461,8 @@
       // Non-fatal: if the definitions can't load, law measures just show "—" for the
       // current/proposed option — the chamber and voting still work.
       ST.nationPolicies = (nation && nation.policies) || {};
+      ST.pop = Number((nation && nation.population) || 0);
+      ST.pros = Number((nation && nation.stats && nation.stats.prosperity) || 10);
       try { (await fetchPolicies()).forEach(function (r) { ST.policyDefs[r.id] = r.definition; }); } catch (e) { /* leave policyDefs empty → "—" */ }
 
       ST.party = party;
