@@ -658,12 +658,12 @@
         '<div class="dcard__eff">' + (DIR.pop ? 'Population <b style="color:var(--ink)">' + cityPopM.toFixed(2) + 'M</b> · on victory <b>+' + prize + '% popularity floor</b> at the next election. ' : '') + esc(fieldTxt) + '</div>' +
         (mineCand ? '' :
           '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dMyMinus" type="button"' + (DIR.spendMayor ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spendMayor + '</span><button id="dMyPlus" type="button"' + (canAddMy ? '' : ' disabled') + '>+</button></div><span class="calc">$100K base' + (DIR.spendMayor ? ' + $' + (DIR.spendMayor * 25) + 'K' : '') + '</span></div>' +
-          '<div class="dcard__foot"><button class="dgo" id="dMayor" type="button"' + (canAffordMayor ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
+          '<div class="dcard__foot"><button class="dgo idg" id="dMayor" type="button"' + (canAffordMayor ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
         '</div>';
     }
 
     body.innerHTML =
-      '<p class="dir-sub">Pick a member, then assign one field action. Costs 1 of your party’s actions (the Deputy appointment is free).</p>' +
+      '<p class="dir-sub">Pick a member, then assign one action. Each costs 1 of your party’s actions.</p>' +
       '<div class="dir-members">' + chips + '</div>' +
       '<div class="dir-stats">' + stats + '</div>' +
       // Parliament

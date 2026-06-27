@@ -110,15 +110,15 @@ begin
 end $$;
 grant execute on function public.direct_paramilitary(uuid) to authenticated;
 
--- Appoint (or dismiss) a member as Deputy Leader — a standing role, one per party. FREE
--- (no action cost): it's an appointment, not a turn action. While a Deputy serves, the
--- party's per-turn actions reset to 13 instead of 12 (advance_tick, schema/60). The
--- ambition / leadership-challenge / succession dynamics are deferred.
+-- Appoint (or dismiss) a member as Deputy Leader — a standing role, one per party. Costs 1
+-- action, like the other Direct actions. While a Deputy serves, the party's per-turn actions
+-- reset to 13 instead of 12 (advance_tick, schema/60). The ambition / leadership-challenge /
+-- succession dynamics are deferred.
 create or replace function public.direct_appoint_deputy(p_member uuid, p_appoint boolean)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare v_p public.parties%rowtype; v_mname text; v_status text;
 begin
-  v_p := public._lock_party();
+  v_p := public._begin_action(0);   -- requires ≥1 action; the action is spent below
   select btrim(first_name || ' ' || last_name), status into v_mname, v_status
     from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
@@ -132,15 +132,15 @@ begin
     update public.politicians set status = 'Party Member' where id = p_member;
   end if;
 
+  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;   -- spend the action
+
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
             v_mname || (case when p_appoint then ' has been appointed Deputy Leader of the ' else ' has stepped down as Deputy Leader of the ' end)
               || public._bare_party(v_p.name) || '.', public.current_game_date());
 
-  -- The appointment spends no action; return the unchanged budget so the client's refresh
-  -- (performAction → setActions) has a value to show.
   return jsonb_build_object('deputy', case when p_appoint then v_mname else null end, 'member', v_mname,
-    'actions', v_p.actions_remaining);
+    'actions', v_p.actions_remaining - 1);
 end $$;
 grant execute on function public.direct_appoint_deputy(uuid, boolean) to authenticated;
 
