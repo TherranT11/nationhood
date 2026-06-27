@@ -115,7 +115,7 @@
   /* Prominent Politicians table. Rendered live from the politicians table. */
   .pol-count{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
   .poltable{overflow-x:auto}
-  .pol-row{display:grid;grid-template-columns:minmax(150px,1.5fr) 46px minmax(110px,1.1fr) 44px repeat(5,minmax(52px,.7fr));gap:10px;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line)}
+  .pol-row{display:grid;grid-template-columns:minmax(150px,1.5fr) 46px minmax(110px,1.1fr) minmax(90px,1fr) 44px repeat(5,minmax(52px,.7fr));gap:10px;align-items:center;padding:13px 4px;border-bottom:1px solid var(--line)}
   .pol-row:last-child{border-bottom:0}
   a.pol-row{text-decoration:none;color:inherit;cursor:pointer;border-radius:8px;transition:background .12s}
   a.pol-row:hover{background:var(--chip)}
@@ -125,7 +125,7 @@
   .pol-name .dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--green)}
   .pol-name b{font-weight:800;font-size:14.5px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pol-age,.pol-exp{font-weight:700;font-size:14px}
-  .pol-status{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pol-status,.pol-task{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pol-stat{display:flex;flex-direction:column;gap:5px}
   .pol-stat__n{font-weight:800;font-size:14px;color:var(--ink)}
   .pol-stat.hi .pol-stat__n{color:var(--indigo)}
@@ -620,7 +620,7 @@
   var STAT_SCALE = 6; // bar display max
   function renderPoliticians(list) {
     document.getElementById('polCount').textContent = list.length + ' / ' + MAX_PROMINENT + ' prominent';
-    var head = '<div class="pol-row pol-head"><span>Name</span><span>Age</span><span>Status</span><span>Exp</span>' +
+    var head = '<div class="pol-row pol-head"><span>Name</span><span>Age</span><span>Status</span><span>Task</span><span>Exp</span>' +
       COMPETENCIES.map(function (c) { return '<span>' + c.abbr + '</span>'; }).join('') + '</div>';
     if (!list.length) { document.getElementById('poltable').innerHTML = head + '<p class="empty">No politicians yet.</p>'; return; }
     var rows = list.map(function (p) {
@@ -636,6 +636,7 @@
         '<div class="pol-name"><span class="dot"></span><b>' + esc(p.first_name + ' ' + p.last_name) + '</b></div>' +
         '<div class="pol-age">' + (p.age || 0) + '</div>' +
         '<div class="pol-status">' + esc(p.status || '') + '</div>' +
+        '<div class="pol-task"></div>' +
         '<div class="pol-exp">' + (p.experience || 0) + '</div>' + cells + '</a>';
     }).join('');
     document.getElementById('poltable').innerHTML = head + rows;
