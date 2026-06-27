@@ -583,13 +583,20 @@
   // performAction so the action budget + feed refresh. Mayor + Youth Wing are deferred.
   var directBtn = document.getElementById('act-direct');
   var directModal = document.getElementById('directModal');
-  var DIR = { members: [], sel: 0, funds: 0, spend: 0, cities: [], pop: 0, cands: [], selCity: 0, spendMayor: 0 };
+  var DIR = { members: [], sel: 0, funds: 0, spend: 0, cities: [], pop: 0, cands: [], selCity: 0, spendMayor: 0, mpRuns: [] };
   if (directBtn) { actionBtns.push(directBtn); directBtn.addEventListener('click', openDirectModal); }
   var closeDirectModal = wireModalClose(directModal, 'directClose');
 
   function dirName(p) { return ((p.first_name || '') + ' ' + (p.last_name || '')).trim(); }
   function dirMember() { return DIR.members[DIR.sel] || DIR.members[0]; }
   function dirDeputy() { return DIR.members.filter(function (m) { return m.status === 'Deputy Leader'; })[0] || null; }
+  // A member mid-run (Parliament or Mayor) is "busy" — can't be directed elsewhere until it
+  // resolves (the server enforces this too). mpCd = ticks left on the post-run MP cooldown.
+  function memberMpRun(m) { return DIR.mpRuns.filter(function (r) { return r.politician_id === m.id; })[0] || null; }
+  function memberMayorRun(m) { return DIR.cands.filter(function (c) { return c.politician_id === m.id && c.party_id === myPartyId; })[0] || null; }
+  function memberBusy(m) { return !!memberMpRun(m) || !!memberMayorRun(m); }
+  function memberBusyLabel(m) { return memberMpRun(m) ? 'running for Parliament' : memberMayorRun(m) ? 'running for mayor' : ''; }
+  function memberMpCd(m) { return (m.mp_until_tick && NOW_TICK && m.mp_until_tick > NOW_TICK) ? (m.mp_until_tick - NOW_TICK) : 0; }
 
   async function openDirectModal() {
     if (acting || directBtn.disabled || !feedCtx) return;
@@ -599,7 +606,7 @@
     try {
       var pr = await supabase.from('parties').select('funds').eq('id', myPartyId).maybeSingle();
       DIR.funds = (pr.data && Number(pr.data.funds)) || 0;
-      var mr = await supabase.from('politicians').select('id, first_name, last_name, status, cha, acu, gui, res, com').eq('party_id', myPartyId).order('created_at');
+      var mr = await supabase.from('politicians').select('id, first_name, last_name, status, cha, acu, gui, res, com, mp_until_tick').eq('party_id', myPartyId).order('created_at');
       DIR.members = mr.data || [];
       if (!DIR.members.length) { body.innerHTML = '<p class="empty">Your party has no members to direct.</p>'; return; }
       // Mayor card data: the nation's population (for the floor prize), its cities, and the
@@ -608,22 +615,30 @@
       try {
         var nr = await supabase.from('nations').select('population').eq('id', feedCtx.nationId).maybeSingle();
         DIR.pop = (nr.data && Number(nr.data.population)) || 0;
-        var cr = await supabase.from('cities').select('id, name, pop_pct').eq('nation_id', feedCtx.nationId).order('pop_pct', { ascending: false });
+        var cr = await supabase.from('cities').select('id, name, pop_pct, mayor_election_tick').eq('nation_id', feedCtx.nationId).order('pop_pct', { ascending: false });
         DIR.cities = cr.data || [];
         var ids = DIR.cities.map(function (c) { return c.id; });
-        if (ids.length) { var mc = await supabase.from('mayoral_candidacies').select('city_id, party_id, candidate_name').in('city_id', ids); DIR.cands = mc.data || []; }
+        if (ids.length) { var mc = await supabase.from('mayoral_candidacies').select('city_id, party_id, candidate_name, politician_id').in('city_id', ids); DIR.cands = mc.data || []; }
       } catch (e) { /* Mayor card shows its empty state */ }
-      DIR.sel = 0; DIR.spend = 0; DIR.selCity = 0; DIR.spendMayor = 0;
+      // Our party's pending parliamentary runs → which members are mid-run (occupied).
+      DIR.mpRuns = [];
+      try { var mp = await supabase.from('mp_candidacies').select('politician_id, opponent_name, resolve_tick').eq('party_id', myPartyId); DIR.mpRuns = mp.data || []; } catch (e) { /* occupation just isn't pre-marked; the server still blocks it */ }
+      // Default to the first member who isn't already standing for office.
+      var firstFree = DIR.members.findIndex(function (m) { return !memberBusy(m); });
+      DIR.sel = firstFree >= 0 ? firstFree : 0; DIR.spend = 0; DIR.selCity = 0; DIR.spendMayor = 0;
       renderDirect();
     } catch (e) { body.innerHTML = '<p class="empty">Couldn’t load your members.</p>'; }
   }
 
   function renderDirect() {
     var body = document.getElementById('directBody'), m = dirMember(), dep = dirDeputy();
-    var image = Number(m.com) || 0, spendCost = DIR.spend * 25000, canAddSpend = (DIR.spend + 1) * 25000 <= DIR.funds;
+    var image = Number(m.com) || 0, spendCost = DIR.spend * 25000, mpCd = memberMpCd(m);
+    var mpCost = 50000 + spendCost, canAffordMp = DIR.funds >= mpCost, canAddSpend = (50000 + (DIR.spend + 1) * 25000) <= DIR.funds;
     var chips = DIR.members.map(function (p, i) {
+      var busy = memberBusy(p);
       var tag = p.status === 'Party Leader' ? ' · Leader' : p.status === 'Deputy Leader' ? ' <span class="dep">· Deputy</span>' : '';
-      return '<button class="dir-mem' + (i === DIR.sel ? ' on' : '') + '" data-i="' + i + '">' + esc(dirName(p)) + tag + '</button>';
+      var rt = busy ? ' <span style="color:var(--amber)">· ' + memberBusyLabel(p) + '</span>' : '';
+      return '<button class="dir-mem' + (i === DIR.sel ? ' on' : '') + '" data-i="' + i + '"' + (busy ? ' disabled' : '') + '>' + esc(dirName(p)) + tag + rt + '</button>';
     }).join('');
     var stats = [['Cha', m.cha], ['Acu', m.acu], ['Gui', m.gui], ['Res', m.res], ['Img', m.com]]
       .map(function (s) { return '<span class="dir-stat">' + s[0] + ' <b>' + (s[1] != null ? s[1] : 0) + '</b></span>'; }).join('');
@@ -652,27 +667,29 @@
       var cityOpts = DIR.cities.map(function (c, i) { return '<option value="' + i + '"' + (i === DIR.selCity ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('');
       var fieldTxt = mineCand ? 'You are already running here (' + esc(mineCand.candidate_name) + ').'
         : rivals ? (rivals + ' rival candidate' + (rivals === 1 ? '' : 's') + ' declared.') : 'Open race — no candidates yet.';
+      var elDate = (city.mayor_election_tick != null) ? tickToDate(city.mayor_election_tick) : null;   // the city's next election (1D6 roll, then +12 per term)
       mayorHtml =
         '<div class="dcard"><div class="dcard__t">Announce Candidacy for Mayor</div>' +
         '<div class="dboost" style="margin-top:9px"><span class="bl">City</span><select id="dCity" class="appoint__sel" style="flex:1;min-width:120px">' + cityOpts + '</select></div>' +
         '<div class="dcard__eff">' + (DIR.pop ? 'Population <b style="color:var(--ink)">' + cityPopM.toFixed(2) + 'M</b> · on victory <b>+' + prize + '% popularity floor</b> at the next election. ' : '') + esc(fieldTxt) + '</div>' +
+        (elDate ? '<div class="dnote" style="margin-top:8px">Next Election: <b>' + esc(elDate) + '</b></div>' : '') +
         (mineCand ? '' :
           '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dMyMinus" type="button"' + (DIR.spendMayor ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spendMayor + '</span><button id="dMyPlus" type="button"' + (canAddMy ? '' : ' disabled') + '>+</button></div><span class="calc">$100K base' + (DIR.spendMayor ? ' + $' + (DIR.spendMayor * 25) + 'K' : '') + '</span></div>' +
-          '<div class="dcard__foot"><button class="dgo" id="dMayor" type="button"' + (canAffordMayor ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
+          '<div class="dcard__foot"><button class="dgo idg" id="dMayor" type="button"' + (canAffordMayor ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
         '</div>';
     }
 
     body.innerHTML =
-      '<p class="dir-sub">Pick a member, then assign one field action. Costs 1 of your party’s actions (the Deputy appointment is free).</p>' +
+      '<p class="dir-sub">Pick a member, then assign one action. Each costs 1 of your party’s actions.</p>' +
       '<div class="dir-members">' + chips + '</div>' +
       '<div class="dir-stats">' + stats + '</div>' +
       // Parliament
       '<div class="dcard"><div class="dcard__t">Run for Parliament</div>' +
-        '<div class="dcard__mech">1D6 + Image(' + image + ')' + (DIR.spend ? ' + ' + DIR.spend : '') + ' vs a rival party’s 1D10</div>' +
-        '<div class="dcard__eff">A rival party that holds a seat is drawn. <b>Win:</b> +1 seat &amp; +1% popularity for you; the beaten party loses <b class="bad">1 seat &amp; 1% popularity</b>.</div>' +
+        '<div class="dcard__mech">1D6 + Image(' + image + ')' + (DIR.spend ? ' + ' + DIR.spend : '') + ' vs the rival’s 1D10 · resolves in 1–3 ticks</div>' +
+        '<div class="dcard__eff">A seat-holding rival is locked in now; the contest resolves over the next few ticks. <b>Win:</b> +1 seat &amp; +1% popularity for you; the beaten party loses <b class="bad">1 seat &amp; 1% popularity</b>.</div>' +
         '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dSpMinus" type="button"' + (DIR.spend ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spend + '</span><button id="dSpPlus" type="button"' + (canAddSpend ? '' : ' disabled') + '>+</button></div>' +
           '<span class="calc">' + (DIR.spend ? '$' + (spendCost / 1000) + 'K → +' + DIR.spend + ' to your roll' : '$25K = +1 to your roll') + '</span></div>' +
-        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button">Stand for the seat</button><span class="dnote">War chest <b>$' + Math.floor(DIR.funds / 1000) + 'K</b></span></div></div>' +
+        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd || !canAffordMp ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : canAffordMp ? 'Costs $' + (mpCost / 1000) + 'K + 1 action' : 'Need $' + (mpCost / 1000) + 'K') + '</span></div></div>' +
       mayorHtml +
       // Paramilitary
       '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
@@ -687,9 +704,9 @@
     document.getElementById('dSpPlus').onclick = function () { if ((DIR.spend + 1) * 25000 <= DIR.funds) { DIR.spend++; renderDirect(); } };
     document.getElementById('dSpMinus').onclick = function () { if (DIR.spend > 0) { DIR.spend--; renderDirect(); } };
     document.getElementById('dPar').onclick = function () {
-      var mem = dirMember().id, sp = DIR.spend; closeDirectModal();
+      var mem = dirMember().id, nm = dirName(dirMember()), sp = DIR.spend; closeDirectModal();
       performAction(function () { return supabase.rpc('direct_parliament', { p_member: mem, p_spend: sp }); }, function (d) {
-        return d.win ? ('Won a seat from ' + d.opponent + ' — +1 seat, +1% popularity.') : ('Lost the seat to ' + d.opponent + ' (rolled ' + d.you + ' vs ' + d.field + ').');
+        return nm + ' is standing for Parliament against ' + d.opponent + ' — the result lands in 1–3 ticks.';
       });
     };
     document.getElementById('dPara').onclick = function () {
