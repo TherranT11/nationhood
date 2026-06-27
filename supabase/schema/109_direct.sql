@@ -22,15 +22,15 @@
 -- 1 action (the player's choice for Direct) + the optional campaign spend.
 -- SCHEDULES a parliamentary run (it no longer resolves on the spot — see schema/111). The rival
 -- party + its leader are locked NOW; the contest resolves 1D3 ticks out in _resolve_parliamentary_
--- runs. 1 action + the optional campaign spend. The member must not already be standing for office
--- (Parliament or Mayor) and must be off the 12-tick MP cooldown.
+-- runs. $50K base + the optional campaign spend, and 1 action. The member must not already be
+-- standing for office (Parliament or Mayor) and must be off the 12-tick MP cooldown.
 create or replace function public.direct_parliament(p_member uuid, p_spend int default 0)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_image int; v_mname text; v_spend int := greatest(0, coalesce(p_spend, 0));
   v_cost bigint; v_riv record; v_oppname text; v_leg text; v_tick int; v_resolve int; v_until int;
 begin
-  v_cost := v_spend::bigint * 25000;
+  v_cost := 50000 + v_spend::bigint * 25000;
   v_p := public._begin_action(v_cost);   -- locks party, requires ≥1 action + funds ≥ spend
   select btrim(first_name || ' ' || last_name), coalesce(com, 0), coalesce(mp_until_tick, 0)
     into v_mname, v_image, v_until

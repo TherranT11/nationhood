@@ -632,7 +632,8 @@
 
   function renderDirect() {
     var body = document.getElementById('directBody'), m = dirMember(), dep = dirDeputy();
-    var image = Number(m.com) || 0, spendCost = DIR.spend * 25000, canAddSpend = (DIR.spend + 1) * 25000 <= DIR.funds, mpCd = memberMpCd(m);
+    var image = Number(m.com) || 0, spendCost = DIR.spend * 25000, mpCd = memberMpCd(m);
+    var mpCost = 50000 + spendCost, canAffordMp = DIR.funds >= mpCost, canAddSpend = (50000 + (DIR.spend + 1) * 25000) <= DIR.funds;
     var chips = DIR.members.map(function (p, i) {
       var busy = memberBusy(p);
       var tag = p.status === 'Party Leader' ? ' · Leader' : p.status === 'Deputy Leader' ? ' <span class="dep">· Deputy</span>' : '';
@@ -688,7 +689,7 @@
         '<div class="dcard__eff">A seat-holding rival is locked in now; the contest resolves over the next few ticks. <b>Win:</b> +1 seat &amp; +1% popularity for you; the beaten party loses <b class="bad">1 seat &amp; 1% popularity</b>.</div>' +
         '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dSpMinus" type="button"' + (DIR.spend ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spend + '</span><button id="dSpPlus" type="button"' + (canAddSpend ? '' : ' disabled') + '>+</button></div>' +
           '<span class="calc">' + (DIR.spend ? '$' + (spendCost / 1000) + 'K → +' + DIR.spend + ' to your roll' : '$25K = +1 to your roll') + '</span></div>' +
-        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : 'War chest <b>$' + Math.floor(DIR.funds / 1000) + 'K</b>') + '</span></div></div>' +
+        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd || !canAffordMp ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : canAffordMp ? 'Costs $' + (mpCost / 1000) + 'K + 1 action' : 'Need $' + (mpCost / 1000) + 'K') + '</span></div></div>' +
       mayorHtml +
       // Paramilitary
       '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
