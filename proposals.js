@@ -34,6 +34,10 @@ export async function proposeLaw(policyId, optionIdx, toFloor, title, intro) {
 export async function proposeRegimeChange(target, toFloor) {
   return unwrap(await supabase.rpc('propose_regime_change', { p_target: target, p_to_floor: toFloor }));
 }
+// Electoral threshold bill: pct is one of 0/3/5/8/10/15 (the min vote share to win seats).
+export async function proposeThreshold(pct, toFloor) {
+  return unwrap(await supabase.rpc('propose_threshold', { p_pct: pct, p_to_floor: toFloor }));
+}
 export async function proposalToFloor(id) { return unwrap(await supabase.rpc('proposal_to_floor', { p_proposal: id })); }
 export async function castVote(id, aye) { return unwrap(await supabase.rpc('cast_floor_vote', { p_proposal: id, p_aye: aye })); }
 
