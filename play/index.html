@@ -57,6 +57,23 @@
   #events{max-height:440px;overflow-y:auto}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
+  /* National Crises panel — moved here from the Government page. Read-only for
+     everyone; the head of government also gets the management buttons (.cact). */
+  .conf__bar{height:12px;border-radius:7px;background:var(--chip);overflow:hidden;margin-bottom:6px}
+  .conf__fill{height:100%;width:0;border-radius:7px;transition:width .3s}
+  .crisis{padding:13px 0;border-bottom:1px solid var(--line)}
+  .crisis:first-child{padding-top:0}
+  .crisis:last-child{border-bottom:none;padding-bottom:0}
+  .crisis__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .crisis__top b{font-weight:800;font-size:14px}
+  .crisis__stg{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--red);background:color-mix(in srgb,var(--red) 14%,var(--surface));padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .crisis__stgname{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:6px 0 9px}
+  .crisis__meter{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:5px}
+  .crisis__desc{font-size:13px;color:var(--muted);margin-top:9px;line-height:1.5}
+  .crisis__acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .cact{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:8px 12px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
+  .cact:hover{filter:brightness(1.06)} .cact:disabled{opacity:.45;cursor:not-allowed;filter:none}
+
   /* Party Leader · This Week's Action. Enabled actions are live buttons; the
      not-yet-wired ones are real <button disabled> (dimmed, can't click/focus).
      Four per row (eight total). */
@@ -268,6 +285,10 @@
         <div class="glance-hd"><span>National Modifiers</span></div>
         <div id="homeMods"><p class="empty">No active modifiers.</p></div>
       </section>
+      <section class="panel" id="crisisPanel" hidden>
+        <div class="glance-hd"><span>National Crises</span></div>
+        <div id="homeCrises"><p class="empty">No active national crises.</p></div>
+      </section>
       <section class="panel">
         <div class="glance-hd"><span id="eventsHd">Events</span></div>
         <div class="evfilter" id="evFilter">
@@ -445,7 +466,7 @@
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
-  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null;
+  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false;
   // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
   var NOW_TICK = 0, nocoUntilTick = 0;
@@ -460,6 +481,76 @@
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
+
+  // National Crises (moved here from the Government page). nation_crises + the embedded
+  // crisis definition are world-readable, so everyone sees a nation's active crises and
+  // their meters; only the head of government (amPM) gets the management buttons. The
+  // stage's `at` is the meter value that escalates it — the bar fills toward it.
+  function crisisCard(nc, canManage) {
+    var def = nc.crises && nc.crises.definition;
+    if (!def) return '';
+    var stage = nc.stage || 1, terminal = stage >= 5;
+    var stages = Array.isArray(def.stages) ? def.stages : [];
+    var st = stages[stage - 1] || {};
+    var meter = Number(nc.meter) || 0, at = Number(st.at) || 0;
+    var pct = terminal ? 100 : (at > 0 ? Math.max(0, Math.min(100, Math.round(meter / at * 100))) : 0);
+    var desc = terminal ? (st.descReached || '') : (st.desc || '');
+    var acts = '';
+    if (!terminal && canManage && Array.isArray(st.actions) && st.actions.length) {
+      acts = '<div class="crisis__acts">' + st.actions.map(function (a, ai) {
+        var label = a.type === 'law' ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
+        return '<button class="cact" type="button" data-cid="' + esc(nc.id) + '" data-ai="' + ai + '" data-stg="' + stage + '">' + esc(label) + '</button>';
+      }).join('') + '</div>';
+    }
+    return '<div class="crisis">' +
+      '<div class="crisis__top"><b>' + esc(def.name || 'Crisis') + '</b>' +
+        '<span class="crisis__stg">' + (terminal ? 'Terminal' : 'Stage ' + stage + '/5') + '</span></div>' +
+      '<div class="crisis__stgname">' + esc(terminal ? 'Breaking point' : (st.name || ('Stage ' + stage))) + '</div>' +
+      (terminal ? '' :
+        '<div class="conf__bar"><div class="conf__fill" style="width:' + pct + '%;background:var(--red)"></div></div>' +
+        '<div class="crisis__meter">' + meter + (at > 0 ? ' / ' + at + ' to escalation' : '') + '</div>') +
+      (desc ? '<p class="crisis__desc">' + esc(desc) + '</p>' : '') +
+      acts +
+    '</div>';
+  }
+  function renderCrises(crises) {
+    var panel = document.getElementById('crisisPanel'), el = document.getElementById('homeCrises');
+    if (!el) return;
+    // Keep the home dashboard clean: show the panel only when there's something to show
+    // (same hide-when-empty convention as the World Events panel above).
+    if (!crises || !crises.length) { panel.hidden = true; el.innerHTML = '<p class="empty">No active national crises.</p>'; return; }
+    panel.hidden = false;
+    el.innerHTML = crises.map(function (nc) { return crisisCard(nc, amPM); }).join('');
+    el.querySelectorAll('.cact').forEach(function (b) {
+      b.addEventListener('click', function () { manageCrisis(b.dataset.cid, Number(b.dataset.ai), Number(b.dataset.stg)); });
+    });
+  }
+  // Re-fetch this nation's active crises and re-render the panel. Non-critical: a failed
+  // fetch leaves whatever is already shown rather than breaking the dashboard.
+  async function loadCrises() {
+    if (!feedCtx) return;
+    try {
+      const { data: crises } = await supabase.from('nation_crises')
+        .select('id, stage, meter, crises(definition)').eq('nation_id', feedCtx.nationId).eq('status', 'active');
+      renderCrises(crises || []);
+    } catch (e) { /* leave the panel as-is */ }
+  }
+  // Head of government manages a crisis: spend 1 action, apply the chosen response
+  // (server-side crisis_act), then refresh the panel, AP pill and feed. Busy-locked
+  // against double-fire via the shared `acting` flag, like the other home actions.
+  async function manageCrisis(crisisId, actionIdx, stage) {
+    if (acting || !feedCtx) return;
+    acting = true;
+    try {
+      const { data, error } = await supabase.rpc('crisis_act', { p_id: crisisId, p_action: actionIdx, p_stage: stage });
+      if (error) throw error;
+      ping(data.body || (data.ok ? 'The response held.' : 'The response fell short.'));
+      if (data.actions != null) setActions(data.actions);   // AP just dropped by 1 — keep the pill honest
+      await loadCrises();
+      await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
+    } catch (e) { ping(e.message || 'Couldn’t take that action.'); }
+    finally { acting = false; }
+  }
 
   // World Events panel — active Decisions and Mutual Agreements awaiting THIS nation's action.
   // Turning Points apply on fire and surface only in the events feed, so they aren't listed
@@ -1170,13 +1261,15 @@
       try {
         const { data: govt } = await supabase.from('governments')
           .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
-        renderPMBar(!!(govt && govt.formateur_party_id === party.id));
+        amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
+        renderPMBar(amPM);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
       renderInvites();   // surface any pending coalition invites (non-blocking)
       renderFormation(); // nudge a formateur to the Government page if the window is open
       renderNationModifiers(document.getElementById('homeMods'), await fetchNationModifiers(party.nation_id));
+      loadCrises();      // active national crises (non-blocking); reveals its panel only if any exist
 
       if (nation && nation.flag) {
         flag.onload = function () { flag.hidden = false; };
