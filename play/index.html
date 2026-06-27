@@ -608,7 +608,7 @@
       try {
         var nr = await supabase.from('nations').select('population').eq('id', feedCtx.nationId).maybeSingle();
         DIR.pop = (nr.data && Number(nr.data.population)) || 0;
-        var cr = await supabase.from('cities').select('id, name, pop_pct').eq('nation_id', feedCtx.nationId).order('pop_pct', { ascending: false });
+        var cr = await supabase.from('cities').select('id, name, pop_pct, mayor_election_tick').eq('nation_id', feedCtx.nationId).order('pop_pct', { ascending: false });
         DIR.cities = cr.data || [];
         var ids = DIR.cities.map(function (c) { return c.id; });
         if (ids.length) { var mc = await supabase.from('mayoral_candidacies').select('city_id, party_id, candidate_name').in('city_id', ids); DIR.cands = mc.data || []; }
@@ -652,10 +652,12 @@
       var cityOpts = DIR.cities.map(function (c, i) { return '<option value="' + i + '"' + (i === DIR.selCity ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('');
       var fieldTxt = mineCand ? 'You are already running here (' + esc(mineCand.candidate_name) + ').'
         : rivals ? (rivals + ' rival candidate' + (rivals === 1 ? '' : 's') + ' declared.') : 'Open race — no candidates yet.';
+      var elDate = (city.mayor_election_tick != null) ? tickToDate(city.mayor_election_tick) : null;   // the city's next election (1D6 roll, then +12 per term)
       mayorHtml =
         '<div class="dcard"><div class="dcard__t">Announce Candidacy for Mayor</div>' +
         '<div class="dboost" style="margin-top:9px"><span class="bl">City</span><select id="dCity" class="appoint__sel" style="flex:1;min-width:120px">' + cityOpts + '</select></div>' +
         '<div class="dcard__eff">' + (DIR.pop ? 'Population <b style="color:var(--ink)">' + cityPopM.toFixed(2) + 'M</b> · on victory <b>+' + prize + '% popularity floor</b> at the next election. ' : '') + esc(fieldTxt) + '</div>' +
+        (elDate ? '<div class="dnote" style="margin-top:8px">Next Election: <b>' + esc(elDate) + '</b></div>' : '') +
         (mineCand ? '' :
           '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dMyMinus" type="button"' + (DIR.spendMayor ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spendMayor + '</span><button id="dMyPlus" type="button"' + (canAddMy ? '' : ' disabled') + '>+</button></div><span class="calc">$100K base' + (DIR.spendMayor ? ' + $' + (DIR.spendMayor * 25) + 'K' : '') + '</span></div>' +
           '<div class="dcard__foot"><button class="dgo idg" id="dMayor" type="button"' + (canAffordMayor ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
