@@ -157,11 +157,17 @@
   .emblem{width:58px;height:58px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 14%, var(--surface));color:var(--c);font-family:'Space Mono',monospace;font-weight:700;font-size:19px;overflow:hidden}
   .emblem img{width:100%;height:100%;object-fit:cover}
   .acard__id{flex:1;min-width:0}
-  .acard__id b{font-weight:900;font-size:18px;letter-spacing:-.02em}
+  .acard__id b{display:block;font-weight:900;font-size:18px;letter-spacing:-.02em}
   .acard__id b i{font-style:normal;color:var(--soft);font-weight:700;font-size:13px}
   .arole{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 10px;border-radius:20px;flex:none;white-space:nowrap}
   .arole.gov{color:var(--green);background:color-mix(in srgb,var(--green) 12%, var(--surface))}
   .arole.opp{color:var(--muted);background:var(--chip)}
+  /* Online/Offline — a "recently active" proxy: green when the party took an action
+     in the last ~5 min (parties.last_active_at), muted otherwise. Display only. */
+  .astat{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+  .astat::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+  .astat.on{color:var(--green)}
+  .astat.off{color:var(--muted)}
   .ideo{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--c);margin-top:12px;font-weight:700}
   .acard__stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px;border-top:1px solid var(--line);padding-top:13px}
   .acard__stats .l{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
@@ -709,9 +715,11 @@
       var abbr = p.abbreviation || '';
       var roleCls = p.in_government ? 'gov' : 'opp';
       var crest = p.logo_url ? '<img src="' + esc(p.logo_url) + '" alt="' + esc(p.name) + ' logo">' : esc(abbr);
+      var online = p.last_active_at && (Date.now() - new Date(p.last_active_at).getTime()) < 5 * 60 * 1000;
+      var status = '<span class="astat ' + (online ? 'on' : 'off') + '">' + (online ? 'Online' : 'Offline') + '</span>';
       return '<div class="acard" style="--c:' + partyColor(p) + '">' +
         '<div class="acard__top"><span class="emblem">' + crest + '</span>' +
-          '<div class="acard__id"><b>' + esc(p.name) + (abbr ? ' <i>(' + esc(abbr) + ')</i>' : '') + '</b></div>' +
+          '<div class="acard__id"><b>' + esc(p.name) + (abbr ? ' <i>(' + esc(abbr) + ')</i>' : '') + '</b>' + status + '</div>' +
           '<span class="arole ' + roleCls + '">' + (p.in_government ? 'Government' : 'Opposition') + '</span></div>' +
         '<div class="ideo">' + esc(ideologyLabel(p)) + '</div>' +
         '<div class="acard__stats">' +
@@ -1015,7 +1023,7 @@
       // own funds come from the select('*') own-party query above).
       const totalSeats = (nation && nation.legislature_seats) || 0;
       const { data: allParties } = await supabase.from('parties')
-        .select('id, name, abbreviation, archetype, seats, popularity, in_government, color, logo_url')
+        .select('id, name, abbreviation, archetype, seats, popularity, in_government, color, logo_url, last_active_at')
         .eq('nation_id', party.nation_id);
       const ap = allParties || [];
       // Archetype crowding trims the ceiling: −2% for every OTHER party sharing your
