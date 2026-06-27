@@ -1403,7 +1403,13 @@
       try {
         var error;
         if (editing) {
-          // Update keeps id + next_election_tick (the schedule) untouched.
+          // Update keeps id + next_election_tick (the schedule) untouched — EXCEPT when this
+          // edit activates a nation that was never scheduled (e.g. dormant → active): start its
+          // calendar with a first election 1d6+1 ticks out, the same roll the insert path uses.
+          // An already-scheduled nation keeps its date.
+          if (!data.dormant && editing.next_election_tick == null) {
+            data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
+          }
           ({ error } = await supabase.from('nations').update(data).eq('id', editing.id));
         } else {
           var id = slugify(name);
