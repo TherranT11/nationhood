@@ -25,7 +25,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_image int; v_mname text; v_spend int := greatest(0, coalesce(p_spend, 0));
   v_cost bigint; v_you int; v_field int; v_win boolean;
-  v_riv record; v_newpop numeric; v_rivpop numeric; v_body text;
+  v_riv record; v_newpop numeric; v_rivpop numeric; v_body text; v_oppname text; v_leg text;
 begin
   v_cost := v_spend::bigint * 25000;
   v_p := public._begin_action(v_cost);   -- locks party, requires ≥1 action + funds ≥ spend
@@ -40,6 +40,13 @@ begin
     order by random() limit 1;
   if not found then raise exception 'No rival party holds a seat to contest.'; end if;
 
+  -- The named opponent is the rival party's leader; the chamber's name is the nation's
+  -- Legislature Name declaration (one source — schema/81 nation_declaration).
+  select btrim(first_name || ' ' || last_name) into v_oppname
+    from public.politicians where party_id = v_riv.id and status = 'Party Leader' order by created_at limit 1;
+  v_oppname := coalesce(nullif(v_oppname, ''), 'their leader');
+  v_leg := coalesce(nullif(public.nation_declaration(v_p.nation_id, 'legislature_name'), ''), 'the legislature');
+
   v_you   := floor(random() * 6)::int + 1 + v_image + v_spend;
   v_field := floor(random() * 10)::int + 1;
   v_win   := v_you > v_field;
@@ -53,13 +60,14 @@ begin
        set seats = greatest(0, seats - 1),
            popularity = public._mod_floor_drop(nation_id, archetype, popularity, greatest(popularity - 1, pop_floor))
      where id = v_riv.id returning popularity into v_rivpop;
-    v_body := 'Under ' || v_mname || ', the ' || public._bare_party(v_p.name) || ' took a seat from the '
-           || public._bare_party(v_riv.name) || ' (rolled ' || v_you || ' vs ' || v_field
-           || '). +1 seat, +1% popularity; ' || v_riv.name || ' −1 seat, −1% popularity.';
+    v_body := v_mname || ' of the ' || public._bare_party(v_p.name) || ' stood for ' || v_leg || ' against '
+           || v_oppname || ' of the ' || public._bare_party(v_riv.name) || ' — and won the seat (rolled ' || v_you
+           || ' vs ' || v_field || '). +1 seat, +1% popularity; ' || v_riv.name || ' −1 seat, −1% popularity.';
   else
     update public.parties set funds = funds - v_cost, actions_remaining = actions_remaining - 1 where id = v_p.id;
-    v_body := 'Under ' || v_mname || ', the ' || public._bare_party(v_p.name) || ' stood against the '
-           || public._bare_party(v_riv.name) || ' but lost the seat (rolled ' || v_you || ' vs ' || v_field || ').';
+    v_body := v_mname || ' of the ' || public._bare_party(v_p.name) || ' stood for ' || v_leg || ' against '
+           || v_oppname || ' of the ' || public._bare_party(v_riv.name) || ', but lost the seat (rolled ' || v_you
+           || ' vs ' || v_field || ').';
   end if;
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party', v_body, public.current_game_date());
@@ -76,10 +84,10 @@ grant execute on function public.direct_parliament(uuid, int) to authenticated;
 -- then settle popularity into [floor, effective ceiling] — a lowered ceiling pulls it down.
 create or replace function public.direct_paramilitary(p_member uuid)
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_mname text; v_newceil numeric; v_eff numeric; v_newpop numeric; v_gain numeric; v_body text;
+declare v_p public.parties%rowtype; v_newceil numeric; v_eff numeric; v_newpop numeric; v_gain numeric; v_body text;
 begin
   v_p := public._begin_action(0);
-  select btrim(first_name || ' ' || last_name) into v_mname from public.politicians where id = p_member and party_id = v_p.id;
+  perform 1 from public.politicians where id = p_member and party_id = v_p.id;   -- a member is directed, but the wing is the party's
   if not found then raise exception 'That isn''t one of your members.'; end if;
 
   v_newceil := greatest(v_p.pop_floor, v_p.pop_ceiling - 3);                                  -- ceiling ≥ floor
@@ -91,10 +99,10 @@ begin
   perform public._nation_stat_add(v_p.nation_id, 'economy', 'regime', -1, 1, 25);             -- regime −1 (clamped 1..25)
   update public.governments set confidence = greatest(0, confidence - 1) where nation_id = v_p.nation_id and status = 'active';
 
-  v_body := 'Under ' || v_mname || ', the ' || public._bare_party(v_p.name)
-         || ' raised a paramilitary wing — a show of force on the streets. Popularity '
+  v_body := 'The ' || public._bare_party(v_p.name)
+         || ' has announced the formation of its own paramilitary wing — a show of force on the streets. Popularity '
          || (case when v_gain >= 0 then '+' else '−' end) || trim(to_char(abs(v_gain), 'FM990.0'))
-         || '%, and the Republic turns colder: −1 Regime, −3% ceiling, −1% Government Confidence.';
+         || '%, but the Republic turns colder: −1 Regime, −3% ceiling, −1% Government Confidence.';
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party', v_body, public.current_game_date());
 
@@ -126,7 +134,7 @@ begin
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
-            v_mname || (case when p_appoint then ' was appointed Deputy Leader of the ' else ' stepped down as Deputy Leader of the ' end)
+            v_mname || (case when p_appoint then ' has been appointed Deputy Leader of the ' else ' has stepped down as Deputy Leader of the ' end)
               || public._bare_party(v_p.name) || '.', public.current_game_date());
 
   -- The appointment spends no action; return the unchanged budget so the client's refresh
