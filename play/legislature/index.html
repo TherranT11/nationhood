@@ -153,7 +153,7 @@
   import { esc, majority, tickToDate } from '/util.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
-  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, proposalOutcome, fetchPolicies } from '/proposals.js';
+  import { fetchProposals, fetchVotes, proposalToFloor, castVote, tallyVotes, proposalOutcome, proposalLocked, fetchPolicies } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
   import { policyOptions, policyOptionIdx } from '/policies.js';
 
@@ -242,6 +242,9 @@
     var noConf = p.kind === 'no_confidence';
     var oc = proposalOutcome(t.aye, t.nay, ST.maj, p.kind);
     var outright = oc.outright, carry = oc.carry;
+    // Outcome locked by an outright majority → the tick resolves it next, so say so instead of
+    // counting down the floor window (mirrors _proposal_locked, schema/81).
+    var locked = proposalLocked(t.aye, t.nay, ST.maj, p.kind);
     var reso = noConf
       ? 'Carries unless the government votes No before the floor closes'
       : (outright
@@ -256,7 +259,7 @@
     return '<div class="measure" data-id="' + esc(p.id) + '">' + mhead(p) + top + toggle +
       '<div class="votebar"><span class="va" style="width:' + ayePct + '%"></span><span class="vn" style="width:' + nayPct + '%"></span></div>' +
       '<div class="votenums"><span>Aye <b>' + t.aye + '</b></span><span>Nay <b>' + t.nay + '</b></span><span>Not voted <b>' + notv + '</b></span><span><b>' + cast + '</b> / ' + ST.total + ' seats cast</span></div>' +
-      '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + ticksLeft(p) + '</div>' +
+      '<div class="reso ' + (carry ? 'pass' : 'fail') + '">' + reso + (locked ? ' · resolves next tick' : ticksLeft(p)) + '</div>' +
       '<div class="rolltitle">' + (noConf ? 'Roll call · the government must vote No to survive' : 'Roll call · carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright') + '</div>' +
       rollCall(p.id) +
       '<div class="mrow"><button class="vb aye' + (t.myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Vote Aye</button>' +

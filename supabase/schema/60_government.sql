@@ -367,7 +367,7 @@ as $$
   select coalesce(nullif(public.nation_declaration(p_nation, 'head_of_government_title'), ''), 'Prime Minister')
          || ' '
          || coalesce(
-              (select name from public.politicians
+              (select nullif(btrim(first_name || ' ' || last_name), '') from public.politicians
                  where party_id = p_party and status = 'Party Leader'
                  order by created_at limit 1),
               (select name from public.parties where id = p_party),
@@ -532,14 +532,18 @@ begin
     select nation_id, party_id, 'declaration',
            'A measure reached the floor: ' || title || '.', public.current_game_date()
     from promoted;
-  -- Floor measures that have stood 6 ticks are tallied now: a simple majority of
-  -- the seats cast (Aye > Nay) carries them, otherwise they fall (schema/81). Each
-  -- is resolved individually so a passing measure applies its effects.
+  -- Floor measures resolve now if they have stood their full 6-tick window OR their outcome is
+  -- already locked by an outright chamber majority (_proposal_locked, schema/81) — the latter
+  -- resolves on this next tick instead of lingering. A simple majority of the seats cast (Aye >
+  -- Nay) carries a window-closed measure, otherwise it falls (schema/81); each is resolved
+  -- individually so a passing measure applies its effects. A measure whose window was cut short
+  -- by the lock skips the absent-from-the-floor penalty (p_penalize=false).
   for v_rec in
-    select id from public.proposals
-     where status = 'voting' and opened_tick is not null and (v_tick - opened_tick) >= 6
+    select id, ((v_tick - opened_tick) >= 6) as window_closed from public.proposals
+     where status = 'voting' and opened_tick is not null
+       and ((v_tick - opened_tick) >= 6 or public._proposal_locked(id))
   loop
-    begin perform public._resolve_proposal(v_rec.id, true);
+    begin perform public._resolve_proposal(v_rec.id, true, v_rec.window_closed);
     exception when others then raise warning 'tick %: proposal % failed — %', v_tick, v_rec.id, sqlerrm; end;
   end loop;
   -- Adopted convictions' "while active" effects: standing modifiers + movement-based
