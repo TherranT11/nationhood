@@ -61,12 +61,15 @@ export function majority(seats) {
   return Math.floor((Number(seats) || 0) / 2) + 1;
 }
 
-// Party inactivity (wall-clock). daysIdle() is the metric over parties.last_active_at
-// (stamped server-side by _lock_party). The in-game dormancy warning shows from
-// INACTIVE_WARN_DAYS; a party is eligible for admin removal from INACTIVE_DELETE_DAYS.
-// ONE source for the home banner and the admin review.
+// Party inactivity (wall-clock) over parties.last_active_at (stamped by _lock_party on every
+// action; any action revives the party). Three thresholds, ALL derived from that one timestamp
+// — no stored flag to drift. An early nudge shows from INACTIVE_WARN_DAYS; at INACTIVE_DAYS the
+// party is inactive and sits out elections (resolve_election, schema/60); at INACTIVE_DELETE_DAYS
+// the 8-hour tick deletes it and its politicians, freeing the nation slot (_purge_inactive_parties,
+// schema/97). These day counts MIRROR those SQL thresholds — keep the two in sync.
 export const INACTIVE_WARN_DAYS = 6;
-export const INACTIVE_DELETE_DAYS = 7;
+export const INACTIVE_DAYS = 7;
+export const INACTIVE_DELETE_DAYS = 21;
 export function daysIdle(ts) {
   return ts ? Math.floor((Date.now() - new Date(ts).getTime()) / 86400000) : 0;
 }

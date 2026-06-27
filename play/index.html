@@ -357,7 +357,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
@@ -1184,15 +1184,22 @@
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
 
-      // Dormancy warning: no meaningful action (party.last_active_at, stamped server-side)
-      // since INACTIVE_WARN_DAYS. Any action revives it; idle parties are removable (admin).
+      // Inactivity warning, escalating with idle days (party.last_active_at, stamped server-side).
+      // Any action revives it. At INACTIVE_DAYS the party sits out elections; at INACTIVE_DELETE_DAYS
+      // the tick deletes it and its politicians. Thresholds mirror the server (util.js).
       var idleDays = daysIdle(party.last_active_at);
       if (idleDays >= INACTIVE_WARN_DAYS) {
         var ban = document.getElementById('inactBan');
         ban.className = 'inactban';
-        ban.textContent = '⚠ Your party has been inactive for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
-          '. Take any action — a rally, a vote, adopting a conviction — to stay active. Parties inactive for ' +
-          INACTIVE_DELETE_DAYS + '+ days may be removed.';
+        if (idleDays >= INACTIVE_DAYS) {
+          var leftToDelete = Math.max(0, INACTIVE_DELETE_DAYS - idleDays);
+          ban.textContent = '⚠ Your party is INACTIVE — idle ' + idleDays + ' days, so it won’t contest elections. ' +
+            'Take any action to reactivate. It will be deleted, with its politicians, in ' + leftToDelete + ' day' + (leftToDelete === 1 ? '' : 's') + '.';
+        } else {
+          ban.textContent = '⚠ Your party has been idle for ' + idleDays + ' day' + (idleDays === 1 ? '' : 's') +
+            '. Take any action — a rally, a vote, adopting a conviction — to stay active. At ' + INACTIVE_DAYS +
+            ' days it goes inactive and stops contesting elections.';
+        }
       }
 
       // Democracy restored: when a one-party state returns to multiparty (schema/98),

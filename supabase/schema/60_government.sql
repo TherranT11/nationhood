@@ -230,6 +230,7 @@ begin
          else 1.0 end) as w
     from public.parties
     where nation_id = p_nation and popularity >= v_threshold
+      and last_active_at >= now() - interval '7 days'   -- inactive parties sit out the election (mirrors INACTIVE_DAYS, util.js)
   ),
   tot as (select nullif(sum(w), 0) as tw from elig),
   ex as (select e.id, (e.w / t.tw) * v_seats as exact from elig e, tot t where t.tw is not null),
@@ -598,6 +599,10 @@ begin
   -- is the last word each tick. Isolated like every other step.
   begin perform public._apply_modifier_bounds();
   exception when others then raise warning 'tick %: modifier bounds failed — %', v_tick, sqlerrm; end;
+  -- Inactivity purge (schema/97): delete parties idle past the deletion window (their politicians
+  -- cascade, the nation slot frees up). Wall-clock, so it fires on whichever tick crosses 21 days.
+  begin perform public._purge_inactive_parties();
+  exception when others then raise warning 'tick %: inactive purge failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
