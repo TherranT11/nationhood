@@ -20,7 +20,7 @@ create table if not exists public.corporations (
   size        text not null default 'Moderate', -- Startup | Moderate | Enterprise | National Corporation | International Conglomerate
   cash        numeric not null default 0,       -- $B
   debt        numeric not null default 0,       -- $B  (>= 0)
-  drift       int     not null default 0,       -- the firm's own trajectory; corpGrowth() in corporations.js reads this. Phase 2 applies it per tick
+  drift       int     not null default 0,       -- the firm's own trajectory; _corp_growth reads it (with climate + director Acumen), applied per tick
   status      text    not null default 'placed',-- 'placed' | 'queued'
   roll_m      int,                              -- queued: rolled startup cash in $M (1D60+20); null once placed
   director    text,                             -- the NPC director's name, drawn from the nation's name pool at creation
@@ -103,12 +103,19 @@ returns jsonb language sql stable security definer set search_path = public as $
   from public.nations n where n.id = p_nation;
 $$;
 
--- A firm's growth = climate + its drift, minus a hard debt drag, clamped ±9. Mirrors
--- corpGrowth (corporations.js).
-create or replace function public._corp_growth(p_drift numeric, p_debt numeric, p_climate numeric)
+-- A firm's growth = climate + its drift + the director's edge − a hard debt drag, clamped ±9.
+-- The director's Acumen (1–4) tilts the firm: (acumen − 2.5) × 0.8 ≈ −1.2 (weak) … +1.2 (sharp),
+-- so a sharp director carries a firm through a poor climate while a weak one drags it in a boom.
+-- Null acumen (legacy rows) is neutral. ONE source — there is no JS mirror (the client reads the
+-- corp_register RPC). The old 3-arg version (pre-Acumen) is dropped at the foot of this file.
+create or replace function public._corp_growth(p_drift numeric, p_debt numeric, p_climate numeric, p_acumen numeric)
 returns numeric language sql immutable as $$
-  select greatest(-9, least(9, round(
-    (p_climate + coalesce(p_drift, 0) - (case when coalesce(p_debt, 0) > 0 then coalesce(p_debt, 0) * 3 else 0 end))::numeric, 1)));
+  select greatest(-9, least(9, round((
+      p_climate
+    + coalesce(p_drift, 0)
+    + (coalesce(p_acumen, 2.5) - 2.5) * 0.8
+    - (case when coalesce(p_debt, 0) > 0 then coalesce(p_debt, 0) * 3 else 0 end)
+  )::numeric, 1)));
 $$;
 
 -- RPC: the public register for a nation — climate, derived tax burden, and each placed firm
@@ -123,7 +130,7 @@ returns jsonb language sql stable security definer set search_path = public as $
       select jsonb_agg(jsonb_build_object(
           'name', c.name, 'type', c.type, 'size', c.size, 'category', c.category,
           'cash', c.cash, 'debt', c.debt,
-          'growth', public._corp_growth(c.drift, c.debt, public._business_climate(p_nation)),
+          'growth', public._corp_growth(c.drift, c.debt, public._business_climate(p_nation), c.acumen),
           -- Director: an NPC who runs the firm (no player party, no age modelled yet).
           'director_name', c.director, 'director_acu', c.acumen,
           'director_party', null, 'director_age', null
@@ -285,7 +292,7 @@ grant execute on function public.corp_privatize(uuid) to authenticated;
 --   1. Generation-list release — a queued firm enters (placed) when its nation's climate is
 --      healthy (>= 0.5, the climateWord 'Healthy' band), applying its sector bonus.
 --   2. Cash growth — each placed firm's cash compounds by its growth (_corp_growth: climate +
---      drift − debt drag, ±9%).
+--      drift + director Acumen edge − debt drag, ±9%).
 --   3. Fold — a PRIVATE firm whose cash falls to <= 0 goes under: reverse its sector bonus and
 --      remove it. State-owned firms never fold (government-backed).
 -- Climate is snapshotted once per nation up front, so releases are deterministic (a release's
@@ -311,7 +318,7 @@ begin
 
   for r in select c.* from public.corporations c where c.status = 'placed' loop
     select climate into v_clim from _corp_clim where nation_id = r.nation_id;
-    v_growth  := public._corp_growth(r.drift, r.debt, coalesce(v_clim, 0));
+    v_growth  := public._corp_growth(r.drift, r.debt, coalesce(v_clim, 0), r.acumen);
     v_newcash := round(r.cash * (1 + v_growth / 100.0), 4);
     if r.type = 'pr' and v_newcash <= 0 then
       perform public._corp_event(r.nation_id,
@@ -325,5 +332,9 @@ begin
   end loop;
 end $$;
 revoke all on function public._apply_corp_tick() from public, anon, authenticated;
+
+-- Retire the pre-Acumen 3-arg _corp_growth now that corp_register + the tick use the 4-arg form.
+-- Safe to run last: both dependents above were just recreated against the new signature.
+drop function if exists public._corp_growth(numeric, numeric, numeric);
 
 notify pgrst, 'reload schema';
