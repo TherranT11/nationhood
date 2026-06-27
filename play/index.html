@@ -57,22 +57,19 @@
   #events{max-height:440px;overflow-y:auto}
   @media(max-width:900px){.cols{grid-template-columns:1fr}}
 
-  /* National Crises panel — moved here from the Government page. Read-only for
-     everyone; the head of government also gets the management buttons (.cact). */
+  /* National Crises panel — each card links to the crisis's own page (/play/crisis/),
+     where it is viewed and (head of government only) managed. */
   .conf__bar{height:12px;border-radius:7px;background:var(--chip);overflow:hidden;margin-bottom:6px}
   .conf__fill{height:100%;width:0;border-radius:7px;transition:width .3s}
-  .crisis{padding:13px 0;border-bottom:1px solid var(--line)}
-  .crisis:first-child{padding-top:0}
-  .crisis:last-child{border-bottom:none;padding-bottom:0}
+  .crisis{display:block;text-decoration:none;color:inherit;padding:13px 10px;margin:0 -10px;border-radius:10px;border-bottom:1px solid var(--line);transition:background .12s}
+  .crisis:first-child{padding-top:4px}
+  .crisis:last-child{border-bottom:none;padding-bottom:4px}
+  .crisis:hover{background:var(--chip)}
   .crisis__top{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .crisis__top b{font-weight:800;font-size:14px}
   .crisis__stg{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;color:var(--red);background:color-mix(in srgb,var(--red) 14%,var(--surface));padding:4px 9px;border-radius:20px;white-space:nowrap}
   .crisis__stgname{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:6px 0 9px}
   .crisis__meter{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.02em;color:var(--soft);margin-top:5px}
-  .crisis__desc{font-size:13px;color:var(--muted);margin-top:9px;line-height:1.5}
-  .crisis__acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-  .cact{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:8px 12px;border-radius:8px;border:1px solid var(--indigo);background:var(--indigo);color:#fff;cursor:pointer}
-  .cact:hover{filter:brightness(1.06)} .cact:disabled{opacity:.45;cursor:not-allowed;filter:none}
 
   /* Party Leader · This Week's Action. Enabled actions are live buttons; the
      not-yet-wired ones are real <button disabled> (dimmed, can't click/focus).
@@ -482,11 +479,11 @@
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
 
-  // National Crises (moved here from the Government page). nation_crises + the embedded
-  // crisis definition are world-readable, so everyone sees a nation's active crises and
-  // their meters; only the head of government (amPM) gets the management buttons. The
-  // stage's `at` is the meter value that escalates it — the bar fills toward it.
-  function crisisCard(nc, canManage) {
+  // National Crises summary cards. nation_crises + the embedded crisis definition are
+  // world-readable, so everyone sees a nation's active crises and their meters. Each card
+  // is a link to the crisis's own page (/play/crisis/?id=…) where it's viewed and — for
+  // the head of government — managed. The stage's `at` is the meter that escalates it.
+  function crisisCard(nc) {
     var def = nc.crises && nc.crises.definition;
     if (!def) return '';
     var stage = nc.stage || 1, terminal = stage >= 5;
@@ -494,24 +491,14 @@
     var st = stages[stage - 1] || {};
     var meter = Number(nc.meter) || 0, at = Number(st.at) || 0;
     var pct = terminal ? 100 : (at > 0 ? Math.max(0, Math.min(100, Math.round(meter / at * 100))) : 0);
-    var desc = terminal ? (st.descReached || '') : (st.desc || '');
-    var acts = '';
-    if (!terminal && canManage && Array.isArray(st.actions) && st.actions.length) {
-      acts = '<div class="crisis__acts">' + st.actions.map(function (a, ai) {
-        var label = a.type === 'law' ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
-        return '<button class="cact" type="button" data-cid="' + esc(nc.id) + '" data-ai="' + ai + '" data-stg="' + stage + '">' + esc(label) + '</button>';
-      }).join('') + '</div>';
-    }
-    return '<div class="crisis">' +
+    return '<a class="crisis" href="/play/crisis/?id=' + encodeURIComponent(nc.id) + '">' +
       '<div class="crisis__top"><b>' + esc(def.name || 'Crisis') + '</b>' +
         '<span class="crisis__stg">' + (terminal ? 'Terminal' : 'Stage ' + stage + '/5') + '</span></div>' +
       '<div class="crisis__stgname">' + esc(terminal ? 'Breaking point' : (st.name || ('Stage ' + stage))) + '</div>' +
       (terminal ? '' :
         '<div class="conf__bar"><div class="conf__fill" style="width:' + pct + '%;background:var(--red)"></div></div>' +
-        '<div class="crisis__meter">' + meter + (at > 0 ? ' / ' + at + ' to escalation' : '') + '</div>') +
-      (desc ? '<p class="crisis__desc">' + esc(desc) + '</p>' : '') +
-      acts +
-    '</div>';
+        '<div class="crisis__meter">' + meter + (at > 0 ? ' / ' + at + ' to escalation' : '') + ' · View ▸</div>') +
+    '</a>';
   }
   function renderCrises(crises) {
     var panel = document.getElementById('crisisPanel'), el = document.getElementById('homeCrises');
@@ -520,10 +507,7 @@
     // (same hide-when-empty convention as the World Events panel above).
     if (!crises || !crises.length) { panel.hidden = true; el.innerHTML = '<p class="empty">No active national crises.</p>'; return; }
     panel.hidden = false;
-    el.innerHTML = crises.map(function (nc) { return crisisCard(nc, amPM); }).join('');
-    el.querySelectorAll('.cact').forEach(function (b) {
-      b.addEventListener('click', function () { manageCrisis(b.dataset.cid, Number(b.dataset.ai), Number(b.dataset.stg)); });
-    });
+    el.innerHTML = crises.map(function (nc) { return crisisCard(nc); }).join('');
   }
   // Re-fetch this nation's active crises and re-render the panel. Non-critical: a failed
   // fetch leaves whatever is already shown rather than breaking the dashboard.
@@ -534,22 +518,6 @@
         .select('id, stage, meter, crises(definition)').eq('nation_id', feedCtx.nationId).eq('status', 'active');
       renderCrises(crises || []);
     } catch (e) { /* leave the panel as-is */ }
-  }
-  // Head of government manages a crisis: spend 1 action, apply the chosen response
-  // (server-side crisis_act), then refresh the panel, AP pill and feed. Busy-locked
-  // against double-fire via the shared `acting` flag, like the other home actions.
-  async function manageCrisis(crisisId, actionIdx, stage) {
-    if (acting || !feedCtx) return;
-    acting = true;
-    try {
-      const { data, error } = await supabase.rpc('crisis_act', { p_id: crisisId, p_action: actionIdx, p_stage: stage });
-      if (error) throw error;
-      ping(data.body || (data.ok ? 'The response held.' : 'The response fell short.'));
-      if (data.actions != null) setActions(data.actions);   // AP just dropped by 1 — keep the pill honest
-      await loadCrises();
-      await loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);
-    } catch (e) { ping(e.message || 'Couldn’t take that action.'); }
-    finally { acting = false; }
   }
 
   // World Events panel — active Decisions and Mutual Agreements awaiting THIS nation's action.

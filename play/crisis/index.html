@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Crisis · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--green:#16915a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
+  .app{display:flex;min-height:100vh}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+
+  /* main */
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;max-width:1040px}
+  /* top bar (Discord/funds/actions/date/settings gear) now lives in /topbar.js */
+
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:16px;text-decoration:none}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .mod{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:16px}
+  .mod__hd{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--soft);margin-bottom:16px}
+  .empty{color:var(--soft);font-style:italic;font-size:13.5px}
+
+  /* hero */
+  .hero{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  .hero__ic{width:50px;height:50px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--red) 14%,var(--surface))}
+  .hero__ic svg{width:26px;height:26px;stroke:var(--red);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .hero__id{flex:1;min-width:240px}
+  .hero__id .kicker{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--red)}
+  .hero__id h1{font-weight:900;font-size:clamp(26px,4.4vw,38px);letter-spacing:-.03em;line-height:1.02;margin-top:3px}
+  .htags{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .tag{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:6px}
+  .tag.live{color:var(--red);background:color-mix(in srgb,var(--red) 14%,var(--surface))}
+  .tag.stg{color:var(--muted);background:var(--chip)}
+  .desc{color:var(--muted);font-size:14.5px;margin-top:16px;line-height:1.6;max-width:660px}
+
+  /* status track (the five stages) */
+  .caps{display:flex;justify-content:space-between;align-items:center;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:8px}
+  .caps .res{color:var(--green)} .caps .gs{color:var(--red)}
+  .track-wrap{overflow-x:auto;padding:26px 40px 72px}
+  .track{display:flex;align-items:center;min-width:620px}
+  .ms{position:relative;flex:none;display:flex;flex-direction:column;align-items:center}
+  .ms .c{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;font-size:13px;font-weight:700;border:2px solid var(--line);background:var(--surface);color:var(--soft)}
+  .ms.done .c{background:var(--red);border-color:var(--red);color:#fff}
+  .ms.now .c{box-shadow:0 0 0 5px color-mix(in srgb,var(--red) 18%,var(--surface))}
+  .ms .lab{position:absolute;top:44px;left:50%;transform:translateX(-50%);width:120px;text-align:center;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft);line-height:1.35}
+  .ms.done .lab{color:var(--ink)} .ms.now .lab{color:var(--red);font-weight:700}
+  .ms .nowpill{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#fff;background:var(--red);padding:2px 7px;border-radius:20px;white-space:nowrap}
+  .gap{flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 9px;min-width:80px}
+  .gap .d{width:6px;height:6px;border-radius:50%;background:var(--chip);flex:none}
+  .gap .d.on{background:var(--red)}
+
+  /* meter + effect */
+  .meterline{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);font-weight:700;margin-bottom:8px}
+  .conf__bar{height:12px;border-radius:7px;background:var(--chip);overflow:hidden;margin-bottom:6px}
+  .conf__fill{height:100%;width:0;border-radius:7px;background:var(--red);transition:width .3s}
+  .effect{display:flex;align-items:center;gap:16px;border:1px solid var(--line);border-left:3px solid var(--red);border-radius:12px;padding:16px 18px;background:color-mix(in srgb,var(--red) 8%,var(--surface));margin-top:14px}
+  .eff-val{font-weight:900;font-size:34px;letter-spacing:-.03em;color:var(--red);line-height:1}
+  .eff-body b{font-weight:800;font-size:15px}
+  .eff-body p{font-size:13px;color:var(--muted);margin-top:3px;line-height:1.5}
+
+  /* options (management actions) */
+  .opts{display:flex;flex-direction:column;gap:12px}
+  .optx{display:block;width:100%;text-align:left;background:var(--surface);border:1.5px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;color:var(--ink);font-family:inherit;transition:border-color .15s,background .15s}
+  .optx:hover:not(:disabled){border-color:var(--red)}
+  .optx:disabled{opacity:.6;cursor:default;background:var(--chip)}
+  .optx__t{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .optx__o{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:4px}
+  .opthint{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--soft);margin-top:12px}
+
+  /* timeline (crisis event history) */
+  .tl{position:relative;padding-left:24px}
+  .tl::before{content:"";position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .tli{position:relative;padding-bottom:18px}
+  .tli:last-child{padding-bottom:0}
+  .tli::before{content:"";position:absolute;left:-24px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--soft)}
+  .tli.neg::before{border-color:var(--red);background:var(--red)}
+  .tli.pos::before{border-color:var(--green);background:var(--green)}
+  .tli .d{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);font-weight:700}
+  .tli p{font-size:13.5px;color:var(--ink);margin-top:3px;line-height:1.5}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:120;max-width:90vw;text-align:center;line-height:1.55}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <a class="back" href="/play/"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Home</a>
+    <div id="content"><section class="mod"><p class="empty">Loading&hellip;</p></section></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser, currentParty, currentTick } from '/supabase.js';
+  import { esc } from '/util.js';
+  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
+
+  var id = new URLSearchParams(location.search).get('id') || '';
+  var STATE = null;       // { nc, def, amPM, nationName }
+  var acting = false;     // busy-lock against double-fire
+
+  var toastEl = document.getElementById('toast'), toastT;
+  function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
+
+  function notFound() {
+    document.getElementById('content').innerHTML = '<section class="mod"><div class="mod__hd">Crisis</div><p class="empty">No such crisis, or it is no longer active.</p></section>';
+  }
+
+  // The five-stage status track. `step` is the current stage (1..5); stages below it
+  // read done, the current one carries the Now pill, and the dots in each crossed gap fill.
+  function trackHtml(stages, step) {
+    var ms = '';
+    for (var i = 0; i < 5; i++) {
+      var n = i + 1, st = stages[i] || {};
+      var label = (n >= 5) ? 'Breaking Point' : (st.name || ('Stage ' + n));
+      var cls = (n < step ? ' done' : '') + (n === step ? ' now' : '');
+      if (i > 0) {
+        var on = i < step;
+        var dots = '';
+        for (var k = 0; k < 15; k++) dots += '<span class="d' + (on ? ' on' : '') + '"></span>';
+        ms += '<div class="gap">' + dots + '</div>';
+      }
+      ms += '<div class="ms' + cls + '">' + (n === step ? '<span class="nowpill">Now</span>' : '') +
+            '<span class="c">' + n + '</span><span class="lab">' + esc(label) + '</span></div>';
+    }
+    return '<div class="caps"><span class="res">◂ Resolved</span><span class="gs">Breaking Point ▸</span></div>' +
+           '<div class="track-wrap"><div class="track">' + ms + '</div></div>';
+  }
+
+  // One management action → a card. The head of government gets a live button; everyone
+  // else sees it as a read-only description of what the government could do. The label and
+  // sub-line mirror the home-panel cards and the crisis_act dispatch (schema/99).
+  function actionHtml(a, idx, stage, canManage) {
+    var isLaw = a.type === 'law';
+    var label = isLaw ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
+    var sub = isLaw ? 'Emergency legislation'
+      : (a.ministry || 'Government') + (a.mech === 'roll' && a.stat ? ' · ' + a.stat + ' check' : '');
+    return '<button class="optx" type="button"' + (canManage ? '' : ' disabled') +
+      ' data-ai="' + idx + '" data-stg="' + stage + '">' +
+      '<div class="optx__t">' + esc(label) + '</div>' +
+      '<div class="optx__o">' + esc(sub) + '</div></button>';
+  }
+
+  function render() {
+    var nc = STATE.nc, def = STATE.def, amPM = STATE.amPM;
+    var stage = nc.stage || 1, terminal = stage >= 5;
+    var stages = Array.isArray(def.stages) ? def.stages : [];
+    var st = stages[stage - 1] || {};
+    var meter = Number(nc.meter) || 0, at = Number(st.at) || 0;
+    var pct = terminal ? 100 : (at > 0 ? Math.max(0, Math.min(100, Math.round(meter / at * 100))) : 0);
+    var growth = terminal ? null : (st.growth === 'd3' ? '1–3' : ('+' + (st.growth || 1)));
+    document.title = (def.name || 'Crisis') + ' · Nationhood';
+
+    // hero
+    var html = '<section class="mod"><div class="hero">' +
+      '<span class="hero__ic"><svg viewBox="0 0 24 24"><path d="M12 3c2 3 5 5 5 9a5 5 0 01-10 0c0-2 1-3.2 2-4.5.2 1.2 1 2.2 2 2.5 0-2.3-1-4.5-1-7z"/></svg></span>' +
+      '<div class="hero__id"><div class="kicker">National Crisis · ' + esc(STATE.nationName) + '</div>' +
+        '<h1>' + esc(def.name || 'Crisis') + '</h1>' +
+        '<div class="htags">' +
+          '<span class="tag live">● ' + (terminal ? 'Terminal' : 'Active') + '</span>' +
+          '<span class="tag stg">' + (terminal ? 'Breaking point' : 'Stage ' + stage + ' / 5') + '</span>' +
+        '</div></div></div>' +
+      (def.desc ? '<p class="desc">' + esc(def.desc) + '</p>' : '') + '</section>';
+
+    // status track
+    html += '<section class="mod"><div class="mod__hd">Status</div>' + trackHtml(stages, stage) + '</section>';
+
+    // current stage: meter toward escalation + the growth-per-tick effect
+    html += '<section class="mod"><div class="mod__hd">' + (terminal ? 'Breaking Point' : 'Current Stage — ' + esc(st.name || ('Stage ' + stage))) + '</div>';
+    if (terminal) {
+      html += '<p class="desc" style="margin-top:0">' + esc(st.descReached || 'This crisis has reached its breaking point.') + '</p>';
+    } else {
+      html += '<div class="meterline">' + meter + (at > 0 ? ' / ' + at + ' to escalation' : '') + '</div>' +
+        '<div class="conf__bar"><div class="conf__fill" style="width:' + pct + '%"></div></div>' +
+        (st.desc ? '<p class="desc">' + esc(st.desc) + '</p>' : '') +
+        (growth ? '<div class="effect"><span class="eff-val">' + growth + '</span>' +
+          '<div class="eff-body"><b>Meter / tick</b><p>Left unaddressed, the crisis climbs toward the next stage each month.</p></div></div>' : '');
+    }
+    html += '</section>';
+
+    // management options (current stage's actions)
+    var acts = (!terminal && Array.isArray(st.actions)) ? st.actions : [];
+    if (acts.length) {
+      html += '<section class="mod"><div class="mod__hd">Options</div><div class="opts">' +
+        acts.map(function (a, i) { return actionHtml(a, i, stage, amPM); }).join('') + '</div>' +
+        '<div class="opthint">' + (amPM
+          ? 'Taking an action costs 1 party action.'
+          : 'Only the head of government can act on a national crisis.') + '</div></section>';
+    }
+
+    // event history (this nation's crisis events that name this crisis)
+    html += '<section class="mod"><div class="mod__hd">Event History</div><div id="chist"><p class="empty">No recorded events yet.</p></div></section>';
+
+    document.getElementById('content').innerHTML = html;
+
+    if (amPM) {
+      document.querySelectorAll('.optx').forEach(function (b) {
+        if (b.disabled) return;
+        b.addEventListener('click', function () { manageCrisis(Number(b.dataset.ai), Number(b.dataset.stg)); });
+      });
+    }
+  }
+
+  // Head of government acts on the crisis (server-side crisis_act); 1 party action.
+  // On success, ping the outcome, sync the AP pill, and reload the whole view so the
+  // meter/stage, options and history all refresh. Busy-locked against double-fire.
+  async function manageCrisis(actionIdx, stage) {
+    if (acting) return;
+    acting = true;
+    try {
+      const { data, error } = await supabase.rpc('crisis_act', { p_id: id, p_action: actionIdx, p_stage: stage });
+      if (error) throw error;
+      ping(data.body || (data.ok ? 'The response held.' : 'The response fell short.'));
+      if (data.actions != null) setTopbarActions(data.actions);
+      await load();
+    } catch (e) { ping(e.message || 'Couldn’t take that action.'); }
+    finally { acting = false; }
+  }
+
+  // Fill the Event History timeline: this nation's crisis-kind events whose body names
+  // this crisis. Non-critical — a failed fetch leaves the "no events" placeholder.
+  async function loadHistory() {
+    var el = document.getElementById('chist'); if (!el) return;
+    try {
+      const { data: evs } = await supabase.from('events')
+        .select('body, game_date, tone, created_at')
+        .eq('nation_id', STATE.nc.nation_id).eq('kind', 'crisis')
+        .order('created_at', { ascending: false }).limit(40);
+      var name = (STATE.def.name || '').toLowerCase();
+      var mine = (evs || []).filter(function (e) { return name && (e.body || '').toLowerCase().indexOf(name) !== -1; });
+      if (!mine.length) { el.innerHTML = '<p class="empty">No recorded events yet.</p>'; return; }
+      el.innerHTML = '<div class="tl">' + mine.map(function (e) {
+        var tone = e.tone === 'pos' ? ' pos' : (e.tone === 'neg' || e.tone === 'warn' ? ' neg' : '');
+        return '<div class="tli' + tone + '"><div class="d">' + esc(e.game_date || '') + '</div>' +
+               '<p>' + esc(e.body || '') + '</p></div>';
+      }).join('') + '</div>';
+    } catch (e) { /* leave the placeholder */ }
+  }
+
+  async function load() {
+    // The live crisis instance + its embedded definition. Must still be active.
+    const { data: nc, error } = await supabase.from('nation_crises')
+      .select('id, nation_id, stage, meter, status, crises(definition)')
+      .eq('id', id).maybeSingle();
+    if (error || !nc || nc.status !== 'active' || !nc.crises || !nc.crises.definition) { notFound(); return; }
+    var def = nc.crises.definition;
+
+    // The nation (brand + currency); the player's party (topbar funds/actions + the
+    // head-of-government check that unlocks management).
+    const { data: nation } = await supabase.from('nations').select('name, flag, economy').eq('id', nc.nation_id).maybeSingle();
+    const me = await currentParty();
+    var amPM = false, myName = '', currency = (nation && nation.economy && nation.economy.currency) || '$';
+    if (me && me.id) {
+      const { data: myParty } = await supabase.from('parties').select('name, funds, actions_remaining').eq('id', me.id).maybeSingle();
+      if (myParty) { myName = myParty.name || ''; setTopbarFunds(currency, myParty.funds); setTopbarActions(myParty.actions_remaining); }
+      const { data: govt } = await supabase.from('governments')
+        .select('formateur_party_id').eq('nation_id', nc.nation_id).eq('status', 'active').maybeSingle();
+      amPM = !!(govt && govt.formateur_party_id === me.id);
+    }
+
+    var nationName = (nation && nation.name) || nc.nation_id;
+    document.getElementById('pname').textContent = myName || nationName;
+    document.getElementById('psub').textContent = nationName;
+    if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }
+
+    STATE = { nc: nc, def: def, amPM: amPM, nationName: nationName };
+    render();
+    loadHistory();
+  }
+
+  (async () => {
+    if (!isConfigured) { document.getElementById('content').innerHTML = '<section class="mod"><p class="empty">Supabase isn’t configured.</p></section>'; return; }
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    if (!id) { notFound(); return; }
+    try { await load(); }
+    catch (e) { document.getElementById('content').innerHTML = '<section class="mod"><div class="mod__hd">Crisis</div><p class="empty">Could not load this crisis. Refresh to try again.</p></section>'; }
+  })();
+</script>
+</body>
+</html>
