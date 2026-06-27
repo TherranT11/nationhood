@@ -50,17 +50,13 @@
   .gov .who .ptag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft);margin-left:4px}
   .govtype{margin-left:auto;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;line-height:1.4;padding:5px 11px;border-radius:20px;background:var(--chip);color:var(--muted);text-align:right}
 
-  .acts{display:flex;gap:10px;margin-top:18px}
-  .btn{flex:1;text-align:center;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;padding:12px 14px;border-radius:10px;cursor:pointer;border:1.5px solid var(--indigo);transition:transform .12s,filter .15s,background .15s}
-  .btn:hover{transform:translateY(-1px)}
-  .btn.talks{color:var(--indigo);background:var(--surface)}
-  .btn.talks:hover{background:var(--indigo-soft)}
-  .btn.summit{color:#fff;background:var(--indigo)}
-  .btn.summit:hover{filter:brightness(1.07)}
-
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;letter-spacing:.02em;padding:14px 18px;border-radius:11px;box-shadow:0 18px 44px -18px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:all .35s;z-index:80;max-width:90vw;text-align:center}
-  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  .toast b{color:#a99dff}
+  /* The nation's five qualitative stats — number → word from the shared ladders. */
+  .wstats{margin-top:16px;border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:9px}
+  .srow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .srow .sk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .srow .sv{font-weight:700;font-size:13.5px;text-align:right;color:var(--ink)}
+  .srow .sv small{font-family:'Space Mono',monospace;font-weight:700;font-size:10px;color:var(--soft);margin-left:5px}
+  .srow .sv.good{color:var(--green)} .srow .sv.warn{color:var(--amber)} .srow .sv.bad{color:var(--red)}
 
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
@@ -80,12 +76,10 @@
   </main>
 </div>
 
-<div class="toast" id="toast"></div>
-
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
   import { esc, fmtGdp, fmtPop, declaredValue, loadHogTitleSlot } from '/util.js';
-  import { regimeText } from '/ladders.js';
+  import { regimeText, statLabel, statName, statBand } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -93,9 +87,8 @@
   mountTopbar();
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
 
-  // Toast for the cosmetic diplomacy actions (no inter-nation backend yet).
-  var toast = document.getElementById('toast'), tt;
-  function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 3600); }
+  // The five qualitative stats shown on each nation card, in display order.
+  var STATS = ['prosperity', 'growth', 'welfare', 'order', 'image'];
 
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="grid"><div class="wcard"><div class="empty">' + msg + '</div></div></div>'; }
   function cap(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
@@ -139,8 +132,15 @@
         ? '<img class="emb img" src="' + esc(n.flag) + '" alt="Flag of ' + esc(n.name) + '">'
         : '<div class="emb">' + initial + '</div>';
 
-      var talks = 'Open Talks with ' + esc(n.name) + ' — begin a diplomatic channel.';
-      var summit = 'Summit with ' + esc(n.name) + " — a leaders' meeting that can set alignment and trade.";
+      // The five qualitative stats — the number is the source, the word follows it
+      // (statLabel) and the colour band reads good/warn/bad (statBand) — shared ladders.js.
+      var st = n.stats || {};
+      var statsHtml = STATS.map(function (k) {
+        var raw = st[k], num = (raw != null && raw !== '') ? Number(raw) : NaN;
+        if (isNaN(num)) return '<div class="srow"><span class="sk">' + esc(statName(k)) + '</span><span class="sv">—</span></div>';
+        return '<div class="srow"><span class="sk">' + esc(statName(k)) + '</span>' +
+          '<span class="sv ' + statBand(k, num) + '">' + esc(statLabel(k, num) || '—') + ' <small>' + num + '</small></span></div>';
+      }).join('');
 
       return '<article class="wcard" style="--acc:' + acc + '">' +
         '<div class="wc-top">' + badge +
@@ -153,17 +153,11 @@
           '<div class="who"><span class="ttl">' + esc(hogTitle) + '</span> &mdash; <b>' + hog + '</b>' + hogTag + '</div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
-        '<div class="acts">' +
-          '<button class="btn talks" type="button" data-t="' + esc(talks) + '">Open Talks</button>' +
-          '<button class="btn summit" type="button" data-t="' + esc(summit) + '">Summit</button>' +
-        '</div>' +
+        '<div class="wstats">' + statsHtml + '</div>' +
       '</article>';
     }).join('');
 
     document.getElementById('content').innerHTML = '<div class="grid">' + cards + '</div>';
-    document.querySelectorAll('.btn').forEach(function(b){
-      b.addEventListener('click', function(){ ping(b.dataset.t.replace(/^(Open Talks|Summit)/, '<b>$1</b>')); });
-    });
   }
 
   (async () => {
@@ -181,7 +175,7 @@
       // applied) must surface loudly, not masquerade as "no nations founded" — Supabase
       // returns the error rather than throwing, so the outer try/catch never sees it.
       const { data: others, error: othersErr } = await supabase.from('nations')
-        .select('id, name, flag, population, gdp, economy, declarations')
+        .select('id, name, flag, population, gdp, economy, stats, declarations')
         .neq('id', party.nation_id).eq('dormant', false).order('name');   // hide dormant (unactivated) nations
       if (othersErr) { fail('Couldn’t load the other nations right now. Refresh to try again.'); return; }
       const nations = others || [];
