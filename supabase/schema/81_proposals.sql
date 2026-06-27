@@ -153,6 +153,18 @@ revoke all on function public._next_agenda_slot(text, int) from public, anon, au
 drop function if exists public._resolve_proposal(uuid);
 drop function if exists public._resolve_proposal(uuid, boolean);
 
+-- The seat-weighted Aye/Nay tally for a measure's votes (each party's vote × its seats).
+-- ONE source for the seat sums — read by _resolve_proposal (the pass rule) and _proposal_locked
+-- (the early-resolution gate). MIRRORED client-side by tallyVotes (proposals.js).
+create or replace function public._proposal_seat_tally(p_proposal uuid, out aye int, out nay int)
+language sql stable security definer set search_path = public as $$
+  select coalesce(sum(p.seats) filter (where pv.aye), 0)::int,
+         coalesce(sum(p.seats) filter (where not pv.aye), 0)::int
+    from public.proposal_votes pv join public.parties p on p.id = pv.party_id
+   where pv.proposal_id = p_proposal;
+$$;
+revoke all on function public._proposal_seat_tally(uuid) from public, anon, authenticated;
+
 -- Tally a floor measure. Called after every vote (p_final=false) and once more at
 -- the close of voting (p_final=true, from advance_tick). The pass rule is a simple
 -- majority of the seats actually cast — Aye-seats > Nay-seats — decided at the
@@ -183,11 +195,7 @@ begin
   end if;
 
   select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = v_p.nation_id;
-  select coalesce(sum(p.seats) filter (where pv.aye), 0),
-         coalesce(sum(p.seats) filter (where not pv.aye), 0)
-    into v_aye, v_nay
-    from public.proposal_votes pv join public.parties p on p.id = pv.party_id
-   where pv.proposal_id = p_proposal;
+  select aye, nay into v_aye, v_nay from public._proposal_seat_tally(p_proposal);
 
   -- early: outright chamber majority (v_maj >= 1, so this implies real seated Ayes);
   -- at close: simple majority of the seats cast.
@@ -257,11 +265,7 @@ begin
   if not found or v_p.status <> 'voting' then return false; end if;
   select public._majority(coalesce(legislature_seats, 0)) into v_maj from public.nations where id = v_p.nation_id;
   if coalesce(v_maj, 0) < 1 then return false; end if;
-  select coalesce(sum(p.seats) filter (where pv.aye), 0),
-         coalesce(sum(p.seats) filter (where not pv.aye), 0)
-    into v_aye, v_nay
-    from public.proposal_votes pv join public.parties p on p.id = pv.party_id
-   where pv.proposal_id = p_proposal;
+  select aye, nay into v_aye, v_nay from public._proposal_seat_tally(p_proposal);
   return v_aye >= v_maj or (v_p.kind <> 'no_confidence' and v_nay >= v_maj);
 end $$;
 revoke all on function public._proposal_locked(uuid) from public, anon, authenticated;
