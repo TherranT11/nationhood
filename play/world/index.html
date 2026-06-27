@@ -45,6 +45,7 @@
 
   .gov{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .gov .who b{font-weight:700;font-size:14.5px}
+  .gov .who .ptag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft)}
   .gov .who span{display:block;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-top:1px}
   .govtype{margin-left:auto;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;line-height:1.4;padding:5px 11px;border-radius:20px;background:var(--chip);color:var(--muted);text-align:right}
 
@@ -102,7 +103,7 @@
   // flag-fallback badge tint). Cycled by position.
   var ACCENTS = ['var(--red)', 'var(--blue)', 'var(--amber)', 'var(--green)', 'var(--indigo)'];
 
-  function render(nations, govByNation, leaderByParty, titleSlot){
+  function render(nations, govByNation, leaderByParty, titleSlot, partyById){
     if (!nations.length){ fail('No other nations have been founded yet.'); return; }
 
     var cards = nations.map(function(n, i){
@@ -119,11 +120,18 @@
 
       var leader = (g && g.formateur_party_id) ? leaderByParty[g.formateur_party_id] : null;
       var hog = leader ? (esc((leader.first_name || '') + ' ' + (leader.last_name || '')).trim() || '—') : '—';
+      // Tag the Head of Government with the governing party's abbreviation, e.g. "… [NPP]".
+      var govParty = (g && g.formateur_party_id && partyById) ? partyById[g.formateur_party_id] : null;
+      var hogTag = (leader && govParty && govParty.abbreviation) ? ' <span class="ptag">[' + esc(govParty.abbreviation) + ']</span>' : '';
 
       // The nation's declared Head of Government title (e.g. "Prime Minister"),
       // resolved from its own declarations; the generic label is the fallback.
       var hogTitle = declaredValue(titleSlot, n.declarations);
       if (!hogTitle || hogTitle === '—') hogTitle = 'Head of Government';
+
+      // The formal state name (declared, e.g. "The Republic of Sessau") is the headline;
+      // the short name (n.name) is the fallback and reads better in the action prompts.
+      var formalName = (n.declarations && n.declarations.formal_state_name) || n.name;
 
       var initial = esc((n.name || '?').charAt(0).toUpperCase());
       var badge = n.flag
@@ -135,13 +143,13 @@
 
       return '<article class="wcard" style="--acc:' + acc + '">' +
         '<div class="wc-top">' + badge +
-          '<div class="wc-id"><h2>' + esc(n.name) + '</h2></div></div>' +
+          '<div class="wc-id"><h2>' + esc(formalName) + '</h2></div></div>' +
         '<div class="figs">' +
           '<div class="fig"><div class="k">GDP</div><div class="v">' + esc(currency) + (n.gdp != null ? esc(fmtGdp(n.gdp)) : '—') + '</div></div>' +
           '<div class="fig"><div class="k">Population</div><div class="v">' + (n.population != null ? esc(fmtPop(n.population)) : '—') + '</div></div>' +
         '</div>' +
         '<div class="gov">' +
-          '<div class="who"><b>' + hog + '</b><span>' + esc(hogTitle) + '</span></div>' +
+          '<div class="who"><b>' + hog + hogTag + '</b><span>' + esc(hogTitle) + '</span></div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
         '<div class="acts">' +
@@ -183,7 +191,7 @@
 
       // Active governments for those nations (most will have none yet), and the
       // leader of each formateur party for the Head of Government line. Batched.
-      var govByNation = {}, leaderByParty = {};
+      var govByNation = {}, leaderByParty = {}, partyById = {};
       const ids = nations.map(function(n){ return n.id; });
       if (ids.length) {
         const { data: govs } = await supabase.from('governments')
@@ -195,6 +203,9 @@
           const { data: pols } = await supabase.from('politicians')
             .select('party_id, first_name, last_name').eq('status', 'Party Leader').in('party_id', fpIds);
           (pols || []).forEach(function(p){ if (!leaderByParty[p.party_id]) leaderByParty[p.party_id] = p; });
+          // The governing party's abbreviation tags the Head of Government (e.g. "… [NPP]").
+          const { data: fps } = await supabase.from('parties').select('id, abbreviation, name').in('id', fpIds);
+          (fps || []).forEach(function(p){ partyById[p.id] = p; });
         }
       }
 
@@ -207,7 +218,7 @@
       var currency = (home && home.economy && home.economy.currency) || '$';
       setTopbarFunds(currency, party.funds);
       setTopbarActions(party.actions_remaining);
-      render(nations, govByNation, leaderByParty, titleSlot);
+      render(nations, govByNation, leaderByParty, titleSlot, partyById);
     } catch (e) {
       fail('Couldn’t load the world right now. Refresh to try again.');
     }
