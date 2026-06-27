@@ -48,6 +48,23 @@
   .thresh{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .thpill{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;color:var(--green);background:var(--green-soft);padding:7px 13px;border-radius:20px;flex:none}
   .thresh p{font-size:13.5px;color:var(--muted);line-height:1.5}
+
+  /* Secondary (mayoral) elections — one card per city + its declared candidates. */
+  .sec-city{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .sec-city:last-child{margin-bottom:0}
+  .sec-city__hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .sec-city__nm{font-weight:800;font-size:16px;letter-spacing:-.01em}
+  .sec-city__dt{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft)}
+  .sec-inc{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin:6px 0 10px}
+  .cand{display:flex;align-items:center;gap:11px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
+  .cand__sw{width:9px;height:9px;border-radius:50%;flex:none}
+  .cand__id{min-width:120px;margin-right:auto}
+  .cand__id b{font-weight:700;font-size:14px}
+  .cand__party{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .cand__age{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);flex:none}
+  .cand__stats{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+  .cand__stat{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);background:var(--chip);border-radius:5px;padding:3px 7px}
+  .sec-none{font-size:13px;color:var(--soft);font-style:italic;padding:8px 0 2px}
   .thresh p b{color:var(--ink)}
 
   /* Electoral history: a stacked-column trend of the last 5 elections + a
@@ -120,6 +137,11 @@
     </section>
 
     <section class="mod">
+      <div class="mod__hd"><span>Secondary Elections</span><span class="r">City mayors</span></div>
+      <div id="secBody"><p class="eh-empty">Loading…</p></div>
+    </section>
+
+    <section class="mod">
       <div class="mod__hd"><span id="histHd">Electoral History</span><span class="r">Last 5 elections</span></div>
       <div id="ehBody"><p class="eh-empty">Loading…</p></div>
     </section>
@@ -128,13 +150,68 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
-  import { tickToDate, esc } from '/util.js';
+  import { tickToDate, esc, COMPETENCIES } from '/util.js';
   import { mountTopbar, setTopbarActions } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel, partyColor } from '/archetypes.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav; active item from the URL
+
+  // ---- Secondary elections: each city's next mayoral election (cities.mayor_election_tick)
+  // and the declared candidates running for it (mayoral_candidacies → party + politician for
+  // age/stats). All four tables are world-readable, so this reads live with no schema change.
+  // Own try/catch + empty state — never blocks the page.
+  async function renderSecondary(nationId) {
+    var box = document.getElementById('secBody');
+    var cities;
+    try {
+      const { data, error } = await supabase.from('cities')
+        .select('id, name, mayor_name, mayor_election_tick')
+        .eq('nation_id', nationId).not('mayor_election_tick', 'is', null)
+        .order('mayor_election_tick', { ascending: true });
+      if (error) throw error;
+      cities = data || [];
+    } catch (e) { box.innerHTML = '<p class="eh-empty">Couldn’t load the city elections right now.</p>'; return; }
+    if (!cities.length) { box.innerHTML = '<p class="eh-empty">No cities have been chartered yet, so there are no mayoral elections.</p>'; return; }
+
+    // Declared candidates for these cities + the parties and politicians they reference
+    // (optional — a failure still renders each city and its date, just without candidate detail).
+    var cands = [], polById = {}, partyById = {};
+    try {
+      const ids = cities.map(function (c) { return c.id; });
+      const { data: mc } = await supabase.from('mayoral_candidacies')
+        .select('city_id, party_id, candidate_name, spend, politician_id').in('city_id', ids);
+      cands = mc || [];
+      const polIds = cands.map(function (c) { return c.politician_id; }).filter(Boolean);
+      if (polIds.length) {
+        const { data: pols } = await supabase.from('politicians').select('id, age, cha, acu, gui, res, com').in('id', polIds);
+        (pols || []).forEach(function (p) { polById[p.id] = p; });
+      }
+      const { data: parties } = await supabase.from('parties').select('id, name, abbreviation, color, archetype').eq('nation_id', nationId);
+      (parties || []).forEach(function (p) { partyById[p.id] = p; });
+    } catch (e) { /* candidates are best-effort */ }
+
+    var byCity = {};
+    cands.forEach(function (c) { (byCity[c.city_id] = byCity[c.city_id] || []).push(c); });
+
+    box.innerHTML = cities.map(function (city) {
+      var when = tickToDate(city.mayor_election_tick);
+      var list = (byCity[city.id] || []).sort(function (a, b) { return (b.spend || 0) - (a.spend || 0); });
+      var candHtml = list.length ? list.map(function (c) {
+        var pty = partyById[c.party_id] || {}, pol = polById[c.politician_id] || {};
+        var stats = COMPETENCIES.map(function (k) { return '<span class="cand__stat">' + k.abbr + ' ' + (pol[k.key] || 0) + '</span>'; }).join('');
+        return '<div class="cand"><span class="cand__sw" style="background:' + partyColor(pty) + '"></span>' +
+          '<div class="cand__id"><b>' + esc(c.candidate_name) + '</b><span class="cand__party">' + esc(pty.name || 'Independent') + '</span></div>' +
+          '<span class="cand__age">Age ' + (pol.age != null ? pol.age : '—') + '</span>' +
+          '<div class="cand__stats">' + stats + '</div></div>';
+      }).join('') : '<p class="sec-none">No challengers declared — ' + esc(city.mayor_name || 'the incumbent') + ' stands unopposed.</p>';
+      return '<div class="sec-city">' +
+        '<div class="sec-city__hd"><span class="sec-city__nm">City of ' + esc(city.name) + '</span><span class="sec-city__dt">' + esc(when) + '</span></div>' +
+        '<div class="sec-inc">Incumbent · ' + esc(city.mayor_name || '—') + '</div>' +
+        candHtml + '</div>';
+    }).join('');
+  }
 
   // ---- Electoral history: the last few elections from election_results, charted
   // as one stacked seat-column per election plus a breakdown of the most recent
@@ -291,7 +368,8 @@
         ? '<b>' + esc(ruling) + '</b> holds a Party Congress every <b>' + freq + ' months</b>.'
         : 'National elections in <b>' + esc(nationName) + '</b> are held every <b>' + freq + ' months</b>.';
 
-      // Past results (own try/catch + empty state inside — never blocks the page).
+      // City mayoral elections + past results (each own try/catch + empty state — never blocks the page).
+      renderSecondary(party.nation_id);
       renderHistory(party.nation_id, ruling);
     } catch (e) {
       document.getElementById('candnote').textContent = 'Could not load the election picture right now. Refresh to try again.';
