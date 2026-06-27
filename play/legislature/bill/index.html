@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Bill · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&family=Lora:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--field:#F4F3EF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#d9d7d1;--chip:#F4F3EF;--indigo:#5546E8;--indigo-soft:#ECE9FD;
+    --red:#C42B2B;--green:#16915a;--amber:#E0820E;--amber-soft:#FBF0DD;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100%}
+  .app{display:flex;min-height:100vh}
+
+  /* Left navigation (desktop rail + mobile bottom bar) lives in /sidenav.js */
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 64px;min-width:0}
+
+  .back{display:inline-flex;align-items:center;gap:7px;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer;margin-bottom:18px;text-decoration:none}
+  .back:hover{color:var(--indigo)}
+  .back svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .empty{color:var(--soft);font-style:italic;font-size:14px}
+
+  /* The bill as an official document — a centred paper within the page. */
+  .doc{max-width:880px;margin:0 auto}
+
+  .masthead{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 0 16px;border-bottom:1px solid var(--line);margin-bottom:22px;flex-wrap:wrap}
+  .mh-l{display:flex;align-items:center;gap:12px}
+  .mh-crest{width:34px;height:auto;border:1px solid var(--line2);border-radius:3px;flex:none}
+  .mh-l b{font-weight:800;font-size:14px;letter-spacing:-.01em;display:block}
+  .mh-l span{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+  .mh-r{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);text-align:right}
+  .mh-r b{color:var(--indigo);display:block;font-size:11px;margin-top:3px}
+
+  .title{font-weight:900;font-size:clamp(22px,3.6vw,30px);letter-spacing:-.02em}
+  .sponsor{font-family:'Space Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-top:8px}
+  .sponsor b{color:var(--muted)}
+  .preamble{font-family:'Lora',Georgia,serif;font-style:italic;font-size:14.5px;color:var(--muted);margin-top:12px;line-height:1.6}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px}
+  .card-h{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-bottom:13px;display:flex;align-items:center;gap:8px}
+  .card-h .by{margin-left:auto;color:var(--muted);text-transform:none;letter-spacing:.02em}
+
+  /* sponsor's introduction (authored "An Act to…" article) */
+  .article{font-family:'Lora',Georgia,serif;font-size:14.5px;line-height:1.75;color:var(--ink)}
+  .article p{margin-bottom:11px}.article p:last-child{margin-bottom:0}
+
+  /* current → proposed + the policy spectrum */
+  .lawchg{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .lawchg__row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px}
+  .lawchg__row + .lawchg__row{border-top:1px solid var(--line)}
+  .lawchg__k{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);white-space:nowrap}
+  .lawchg__v{font-weight:700;font-size:16px;color:var(--ink);text-align:right}
+  .lawchg__v.hl{color:var(--indigo)}
+  .spectrum{margin-top:14px}
+  .spec-track{display:flex;gap:3px}
+  .spec-seg{flex:1;min-height:36px;border:1px solid var(--line);border-radius:5px;background:var(--field);display:flex;align-items:center;justify-content:center;text-align:center;font-size:8.5px;line-height:1.15;color:var(--soft);padding:8px 2px 2px;position:relative}
+  .spec-seg.cur{border-color:var(--ink);color:var(--ink);background:var(--chip)}
+  .spec-seg.prop{border-color:var(--indigo);color:var(--indigo);background:var(--indigo-soft)}
+  .spec-pin{position:absolute;top:-7px;font-family:'Space Mono',monospace;font-size:7px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--surface);padding:0 4px}
+  .spec-seg.cur .spec-pin{color:var(--ink)}.spec-seg.prop .spec-pin{color:var(--indigo)}
+  .spec-dir{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--muted);text-align:center;margin-top:10px}
+
+  /* projected impact: fiscal + effects */
+  .impact{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:560px){.impact{grid-template-columns:1fr}}
+  .impact__k{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:6px}
+  .irow,.effrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .irow:last-child,.effrow:last-child{border-bottom:none}
+  .irow.net{border-top:1px solid var(--line2);border-bottom:none;margin-top:2px;padding-top:10px}
+  .irow.net .ik{color:var(--ink);font-weight:700}
+  .ik,.ek{font-size:12.5px;color:var(--muted)}
+  .ik small{color:var(--soft);font-size:11px}
+  .iv,.ev{font-family:'Space Mono',monospace;font-weight:700;font-size:14px;display:flex;align-items:center;gap:5px}
+  .arw{font-size:10px}
+  .up{color:var(--green)}.dn{color:var(--red)}.flat{color:var(--soft)}
+  .ecad{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+  .inone{color:var(--soft);font-style:italic;font-size:12.5px;padding:8px 0}
+  .btags{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .btag{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,var(--surface));border-radius:6px;padding:4px 8px}
+
+  /* division */
+  .tallybar{height:13px;border-radius:7px;overflow:hidden;display:flex;background:var(--field);border:1px solid var(--line);margin-bottom:11px}
+  .tallybar .aye{background:var(--green)}.tallybar .nay{background:var(--red)}.tallybar .nv{background:transparent}
+  .counts{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted)}
+  .counts b{color:var(--ink)}.counts .ca{color:var(--green)}.counts .cn{color:var(--red)}
+  .verdict{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;margin-top:8px}
+  .verdict.fail{color:var(--red)}.verdict.pass{color:var(--green)}
+  .rule{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);text-align:left;padding:0 0 9px;font-weight:400}
+  th.r,td.r{text-align:right}
+  td{padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+  td.pty{font-weight:700}
+  td.pty .who{font-weight:400;color:var(--soft);font-size:12px;margin-left:5px}
+  .youtag{font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:4px;padding:2px 6px;margin-left:6px}
+  td.seats{font-family:'Space Mono',monospace;color:var(--muted)}
+  .vbadge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:4px 9px}
+  .vbadge.nay{color:#fff;background:var(--red)}.vbadge.aye{color:#fff;background:var(--green)}.vbadge.none{color:var(--soft);background:var(--field);border:1px solid var(--line)}
+
+  .votebtns{display:flex;gap:10px;margin-top:18px;align-items:center;flex-wrap:wrap}
+  .vbtn{background:var(--field);border:1px solid var(--line2);color:var(--ink);border-radius:9px;padding:12px 22px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer}
+  .vbtn:disabled{opacity:.5;cursor:not-allowed}
+  .vbtn.aye:hover:not(:disabled),.vbtn.aye.on{border-color:var(--green);color:var(--green);background:color-mix(in srgb,var(--green) 12%,var(--surface))}
+  .vbtn.nay:hover:not(:disabled),.vbtn.nay.on{border-color:var(--red);color:var(--red);background:color-mix(in srgb,var(--red) 12%,var(--surface))}
+  .voted{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <a class="back" href="/play/legislature/"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>Legislature</a>
+    <div id="content"><p class="empty">Loading the bill&hellip;</p></div>
+  </main>
+</div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
+  import { esc, majority, tickToDate } from '/util.js';
+  import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome } from '/proposals.js';
+  import { ideologyLabel } from '/archetypes.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta } from '/policies.js';
+
+  mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
+  mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
+
+  var pid = new URLSearchParams(location.search).get('id') || '';
+  // Everything the document needs to render — populated once from the shared fetch/calc modules.
+  var ST = { party:null, nationName:'', total:0, maj:0, seatsByParty:{}, partyName:{}, partyHandle:{},
+             policyDefs:{}, nationPolicies:{}, pop:0, pros:10, bill:null, votes:[], billNo:null, busy:false };
+
+  function fail(msg){ document.getElementById('content').innerHTML = '<p class="empty">' + msg + '</p>'; }
+  function nick(pid){ var h = ST.partyHandle[pid]; return h ? ' <span class="who">(' + esc(h) + ')</span>' : ''; }
+
+  // ---- presentation (this page's document layout; all calc/fetch comes from the shared modules) ----
+
+  function statusLabel(p){ return p.status === 'voting' ? 'Division' : p.status === 'agenda' ? 'On the Agenda' : p.status === 'passed' ? 'Passed' : 'Failed'; }
+
+  // A one-line "An Act to…" preamble, synthesised from the change (so it reads even when the
+  // sponsor wrote no introduction). Falls back to the bill title for non-law measures.
+  function preamble(p, cur, prop){
+    if (p.kind === 'law' && cur && prop && cur !== '—' && prop !== '—')
+      return 'An Act to amend ' + esc(p.payload && p.payload.policy_name ? p.payload.policy_name : 'the law') +
+             ', changing provision from ' + esc(cur) + ' to ' + esc(prop) + ', with effect from the next session.';
+    return '';
+  }
+
+  // The authored introduction ("An Act to…"), split into paragraphs. Empty → section omitted.
+  function sponsorIntro(p){
+    var intro = (p.payload && p.payload.intro || '').trim();
+    if (!intro) return '';
+    var paras = intro.split(/\n+/).map(function(s){ return '<p>' + esc(s.trim()) + '</p>'; }).join('');
+    return '<div class="card"><div class="card-h">Sponsor’s Introduction <span class="by">' + esc(ST.partyName[p.party_id] || 'the sponsor') + '</span></div><div class="article">' + paras + '</div></div>';
+  }
+
+  // The Change card: Current → Proposed rows + the full policy spectrum with Now/Proposed pins.
+  function changeCard(p, def, ci, pi, cur, prop){
+    var spec = '';
+    if (def){
+      var opts = policyOptions(def);
+      if (opts.length && ci >= 0 && pi >= 0){
+        var segs = opts.map(function(o, i){
+          var cls = i === ci ? 'cur' : i === pi ? 'prop' : '';
+          var pin = i === ci ? '<span class="spec-pin">Now</span>' : i === pi ? '<span class="spec-pin">Proposed</span>' : '';
+          return '<div class="spec-seg ' + cls + '">' + pin + '<span>' + esc(o.name || ('Option ' + (i + 1))) + '</span></div>';
+        }).join('');
+        var d = pi - ci;
+        var dir = d === 0 ? 'No movement on the ladder'
+          : 'Moves the nation <b>' + Math.abs(d) + ' rung' + (Math.abs(d) === 1 ? '' : 's') + ' toward ' + esc(prop) + '</b>.';
+        spec = '<div class="spectrum"><div class="spec-track">' + segs + '</div><div class="spec-dir">' + dir + '</div></div>';
+      }
+    }
+    return '<div class="card"><div class="card-h">The Change</div>' +
+      '<div class="lawchg"><div class="lawchg__row"><span class="lawchg__k">Current Law</span><span class="lawchg__v">' + esc(cur) + '</span></div>' +
+      '<div class="lawchg__row"><span class="lawchg__k">Proposed Change</span><span class="lawchg__v hl">' + esc(prop) + '</span></div></div>' + spec + '</div>';
+  }
+
+  function fmtB(v){ return '₣' + Math.abs(v).toFixed(1) + 'B'; }
+  function fiscalRow(label, sub, delta, goodUp, isNet){
+    var flat = Math.abs(delta) < 0.05, up = delta > 0, good = goodUp ? up : !up;
+    var cls = flat ? 'flat' : good ? 'up' : 'dn', arw = flat ? '' : up ? '▲' : '▼', sign = delta > 0 ? '+' : delta < 0 ? '−' : '';
+    return '<div class="irow' + (isNet ? ' net' : '') + '"><span class="ik">' + label + (sub ? ' <small>' + sub + '</small>' : '') + '</span>' +
+      '<span class="iv ' + cls + '">' + (arw ? '<span class="arw">' + arw + '</span>' : '') + sign + fmtB(delta) + '</span></div>';
+  }
+  // Projected Impact: fiscal delta (vs the rung in force) + the proposed rung's standing effects +
+  // tags — the same policies.js helpers (and therefore the same numbers) as the propose preview.
+  function impactCard(p, def, ci, pi){
+    if (!def) return '';
+    var opts = policyOptions(def), co = opts[ci], po = opts[pi];
+    if (!po) return '';
+    var d = fiscalDelta(co, po, ST.pop, ST.pros), frows = [];
+    if (Math.abs(d.Income) >= 0.05) frows.push(fiscalRow('National Income', 'per year', d.Income, true));
+    if (Math.abs(d.Budget) >= 0.05) frows.push(fiscalRow('Treasury / Budget', 'per year', d.Budget, true));
+    if (Math.abs(d.Debt) >= 0.05) frows.push(fiscalRow('National Debt', 'liability', d.Debt, false));
+    if (frows.length >= 2) frows.push(fiscalRow('Net annual change', '', d.Income + d.Budget - d.Debt, true, true));
+    var fiscalHtml = frows.length ? frows.join('') : '<div class="inone">No change to the budget.</div>';
+    var effs = (po.effects || []).filter(function(e){ return !fiscalFactor(e); });
+    var effHtml = effs.length ? effs.map(function(e){
+      var tx = effectText(e, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
+      return '<div class="effrow"><span class="ek ' + c + '">' + esc(tx.text) + '</span><span class="ecad">' + esc(tx.cad) + '</span></div>';
+    }).join('') : '<div class="inone">No standing effects beyond the budget.</div>';
+    var tags = (po.tags || []).map(function(t){ return '<span class="btag">' + esc(t) + '</span>'; }).join('');
+    return '<div class="card"><div class="card-h">Projected Impact <span class="by">if enacted</span></div>' +
+      '<div class="impact"><div><div class="impact__k">Fiscal</div>' + fiscalHtml + '</div>' +
+      '<div><div class="impact__k">Effects on the nation</div>' + effHtml + (tags ? '<div class="btags">' + tags + '</div>' : '') + '</div></div></div>';
+  }
+
+  // Per-party roll call (seats = voting weight). Parties with no seats appear only once they vote.
+  function rollRows(){
+    var by = {}; ST.votes.forEach(function(v){ by[v.party_id] = v.aye; });
+    var ids = Object.keys(ST.partyName)
+      .filter(function(id){ return (ST.seatsByParty[id] || 0) > 0 || by[id] !== undefined; })
+      .sort(function(a, b){ return (ST.seatsByParty[b] || 0) - (ST.seatsByParty[a] || 0); });
+    return ids.map(function(id){
+      var v = by[id], cls = v === undefined ? 'none' : v ? 'aye' : 'nay', lbl = v === undefined ? 'Awaiting' : v ? 'Aye' : 'Nay';
+      var you = id === ST.party.id ? '<span class="youtag">You</span>' : '';
+      return '<tr><td class="pty">' + esc(ST.partyName[id]) + nick(id) + you + '</td>' +
+        '<td class="r seats">' + (ST.seatsByParty[id] || 0) + '</td>' +
+        '<td class="r"><span class="vbadge ' + cls + '">' + lbl + '</span></td></tr>';
+    }).join('');
+  }
+
+  function divisionCard(p){
+    var t = tallyVotes(ST.votes, ST.seatsByParty);
+    var mine = ST.votes.filter(function(v){ return v.party_id === ST.party.id; })[0];
+    var myVote = mine ? (mine.aye ? 'aye' : 'nay') : null;
+    var cast = t.aye + t.nay, nv = Math.max(0, ST.total - cast);
+    var ayeP = ST.total ? Math.min(100, t.aye / ST.total * 100) : 0, nayP = ST.total ? Math.min(100, t.nay / ST.total * 100) : 0, nvP = Math.max(0, 100 - ayeP - nayP);
+    // Carry/outright from the shared mirror of _resolve_proposal (proposals.js).
+    var noConf = p.kind === 'no_confidence';
+    var oc = proposalOutcome(t.aye, t.nay, ST.maj, p.kind);
+    var outright = oc.outright, carry = oc.carry;
+    var verdict = noConf ? '✓ Carries unless the government votes No before the floor closes'
+      : (outright ? '✓ Passes — outright majority of the chamber reached'
+        : (carry ? '✓ Would pass if voting closed now — Aye leads'
+          : (t.aye === t.nay ? '✕ Would fail if voting closed now — tied' : '✕ Would fail if voting closed now — Nay leads')));
+    var rule = noConf ? 'Carries unless the government votes No · ' + ST.total + ' seats'
+      : 'Carries on a simple majority (more Aye than Nay), or ' + ST.maj + '+ Aye outright · ' + ST.total + ' seats';
+    var canVote = p.status === 'voting';
+    return '<div class="card"><div class="card-h">Division</div>' +
+      '<div class="tallybar"><div class="aye" style="width:' + ayeP + '%"></div><div class="nay" style="width:' + nayP + '%"></div><div class="nv" style="width:' + nvP + '%"></div></div>' +
+      '<div class="counts">Aye <b class="ca">' + t.aye + '</b> · Nay <b class="cn">' + t.nay + '</b> · Not voted <b>' + nv + '</b> · <b>' + cast + '</b> / ' + ST.total + ' cast</div>' +
+      '<div class="verdict ' + (carry ? 'pass' : 'fail') + '">' + verdict + '</div>' +
+      '<div class="rule">' + rule + '</div>' +
+      '<table><thead><tr><th>Party</th><th class="r">Seats</th><th class="r">Vote</th></tr></thead><tbody>' + rollRows() + '</tbody></table>' +
+      (canVote ? '<div class="votebtns"><button class="vbtn aye' + (myVote === 'aye' ? ' on' : '') + '" data-v="aye" type="button">Vote Aye</button>' +
+        '<button class="vbtn nay' + (myVote === 'nay' ? ' on' : '') + '" data-v="nay" type="button">Vote Nay</button>' +
+        (myVote ? '<span class="voted">You voted ' + myVote.toUpperCase() + '</span>' : '') + '</div>'
+        : '<div class="rule" style="border-top:none;padding-top:0;margin-top:14px">Voting is closed on this measure.</div>') +
+      '</div>';
+  }
+
+  function render(){
+    var p = ST.bill;
+    document.title = (p.title || 'Bill') + ' · Nationhood';
+    var def = (p.kind === 'law' && p.payload) ? ST.policyDefs[p.payload.policy_id] : null;
+    var ci = -1, pi = -1, cur = '—', prop = '—';
+    if (p.kind === 'law' && p.payload){
+      prop = p.payload.option_name || '—';
+      if (def){
+        var opts = policyOptions(def);
+        ci = policyOptionIdx(def, ST.nationPolicies, p.payload.policy_id);
+        pi = (p.payload.option_idx != null) ? +p.payload.option_idx : -1;
+        cur = (opts[ci] || {}).name || '—';
+        prop = (opts[pi] || {}).name || prop;
+      }
+    }
+    // In-game date from the bill's own tick (floor / resolved / scheduled), like the chamber shows.
+    var tk = p.opened_tick != null ? p.opened_tick : (p.resolved_tick != null ? p.resolved_tick : p.scheduled_tick);
+    var year = tk != null ? tickToDate(tk).replace(/.*,\s*/, '') : tickToDate(ST.tick).replace(/.*,\s*/, '');
+    var crest = ST.flag ? '<img class="mh-crest" src="' + esc(ST.flag) + '" alt="">' : '';
+
+    document.getElementById('content').innerHTML =
+      '<div class="doc">' +
+        '<div class="masthead"><div class="mh-l">' + crest + '<div><b>' + esc(ST.nationName) + '</b><span>National Assembly</span></div></div>' +
+          '<div class="mh-r">Bill ' + (ST.billNo ? '№' + ST.billNo : '') + ' · ' + esc(year) + '<b>' + statusLabel(p) + '</b></div></div>' +
+        '<div class="title">' + esc(p.title || 'Measure') + '</div>' +
+        '<div class="sponsor">Sponsored by <b>' + esc(ST.partyName[p.party_id] || 'a party') + (ST.partyHandle[p.party_id] ? ' (' + esc(ST.partyHandle[p.party_id]) + ')' : '') + '</b></div>' +
+        (preamble(p, cur, prop) ? '<p class="preamble">' + preamble(p, cur, prop) + '</p>' : '') +
+        sponsorIntro(p) +
+        (p.kind === 'law' && p.payload ? changeCard(p, def, ci, pi, cur, prop) : '') +
+        impactCard(p, def, ci, pi) +
+        divisionCard(p) +
+      '</div>';
+
+    var btns = document.querySelectorAll('.vbtn');
+    btns.forEach(function(btn){
+      btn.onclick = function(){
+        if (ST.busy) return;
+        ST.busy = true; btns.forEach(function(b){ b.disabled = true; });
+        castVote(p.id, btn.dataset.v === 'aye')
+          .then(reloadVotes)
+          .catch(function(e){ alert(e.message || 'Couldn’t record your vote.'); btns.forEach(function(b){ b.disabled = false; }); })
+          .then(function(){ ST.busy = false; });
+      };
+    });
+  }
+
+  async function reloadVotes(){
+    ST.votes = await fetchVotes([ST.bill.id]);
+    render();
+  }
+
+  (async () => {
+    if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
+    const user = await requireUser();
+    if (!user) return; // redirected to login
+    if (!pid) { fail('No bill specified.'); return; }
+    try {
+      const { data: party } = await supabase.from('parties').select('id, nation_id, name, archetype, funds, actions_remaining').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      const { data: nation } = await supabase.from('nations').select('name, flag, legislature_seats, economy, policies, population, stats').eq('id', party.nation_id).single();
+      const { data: parties } = await supabase.from('parties').select('id, name, seats, in_government').eq('nation_id', party.nation_id);
+
+      ST.party = party;
+      ST.nationName = (nation && nation.name) || party.nation_id;
+      ST.flag = nation && nation.flag;
+      ST.total = (nation && nation.legislature_seats) || 0;
+      ST.maj = ST.total ? majority(ST.total) : 0;
+      ST.nationPolicies = (nation && nation.policies) || {};
+      ST.pop = Number((nation && nation.population) || 0);
+      ST.pros = Number((nation && nation.stats && nation.stats.prosperity) || 10);
+      (parties || []).forEach(function(p){ ST.seatsByParty[p.id] = p.seats || 0; ST.partyName[p.id] = p.name; });
+      try { (await fetchPolicies()).forEach(function(r){ ST.policyDefs[r.id] = r.definition; }); } catch (e) { /* law shows "—" without defs */ }
+      try {
+        const { data: hrows } = await supabase.rpc('nation_party_handles', { p_nation: party.nation_id });
+        (hrows || []).forEach(function(h){ ST.partyHandle[h.party_id] = h.handle; });
+      } catch (e) { /* no nicknames shown */ }
+
+      // All proposals (newest-first) — gives both the bill and its creation-order ordinal (№N).
+      const proposals = await fetchProposals(party.nation_id);
+      ST.bill = proposals.filter(function(p){ return p.id === pid; })[0];
+      if (!ST.bill) { fail('That bill could not be found.'); return; }
+      var ordered = proposals.slice().sort(function(a, b){ return new Date(a.created_at) - new Date(b.created_at); });
+      ordered.forEach(function(p, i){ if (p.id === pid) ST.billNo = i + 1; });
+      ST.votes = await fetchVotes([pid]);
+
+      ST.tick = await currentTick();
+      var currency = (nation && nation.economy && nation.economy.currency) || '$';
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + ST.nationName;
+      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
+      setTopbarFunds(currency, party.funds);
+      setTopbarActions(party.actions_remaining);
+
+      render();
+    } catch (e) {
+      fail('Couldn’t load this bill right now. Refresh to try again.');
+    }
+  })();
+</script>
+</body>
+</html>

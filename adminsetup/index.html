@@ -1403,7 +1403,13 @@
       try {
         var error;
         if (editing) {
-          // Update keeps id + next_election_tick (the schedule) untouched.
+          // Update keeps id + next_election_tick (the schedule) untouched — EXCEPT when this
+          // edit activates a nation that was never scheduled (e.g. dormant → active): start its
+          // calendar with a first election 1d6+1 ticks out, the same roll the insert path uses.
+          // An already-scheduled nation keeps its date.
+          if (!data.dormant && editing.next_election_tick == null) {
+            data.next_election_tick = (await currentTick()) + 1 + Math.floor(Math.random() * 6);
+          }
           ({ error } = await supabase.from('nations').update(data).eq('id', editing.id));
         } else {
           var id = slugify(name);
@@ -2714,7 +2720,7 @@
       function signed(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }
       function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B'; if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return e.t + ' ' + signed(e.v); }
       function newAction(type) { return { type: type, decision: '', ministry: 'Interior', cause: '', mech: 'roll', direct: [eff('Crisis Meter', -2)], stat: 'Charisma', needed: 12, success: [eff('Crisis Meter', -3)], failure: [eff('Order', -1)], eventSuccess: '', eventFail: '', lawName: '', lawEffect: [eff('Crisis Meter', -4)] }; }
-      function blankStage() { return { name: '', desc: '', growth: 1, at: 10, actions: [] }; }
+      function blankStage() { return { name: '', desc: '', growth: 1, at: 10, onActivate: [], actions: [] }; }
       function blankCrisis() {
         return {
           name: 'New Crisis', desc: '',
@@ -2731,7 +2737,7 @@
         c.triggers = Array.isArray(c.triggers) ? c.triggers : [];
         c.endIf = Array.isArray(c.endIf) ? c.endIf : [];
         c.stages = Array.isArray(c.stages) ? c.stages : [];
-        for (var i = 0; i < 4; i++) { var s = c.stages[i] = c.stages[i] || blankStage(); s.actions = Array.isArray(s.actions) ? s.actions : []; }
+        for (var i = 0; i < 4; i++) { var s = c.stages[i] = c.stages[i] || blankStage(); s.actions = Array.isArray(s.actions) ? s.actions : []; s.onActivate = Array.isArray(s.onActivate) ? s.onActivate : []; }
         var t = c.stages[4] = c.stages[4] || { descReached: '', reached: [], resolution: 'ends' };
         t.reached = Array.isArray(t.reached) ? t.reached : [];
         return c;
@@ -2870,7 +2876,7 @@
       }
 
       // ----- effect-row helpers -----
-      function getList(ai, list) { var owner = ai === 's5' ? CRISIS.stages[4] : CRISIS.stages[activeStage].actions[+ai]; if (!Array.isArray(owner[list])) owner[list] = []; return owner[list]; }
+      function getList(ai, list) { var owner = ai === 's5' ? CRISIS.stages[4] : ai === 'stage' ? CRISIS.stages[activeStage] : CRISIS.stages[activeStage].actions[+ai]; if (!Array.isArray(owner[list])) owner[list] = []; return owner[list]; }
       function effRowsHtml(ai, list) {
         var arr = getList(ai, list);
         return arr.map(function (e, ri) { return '<div class="effrow" data-ai="' + ai + '" data-list="' + list + '" data-ri="' + ri + '"><select class="et">' + effTgt(e.t) + '</select><input class="ev" type="number" step="any" value="' + e.v + '"><button class="xb erx" type="button">×</button></div>'; }).join('') +
@@ -2898,6 +2904,7 @@
           '</div></div>' +
           '<div class="f" style="margin-bottom:0"><label>Escalates at</label><div class="growthwrap"><input type="number" class="sat" min="1" value="' + (s.at || 10) + '"><span class="u">pts</span></div></div></div>' +
           '<div class="tickcalc">' + tickHtml(s.growth, s.at) + '</div>' +
+          '<div class="actionshd">Effect when stage activated</div><div id="cbStageEff">' + effRowsHtml('stage', 'onActivate') + '</div>' +
           '<div class="actionshd">Management actions</div><div id="cbActions"></div>' +
           '<div class="addrow"><button class="add" id="cbAddMin" type="button">+ Minister action</button><button class="add" id="cbAddLaw" type="button">+ Law</button></div>';
         box.innerHTML = h;
@@ -2911,6 +2918,7 @@
         s.actions.forEach(function (a, ai) { aw.insertAdjacentHTML('beforeend', actionHtml(a, ai)); });
         wireActions(aw, s);
         wireEffRows(aw);
+        wireEffRows(document.getElementById('cbStageEff'));   // the stage's own on-activation effects
       }
 
       function actionHtml(a, ai) {
@@ -3012,6 +3020,7 @@
         for (var i = 0; i < 4; i++) {
           var s = CRISIS.stages[i];
           h += '<div class="pvstage"><div class="sn">' + (i + 1) + '. ' + esc(s.name || '—') + '</div><div class="sg">climbs ' + growthLabel(s.growth) + '/tick · escalates at ' + (s.at || 10) + ' · ≈' + ticksToNext(s.growth, s.at) + ' ticks</div>';
+          if (s.onActivate && s.onActivate.length) h += '<div class="sg">on activation · ' + s.onActivate.map(effStr).map(esc).join(' &middot; ') + '</div>';
           h += s.actions.map(function (a) {
             if (a.type === 'minister') return '<div class="pvact"><span class="dot mn">◆</span><span><b class="mn">' + esc(a.decision || 'Decision') + '</b> &middot; ' + esc(a.ministry) + (a.mech === 'roll' ? ' &middot; ' + esc(a.stat) + ' ≥ ' + a.needed : ' &middot; direct') + '</span></div>';
             return '<div class="pvact"><span class="dot lw">◆</span><span><b class="lw">' + esc(a.lawName || 'Law') + '</b> &middot; law</span></div>';
