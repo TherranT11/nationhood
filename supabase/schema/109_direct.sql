@@ -33,8 +33,9 @@ begin
     from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
 
-  -- A random rival in the nation that actually holds a seat to contest.
-  select id, name, archetype, seats, popularity, pop_floor into v_riv
+  -- A random rival in the nation that actually holds a seat to contest. Only id + name are
+  -- needed — the drop below reads the rival's live row, so the contest stays race-safe.
+  select id, name into v_riv
     from public.parties where nation_id = v_p.nation_id and id <> v_p.id and seats >= 1
     order by random() limit 1;
   if not found then raise exception 'No rival party holds a seat to contest.'; end if;
