@@ -117,45 +117,53 @@ returns boolean language sql immutable as $$
 $$;
 revoke all on function public._crisis_cmp(numeric, text, numeric) from public, anon, authenticated;
 
--- True when ALL of a crisis definition's triggers hold for the nation. A trigger is
--- {target, op, value}; an unreadable target (null) fails the whole test. A crisis with
--- no triggers never auto-fires (admin/manual seeding only).
+-- True when a crisis definition's triggers hold for the nation. definition.triggerMode picks
+-- the match: 'all' (default — every trigger must hold, AND) or 'any' (at least one holds, OR).
+-- A trigger is {target, op, value}; an unreadable target (null) simply doesn't hold. A crisis
+-- with no triggers never auto-fires (admin/manual seeding only).
 create or replace function public._crisis_triggers_met(p_nation text, p_def jsonb)
 returns boolean language plpgsql stable security definer set search_path = public as $$
-declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric;
+declare v_trigs jsonb := p_def->'triggers'; v_t jsonb; v_cur numeric; v_any boolean; v_met boolean;
 begin
   if v_trigs is null or jsonb_typeof(v_trigs) <> 'array' or jsonb_array_length(v_trigs) = 0 then
     return false;
   end if;
+  v_any := coalesce(p_def->>'triggerMode', 'all') = 'any';   -- absent → 'all' (existing crises)
   for v_t in select value from jsonb_array_elements(v_trigs) loop
     v_cur := public._nation_stat_get(p_nation, v_t->>'target');
-    if v_cur is null then return false; end if;
-    if not public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
-      return false;
+    v_met := v_cur is not null and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0));
+    if v_any then
+      if v_met then return true; end if;          -- OR: first hit fires it
+    else
+      if not v_met then return false; end if;     -- AND: first miss fails the test
     end if;
   end loop;
-  return true;
+  return not v_any;   -- AND with no misses → true; OR with no hits → false
 end $$;
 revoke all on function public._crisis_triggers_met(text, jsonb) from public, anon, authenticated;
 
--- True when ANY of a crisis definition's `endIf` resolvers holds — the "Crisis immediately
--- ends if" conditions. Same {target, op, value} shape as triggers; an unreadable target is
--- skipped (doesn't resolve, doesn't block). No endIf → never auto-resolves.
+-- True when a crisis definition's `endIf` resolvers hold — the "Crisis immediately ends if"
+-- conditions. definition.endMode picks the match: 'any' (default — any holds, OR) or 'all'
+-- (every one holds, AND). Same {target, op, value} shape; an unreadable target doesn't hold.
+-- No endIf → never auto-resolves.
 create or replace function public._crisis_resolve_met(p_nation text, p_def jsonb)
 returns boolean language plpgsql stable security definer set search_path = public as $$
-declare v_ends jsonb := p_def->'endIf'; v_t jsonb; v_cur numeric;
+declare v_ends jsonb := p_def->'endIf'; v_t jsonb; v_cur numeric; v_all boolean; v_met boolean;
 begin
   if v_ends is null or jsonb_typeof(v_ends) <> 'array' or jsonb_array_length(v_ends) = 0 then
     return false;
   end if;
+  v_all := coalesce(p_def->>'endMode', 'any') = 'all';   -- absent → 'any' (existing crises)
   for v_t in select value from jsonb_array_elements(v_ends) loop
     v_cur := public._nation_stat_get(p_nation, v_t->>'target');
-    if v_cur is not null
-       and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0)) then
-      return true;
+    v_met := v_cur is not null and public._crisis_cmp(v_cur, coalesce(v_t->>'op', '>='), coalesce((v_t->>'value')::numeric, 0));
+    if v_all then
+      if not v_met then return false; end if;     -- AND: first miss → not all met
+    else
+      if v_met then return true; end if;          -- OR: first hit resolves it
     end if;
   end loop;
-  return false;
+  return v_all;   -- AND with no misses → true; OR with no hits → false
 end $$;
 revoke all on function public._crisis_resolve_met(text, jsonb) from public, anon, authenticated;
 
