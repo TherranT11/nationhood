@@ -461,6 +461,10 @@ begin
   -- Passive per-tick modifier effects (schema/70): each active modifier's signed stat delta.
   begin perform public._apply_modifier_tick_effects();
   exception when others then raise warning 'tick %: modifier per-tick effects failed — %', v_tick, sqlerrm; end;
+  -- Mayoral elections that have come due (schema/110): declared candidates contest the sitting
+  -- NPC mayor; a winner takes the chair and lifts their party's popularity floor by the city prize.
+  begin perform public._resolve_mayoral_elections(v_tick);
+  exception when others then raise warning 'tick %: mayoral elections failed — %', v_tick, sqlerrm; end;
   -- January (the new month is January when (tick − 1) is a multiple of 12): apply
   -- each nation's annual income to its budget. A surplus fills the bank; a deficit
   -- (negative income) drains a positive budget, and any shortfall past zero rolls

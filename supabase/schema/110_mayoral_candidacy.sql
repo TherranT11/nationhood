@@ -63,4 +63,66 @@ begin
 end $$;
 grant execute on function public.direct_mayor_announce(uuid, uuid, int) to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- Resolution — the deferred half, now built. Called from _advance_tick (schema/60) every
+-- tick for every city whose election has come due (mayor_election_tick <= the new tick).
+--
+-- Each declared candidate scores 1D10 + campaign spend + the candidate's Charisma; the sitting
+-- NPC mayor defends with 1D10 + an incumbency bonus, so a challenger must BEAT it (a tie holds
+-- the incumbent — "no change"). Only the strongest challenger faces the incumbent (the rest
+-- can't do better), so this is the same winner a full multi-way max would pick. A winning
+-- party's candidate takes the chair and the party's popularity FLOOR rises by the city's prize
+-- — 0.4% per 1M inhabitants — clamped to the invariant: floor never exceeds ceiling, and
+-- popularity is pulled up to (never above) the new floor. The term then runs 12 ticks. Only a
+-- CONTESTED race announces; an unopposed incumbent re-election is silent (no feed spam).
+-- ---------------------------------------------------------------------------
+create or replace function public._resolve_mayoral_elections(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_city record; v_best record; v_inc int; v_prize numeric;
+begin
+  for v_city in
+    select c.id, c.name, c.nation_id, c.mayor_name, coalesce(c.pop_pct, 0) as pop_pct, coalesce(n.population, 0) as population
+      from public.cities c join public.nations n on n.id = c.nation_id
+     where c.mayor_election_tick is not null and c.mayor_election_tick <= p_tick
+  loop
+    -- Strongest challenger (null if nobody declared). Independent random per candidate.
+    select mc.party_id, mc.candidate_name,
+           (floor(random() * 10)::int + 1 + mc.spend + coalesce(p.cha, 0)) as score
+      into v_best
+      from public.mayoral_candidacies mc
+      left join public.politicians p on p.id = mc.politician_id
+     where mc.city_id = v_city.id
+     order by score desc, random() limit 1;
+
+    v_inc := floor(random() * 10)::int + 1 + 4;   -- incumbent: 1D10 + 4 incumbency advantage
+
+    if v_best.party_id is not null and v_best.score > v_inc then
+      v_prize := round(0.4 * (v_city.population * v_city.pop_pct / 100.0 / 1000000.0), 1);
+      update public.cities set mayor_name = v_best.candidate_name, mayor_election_tick = p_tick + 12 where id = v_city.id;
+      if v_prize > 0 then
+        update public.parties                                            -- floor prize (invariant-safe)
+           set pop_floor  = least(pop_ceiling, pop_floor + v_prize),
+               popularity = greatest(popularity, least(pop_ceiling, pop_floor + v_prize))
+         where id = v_best.party_id;
+      end if;
+      insert into public.events (nation_id, party_id, kind, body, game_date)
+        values (v_city.nation_id, v_best.party_id, 'party',
+                v_best.candidate_name || ' has been elected Mayor of ' || v_city.name
+                || case when v_prize > 0 then ' — popularity floor +' || trim(to_char(v_prize, 'FM990.0')) || '%.' else '.' end,
+                public.current_game_date());
+    else
+      update public.cities set mayor_election_tick = p_tick + 12 where id = v_city.id;
+      if v_best.party_id is not null then   -- contested but the incumbent held
+        insert into public.events (nation_id, party_id, kind, body, game_date)
+          values (v_city.nation_id, null, 'party',
+                  coalesce(nullif(v_city.mayor_name, ''), 'The incumbent') || ' held the mayoralty of ' || v_city.name || ' against the challenge.',
+                  public.current_game_date());
+      end if;
+    end if;
+
+    delete from public.mayoral_candidacies where city_id = v_city.id;   -- clear the resolved field
+  end loop;
+end $$;
+revoke all on function public._resolve_mayoral_elections(int) from public, anon, authenticated;
+
 notify pgrst, 'reload schema';
