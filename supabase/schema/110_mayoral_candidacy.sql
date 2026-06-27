@@ -97,7 +97,7 @@ begin
     v_inc := floor(random() * 10)::int + 1 + 4;   -- incumbent: 1D10 + 4 incumbency advantage
 
     if v_best.party_id is not null and v_best.score > v_inc then
-      v_prize := round(0.4 * (v_city.population * v_city.pop_pct / 100.0 / 1000000.0), 1);
+      v_prize := round(0.4 * (v_city.population * v_city.pop_pct / 100.0), 1);   -- population is already in millions
       update public.cities set mayor_name = v_best.candidate_name, mayor_election_tick = p_tick + 12 where id = v_city.id;
       if v_prize > 0 then
         update public.parties                                            -- floor prize (invariant-safe)

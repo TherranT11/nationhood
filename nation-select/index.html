@@ -126,7 +126,7 @@
         if (typeof v !== 'number') { rows += '<div class="nstat"><span class="k">' + statName(k) + '</span><span class="v tbd">—</span></div>'; return; }
         rows += '<div class="nstat"><span class="k">' + statName(k) + '</span><span class="' + ('v ' + statBand(k, v)).trim() + '">' + esc(statLabel(k, v) || '—') + '</span></div>';
       });
-      return rows; // Active Parties is rendered as the collapsible roster header (loadParties)
+      return rows; // Active Parties is rendered as the collapsible roster header (renderRoster)
     }
 
     // The ruling-power badge for a sole-ruler nation: an absolute monarchy (regime
@@ -158,36 +158,28 @@
         '</div></article>';
     }
 
-    // The parties already founded in a nation: count toward the cap + roster.
-    // Derived live from the shared parties table (this is one multiplayer world).
-    async function loadParties(card, n) {
+    // Render a nation's roster from its pre-fetched party list (one source — see the loader
+    // below; the same list drives the availability sort). ok=false → the shared fetch failed.
+    function renderRoster(card, n, list, ok) {
       var elRoster = card.querySelector('.proster');
-      try {
-        const { data, error } = await supabase
-          .from('parties').select('name, archetype')
-          .eq('nation_id', n.id).order('created_at', { ascending: true });
-        if (error) throw error;
-        var list = data || [];
-        // The "Active Parties N / cap" row is the collapsible toggle; expanding it
-        // reveals the roster (keeps a full nation from making the card tower).
-        var unit = n.ruling_party ? 'Factions' : 'Parties';
-        var inner = list.length
-          ? list.map(function (p) {
-              return '<div class="prow"><span class="pn">' + esc(p.name) +
-                     '</span><span class="pa">' + esc(ideologyLabel(p)) + '</span></div>';
-            }).join('')
-          : '<div class="pempty">No ' + unit.toLowerCase() + ' yet — be the first to ' + (n.ruling_party ? 'form one' : 'found one') + '.</div>';
-        elRoster.innerHTML =
-          '<details class="plist"><summary class="nstat"><span class="k">Active ' + unit + '</span>' +
-          '<span class="v">' + list.length + ' / ' + MAX_PARTIES + '</span></summary>' +
-          '<div class="prows">' + inner + '</div></details>';
-        if (list.length >= MAX_PARTIES) {
-          var join = card.querySelector('.nation-join');
-          join.disabled = true;
-          join.textContent = 'Nation Full';
-        }
-      } catch (e) {
-        elRoster.innerHTML = '<div class="pempty">Couldn’t load parties.</div>';
+      if (!ok) { elRoster.innerHTML = '<div class="pempty">Couldn’t load parties.</div>'; return; }
+      // The "Active Parties N / cap" row is the collapsible toggle; expanding it reveals the
+      // roster (keeps a full nation from making the card tower).
+      var unit = n.ruling_party ? 'Factions' : 'Parties';
+      var inner = list.length
+        ? list.map(function (p) {
+            return '<div class="prow"><span class="pn">' + esc(p.name) +
+                   '</span><span class="pa">' + esc(ideologyLabel(p)) + '</span></div>';
+          }).join('')
+        : '<div class="pempty">No ' + unit.toLowerCase() + ' yet — be the first to ' + (n.ruling_party ? 'form one' : 'found one') + '.</div>';
+      elRoster.innerHTML =
+        '<details class="plist"><summary class="nstat"><span class="k">Active ' + unit + '</span>' +
+        '<span class="v">' + list.length + ' / ' + MAX_PARTIES + '</span></summary>' +
+        '<div class="prows">' + inner + '</div></details>';
+      if (list.length >= MAX_PARTIES) {
+        var join = card.querySelector('.nation-join');
+        join.disabled = true;
+        join.textContent = 'Nation Full';
       }
     }
 
@@ -204,6 +196,23 @@
         if (error) throw error;
         var nations = data || [];
         if (!nations.length) { note.textContent = 'No nations are open yet.'; note.className = 'note'; return; }
+
+        // All parties in ONE query, grouped by nation — the single source for both each card's
+        // roster and the availability sort (was a query per nation). Non-fatal: on failure the
+        // rosters show the error and no nation is treated as full.
+        var byNation = {}, partiesOk = true;
+        try {
+          const { data: parties, error: perr } = await supabase.from('parties').select('name, archetype, nation_id').order('created_at', { ascending: true });
+          if (perr) throw perr;
+          (parties || []).forEach(function (p) { (byNation[p.nation_id] = byNation[p.nation_id] || []).push(p); });
+        } catch (e) { partiesOk = false; }
+        function rosterOf(n) { return byNation[n.id] || []; }
+        function isFull(n) { return partiesOk && rosterOf(n).length >= MAX_PARTIES; }
+
+        // Nations with availability on top, full nations on the bottom. Array.sort is stable,
+        // so created_at order is preserved within each group.
+        nations.sort(function (a, b) { return (isFull(a) ? 1 : 0) - (isFull(b) ? 1 : 0); });
+
         nationsBox.innerHTML = nations.map(cardHTML).join('');
         nations.forEach(function (n) {
           var card = nationsBox.querySelector('.nation[data-id="' + (window.CSS && CSS.escape ? CSS.escape(n.id) : n.id) + '"]');
@@ -214,7 +223,7 @@
           card.querySelector('.nation-join').addEventListener('click', function () {
             window.location.href = '/party-creation/?nation=' + encodeURIComponent(n.id);
           });
-          loadParties(card, n);
+          renderRoster(card, n, rosterOf(n), partiesOk);
         });
       } catch (e) {
         err('Couldn’t load nations. Try again shortly.');

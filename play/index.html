@@ -643,7 +643,7 @@
     } else {
       if (DIR.selCity >= DIR.cities.length) DIR.selCity = 0;
       var city = DIR.cities[DIR.selCity];
-      var cityPopM = DIR.pop ? (DIR.pop * (Number(city.pop_pct) || 0) / 100) / 1e6 : 0;
+      var cityPopM = DIR.pop ? (DIR.pop * (Number(city.pop_pct) || 0) / 100) : 0;   // nations.population is already in millions
       var prize = Math.round(0.4 * cityPopM * 10) / 10;
       var field = DIR.cands.filter(function (c) { return c.city_id === city.id; });
       var mineCand = field.filter(function (c) { return c.party_id === myPartyId; })[0];
