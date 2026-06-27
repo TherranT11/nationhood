@@ -173,6 +173,20 @@ begin
 end $$;
 revoke all on function public._apply_crisis_effect(uuid, text, jsonb) from public, anon, authenticated;
 
+-- Apply a stage's "Effect when stage activated" list (definition stage.onActivate) — the effects
+-- that land the moment the crisis enters that stage (on fire for stage 1, on escalation for 2-4).
+-- Each effect rides _apply_crisis_effect (one source), so a stat/resource/Crisis-Meter target
+-- behaves exactly as it does for actions and the terminal stage's `reached`.
+create or replace function public._apply_stage_activate(p_id uuid, p_nation text, p_stage jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_eff jsonb;
+begin
+  for v_eff in select value from jsonb_array_elements(coalesce(p_stage->'onActivate', '[]'::jsonb)) loop
+    perform public._apply_crisis_effect(p_id, p_nation, v_eff);
+  end loop;
+end $$;
+revoke all on function public._apply_stage_activate(uuid, text, jsonb) from public, anon, authenticated;
+
 -- Activate the dormant breakaway nation a 'new_nation' resolution points at: a real,
 -- still-dormant nation (authored in the Nations tab, linked by id) is un-dormanted and
 -- given a first-election schedule, then announced. Idempotent — a re-run finds it already
@@ -242,7 +256,7 @@ revoke all on function public._crisis_emerged_event(text, text) from public, ano
 create or replace function public._apply_crisis_tick(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare
-  v_n text; v_c record; v_active record;
+  v_n text; v_c record; v_active record; v_new_id uuid;
   v_def jsonb; v_stage jsonb; v_growth text; v_inc numeric; v_at numeric;
 begin
   -- FIRE  (dormant nations are inert — they neither host crises nor get auto-scheduled)
@@ -258,7 +272,9 @@ begin
           continue;   -- Phase 1: fire once per nation per crisis
         end if;
         if public._crisis_triggers_met(v_n, v_c.definition) then
-          insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id);   -- stage 1, meter 0 by default
+          insert into public.nation_crises (nation_id, crisis_id) values (v_n, v_c.id)   -- stage 1, meter 0 by default
+            returning id into v_new_id;
+          perform public._apply_stage_activate(v_new_id, v_n, v_c.definition->'stages'->0);   -- stage 1's on-activation effects
           perform public._crisis_emerged_event(v_n, v_c.definition->>'name');
         end if;
       exception when others then
@@ -298,6 +314,8 @@ begin
         else
           update public.nation_crises set stage = v_active.stage + 1, meter = 0
            where id = v_active.id;   -- meter resets: each stage is a fresh climb
+          -- the newly-entered stage's on-activation effects (stages is 0-indexed: new stage = v_active.stage)
+          perform public._apply_stage_activate(v_active.id, v_active.nation_id, v_def->'stages'->v_active.stage);
           insert into public.events (nation_id, party_id, kind, body, game_date, tone)
           values (v_active.nation_id, null, 'crisis',
                   'A crisis has escalated: ' || coalesce(v_def->>'name', 'Unnamed Crisis') || ' — '
@@ -412,18 +430,21 @@ grant execute on function public.crisis_act(uuid, int, int) to authenticated;
 -- dormant nations are inert, so they're rejected.
 create or replace function public.crisis_force_fire(p_crisis uuid, p_nation text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_name text; v_dormant boolean;
+declare v_name text; v_dormant boolean; v_def jsonb; v_id uuid;
 begin
   if not public.is_admin() then raise exception 'admin only'; end if;
   select dormant into v_dormant from public.nations where id = p_nation;
   if not found then raise exception 'That nation does not exist.'; end if;
   if v_dormant then raise exception 'That nation is dormant — activate it before starting a crisis there.'; end if;
-  select definition->>'name' into v_name from public.crises where id = p_crisis;
+  select definition into v_def from public.crises where id = p_crisis;
   if not found then raise exception 'That crisis no longer exists.'; end if;
+  v_name := v_def->>'name';
 
   insert into public.nation_crises (nation_id, crisis_id, stage, meter, status)
        values (p_nation, p_crisis, 1, 0, 'active')
-  on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active';
+  on conflict (nation_id, crisis_id) do update set stage = 1, meter = 0, status = 'active'
+  returning id into v_id;
+  perform public._apply_stage_activate(v_id, p_nation, v_def->'stages'->0);   -- stage 1's on-activation effects
   perform public._crisis_emerged_event(p_nation, v_name);
 end $$;
 grant execute on function public.crisis_force_fire(uuid, text) to authenticated;
