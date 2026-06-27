@@ -44,9 +44,10 @@
   .fig .v{font-weight:800;font-size:19px;letter-spacing:-.02em;margin-top:3px}
 
   .gov{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .gov .who{min-width:0}
   .gov .who b{font-weight:700;font-size:14.5px}
-  .gov .who .ptag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft)}
-  .gov .who span{display:block;font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin-top:1px}
+  .gov .who .ttl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .gov .who .ptag{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;letter-spacing:.04em;color:var(--soft);margin-left:4px}
   .govtype{margin-left:auto;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;line-height:1.4;padding:5px 11px;border-radius:20px;background:var(--chip);color:var(--muted);text-align:right}
 
   .acts{display:flex;gap:10px;margin-top:18px}
@@ -149,7 +150,7 @@
           '<div class="fig"><div class="k">Population</div><div class="v">' + (n.population != null ? esc(fmtPop(n.population)) : '—') + '</div></div>' +
         '</div>' +
         '<div class="gov">' +
-          '<div class="who"><b>' + hog + hogTag + '</b><span>' + esc(hogTitle) + '</span></div>' +
+          '<div class="who"><span class="ttl">' + esc(hogTitle) + '</span> &mdash; <b>' + hog + '</b>' + hogTag + '</div>' +
           '<span class="govtype">' + esc(govType) + '</span>' +
         '</div>' +
         '<div class="acts">' +

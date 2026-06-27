@@ -743,12 +743,12 @@
                     <div class="f" style="margin-bottom:0"><label>Nation <span class="hint">limit this crisis to one nation; leave “Any” for a global crisis</span></label><select id="cbNation"></select></div>
                   </div>
                   <div class="card">
-                    <div class="sechd">Trigger conditions <span class="hint">all must be true</span></div>
+                    <div class="sechd">Trigger conditions <span class="seg" id="cbTrigMode"><span data-m="all">All</span><span data-m="any">Any</span></span></div>
                     <div id="cbTriggers"></div>
                     <div class="addrow"><button class="add" id="cbAddTrig" type="button">+ condition</button></div>
                   </div>
                   <div class="card">
-                    <div class="sechd">Crisis immediately ends if <span class="hint">any of these becomes true — the crisis resolves at once</span></div>
+                    <div class="sechd">Crisis immediately ends if <span class="seg" id="cbEndMode"><span data-m="all">All</span><span data-m="any">Any</span></span></div>
                     <div id="cbEndIf"></div>
                     <div class="addrow"><button class="add" id="cbAddEnd" type="button">+ condition</button></div>
                   </div>
@@ -2724,8 +2724,8 @@
       function blankCrisis() {
         return {
           name: 'New Crisis', desc: '',
-          triggers: [{ target: 'Government Confidence', op: '<', value: 20 }],
-          endIf: [],
+          triggers: [{ target: 'Government Confidence', op: '<', value: 20 }], triggerMode: 'all',
+          endIf: [], endMode: 'any',
           stages: [blankStage(), blankStage(), blankStage(), blankStage(), { descReached: '', reached: [], resolution: 'ends' }]
         };
       }
@@ -2736,6 +2736,8 @@
         var c = (def && typeof def === 'object') ? def : blankCrisis();
         c.triggers = Array.isArray(c.triggers) ? c.triggers : [];
         c.endIf = Array.isArray(c.endIf) ? c.endIf : [];
+        c.triggerMode = (c.triggerMode === 'any') ? 'any' : 'all';   // default ALL (existing behaviour)
+        c.endMode = (c.endMode === 'all') ? 'all' : 'any';           // default ANY (existing behaviour)
         c.stages = Array.isArray(c.stages) ? c.stages : [];
         for (var i = 0; i < 4; i++) { var s = c.stages[i] = c.stages[i] || blankStage(); s.actions = Array.isArray(s.actions) ? s.actions : []; s.onActivate = Array.isArray(s.onActivate) ? s.onActivate : []; }
         var t = c.stages[4] = c.stages[4] || { descReached: '', reached: [], resolution: 'ends' };
@@ -2842,7 +2844,11 @@
       }
 
       // ----- condition lists (triggers + "ends if") — one renderer, two callers -----
-      function renderCondList(list, boxId, joinWord, rerender) {
+      // mode is 'all' (AND) or 'any' (OR); it sets the join word AND lights the All/Any toggle.
+      function renderCondList(list, boxId, mode, segId, rerender) {
+        var seg = document.getElementById(segId);
+        if (seg) seg.querySelectorAll('span').forEach(function (sp) { sp.classList.toggle('on', sp.dataset.m === mode); });
+        var joinWord = (mode === 'any') ? 'OR' : 'AND';
         var box = document.getElementById(boxId); box.innerHTML = '';
         list.forEach(function (t, i) {
           if (i > 0) { var a = document.createElement('div'); a.className = 'andtag'; a.textContent = joinWord; box.appendChild(a); }
@@ -2857,8 +2863,8 @@
           box.appendChild(row);
         });
       }
-      function renderTriggers() { renderCondList(CRISIS.triggers, 'cbTriggers', 'AND', renderTriggers); }
-      function renderEndIf()   { renderCondList(CRISIS.endIf,    'cbEndIf',    'OR',  renderEndIf); }
+      function renderTriggers() { renderCondList(CRISIS.triggers, 'cbTriggers', CRISIS.triggerMode || 'all', 'cbTrigMode', renderTriggers); }
+      function renderEndIf()   { renderCondList(CRISIS.endIf,    'cbEndIf',    CRISIS.endMode || 'any',     'cbEndMode',  renderEndIf); }
 
       // ----- stage tabs -----
       function renderTabs() {
@@ -3010,8 +3016,8 @@
       // ----- preview -----
       function renderPreview() {
         var box = document.getElementById('cbPrev');
-        var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>AND ');
-        var ends = CRISIS.endIf.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>OR ');
+        var trig = CRISIS.triggers.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.triggerMode === 'any' ? 'OR' : 'AND') + ' ');
+        var ends = CRISIS.endIf.map(function (t) { return esc(t.target + ' ' + t.op + ' ' + t.value); }).join('<br>' + (CRISIS.endMode === 'all' ? 'AND' : 'OR') + ' ');
         var scopeName = CRISIS.nation ? ((crisNationById(CRISIS.nation) || {}).name || CRISIS.nation) : '';
         var h = '<div class="pvname">' + esc(CRISIS.name || 'Untitled crisis') + '</div><div class="pvdesc">' + esc(CRISIS.desc || '') + '</div>' +
           '<div class="pvtrig"><div class="tl">Scope</div>' + (scopeName ? esc(scopeName) : 'Any nation (global)') + '</div>' +
@@ -3046,6 +3052,9 @@
       var fb = document.getElementById('cbFireBtn'); if (fb) fb.onclick = forceFireCrisis;
       var at = document.getElementById('cbAddTrig'); if (at) at.onclick = function () { if (!CRISIS) return; CRISIS.triggers.push({ target: 'Order', op: '<', value: 8 }); renderTriggers(); renderPreview(); };
       var ae = document.getElementById('cbAddEnd'); if (ae) ae.onclick = function () { if (!CRISIS) return; CRISIS.endIf.push({ target: 'Order', op: '≥', value: 12 }); renderEndIf(); renderPreview(); };
+      // All / Any toggles — set the list's match mode, re-render (join word) and the preview.
+      (document.getElementById('cbTrigMode') || {}).onclick = function (e) { var m = e.target.dataset.m; if (!CRISIS || !m) return; CRISIS.triggerMode = m; renderTriggers(); renderPreview(); };
+      (document.getElementById('cbEndMode')  || {}).onclick = function (e) { var m = e.target.dataset.m; if (!CRISIS || !m) return; CRISIS.endMode = m; renderEndIf(); renderPreview(); };
 
       return loadCrises;
     })();
