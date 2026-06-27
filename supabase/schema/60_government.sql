@@ -437,10 +437,13 @@ as $$
 declare v_tick int; v_n text; v_count int := 0; v_rec record;
 begin
   update public.game_state set current_tick = current_tick + 1 where id returning current_tick into v_tick;
-  -- Every party gets a fresh turn: action budget reset to 12 on each tick. The
-  -- predicate matches all parties not already at 12 (and is null-safe) — it also
-  -- satisfies Postgres' require-a-WHERE-clause guard (sql_safe_updates).
-  update public.parties set actions_remaining = 12 where actions_remaining is distinct from 12;
+  -- Every party gets a fresh turn: action budget reset to 12 each tick — plus 1 while a
+  -- Deputy Leader serves (the Direct appointment, schema/109). The per-party target varies,
+  -- so this resets all parties (still satisfies the require-a-WHERE-clause guard via id is not null).
+  update public.parties p set actions_remaining = 12 + (case when exists (
+           select 1 from public.politicians pl where pl.party_id = p.id and pl.status = 'Deputy Leader'
+         ) then 1 else 0 end)
+   where p.id is not null;
   -- Debt→inflation backlog: snapshot each nation's debt BEFORE this tick's economics, so the
   -- close-out step (end of tick) can measure how much debt was ADDED across the whole tick.
   -- Isolated like every other tick step — if the snapshot fails, the backlog simply no-ops

@@ -220,8 +220,7 @@ begin
   -- Seed an NPC director: a random name from the nation's pool + 1D4 Acumen. Applies
   -- whether the firm is placed now or queued onto the generation list (it carries the
   -- director through to release). Null name only if the nation has no names seeded yet.
-  select name into v_first from public.nation_names where nation_id = p_nation and kind in ('male', 'female') order by random() limit 1;
-  select name into v_last  from public.nation_names where nation_id = p_nation and kind = 'surname'          order by random() limit 1;
+  select first_name, last_name into v_first, v_last from public._random_name(p_nation);   -- shared draw (schema/50)
   v_director := nullif(btrim(concat_ws(' ', v_first, v_last)), '');
   insert into public.corporations (nation_id, name, category, type, size, cash, debt, drift, status, roll_m, director, acumen)
   values (p_nation, p_name, p_category, p_type, p_size, p_cash, p_debt, p_drift, coalesce(p_status,'placed'), p_roll_m,
