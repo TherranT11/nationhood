@@ -210,7 +210,10 @@
       const { data: party } = await supabase.from('parties').select('name, archetype, nation_id').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: home } = await supabase.from('nations').select('id, name, flag, economy, on_hand, production').eq('id', party.nation_id).single();
-      const { data: nations } = await supabase.from('nations').select('id, name, on_hand, production').order('name');
+      // Dormant (unactivated) nations are inert — they don't participate in the market, so
+      // they're excluded from the supply/capacity price math AND the per-nation holdings list
+      // (same filter every other page uses). They show 0 stock and only clutter the row.
+      const { data: nations } = await supabase.from('nations').select('id, name, on_hand, production').eq('dormant', false).order('name');
       const { data: market } = await supabase.from('market').select('resource, available, min_price, max_price');
 
       const nationName = (home && home.name) || party.nation_id;
