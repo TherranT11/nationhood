@@ -278,33 +278,26 @@
     var paras = intro.split(/\n+/).map(function(s){ return '<p>' + esc(s.trim()) + '</p>'; }).join('');
     return '<div class="billsec"><div class="billsec__h">Sponsor’s Introduction <span class="billsec__by">' + esc(ST.partyName[p.party_id] || 'the sponsor') + '</span></div><div class="billart">' + paras + '</div></div>';
   }
-  // Current → Proposed plus the policy spectrum (every rung, with Now / Proposed pins). Falls
-  // back to the payload names if the policy definition didn't load (spectrum then omitted).
+  // The Current → Proposed rows (reusing lawChange — ONE source) plus the policy spectrum: every
+  // rung with Now / Proposed pins. The spectrum is omitted if the policy definition didn't load.
   function billChange(p){
     if (!p.payload) return '';
-    var def = ST.policyDefs[p.payload.policy_id], opts = null, ci = -1, pi = -1;
-    var current = '—', proposed = p.payload.option_name || '—';
+    var def = ST.policyDefs[p.payload.policy_id], spec = '';
     if (def) {
-      opts = policyOptions(def);
-      ci = policyOptionIdx(def, ST.nationPolicies, p.payload.policy_id);
-      pi = (p.payload.option_idx != null) ? +p.payload.option_idx : -1;
-      current = (opts[ci] || {}).name || '—';
-      proposed = (opts[pi] || {}).name || proposed;
+      var opts = policyOptions(def), ci = policyOptionIdx(def, ST.nationPolicies, p.payload.policy_id);
+      var pi = (p.payload.option_idx != null) ? +p.payload.option_idx : -1;
+      if (opts.length && ci >= 0 && pi >= 0) {
+        var segs = opts.map(function(o, i){
+          var cls = i === ci ? 'cur' : i === pi ? 'prop' : '';
+          var pin = i === ci ? '<span class="spec-pin">Now</span>' : i === pi ? '<span class="spec-pin">Proposed</span>' : '';
+          return '<div class="spec-seg ' + cls + '">' + pin + '<span>' + esc(o.name || ('Option ' + (i + 1))) + '</span></div>';
+        }).join('');
+        var pname = (opts[pi] || {}).name || p.payload.option_name || 'the proposed rung', d = pi - ci;
+        var dir = d === 0 ? 'No movement on the ladder' : Math.abs(d) + ' rung' + (Math.abs(d) === 1 ? '' : 's') + ' toward ' + esc(pname);
+        spec = '<div class="spectrum"><div class="spec-track">' + segs + '</div><div class="spec-dir">' + dir + '</div></div>';
+      }
     }
-    var rows = '<div class="lawchg">' +
-      '<div class="lawchg__row"><span class="lawchg__k">Current Law</span><span class="lawchg__v">' + esc(current) + '</span></div>' +
-      '<div class="lawchg__row"><span class="lawchg__k">Proposed Change</span><span class="lawchg__v hl">' + esc(proposed) + '</span></div></div>';
-    var spec = '';
-    if (opts && opts.length && ci >= 0 && pi >= 0) {
-      var segs = opts.map(function(o, i){
-        var cls = i === ci ? 'cur' : i === pi ? 'prop' : '';
-        var pin = i === ci ? '<span class="spec-pin">Now</span>' : i === pi ? '<span class="spec-pin">Proposed</span>' : '';
-        return '<div class="spec-seg ' + cls + '">' + pin + '<span>' + esc(o.name || ('Option ' + (i + 1))) + '</span></div>';
-      }).join('');
-      var d = pi - ci, dir = d === 0 ? 'No movement on the ladder' : Math.abs(d) + ' rung' + (Math.abs(d) === 1 ? '' : 's') + ' toward ' + esc(proposed);
-      spec = '<div class="spectrum"><div class="spec-track">' + segs + '</div><div class="spec-dir">' + dir + '</div></div>';
-    }
-    return '<div class="billsec"><div class="billsec__h">The Change</div>' + rows + spec + '</div>';
+    return '<div class="billsec"><div class="billsec__h">The Change</div>' + lawChange(p) + spec + '</div>';
   }
   function fmtB(v){ return '₣' + Math.abs(v).toFixed(1) + 'B'; }
   function fiscalRow(label, sub, delta, goodUp, isNet){
