@@ -691,6 +691,11 @@
           '<span class="calc">' + (DIR.spend ? '$' + (spendCost / 1000) + 'K → +' + DIR.spend + ' to your roll' : '$25K = +1 to your roll') + '</span></div>' +
         '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd || !canAffordMp ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : canAffordMp ? 'Costs $' + (mpCost / 1000) + 'K + 1 action' : 'Need $' + (mpCost / 1000) + 'K') + '</span></div></div>' +
       mayorHtml +
+      // Youth Wing
+      '<div class="dcard"><div class="dcard__t">Expand the Youth Wing</div>' +
+        '<div class="dcard__mech">Roll 1D12 + 3 ticks · then floor +0.1% × (1D3 + Image(' + image + '))</div>' +
+        '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity floor</b>. A higher-Image organiser builds more.</div>' +
+        '<div class="dcard__foot"><button class="dgo idg" id="dYw" type="button"' + (DIR.funds >= 25000 ? '' : ' disabled') + '>Expand the Wing</button><span class="dnote">' + (DIR.funds >= 25000 ? 'Costs $25K + 1 action' : 'Need $25K') + '</span></div></div>' +
       // Paramilitary
       '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
         '<div class="dcard__eff"><b>+3% popularity</b> now — but the Republic notices: <b class="bad">−1 Regime, −3% popularity ceiling, −1% Government Confidence</b>.</div>' +
@@ -713,6 +718,13 @@
       var mem = dirMember().id; closeDirectModal();
       performAction(function () { return supabase.rpc('direct_paramilitary', { p_member: mem }); }, function (d) {
         return 'Paramilitary wing raised — popularity +' + d.pop_gain + '%, −1 Regime, −3% ceiling, −1% Gov Confidence.';
+      });
+    };
+    var dYw = document.getElementById('dYw');
+    if (dYw && !dYw.disabled) dYw.onclick = function () {
+      var mem = dirMember().id, nm = dirName(dirMember()); closeDirectModal();
+      performAction(function () { return supabase.rpc('direct_youth_wing', { p_member: mem }); }, function (d) {
+        return nm + ' is expanding the youth wing — a floor boost lands in ' + d.ticks + ' ticks.';
       });
     };
     var dCity = document.getElementById('dCity');
