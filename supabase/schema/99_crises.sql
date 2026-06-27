@@ -167,14 +167,30 @@ begin
 end $$;
 revoke all on function public._crisis_resolve_met(text, jsonb) from public, anon, authenticated;
 
--- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at
--- 0); every other target rides _apply_policy_effect (schema/91) — the single source for
--- stat mapping, clamping, money scaling, the confidence-collapse hook, popularity floors.
+-- Add a delta to a nation's on-hand stockpile of one resource (energy/food/minerals/goods/
+-- services/military), floored at 0. ONE source for moving on_hand from a crisis — used by the
+-- on-hand effect targets and the action resource-cost deduction.
+create or replace function public._nation_onhand_add(p_nation text, p_res text, p_delta numeric)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.nations
+     set on_hand = jsonb_set(coalesce(on_hand, '{}'::jsonb), array[p_res],
+                             to_jsonb(greatest(0, coalesce((on_hand->>p_res)::numeric, 0) + coalesce(p_delta, 0))))
+   where id = p_nation;
+end $$;
+revoke all on function public._nation_onhand_add(text, text, numeric) from public, anon, authenticated;
+
+-- Apply ONE crisis effect {t,v}. 'Crisis Meter' adjusts THIS instance's meter (floored at 0);
+-- an "<Resource> on hand" target moves the nation's stockpile (floored at 0); every other target
+-- rides _apply_policy_effect (schema/91) — the single source for stat mapping, clamping, money
+-- scaling, the confidence-collapse hook, popularity floors.
 create or replace function public._apply_crisis_effect(p_id uuid, p_nation text, p_eff jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 begin
   if (p_eff->>'t') = 'Crisis Meter' then
     update public.nation_crises set meter = greatest(0, meter + coalesce((p_eff->>'v')::numeric, 0)) where id = p_id;
+  elsif (p_eff->>'t') like '%on hand' then
+    perform public._nation_onhand_add(p_nation, lower(btrim(replace(p_eff->>'t', 'on hand', ''))), coalesce((p_eff->>'v')::numeric, 0));
   else
     perform public._apply_policy_effect(p_nation, p_eff);
   end if;
@@ -356,6 +372,7 @@ declare
   v_def jsonb; v_stage jsonb; v_acts jsonb; v_a jsonb; v_effs jsonb; v_eff jsonb;
   v_type text; v_mech text := ''; v_col text; v_stat int := 0; v_roll int := 0;
   v_needed int := 0; v_total int := 0; v_ok boolean := true; v_body text; v_tone text;
+  v_c jsonb; v_res text; v_amt numeric;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
   if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
@@ -382,6 +399,21 @@ begin
   end if;
   v_a := v_acts->p_action;
   v_type := v_a->>'type';
+
+  -- On-hand resource cost (e.g. "expend 1 Military"): require the stockpile, then spend it on
+  -- attempt — whatever the roll. Gated before any effect lands, so a shortfall blocks the action
+  -- cleanly (nothing is applied or deducted). Only minister actions carry a `cost` list.
+  for v_c in select value from jsonb_array_elements(coalesce(v_a->'cost', '[]'::jsonb)) loop
+    v_res := v_c->>'r'; v_amt := coalesce((v_c->>'n')::numeric, 0);
+    if v_amt > 0 and coalesce((select (on_hand->>v_res)::numeric from public.nations where id = v_nc.nation_id), 0) < v_amt then
+      raise exception '%', 'Not enough ' || initcap(coalesce(v_res, 'resource')) || ' on hand to take this action (need ' || (v_c->>'n') || ').';
+    end if;
+  end loop;
+  for v_c in select value from jsonb_array_elements(coalesce(v_a->'cost', '[]'::jsonb)) loop
+    if coalesce((v_c->>'n')::numeric, 0) > 0 then
+      perform public._nation_onhand_add(v_nc.nation_id, v_c->>'r', -(v_c->>'n')::numeric);
+    end if;
+  end loop;
 
   if v_type = 'law' then
     v_effs := coalesce(v_a->'lawEffect', '[]'::jsonb);

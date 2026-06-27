@@ -158,8 +158,11 @@
   function actionHtml(a, idx, stage, canManage) {
     var isLaw = a.type === 'law';
     var label = isLaw ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
-    var sub = isLaw ? 'Emergency legislation'
-      : (a.ministry || 'Government') + (a.mech === 'roll' && a.stat ? ' · ' + a.stat + ' check' : '');
+    var cost = (a.cost || []).filter(function (c) { return (c.n || 0) > 0; })
+      .map(function (c) { return c.n + ' ' + (c.r ? c.r.charAt(0).toUpperCase() + c.r.slice(1) : ''); }).join(', ');
+    var sub = (isLaw ? 'Emergency legislation'
+      : (a.ministry || 'Government') + (a.mech === 'roll' && a.stat ? ' · ' + a.stat + ' check' : ''))
+      + (cost ? ' · costs ' + cost : '');
     return '<button class="optx" type="button"' + (canManage ? '' : ' disabled') +
       ' data-ai="' + idx + '" data-stg="' + stage + '">' +
       '<div class="optx__t">' + esc(label) + '</div>' +
