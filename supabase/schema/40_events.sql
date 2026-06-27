@@ -92,7 +92,7 @@ end $$;
 -- one source for that cost. The per-tick budget is 12 (schema/20), so this caps standing
 -- moves at 3 a tick while leaving room for the cheaper organizational actions (cost 1 each).
 create or replace function public._standing_cost()
-returns int language sql immutable as $$ select 4 $$;
+returns int language sql immutable as $$ select 3 $$;
 
 -- Lock the player's party (via _lock_party) and confirm it has an action to spend
 -- and can afford p_cost. Returns the locked row; raises on failure. Standing actions
@@ -120,8 +120,8 @@ immutable
 as $$ select case when p_total >= 7 then 'strong' when p_total >= 4 then 'middling' else 'poor' end $$;
 
 -- ---------------------------------------------------------------------------
--- party_rally(): 1d6 + Charisma, ÷10, then ×0.75 (−25%), added to popularity (capped at ceiling).
--- Costs $25K + 1 action.
+-- party_rally(): 1d6 + Charisma, ÷10, then ×0.5625 (two −25% cuts), added to popularity (capped at ceiling).
+-- Costs $25K + a standing action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_rally()
 returns jsonb
@@ -143,7 +143,7 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_cha;
   v_tier  := public._action_tier(v_total);
-  v_delta := round((v_total::numeric) / 10.0 * 0.75, 1);                -- (1d6 + Cha) / 10, then −25%
+  v_delta := round((v_total::numeric) / 10.0 * 0.5625, 1);             -- (1d6 + Cha) / 10, ×0.5625 (two −25% cuts)
   v_newpop := least(v_p.popularity + v_delta, public._effective_ceiling(v_p.nation_id, v_p.archetype, v_p.pop_ceiling, v_p.pop_floor)); -- capped at the crowding-adjusted ceiling
   v_newpop := public._mod_cap_raise(v_p.nation_id, v_p.archetype, v_p.popularity, v_newpop); -- archetype ceiling (schema/70)
   v_delta := v_newpop - v_p.popularity;                                 -- amount actually applied
@@ -171,8 +171,8 @@ drop function if exists public.party_organize();
 drop function if exists public.party_platform();
 
 -- ---------------------------------------------------------------------------
--- party_fundraise(): 1d6 + Charisma, ×$15K, added to Party Funds. No franc cost —
--- only 1 action.
+-- party_fundraise(): 1d6 + Charisma, ×$11.25K ($15K −25%), added to Party Funds. No franc
+-- cost — only a standing action.
 -- ---------------------------------------------------------------------------
 create or replace function public.party_fundraise()
 returns jsonb
@@ -193,7 +193,7 @@ begin
   v_roll  := floor(random() * 6)::int + 1;
   v_total := v_roll + v_cha;
   v_tier  := public._action_tier(v_total);
-  v_haul  := v_total::bigint * 15000;                              -- (1d6 + Cha) × $15K
+  v_haul  := v_total::bigint * 11250;                              -- (1d6 + Cha) × $11.25K ($15K −25%)
 
   v_body := 'The ' || public._bare_party(v_p.name) || case v_tier
     when 'strong'   then ' has held a fundraising drive, and the cheques poured in. Donors emptied their pockets and new members signed up by the hundred — the war chest has never looked healthier.'
