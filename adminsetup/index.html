@@ -719,7 +719,7 @@
       <div class="tabpane" data-tab="inactivity" hidden>
         <div class="poltab">
           <div class="panel"><h2>Party Inactivity</h2>
-            <p class="sub" style="margin:8px 0 14px">Wall-clock since each party's last action (any action, vote, conviction adoption, or proposal). Players are warned in-game at 6 days; eligible for removal at 7. Deletion is permanent — it removes the party entirely and frees its seats.</p>
+            <p class="sub" style="margin:8px 0 14px">Wall-clock since each party's last action (any action, vote, conviction adoption, or proposal). Players are warned in-game at 6 days; the party goes <b>inactive at 7</b> (it sits out elections) and is <b>auto-deleted at 21</b> — the 8-hour tick removes it and its politicians and frees its seats. Any action revives it. You can also delete a party manually here at any time.</p>
             <div id="inactList"><p class="empty">Loading…</p></div>
           </div>
         </div>
@@ -1006,7 +1006,7 @@
 
   <script type="module">
     import { supabase, isConfigured, currentTick } from '/supabase.js';
-    import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
+    import { esc, fmtGdp, fmtPop, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel } from '/util.js';
     import * as HM from '/hexmap.js';
     import { regimeLabel, statName } from '/ladders.js';
     import { SIZES, CATEGORIES, CATEGORY_BONUS, corpMoney } from '/corporations.js';
@@ -2132,7 +2132,8 @@
         box.innerHTML = rows.map(function(r){
           var days = daysIdle(r.last_active_at);
           var when = new Date(r.last_active_at).toLocaleDateString();
-          var status = days >= INACTIVE_DELETE_DAYS ? '<span style="color:#C42B2B;font-weight:700"> · eligible for removal</span>'
+          var status = days >= INACTIVE_DELETE_DAYS ? '<span style="color:#C42B2B;font-weight:700"> · auto-delete due</span>'
+                     : days >= INACTIVE_DAYS ? '<span style="color:#C42B2B;font-weight:700"> · inactive — sits out elections</span>'
                      : days >= INACTIVE_WARN_DAYS ? '<span style="color:#c0860a;font-weight:700"> · warned</span>' : '';
           return '<div class="plcard"><div><div class="plcard__name">'+esc(r.party_name||'—')+'</div>'+
             '<div class="plcard__meta">'+esc(r.owner_email||'—')+' · last active '+esc(when)+' · '+days+' day'+(days===1?'':'s')+' idle'+status+'</div></div>'+
