@@ -21,6 +21,17 @@ export async function fetchVotes(proposalIds) {
 export async function fetchPolicies() {
   return unwrap(await supabase.from('policies').select('id, definition').order('created_at')) || [];
 }
+// Does this party have a floor measure (status 'voting') it hasn't cast a vote on? ONE source
+// for "is there something to vote on" — drives the Legislature nav dot.
+export async function hasUnvotedFloorMeasure(nationId, partyId) {
+  const props = unwrap(await supabase.from('proposals').select('id').eq('nation_id', nationId).eq('status', 'voting')) || [];
+  if (!props.length) return false;
+  const ids = props.map(function (p) { return p.id; });
+  const votes = unwrap(await supabase.from('proposal_votes').select('proposal_id').eq('party_id', partyId).in('proposal_id', ids)) || [];
+  const voted = {};
+  votes.forEach(function (v) { voted[v.proposal_id] = true; });
+  return ids.some(function (id) { return !voted[id]; });
+}
 
 // ---- mutations (server-authoritative RPCs) ----
 export async function proposeDeclaration(slug, value, toFloor) {

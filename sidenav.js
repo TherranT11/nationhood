@@ -6,6 +6,9 @@
 // (flag / party name) is filled by each page via #flag / #pname / #psub as data loads.
 // Logout lives in the shared topbar gear menu (topbar.js), not here.
 
+import { supabase, isConfigured } from '/supabase.js';
+import { hasUnvotedFloorMeasure } from '/proposals.js';
+
 // The nav items — the single source for both the rail and the bottom bar. href:null
 // marks a section that isn't built yet (shown disabled).
 const NAV = [
@@ -42,6 +45,8 @@ const CSS = `
 .nav__i.active{color:var(--indigo);background:var(--indigo-soft);font-weight:700}
 .nav__i.active svg{color:var(--indigo)}
 .nav__i.disabled{opacity:.45;pointer-events:none}
+/* Unvoted-floor-measure indicator on the Legislature item (rail: far right). */
+.nav__dot{margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--red,#C42B2B);flex:none}
 .side__foot{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
 .me{display:flex;align-items:center;gap:10px;padding:8px 10px;color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.06em}
 .me__dot{width:9px;height:9px;border-radius:50%;background:var(--green);flex:none}
@@ -54,7 +59,8 @@ const CSS = `
   .side{display:none}
   .main{padding-bottom:78px}   /* clear the fixed bottom bar (overrides each page's .main) */
   .botnav{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:70;background:var(--surface);border-top:1px solid var(--line);padding:6px 4px;padding-bottom:calc(6px + env(safe-area-inset-bottom));justify-content:space-around;align-items:stretch}
-  .botnav__i{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;min-width:0;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+  .botnav__i{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;min-width:0;color:var(--muted);text-decoration:none;background:none;border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;position:relative}
+  .botnav__dot{position:absolute;top:4px;left:calc(50% + 6px);width:8px;height:8px;border-radius:50%;background:var(--red,#C42B2B)}
   .botnav__i svg{width:22px;height:22px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   .botnav__i .l{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.02em}
   .botnav__i.active{color:var(--indigo)}
@@ -80,14 +86,17 @@ function isActive(path, href) {
   return path === href || path.indexOf(href) === 0;
 }
 
+// The Legislature item carries a hidden red dot, shown by updateLegDot() when the party has a
+// floor measure it hasn't voted on.
+function legDot(it, cls) { return it.href === '/play/legislature/' ? '<span class="' + cls + '" data-legdot hidden></span>' : ''; }
 function railItem(it, path) {
   const cls = 'nav__i' + (isActive(path, it.href) ? ' active' : '') + (it.href ? '' : ' disabled');
   const tag = it.href ? 'a' : 'span';
   const href = it.href ? ' href="' + it.href + '"' : '';
-  return '<' + tag + ' class="' + cls + '"' + href + '>' + svgEl(it.svg) + '<span class="label">' + it.label + '</span></' + tag + '>';
+  return '<' + tag + ' class="' + cls + '"' + href + '>' + svgEl(it.svg) + '<span class="label">' + it.label + '</span>' + legDot(it, 'nav__dot') + '</' + tag + '>';
 }
 function botItem(it, path) {
-  return '<a class="botnav__i' + (isActive(path, it.href) ? ' active' : '') + '" href="' + it.href + '">' + svgEl(it.svg) + '<span class="l">' + it.label + '</span></a>';
+  return '<a class="botnav__i' + (isActive(path, it.href) ? ' active' : '') + '" href="' + it.href + '">' + svgEl(it.svg) + '<span class="l">' + it.label + '</span>' + legDot(it, 'botnav__dot') + '</a>';
 }
 function moreRow(it, path) {
   const cls = 'msi' + (isActive(path, it.href) ? ' active' : '') + (it.href ? '' : ' disabled');
@@ -140,4 +149,20 @@ export function mountSidenav() {
     sheetEl.addEventListener('click', function (e) { if (e.target === sheetEl) close(); });
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheetEl.hidden) close(); });
   }
+
+  updateLegDot();   // reveal the Legislature dot if there's a floor measure this party hasn't voted on
+}
+
+// Non-fatal: a failure (or no session) just leaves the dot hidden. Runs once per page mount.
+async function updateLegDot() {
+  if (!isConfigured) return;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: party } = await supabase.from('parties').select('id, nation_id').eq('user_id', user.id).maybeSingle();
+    if (!party) return;
+    if (await hasUnvotedFloorMeasure(party.nation_id, party.id)) {
+      document.querySelectorAll('[data-legdot]').forEach(function (el) { el.hidden = false; });
+    }
+  } catch (e) { /* leave the dot hidden */ }
 }
