@@ -100,7 +100,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, fmtPop, declaredValue, tickToDate } from '/util.js';
+  import { esc, fmtPop, fmtGdp, declaredValue, tickToDate } from '/util.js';
   import { regimeText } from '/ladders.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
@@ -234,6 +234,7 @@
         '<div class="facts">' +
           frow('Official Nation Name', esc(declValue('formal_state_name'))) +
           frow('Demonym', esc(declValue('demonym'))) +
+          frow('GDP', (eco.currency || '$') + fmtGdp(nation.gdp)) +
           frow('Population', fmtPop(nation.population)) +
           frow('Capital', esc(declValue('capital_name'))) +
           frow('Government Type', esc(govType)) +
@@ -282,7 +283,7 @@
       // Which nation to show: ?nation=<id> lets you view any nation; default is your own.
       var viewId = new URLSearchParams(location.search).get('nation') || party.nation_id;
       const { data: nation } = await supabase.from('nations')
-        .select('name, flag, population, economy, production, declarations').eq('id', viewId).maybeSingle();
+        .select('name, flag, population, gdp, economy, production, declarations').eq('id', viewId).maybeSingle();
       if (!nation) { fail('That nation could not be found.'); return; }
       const { data: slots } = await supabase.from('declarations').select('slug, label, options, default_index, custom_allowed, grp, sort_order').order('sort_order').order('created_at');
       // Cities roster (non-fatal: if the table isn't migrated yet, the Cities panel shows its
