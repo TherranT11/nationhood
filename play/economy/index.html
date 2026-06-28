@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Economy · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;--amber:#E0820E;--amber-soft:#FBF0DD;
+    --red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--navy:#2b3a7a;--navy-soft:#E7EAF4;--blue:#1f86d6;
+    --energy:#E0820E;--food:#16915a;--minerals:#8d6e4a;--goods:#5546E8;--services:#1f86d6;--military:#C42B2B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .main{flex:1;padding:24px clamp(16px,4vw,56px) 56px;min-width:0;max-width:1040px}
+  .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--indigo)}
+  h1{font-weight:900;font-size:clamp(24px,3.6vw,32px);letter-spacing:-.03em;margin-top:4px}
+  .treasury{font-family:'Space Mono',monospace;font-size:12.5px;color:var(--muted);margin-top:8px;max-width:74ch}
+  .treasury b{color:var(--ink)}
+
+  .stats{display:flex;flex-wrap:wrap;gap:7px;margin-top:16px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .stat b{display:block;color:var(--ink);font-size:15px;font-weight:700;margin-top:1px}
+
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:15px;margin-top:18px;overflow:hidden}
+  .panel-h{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .panel-h .ph-t{font-weight:800;font-size:15px;letter-spacing:-.01em}
+  .panel-h .ph-t .sub{display:block;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);font-weight:400;margin-top:2px}
+  .ph-when{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--amber);background:var(--amber-soft);border-radius:7px;padding:5px 10px;font-weight:700;letter-spacing:.04em}
+
+  .dem{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .dem:last-child{border-bottom:none}
+  .dem-ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex:none;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:9px}
+  .dem-main{flex:1;min-width:150px}
+  .dem-name{font-weight:800;font-size:13.5px}
+  .dem-formula{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:2px}
+  .dem-have{font-family:'Space Mono',monospace;font-size:11px;text-align:right;min-width:96px}
+  .dem-have .need{color:var(--ink);font-weight:700} .dem-have .got{color:var(--soft)}
+  .dem-have .got.short{color:var(--red);font-weight:700}
+  .dem-conseq{font-family:'Space Mono',monospace;font-size:10px;min-width:118px}
+  .dem-conseq .good{color:var(--green)} .dem-conseq .bad{color:var(--red)}
+  .dem-conseq .lbl{color:var(--soft);display:block;font-size:8.5px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:2px}
+  .dem-act{min-width:150px;display:flex;justify-content:flex-end}
+  .spendbtn{border:1px solid var(--green);background:var(--green-soft);color:var(--green);border-radius:8px;padding:8px 13px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer}
+  .spendbtn:hover{background:var(--green);color:#fff}
+  .paybtn{border:1px solid var(--navy);background:var(--navy-soft);color:var(--navy);border-radius:8px;padding:8px 13px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer}
+  .paybtn:hover{background:var(--navy);color:#fff}
+  .spendbtn:disabled,.paybtn:disabled{opacity:.5;cursor:not-allowed}
+  .lowprompt{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;color:var(--red);text-align:right;line-height:1.35}
+  .settled-badge{font-family:'Space Mono',monospace;font-size:9.5px;font-weight:700;color:var(--green);letter-spacing:.03em}
+  .checkbox{width:26px;height:26px;border-radius:7px;flex:none;display:grid;place-items:center;font-size:14px;font-weight:700;border:1.5px solid}
+  .checkbox.met{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+  .checkbox.unmet{border-color:var(--red);background:var(--red-soft);color:var(--red)}
+
+  .forecast{background:var(--field);padding:13px 18px;border-top:1px solid var(--line)}
+  .fc-h{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-bottom:9px}
+  .fc-chips{display:flex;flex-wrap:wrap;gap:7px}
+  .fc{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;border-radius:7px;padding:5px 10px}
+  .fc.up{color:var(--green);background:var(--green-soft)} .fc.dn{color:var(--red);background:var(--red-soft)}
+
+  .produce{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-top:14px;padding:15px 18px}
+  .produce .pt{font-weight:800;font-size:14px}
+  .produce .pd{font-size:11.5px;color:var(--muted);margin-top:4px;max-width:62ch;line-height:1.5}
+  .produce .pd b{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink)}
+  .prodbtn{background:var(--ink);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+  .prodbtn:hover{filter:brightness(1.15)} .prodbtn:disabled{background:var(--line2);color:var(--soft);cursor:not-allowed}
+
+  .onhand{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .oh{display:flex;align-items:center;gap:6px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:'Space Mono',monospace;font-size:11px}
+  .oh .rd{width:8px;height:8px;border-radius:2px;flex:none} .oh b{font-weight:700;font-size:12px} .oh .rk{color:var(--soft);font-size:9px}
+
+  .note{font-size:12.5px;color:var(--soft);font-style:italic;margin-top:18px;line-height:1.55}
+  .readonly{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);text-align:right;line-height:1.35}
+  .empty{text-align:center;padding:40px 20px;color:var(--soft)}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:120;text-align:center;max-width:90vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff} .toast b.green{color:#7fe0b0} .toast b.red{color:#ff9b9b}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div><!-- left rail / mobile bottom bar, injected by /sidenav.js -->
+
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <span class="eye">Economy · National Accounts</span>
+    <h1>Economy</h1>
+    <p class="treasury">Treasury <b id="treasury">—</b> · Each year the nation owes four demands, settled before <b>June</b>. Spend resources to settle them — top stocks up with the <b>Produce</b> action. Imports and world markets arrive next.</p>
+    <div id="content"><div class="empty">Loading the national accounts…</div></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, economyPeriod, economyNeed } from '/util.js';
+  import { mountTopbar } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+  import { ideologyLabel } from '/archetypes.js';
+
+  mountTopbar();
+  mountSidenav();
+
+  function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
+  var num = function(v){ return Number(v) || 0; };
+  var fmt = function(n){ return (Math.round(num(n) * 10) / 10).toLocaleString(); };
+
+  // The six on-hand resources (for the holdings strip + produce preview).
+  var RESLIST = [
+    { k:'energy', label:'Energy' }, { k:'food', label:'Food' }, { k:'minerals', label:'Minerals' },
+    { k:'goods', label:'Goods' }, { k:'services', label:'Services' }, { k:'military', label:'Military' }
+  ];
+  // The four annual demands. `res` spends on-hand units; `money` pays from the Budget.
+  var DEMANDS = [
+    { k:'food',     label:'Food',            type:'res',   good:'Population +1M', bad:'Order −1',      formula:function(n){ return '1 Food per 50M people (min 1) · pop ' + fmt(n.population) + 'M'; } },
+    { k:'goods',    label:'Goods',           type:'res',   good:'Prosperity held', bad:'Prosperity −1', formula:function(n){ return 'Prosperity ÷ 2 · ' + num((n.stats||{}).prosperity) + ' ÷ 2'; } },
+    { k:'services', label:'Services',        type:'res',   good:'Welfare held',    bad:'Welfare −1',    formula:function(n){ return 'Welfare ÷ 2 · ' + num((n.stats||{}).welfare) + ' ÷ 2'; } },
+    { k:'military', label:'Military upkeep', type:'money', good:'Forces maintained', bad:'Military −1',  formula:function(n){ return 'Military × $1B · ' + fmt((n.on_hand||{}).military) + ' units'; } }
+  ];
+
+  var STATE = null;   // { nation, party, isHog, period, currency }
+
+  function settledFor(res){
+    var d = (STATE.nation.demands) || {};
+    if (num(d.year) !== STATE.period) return false;   // stale/absent window → nothing settled yet
+    return !!d[res];
+  }
+
+  function renderStats(n){
+    var st = n.stats || {}, ec = n.economy || {};
+    var rows = [['Population', fmt(n.population) + 'M'], ['Prosperity', num(st.prosperity)], ['Welfare', num(st.welfare)],
+      ['Order', num(st.order)], ['Growth', num(st.growth)], ['Unemploy.', num(ec.unemployment) + '%'], ['Inflation', num(ec.inflation) + '%']];
+    return '<div class="stats">' + rows.map(function(r){ return '<div class="stat">' + r[0] + '<b>' + r[1] + '</b></div>'; }).join('') + '</div>';
+  }
+
+  function demandRow(d){
+    var n = STATE.nation, cur = STATE.currency;
+    var need = economyNeed(d.k, n);
+    var settled = settledFor(d.k);
+    var have = d.type === 'money' ? num((n.economy || {}).budget) : num((n.on_hand || {})[d.k]);
+    var met = have >= need;
+    var haveTxt = d.type === 'money'
+      ? '<span class="need">need ' + cur + fmt(need) + 'B</span><br><span class="got' + (met ? '' : ' short') + '">treasury ' + cur + fmt(have) + 'B</span>'
+      : '<span class="need">need ' + fmt(need) + '</span><br><span class="got' + (met ? '' : ' short') + '">have ' + fmt(have) + '</span>';
+
+    var act;
+    if (!STATE.isHog) {
+      act = '<span class="readonly">' + (settled ? '✓ settled' : 'not yet settled') + '</span>';
+    } else if (settled) {
+      act = '<span class="settled-badge">✓ Settled</span>';
+    } else if (met) {
+      act = d.type === 'money'
+        ? '<button class="paybtn" data-settle="' + d.k + '">Pay ' + cur + fmt(need) + 'B</button>'
+        : '<button class="spendbtn" data-settle="' + d.k + '">Spend ' + fmt(need) + ' ' + esc(d.label) + '</button>';
+    } else {
+      act = d.type === 'money'
+        ? '<span class="lowprompt">Treasury too low<br>to maintain.</span>'
+        : '<span class="lowprompt">Short — Produce<br>to cover it.</span>';
+    }
+
+    return '<div class="dem">' +
+      '<div class="dem-ic" style="background:var(--' + d.k + ')">' + esc(d.label).slice(0,3).toUpperCase() + '</div>' +
+      '<div class="dem-main"><div class="dem-name">' + esc(d.label) + '</div><div class="dem-formula">' + d.formula(n) + '</div></div>' +
+      '<div class="dem-have">' + haveTxt + '</div>' +
+      '<div class="dem-conseq"><span class="lbl">' + (settled ? 'Outcome' : 'If unmet') + '</span><span class="' + (settled ? 'good' : 'bad') + '">' + (settled ? '✓ ' + esc(d.good) : '✕ ' + esc(d.bad)) + '</span></div>' +
+      '<div class="dem-act">' + act + '</div>' +
+      '<div class="checkbox ' + (settled ? 'met' : 'unmet') + '">' + (settled ? '✓' : '✕') + '</div>' +
+    '</div>';
+  }
+
+  function forecast(){
+    var chips = [];
+    chips.push(settledFor('food')     ? ['up','Population +1M'] : ['dn','Order −1']);
+    chips.push(settledFor('goods')    ? ['up','Prosperity held'] : ['dn','Prosperity −1']);
+    chips.push(settledFor('services') ? ['up','Welfare held']    : ['dn','Welfare −1']);
+    chips.push(settledFor('military') ? ['up','Forces maintained'] : ['dn','Military −1']);
+    return '<div class="forecast"><div class="fc-h">June ' + STATE.period + ' forecast — outcome if the year closes as it stands now</div><div class="fc-chips">' +
+      chips.map(function(c){ return '<span class="fc ' + c[0] + '">' + c[1] + '</span>'; }).join('') + '</div></div>';
+  }
+
+  function produceCard(){
+    var n = STATE.nation, prod = n.production || {}, on = n.on_hand || {};
+    var batch = RESLIST.filter(function(r){ return num(prod[r.k]) > 0; })
+      .map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
+    var strip = RESLIST.map(function(r){
+      return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>';
+    }).join('');
+    var canProduce = STATE.isHog && num(STATE.party.actions_remaining) >= 1;
+    var btn = STATE.isHog
+      ? '<button class="prodbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + (canProduce ? 'Produce · 1 action' : 'No actions left') + '</button>'
+      : '';
+    return '<div class="produce"><div><div class="pt">Produce</div>' +
+      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs 1 party action.</div>' +
+      '<div class="onhand">' + strip + '</div></div>' + btn + '</div>';
+  }
+
+  function render(){
+    var n = STATE.nation;
+    var gate = STATE.isHog ? '' : '<p class="note">Only the head of government settles the national accounts — this is a read-only view for your party.</p>';
+    document.getElementById('content').innerHTML =
+      renderStats(n) +
+      '<div class="panel"><div class="panel-h"><div class="ph-t">Your Nation’s Demands<span class="sub">spend resources to settle each one — or the nation slips</span></div><span class="ph-when">Settled before June</span></div>' +
+        DEMANDS.map(demandRow).join('') + forecast() + '</div>' +
+      produceCard() + gate +
+      '<p class="note">Imports, world-market scarcity tiers and trade agreements arrive in the next slice.</p>';
+
+    document.querySelectorAll('[data-settle]').forEach(function(b){ b.onclick = function(){ settle(b.dataset.settle, b); }; });
+    var pb = document.getElementById('produceBtn'); if (pb) pb.onclick = function(){ produce(pb); };
+  }
+
+  var toast = document.getElementById('toast'), tt;
+  function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 2700); }
+
+  async function reload(){
+    var { data: n } = await supabase.from('nations')
+      .select('id, name, flag, population, stats, economy, on_hand, production, demands')
+      .eq('id', STATE.nation.id).single();
+    if (n) STATE.nation = n;
+    var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
+    if (p) STATE.party.actions_remaining = p.actions_remaining;
+    render();
+  }
+
+  async function settle(res, btn){
+    btn.disabled = true;
+    var { error } = await supabase.rpc('economy_settle', { p_resource: res });
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    ping('Settled the <b class="green">' + esc(res) + '</b> demand.');
+    await reload();
+  }
+  async function produce(btn){
+    btn.disabled = true;
+    var { error } = await supabase.rpc('economy_produce');
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    ping('Production cycle run — <b class="green">stockpiles topped up</b>.');
+    await reload();
+  }
+
+  (async () => {
+    if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
+    const user = await requireUser();
+    if (!user) return;
+    try {
+      const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
+      if (!party) { window.location.replace('/nation-select/'); return; }
+      const { data: nation } = await supabase.from('nations')
+        .select('id, name, flag, population, stats, economy, on_hand, production, demands')
+        .eq('id', party.nation_id).single();
+      const { data: gov } = await supabase.from('governments')
+        .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
+      const { data: gs } = await supabase.from('game_state').select('current_tick').single();
+
+      const nationName = (nation && nation.name) || party.nation_id;
+      document.getElementById('pname').textContent = party.name;
+      document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
+      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
+
+      var cur = ((nation && nation.economy) || {}).currency || '$';
+      document.getElementById('treasury').textContent = (nation && nation.economy && nation.economy.budget != null) ? (cur + nation.economy.budget + 'B') : '—';
+
+      STATE = {
+        nation: nation || { id: party.nation_id },
+        party: party,
+        isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
+        period: economyPeriod((gs && gs.current_tick) || 1),
+        currency: cur
+      };
+      render();
+    } catch (e) {
+      fail('Couldn’t load the economy right now. Refresh to try again.');
+    }
+  })();
+</script>
+</body>
+</html>
