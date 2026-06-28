@@ -160,6 +160,37 @@
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
   .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:140;text-align:center;max-width:90vw}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff} .toast b.green{color:#7fe0b0} .toast b.red{color:#ff9b9b}
+  /* WORLD TRADE LEDGER */
+  .ledger .heads{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px}
+  .ledger .hcard{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 14px;min-width:140px;flex:1}
+  .ledger .hcard .hl{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .ledger .hcard .hv{font-weight:900;font-size:19px;letter-spacing:-.02em;margin-top:3px}
+  .ledger .hcard .hn{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px}
+  .ledger .hcard .hv.green{color:var(--green)} .ledger .hcard .hv.red{color:var(--red)}
+  .ledger .scroll{overflow-x:auto}
+  .ledger table.dt{border-collapse:collapse;width:100%;min-width:760px}
+  .ledger table.dt th,.ledger table.dt td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .ledger table.dt thead th{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--soft);font-weight:700;background:var(--field)}
+  .ledger table.dt thead th.sortable{cursor:pointer;user-select:none} .ledger table.dt thead th.sortable:hover{color:var(--ink)} .ledger table.dt thead th .ar{color:var(--indigo);margin-left:4px}
+  .ledger table.dt tbody tr:hover{background:var(--field)} .ledger table.dt tbody tr.you{box-shadow:inset 3px 0 0 var(--indigo)}
+  .ledger td.num,.ledger th.num{text-align:right;font-family:'Space Mono',monospace}
+  .ledger .nat{display:flex;align-items:center;gap:10px}
+  .ledger .crest{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:10px;flex:none}
+  .ledger .nat .nm{font-weight:800;font-size:13.5px;line-height:1.1} .ledger .nat .ns{font-family:'Space Mono',monospace;font-size:8.5px;color:var(--soft)}
+  .ledger .big{font-family:'Space Mono',monospace;font-weight:700;font-size:13px}
+  .ledger .bal{font-family:'Space Mono',monospace;font-weight:700;font-size:12.5px} .ledger .bal.pos{color:var(--green)} .ledger .bal.neg{color:var(--red)}
+  .ledger .gd{display:inline-flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:11px} .ledger .gd .dot{width:9px;height:9px;border-radius:2px;flex:none} .ledger .gd .pct{color:var(--soft);font-size:9.5px}
+  .ledger .pn{display:inline-flex;align-items:center;gap:8px} .ledger .pn .pdot{width:9px;height:9px;border-radius:50%;flex:none} .ledger .pn .pv{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .ledger .mwrap{padding:14px 18px 18px}
+  .ledger table.mtx{border-collapse:collapse;width:100%;min-width:620px}
+  .ledger table.mtx th,.ledger table.mtx td{padding:9px 8px;text-align:center;font-family:'Space Mono',monospace;font-size:11px;border:1px solid var(--line)}
+  .ledger table.mtx thead th{font-size:9px;color:var(--soft);background:var(--field);font-weight:700}
+  .ledger table.mtx .rh{text-align:left;background:var(--field);font-weight:700;font-size:10px;white-space:nowrap}
+  .ledger table.mtx .mc{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;color:#fff;font-size:9px;font-weight:700;margin-right:7px;vertical-align:middle}
+  .ledger table.mtx td.cell{color:var(--ink);font-weight:700} .ledger table.mtx td.cell.top{outline:2px solid var(--indigo);outline-offset:-2px}
+  .ledger table.mtx td.diag{background:repeating-linear-gradient(45deg,#fff,#fff 5px,var(--field) 5px,var(--field) 10px);color:var(--line2)}
+  .ledger table.mtx .tot,.ledger table.mtx tfoot td{background:var(--field);font-weight:800}
+  .ledger .mhead .mc{margin-right:0}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -345,6 +376,82 @@
     return '<div class="rowlabel">Trading partners — import to cover a shortfall' + pol + '</div>' + blockNote + header + rows;
   }
 
+  // WORLD TRADE LEDGER — year-to-date bilateral flows (schema/116), derived here: per-nation
+  // totals, the export→import matrix, and the headline figures all read from STATE.flows.
+  function shortName(nm){ return (nm || '').split(/\s|&/)[0]; }
+  function tradeLedger(){
+    var nats = STATE.nations, flows = STATE.flows || [], Nn = nats.length;
+    var head = '<div class="rowlabel">World Trade — bilateral flows this year (resets each January)</div>';
+    if (!flows.length || !Nn) {
+      return '<div class="ledger">' + head + '<div class="panel"><div class="wm-foot" style="padding:18px">No trade recorded yet this year. Imports are logged here as they happen.</div></div></div>';
+    }
+    var idx = {}; nats.forEach(function(nn, i){ idx[nn.id] = i; });
+    var EX = nats.map(function(){ return nats.map(function(){ return 0; }); });
+    var byExp = {}, byImp = {};   // nationId → { resource: value }
+    flows.forEach(function(f){
+      var e = idx[f.exporter_id], im = idx[f.importer_id], v = num(f.value);
+      if (e == null || im == null) return;
+      EX[e][im] += v;
+      (byExp[f.exporter_id] = byExp[f.exporter_id] || {})[f.resource] = ((byExp[f.exporter_id] || {})[f.resource] || 0) + v;
+      (byImp[f.importer_id] = byImp[f.importer_id] || {})[f.resource] = ((byImp[f.importer_id] || {})[f.resource] || 0) + v;
+    });
+    function topRes(map){ var b = null, bv = -1; RESLIST.forEach(function(r){ var v = (map || {})[r.k] || 0; if (v > bv) { bv = v; b = r; } }); return (b && bv > 0) ? { label: b.label, k: b.k, v: bv } : null; }
+    var rows = nats.map(function(nn, i){
+      var exp = 0, imp = 0; for (var j = 0; j < Nn; j++){ exp += EX[i][j]; imp += EX[j][i]; }
+      var bestP = -1, bestV = -1; for (var p = 0; p < Nn; p++){ if (p === i) continue; var two = EX[i][p] + EX[p][i]; if (two > bestV){ bestV = two; bestP = p; } }
+      return { i: i, n: nn, exp: exp, imp: imp, bal: exp - imp, turnover: exp + imp, topExp: topRes(byExp[nn.id]), topImp: topRes(byImp[nn.id]), partner: bestP >= 0 ? nats[bestP] : null, partnerV: Math.max(0, bestV) };
+    });
+    // headlines
+    var worldVol = rows.reduce(function(s, r){ return s + r.exp; }, 0);
+    var busiest = rows.slice().sort(function(a, b){ return b.turnover - a.turnover; })[0];
+    var surplus = rows.slice().sort(function(a, b){ return b.bal - a.bal; })[0];
+    var deficit = rows.slice().sort(function(a, b){ return a.bal - b.bal; })[0];
+    var conc = rows.filter(function(r){ return r.turnover > 0; }).sort(function(a, b){ return (b.partnerV / b.turnover) - (a.partnerV / a.turnover); })[0];
+    var H = [
+      { l: 'World Trade Volume', v: STATE.currency + fmt(worldVol) + 'B', n: 'sum of all flows' },
+      { l: 'Busiest Trader', v: esc(shortName(busiest.n.name)), n: STATE.currency + fmt(busiest.turnover) + 'B turnover' },
+      { l: 'Biggest Surplus', v: (surplus.bal >= 0 ? '+' : '−') + STATE.currency + fmt(Math.abs(surplus.bal)) + 'B', n: esc(shortName(surplus.n.name)), c: surplus.bal >= 0 ? 'green' : 'red' },
+      { l: 'Biggest Deficit', v: (deficit.bal < 0 ? '−' : '+') + STATE.currency + fmt(Math.abs(deficit.bal)) + 'B', n: esc(shortName(deficit.n.name)), c: deficit.bal < 0 ? 'red' : 'green' }
+    ];
+    if (conc) H.push({ l: 'Most Dependent', v: esc(shortName(conc.n.name)), n: Math.round(conc.partnerV / conc.turnover * 100) + '% with ' + esc(shortName(conc.partner.name)) });
+    var heads = '<div class="heads">' + H.map(function(h){ return '<div class="hcard"><div class="hl">' + h.l + '</div><div class="hv' + (h.c ? ' ' + h.c : '') + '">' + h.v + '</div><div class="hn">' + h.n + '</div></div>'; }).join('') + '</div>';
+    // sortable nation table
+    var sk = STATE.ledgerSort || 'exp';
+    var srt = rows.slice().sort(function(a, b){ return b[sk] - a[sk]; });
+    function ar(k){ return k === sk ? ' <span class="ar">▼</span>' : ''; }
+    function gd(tg){ return tg ? '<span class="gd"><span class="dot" style="background:var(--' + tg.k + ')"></span>' + tg.label + ' <span class="pct">' + STATE.currency + fmt(tg.v) + 'B</span></span>' : '<span class="pct" style="color:var(--soft)">—</span>'; }
+    var tbody = srt.map(function(r){
+      var pos = r.bal >= 0;
+      return '<tr' + (r.n.id === STATE.nation.id ? ' class="you"' : '') + '>' +
+        '<td><div class="nat"><div class="crest" style="background:' + colorFor(r.n.id) + '">' + esc(crestOf(r.n.name)) + '</div><div><div class="nm">' + esc(r.n.name) + '</div></div></div></td>' +
+        '<td class="num"><span class="big">' + STATE.currency + fmt(r.imp) + 'B</span></td>' +
+        '<td class="num"><span class="big">' + STATE.currency + fmt(r.exp) + 'B</span></td>' +
+        '<td><span class="bal ' + (pos ? 'pos' : 'neg') + '">' + (pos ? '+' : '−') + STATE.currency + fmt(Math.abs(r.bal)) + 'B</span></td>' +
+        '<td>' + gd(r.topImp) + '</td><td>' + gd(r.topExp) + '</td>' +
+        '<td>' + (r.partner && r.partnerV > 0 ? '<span class="pn"><span class="pdot" style="background:' + colorFor(r.partner.id) + '"></span>' + esc(shortName(r.partner.name)) + ' <span class="pv">' + STATE.currency + fmt(r.partnerV) + 'B</span></span>' : '<span class="pv" style="color:var(--soft)">—</span>') + '</td></tr>';
+    }).join('');
+    var table = '<div class="panel"><div class="panel-h"><div class="ph-t">By Nation<span class="sub">click a column to sort</span></div></div><div class="scroll"><table class="dt"><thead><tr>' +
+      '<th>Nation</th><th class="num sortable" data-lsort="imp">Total Imports' + ar('imp') + '</th><th class="num sortable" data-lsort="exp">Total Exports' + ar('exp') + '</th>' +
+      '<th class="sortable" data-lsort="bal">Balance' + ar('bal') + '</th><th>Biggest Import</th><th>Biggest Export</th><th>Largest Partner</th></tr></thead><tbody>' + tbody + '</tbody></table></div></div>';
+    // bilateral matrix (export → import)
+    var maxCell = 0; for (var a = 0; a < Nn; a++) for (var b = 0; b < Nn; b++) if (EX[a][b] > maxCell) maxCell = EX[a][b];
+    var colTot = nats.map(function(_, j){ var s = 0; for (var i = 0; i < Nn; i++) s += EX[i][j]; return s; });
+    var mh = '<thead><tr><th style="text-align:left">From ↓ / To →</th>' + nats.map(function(nn){ return '<th><span class="mc" style="background:' + colorFor(nn.id) + '">' + esc(crestOf(nn.name)) + '</span></th>'; }).join('') + '<th class="tot">Exports</th></tr></thead><tbody>';
+    rows.forEach(function(r, i){
+      mh += '<tr><td class="rh"><span class="mc" style="background:' + colorFor(r.n.id) + '">' + esc(crestOf(r.n.name)) + '</span>' + esc(shortName(r.n.name)) + '</td>';
+      for (var j = 0; j < Nn; j++){
+        if (i === j){ mh += '<td class="diag">—</td>'; continue; }
+        var v = EX[i][j], op = maxCell > 0 ? v / maxCell : 0;
+        var isTop = r.partner && nats[j] && nats[j].id === r.partner.id;
+        mh += '<td class="cell' + (isTop ? ' top' : '') + '" style="background:rgba(85,70,232,' + (v > 0 ? (0.06 + op * 0.62).toFixed(3) : 0) + ');color:' + (op > 0.55 ? '#fff' : 'var(--ink)') + '">' + (v > 0 ? fmt(v) : '·') + '</td>';
+      }
+      mh += '<td class="tot">' + STATE.currency + fmt(r.exp) + 'B</td></tr>';
+    });
+    mh += '</tbody><tfoot><tr><td class="rh">Imports</td>' + colTot.map(function(c){ return '<td>' + STATE.currency + fmt(c) + 'B</td>'; }).join('') + '<td class="tot">' + STATE.currency + fmt(worldVol) + 'B</td></tr></tfoot>';
+    var matrix = '<div class="panel"><div class="panel-h"><div class="ph-t">Bilateral Flows<span class="sub">rows export to columns · ' + STATE.currency + 'B</span></div></div><div class="mwrap scroll"><table class="mtx">' + mh + '</table></div></div>';
+    return '<div class="ledger">' + head + heads + table + matrix + '</div>';
+  }
+
   function render(){
     var n = STATE.nation;
     var notes = [];
@@ -357,13 +464,15 @@
         DEMANDS.map(demandRow).join('') + forecast() + '</div>' +
       developCards() +
       worldMarkets() +
-      partners() + gate;
+      partners() + gate +
+      tradeLedger();
 
     document.querySelectorAll('[data-settle]').forEach(function(b){ b.onclick = function(){ settle(b.dataset.settle, b); }; });
     var pb = document.getElementById('produceBtn'); if (pb) pb.onclick = function(){ produce(pb); };
     var ab = document.getElementById('advanceBtn'); if (ab) ab.onclick = function(){ advance(ab); };
     document.querySelectorAll('[data-import]').forEach(function(b){ b.onclick = function(){ openImport(b.dataset.import); }; });
     document.querySelectorAll('[data-sort]').forEach(function(b){ b.onclick = function(){ STATE.sortKey = b.dataset.sort; render(); }; });
+    document.querySelectorAll('[data-lsort]').forEach(function(b){ b.onclick = function(){ STATE.ledgerSort = b.dataset.lsort; render(); }; });
   }
 
   var toast = document.getElementById('toast'), tt;
@@ -381,6 +490,8 @@
       }
       var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
       if (p) STATE.party.actions_remaining = p.actions_remaining;
+      var { data: fl } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');
+      if (fl) STATE.flows = fl;
       var ec = STATE.nation.economy || {};
       document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
     } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
@@ -483,6 +594,7 @@
       const { data: gs } = await supabase.from('game_state').select('current_tick').single();
       const { data: tradeMin } = await supabase.rpc('is_trade_minister');   // does my party hold Trade?
       const { data: tp } = await supabase.rpc('nation_trade_policy', { p_nation: party.nation_id });   // in-force trade rung
+      const { data: flows } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');   // World Trade ledger
 
       const nationName = nation.name || party.nation_id;
       document.getElementById('pname').textContent = party.name;
@@ -497,7 +609,8 @@
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
         isTradeMin: tradeMin === true,
         trade: tp || { importMult: 1, tariff: 0, blocked: false, name: 'Managed Trade' },
-        period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name'
+        flows: flows || [],
+        period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name', ledgerSort: 'exp'
       };
       render();
     } catch (e) {
