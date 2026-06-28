@@ -58,8 +58,8 @@ begin
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'party',
-            v_mname || ' of the ' || public._bare_party(v_p.name) || ' has announced they are standing for ' || v_leg
-            || ' against ' || v_oppname || ' of the ' || public._bare_party(v_riv.name) || '.',
+            v_mname || ' announces their run for ' || v_leg || ' against ' || v_oppname || ' of the '
+            || public._bare_party(v_riv.name) || '. Pundits across the nation are saying it will be a hotly contested race.',
             public.current_game_date());
 
   return jsonb_build_object('opponent', v_riv.name, 'resolve_tick', v_resolve,
