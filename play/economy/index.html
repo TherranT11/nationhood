@@ -75,7 +75,7 @@
   .actcard .pd{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5;flex:1}
   .actcard .pd b{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink)}
   .actcard .cost{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:9px}
-  .actbtn{margin-top:11px;background:var(--ink);color:#fff;border:none;border-radius:9px;padding:11px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+  .actbtn{margin-top:11px;background:var(--ink);color:var(--bg);border:none;border-radius:9px;padding:11px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
   .actbtn:hover{filter:brightness(1.15)} .actbtn:disabled{background:var(--line2);color:var(--soft);cursor:not-allowed}
   .actcard.done .actbtn{background:var(--green)}
   .onhand{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
@@ -112,7 +112,7 @@
   .rpill{display:flex;align-items:center;gap:5px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:13px;min-width:0}
   .rpill .rd{width:9px;height:9px;border-radius:2px;flex:none} .rpill b{font-weight:700;font-size:14px} .rpill .rk{color:var(--soft);font-size:11px;overflow:hidden;text-overflow:ellipsis}
   .nact{display:flex;gap:7px;justify-content:flex-end;width:92px;flex:0 0 92px}
-  .tbtn{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:9px 15px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
+  .tbtn{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:9px 15px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
   .tbtn:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
   /* sortable column header — aligns to the same 6-col grid as the pills */
   .thead{display:flex;align-items:center;gap:16px;padding:2px 16px 8px}
@@ -132,7 +132,7 @@
   .tm-mode{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}
   .tm-title{font-weight:900;font-size:19px;margin-top:3px}
   .tm-sub{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:3px}
-  .tclose{position:absolute;top:15px;right:15px;width:28px;height:28px;border:1px solid var(--line2);background:#fff;border-radius:8px;cursor:pointer;color:var(--muted);font-size:14px}
+  .tclose{position:absolute;top:15px;right:15px;width:28px;height:28px;border:1px solid var(--line2);background:var(--surface);border-radius:8px;cursor:pointer;color:var(--muted);font-size:14px}
   .tm-body{padding:16px 20px 20px}
   .tlabel{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:0 0 8px}
   .reschips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
@@ -141,7 +141,7 @@
   .rchip.out{opacity:.4;cursor:not-allowed}
   .rchip .rd{width:8px;height:8px;border-radius:2px}
   .qty{display:flex;align-items:center;gap:13px;margin-bottom:16px}
-  .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:#fff}
+  .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:var(--surface)}
   .stepper button{width:34px;height:36px;border:none;background:transparent;font-size:17px;color:var(--muted);cursor:pointer}
   .stepper button:hover{background:var(--chip);color:var(--ink)} .stepper button:disabled{color:var(--line2);cursor:not-allowed}
   .stepper .v{min-width:48px;text-align:center;font-family:'Space Mono',monospace;font-weight:700;font-size:15px}
@@ -152,13 +152,13 @@
   .deal .total{border-top:1px solid var(--line2);margin-top:5px;padding-top:9px;font-size:14px}
   .deal .total .dv{color:var(--green)}
   .deal .relnote{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:6px;padding-top:8px;border-top:1px solid var(--line);line-height:1.5}
-  .confirm{width:100%;background:var(--ink);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+  .confirm{width:100%;background:var(--ink);color:var(--bg);border:none;border-radius:10px;padding:13px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer}
   .confirm:disabled{background:var(--line2);color:var(--soft);cursor:not-allowed}
 
   .note{font-size:12.5px;color:var(--soft);font-style:italic;margin-top:18px;line-height:1.55}
   .readonly{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);text-align:right;line-height:1.35}
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:140;text-align:center;max-width:90vw}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:140;text-align:center;max-width:90vw}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff} .toast b.green{color:#7fe0b0} .toast b.red{color:#ff9b9b}
   /* WORLD TRADE LEDGER */
   .ledger .heads{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px}
@@ -188,7 +188,7 @@
   .ledger table.mtx .rh{text-align:left;background:var(--field);font-weight:700;font-size:10px;white-space:nowrap}
   .ledger table.mtx .mc{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;color:#fff;font-size:9px;font-weight:700;margin-right:7px;vertical-align:middle}
   .ledger table.mtx td.cell{color:var(--ink);font-weight:700} .ledger table.mtx td.cell.top{outline:2px solid var(--indigo);outline-offset:-2px}
-  .ledger table.mtx td.diag{background:repeating-linear-gradient(45deg,#fff,#fff 5px,var(--field) 5px,var(--field) 10px);color:var(--line2)}
+  .ledger table.mtx td.diag{background:repeating-linear-gradient(45deg,var(--surface),var(--surface) 5px,var(--field) 5px,var(--field) 10px);color:var(--line2)}
   .ledger table.mtx .tot,.ledger table.mtx tfoot td{background:var(--field);font-weight:800}
   .ledger .mhead .mc{margin-right:0}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}

@@ -2427,7 +2427,7 @@
             '<label>Tariff %<input class="tp-tariff" type="number" step="1" data-r="'+ri+'" value="'+s.tariff+'"></label>'+
             '<label class="tpchk"><input type="checkbox" class="tp-blocked" data-r="'+ri+'"'+(s.blocked?' checked':'')+'> Imports blocked (Autarky)</label>'+
           '</div>'+
-          '<div class="tpefflbl">Per-tick effects while enacted</div><div class="tpeff">'+tpEffRows(ri)+'</div>'+
+          '<div class="tpefflbl">One-time effect when enacted</div><div class="tpeff">'+tpEffRows(ri)+'</div>'+
         '</div>';
       }).join('') + '<button class="btn btn-ghost" id="tpAddRung" type="button">+ rung</button>';
       wireTradeEditor();
@@ -2446,12 +2446,12 @@
       box.querySelectorAll('.tp-ev').forEach(function(el){ el.oninput=function(){ TP.spectrum[+el.dataset.r].effects[+el.dataset.e].v=parseFloat(el.value)||0; }; });
       box.querySelectorAll('.tp-esc').forEach(function(el){ el.onchange=function(){ TP.spectrum[+el.dataset.r].effects[+el.dataset.e].scale=el.value; }; });
       box.querySelectorAll('.tp-erx').forEach(function(el){ el.onclick=function(){ TP.spectrum[+el.dataset.r].effects.splice(+el.dataset.e,1); renderTradeEditor(); }; });
-      box.querySelectorAll('.tp-addeff').forEach(function(el){ el.onclick=function(){ TP.spectrum[+el.dataset.r].effects.push({t:'Prosperity',v:0,cad:'tick',dur:0}); renderTradeEditor(); }; });
+      box.querySelectorAll('.tp-addeff').forEach(function(el){ el.onclick=function(){ TP.spectrum[+el.dataset.r].effects.push({t:'Prosperity',v:0,cad:'once'}); renderTradeEditor(); }; });
     }
     async function saveTradePolicy(){
       if (tpSaving) return; tpSaving=true;
       try{
-        TP.spectrum.forEach(function(s){ s.effects=(s.effects||[]).filter(function(e){ return e.t; }).map(function(e){ var o={t:e.t,v:Number(e.v)||0,cad:'tick',dur:0}; if(isMoneyTarget(e.t))o.scale=e.scale||'pop'; return o; }); });
+        TP.spectrum.forEach(function(s){ s.effects=(s.effects||[]).filter(function(e){ return e.t; }).map(function(e){ var o={t:e.t,v:Number(e.v)||0,cad:'once'}; if(isMoneyTarget(e.t))o.scale=e.scale||'pop'; return o; }); });
         if (tpId){ const { error } = await supabase.from('policies').update({ definition: TP }).eq('id', tpId); if(error)throw error; }
         else { const { data, error } = await supabase.from('policies').insert({ definition: TP }).select('id').single(); if(error)throw error; tpId=data.id; }
         setTpNote('Trade Policy saved.', 'ok');
