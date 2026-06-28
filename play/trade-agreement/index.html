@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="/theme.js"></script>
+<title>Trade Agreements · Nationhood</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FBFAF8;--surface:#FFFFFF;--ink:#15151B;--muted:#5b5b63;--soft:#8d8d95;
+    --line:#E7E5E0;--line2:#D9D6D0;--chip:#F4F3EF;--field:#FCFBF9;
+    --indigo:#5546E8;--indigo-soft:#ECE9FD;--amber:#E0820E;--amber-soft:#FBF0DD;--red:#C42B2B;--red-soft:#FBEAE9;--green:#16915a;--green-soft:#E5F4EC;--navy:#2b3a7a;--navy-soft:#E7EAF4;--blue:#1f86d6;
+    --energy:#E0820E;--food:#16915a;--minerals:#8d6e4a;--goods:#5546E8;--services:#1f86d6;--military:#C42B2B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Archivo',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh}
+  .main{flex:1;padding:24px clamp(16px,3vw,40px) 60px;min-width:0;max-width:1040px}
+  .eye{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--indigo)}
+  h1{font-weight:900;font-size:clamp(22px,3.4vw,30px);letter-spacing:-.03em;margin-top:4px}
+  .lede{color:var(--muted);font-size:12.5px;margin-top:7px;max-width:70ch}
+  .note{color:var(--muted);font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:18px}
+
+  .grp{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:16px}
+  .grp-h{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .grp-h .n{width:18px;height:18px;border-radius:50%;background:var(--indigo-soft);color:var(--indigo);display:grid;place-items:center;font-size:10px;font-weight:700}
+  .empty{color:var(--soft);font-style:italic;font-size:13px;padding:4px 0}
+
+  /* agreement list */
+  .alist{display:flex;flex-direction:column;gap:8px}
+  .arow{display:flex;align-items:center;gap:12px;border:1px solid var(--line2);background:var(--field);border-radius:11px;padding:11px 13px;cursor:pointer;text-align:left;width:100%}
+  .arow:hover{border-color:var(--indigo)} .arow.on{border-color:var(--indigo);background:var(--indigo-soft);box-shadow:0 0 0 1px var(--indigo)}
+  .arow .ac{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:10px;flex:none}
+  .arow .at{flex:1;min-width:0}
+  .arow .at b{font-weight:800;font-size:13px;display:block}
+  .arow .at span{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);letter-spacing:.02em}
+  .badge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:6px;padding:5px 8px;white-space:nowrap;flex:none}
+  .badge.neg{color:var(--amber);background:var(--amber-soft)} .badge.act{color:var(--green);background:var(--green-soft)} .badge.dead{color:var(--soft);background:var(--chip)}
+
+  .partners{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  @media(max-width:640px){.partners{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:420px){.partners{grid-template-columns:1fr}}
+  .pcard{border:1px solid var(--line2);background:var(--field);border-radius:11px;padding:10px 11px;cursor:pointer;display:flex;align-items:center;gap:9px}
+  .pcard:hover{border-color:var(--indigo)} .pcard.on{border-color:var(--indigo);background:var(--indigo-soft);box-shadow:0 0 0 1px var(--indigo)}
+  .pc-crest{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:9px;flex:none}
+  .pc-name{font-weight:800;font-size:12.5px;line-height:1.15;min-width:0}
+
+  .layout{display:grid;grid-template-columns:1fr 340px;gap:18px;align-items:start}
+  @media(max-width:940px){.layout{grid-template-columns:1fr}}
+
+  .reschips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
+  .rchip{border:1px solid var(--line2);background:var(--field);border-radius:9px;padding:8px 11px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;display:flex;align-items:center;gap:6px;color:var(--muted)}
+  .rchip.on{border-color:var(--indigo);background:var(--indigo-soft);color:var(--indigo);font-weight:700}
+  .rchip.ro{cursor:default;opacity:.85} .rchip.ro:not(.on){display:none}
+  .rchip .rd{width:8px;height:8px;border-radius:2px;flex:none}
+
+  .ctrl{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:13px}
+  .ctrl:last-child{margin-bottom:0}
+  .ctrl.res-ctrl{flex-direction:column;align-items:stretch}
+  .ctrl.res-ctrl .cl{margin-bottom:10px}
+  .ctrl .cl{font-size:12.5px;font-weight:600} .ctrl .cl .sub{display:block;font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);font-weight:400;margin-top:2px;letter-spacing:.02em}
+  .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:var(--surface)}
+  .stepper button{width:32px;height:36px;border:none;background:transparent;font-size:16px;color:var(--muted);cursor:pointer}
+  .stepper button:hover{background:var(--chip);color:var(--ink)} .stepper button:disabled{color:var(--line2);cursor:not-allowed}
+  .stepper .v{min-width:66px;text-align:center;font-family:'Space Mono',monospace;font-weight:700;font-size:14px}
+  .ro-val{font-family:'Space Mono',monospace;font-weight:700;font-size:14px}
+
+  .disc{border:1px dashed var(--line2);border-radius:11px;padding:13px 15px;background:var(--field)}
+  .disc-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px}
+  .disc-top .dl{font-size:12.5px;font-weight:600}
+  .disc-top .dv{font-family:'Space Mono',monospace;font-weight:700;font-size:22px;color:var(--indigo)}
+  .discsteps{display:flex;gap:4px;flex-wrap:wrap}
+  .ds{flex:1;min-width:30px;height:30px;border:1px solid var(--line2);background:var(--surface);border-radius:7px;cursor:pointer;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--soft);display:grid;place-items:center}
+  .ds:hover{border-color:var(--indigo)} .ds.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+
+  .actrow{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line2);background:var(--surface);border-radius:10px;padding:11px 14px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.03em;cursor:pointer;color:var(--muted)}
+  .btn:hover{border-color:var(--indigo);color:var(--indigo)} .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)} .btn.primary:disabled{background:var(--line2);color:var(--soft);border-color:var(--line2)}
+  .btn.danger:hover{border-color:var(--red);color:var(--red)}
+
+  /* approvals */
+  .appr{display:flex;align-items:center;gap:7px;margin-top:13px;flex-wrap:wrap}
+  .appr .al{font-family:'Space Mono',monospace;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin-right:1px}
+  .atog{display:flex;align-items:center;gap:7px;border:1px solid var(--line2);background:var(--surface);border-radius:20px;padding:4px 11px 4px 5px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--muted);user-select:none}
+  .atog.mine{cursor:pointer} .atog.mine:hover{border-color:var(--indigo)}
+  .atog .ac{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:8px;font-weight:700;flex:none}
+  .atog .ax{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-size:9px;color:transparent;flex:none}
+  .atog.ok{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+  .atog.ok .ax{border-color:var(--green);background:var(--green);color:#fff}
+
+  .rail{position:sticky;top:16px}
+  .deal{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .deal-h{padding:14px 16px;border-bottom:1px solid var(--line)}
+  .deal-h .dk{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft)}
+  .deal-h .dt2{font-weight:900;font-size:16px;margin-top:4px;letter-spacing:-.01em}
+  .deal-body{padding:4px 16px}
+  .drow{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .drow:last-child{border-bottom:none}
+  .drow .pk{color:var(--soft);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.02em}
+  .drow .pv{font-weight:700;font-family:'Space Mono',monospace;font-size:12.5px;text-align:right}
+  .pv.strike{color:var(--soft);text-decoration:line-through;font-weight:400}
+  .pv.disc{color:var(--indigo)} .pv.save{color:var(--green)}
+  .drow.total{background:var(--field);margin:0 -16px;padding:11px 16px;border-bottom:none}
+  .drow.total .pk{color:var(--ink);font-weight:700;text-transform:none;font-size:12px}
+  .drow.total .pv{font-size:15px;color:var(--ink)}
+  .lockline{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);padding:10px 16px 14px;line-height:1.5}
+
+  /* chat */
+  .chat{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:16px}
+  .chat-h{padding:11px 14px;border-bottom:1px solid var(--line);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+  .chat-body{padding:12px 13px;display:flex;flex-direction:column;gap:7px;max-height:240px;overflow-y:auto;background:var(--field)}
+  .msg{max-width:84%;padding:8px 11px;border-radius:13px;font-size:12px;line-height:1.45}
+  .msg .nm{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.06em;text-transform:uppercase;opacity:.6;display:block;margin-bottom:2px}
+  .msg.them{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px;color:var(--ink)}
+  .msg.you{align-self:flex-end;background:var(--indigo);color:#fff;border-bottom-right-radius:4px}
+  .msg.you .nm{opacity:.75}
+  .chat-empty{align-self:center;color:var(--soft);font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;padding:8px 0}
+  .chat-in{display:flex;gap:8px;padding:10px 13px;border-top:1px solid var(--line)}
+  .chat-in input{flex:1;min-width:0;border:1px solid var(--line2);border-radius:10px;padding:9px 12px;font-family:'Archivo',sans-serif;font-size:12.5px;background:var(--field);color:var(--ink);outline:none}
+  .chat-in input:focus{border-color:var(--indigo)}
+  .chat-in button{border:none;background:var(--ink);color:var(--bg);border-radius:10px;padding:0 15px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;flex:none}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:var(--bg);font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:120;text-align:center;max-width:90vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff} .toast b.green{color:#7fe0b0} .toast b.red{color:#ff9b9b}
+  @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div id="sidenav"></div>
+  <main class="main">
+    <div class="topbar" id="topbar"></div>
+    <span class="eye">Trade · Long-term agreements</span>
+    <h1>Trade Agreements</h1>
+    <p class="lede">Lock in a recurring purchase from another nation over a set term. Set the terms, both trade ministers sign off, then commit — the unit price freezes at today’s world rate less the discount for the life of the deal.</p>
+    <div id="content"><div class="empty">Loading…</div></div>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+  import { supabase, isConfigured, requireUser } from '/supabase.js';
+  import { esc, worldPrice } from '/util.js';
+  import { mountTopbar } from '/topbar.js';
+  import { mountSidenav } from '/sidenav.js';
+
+  mountTopbar();
+  mountSidenav();
+
+  var RES = [
+    { k:'energy', label:'Energy' }, { k:'food', label:'Food' }, { k:'minerals', label:'Minerals' },
+    { k:'goods', label:'Goods' }, { k:'services', label:'Services' }, { k:'military', label:'Military' }
+  ];
+  var num = function(v){ return Number(v) || 0; };
+  function crestOf(name){ return (name || '··').replace(/[^A-Za-z ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase() || '··'; }
+  var palette = ['#2b3a7a','#C42B2B','#16915a','#E0820E','#1f86d6','#5546E8','#8d6e4a','#a01010'];
+  function colorFor(id){ var h=0; (id||'').split('').forEach(function(c){h=(h*31+c.charCodeAt(0))>>>0;}); return palette[h % palette.length]; }
+  function shortName(nm){ return (nm || '').split(/\s|&/)[0]; }
+  function resLabel(k){ var r = RES.filter(function(x){ return x.k === k; })[0]; return r ? r.label : k; }
+
+  var S = { party:null, nationId:null, isTM:false, nations:[], byId:{}, agreements:[], sel:null, msgs:[], draft:null, edit:null, busy:false };
+
+  function fail(msg){ document.getElementById('content').innerHTML = '<div class="note">' + msg + '</div>'; }
+  function nameOf(id){ var n = S.byId[id]; return (n && n.name) || id; }
+  function otherNation(a){ return a.buyer_nation === S.nationId ? a.seller_nation : a.buyer_nation; }
+  function imBuyer(a){ return a.buyer_nation === S.nationId; }
+
+  /* ---- pricing (mirrors server _world_price: world rate × (1 − discount)). For a committed
+         deal the unit price is frozen, so pass the locked value rather than the live world rate. ---- */
+  function priceOf(terms, lockedUnit){
+    var unit, world;
+    if (lockedUnit != null){ unit = Math.round(lockedUnit * 100) / 100; world = Math.round(unit / (1 - terms.disc / 100) * 10) / 10; }
+    else { world = worldPrice(terms.resource, S.nations); unit = Math.round(world * (1 - terms.disc / 100) * 100) / 100; }
+    var perYear = Math.round(unit * terms.qty * 100) / 100;
+    var total = Math.round(perYear * terms.years * 10) / 10;
+    var spot = Math.round(world * terms.qty * terms.years * 10) / 10;
+    return { world:world, unit:unit, perYear:perYear, total:total, spot:spot, saved:Math.round((spot - total) * 10) / 10 };
+  }
+
+  /* ===================== render ===================== */
+  function render(){
+    if (!S.isTM){ fail('Only the Minister of Trade can negotiate trade agreements — your party doesn’t hold the Trade portfolio.'); return; }
+    var chatVal = (document.getElementById('chatInput') || {}).value || '';
+    document.getElementById('content').innerHTML = listPanel() + proposePanel() + detailPanel();
+    wire();
+    var ci = document.getElementById('chatInput'); if (ci) ci.value = chatVal;
+  }
+
+  function statusBadge(a){
+    if (a.status === 'negotiating') return '<span class="badge neg">Negotiating</span>';
+    if (a.status === 'active') return '<span class="badge act">Active</span>';
+    return '<span class="badge dead">' + esc(a.status) + '</span>';
+  }
+  function termsLine(a){ return a.qty_per_year + ' ' + resLabel(a.resource) + '/yr · ' + a.term_years + ' yr' + (a.term_years > 1 ? 's' : '') + ' · −' + a.discount_pct + '%'; }
+
+  function listPanel(){
+    var live = S.agreements.filter(function(a){ return a.status === 'negotiating' || a.status === 'active'; });
+    var rows = live.map(function(a){
+      var other = otherNation(a), role = imBuyer(a) ? 'You proposed' : 'Proposed to you';
+      return '<button class="arow' + (S.sel === a.id ? ' on' : '') + '" data-open="' + esc(a.id) + '">' +
+        '<div class="ac" style="background:' + colorFor(other) + '">' + esc(crestOf(nameOf(other))) + '</div>' +
+        '<div class="at"><b>' + esc(nameOf(other)) + '</b><span>' + role + ' · ' + esc(termsLine(a)) + '</span></div>' +
+        statusBadge(a) + '</button>';
+    }).join('');
+    return '<div class="grp"><div class="grp-h">Your agreements</div>' +
+      (rows ? '<div class="alist">' + rows + '</div>' : '<div class="empty">No agreements yet. Propose one below.</div>') + '</div>';
+  }
+
+  function proposePanel(){
+    var others = S.nations.filter(function(n){ return n.id !== S.nationId; });
+    var cards = others.map(function(n){
+      return '<div class="pcard' + (S.draft && S.draft.partner === n.id ? ' on' : '') + '" data-partner="' + esc(n.id) + '">' +
+        '<div class="pc-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div>' +
+        '<div class="pc-name">' + esc(n.name) + '</div></div>';
+    }).join('');
+    var head = '<div class="grp-h"><span class="n">+</span> Propose a new agreement</div>';
+    if (!others.length) return '<div class="grp">' + head + '<div class="empty">No other nations to trade with.</div></div>';
+    var body = '<div class="partners">' + cards + '</div>';
+    if (S.draft){
+      var t = S.draft;
+      body += '<div class="layout" style="margin-top:14px">' +
+        '<div>' + editor(t, true) + '</div>' +
+        '<aside class="rail">' + dealCard(t, nameOf(t.partner), null) +
+          '<div class="actrow"><button class="btn primary" id="proposeBtn">Propose to ' + esc(shortName(nameOf(t.partner))) + '</button>' +
+          '<button class="btn" id="draftCancel">Clear</button></div></aside></div>';
+    }
+    return '<div class="grp">' + head + body + '</div>';
+  }
+
+  function detailPanel(){
+    if (!S.sel) return '';
+    var a = S.agreements.filter(function(x){ return x.id === S.sel; })[0];
+    if (!a) return '';
+    var buyer = imBuyer(a), editable = buyer && a.status === 'negotiating';
+    var t = editable ? S.edit : { resource:a.resource, qty:a.qty_per_year, years:a.term_years, disc:a.discount_pct };
+    var head = '<div class="grp-h">' + (buyer ? 'Your proposal to ' : 'Proposal from ') + esc(shortName(nameOf(otherNation(a)))) + ' ' + statusBadge(a) + '</div>';
+    var left = editor(t, editable) + approvals(a) + actions(a, editable, t);
+    var right = '<aside class="rail">' + dealCard(t, nameOf(otherNation(a)), a.status === 'active' ? a.unit_price : null) + chatBox(a) + '</aside>';
+    return '<div class="grp" id="detail">' + head + '<div class="layout"><div>' + left + '</div>' + right + '</div></div>';
+  }
+
+  /* ---- shared editor (resource / qty / term / discount) ---- */
+  function editor(t, editable){
+    var chips = RES.map(function(r){
+      return '<div class="rchip' + (t.resource === r.k ? ' on' : '') + (editable ? '' : ' ro') + '" data-res="' + r.k + '">' +
+        '<span class="rd" style="background:var(--' + r.k + ')"></span>' + r.label + '</div>';
+    }).join('');
+    var qtyCtl = editable
+      ? '<div class="stepper"><button data-step="qty:-1">−</button><span class="v">' + t.qty + ' /yr</span><button data-step="qty:1">+</button></div>'
+      : '<span class="ro-val">' + t.qty + ' /yr</span>';
+    var yrCtl = editable
+      ? '<div class="stepper"><button data-step="years:-1">−</button><span class="v">' + t.years + ' yr' + (t.years > 1 ? 's' : '') + '</span><button data-step="years:1">+</button></div>'
+      : '<span class="ro-val">' + t.years + ' yr' + (t.years > 1 ? 's' : '') + '</span>';
+    var discSteps = '';
+    for (var d = 0; d <= 50; d += 5) discSteps += '<div class="ds' + (t.disc === d ? ' on' : '') + '" ' + (editable ? 'data-disc="' + d + '"' : '') + '>' + d + '</div>';
+    return '<div class="ctrl res-ctrl"><div class="cl">Resource</div><div class="reschips">' + chips + '</div></div>' +
+      '<div class="ctrl"><div class="cl">Quantity per year<span class="sub">units bought each year</span></div>' + qtyCtl + '</div>' +
+      '<div class="ctrl"><div class="cl">Term length<span class="sub">how long you commit</span></div>' + yrCtl + '</div>' +
+      '<div class="disc" style="margin-top:4px"><div class="disc-top"><div class="dl">Volume discount</div><div class="dv">' + t.disc + '%</div></div>' +
+        '<div class="discsteps">' + discSteps + '</div></div>';
+  }
+
+  function dealCard(t, partnerName, lockedUnit){
+    var p = priceOf(t, lockedUnit), locked = lockedUnit != null;
+    return '<div class="deal"><div class="deal-h"><div class="dk">' + (locked ? 'Agreement in force' : 'Proposed agreement') + '</div>' +
+      '<div class="dt2">' + t.qty + ' ' + resLabel(t.resource) + '/yr from ' + esc(shortName(partnerName)) + '</div></div>' +
+      '<div class="deal-body">' +
+        '<div class="drow"><span class="pk">World rate</span><span class="pv strike">$' + p.world.toFixed(1) + 'B / unit</span></div>' +
+        '<div class="drow"><span class="pk">Discount</span><span class="pv disc">−' + t.disc + '%</span></div>' +
+        '<div class="drow"><span class="pk">Agreed price</span><span class="pv">$' + p.unit.toFixed(2) + 'B / unit</span></div>' +
+        '<div class="drow"><span class="pk">Per year (' + t.qty + ')</span><span class="pv">$' + p.perYear.toFixed(2) + 'B</span></div>' +
+        '<div class="drow"><span class="pk">vs world rate</span><span class="pv save">saves $' + p.saved.toFixed(1) + 'B</span></div>' +
+        '<div class="drow total"><span class="pk">Total over term</span><span class="pv">$' + p.total.toFixed(1) + 'B</span></div>' +
+      '</div><div class="lockline">' + (locked ? 'Price locked for the term at $' + p.unit.toFixed(2) + 'B / unit.' : 'The unit price locks at today’s world rate on commit and holds for the whole term.') + '</div></div>';
+  }
+
+  /* ---- dual-minister approvals ---- */
+  function approvals(a){
+    function tog(side){
+      var ok = side === 'buyer' ? a.buyer_approved : a.seller_approved;
+      var mine = (side === 'buyer') === imBuyer(a) && a.status === 'negotiating';
+      var nat = side === 'buyer' ? a.buyer_nation : a.seller_nation;
+      return '<div class="atog' + (ok ? ' ok' : '') + (mine ? ' mine' : '') + '"' + (mine ? ' data-approve="' + (ok ? '0' : '1') + '"' : '') + '>' +
+        '<span class="ac" style="background:' + colorFor(nat) + '">' + esc(crestOf(nameOf(nat))) + '</span>' + esc(shortName(nameOf(nat))) +
+        '<span class="ax">✓</span></div>';
+    }
+    if (a.status !== 'negotiating') return '';
+    return '<div class="appr"><span class="al">Sign-off</span>' + tog('buyer') + tog('seller') + '</div>';
+  }
+
+  function actions(a, editable, t){
+    var btns = [];
+    if (editable){
+      var changed = t.resource !== a.resource || t.qty !== a.qty_per_year || t.years !== a.term_years || t.disc !== a.discount_pct;
+      btns.push('<button class="btn" id="updateBtn"' + (changed ? '' : ' disabled') + '>Update terms</button>');
+    }
+    if (imBuyer(a) && a.status === 'negotiating'){
+      var both = a.buyer_approved && a.seller_approved;
+      btns.push('<button class="btn primary" id="commitBtn"' + (both ? '' : ' disabled') + '>' + (both ? 'Commit · 3 AP' : 'Awaiting sign-off') + '</button>');
+    }
+    if (a.status === 'negotiating' || a.status === 'active') btns.push('<button class="btn danger" id="cancelBtn">Cancel agreement</button>');
+    return '<div class="actrow">' + btns.join('') + '</div>';
+  }
+
+  function chatBox(a){
+    var rows = (S.msgs || []).map(function(m){
+      var mine = m.sender_party_id === S.party.id;
+      return '<div class="msg ' + (mine ? 'you' : 'them') + '"><span class="nm">' + (mine ? 'You' : esc(shortName(nameOf(otherNation(a))))) + '</span>' + esc(m.body) + '</div>';
+    }).join('');
+    return '<div class="chat"><div class="chat-h">Negotiation channel · ' + esc(shortName(nameOf(otherNation(a)))) + '</div>' +
+      '<div class="chat-body" id="chatBody">' + (rows || '<div class="chat-empty">No messages yet</div>') + '</div>' +
+      '<div class="chat-in"><input id="chatInput" type="text" placeholder="Message your counterpart…" autocomplete="off" maxlength="500"><button id="chatSend">Send</button></div></div>';
+  }
+
+  /* ===================== events ===================== */
+  function wire(){
+    document.querySelectorAll('[data-open]').forEach(function(b){ b.onclick = function(){ openDetail(b.dataset.open); }; });
+    document.querySelectorAll('[data-partner]').forEach(function(c){ c.onclick = function(){ startDraft(c.dataset.partner); }; });
+    document.querySelectorAll('[data-res]').forEach(function(c){ if (c.classList.contains('ro')) return; c.onclick = function(){ setTerm('resource', c.dataset.res); }; });
+    document.querySelectorAll('[data-disc]').forEach(function(c){ c.onclick = function(){ setTerm('disc', +c.dataset.disc); }; });
+    document.querySelectorAll('[data-step]').forEach(function(b){ b.onclick = function(){ var p = b.dataset.step.split(':'); stepTerm(p[0], +p[1]); }; });
+    document.querySelectorAll('[data-approve]').forEach(function(b){ b.onclick = function(){ approve(b.dataset.approve === '1'); }; });
+    var ids = { proposeBtn:doPropose, draftCancel:function(){ S.draft = null; render(); }, updateBtn:doUpdate, commitBtn:doCommit, cancelBtn:doCancel, chatSend:doSend };
+    Object.keys(ids).forEach(function(id){ var el = document.getElementById(id); if (el) el.onclick = ids[id]; });
+    var ci = document.getElementById('chatInput'); if (ci) ci.addEventListener('keydown', function(e){ if (e.key === 'Enter') doSend(); });
+  }
+
+  // which terms object is the user editing right now — the draft, or an open negotiating proposal I own
+  function activeTerms(){
+    if (S.draft) return S.draft;
+    if (S.sel){ var a = S.agreements.filter(function(x){ return x.id === S.sel; })[0]; if (a && imBuyer(a) && a.status === 'negotiating') return S.edit; }
+    return null;
+  }
+  function setTerm(key, val){ var t = activeTerms(); if (!t) return; t[key] = val; render(); }
+  function stepTerm(key, delta){
+    var t = activeTerms(); if (!t) return;
+    if (key === 'qty') t.qty = Math.max(1, Math.min(8, t.qty + delta));
+    if (key === 'years') t.years = Math.max(1, Math.min(10, t.years + delta));
+    render();
+  }
+  function startDraft(partner){ S.sel = null; S.draft = { partner:partner, resource:'energy', qty:2, years:5, disc:15 }; render(); }
+  function openDetail(id){
+    S.draft = null; S.sel = id;
+    var a = S.agreements.filter(function(x){ return x.id === id; })[0];
+    S.edit = a ? { resource:a.resource, qty:a.qty_per_year, years:a.term_years, disc:a.discount_pct } : null;
+    S.msgs = [];
+    render();
+    loadMessages(id);
+  }
+
+  /* ===================== rpc actions ===================== */
+  async function run(fn, okMsg){
+    if (S.busy) return null;
+    S.busy = true;
+    try {
+      var r = await fn();
+      if (r && r.error){ ping('<b class="red">' + esc(r.error.message) + '</b>'); return null; }
+      if (okMsg) ping(okMsg);
+      return r ? r.data : null;
+    } catch (e){ ping('<b class="red">Something went wrong. Try again.</b>'); return null; }
+    finally { S.busy = false; }
+  }
+  async function doPropose(){
+    var t = S.draft; if (!t) return;
+    var d = await run(function(){ return supabase.rpc('propose_trade_agreement', { p_seller_nation:t.partner, p_resource:t.resource, p_qty:t.qty, p_years:t.years, p_discount:t.disc }); },
+      'Proposal sent — awaiting their trade minister.');
+    if (!d) return;
+    S.draft = null;
+    await reload();
+    openDetail(d.id);
+  }
+  async function doUpdate(){
+    var a = current(); if (!a) return; var t = S.edit;
+    var d = await run(function(){ return supabase.rpc('update_trade_agreement', { p_id:a.id, p_resource:t.resource, p_qty:t.qty, p_years:t.years, p_discount:t.disc }); },
+      'Terms updated — both ministers must re-approve.');
+    if (d) await reload();
+  }
+  async function approve(yes){
+    var a = current(); if (!a) return;
+    var d = await run(function(){ return supabase.rpc('set_trade_agreement_approval', { p_id:a.id, p_approved:yes }); }, null);
+    if (d) await reload();
+  }
+  async function doCommit(){
+    var a = current(); if (!a) return;
+    var d = await run(function(){ return supabase.rpc('commit_trade_agreement', { p_id:a.id }); }, null);
+    if (d){ ping('<b class="green">Agreement committed</b> — locked at $' + num(d.unit_price).toFixed(2) + 'B / unit.'); await reload(); }
+  }
+  async function doCancel(){
+    var a = current(); if (!a) return;
+    if (!confirm('Cancel this agreement? This can’t be undone.')) return;
+    var d = await run(function(){ return supabase.rpc('cancel_trade_agreement', { p_id:a.id }); }, 'Agreement cancelled.');
+    if (d){ S.sel = null; await reload(); }
+  }
+  async function doSend(){
+    var a = current(); if (!a) return;
+    var inp = document.getElementById('chatInput'), body = (inp.value || '').trim();
+    if (!body) return;
+    inp.value = '';
+    var d = await run(function(){ return supabase.rpc('send_trade_agreement_message', { p_id:a.id, p_body:body }); }, null);
+    if (d) await loadMessages(a.id);
+  }
+  function current(){ return S.agreements.filter(function(x){ return x.id === S.sel; })[0]; }
+
+  /* ===================== data ===================== */
+  async function loadMessages(id){
+    var { data } = await supabase.from('trade_agreement_messages').select('sender_party_id, body, created_at').eq('agreement_id', id).order('created_at');
+    if (S.sel === id){ S.msgs = data || []; render(); var cb = document.getElementById('chatBody'); if (cb) cb.scrollTop = cb.scrollHeight; }
+  }
+  async function reload(){
+    var { data } = await supabase.from('trade_agreements')
+      .select('*').or('buyer_nation.eq.' + S.nationId + ',seller_nation.eq.' + S.nationId).order('created_at', { ascending:false });
+    if (data) S.agreements = data;
+    render();
+  }
+
+  var toast = document.getElementById('toast'), tt;
+  function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 2800); }
+
+  (async () => {
+    if (!isConfigured){ fail('Supabase isn’t configured.'); return; }
+    var user = await requireUser();
+    if (!user) return;
+    try {
+      var { data: party } = await supabase.from('parties').select('id, name, nation_id').eq('user_id', user.id).single();
+      if (!party){ window.location.replace('/nation-select/'); return; }
+      var { data: nations } = await supabase.from('nations')
+        .select('id, name, flag, economy, production, demands, on_hand').eq('dormant', false).order('name');
+      var { data: isTM } = await supabase.rpc('is_trade_minister');
+      S.party = party; S.nationId = party.nation_id; S.isTM = isTM === true;
+      S.nations = nations || []; S.byId = {}; S.nations.forEach(function(n){ S.byId[n.id] = n; });
+      if (S.isTM) await reload(); else render();
+      // Light poll keeps both sides in sync (read-only refresh of deals + the open chat). Skip
+      // while an input is focused so a re-render doesn't yank the field the player is typing in.
+      setInterval(function(){
+        if (S.busy || !S.isTM) return;
+        if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+        reload(); if (S.sel) loadMessages(S.sel);
+      }, 6000);
+    } catch (e){ fail('Couldn’t load trade agreements right now. Refresh to try again.'); }
+  })();
+</script>
+</body>
+</html>
