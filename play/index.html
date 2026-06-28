@@ -254,6 +254,7 @@
     <div id="inviteBanners"></div>
 
     <div id="pmbar"></div>
+    <div id="tradebar"></div>
 
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
@@ -1208,6 +1209,24 @@
     }
   }
 
+  // Minister of Trade bar — shown to a party that holds the Trade portfolio, above the
+  // party actions. The Import card just navigates to the Economy page (where the actual
+  // import, and its 2-AP cost, happens); the "2 AP" pill is informational here.
+  function renderTradeBar(isTradeMin) {
+    var el = document.getElementById('tradebar');
+    if (!el) return;
+    if (!isTradeMin) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="panel leadbar">' +
+      '<div class="glance-hd"><span>Minister of Trade &middot; This Week’s Action</span></div>' +
+      '<p class="leadbar__sub">Your party holds the Trade portfolio. Import resources on the Economy page to cover a shortfall.</p>' +
+      '<div class="leadbar__grid">' +
+        '<button class="lead" type="button" id="trade-import" data-cost="2"><b>Import</b><span class="lead__lane">The Economy</span><span class="lead__desc">Buy resources from another nation.</span></button>' +
+      '</div></section>';
+    el.querySelectorAll('.lead').forEach(stampCost);
+    var b = document.getElementById('trade-import');
+    if (b) b.addEventListener('click', function () { window.location.href = '/play/economy/'; });
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -1289,6 +1308,8 @@
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
         renderPMBar(amPM);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
+        const { data: tmin } = await supabase.rpc('is_trade_minister');   // my party holds Trade → show the Trade bar
+        renderTradeBar(tmin === true);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)

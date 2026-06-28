@@ -335,7 +335,7 @@
       '<div class="a-spacer"></div></div>';
     var rows = others.map(function(n){
       var pills = RESLIST.map(function(r){ return '<span class="rpill"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt((n.on_hand||{})[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
-      var btn = STATE.isHog ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
+      var btn = STATE.isTradeMin ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
       return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div><div class="n-meta"><div class="n-name">' + esc(n.name) + '</div><div class="n-sub">on hand to sell</div></div></div>' +
         '<div class="res">' + pills + '</div><div class="nact">' + btn + '</div></div>';
     }).join('');
@@ -344,7 +344,10 @@
 
   function render(){
     var n = STATE.nation;
-    var gate = STATE.isHog ? '' : '<p class="note">Only the head of government settles the accounts and trades — this is a read-only view for your party.</p>';
+    var notes = [];
+    if (!STATE.isHog) notes.push('Settling, Produce and Advance Society are the Head of Government’s.');
+    if (!STATE.isTradeMin) notes.push('Importing is the Minister of Trade’s — your party doesn’t hold the Trade portfolio.');
+    var gate = notes.length ? '<p class="note">' + notes.join(' ') + '</p>' : '';
     document.getElementById('content').innerHTML =
       renderStats(n) +
       '<div class="panel"><div class="panel-h"><div class="ph-t">Your Nation’s Demands<span class="sub">spend resources to settle each one — or the nation slips</span></div><span class="ph-when">Settled before June</span></div>' +
@@ -431,10 +434,11 @@
       '<div class="drow"><span>World market</span><span class="dv"><span class="tier ' + tier + '">' + TIER_LABEL[tier] + ' ×' + TIER_MULT[tier].toFixed(1) + '</span></span></div>' +
       '<div class="drow"><span>Unit price</span><span class="dv">' + cur + price.toFixed(1) + 'B</span></div>' +
       '<div class="drow total"><span>You pay</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
-      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B. Price = base × world scarcity; it moves only when the world does.</div>';
+      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm. Price = base × world scarcity; it moves only when the world does.</div>';
+    var lowAp = num(STATE.party.actions_remaining) < 2;
     var btn = document.getElementById('confirmBtn');
-    btn.disabled = mx < 1 || total > budget;
-    btn.textContent = mx < 1 ? 'They have none' : (total > budget ? 'Treasury too low' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + total.toFixed(1) + 'B');
+    btn.disabled = mx < 1 || total > budget || lowAp;
+    btn.textContent = mx < 1 ? 'They have none' : (total > budget ? 'Treasury too low' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + total.toFixed(1) + 'B · 2 AP'));
   }
   async function confirmImport(){
     var btn = document.getElementById('confirmBtn'); btn.disabled = true;
@@ -464,6 +468,7 @@
       const { data: gov } = await supabase.from('governments')
         .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
       const { data: gs } = await supabase.from('game_state').select('current_tick').single();
+      const { data: tradeMin } = await supabase.rpc('is_trade_minister');   // does my party hold Trade?
 
       const nationName = nation.name || party.nation_id;
       document.getElementById('pname').textContent = party.name;
@@ -476,6 +481,7 @@
       STATE = {
         nation: nation, party: party, nations: nations || [nation],
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
+        isTradeMin: tradeMin === true,
         period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name'
       };
       render();
