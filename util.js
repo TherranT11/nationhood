@@ -111,6 +111,29 @@ export function economyNeed(resource, nation) {
   }
 }
 
+// WORLD MARKETS — MIRRORS supabase/schema/114. A resource's world price = its base
+// price × a scarcity multiplier, clamped to [$1, $25]. The tier is production ÷ demand
+// for that resource; only Food/Goods/Services have a unit demand, so the rest read
+// Normal. Server is authority (the import RPC recomputes); these render the page.
+export const RESOURCE_BASE = { energy: 5, food: 3, minerals: 3, goods: 5, services: 5, military: 15 };
+export const TIER_MULT  = { glut: 0.7, normal: 1.0, tight: 1.3, scarce: 1.6, crisis: 2.0 };
+export const TIER_LABEL = { glut: 'Glut', normal: 'Normal', tight: 'Tight', scarce: 'Scarce', crisis: 'Crisis' };
+export function worldTier(resource, nations) {
+  if (resource !== 'food' && resource !== 'goods' && resource !== 'services') return 'normal';
+  var prod = 0, dem = 0;
+  (nations || []).forEach(function (n) {
+    prod += Number((n.production || {})[resource]) || 0;
+    dem  += economyNeed(resource, n);
+  });
+  if (dem <= 0) return 'normal';
+  var r = prod / dem;
+  return r < 0.5 ? 'crisis' : r < 0.8 ? 'scarce' : r < 1.1 ? 'tight' : r < 1.6 ? 'normal' : 'glut';
+}
+export function worldPrice(resource, nations) {
+  var base = RESOURCE_BASE[resource] || 0, mult = TIER_MULT[worldTier(resource, nations)] || 1;
+  return Math.max(1, Math.min(25, Math.round(base * mult * 10) / 10));
+}
+
 export function declaredValue(slot, values) {
   var v = values && slot ? values[slot.slug] : null;
   if (v != null && v !== '') return v;

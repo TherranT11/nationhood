@@ -34,6 +34,7 @@
   .panel-h .ph-t{font-weight:800;font-size:15px;letter-spacing:-.01em}
   .panel-h .ph-t .sub{display:block;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);font-weight:400;margin-top:2px}
   .ph-when{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--amber);background:var(--amber-soft);border-radius:7px;padding:5px 10px;font-weight:700;letter-spacing:.04em}
+  .ph-tag{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--indigo);background:var(--indigo-soft);border-radius:7px;padding:5px 10px;font-weight:700;letter-spacing:.04em}
 
   .dem{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
   .dem:last-child{border-bottom:none}
@@ -65,21 +66,88 @@
   .fc{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;border-radius:7px;padding:5px 10px}
   .fc.up{color:var(--green);background:var(--green-soft)} .fc.dn{color:var(--red);background:var(--red-soft)}
 
-  .produce{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-top:14px;padding:15px 18px}
-  .produce .pt{font-weight:800;font-size:14px}
-  .produce .pd{font-size:11.5px;color:var(--muted);margin-top:4px;max-width:62ch;line-height:1.5}
-  .produce .pd b{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink)}
-  .prodbtn{background:var(--ink);color:#fff;border:none;border-radius:9px;padding:11px 18px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
-  .prodbtn:hover{filter:brightness(1.15)} .prodbtn:disabled{background:var(--line2);color:var(--soft);cursor:not-allowed}
-
-  .onhand{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
-  .oh{display:flex;align-items:center;gap:6px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:'Space Mono',monospace;font-size:11px}
+  .develop{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:14px}
+  @media(max-width:640px){.develop{grid-template-columns:1fr}}
+  .actcard{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:15px 18px}
+  .actcard.done{border-color:var(--green);background:var(--green-soft)}
+  .actcard .pt{font-weight:800;font-size:14px}
+  .actcard .pd{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5;flex:1}
+  .actcard .pd b{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink)}
+  .actcard .cost{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:9px}
+  .actbtn{margin-top:11px;background:var(--ink);color:#fff;border:none;border-radius:9px;padding:11px;font-family:'Space Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+  .actbtn:hover{filter:brightness(1.15)} .actbtn:disabled{background:var(--line2);color:var(--soft);cursor:not-allowed}
+  .actcard.done .actbtn{background:var(--green)}
+  .onhand{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .oh{display:flex;align-items:center;gap:6px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:4px 8px;font-family:'Space Mono',monospace;font-size:11px}
   .oh .rd{width:8px;height:8px;border-radius:2px;flex:none} .oh b{font-weight:700;font-size:12px} .oh .rk{color:var(--soft);font-size:9px}
+
+  /* WORLD MARKETS — scarcity tiers */
+  .wm{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;padding:14px 18px}
+  @media(max-width:720px){.wm{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:460px){.wm{grid-template-columns:1fr}}
+  .wmc{border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:var(--field)}
+  .wmc-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .wmc-name{display:flex;align-items:center;gap:7px;font-weight:800;font-size:13px}
+  .wmc-name .rd{width:9px;height:9px;border-radius:2px;flex:none}
+  .wmc-rate{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:8px}
+  .wmc-rate b{color:var(--ink);font-size:13px;font-weight:700}
+  .wmc-rate .basep{color:var(--soft);text-decoration:line-through;margin-left:5px}
+  .tier{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.02em;border-radius:6px;padding:4px 7px;white-space:nowrap}
+  .tier.glut{color:var(--green);background:var(--green-soft)}
+  .tier.normal{color:var(--soft);background:var(--chip)}
+  .tier.tight{color:var(--amber);background:var(--amber-soft)}
+  .tier.scarce{color:var(--red);background:var(--red-soft)}
+  .tier.crisis{color:#fff;background:var(--red)}
+  .wm-foot{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);padding:0 18px 14px;line-height:1.5}
+
+  /* TRADING PARTNERS */
+  .rowlabel{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:22px 0 10px}
+  .nrow{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:13px 16px;margin-bottom:9px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .n-id{display:flex;align-items:center;gap:11px;min-width:170px;flex:0 0 auto}
+  .n-crest{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:11px;flex:none}
+  .n-name{font-weight:800;font-size:14px;line-height:1.15} .n-sub{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:2px;letter-spacing:.02em}
+  .res{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:230px}
+  .rpill{display:flex;align-items:center;gap:5px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:11px}
+  .rpill .rd{width:8px;height:8px;border-radius:2px;flex:none} .rpill b{font-weight:700;font-size:12px} .rpill .rk{color:var(--soft);font-size:9px}
+  .nact{display:flex;gap:7px;flex:0 0 auto}
+  .tbtn{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:9px 15px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
+  .tbtn:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+
+  /* IMPORT MODAL */
+  .overlay{position:fixed;inset:0;background:rgba(20,20,28,.5);backdrop-filter:blur(2px);display:none;align-items:flex-start;justify-content:center;padding:34px 16px;overflow:auto;z-index:120}
+  .overlay.show{display:flex}
+  .tmodal{background:var(--surface);border-radius:18px;width:100%;max-width:460px;box-shadow:0 30px 80px rgba(0,0,0,.3);overflow:hidden}
+  .tm-h{padding:17px 20px;border-bottom:1px solid var(--line);position:relative}
+  .tm-mode{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}
+  .tm-title{font-weight:900;font-size:19px;margin-top:3px}
+  .tm-sub{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:3px}
+  .tclose{position:absolute;top:15px;right:15px;width:28px;height:28px;border:1px solid var(--line2);background:#fff;border-radius:8px;cursor:pointer;color:var(--muted);font-size:14px}
+  .tm-body{padding:16px 20px 20px}
+  .tlabel{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:0 0 8px}
+  .reschips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .rchip{border:1px solid var(--line2);background:var(--field);border-radius:9px;padding:7px 11px;cursor:pointer;font-family:'Space Mono',monospace;font-size:11px;display:flex;align-items:center;gap:6px}
+  .rchip.on{border-color:var(--indigo);background:var(--indigo-soft);color:var(--indigo);font-weight:700}
+  .rchip.out{opacity:.4;cursor:not-allowed}
+  .rchip .rd{width:8px;height:8px;border-radius:2px}
+  .qty{display:flex;align-items:center;gap:13px;margin-bottom:16px}
+  .stepper{display:flex;align-items:center;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:#fff}
+  .stepper button{width:34px;height:36px;border:none;background:transparent;font-size:17px;color:var(--muted);cursor:pointer}
+  .stepper button:hover{background:var(--chip);color:var(--ink)} .stepper button:disabled{color:var(--line2);cursor:not-allowed}
+  .stepper .v{min-width:48px;text-align:center;font-family:'Space Mono',monospace;font-weight:700;font-size:15px}
+  .qty .avail{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft)}
+  .deal{border:1px solid var(--line);border-radius:11px;background:var(--field);padding:13px 15px;margin-bottom:16px}
+  .deal .drow{display:flex;justify-content:space-between;gap:10px;font-family:'Space Mono',monospace;font-size:12px;padding:5px 0}
+  .deal .drow .dv{font-weight:700;text-align:right}
+  .deal .total{border-top:1px solid var(--line2);margin-top:5px;padding-top:9px;font-size:14px}
+  .deal .total .dv{color:var(--green)}
+  .deal .relnote{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:6px;padding-top:8px;border-top:1px solid var(--line);line-height:1.5}
+  .confirm{width:100%;background:var(--ink);color:#fff;border:none;border-radius:10px;padding:13px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+  .confirm:disabled{background:var(--line2);color:var(--soft);cursor:not-allowed}
 
   .note{font-size:12.5px;color:var(--soft);font-style:italic;margin-top:18px;line-height:1.55}
   .readonly{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);text-align:right;line-height:1.35}
   .empty{text-align:center;padding:40px 20px;color:var(--soft)}
-  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:120;text-align:center;max-width:90vw}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-family:'Space Mono',monospace;font-size:12px;padding:13px 18px;border-radius:11px;opacity:0;pointer-events:none;transition:all .3s;z-index:140;text-align:center;max-width:90vw}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)} .toast b{color:#a99dff} .toast b.green{color:#7fe0b0} .toast b.red{color:#ff9b9b}
   @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -90,18 +158,33 @@
 
   <main class="main">
     <div class="topbar" id="topbar"></div>
-    <span class="eye">Economy · National Accounts</span>
+    <span class="eye">Economy · National Accounts & Markets</span>
     <h1>Economy</h1>
-    <p class="treasury">Treasury <b id="treasury">—</b> · Each year the nation owes four demands, settled before <b>June</b>. Spend resources to settle them — top stocks up with the <b>Produce</b> action. Imports and world markets arrive next.</p>
+    <p class="treasury">Treasury <b id="treasury">—</b> · Each year the nation owes four demands, settled before <b>June</b>. Spend resources to settle them, <b>Produce</b> to refill stocks, and <b>import</b> to cover a shortfall.</p>
     <div id="content"><div class="empty">Loading the national accounts…</div></div>
   </main>
+</div>
+
+<!-- IMPORT MODAL -->
+<div class="overlay" id="overlay">
+  <div class="tmodal">
+    <div class="tm-h"><button class="tclose" id="tclose">✕</button>
+      <div class="tm-mode">Import from</div><div class="tm-title" id="tmTitle">—</div><div class="tm-sub" id="tmSub"></div></div>
+    <div class="tm-body">
+      <div class="tlabel">Resource</div><div class="reschips" id="reschips"></div>
+      <div class="tlabel">Quantity</div>
+      <div class="qty"><div class="stepper"><button id="qMinus">−</button><span class="v" id="qV">1</span><button id="qPlus">+</button></div><span class="avail" id="qAvail"></span></div>
+      <div class="deal" id="deal"></div>
+      <button class="confirm" id="confirmBtn">Confirm import</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, economyPeriod, economyNeed } from '/util.js';
+  import { esc, economyPeriod, economyNeed, worldTier, worldPrice, TIER_MULT, TIER_LABEL, RESOURCE_BASE } from '/util.js';
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -112,13 +195,14 @@
   function fail(msg){ document.getElementById('content').innerHTML = '<div class="empty">' + msg + '</div>'; }
   var num = function(v){ return Number(v) || 0; };
   var fmt = function(n){ return (Math.round(num(n) * 10) / 10).toLocaleString(); };
+  function crestOf(name){ return (name || '··').replace(/[^A-Za-z ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase() || '··'; }
+  var palette = ['#2b3a7a','#C42B2B','#16915a','#E0820E','#1f86d6','#5546E8','#8d6e4a','#a01010'];
+  function colorFor(id){ var h=0; (id||'').split('').forEach(function(c){h=(h*31+c.charCodeAt(0))>>>0;}); return palette[h % palette.length]; }
 
-  // The six on-hand resources (for the holdings strip + produce preview).
   var RESLIST = [
     { k:'energy', label:'Energy' }, { k:'food', label:'Food' }, { k:'minerals', label:'Minerals' },
     { k:'goods', label:'Goods' }, { k:'services', label:'Services' }, { k:'military', label:'Military' }
   ];
-  // The four annual demands. `res` spends on-hand units; `money` pays from the Budget.
   var DEMANDS = [
     { k:'food',     label:'Food',            type:'res',   good:'Population +1M', bad:'Order −1',      formula:function(n){ return '1 Food per 50M people (min 1) · pop ' + fmt(n.population) + 'M'; } },
     { k:'goods',    label:'Goods',           type:'res',   good:'Prosperity held', bad:'Prosperity −1', formula:function(n){ return 'Prosperity ÷ 2 · ' + num((n.stats||{}).prosperity) + ' ÷ 2'; } },
@@ -126,11 +210,11 @@
     { k:'military', label:'Military upkeep', type:'money', good:'Forces maintained', bad:'Military −1',  formula:function(n){ return 'Military × $1B · ' + fmt((n.on_hand||{}).military) + ' units'; } }
   ];
 
-  var STATE = null;   // { nation, party, isHog, period, currency }
+  var STATE = null;   // { nation, party, nations, isHog, period, currency }
 
   function settledFor(res){
     var d = (STATE.nation.demands) || {};
-    if (num(d.year) !== STATE.period) return false;   // stale/absent window → nothing settled yet
+    if (num(d.year) !== STATE.period) return false;
     return !!d[res];
   }
 
@@ -150,7 +234,6 @@
     var haveTxt = d.type === 'money'
       ? '<span class="need">need ' + cur + fmt(need) + 'B</span><br><span class="got' + (met ? '' : ' short') + '">treasury ' + cur + fmt(have) + 'B</span>'
       : '<span class="need">need ' + fmt(need) + '</span><br><span class="got' + (met ? '' : ' short') + '">have ' + fmt(have) + '</span>';
-
     var act;
     if (!STATE.isHog) {
       act = '<span class="readonly">' + (settled ? '✓ settled' : 'not yet settled') + '</span>';
@@ -163,9 +246,8 @@
     } else {
       act = d.type === 'money'
         ? '<span class="lowprompt">Treasury too low<br>to maintain.</span>'
-        : '<span class="lowprompt">Short — Produce<br>to cover it.</span>';
+        : '<span class="lowprompt">Short — Produce or<br>import to cover it.</span>';
     }
-
     return '<div class="dem">' +
       '<div class="dem-ic" style="background:var(--' + d.k + ')">' + esc(d.label).slice(0,3).toUpperCase() + '</div>' +
       '<div class="dem-main"><div class="dem-name">' + esc(d.label) + '</div><div class="dem-formula">' + d.formula(n) + '</div></div>' +
@@ -186,46 +268,90 @@
       chips.map(function(c){ return '<span class="fc ' + c[0] + '">' + c[1] + '</span>'; }).join('') + '</div></div>';
   }
 
-  function produceCard(){
+  function developCards(){
     var n = STATE.nation, prod = n.production || {}, on = n.on_hand || {};
-    var batch = RESLIST.filter(function(r){ return num(prod[r.k]) > 0; })
-      .map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
-    var strip = RESLIST.map(function(r){
-      return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>';
-    }).join('');
+    // Produce
+    var batch = RESLIST.filter(function(r){ return num(prod[r.k]) > 0; }).map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
+    var strip = RESLIST.map(function(r){ return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
     var canProduce = STATE.isHog && num(STATE.party.actions_remaining) >= 1;
-    var btn = STATE.isHog
-      ? '<button class="prodbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + (canProduce ? 'Produce · 1 action' : 'No actions left') + '</button>'
-      : '';
-    return '<div class="produce"><div><div class="pt">Produce</div>' +
-      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs 1 party action.</div>' +
-      '<div class="onhand">' + strip + '</div></div>' + btn + '</div>';
+    var prodBtn = STATE.isHog ? '<button class="actbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + (canProduce ? 'Produce · 1 action' : 'No actions left') + '</button>' : '';
+    var produce = '<div class="actcard"><div class="pt">Produce</div>' +
+      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs 1 party action.<div class="onhand">' + strip + '</div></div>' +
+      '<div class="cost">On-hand shown above</div>' + prodBtn + '</div>';
+    // Advance Society
+    var pros = num((n.stats||{}).prosperity), advCost = pros + 5, goods = num(on.goods);
+    var advanced = num(n.advanced_year) === STATE.period;
+    var advBtn = '';
+    if (STATE.isHog) {
+      var canAdv = !advanced && goods >= advCost;
+      advBtn = '<button class="actbtn" id="advanceBtn"' + (canAdv ? '' : ' disabled') + '>' +
+        (advanced ? '✓ Advanced this year' : (goods < advCost ? 'Need ' + advCost + ' Goods' : 'Advance Society')) + '</button>';
+    }
+    var advance = '<div class="actcard' + (advanced ? ' done' : '') + '"><div class="pt">Advance Society</div>' +
+      '<div class="pd">Invest beyond upkeep to raise living standards: <b>Prosperity +1</b>. The richer you are, the dearer it gets. Once a year.</div>' +
+      '<div class="cost">Cost: ' + advCost + ' Goods (Prosperity + 5) · have ' + fmt(goods) + '</div>' + advBtn + '</div>';
+    return '<div class="develop">' + produce + advance + '</div>';
+  }
+
+  function worldMarkets(){
+    var cards = RESLIST.map(function(r){
+      var tier = worldTier(r.k, STATE.nations), mult = TIER_MULT[tier], price = worldPrice(r.k, STATE.nations), base = RESOURCE_BASE[r.k];
+      var moved = mult !== 1.0;
+      return '<div class="wmc"><div class="wmc-top">' +
+        '<div class="wmc-name"><span class="rd" style="background:var(--' + r.k + ')"></span>' + r.label + '</div>' +
+        '<span class="tier ' + tier + '">' + TIER_LABEL[tier] + ' ×' + mult.toFixed(1) + '</span></div>' +
+        '<div class="wmc-rate">World rate <b>$' + price.toFixed(1) + 'B</b>' + (moved ? '<span class="basep">$' + base + 'B</span>' : '') + '</div></div>';
+    }).join('');
+    return '<div class="panel"><div class="panel-h"><div class="ph-t">World Markets<span class="sub">global supply sets the going rate for every importer</span></div><span class="ph-tag">Scarcity tiers</span></div>' +
+      '<div class="wm">' + cards + '</div>' +
+      '<div class="wm-foot">Tier = world production ÷ world demand. Food, Goods and Services have a unit demand, so their rate moves; Energy, Minerals and Military have no consumption sink yet and hold at Normal. Your trades move stock, not the tier — only big events do.</div></div>';
+  }
+
+  function partners(){
+    var others = STATE.nations.filter(function(n){ return n.id !== STATE.nation.id; });
+    if (!others.length) return '';
+    var rows = others.map(function(n){
+      var pills = RESLIST.map(function(r){ return '<span class="rpill"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt((n.on_hand||{})[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
+      var btn = STATE.isHog ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
+      return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div><div><div class="n-name">' + esc(n.name) + '</div><div class="n-sub">on hand to sell</div></div></div>' +
+        '<div class="res">' + pills + '</div><div class="nact">' + btn + '</div></div>';
+    }).join('');
+    return '<div class="rowlabel">Trading partners — import to cover a shortfall</div>' + rows;
   }
 
   function render(){
     var n = STATE.nation;
-    var gate = STATE.isHog ? '' : '<p class="note">Only the head of government settles the national accounts — this is a read-only view for your party.</p>';
+    var gate = STATE.isHog ? '' : '<p class="note">Only the head of government settles the accounts and trades — this is a read-only view for your party.</p>';
     document.getElementById('content').innerHTML =
       renderStats(n) +
       '<div class="panel"><div class="panel-h"><div class="ph-t">Your Nation’s Demands<span class="sub">spend resources to settle each one — or the nation slips</span></div><span class="ph-when">Settled before June</span></div>' +
         DEMANDS.map(demandRow).join('') + forecast() + '</div>' +
-      produceCard() + gate +
-      '<p class="note">Imports, world-market scarcity tiers and trade agreements arrive in the next slice.</p>';
+      developCards() +
+      worldMarkets() +
+      partners() + gate;
 
     document.querySelectorAll('[data-settle]').forEach(function(b){ b.onclick = function(){ settle(b.dataset.settle, b); }; });
     var pb = document.getElementById('produceBtn'); if (pb) pb.onclick = function(){ produce(pb); };
+    var ab = document.getElementById('advanceBtn'); if (ab) ab.onclick = function(){ advance(ab); };
+    document.querySelectorAll('[data-import]').forEach(function(b){ b.onclick = function(){ openImport(b.dataset.import); }; });
   }
 
   var toast = document.getElementById('toast'), tt;
   function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 2700); }
 
   async function reload(){
-    var { data: n } = await supabase.from('nations')
-      .select('id, name, flag, population, stats, economy, on_hand, production, demands')
-      .eq('id', STATE.nation.id).single();
-    if (n) STATE.nation = n;
+    var { data: ns } = await supabase.from('nations')
+      .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year')
+      .eq('dormant', false).order('name');
+    if (ns) {
+      STATE.nations = ns;
+      var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
+      if (mine) STATE.nation = mine;
+    }
     var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
     if (p) STATE.party.actions_remaining = p.actions_remaining;
+    var ec = STATE.nation.economy || {};
+    document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
     render();
   }
 
@@ -233,16 +359,72 @@
     btn.disabled = true;
     var { error } = await supabase.rpc('economy_settle', { p_resource: res });
     if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
-    ping('Settled the <b class="green">' + esc(res) + '</b> demand.');
-    await reload();
+    ping('Settled the <b class="green">' + esc(res) + '</b> demand.'); await reload();
   }
   async function produce(btn){
     btn.disabled = true;
     var { error } = await supabase.rpc('economy_produce');
     if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
-    ping('Production cycle run — <b class="green">stockpiles topped up</b>.');
+    ping('Production cycle run — <b class="green">stockpiles topped up</b>.'); await reload();
+  }
+  async function advance(btn){
+    btn.disabled = true;
+    var { error } = await supabase.rpc('economy_advance');
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    ping('Society advanced — <b class="green">Prosperity +1</b>.'); await reload();
+  }
+
+  /* ===== IMPORT MODAL ===== */
+  var T = { seller:null, res:'goods', qty:1 };
+  function sellerById(id){ return STATE.nations.find(function(n){ return n.id === id; }); }
+  function sellerStock(res){ return num((T.seller.on_hand || {})[res]); }
+  function openImport(id){
+    T.seller = sellerById(id); if (!T.seller) return;
+    var withStock = RESLIST.filter(function(r){ return sellerStock(r.k) > 0; });
+    T.res = (withStock[0] || RESLIST[3]).k; T.qty = 1;
+    document.getElementById('tmTitle').textContent = T.seller.name;
+    document.getElementById('tmSub').textContent = 'World rate × quantity — paid from your Budget';
+    document.getElementById('overlay').classList.add('show');
+    renderChips(); renderDeal();
+  }
+  function closeImport(){ document.getElementById('overlay').classList.remove('show'); }
+  function renderChips(){
+    document.getElementById('reschips').innerHTML = RESLIST.map(function(r){
+      var out = sellerStock(r.k) <= 0;
+      return '<div class="rchip' + (T.res === r.k ? ' on' : '') + (out ? ' out' : '') + '" data-r="' + r.k + '"><span class="rd" style="background:var(--' + r.k + ')"></span>' + r.label + '</div>';
+    }).join('');
+    document.querySelectorAll('#reschips [data-r]').forEach(function(c){ c.onclick = function(){ if (sellerStock(c.dataset.r) <= 0) return; T.res = c.dataset.r; T.qty = 1; renderChips(); renderDeal(); }; });
+  }
+  function renderDeal(){
+    var mx = sellerStock(T.res); if (T.qty > mx) T.qty = Math.max(1, mx);
+    var price = worldPrice(T.res, STATE.nations), tier = worldTier(T.res, STATE.nations), total = Math.round(price * T.qty * 10) / 10;
+    var budget = num((STATE.nation.economy || {}).budget), cur = STATE.currency;
+    document.getElementById('qV').textContent = T.qty;
+    document.getElementById('qAvail').textContent = T.seller.name + ' has ' + fmt(mx) + ' ' + T.res;
+    document.getElementById('qPlus').disabled = T.qty >= mx; document.getElementById('qMinus').disabled = T.qty <= 1;
+    document.getElementById('deal').innerHTML =
+      '<div class="drow"><span>You buy</span><span class="dv">' + T.qty + ' ' + T.res + '</span></div>' +
+      '<div class="drow"><span>World market</span><span class="dv"><span class="tier ' + tier + '">' + TIER_LABEL[tier] + ' ×' + TIER_MULT[tier].toFixed(1) + '</span></span></div>' +
+      '<div class="drow"><span>Unit price</span><span class="dv">' + cur + price.toFixed(1) + 'B</span></div>' +
+      '<div class="drow total"><span>You pay</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
+      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B. Price = base × world scarcity; it moves only when the world does.</div>';
+    var btn = document.getElementById('confirmBtn');
+    btn.disabled = mx < 1 || total > budget;
+    btn.textContent = mx < 1 ? 'They have none' : (total > budget ? 'Treasury too low' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + total.toFixed(1) + 'B');
+  }
+  async function confirmImport(){
+    var btn = document.getElementById('confirmBtn'); btn.disabled = true;
+    var { error } = await supabase.rpc('economy_import', { p_seller: T.seller.id, p_resource: T.res, p_qty: T.qty });
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    closeImport();
+    ping('Imported <b class="green">' + T.qty + ' ' + esc(T.res) + '</b> from ' + esc(T.seller.name.split(' ')[0]) + '.');
     await reload();
   }
+  document.getElementById('qPlus').onclick = function(){ if (T.qty < sellerStock(T.res)) { T.qty++; renderDeal(); } };
+  document.getElementById('qMinus').onclick = function(){ if (T.qty > 1) { T.qty--; renderDeal(); } };
+  document.getElementById('confirmBtn').onclick = function(){ if (!this.disabled) confirmImport(); };
+  document.getElementById('tclose').onclick = closeImport;
+  document.getElementById('overlay').onclick = function(e){ if (e.target === this) closeImport(); };
 
   (async () => {
     if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
@@ -251,27 +433,26 @@
     try {
       const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
-      const { data: nation } = await supabase.from('nations')
-        .select('id, name, flag, population, stats, economy, on_hand, production, demands')
-        .eq('id', party.nation_id).single();
+      const { data: nations } = await supabase.from('nations')
+        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year')
+        .eq('dormant', false).order('name');
+      const nation = (nations || []).find(function(n){ return n.id === party.nation_id; }) || { id: party.nation_id };
       const { data: gov } = await supabase.from('governments')
         .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
       const { data: gs } = await supabase.from('game_state').select('current_tick').single();
 
-      const nationName = (nation && nation.name) || party.nation_id;
+      const nationName = nation.name || party.nation_id;
       document.getElementById('pname').textContent = party.name;
       document.getElementById('psub').textContent = ideologyLabel(party) + ' · ' + nationName;
-      if (nation && nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
+      if (nation.flag) { var f = document.getElementById('flag'); f.onload = function(){ f.hidden = false; }; f.src = nation.flag; }
 
-      var cur = ((nation && nation.economy) || {}).currency || '$';
-      document.getElementById('treasury').textContent = (nation && nation.economy && nation.economy.budget != null) ? (cur + nation.economy.budget + 'B') : '—';
+      var cur = (nation.economy || {}).currency || '$';
+      document.getElementById('treasury').textContent = (nation.economy && nation.economy.budget != null) ? (cur + nation.economy.budget + 'B') : '—';
 
       STATE = {
-        nation: nation || { id: party.nation_id },
-        party: party,
+        nation: nation, party: party, nations: nations || [nation],
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
-        period: economyPeriod((gs && gs.current_tick) || 1),
-        currency: cur
+        period: economyPeriod((gs && gs.current_tick) || 1), currency: cur
       };
       render();
     } catch (e) {
