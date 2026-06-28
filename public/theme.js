@@ -15,7 +15,7 @@
       '--line:#2b2c36;--line2:#3a3b47;--chip:#262732;--field:#191a22;' +
       '--indigo:#8f82ff;--indigo-soft:#272250;' +
       '--red:#ef6a6a;--red-soft:#391f1f;--amber:#eaa23a;--amber-soft:#352b16;' +
-      '--green:#3ec489;--green-soft:#15301f;--blue:#52a6ea;--blue-soft:#16293a;--navy:#9fb0ff;' +
+      '--green:#3ec489;--green-soft:#15301f;--blue:#52a6ea;--blue-soft:#16293a;--navy:#9fb0ff;--navy-soft:#20264a;' +
       'color-scheme:dark;' +
     '}';
   var s = document.createElement('style'); s.id = 'nh-theme-css'; s.textContent = css;

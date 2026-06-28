@@ -618,7 +618,8 @@
   // highest stat(s) in a row are highlighted. Names are escaped (player-owned).
   var MAX_PROMINENT = 10;
   var STAT_SCALE = 6; // bar display max
-  function renderPoliticians(list) {
+  function renderPoliticians(list, tasks) {
+    tasks = tasks || {};
     document.getElementById('polCount').textContent = list.length + ' / ' + MAX_PROMINENT + ' prominent';
     var head = '<div class="pol-row pol-head"><span>Name</span><span>Age</span><span>Status</span><span>Task</span><span>Exp</span>' +
       COMPETENCIES.map(function (c) { return '<span>' + c.abbr + '</span>'; }).join('') + '</div>';
@@ -636,7 +637,7 @@
         '<div class="pol-name"><span class="dot"></span><b>' + esc(p.first_name + ' ' + p.last_name) + '</b></div>' +
         '<div class="pol-age">' + (p.age || 0) + '</div>' +
         '<div class="pol-status">' + esc(p.status || '') + '</div>' +
-        '<div class="pol-task"></div>' +
+        '<div class="pol-task">' + esc(tasks[p.id] || '') + '</div>' +
         '<div class="pol-exp">' + (p.experience || 0) + '</div>' + cells + '</a>';
     }).join('');
     document.getElementById('poltable').innerHTML = head + rows;
@@ -1017,7 +1018,17 @@
 
       const { data: pols } = await supabase.from('politicians')
         .select('*').eq('party_id', party.id).order('created_at', { ascending: true });
-      renderPoliticians(pols || []);
+      // Field tasks: a member standing for office shows their run in the Task column.
+      var tasks = {};
+      try {
+        const [{ data: mp }, { data: mc }] = await Promise.all([
+          supabase.from('mp_candidacies').select('politician_id').eq('party_id', party.id),
+          supabase.from('mayoral_candidacies').select('politician_id').eq('party_id', party.id)
+        ]);
+        (mp || []).forEach(function (r) { if (r.politician_id) tasks[r.politician_id] = 'Running for MP'; });
+        (mc || []).forEach(function (r) { if (r.politician_id) tasks[r.politician_id] = 'Running for Mayor'; });
+      } catch (e) { /* tasks are best-effort */ }
+      renderPoliticians(pols || [], tasks);
 
       // The shared Assembly: every party in this nation + each one's leader name.
       // Public columns only — rival funds are deliberately NOT selected here (your
