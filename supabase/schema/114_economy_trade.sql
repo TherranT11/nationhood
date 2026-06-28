@@ -115,6 +115,23 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 grant execute on function public.is_trade_minister() to authenticated;
 
+-- Settle a cross-border purchase: move the goods seller→buyer, the money buyer→seller, and log
+-- the flow. ONE source for the money/stock side of a trade — economy_import (world price + tariff)
+-- and draw_trade_agreement (schema/122, locked price, no tariff) both call it. p_duty is the slice
+-- the buyer withholds as customs (0 for an agreement draw); the seller receives total − duty, and the
+-- buyer pays that same net from Budget (debt-financed via _nation_budget_add). INTERNAL.
+create or replace function public._settle_import(p_buyer text, p_seller text, p_resource text, p_qty int, p_total numeric, p_duty numeric)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_net numeric := p_total - coalesce(p_duty, 0);
+begin
+  perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
+  perform public._nation_stat_add(p_buyer,  'on_hand', p_resource,  p_qty, 0, null);
+  perform public._nation_budget_add(p_buyer, coalesce(p_duty, 0) - p_total);   -- buyer pays net, debt-financed
+  perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);   -- seller receives net of duty
+  perform public._record_trade_flow(p_seller, p_buyer, p_resource, v_net);          -- World Trade ledger (schema/116)
+end $$;
+revoke all on function public._settle_import(text, text, text, int, numeric, numeric) from public, anon, authenticated;
+
 -- Import units of a resource from another nation at the world price. MINISTER OF TRADE
 -- gated — only a party that holds the Trade portfolio may import — and costs 2 party
 -- actions, spent on confirm. The seller must hold the units and the buyer's Budget must
@@ -168,14 +185,8 @@ begin
   v_net    := v_total - v_duty;                      -- net cost to the buyer
   v_cur    := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
 
-  perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
-  perform public._nation_stat_add(v_buyer,  'on_hand', p_resource,  p_qty, 0, null);
-  -- The buyer pays the net cost from Budget; any part the Budget can't cover rolls into Debt
-  -- (_nation_budget_add) — imports are never blocked for lack of cash, they're debt-financed.
-  perform public._nation_budget_add(v_buyer, v_duty - v_total);
-  perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);              -- seller receives net of duty
-  perform public._record_trade_flow(p_seller, v_buyer, p_resource, v_net);                      -- World Trade ledger (schema/116)
-  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;        -- 2 AP on confirm
+  perform public._settle_import(v_buyer, p_seller, p_resource, p_qty, v_total, v_duty);           -- goods + money + ledger (one source)
+  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;          -- 2 AP on confirm
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_buyer, v_p.id, 'economy',
