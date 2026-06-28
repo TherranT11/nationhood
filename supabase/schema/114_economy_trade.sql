@@ -143,8 +143,10 @@ begin
   if coalesce((v_tp->>'blocked')::boolean, false) then
     raise exception 'Imports are closed under your nation''s trade policy (%).', coalesce(v_tp->>'name', 'Autarky'); end if;
 
+  -- Lock the seller row so two concurrent imports from the same nation can't both pass the
+  -- stock check below and oversell it (the buyer's party is locked by _begin_action, not the seller).
   select name, coalesce(economy->>'currency', '$') into v_sname, v_cur
-    from public.nations where id = p_seller and not coalesce(dormant, false);
+    from public.nations where id = p_seller and not coalesce(dormant, false) for update;
   if not found then raise exception 'No such trading partner.'; end if;
 
   v_have := coalesce((select (on_hand->>p_resource)::numeric from public.nations where id = p_seller), 0);

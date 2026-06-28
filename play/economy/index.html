@@ -370,18 +370,20 @@
   function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 2700); }
 
   async function reload(){
-    var { data: ns } = await supabase.from('nations')
-      .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
-      .eq('dormant', false).order('name');
-    if (ns) {
-      STATE.nations = ns;
-      var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
-      if (mine) STATE.nation = mine;
-    }
-    var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
-    if (p) STATE.party.actions_remaining = p.actions_remaining;
-    var ec = STATE.nation.economy || {};
-    document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
+    try {
+      var { data: ns } = await supabase.from('nations')
+        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
+        .eq('dormant', false).order('name');
+      if (ns) {
+        STATE.nations = ns;
+        var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
+        if (mine) STATE.nation = mine;
+      }
+      var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
+      if (p) STATE.party.actions_remaining = p.actions_remaining;
+      var ec = STATE.nation.economy || {};
+      document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
+    } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
     render();
   }
 
@@ -413,7 +415,7 @@
     var withStock = RESLIST.filter(function(r){ return sellerStock(r.k) > 0; });
     T.res = (withStock[0] || RESLIST[3]).k; T.qty = 1;
     document.getElementById('tmTitle').textContent = T.seller.name;
-    document.getElementById('tmSub').textContent = 'World rate × quantity — paid from your Budget';
+    document.getElementById('tmSub').textContent = 'World rate × your trade policy — from Budget, any deficit to debt';
     document.getElementById('overlay').classList.add('show');
     renderChips(); renderDeal();
   }
