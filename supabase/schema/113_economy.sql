@@ -103,19 +103,26 @@ end $$;
 grant execute on function public.economy_settle(text) to authenticated;
 
 -- Produce: the head of government runs a production cycle — adds one batch of the
--- nation's production to its on-hand stockpiles. Costs 1 party action (the player's
--- standard budget), no fee. This is how stocks refill so demands can be met again.
+-- nation's production to its on-hand stockpiles. Costs 5 party actions and is on a
+-- 12-tick cooldown (one cycle a year), so stocks refill in deliberate bursts. Mirror
+-- the 5 / 12 in util.js (PRODUCE_COST / PRODUCE_COOLDOWN) when rendering the buttons.
+alter table public.nations add column if not exists produce_until_tick int;
+
 create or replace function public.economy_produce()
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype; v_prod jsonb; v_add jsonb;
+declare v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype; v_tick int; v_prod jsonb; v_add jsonb;
 begin
   v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
+  if v_p.actions_remaining < 5 then raise exception 'Not enough actions left this turn (need 5).'; end if;
   select * into v_gov from public.governments where nation_id = v_p.nation_id and status = 'active';
   if not found then raise exception 'There is no sitting government.'; end if;
   if v_gov.formateur_party_id is distinct from v_p.id then
     raise exception 'Only the head of government can run production.'; end if;
 
   select * into v_n from public.nations where id = v_p.nation_id;
+  select current_tick into v_tick from public.game_state where id;
+  if v_n.produce_until_tick is not null and v_tick < v_n.produce_until_tick then
+    raise exception 'Production is on cooldown — % tick(s) left.', (v_n.produce_until_tick - v_tick); end if;
   v_prod := coalesce(v_n.production, '{}'::jsonb);
   -- Only the six tradeable resources move; any other on-hand keys are preserved by the merge.
   v_add := jsonb_build_object(
@@ -126,15 +133,15 @@ begin
     'services', coalesce((v_n.on_hand->>'services')::numeric, 0) + coalesce((v_prod->>'services')::numeric, 0),
     'military', coalesce((v_n.on_hand->>'military')::numeric, 0)  + coalesce((v_prod->>'military')::numeric, 0)
   );
-  update public.nations set on_hand = coalesce(on_hand, '{}'::jsonb) || v_add where id = v_p.nation_id;
-  update public.parties set actions_remaining = actions_remaining - 1 where id = v_p.id;
+  update public.nations set on_hand = coalesce(on_hand, '{}'::jsonb) || v_add, produce_until_tick = v_tick + 12 where id = v_p.nation_id;
+  update public.parties set actions_remaining = actions_remaining - 5 where id = v_p.id;
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_p.nation_id, v_p.id, 'economy',
             'The government ran a production cycle — the national stockpiles were topped up.',
             public.current_game_date());
 
-  return jsonb_build_object('on_hand', v_add, 'actions', v_p.actions_remaining - 1);
+  return jsonb_build_object('on_hand', v_add, 'actions', v_p.actions_remaining - 5, 'until', v_tick + 12);
 end $$;
 grant execute on function public.economy_produce() to authenticated;
 

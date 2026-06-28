@@ -100,6 +100,9 @@ export function economyPeriod(tick) {
   var month = ((n - 1) % 12) + 1;
   return 1980 + Math.floor((n - 1) / 12) + (month > 6 ? 1 : 0);
 }
+// Produce action — MIRRORS schema/113 economy_produce: 5 AP, 12-tick cooldown.
+export const PRODUCE_COST = 5;
+export const PRODUCE_COOLDOWN = 12;
 export function economyNeed(resource, nation) {
   var stats = (nation && nation.stats) || {}, on = (nation && nation.on_hand) || {};
   switch (resource) {

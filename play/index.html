@@ -359,7 +359,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchNationModifiers, renderNationModifiers } from '/modifiers.js';
   import { statLabel, statBand, regimeLabel, statName } from '/ladders.js';
-  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST } from '/util.js';
+  import { esc, COMPETENCIES, tickToDate, daysIdle, INACTIVE_WARN_DAYS, INACTIVE_DAYS, INACTIVE_DELETE_DAYS, eventEffectLabel, STANDING_COST, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
   import { fetchNegotiations, activeTalks, termCounts, openNegotiation, respondInvite, coalitionInvitesForMe } from '/negotiations.js';
   import { ideologyLabel } from '/archetypes.js';
   import { MINISTRIES } from '/ministries.js';
@@ -468,7 +468,8 @@
   var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false;
   // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
-  var NOW_TICK = 0, nocoUntilTick = 0;
+  // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
+  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
@@ -477,6 +478,7 @@
     // afford it — not just at zero.
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
     if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
+    if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -1149,7 +1151,7 @@
   // render as dimmed scaffolds. When the player isn't PM the bar isn't rendered.
   var PM_ACTIONS = [
     ['Coalition', 'Build your governing coalition.'],
-    ['Policy',    'Set the government’s direction.'],
+    ['Produce',   'Ensure the nation’s resources are generated.'],
     ['Direct',    'Direct a ministry’s work.'],
     ['Whip',      'Whip the chamber for a vote.'],
     ['Appoint',   'Appoint a minister to the cabinet.'],
@@ -1159,17 +1161,17 @@
   ];
   function renderPMBar(isPM) {
     var el = document.getElementById('pmbar');
-    if (!isPM) { el.innerHTML = ''; return; }
+    if (!isPM) { el.innerHTML = ''; produceBtn = null; return; }
     el.innerHTML = '<section class="panel leadbar">' +
       '<div class="glance-hd"><span>Prime Minister &middot; This Week’s Action</span></div>' +
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition (talks) and Appoint (cabinet) are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : '';
-        // Every premiership action spends the single weekly action (1 AP). Coalition is the
-        // exception: opening talks is free, the AP is paid on invite/commit (mirrors Negotiate).
-        var cost = a[0] === 'Coalition' ? ' data-cost-free' : '';
+        // Coalition (talks), Produce (economy) and Appoint (cabinet) are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : '';
+        // Most premiership actions spend the single weekly action (1 AP). Coalition is free
+        // on open (paid on invite/commit); Produce costs PRODUCE_COST and runs on a cooldown.
+        var cost = a[0] === 'Coalition' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
@@ -1179,6 +1181,31 @@
     if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
     var apptBtn = el.querySelector('#pm-appoint');
     if (apptBtn) apptBtn.addEventListener('click', openAppointModal);
+    // Produce: run a production cycle (PRODUCE_COST AP, 12-tick nation cooldown). Fires via
+    // performAction so the AP budget + feed refresh; the returned `until` greys it out at once.
+    produceBtn = el.querySelector('#pm-produce');
+    if (produceBtn) {
+      actionBtns.push(produceBtn);
+      produceBtn.addEventListener('click', function () {
+        if (produceBtn.disabled) return;
+        performAction(function () { return supabase.rpc('economy_produce'); }, function (d) {
+          if (d && d.until != null) applyProduceCooldown(NOW_TICK, d.until);
+          return 'Production cycle run — the nation’s stockpiles were topped up.';
+        });
+      });
+    }
+  }
+  // Mirror the nation-wide Produce cooldown on the PM button (disabled + a "Cooldown" pill
+  // while active), exactly as no-confidence does. The server stays authoritative.
+  function applyProduceCooldown(now, until) {
+    NOW_TICK = now; produceUntilTick = until || 0;
+    if (!produceBtn) return;
+    var left = produceUntilTick - now, pill = produceBtn.querySelector('.lead__cost');
+    if (left > 0) {
+      produceBtn.disabled = true;
+      produceBtn.title = 'Production is on cooldown for this nation — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
+      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
+    }
   }
 
   (async () => {
@@ -1196,7 +1223,7 @@
       // former_ruling_party feed the one-party-restored banner. If the full select
       // errors (e.g. an older DB missing those two columns), fall back to the core
       // columns so a drifted optional column can't blank the whole nation snapshot.
-      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick').eq('id', party.nation_id).single();
+      var nsel = await supabase.from('nations').select('name, flag, stats, economy, policies, ruling_party, former_ruling_party, no_confidence_until_tick, produce_until_tick').eq('id', party.nation_id).single();
       var nation = nsel.data;
       if (nsel.error) nation = (await supabase.from('nations').select('name, flag, stats, economy, policies').eq('id', party.nation_id).single()).data;
       const nationName = (nation && nation.name) || party.nation_id;
@@ -1261,6 +1288,7 @@
           .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
         renderPMBar(amPM);
+        applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
