@@ -80,26 +80,61 @@ $$;
 revoke all on function public._world_price(text) from public, anon, authenticated;
 grant execute on function public._world_price(text) to authenticated;
 
--- Import units of a resource from another nation at the world price. Head-of-government
--- gated. The seller must hold the units and the buyer's Budget must cover the bill; the
--- units move seller→buyer on-hand and the payment moves buyer→seller Budget. Price is
--- recomputed server-side (the client figure is only a preview), so it can't be spoofed.
+-- Does this party hold a given cabinet portfolio in its nation's active government?
+-- True if a politician of the party is either explicitly appointed to the ministry
+-- (cabinet_appointments) OR holds it via a fulfilled ministry promise (a DONE
+-- government_agenda 'ministry' row) not since overridden by an explicit appointment —
+-- the same explicit-wins-else-promise rule _politician_is_minister uses, keyed by
+-- party + ministry. ONE source for "is my party the Minister of X".
+create or replace function public._party_holds_ministry(p_party uuid, p_ministry text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.cabinet_appointments ca
+      join public.governments g on g.id = ca.government_id and g.status = 'active'
+      join public.politicians p on p.id = ca.politician_id
+     where ca.ministry = p_ministry and p.party_id = p_party
+  ) or exists (
+    select 1 from public.government_agenda ga
+      join public.governments g on g.id = ga.government_id and g.status = 'active'
+      join public.politicians p on p.id = nullif(ga.params->>'minister_id', '')::uuid
+     where ga.type = 'ministry' and ga.status = 'done'
+       and ga.params->>'ministry' = p_ministry
+       and p.party_id = p_party
+       and not exists (select 1 from public.cabinet_appointments ca2
+                         where ca2.government_id = g.id and ca2.ministry = ga.params->>'ministry')
+  );
+$$;
+revoke all on function public._party_holds_ministry(uuid, text) from public, anon, authenticated;
+
+-- Does the SIGNED-IN player's party hold the Trade portfolio? The client gate for the
+-- import action (home Trade bar + Economy-page Import buttons); the server stays
+-- authoritative in economy_import. Reuses _party_holds_ministry — one source.
+create or replace function public.is_trade_minister()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce((select public._party_holds_ministry(id, 'Trade') from public.parties where user_id = auth.uid()), false);
+$$;
+grant execute on function public.is_trade_minister() to authenticated;
+
+-- Import units of a resource from another nation at the world price. MINISTER OF TRADE
+-- gated — only a party that holds the Trade portfolio may import — and costs 2 party
+-- actions, spent on confirm. The seller must hold the units and the buyer's Budget must
+-- cover the bill; the units move seller→buyer on-hand and the payment moves buyer→seller
+-- Budget. Price is recomputed server-side (the client figure is only a preview).
 create or replace function public.economy_import(p_seller text, p_resource text, p_qty int)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
-  v_p public.parties%rowtype; v_gov public.governments%rowtype; v_buyer text;
+  v_p public.parties%rowtype; v_buyer text;
   v_price numeric; v_total numeric; v_have numeric; v_budget numeric; v_sname text; v_cur text;
 begin
   if p_resource not in ('energy', 'food', 'minerals', 'goods', 'services', 'military') then
     raise exception 'Unknown resource.'; end if;
   if coalesce(p_qty, 0) < 1 then raise exception 'Choose how much to import.'; end if;
 
-  v_p := public._lock_party();
+  v_p := public._begin_action(0);   -- lock caller's party, require >= 1 action
+  if v_p.actions_remaining < 2 then raise exception 'Not enough actions left this turn (need 2).'; end if;
   v_buyer := v_p.nation_id;
-  select * into v_gov from public.governments where nation_id = v_buyer and status = 'active';
-  if not found then raise exception 'There is no sitting government.'; end if;
-  if v_gov.formateur_party_id is distinct from v_p.id then
-    raise exception 'Only the head of government can import.'; end if;
+  if not public._party_holds_ministry(v_p.id, 'Trade') then
+    raise exception 'Only the Minister of Trade can import.'; end if;
   if p_seller = v_buyer then raise exception 'You can''t import from your own nation.'; end if;
 
   select name, coalesce(economy->>'currency', '$') into v_sname, v_cur
@@ -121,14 +156,15 @@ begin
   perform public._nation_stat_add(v_buyer,  'on_hand', p_resource,  p_qty, 0, null);
   perform public._nation_stat_add(v_buyer,  'economy', 'budget', -v_total, 0, null);
   perform public._nation_stat_add(p_seller, 'economy', 'budget',  v_total, 0, null);
+  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;   -- 2 AP on confirm
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_buyer, v_p.id, 'economy',
-            'The government imported ' || p_qty || ' ' || initcap(p_resource) || ' from ' || v_sname
+            'The Minister of Trade imported ' || p_qty || ' ' || initcap(p_resource) || ' from ' || v_sname
               || ' for ' || v_cur || v_total || 'B.',
             public.current_game_date());
 
-  return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'price', v_price, 'total', v_total);
+  return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'price', v_price, 'total', v_total, 'actions', v_p.actions_remaining - 2);
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 
