@@ -20,7 +20,6 @@ const NAV = [
   { href: '/play/nation/',      label: 'Nation',       svg: '<path d="M12 3l7 3v6c0 4-3 7-7 8-4-1-7-4-7-8V6l7-3z"/>' },
   { href: '/play/policies/',    label: 'Policies',     svg: '<path d="M7 3h10a1 1 0 011 1v16l-3-2-3 2-3-2-3 2V4a1 1 0 011-1z"/><path d="M9 8h6M9 12h5"/>' },
   { href: '/play/world/',       label: 'World',        svg: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>' },
-  { href: '/play/market/',      label: 'Market',       svg: '<path d="M4 20h16"/><path d="M6 20v-6M10 20v-10M14 20v-7M18 20v-12"/>' },
   { href: '/play/economy/',     label: 'Economy',      svg: '<path d="M4 19h16"/><path d="M4 15l4-4 3 3 5-6"/><path d="M16 8h2v2"/>' },
   { href: '/play/corporations/',label: 'Corporations', svg: '<path d="M3 21h18"/><path d="M6 21V5a1 1 0 011-1h6a1 1 0 011 1v16"/><path d="M14 21V10h4a1 1 0 011 1v10"/><path d="M9 8h2M9 12h2M9 16h2"/>' },
   { href: null,                 label: 'Conflict',     svg: '<path d="M17 4l3 3-9 9-3-3z"/><path d="M7 4L4 7l9 9 3-3"/><path d="M5 16l-1 4 4-1M19 16l1 4-4-1"/>' },
