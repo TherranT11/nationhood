@@ -1221,11 +1221,14 @@
       '<p class="leadbar__sub">Your party holds the Trade portfolio. Import resources on the Economy page to cover a shortfall.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="trade-import" data-cost="2"><b>Import</b><span class="lead__lane">The Economy</span><span class="lead__desc">Buy resources from another nation.</span></button>' +
+        '<button class="lead" type="button" id="trade-sanction" data-cost="3"><b>Sanctions</b><span class="lead__lane">The Economy</span><span class="lead__desc">Embargo a nation — bars trade both ways; a stand against a regime rallies your government.</span></button>' +
         '<button class="lead" type="button" disabled data-cost="3"><b>Trade Agreement</b><span class="lead__lane">The Economy</span><span class="lead__desc">Lock in a long-term supply deal.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var b = document.getElementById('trade-import');
     if (b) b.addEventListener('click', function () { window.location.href = '/play/economy/'; });
+    var s = document.getElementById('trade-sanction');
+    if (s) s.addEventListener('click', function () { window.location.href = '/play/economy/#sanctions'; });
   }
 
   (async () => {
