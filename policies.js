@@ -86,3 +86,19 @@ export function effectText(e, pop, pros) {
   var v = Number(e.v) || 0;
   return { text: polTgtLabel(e.t) + ' ' + (v >= 0 ? '+' : '−') + Math.abs(v), cad: cad, cls: v > 0 ? 'pos' : v < 0 ? 'neg' : '' };
 }
+
+// Trade Policy (definition.special === 'trade') rungs carry their STANDING modifiers — the
+// import multiplier, tariff, and whether imports are open — outside the generic effects list,
+// so the standard standing-effects render can't see them. These two helpers are the ONE source
+// for "is this the trade policy" and for the human-readable line a rung's modifiers describe,
+// shared by the Policies slate, the propose preview, and the Legislature bill view.
+export function isTradePolicy(def) { return !!(def && def.special === 'trade'); }
+export function tradeEffectText(o) {
+  if (!o) return '';
+  if (o.blocked) return 'Imports closed — no foreign trade.';
+  var mult = Number(o.importMult); if (!(mult > 0)) mult = 1;
+  var tariff = Math.max(0, Number(o.tariff) || 0);
+  var parts = [mult === 1 ? 'Imports at the world rate' : 'Imports ×' + mult + ' the world rate'];
+  if (tariff > 0) parts.push(tariff + '% tariff to the treasury');
+  return parts.join(' · ') + '.';
+}

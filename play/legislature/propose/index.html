@@ -118,7 +118,7 @@
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { fetchDeclarations, proposeDeclaration, fetchPolicies, proposeLaw, proposeRegimeChange, proposeThreshold, fetchProposals } from '/proposals.js';
-  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, optMoney } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, optMoney, isTradePolicy, tradeEffectText } from '/policies.js';
   import { ideologyLabel } from '/archetypes.js';
   import { isMonarchy, regimeText } from '/ladders.js';
 
@@ -236,13 +236,20 @@
     function renderEffects() {
       var effBox = document.getElementById('l-effs'), tagBox = document.getElementById('l-tags');
       if (sel.proposed == null) { effBox.innerHTML = '<p class="none">—</p>'; tagBox.innerHTML = ''; return; }
-      var o = policyOptions(curDef())[sel.proposed] || {};
+      var def = curDef(), o = policyOptions(def)[sel.proposed] || {};
+      var html = '';
+      // Trade rungs carry their standing modifiers (import ×, tariff) outside the generic effects
+      // list — surface the current rung and the proposed one so the change reads at a glance.
+      if (isTradePolicy(def)) {
+        var curOpt = policyOptions(def)[inForceIdx()] || {};
+        html += effRow({ text: 'In force now · ' + tradeEffectText(curOpt), cls: '' }, 'now');
+        html += effRow({ text: 'If enacted · ' + tradeEffectText(o), cls: 'pos' }, 'while in force');
+      }
       // Show every effect except the recurring money summarised in the fiscal block above.
       // One-time and finite-duration money stay here so nothing the option does goes unshown.
       var effs = (o.effects || []).filter(function (e) { return !fiscalFactor(e); });
-      effBox.innerHTML = effs.length
-        ? effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('')
-        : '<p class="none">No standing effects beyond the budget.</p>';
+      html += effs.map(function (e) { var t = effectText(e, pop, pros); return effRow(t, t.cad); }).join('');
+      effBox.innerHTML = html || '<p class="none">No standing effects beyond the budget.</p>';
       tagBox.innerHTML = (o.tags || []).map(function (t) { return '<span class="ltag">' + esc(t) + '</span>'; }).join('');
     }
     var transSeq = 0;
