@@ -70,22 +70,31 @@ begin
 end $$;
 revoke all on function public._trade_minister_party() from public, anon, authenticated;
 
+-- Validate a deal's terms (resource + bounds). ONE source for the limits, shared by propose
+-- and update so the two can't drift. Raises on anything out of range. INTERNAL.
+create or replace function public._validate_trade_terms(p_resource text, p_qty int, p_years int, p_discount int)
+returns void language plpgsql immutable as $$
+begin
+  if not (p_resource = any(array['energy','food','minerals','goods','services','military'])) then
+    raise exception 'Unknown resource: %', p_resource; end if;
+  if p_qty   < 1 or p_qty   > 8  then raise exception 'Annual volume must be 1–8 units.'; end if;
+  if p_years < 1 or p_years > 10 then raise exception 'The term must be 1–10 years.'; end if;
+  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%%.'; end if;
+end $$;
+revoke all on function public._validate_trade_terms(text, int, int, int) from public, anon, authenticated;
+
 -- Propose a deal to a seller nation. Free to open (the 3 actions are spent on commit).
 create or replace function public.propose_trade_agreement(
   p_seller_nation text, p_resource text, p_qty int, p_years int, p_discount int)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_id uuid; v_sname text;
-  c_res constant text[] := array['energy','food','minerals','goods','services','military'];
 begin
   v_p := public._trade_minister_party();
   if p_seller_nation = v_p.nation_id then raise exception 'You can''t strike a trade agreement with your own nation.'; end if;
-  if not (p_resource = any(c_res)) then raise exception 'Unknown resource: %', p_resource; end if;
+  perform public._validate_trade_terms(p_resource, p_qty, p_years, p_discount);
   select name into v_sname from public.nations where id = p_seller_nation and not coalesce(dormant, false);
   if not found then raise exception 'No such trading partner.'; end if;
-  if p_qty   < 1 or p_qty   > 8  then raise exception 'Annual volume must be 1–8 units.'; end if;
-  if p_years < 1 or p_years > 10 then raise exception 'The term must be 1–10 years.'; end if;
-  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%%.'; end if;
 
   insert into public.trade_agreements (buyer_nation, seller_nation, buyer_party_id,
       resource, qty_per_year, term_years, discount_pct, buyer_approved)
@@ -102,17 +111,13 @@ create or replace function public.update_trade_agreement(
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_a public.trade_agreements%rowtype;
-  c_res constant text[] := array['energy','food','minerals','goods','services','military'];
 begin
   v_p := public._trade_minister_party();
   select * into v_a from public.trade_agreements where id = p_id for update;
   if not found then raise exception 'No such trade agreement.'; end if;
   if v_a.buyer_party_id <> v_p.id then raise exception 'Only the proposing nation can edit the terms.'; end if;
   if v_a.status <> 'negotiating' then raise exception 'This agreement is no longer open for changes.'; end if;
-  if not (p_resource = any(c_res)) then raise exception 'Unknown resource: %', p_resource; end if;
-  if p_qty   < 1 or p_qty   > 8  then raise exception 'Annual volume must be 1–8 units.'; end if;
-  if p_years < 1 or p_years > 10 then raise exception 'The term must be 1–10 years.'; end if;
-  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%%.'; end if;
+  perform public._validate_trade_terms(p_resource, p_qty, p_years, p_discount);
 
   update public.trade_agreements
      set resource = p_resource, qty_per_year = p_qty, term_years = p_years, discount_pct = p_discount,
