@@ -135,6 +135,8 @@
   .dir-mem .dep{color:var(--amber);font-weight:700}
   .dir-stats{display:flex;gap:6px;flex-wrap:wrap}
   .dir-stat{font-family:'Space Mono',monospace;font-size:10px;background:var(--chip);border-radius:7px;padding:4px 8px;color:var(--muted)}
+  .dir-minban{margin-top:10px;padding:10px 13px;border-radius:10px;font-size:12.5px;line-height:1.45;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 30%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--surface))}
+  .dir-minban b{color:var(--ink)}
   .dir-stat b{color:var(--ink)}
   .dcard{border:1px solid var(--line);border-radius:13px;padding:14px 15px}
   .dcard.para{border-color:color-mix(in srgb,var(--red) 35%,transparent);background:color-mix(in srgb,var(--red) 8%,var(--surface))}
@@ -642,7 +644,7 @@
   // performAction so the action budget + feed refresh. Mayor + Youth Wing are deferred.
   var directBtn = document.getElementById('act-direct');
   var directModal = document.getElementById('directModal');
-  var DIR = { members: [], sel: 0, funds: 0, spend: 0, cities: [], pop: 0, cands: [], selCity: 0, spendMayor: 0, mpRuns: [] };
+  var DIR = { members: [], sel: 0, funds: 0, spend: 0, cities: [], pop: 0, cands: [], selCity: 0, spendMayor: 0, mpRuns: [], ministers: {} };
   if (directBtn) { actionBtns.push(directBtn); directBtn.addEventListener('click', openDirectModal); }
   var closeDirectModal = wireModalClose(directModal, 'directClose');
 
@@ -655,6 +657,10 @@
   function memberMayorRun(m) { return DIR.cands.filter(function (c) { return c.politician_id === m.id && c.party_id === myPartyId; })[0] || null; }
   function memberBusy(m) { return !!memberMpRun(m) || !!memberMayorRun(m); }
   function memberBusyLabel(m) { return memberMpRun(m) ? 'running for Parliament' : memberMayorRun(m) ? 'running for mayor' : ''; }
+  // A sitting minister (DIR.ministers, mirrors _politician_is_minister) can't run for office,
+  // raise a paramilitary, or expand the youth wing — but CAN still be made Deputy, so they're
+  // not memberBusy (the member stays selectable; only those four cards grey out).
+  function memberMinister(m) { return !!DIR.ministers[m.id]; }
   function memberMpCd(m) { return (m.mp_until_tick && NOW_TICK && m.mp_until_tick > NOW_TICK) ? (m.mp_until_tick - NOW_TICK) : 0; }
 
   async function openDirectModal() {
@@ -682,6 +688,21 @@
       // Our party's pending parliamentary runs → which members are mid-run (occupied).
       DIR.mpRuns = [];
       try { var mp = await supabase.from('mp_candidacies').select('politician_id, opponent_name, resolve_tick').eq('party_id', myPartyId); DIR.mpRuns = mp.data || []; } catch (e) { /* occupation just isn't pre-marked; the server still blocks it */ }
+      // Which members currently hold a cabinet ministry → those four cards grey out (mirrors
+      // _politician_is_minister: explicit appointment wins, else a fulfilled promise not since
+      // reassigned). Non-fatal — the server still blocks it if this can't load.
+      DIR.ministers = {};
+      try {
+        var gr = await supabase.from('governments').select('id').eq('nation_id', feedCtx.nationId).eq('status', 'active').maybeSingle();
+        var gid = gr.data && gr.data.id;
+        if (gid) {
+          var ca = await supabase.from('cabinet_appointments').select('ministry, politician_id').eq('government_id', gid);
+          var ga = await supabase.from('government_agenda').select('params').eq('government_id', gid).eq('type', 'ministry').eq('status', 'done');
+          var apptMin = {};
+          (ca.data || []).forEach(function (c) { apptMin[c.ministry] = true; if (c.politician_id) DIR.ministers[c.politician_id] = true; });
+          (ga.data || []).forEach(function (a) { var p = a.params || {}; if (p.minister_id && !apptMin[p.ministry]) DIR.ministers[p.minister_id] = true; });
+        }
+      } catch (e) { /* minister gating just isn't pre-marked; the server still blocks it */ }
       // Default to the first member who isn't already standing for office.
       var firstFree = DIR.members.findIndex(function (m) { return !memberBusy(m); });
       DIR.sel = firstFree >= 0 ? firstFree : 0; DIR.spend = 0; DIR.selCity = 0; DIR.spendMayor = 0;
@@ -691,12 +712,13 @@
 
   function renderDirect() {
     var body = document.getElementById('directBody'), m = dirMember(), dep = dirDeputy();
+    var isMin = memberMinister(m);   // greys out Parliament / Mayor / Paramilitary / Youth Wing
     var image = Number(m.com) || 0, spendCost = DIR.spend * 25000, mpCd = memberMpCd(m);
     var mpCost = 50000 + spendCost, canAffordMp = DIR.funds >= mpCost, canAddSpend = (50000 + (DIR.spend + 1) * 25000) <= DIR.funds;
     var chips = DIR.members.map(function (p, i) {
       var busy = memberBusy(p);
       var tag = p.status === 'Party Leader' ? ' · Leader' : p.status === 'Deputy Leader' ? ' <span class="dep">· Deputy</span>' : '';
-      var rt = busy ? ' <span style="color:var(--amber)">· ' + memberBusyLabel(p) + '</span>' : '';
+      var rt = busy ? ' <span style="color:var(--amber)">· ' + memberBusyLabel(p) + '</span>' : (memberMinister(p) ? ' <span style="color:var(--amber)">· Minister</span>' : '');
       return '<button class="dir-mem' + (i === DIR.sel ? ' on' : '') + '" data-i="' + i + '"' + (busy ? ' disabled' : '') + '>' + esc(dirName(p)) + tag + rt + '</button>';
     }).join('');
     var stats = [['Cha', m.cha], ['Acu', m.acu], ['Gui', m.gui], ['Res', m.res], ['Img', m.com]]
@@ -734,7 +756,7 @@
         (elDate ? '<div class="dnote" style="margin-top:8px">Next Election: <b>' + esc(elDate) + '</b></div>' : '') +
         (mineCand ? '' :
           '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dMyMinus" type="button"' + (DIR.spendMayor ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spendMayor + '</span><button id="dMyPlus" type="button"' + (canAddMy ? '' : ' disabled') + '>+</button></div><span class="calc">$100K base' + (DIR.spendMayor ? ' + $' + (DIR.spendMayor * 25) + 'K' : '') + '</span></div>' +
-          '<div class="dcard__foot"><button class="dgo idg" id="dMayor" type="button"' + (canAffordMayor ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
+          '<div class="dcard__foot"><button class="dgo idg" id="dMayor" type="button"' + (canAffordMayor && !isMin ? '' : ' disabled') + '>Announce Candidacy</button><span class="dnote">' + (isMin ? 'A sitting minister can’t run' : canAffordMayor ? 'Costs $' + (mayorCost / 1000) + 'K + 1 action' : 'Need $' + (mayorCost / 1000) + 'K') + '</span></div>') +
         '</div>';
     }
 
@@ -742,23 +764,24 @@
       '<p class="dir-sub">Pick a member, then assign one action. Each costs 1 of your party’s actions.</p>' +
       '<div class="dir-members">' + chips + '</div>' +
       '<div class="dir-stats">' + stats + '</div>' +
+      (isMin ? '<div class="dir-minban">⛔ <b>' + esc(dirName(m)) + '</b> holds a cabinet ministry — they can’t run for Parliament or mayor, raise a paramilitary wing, or expand the youth wing. (A minister can still be appointed Deputy Leader.)</div>' : '') +
       // Parliament
       '<div class="dcard"><div class="dcard__t">Run for Parliament</div>' +
         '<div class="dcard__mech">1D6 + Image(' + image + ')' + (DIR.spend ? ' + ' + DIR.spend : '') + ' vs the rival’s 1D10 · resolves in 1–3 ticks</div>' +
         '<div class="dcard__eff">A seat-holding rival is locked in now; the contest resolves over the next few ticks. <b>Win:</b> +1 seat &amp; +1% popularity for you; the beaten party loses <b class="bad">1 seat &amp; 1% popularity</b>.</div>' +
         '<div class="dboost"><span class="bl">Campaign spend</span><div class="dstep"><button id="dSpMinus" type="button"' + (DIR.spend ? '' : ' disabled') + '>−</button><span class="v">+' + DIR.spend + '</span><button id="dSpPlus" type="button"' + (canAddSpend ? '' : ' disabled') + '>+</button></div>' +
           '<span class="calc">' + (DIR.spend ? '$' + (spendCost / 1000) + 'K → +' + DIR.spend + ' to your roll' : '$25K = +1 to your roll') + '</span></div>' +
-        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd || !canAffordMp ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : canAffordMp ? 'Costs $' + (mpCost / 1000) + 'K + 1 action' : 'Need $' + (mpCost / 1000) + 'K') + '</span></div></div>' +
+        '<div class="dcard__foot"><button class="dgo idg" id="dPar" type="button"' + (mpCd || !canAffordMp || isMin ? ' disabled' : '') + '>Stand for the seat</button><span class="dnote">' + (isMin ? 'A sitting minister can’t run' : mpCd ? 'On cooldown — <b>' + mpCd + '</b> tick' + (mpCd === 1 ? '' : 's') + ' left' : canAffordMp ? 'Costs $' + (mpCost / 1000) + 'K + 1 action' : 'Need $' + (mpCost / 1000) + 'K') + '</span></div></div>' +
       mayorHtml +
       // Youth Wing
       '<div class="dcard"><div class="dcard__t">Expand the Youth Wing</div>' +
         '<div class="dcard__mech">Roll 1D12 + 3 ticks · then floor +0.1% × (1D3 + Image(' + image + '))</div>' +
         '<div class="dcard__eff">A patient investment in the base — the drive lands in <b>4–15 ticks</b>, then raises your <b>popularity floor</b>. A higher-Image organiser builds more.</div>' +
-        '<div class="dcard__foot"><button class="dgo idg" id="dYw" type="button"' + (DIR.funds >= 25000 ? '' : ' disabled') + '>Expand the Wing</button><span class="dnote">' + (DIR.funds >= 25000 ? 'Costs $25K + 1 action' : 'Need $25K') + '</span></div></div>' +
+        '<div class="dcard__foot"><button class="dgo idg" id="dYw" type="button"' + (DIR.funds >= 25000 && !isMin ? '' : ' disabled') + '>Expand the Wing</button><span class="dnote">' + (isMin ? 'A sitting minister can’t' : DIR.funds >= 25000 ? 'Costs $25K + 1 action' : 'Need $25K') + '</span></div></div>' +
       // Paramilitary
       '<div class="dcard para"><div class="dcard__t">Raise a Paramilitary Wing</div>' +
         '<div class="dcard__eff"><b>+3% popularity</b> now — but the Republic notices: <b class="bad">−1 Regime, −3% popularity ceiling, −1% Government Confidence</b>.</div>' +
-        '<div class="dcard__foot"><button class="dgo red" id="dPara" type="button">Raise the Wing</button></div></div>' +
+        '<div class="dcard__foot"><button class="dgo red" id="dPara" type="button"' + (isMin ? ' disabled' : '') + '>Raise the Wing</button>' + (isMin ? '<span class="dnote">A sitting minister can’t</span>' : '') + '</div></div>' +
       // Deputy
       '<div class="dcard"><div class="dcard__t">Appoint as Deputy Leader</div>' +
         '<div class="dcard__eff">A standing role (one per party). While a Deputy serves, your party gets <b>+1 action per turn</b>.</div>' +

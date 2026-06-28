@@ -35,6 +35,7 @@ begin
     from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
   if public._politician_busy(p_member) then raise exception '%', v_mname || ' is standing for office — they can''t be directed elsewhere yet.'; end if;
+  if public._politician_is_minister(p_member) then raise exception '%', v_mname || ' holds a cabinet ministry — a sitting minister can''t expand the youth wing.'; end if;
   select current_tick into v_tick from public.game_state where id;
   v_resolve := v_tick + floor(random() * 12)::int + 1 + 3;   -- 1D12 + 3 ticks out (4..15)
 

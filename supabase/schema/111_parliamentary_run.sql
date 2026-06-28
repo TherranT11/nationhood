@@ -46,6 +46,33 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 revoke all on function public._politician_busy(uuid) from public, anon, authenticated;
 
+-- Does this politician currently hold a cabinet ministry in their nation's active government?
+-- Either an explicit cabinet appointment (cabinet_appointments, schema/60) or a fulfilled
+-- ministry promise (a DONE government_agenda 'ministry' row) whose portfolio hasn't since been
+-- reassigned to someone else by an explicit appointment — mirrors how the Government page
+-- resolves "who holds this seat" (explicit wins, else the fulfilled promise). A sitting minister
+-- can't be directed to run for office, raise a paramilitary wing, or expand the youth wing
+-- (they may still be made Deputy Leader — a party role, not a cabinet seat). ONE source for the
+-- rule, enforced by those direct_* RPCs and mirrored client-side only to grey the buttons out.
+create or replace function public._politician_is_minister(p_member uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.cabinet_appointments ca
+      join public.governments g on g.id = ca.government_id and g.status = 'active'
+     where ca.politician_id = p_member
+  ) or exists (
+    select 1 from public.government_agenda ga
+      join public.governments g on g.id = ga.government_id and g.status = 'active'
+     where ga.type = 'ministry' and ga.status = 'done'
+       and nullif(ga.params->>'minister_id', '')::uuid = p_member
+       and not exists (
+         select 1 from public.cabinet_appointments ca2
+          where ca2.government_id = g.id and ca2.ministry = ga.params->>'ministry'
+       )
+  );
+$$;
+revoke all on function public._politician_is_minister(uuid) from public, anon, authenticated;
+
 -- Resolve every parliamentary run that has come due (resolve_tick <= p_tick). The candidate
 -- rolls 1D6 + their snapshot Image + campaign spend vs the locked rival's 1D10; a win steals
 -- one seat (you +1, them −1 — chamber total fixed) and swings 1% popularity each way (clamped
