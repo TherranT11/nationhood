@@ -268,7 +268,6 @@
     (rows || []).forEach(function(r){ if (!r.active) return; if (r.by_nation === myId) byMe[r.target_nation] = true; if (r.target_nation === myId) onMe[r.by_nation] = true; });
     return { byMe: byMe, onMe: onMe };
   }
-  function sanctioned(id){ return !!(STATE.sanctions.byMe[id] || STATE.sanctions.onMe[id]); }
 
   var RESLIST = [
     { k:'energy', label:'Energy' }, { k:'food', label:'Food' }, { k:'minerals', label:'Minerals' },

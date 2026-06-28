@@ -16,7 +16,6 @@ create table if not exists public.sanctions (
   by_nation        text not null references public.nations (id) on delete cascade,
   target_nation    text not null references public.nations (id) on delete cascade,
   active           boolean not null default true,    -- false = lifted, but the row stays for the reward cooldown
-  since_tick       int,                                -- when the current embargo went up
   last_reward_tick int,                                -- last tick the rally reward fired (drives the cooldown)
   primary key (by_nation, target_nation)
 );
@@ -68,10 +67,10 @@ begin
   v_reward_ok := (v_regime is not null and v_regime <= 4)
              and (not v_have_ex or v_ex.last_reward_tick is null or v_tick >= v_ex.last_reward_tick + v_cooldown);
 
-  insert into public.sanctions (by_nation, target_nation, active, since_tick, last_reward_tick)
-    values (v_buyer, p_target, true, v_tick, case when v_reward_ok then v_tick else null end)
+  insert into public.sanctions (by_nation, target_nation, active, last_reward_tick)
+    values (v_buyer, p_target, true, case when v_reward_ok then v_tick else null end)
     on conflict (by_nation, target_nation) do update
-      set active = true, since_tick = v_tick,
+      set active = true,
           last_reward_tick = case when v_reward_ok then v_tick else public.sanctions.last_reward_tick end;
 
   if v_reward_ok then
