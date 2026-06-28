@@ -889,7 +889,7 @@
       if (r.error) { ping(r.error.message || 'Action failed.'); acting = false; setActions(partyActions); return; }
       ping('The government has resigned — fresh elections held.');
       setTimeout(function () { location.reload(); }, 900);   // reseat: reload to pick up the new government
-    });
+    }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
   });
 
   // APPOINT — the head of government names the whole cabinet in one action. The modal lists

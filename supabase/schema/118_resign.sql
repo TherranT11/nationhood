@@ -20,7 +20,7 @@ begin
 
   select * into v_gov from public.governments where nation_id = v_nation and status = 'active';
   if not found then raise exception 'No government sits to resign.'; end if;
-  if v_gov.formateur_party_id <> v_p.id then
+  if v_gov.formateur_party_id is distinct from v_p.id then
     raise exception 'Only the Head of Government can resign the government.'; end if;
 
   -- A live no-confidence motion takes precedence — resolve it before resigning.
