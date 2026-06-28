@@ -85,7 +85,7 @@ begin
   if not found then raise exception 'No such trading partner.'; end if;
   if p_qty   < 1 or p_qty   > 8  then raise exception 'Annual volume must be 1–8 units.'; end if;
   if p_years < 1 or p_years > 10 then raise exception 'The term must be 1–10 years.'; end if;
-  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%.'; end if;
+  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%%.'; end if;
 
   insert into public.trade_agreements (buyer_nation, seller_nation, buyer_party_id,
       resource, qty_per_year, term_years, discount_pct, buyer_approved)
@@ -112,7 +112,7 @@ begin
   if not (p_resource = any(c_res)) then raise exception 'Unknown resource: %', p_resource; end if;
   if p_qty   < 1 or p_qty   > 8  then raise exception 'Annual volume must be 1–8 units.'; end if;
   if p_years < 1 or p_years > 10 then raise exception 'The term must be 1–10 years.'; end if;
-  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%.'; end if;
+  if p_discount < 0 or p_discount > 50 then raise exception 'The discount must be 0–50%%.'; end if;
 
   update public.trade_agreements
      set resource = p_resource, qty_per_year = p_qty, term_years = p_years, discount_pct = p_discount,
