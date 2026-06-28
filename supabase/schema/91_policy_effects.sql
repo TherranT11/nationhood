@@ -54,6 +54,32 @@ begin
     using p_key, v_new, p_nation;
 end $$;
 
+-- Budget is a STOCK that can never go below 0: any shortfall past zero rolls into Debt
+-- (e.g. a −1 income against a $0 budget leaves budget at 0 and adds 1 to debt). ONE source
+-- for that rule — every automatic budget drain (annual income, policy/crisis money effects,
+-- admin events) routes through here so the floor + debt overflow apply identically.
+-- Discretionary spends (settle/import) gate on affordability instead, so they don't pass here.
+create or replace function public._nation_budget_add(p_nation text, p_delta numeric)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_raw numeric;
+begin
+  select coalesce((economy->>'budget')::numeric, 0) + coalesce(p_delta, 0) into v_raw
+    from public.nations where id = p_nation;
+  if not found then return; end if;
+  if v_raw >= 0 then
+    update public.nations
+       set economy = jsonb_set(coalesce(economy, '{}'::jsonb), '{budget}', to_jsonb(round(v_raw, 1)))
+     where id = p_nation;
+  else
+    update public.nations
+       set economy = jsonb_set(
+             jsonb_set(coalesce(economy, '{}'::jsonb), '{budget}', to_jsonb(0::numeric)),
+             '{debt}', to_jsonb(round(coalesce((economy->>'debt')::numeric, 0) + (-v_raw), 1)))
+     where id = p_nation;
+  end if;
+end $$;
+revoke all on function public._nation_budget_add(text, numeric) from public, anon, authenticated;
+
 -- Apply ONE authored effect to a nation. Unknown targets are ignored (forward-
 -- compatible with the authoring tool's target list).
 create or replace function public._apply_policy_effect(p_nation text, p_eff jsonb)
@@ -90,13 +116,17 @@ begin
         perform public._nation_stat_add(p_nation, 'economy', 'regime', v_v, 1, 20);
       end if;
     when 'Budget', 'Debt', 'Income' then
-      -- Money targets: scale the authored amount by nation size/wealth, then apply to
-      -- the matching economy key (lower(v_t)). Debt floors at 0; budget & income are
-      -- unbounded (deficits allowed).
+      -- Money targets: scale the authored amount by nation size/wealth, then apply to the
+      -- matching economy key. Budget can never go below 0 — a shortfall rolls into Debt
+      -- (_nation_budget_add). Debt floors at 0; Income is a rate and stays unbounded.
       select population, (stats->>'prosperity')::numeric into v_pop, v_pros from public.nations where id = p_nation;
       v_amt := public._policy_money(v_v, v_scale, coalesce(v_pop, 0), coalesce(v_pros, 10));
-      perform public._nation_stat_add(p_nation, 'economy', lower(v_t), v_amt,
-                                      case when v_t = 'Debt' then 0 else null end, null);
+      if v_t = 'Budget' then
+        perform public._nation_budget_add(p_nation, v_amt);
+      else
+        perform public._nation_stat_add(p_nation, 'economy', lower(v_t), v_amt,
+                                        case when v_t = 'Debt' then 0 else null end, null);
+      end if;
     -- Resource production (>= 0)
     when 'Energy'    then perform public._nation_stat_add(p_nation, 'production', 'energy',    v_v, 0, null);
     when 'Food'      then perform public._nation_stat_add(p_nation, 'production', 'food',      v_v, 0, null);
