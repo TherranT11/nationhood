@@ -485,17 +485,15 @@ begin
   -- -(budget+income)). Flat admin-set figure; only non-zero incomes. Event surfaces it.
   begin
   if (v_tick - 1) % 12 = 0 then
-    -- raw = budget + income, computed once; budget floors at 0, the rest overflows to debt.
-    update public.nations n
-       set economy = jsonb_set(
-             jsonb_set(n.economy, '{budget}', to_jsonb(round(greatest(0, s.raw), 1))),
-             '{debt}', to_jsonb(round(coalesce((n.economy->>'debt')::numeric, 0) + greatest(0, -s.raw), 1)))
-      from (
-        select id, coalesce((economy->>'budget')::numeric, 0) + coalesce((economy->>'income')::numeric, 0) as raw
-          from public.nations
-         where coalesce((economy->>'income')::numeric, 0) <> 0 and not coalesce(dormant, false)
-      ) s
-     where n.id = s.id;
+    -- Add each nation's income to its budget through the one budget rule (_nation_budget_add,
+    -- schema/91): budget floors at 0, the shortfall overflows to debt.
+    for v_rec in
+      select id, coalesce((economy->>'income')::numeric, 0) as inc
+        from public.nations
+       where coalesce((economy->>'income')::numeric, 0) <> 0 and not coalesce(dormant, false)
+    loop
+      perform public._nation_budget_add(v_rec.id, v_rec.inc);
+    end loop;
     insert into public.events (nation_id, party_id, kind, body, game_date)
     select n.id, null, 'income',
            'Annual income of ' || (case when (n.economy->>'income')::numeric < 0 then '−' else '+' end) ||

@@ -335,11 +335,14 @@
       '<div class="a-spacer"></div></div>';
     var rows = others.map(function(n){
       var pills = RESLIST.map(function(r){ return '<span class="rpill"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt((n.on_hand||{})[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
-      var btn = STATE.isTradeMin ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
+      var btn = (STATE.isTradeMin && !STATE.trade.blocked) ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
       return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div><div class="n-meta"><div class="n-name">' + esc(n.name) + '</div><div class="n-sub">on hand to sell</div></div></div>' +
         '<div class="res">' + pills + '</div><div class="nact">' + btn + '</div></div>';
     }).join('');
-    return '<div class="rowlabel">Trading partners — import to cover a shortfall · sort by column</div>' + header + rows;
+    var tp = STATE.trade, mult = num(tp.importMult) || 1;
+    var pol = ' · Trade policy: ' + esc(tp.name || 'Managed Trade') + (mult !== 1 ? ' ×' + mult : '') + (num(tp.tariff) > 0 ? ', ' + num(tp.tariff) + '% tariff' : '') + (tp.blocked ? ' (imports closed)' : '');
+    var blockNote = (STATE.isTradeMin && tp.blocked) ? '<p class="note">Imports are closed under your nation’s <b>' + esc(tp.name || 'Autarky') + '</b> trade policy. Change it in the legislature to trade.</p>' : '';
+    return '<div class="rowlabel">Trading partners — import to cover a shortfall' + pol + '</div>' + blockNote + header + rows;
   }
 
   function render(){
@@ -367,18 +370,20 @@
   function ping(h){ toast.innerHTML = h; toast.classList.add('show'); clearTimeout(tt); tt = setTimeout(function(){ toast.classList.remove('show'); }, 2700); }
 
   async function reload(){
-    var { data: ns } = await supabase.from('nations')
-      .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
-      .eq('dormant', false).order('name');
-    if (ns) {
-      STATE.nations = ns;
-      var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
-      if (mine) STATE.nation = mine;
-    }
-    var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
-    if (p) STATE.party.actions_remaining = p.actions_remaining;
-    var ec = STATE.nation.economy || {};
-    document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
+    try {
+      var { data: ns } = await supabase.from('nations')
+        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
+        .eq('dormant', false).order('name');
+      if (ns) {
+        STATE.nations = ns;
+        var mine = ns.find(function(x){ return x.id === STATE.nation.id; });
+        if (mine) STATE.nation = mine;
+      }
+      var { data: p } = await supabase.from('parties').select('actions_remaining').eq('id', STATE.party.id).single();
+      if (p) STATE.party.actions_remaining = p.actions_remaining;
+      var ec = STATE.nation.economy || {};
+      document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
+    } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
     render();
   }
 
@@ -410,7 +415,7 @@
     var withStock = RESLIST.filter(function(r){ return sellerStock(r.k) > 0; });
     T.res = (withStock[0] || RESLIST[3]).k; T.qty = 1;
     document.getElementById('tmTitle').textContent = T.seller.name;
-    document.getElementById('tmSub').textContent = 'World rate × quantity — paid from your Budget';
+    document.getElementById('tmSub').textContent = 'World rate × your trade policy — from Budget, any deficit to debt';
     document.getElementById('overlay').classList.add('show');
     renderChips(); renderDeal();
   }
@@ -424,7 +429,11 @@
   }
   function renderDeal(){
     var mx = sellerStock(T.res); if (T.qty > mx) T.qty = Math.max(1, mx);
-    var price = worldPrice(T.res, STATE.nations), tier = worldTier(T.res, STATE.nations), total = Math.round(price * T.qty * 10) / 10;
+    var world = worldPrice(T.res, STATE.nations), tier = worldTier(T.res, STATE.nations);
+    var tp = STATE.trade, mult = num(tp.importMult) || 1, tariffPct = Math.max(0, Math.min(100, num(tp.tariff)));
+    var total = Math.round(world * mult * T.qty * 10) / 10;   // sticker the buyer pays
+    var duty = Math.round(total * (tariffPct / 100) * 10) / 10;
+    var net = Math.round((total - duty) * 10) / 10;            // net cost after banking the duty
     var budget = num((STATE.nation.economy || {}).budget), cur = STATE.currency;
     document.getElementById('qV').textContent = T.qty;
     document.getElementById('qAvail').textContent = T.seller.name + ' has ' + fmt(mx) + ' ' + T.res;
@@ -432,13 +441,17 @@
     document.getElementById('deal').innerHTML =
       '<div class="drow"><span>You buy</span><span class="dv">' + T.qty + ' ' + T.res + '</span></div>' +
       '<div class="drow"><span>World market</span><span class="dv"><span class="tier ' + tier + '">' + TIER_LABEL[tier] + ' ×' + TIER_MULT[tier].toFixed(1) + '</span></span></div>' +
-      '<div class="drow"><span>Unit price</span><span class="dv">' + cur + price.toFixed(1) + 'B</span></div>' +
-      '<div class="drow total"><span>You pay</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
-      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm. Price = base × world scarcity; it moves only when the world does.</div>';
+      (mult !== 1 ? '<div class="drow"><span>Trade policy</span><span class="dv">' + esc(tp.name || 'Trade') + ' ×' + mult + '</span></div>' : '') +
+      '<div class="drow"><span>Sticker</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
+      (duty > 0 ? '<div class="drow"><span>Tariff −' + tariffPct + '% (banked)</span><span class="dv">+' + cur + duty.toFixed(1) + 'B</span></div>' : '') +
+      '<div class="drow total"><span>You pay (net)</span><span class="dv">' + cur + net.toFixed(1) + 'B</span></div>' +
+      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' +
+        (duty > 0 ? ' The ' + tariffPct + '% tariff is withheld from the seller and kept as customs revenue.' : '') +
+        (net > budget ? ' Treasury can’t cover it — ' + cur + (Math.round((net - budget) * 10) / 10).toFixed(1) + 'B is added to national debt.' : '') + '</div>';
     var lowAp = num(STATE.party.actions_remaining) < 2;
     var btn = document.getElementById('confirmBtn');
-    btn.disabled = mx < 1 || total > budget || lowAp;
-    btn.textContent = mx < 1 ? 'They have none' : (total > budget ? 'Treasury too low' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + total.toFixed(1) + 'B · 2 AP'));
+    btn.disabled = mx < 1 || lowAp;
+    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 AP' + (net > budget ? ' (to debt)' : ''));
   }
   async function confirmImport(){
     var btn = document.getElementById('confirmBtn'); btn.disabled = true;
@@ -469,6 +482,7 @@
         .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
       const { data: gs } = await supabase.from('game_state').select('current_tick').single();
       const { data: tradeMin } = await supabase.rpc('is_trade_minister');   // does my party hold Trade?
+      const { data: tp } = await supabase.rpc('nation_trade_policy', { p_nation: party.nation_id });   // in-force trade rung
 
       const nationName = nation.name || party.nation_id;
       document.getElementById('pname').textContent = party.name;
@@ -482,6 +496,7 @@
         nation: nation, party: party, nations: nations || [nation],
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
         isTradeMin: tradeMin === true,
+        trade: tp || { importMult: 1, tariff: 0, blocked: false, name: 'Managed Trade' },
         period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name'
       };
       render();

@@ -525,15 +525,19 @@ begin
       raise exception 'Regime is not a numeric rank for this nation — set it on the Nations tab first.';
     end if;
     v_cur := coalesce(v_cur, 0);
-    v_new := v_cur + p_value;
-    if v_min is not null then v_new := greatest(v_new, v_min); end if;
-    if v_max is not null then v_new := least(v_new, v_max); end if;
-    if v_int then v_new := round(v_new); end if;
-    update public.nations set
-      stats      = case when v_col = 'stats'      then jsonb_set(stats,      array[v_key], to_jsonb(v_new)) else stats end,
-      economy    = case when v_col = 'economy'    then jsonb_set(economy,    array[v_key], to_jsonb(v_new)) else economy end,
-      production = case when v_col = 'production' then jsonb_set(production, array[v_key], to_jsonb(v_new)) else production end
-    where id = p_nation;
+    if p_target = 'Budget' then
+      perform public._nation_budget_add(p_nation, p_value);   -- never below 0; shortfall → Debt
+    else
+      v_new := v_cur + p_value;
+      if v_min is not null then v_new := greatest(v_new, v_min); end if;
+      if v_max is not null then v_new := least(v_new, v_max); end if;
+      if v_int then v_new := round(v_new); end if;
+      update public.nations set
+        stats      = case when v_col = 'stats'      then jsonb_set(stats,      array[v_key], to_jsonb(v_new)) else stats end,
+        economy    = case when v_col = 'economy'    then jsonb_set(economy,    array[v_key], to_jsonb(v_new)) else economy end,
+        production = case when v_col = 'production' then jsonb_set(production, array[v_key], to_jsonb(v_new)) else production end
+      where id = p_nation;
+    end if;
 
   elsif v_col = '__gov' then
     select * into v_gov from public.governments where nation_id = p_nation and status = 'active';

@@ -217,6 +217,20 @@
   .poltab .scalerow .lbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
   .poltab .scalerow .es{width:auto;min-width:172px;padding:7px 9px;font-size:12.5px}
   .poltab .scalerow .worked{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);flex:1;min-width:210px}
+  /* Trade Policy tab */
+  .tpcard{border:1px solid var(--line);border-radius:13px;padding:14px 16px;margin-bottom:11px;background:var(--surface)}
+  .tphd{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .tphd .tp-name{flex:1;font-weight:700;font-size:14px}
+  .tpstar{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--soft);display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .tp-desc{width:100%;resize:vertical}
+  .tprow{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  .tprow label{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600}
+  .tprow input[type=number]{width:84px}
+  .tpchk{font-weight:600}
+  .tpefflbl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:8px 0 6px}
+  .tp-effrow{display:grid;grid-template-columns:1.4fr .6fr 96px 30px;gap:7px;align-items:center;margin-bottom:6px}
+  .tp-effrow select,.tp-effrow input{padding:7px 8px;font-size:12px}
+  @media(max-width:560px){.tp-effrow{grid-template-columns:1fr 1fr}.tp-effrow .tp-escph{display:none}}
   /* Plain-language echoes (doorway editor + preview). */
   .poltab .echo{display:block;font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft);margin-top:8px;line-height:1.5}
   .poltab .echo b{color:var(--ink)}
@@ -563,6 +577,7 @@
         <button class="vtab" data-tab="modifiers" type="button">Modifiers</button>
         <button class="vtab" data-tab="declarations" type="button">Declarations</button>
         <button class="vtab" data-tab="policies" type="button">Policies</button>
+        <button class="vtab" data-tab="trade-policy" type="button">Trade Policy</button>
         <button class="vtab" data-tab="convictions" type="button">Convictions</button>
         <button class="vtab" data-tab="inactivity" type="button">Inactivity</button>
         <button class="vtab" data-tab="crises" type="button">Crises</button>
@@ -696,6 +711,19 @@
               <aside><div class="rail"><div class="rh">Preview · how it reads</div><div class="rb" id="polPrev"></div></div></aside>
             </div>
             <div class="note" id="polNote" role="status" aria-live="polite" style="margin-top:14px"></div>
+          </div>
+        </div>
+      </div>
+      <div class="tabpane" data-tab="trade-policy" hidden>
+        <div class="poltab">
+          <div class="panel">
+            <h2 style="margin:0">Trade Policy</h2>
+            <p class="sub" style="margin:8px 0 14px">The import-side ladder — how open the nation is to foreign trade. Each rung sets the <b>import multiplier</b> (the buyer's sticker × the world rate), the <b>tariff</b> (% withheld from the seller and banked as the buyer's customs revenue), and optional per-tick effects. Nations adopt a rung through the legislature; this defines what each rung does. The starred rung is the default for nations that haven't legislated a change.</p>
+            <div id="tpEditor"><p class="empty">Loading…</p></div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
+              <button class="btn btn-solid" id="tpSave" type="button">Save Trade Policy</button>
+              <span class="note" id="tpNote" role="status" aria-live="polite"></span>
+            </div>
           </div>
         </div>
       </div>
@@ -1663,6 +1691,7 @@
         if (tab === 'cities') loadCities();
         if (tab === 'declarations') loadDeclarations();
         if (tab === 'policies') loadPolicies();
+        if (tab === 'trade-policy') loadTradePolicy();
         if (tab === 'convictions') loadConvictions();
         if (tab === 'inactivity') loadInactivity();
         if (tab === 'crises') loadCrises();
@@ -2342,6 +2371,92 @@
         loadPolicies();
       }catch(e){ alert('Could not remove: '+(e.message||e)); }
     }
+
+    // ===== Trade Policy tab ===========================================================
+    // The Trade Policy is an ordinary policies row tagged special:'trade', so it rides
+    // legislation + the per-tick effects engine like any policy. The rung modifiers
+    // (importMult / tariff / blocked) are the EXTRA fields economy_import reads (schema/
+    // 114-115). There's only ever one trade policy; we find it by its special tag and upsert.
+    var TP = null, tpId = null, tpSaving = false;
+    var TP_TGT = { National:['Prosperity','Welfare','Growth','Order','Image','Unemployment %','Inflation %','Budget','Debt','Income','Regime'], Production:['Energy','Food','Minerals','Goods','Services'], Government:['Government Confidence'] };
+    function tpDefault(){
+      function rung(name,desc,mult,tariff,blocked){ return { name:name, desc:desc, importMult:mult, tariff:tariff, blocked:blocked, effects:[] }; }
+      return { name:'Trade Policy', desc:'How open the nation is to foreign trade.', type:'spectrum', special:'trade', defaultIdx:2, spectrum:[
+        rung('Autarky','Closed borders — the nation imports nothing and must produce all it needs.',1,0,true),
+        rung('Protectionism','A tariff wall — imports are dear but fund the treasury.',1.25,20,false),
+        rung('Managed Trade','The balanced status quo — imports at the world rate, no tariff.',1,0,false),
+        rung('Open Markets','Low barriers — cheaper imports, a modest tariff.',0.9,10,false),
+        rung('Free Trade','Open borders — the cheapest imports and no tariff.',0.8,0,false)
+      ] };
+    }
+    function setTpNote(msg,kind){ var n=document.getElementById('tpNote'); if(n){ n.textContent=msg||''; n.className='note'+(kind?' '+kind:''); } }
+    async function loadTradePolicy(){
+      try{
+        const { data, error } = await supabase.from('policies').select('id, definition').order('created_at',{ascending:true});
+        if (error) throw error;
+        var row = (data||[]).filter(function(r){ return r.definition && r.definition.special==='trade'; })[0];
+        if (row){ tpId = row.id; TP = row.definition; } else { tpId = null; TP = tpDefault(); }
+        TP.type='spectrum'; TP.special='trade';
+        TP.spectrum = Array.isArray(TP.spectrum) ? TP.spectrum : [];
+        if (!TP.spectrum.length) TP.spectrum.push({ name:'Rung', desc:'', importMult:1, tariff:0, blocked:false, effects:[] });
+        TP.spectrum.forEach(function(s){ s.effects=Array.isArray(s.effects)?s.effects:[]; if(s.importMult==null)s.importMult=1; if(s.tariff==null)s.tariff=0; s.blocked=!!s.blocked; });
+        if (TP.defaultIdx==null || TP.defaultIdx<0 || TP.defaultIdx>=TP.spectrum.length) TP.defaultIdx=Math.min(2,TP.spectrum.length-1);
+        renderTradeEditor();
+      }catch(e){ document.getElementById('tpEditor').innerHTML='<p class="empty">Could not load the trade policy.</p>'; }
+    }
+    function tpTgtOptions(sel){ var h=''; Object.keys(TP_TGT).forEach(function(g){ h+='<optgroup label="'+g+'">'+TP_TGT[g].map(function(t){ return '<option'+(t===sel?' selected':'')+'>'+t+'</option>'; }).join('')+'</optgroup>'; }); return h; }
+    function tpEffRows(ri){
+      var s=TP.spectrum[ri];
+      return s.effects.map(function(e,ei){
+        var sc = isMoneyTarget(e.t) ? '<select class="tp-esc" data-r="'+ri+'" data-e="'+ei+'"><option value="flat"'+(e.scale==='perm'||e.scale==='pop'?'':' selected')+'>flat</option><option value="perm"'+(e.scale==='perm'?' selected':'')+'>/M pop</option><option value="pop"'+(e.scale==='pop'?' selected':'')+'>×pop×prosp</option></select>' : '<span class="tp-escph"></span>';
+        return '<div class="tp-effrow"><select class="tp-et" data-r="'+ri+'" data-e="'+ei+'">'+tpTgtOptions(e.t)+'</select><input class="tp-ev" type="number" step="any" data-r="'+ri+'" data-e="'+ei+'" value="'+(e.v)+'">'+sc+'<button class="tp-erx xb" type="button" data-r="'+ri+'" data-e="'+ei+'">×</button></div>';
+      }).join('') + '<button class="tp-addeff btn btn-ghost" type="button" data-r="'+ri+'">+ effect</button>';
+    }
+    function renderTradeEditor(){
+      var box=document.getElementById('tpEditor');
+      box.innerHTML = TP.spectrum.map(function(s,ri){
+        return '<div class="tpcard">'+
+          '<div class="tphd"><label class="tpstar"><input type="radio" name="tpdef" class="tp-def" data-r="'+ri+'"'+(TP.defaultIdx===ri?' checked':'')+'> default</label>'+
+            '<input class="tp-name" data-r="'+ri+'" value="'+esc(s.name||'')+'" placeholder="Rung name">'+
+            '<button class="tp-rm xb" type="button" data-r="'+ri+'" title="Remove rung">×</button></div>'+
+          '<textarea class="tp-desc" data-r="'+ri+'" rows="2" placeholder="What this rung means">'+esc(s.desc||'')+'</textarea>'+
+          '<div class="tprow">'+
+            '<label>Import ×<input class="tp-mult" type="number" step="0.05" data-r="'+ri+'" value="'+s.importMult+'"></label>'+
+            '<label>Tariff %<input class="tp-tariff" type="number" step="1" data-r="'+ri+'" value="'+s.tariff+'"></label>'+
+            '<label class="tpchk"><input type="checkbox" class="tp-blocked" data-r="'+ri+'"'+(s.blocked?' checked':'')+'> Imports blocked (Autarky)</label>'+
+          '</div>'+
+          '<div class="tpefflbl">Per-tick effects while enacted</div><div class="tpeff">'+tpEffRows(ri)+'</div>'+
+        '</div>';
+      }).join('') + '<button class="btn btn-ghost" id="tpAddRung" type="button">+ rung</button>';
+      wireTradeEditor();
+    }
+    function wireTradeEditor(){
+      var box=document.getElementById('tpEditor');
+      box.querySelectorAll('.tp-name').forEach(function(el){ el.oninput=function(){ TP.spectrum[+el.dataset.r].name=el.value; }; });
+      box.querySelectorAll('.tp-desc').forEach(function(el){ el.oninput=function(){ TP.spectrum[+el.dataset.r].desc=el.value; }; });
+      box.querySelectorAll('.tp-mult').forEach(function(el){ el.oninput=function(){ TP.spectrum[+el.dataset.r].importMult=parseFloat(el.value)||0; }; });
+      box.querySelectorAll('.tp-tariff').forEach(function(el){ el.oninput=function(){ TP.spectrum[+el.dataset.r].tariff=Math.max(0,Math.min(100,parseFloat(el.value)||0)); }; });
+      box.querySelectorAll('.tp-blocked').forEach(function(el){ el.onchange=function(){ TP.spectrum[+el.dataset.r].blocked=el.checked; }; });
+      box.querySelectorAll('.tp-def').forEach(function(el){ el.onchange=function(){ if(el.checked) TP.defaultIdx=+el.dataset.r; }; });
+      box.querySelectorAll('.tp-rm').forEach(function(el){ el.onclick=function(){ if(TP.spectrum.length<=1)return; var r=+el.dataset.r; TP.spectrum.splice(r,1); if(TP.defaultIdx>=TP.spectrum.length)TP.defaultIdx=TP.spectrum.length-1; renderTradeEditor(); }; });
+      var ar=document.getElementById('tpAddRung'); if(ar)ar.onclick=function(){ TP.spectrum.push({name:'New rung',desc:'',importMult:1,tariff:0,blocked:false,effects:[]}); renderTradeEditor(); };
+      box.querySelectorAll('.tp-et').forEach(function(el){ el.onchange=function(){ var e=TP.spectrum[+el.dataset.r].effects[+el.dataset.e]; e.t=el.value; if(!isMoneyTarget(e.t))delete e.scale; else if(!e.scale)e.scale='pop'; renderTradeEditor(); }; });
+      box.querySelectorAll('.tp-ev').forEach(function(el){ el.oninput=function(){ TP.spectrum[+el.dataset.r].effects[+el.dataset.e].v=parseFloat(el.value)||0; }; });
+      box.querySelectorAll('.tp-esc').forEach(function(el){ el.onchange=function(){ TP.spectrum[+el.dataset.r].effects[+el.dataset.e].scale=el.value; }; });
+      box.querySelectorAll('.tp-erx').forEach(function(el){ el.onclick=function(){ TP.spectrum[+el.dataset.r].effects.splice(+el.dataset.e,1); renderTradeEditor(); }; });
+      box.querySelectorAll('.tp-addeff').forEach(function(el){ el.onclick=function(){ TP.spectrum[+el.dataset.r].effects.push({t:'Prosperity',v:0,cad:'tick',dur:0}); renderTradeEditor(); }; });
+    }
+    async function saveTradePolicy(){
+      if (tpSaving) return; tpSaving=true;
+      try{
+        TP.spectrum.forEach(function(s){ s.effects=(s.effects||[]).filter(function(e){ return e.t; }).map(function(e){ var o={t:e.t,v:Number(e.v)||0,cad:'tick',dur:0}; if(isMoneyTarget(e.t))o.scale=e.scale||'pop'; return o; }); });
+        if (tpId){ const { error } = await supabase.from('policies').update({ definition: TP }).eq('id', tpId); if(error)throw error; }
+        else { const { data, error } = await supabase.from('policies').insert({ definition: TP }).select('id').single(); if(error)throw error; tpId=data.id; }
+        setTpNote('Trade Policy saved.', 'ok');
+      }catch(e){ setTpNote('Save failed: '+(e.message||e), 'error'); }
+      finally { tpSaving=false; }
+    }
+    (function(){ var b=document.getElementById('tpSave'); if(b) b.addEventListener('click', saveTradePolicy); })();
 
     function polTgtSelect(sel, cls){
       var h='<select class="'+(cls||'et')+'">';
