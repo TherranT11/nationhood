@@ -243,7 +243,7 @@
       if (isTradePolicy(def)) {
         var curOpt = policyOptions(def)[inForceIdx()] || {};
         html += effRow({ text: 'In force now · ' + tradeEffectText(curOpt), cls: '' }, 'now');
-        html += effRow({ text: 'If enacted · ' + tradeEffectText(o), cls: 'pos' }, 'while in force');
+        html += effRow({ text: 'If enacted · ' + tradeEffectText(o), cls: '' }, 'while in force');
       }
       // Show every effect except the recurring money summarised in the fiscal block above.
       // One-time and finite-duration money stay here so nothing the option does goes unshown.

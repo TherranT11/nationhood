@@ -212,8 +212,8 @@
     var effHtml = '';
     // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — show current → proposed.
     if (isTradePolicy(def)) {
-      effHtml += '<div class="effrow"><span class="ek flat">In force now · ' + esc(tradeEffectText(co)) + '</span><span class="ecad">now</span></div>';
-      effHtml += '<div class="effrow"><span class="ek up">If enacted · ' + esc(tradeEffectText(po)) + '</span><span class="ecad">while in force</span></div>';
+      effHtml += '<div class="effrow"><span class="ek flat">In force now · ' + esc(tradeEffectText(co || {})) + '</span><span class="ecad">now</span></div>';
+      effHtml += '<div class="effrow"><span class="ek flat">If enacted · ' + esc(tradeEffectText(po)) + '</span><span class="ecad">while in force</span></div>';
     }
     effHtml += effs.map(function(e){
       var tx = effectText(e, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
