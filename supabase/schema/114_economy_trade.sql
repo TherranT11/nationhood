@@ -1,0 +1,174 @@
+-- ===========================================================================
+-- 114 · Economy trade — world scarcity tiers, imports, Advance Society.
+-- Depends on: 10 (nations), 20 (parties), 40 (_lock_party, events,
+-- current_game_date), 60 (governments), 91 (_nation_stat_add), 113 (_economy_need,
+-- _economy_period). Run after 113.
+--
+-- The world price of a resource = its base price × a scarcity multiplier, clamped
+-- to [$1, $25]. The tier is DERIVED from world production ÷ world demand for that
+-- resource, so it self-updates as the world changes — but only Food, Goods and
+-- Services have a unit demand, so only those three move; Energy, Minerals and
+-- Military have no consumption sink and read as Normal until one is added. Trade
+-- moves ON-HAND, never production or demand, so a player's imports can't budge a
+-- tier — only big events (which change production) can. ONE source here; util.js
+-- mirrors the price math to render the page.
+--
+-- Imports: the head of government buys units from another nation at the world price,
+-- paid from the Budget — the seller loses the units and banks the payment. Advance
+-- Society: spend (Prosperity + 5) Goods for +1 Prosperity, once per year.
+-- ===========================================================================
+
+-- Base price (the anchor the tier multiplies). $B per unit.
+create or replace function public._resource_base_price(p_resource text)
+returns numeric language sql immutable as $$
+  select case p_resource
+    when 'food' then 3 when 'energy' then 5 when 'minerals' then 3
+    when 'goods' then 5 when 'services' then 5 when 'military' then 15 else 0 end;
+$$;
+
+-- World unit demand for a resource = Σ non-dormant nations' demand-need. Only the
+-- three unit-consumed resources have one; the rest return 0 (→ Normal tier).
+create or replace function public._world_demand(p_resource text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select case when p_resource in ('food', 'goods', 'services')
+    then (select coalesce(sum(public._economy_need(n.id, p_resource)), 0)
+            from public.nations n where not coalesce(n.dormant, false))
+    else 0 end;
+$$;
+revoke all on function public._world_demand(text) from public, anon, authenticated;
+grant execute on function public._world_demand(text) to authenticated;
+
+-- World production for a resource = Σ non-dormant nations' production (NOT on-hand,
+-- so trade never shifts it).
+create or replace function public._world_production(p_resource text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(coalesce((production->>p_resource)::numeric, 0)), 0)
+    from public.nations where not coalesce(dormant, false);
+$$;
+revoke all on function public._world_production(text) from public, anon, authenticated;
+grant execute on function public._world_production(text) to authenticated;
+
+-- Scarcity tier from production ÷ demand. Undemanded resources (demand 0) sit at Normal.
+create or replace function public._world_tier(p_resource text)
+returns text language sql stable security definer set search_path = public as $$
+  select case
+    when public._world_demand(p_resource) <= 0 then 'normal'
+    else (
+      with r as (select public._world_production(p_resource) / nullif(public._world_demand(p_resource), 0) as ratio)
+      select case
+        when ratio < 0.5 then 'crisis'
+        when ratio < 0.8 then 'scarce'
+        when ratio < 1.1 then 'tight'
+        when ratio < 1.6 then 'normal'
+        else 'glut' end
+      from r)
+  end;
+$$;
+revoke all on function public._world_tier(text) from public, anon, authenticated;
+grant execute on function public._world_tier(text) to authenticated;
+
+-- Tier multiplier and the live world price (base × multiplier, clamped to [1, 25]).
+create or replace function public._tier_mult(p_tier text)
+returns numeric language sql immutable as $$
+  select case p_tier
+    when 'glut' then 0.7 when 'tight' then 1.3 when 'scarce' then 1.6 when 'crisis' then 2.0 else 1.0 end;
+$$;
+create or replace function public._world_price(p_resource text)
+returns numeric language sql stable security definer set search_path = public as $$
+  select greatest(1, least(25, round(public._resource_base_price(p_resource) * public._tier_mult(public._world_tier(p_resource)), 1)));
+$$;
+revoke all on function public._world_price(text) from public, anon, authenticated;
+grant execute on function public._world_price(text) to authenticated;
+
+-- Import units of a resource from another nation at the world price. Head-of-government
+-- gated. The seller must hold the units and the buyer's Budget must cover the bill; the
+-- units move seller→buyer on-hand and the payment moves buyer→seller Budget. Price is
+-- recomputed server-side (the client figure is only a preview), so it can't be spoofed.
+create or replace function public.economy_import(p_seller text, p_resource text, p_qty int)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_p public.parties%rowtype; v_gov public.governments%rowtype; v_buyer text;
+  v_price numeric; v_total numeric; v_have numeric; v_budget numeric; v_sname text; v_cur text;
+begin
+  if p_resource not in ('energy', 'food', 'minerals', 'goods', 'services', 'military') then
+    raise exception 'Unknown resource.'; end if;
+  if coalesce(p_qty, 0) < 1 then raise exception 'Choose how much to import.'; end if;
+
+  v_p := public._lock_party();
+  v_buyer := v_p.nation_id;
+  select * into v_gov from public.governments where nation_id = v_buyer and status = 'active';
+  if not found then raise exception 'There is no sitting government.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the head of government can import.'; end if;
+  if p_seller = v_buyer then raise exception 'You can''t import from your own nation.'; end if;
+
+  select name, coalesce(economy->>'currency', '$') into v_sname, v_cur
+    from public.nations where id = p_seller and not coalesce(dormant, false);
+  if not found then raise exception 'No such trading partner.'; end if;
+
+  v_have := coalesce((select (on_hand->>p_resource)::numeric from public.nations where id = p_seller), 0);
+  if v_have < p_qty then
+    raise exception '% only has % % to sell.', v_sname, v_have, initcap(p_resource); end if;
+
+  v_price := public._world_price(p_resource);
+  v_total := round(v_price * p_qty, 1);
+  v_cur   := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
+  v_budget := coalesce((select (economy->>'budget')::numeric from public.nations where id = v_buyer), 0);
+  if v_budget < v_total then
+    raise exception 'Treasury too low — the deal costs % but you hold %.', v_total, v_budget; end if;
+
+  perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
+  perform public._nation_stat_add(v_buyer,  'on_hand', p_resource,  p_qty, 0, null);
+  perform public._nation_stat_add(v_buyer,  'economy', 'budget', -v_total, 0, null);
+  perform public._nation_stat_add(p_seller, 'economy', 'budget',  v_total, 0, null);
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_buyer, v_p.id, 'economy',
+            'The government imported ' || p_qty || ' ' || initcap(p_resource) || ' from ' || v_sname
+              || ' for ' || v_cur || v_total || 'B.',
+            public.current_game_date());
+
+  return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'price', v_price, 'total', v_total);
+end $$;
+grant execute on function public.economy_import(text, text, int) to authenticated;
+
+-- Advance Society: invest in living standards for +1 Prosperity. Costs (Prosperity + 5)
+-- Goods from on-hand — the richer you are, the dearer it gets — and may be done once per
+-- year. Head-of-government gated. The once-a-year lock is a year stamp that auto-expires.
+alter table public.nations add column if not exists advanced_year int;
+
+create or replace function public.economy_advance()
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_p public.parties%rowtype; v_gov public.governments%rowtype; v_n public.nations%rowtype;
+  v_period int; v_cost numeric; v_have numeric; v_pros numeric;
+begin
+  v_p := public._lock_party();
+  select * into v_gov from public.governments where nation_id = v_p.nation_id and status = 'active';
+  if not found then raise exception 'There is no sitting government.'; end if;
+  if v_gov.formateur_party_id is distinct from v_p.id then
+    raise exception 'Only the head of government can advance society.'; end if;
+
+  select * into v_n from public.nations where id = v_p.nation_id;
+  v_period := public._economy_period((select current_tick from public.game_state where id));
+  if coalesce(v_n.advanced_year, 0) = v_period then
+    raise exception 'Society has already been advanced this year.'; end if;
+
+  v_pros := coalesce((v_n.stats->>'prosperity')::numeric, 0);
+  v_cost := v_pros + 5;
+  v_have := coalesce((v_n.on_hand->>'goods')::numeric, 0);
+  if v_have < v_cost then
+    raise exception 'Not enough Goods to advance society (need %, have %).', v_cost, v_have; end if;
+
+  perform public._nation_stat_add(v_p.nation_id, 'on_hand', 'goods', -v_cost, 0, null);
+  perform public._nation_stat_add(v_p.nation_id, 'stats', 'prosperity', 1, 1, 20);
+  update public.nations set advanced_year = v_period where id = v_p.nation_id;
+
+  insert into public.events (nation_id, party_id, kind, body, game_date)
+    values (v_p.nation_id, v_p.id, 'economy', 'The government invested in society — Prosperity +1.', public.current_game_date());
+
+  return jsonb_build_object('cost', v_cost, 'prosperity', least(20, v_pros + 1));
+end $$;
+grant execute on function public.economy_advance() to authenticated;
+
+notify pgrst, 'reload schema';
