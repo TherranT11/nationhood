@@ -70,9 +70,9 @@
   mountTopbar();
   mountSidenav();
 
-  // The world's continents, in display order. Empty ones still show (the world is mapped out
-  // even where no nation sits). A nation's continent comes from nations.continent (schema/123).
-  var CONTINENTS = ['NEXAR', 'Crucera', 'Western Meridian', 'Eastern Meridian', 'Al-Makir', 'Serranthia', 'Faresia'];
+  // Continents come from the hex map: the continents registry is the list (so empty continents
+  // still show), and nation_continents() (schema/124) says which continent each nation's land
+  // sits on. One source — geography is painted on the map, never set twice.
   var num = function(v){ return Number(v) || 0; };
 
   function fail(msg){ document.getElementById('continents').innerHTML = '<div class="empty">' + msg + '</div>'; }
@@ -94,17 +94,19 @@
       '<div class="cont__body">' + body + '</div></div>';
   }
 
-  function render(nations, myId){
-    // Group nations by continent. Anything on a continent not in the list (or with none set)
-    // is appended under its own heading / "Unassigned" so nothing is silently dropped.
+  function render(nations, contOf, registry, myId){
+    // Group nations by their map-derived continent; a nation with no continent-painted land
+    // falls under "Unassigned" so nothing is silently dropped.
     var byCont = {};
-    nations.forEach(function(n){ var c = n.continent || 'Unassigned'; (byCont[c] = byCont[c] || []).push(n); });
-    var order = CONTINENTS.slice();
-    Object.keys(byCont).forEach(function(c){ if (order.indexOf(c) < 0) order.push(c); });
+    nations.forEach(function(n){ var c = contOf[n.id] || 'Unassigned'; (byCont[c] = byCont[c] || []).push(n); });
+    // Order: the painted continents (registry), then any extra that turned up, Unassigned last.
+    var order = registry.slice();
+    Object.keys(byCont).forEach(function(c){ if (c !== 'Unassigned' && order.indexOf(c) < 0) order.push(c); });
+    if (byCont['Unassigned']) order.push('Unassigned');
     document.getElementById('continents').innerHTML = order.map(function(c){
       var ns = (byCont[c] || []).slice().sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); });
       return continentCard(c, ns, myId, ns.length > 0);   // continents with nations open by default
-    }).join('');
+    }).join('') || '<div class="empty">No continents mapped yet — paint the map’s Continents layer to populate this.</div>';
     document.querySelectorAll('.cont__h').forEach(function(h){ h.onclick = function(){ h.parentElement.classList.toggle('open'); }; });
   }
 
@@ -115,9 +117,13 @@
     try {
       var { data: party } = await supabase.from('parties').select('nation_id').eq('user_id', user.id).single();
       if (!party){ window.location.replace('/nation-select/'); return; }
-      var { data: nations } = await supabase.from('nations')
-        .select('id, name, continent, military_bases').eq('dormant', false).order('name');
-      render(nations || [], party.nation_id);
+      var [nat, con, nc] = await Promise.all([
+        supabase.from('nations').select('id, name, military_bases').eq('dormant', false).order('name'),
+        supabase.from('continents').select('name').order('name'),         // the painted continents (the list)
+        supabase.rpc('nation_continents')                                  // which continent each nation sits on
+      ]);
+      var contOf = {}; (nc.data || []).forEach(function(r){ contOf[r.nation_id] = r.continent; });
+      render(nat.data || [], contOf, (con.data || []).map(function(c){ return c.name; }), party.nation_id);
     } catch (e){ fail('Couldn’t load the world right now. Refresh to try again.'); }
   })();
 </script>
