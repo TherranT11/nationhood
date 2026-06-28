@@ -103,15 +103,25 @@
   /* TRADING PARTNERS */
   .rowlabel{font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--soft);margin:22px 0 10px}
   .nrow{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:13px 16px;margin-bottom:9px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  .n-id{display:flex;align-items:center;gap:11px;min-width:170px;flex:0 0 auto}
+  .n-id{display:flex;align-items:center;gap:11px;width:200px;flex:0 0 200px;min-width:0}
+  .n-meta{min-width:0}
   .n-crest{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:11px;flex:none}
-  .n-name{font-weight:800;font-size:14px;line-height:1.15} .n-sub{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:2px;letter-spacing:.02em}
-  .res{display:flex;gap:6px;flex-wrap:wrap;flex:1;min-width:230px}
-  .rpill{display:flex;align-items:center;gap:5px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:11px}
-  .rpill .rd{width:8px;height:8px;border-radius:2px;flex:none} .rpill b{font-weight:700;font-size:12px} .rpill .rk{color:var(--soft);font-size:9px}
-  .nact{display:flex;gap:7px;flex:0 0 auto}
+  .n-name{font-weight:800;font-size:14px;line-height:1.15;overflow:hidden;text-overflow:ellipsis} .n-sub{font-family:'Space Mono',monospace;font-size:9px;color:var(--soft);margin-top:2px;letter-spacing:.02em}
+  .res{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;flex:1;min-width:240px}
+  .rpill{display:flex;align-items:center;gap:5px;background:var(--field);border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-family:'Space Mono',monospace;font-size:11px;min-width:0}
+  .rpill .rd{width:8px;height:8px;border-radius:2px;flex:none} .rpill b{font-weight:700;font-size:12px} .rpill .rk{color:var(--soft);font-size:9px;overflow:hidden;text-overflow:ellipsis}
+  .nact{display:flex;gap:7px;justify-content:flex-end;width:92px;flex:0 0 92px}
   .tbtn{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:9px 15px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
   .tbtn:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+  /* sortable column header — aligns to the same 6-col grid as the pills */
+  .thead{display:flex;align-items:center;gap:16px;padding:2px 16px 8px}
+  .thead .cols{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;flex:1;min-width:240px}
+  .thead .a-spacer{width:92px;flex:0 0 92px}
+  .colbtn{background:none;border:none;cursor:pointer;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--soft);display:flex;align-items:center;gap:3px;padding:3px 0;text-align:left}
+  .colbtn:hover{color:var(--ink)} .colbtn.on{color:var(--indigo);font-weight:700}
+  .colbtn.namebtn{width:200px;flex:0 0 200px;padding-left:45px}
+  @media(max-width:720px){.thead{display:none}}
+  @media(max-width:560px){.res{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
   /* IMPORT MODAL */
   .overlay{position:fixed;inset:0;background:rgba(20,20,28,.5);backdrop-filter:blur(2px);display:none;align-items:flex-start;justify-content:center;padding:34px 16px;overflow:auto;z-index:120}
@@ -310,13 +320,22 @@
   function partners(){
     var others = STATE.nations.filter(function(n){ return n.id !== STATE.nation.id; });
     if (!others.length) return '';
+    var key = STATE.sortKey || 'name';
+    others = others.slice().sort(function(a, b){
+      if (key === 'name') return (a.name || '').localeCompare(b.name || '');
+      return num((b.on_hand || {})[key]) - num((a.on_hand || {})[key]) || (a.name || '').localeCompare(b.name || '');
+    });
+    var header = '<div class="thead">' +
+      '<button class="colbtn namebtn' + (key === 'name' ? ' on' : '') + '" data-sort="name">Nation' + (key === 'name' ? ' ↓' : '') + '</button>' +
+      '<div class="cols">' + RESLIST.map(function(r){ return '<button class="colbtn' + (key === r.k ? ' on' : '') + '" data-sort="' + r.k + '">' + r.label + (key === r.k ? ' ↓' : '') + '</button>'; }).join('') + '</div>' +
+      '<div class="a-spacer"></div></div>';
     var rows = others.map(function(n){
       var pills = RESLIST.map(function(r){ return '<span class="rpill"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt((n.on_hand||{})[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
       var btn = STATE.isHog ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
-      return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div><div><div class="n-name">' + esc(n.name) + '</div><div class="n-sub">on hand to sell</div></div></div>' +
+      return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div><div class="n-meta"><div class="n-name">' + esc(n.name) + '</div><div class="n-sub">on hand to sell</div></div></div>' +
         '<div class="res">' + pills + '</div><div class="nact">' + btn + '</div></div>';
     }).join('');
-    return '<div class="rowlabel">Trading partners — import to cover a shortfall</div>' + rows;
+    return '<div class="rowlabel">Trading partners — import to cover a shortfall · sort by column</div>' + header + rows;
   }
 
   function render(){
@@ -334,6 +353,7 @@
     var pb = document.getElementById('produceBtn'); if (pb) pb.onclick = function(){ produce(pb); };
     var ab = document.getElementById('advanceBtn'); if (ab) ab.onclick = function(){ advance(ab); };
     document.querySelectorAll('[data-import]').forEach(function(b){ b.onclick = function(){ openImport(b.dataset.import); }; });
+    document.querySelectorAll('[data-sort]').forEach(function(b){ b.onclick = function(){ STATE.sortKey = b.dataset.sort; render(); }; });
   }
 
   var toast = document.getElementById('toast'), tt;
@@ -452,7 +472,7 @@
       STATE = {
         nation: nation, party: party, nations: nations || [nation],
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
-        period: economyPeriod((gs && gs.current_tick) || 1), currency: cur
+        period: economyPeriod((gs && gs.current_tick) || 1), currency: cur, sortKey: 'name'
       };
       render();
     } catch (e) {
