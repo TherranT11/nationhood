@@ -89,6 +89,28 @@ export function tickToDate(tick) {
 // own choice wins; otherwise a pick-list slot shows its ★ default, while a free-text
 // identity slot (custom_allowed) stays '—' until declared (its ★ is only an example,
 // not a shared default). `values` is the nation's declarations jsonb ({} when none).
+// ECONOMY — MIRRORS supabase/schema/113. The four annual demands and the settling
+// window. economyPeriod is the year of the next June deadline (Jul–Dec settle next
+// year's June; Jan–Jun settle this year's), so a nation's demands.year < the period
+// means nothing's been settled for the current window yet. economyNeed gives the size
+// of one demand from the nation's live state — units for food/goods/services, and the
+// upkeep COST in Budget for military. Server is authority; these only render the page.
+export function economyPeriod(tick) {
+  var n = Math.max(1, Math.round(Number(tick) || 1));
+  var month = ((n - 1) % 12) + 1;
+  return 1980 + Math.floor((n - 1) / 12) + (month > 6 ? 1 : 0);
+}
+export function economyNeed(resource, nation) {
+  var stats = (nation && nation.stats) || {}, on = (nation && nation.on_hand) || {};
+  switch (resource) {
+    case 'food':     return Math.max(1, Math.ceil((Number(nation && nation.population) || 0) / 50));
+    case 'goods':    return Math.ceil((Number(stats.prosperity) || 0) / 2);
+    case 'services': return Math.ceil((Number(stats.welfare) || 0) / 2);
+    case 'military': return Number(on.military) || 0;
+    default:         return 0;
+  }
+}
+
 export function declaredValue(slot, values) {
   var v = values && slot ? values[slot.slug] : null;
   if (v != null && v !== '') return v;

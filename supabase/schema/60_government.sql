@@ -474,6 +474,10 @@ begin
   -- 0.1% × (1D3 + the organiser's Image).
   begin perform public._resolve_youth_wings(v_tick);
   exception when others then raise warning 'tick %: youth wings failed — %', v_tick, sqlerrm; end;
+  -- Economy demands (schema/113): self-filters to the June tick, where the annual accounts
+  -- close — a fed nation grows +1M, each unmet demand drops its stat, then the flags reset.
+  begin perform public._resolve_economy_demands(v_tick);
+  exception when others then raise warning 'tick %: economy demands failed — %', v_tick, sqlerrm; end;
   -- January (the new month is January when (tick − 1) is a multiple of 12): apply
   -- each nation's annual income to its budget. A surplus fills the bank; a deficit
   -- (negative income) drains a positive budget, and any shortfall past zero rolls
