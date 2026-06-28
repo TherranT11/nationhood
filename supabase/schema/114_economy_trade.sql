@@ -125,7 +125,7 @@ returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_p public.parties%rowtype; v_buyer text; v_tp jsonb;
   v_world numeric; v_mult numeric; v_tariff numeric; v_total numeric; v_duty numeric; v_net numeric;
-  v_have numeric; v_budget numeric; v_sname text; v_cur text;
+  v_have numeric; v_sname text; v_cur text;
 begin
   if p_resource not in ('energy', 'food', 'minerals', 'goods', 'services', 'military') then
     raise exception 'Unknown resource.'; end if;
@@ -161,13 +161,12 @@ begin
   v_duty   := round(v_total * v_tariff, 1);         -- customs revenue withheld from the seller
   v_net    := v_total - v_duty;                      -- net cost to the buyer
   v_cur    := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
-  v_budget := coalesce((select (economy->>'budget')::numeric from public.nations where id = v_buyer), 0);
-  if v_budget < v_net then
-    raise exception 'Treasury too low — the deal nets % but you hold %.', v_net, v_budget; end if;
 
   perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
   perform public._nation_stat_add(v_buyer,  'on_hand', p_resource,  p_qty, 0, null);
-  perform public._nation_stat_add(v_buyer,  'economy', 'budget', v_duty - v_total, 0, null);   -- pay sticker, keep duty
+  -- The buyer pays the net cost from Budget; any part the Budget can't cover rolls into Debt
+  -- (_nation_budget_add) — imports are never blocked for lack of cash, they're debt-financed.
+  perform public._nation_budget_add(v_buyer, v_duty - v_total);
   perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);              -- seller receives net of duty
   update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;        -- 2 AP on confirm
 

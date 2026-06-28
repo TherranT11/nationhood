@@ -443,11 +443,13 @@
       '<div class="drow"><span>Sticker</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
       (duty > 0 ? '<div class="drow"><span>Tariff −' + tariffPct + '% (banked)</span><span class="dv">+' + cur + duty.toFixed(1) + 'B</span></div>' : '') +
       '<div class="drow total"><span>You pay (net)</span><span class="dv">' + cur + net.toFixed(1) + 'B</span></div>' +
-      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' + (duty > 0 ? ' The ' + tariffPct + '% tariff is withheld from the seller and kept as customs revenue.' : '') + '</div>';
+      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' +
+        (duty > 0 ? ' The ' + tariffPct + '% tariff is withheld from the seller and kept as customs revenue.' : '') +
+        (net > budget ? ' Treasury can’t cover it — ' + cur + (Math.round((net - budget) * 10) / 10).toFixed(1) + 'B is added to national debt.' : '') + '</div>';
     var lowAp = num(STATE.party.actions_remaining) < 2;
     var btn = document.getElementById('confirmBtn');
-    btn.disabled = mx < 1 || net > budget || lowAp;
-    btn.textContent = mx < 1 ? 'They have none' : (net > budget ? 'Treasury too low' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 AP'));
+    btn.disabled = mx < 1 || lowAp;
+    btn.textContent = mx < 1 ? 'They have none' : (lowAp ? 'Need 2 Actions' : 'Buy ' + T.qty + ' ' + T.res + ' for ' + cur + net.toFixed(1) + 'B · 2 AP' + (net > budget ? ' (to debt)' : ''));
   }
   async function confirmImport(){
     var btn = document.getElementById('confirmBtn'); btn.disabled = true;
