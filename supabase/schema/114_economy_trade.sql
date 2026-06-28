@@ -123,8 +123,9 @@ grant execute on function public.is_trade_minister() to authenticated;
 create or replace function public.economy_import(p_seller text, p_resource text, p_qty int)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
-  v_p public.parties%rowtype; v_buyer text;
-  v_price numeric; v_total numeric; v_have numeric; v_budget numeric; v_sname text; v_cur text;
+  v_p public.parties%rowtype; v_buyer text; v_tp jsonb;
+  v_world numeric; v_mult numeric; v_tariff numeric; v_total numeric; v_duty numeric; v_net numeric;
+  v_have numeric; v_budget numeric; v_sname text; v_cur text;
 begin
   if p_resource not in ('energy', 'food', 'minerals', 'goods', 'services', 'military') then
     raise exception 'Unknown resource.'; end if;
@@ -137,6 +138,11 @@ begin
     raise exception 'Only the Minister of Trade can import.'; end if;
   if p_seller = v_buyer then raise exception 'You can''t import from your own nation.'; end if;
 
+  -- Trade policy (schema/115): the in-force rung's modifiers for the importing nation.
+  v_tp := public._nation_trade_policy(v_buyer);
+  if coalesce((v_tp->>'blocked')::boolean, false) then
+    raise exception 'Imports are closed under your nation''s trade policy (%).', coalesce(v_tp->>'name', 'Autarky'); end if;
+
   select name, coalesce(economy->>'currency', '$') into v_sname, v_cur
     from public.nations where id = p_seller and not coalesce(dormant, false);
   if not found then raise exception 'No such trading partner.'; end if;
@@ -145,26 +151,35 @@ begin
   if v_have < p_qty then
     raise exception '% only has % % to sell.', v_sname, v_have, initcap(p_resource); end if;
 
-  v_price := public._world_price(p_resource);
-  v_total := round(v_price * p_qty, 1);
-  v_cur   := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
+  -- Price stack: world rate × the trade-policy multiplier = the buyer's sticker. The tariff %
+  -- is withheld from the seller's proceeds and banked as the buyer's customs revenue (conserved:
+  -- buyer net = sticker − duty = what the seller receives). Free trade can run mult < 1.
+  v_world  := public._world_price(p_resource);
+  v_mult   := coalesce((v_tp->>'importMult')::numeric, 1);
+  v_tariff := greatest(0, least(100, coalesce((v_tp->>'tariff')::numeric, 0))) / 100.0;
+  v_total  := round(v_world * v_mult * p_qty, 1);   -- sticker the buyer pays at the border
+  v_duty   := round(v_total * v_tariff, 1);         -- customs revenue withheld from the seller
+  v_net    := v_total - v_duty;                      -- net cost to the buyer
+  v_cur    := coalesce((select economy->>'currency' from public.nations where id = v_buyer), '$');
   v_budget := coalesce((select (economy->>'budget')::numeric from public.nations where id = v_buyer), 0);
-  if v_budget < v_total then
-    raise exception 'Treasury too low — the deal costs % but you hold %.', v_total, v_budget; end if;
+  if v_budget < v_net then
+    raise exception 'Treasury too low — the deal nets % but you hold %.', v_net, v_budget; end if;
 
   perform public._nation_stat_add(p_seller, 'on_hand', p_resource, -p_qty, 0, null);
   perform public._nation_stat_add(v_buyer,  'on_hand', p_resource,  p_qty, 0, null);
-  perform public._nation_stat_add(v_buyer,  'economy', 'budget', -v_total, 0, null);
-  perform public._nation_stat_add(p_seller, 'economy', 'budget',  v_total, 0, null);
-  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;   -- 2 AP on confirm
+  perform public._nation_stat_add(v_buyer,  'economy', 'budget', v_duty - v_total, 0, null);   -- pay sticker, keep duty
+  perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);              -- seller receives net of duty
+  update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;        -- 2 AP on confirm
 
   insert into public.events (nation_id, party_id, kind, body, game_date)
     values (v_buyer, v_p.id, 'economy',
             'The Minister of Trade imported ' || p_qty || ' ' || initcap(p_resource) || ' from ' || v_sname
-              || ' for ' || v_cur || v_total || 'B.',
+              || ' for ' || v_cur || v_net || 'B'
+              || (case when v_duty > 0 then ' (incl. ' || v_cur || v_duty || 'B tariff)' else '' end) || '.',
             public.current_game_date());
 
-  return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'price', v_price, 'total', v_total, 'actions', v_p.actions_remaining - 2);
+  return jsonb_build_object('resource', p_resource, 'qty', p_qty, 'world', v_world, 'total', v_total,
+    'duty', v_duty, 'net', v_net, 'actions', v_p.actions_remaining - 2);
 end $$;
 grant execute on function public.economy_import(text, text, int) to authenticated;
 
