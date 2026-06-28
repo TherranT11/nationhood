@@ -338,8 +338,10 @@
   .cbuild .branch.fail{background:var(--red-soft,#FBEAE9);border:1px solid #f3d3d1}
   .cbuild .branch .bl{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin-bottom:7px}
   .cbuild .branch.succ .bl{color:var(--green,#16915a)} .cbuild .branch.fail .bl{color:var(--red,#C42B2B)}
-  .cbuild .effrow{display:grid;grid-template-columns:1.5fr .7fr 30px;gap:7px;align-items:center;margin-bottom:6px}
+  .cbuild .effrow{display:grid;grid-template-columns:1.4fr .6fr 96px 30px;gap:7px;align-items:center;margin-bottom:6px}
   .cbuild .effrow select,.cbuild .effrow input{padding:7px 8px;font-size:12px;background:var(--surface)}
+  .cbuild .effrow .escph{display:block}
+  @media(max-width:560px){.cbuild .effrow{grid-template-columns:1fr 1fr}.cbuild .effrow .escph{display:none}}
   .cbuild .costrow{display:grid;grid-template-columns:1.5fr .7fr 30px;gap:7px;align-items:center;margin-bottom:6px}
   .cbuild .costrow select,.cbuild .costrow input{padding:7px 8px;font-size:12px;background:var(--surface)}
   .cbuild .addeff{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;color:var(--muted);background:var(--surface);border:1px dashed var(--line2);border-radius:7px;padding:6px 10px;cursor:pointer}
@@ -2723,7 +2725,8 @@
       }
       function eff(t, v) { return { t: t, v: v }; }
       function signed(v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v); }
-      function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B'; if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return e.t + ' ' + signed(e.v); }
+      function effScaleStr(e) { return isMoneyTarget(e.t) ? (e.scale === 'perm' ? ' /M pop' : e.scale === 'pop' ? ' ×pop×prosp' : '') : ''; }
+      function effStr(e) { if (e.t === 'Budget' || e.t === 'Debt') return e.t + ' ' + (e.v > 0 ? '+' : '−') + '₣' + Math.abs(e.v) + 'B' + effScaleStr(e); if (e.t === 'Crisis Meter') return 'Crisis ' + signed(e.v); return e.t + ' ' + signed(e.v) + effScaleStr(e); }
       function newAction(type) { return { type: type, decision: '', ministry: 'Interior', cause: '', cost: [], mech: 'roll', direct: [eff('Crisis Meter', -2)], stat: 'Charisma', needed: 12, success: [eff('Crisis Meter', -3)], failure: [eff('Order', -1)], eventSuccess: '', eventFail: '', lawName: '', lawEffect: [eff('Crisis Meter', -4)] }; }
       function blankStage() { return { name: '', desc: '', growth: 1, at: 10, onActivate: [], actions: [] }; }
       function blankCrisis() {
@@ -2890,14 +2893,25 @@
       function getList(ai, list) { var owner = ai === 's5' ? CRISIS.stages[4] : ai === 'stage' ? CRISIS.stages[activeStage] : CRISIS.stages[activeStage].actions[+ai]; if (!Array.isArray(owner[list])) owner[list] = []; return owner[list]; }
       function effRowsHtml(ai, list) {
         var arr = getList(ai, list);
-        return arr.map(function (e, ri) { return '<div class="effrow" data-ai="' + ai + '" data-list="' + list + '" data-ri="' + ri + '"><select class="et">' + effTgt(e.t) + '</select><input class="ev" type="number" step="any" value="' + e.v + '"><button class="xb erx" type="button">×</button></div>'; }).join('') +
+        return arr.map(function (e, ri) {
+          // Money targets (Budget/Debt/Income) carry the same flat/per-million/×pop×prosp scaling
+          // as policy effects — _apply_policy_effect (schema/91) reads `scale` and applies it. A
+          // placeholder keeps the grid aligned for non-money rows.
+          var sc = isMoneyTarget(e.t)
+            ? '<select class="esc" title="Scaling"><option value="flat"' + (e.scale === 'perm' || e.scale === 'pop' ? '' : ' selected') + '>flat</option><option value="perm"' + (e.scale === 'perm' ? ' selected' : '') + '>/M pop</option><option value="pop"' + (e.scale === 'pop' ? ' selected' : '') + '>×pop×prosp</option></select>'
+            : '<span class="escph"></span>';
+          return '<div class="effrow" data-ai="' + ai + '" data-list="' + list + '" data-ri="' + ri + '"><select class="et">' + effTgt(e.t) + '</select><input class="ev" type="number" step="any" value="' + e.v + '">' + sc + '<button class="xb erx" type="button">×</button></div>';
+        }).join('') +
           '<button class="addeff" data-ai="' + ai + '" data-list="' + list + '" type="button">+ effect</button>';
       }
       function wireEffRows(scope) {
         scope.querySelectorAll('.effrow').forEach(function (row) {
           var ai = row.dataset.ai, list = row.dataset.list, ri = +row.dataset.ri, arr = getList(ai, list);
-          row.querySelector('.et').onchange = function (e) { arr[ri].t = e.target.value; renderPreview(); };
+          // Re-render on target change so the money-scaling selector appears/disappears; drop a
+          // stale scale when the target is no longer a money one.
+          row.querySelector('.et').onchange = function (e) { arr[ri].t = e.target.value; if (!isMoneyTarget(arr[ri].t)) delete arr[ri].scale; renderStage(); };
           row.querySelector('.ev').oninput = function (e) { arr[ri].v = parseFloat(e.target.value) || 0; renderPreview(); };
+          var escSel = row.querySelector('.esc'); if (escSel) escSel.onchange = function (e) { arr[ri].scale = e.target.value; renderPreview(); };
           row.querySelector('.erx').onclick = function () { arr.splice(ri, 1); renderStage(); };
         });
         scope.querySelectorAll('.addeff').forEach(function (b) { b.onclick = function () { getList(b.dataset.ai, b.dataset.list).push(eff('Crisis Meter', -2)); renderStage(); }; });
