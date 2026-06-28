@@ -109,6 +109,15 @@
   .noco__cancel:hover{color:var(--ink)}
   .noco__confirm{background:var(--red,#C42B2B);border-color:var(--red,#C42B2B);color:#fff}
   .noco__confirm:hover{filter:brightness(1.08)}
+  /* Statement modal */
+  .stmt__scope{display:flex;gap:8px;margin:2px 0 2px}
+  .stmt__opt{flex:1;font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;font-weight:700;padding:10px;border-radius:9px;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
+  .stmt__opt.is-on{border-color:var(--indigo);background:var(--indigo-soft);color:var(--indigo)}
+  .stmt__text{width:100%;box-sizing:border-box;resize:vertical;min-height:92px;font-family:'Archivo',sans-serif;font-size:14px;line-height:1.5;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+  .stmt__text:focus{outline:none;border-color:var(--indigo)}
+  .stmt__count{text-align:right;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:-2px}
+  #stmtConfirm{background:var(--indigo);border-color:var(--indigo)}
+  #stmtConfirm:disabled{opacity:.5;cursor:not-allowed}
   /* Appoint-cabinet modal */
   .amodal__panel--wide{max-width:640px}
   .appoint__row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -354,6 +363,32 @@
   </div>
 </div>
 
+<div class="amodal" id="resignModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Resign the Government</b><button class="amodal__x" id="resignClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list">
+      <p class="noco__warn">Resigning dissolves your government and calls a <b>snap election</b> — you may not return to power. A voluntary resignation stings, but lighter than a fall: your party loses <b>−2% Party Popularity</b> and each coalition partner <b>−1%</b>. Costs <b>1 action</b>.</p>
+      <div class="noco__btns"><button class="noco__btn noco__cancel" id="resignCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="resignConfirm" type="button">Resign</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="amodal" id="stmtModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Release a Statement</b><button class="amodal__x" id="stmtClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list">
+      <p class="noco__warn">A public address from the head of government. <b>International</b> reaches every nation’s feed; <b>Domestic</b> stays in your own. Costs <b>$10K Party Funds</b>.</p>
+      <div class="stmt__scope">
+        <button class="stmt__opt is-on" id="stmtIntl" type="button">International</button>
+        <button class="stmt__opt" id="stmtDom" type="button">Domestic</button>
+      </div>
+      <textarea id="stmtText" class="stmt__text" maxlength="360" rows="4" placeholder="Type your statement…"></textarea>
+      <div class="stmt__count"><span id="stmtCount">0</span>/360</div>
+      <div class="noco__btns"><button class="noco__btn noco__cancel" id="stmtCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="stmtConfirm" type="button">Release &middot; $10K</button></div>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { supabase, isConfigured, requireUser, currentTick } from '/supabase.js';
   import { mountTopbar, setTopbarActions, setTopbarFunds } from '/topbar.js';
@@ -466,7 +501,7 @@
   // topbar action budget + toast. setActions is the one place that reflects the
   // action count — it updates the label AND gates every action button (0 →
   // disabled), so the buttons are correct on load and after every action.
-  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false;
+  var partyActions = 0, feedCtx = null, acting = false, actionBtns = [], myPartyId = null, amPM = false, myCurrency = '$';
   // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
   // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
@@ -863,6 +898,61 @@
     }
   }
 
+  // RESIGN — the head of government voluntarily dissolves the government (1 action),
+  // triggering a snap election. The confirm button calls resign_government; because the
+  // election reseats everything, we reload the page on success rather than patch in place.
+  var resignModal = document.getElementById('resignModal');
+  var closeResign = wireModalClose(resignModal, 'resignClose');
+  var resignCancel = document.getElementById('resignCancel'); if (resignCancel) resignCancel.addEventListener('click', closeResign);
+  var resignConfirm = document.getElementById('resignConfirm');
+  if (resignConfirm) resignConfirm.addEventListener('click', function () {
+    if (acting) return;
+    closeResign();
+    acting = true;
+    actionBtns.forEach(function (b) { b.disabled = true; });
+    supabase.rpc('resign_government').then(function (r) {
+      if (r.error) { ping(r.error.message || 'Action failed.'); acting = false; setActions(partyActions); return; }
+      ping('The government has resigned — fresh elections held.');
+      setTimeout(function () { location.reload(); }, 900);   // reseat: reload to pick up the new government
+    }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
+  });
+
+  // STATEMENT — the head of government releases a written address (0 AP, $10K funds).
+  // International reaches every nation's feed; domestic stays in the home nation. The
+  // server renders the wording (one source) and writes the events; we just refresh.
+  var STMT = { scope: 'international', busy: false };
+  var stmtModal = document.getElementById('stmtModal');
+  var stmtText = document.getElementById('stmtText'), stmtCount = document.getElementById('stmtCount');
+  var stmtIntl = document.getElementById('stmtIntl'), stmtDom = document.getElementById('stmtDom');
+  var stmtConfirm = document.getElementById('stmtConfirm');
+  var closeStmt = wireModalClose(stmtModal, 'stmtClose');
+  function setStmtScope(s) { STMT.scope = s; stmtIntl.classList.toggle('is-on', s === 'international'); stmtDom.classList.toggle('is-on', s === 'domestic'); }
+  function refreshStmt() { stmtCount.textContent = stmtText.value.length; stmtConfirm.disabled = STMT.busy || !stmtText.value.trim(); }
+  function openStatement() {
+    if (!stmtModal) return;
+    setStmtScope('international'); stmtText.value = ''; refreshStmt();
+    stmtModal.hidden = false; stmtText.focus();
+  }
+  if (stmtModal) {
+    stmtIntl.addEventListener('click', function () { setStmtScope('international'); });
+    stmtDom.addEventListener('click', function () { setStmtScope('domestic'); });
+    stmtText.addEventListener('input', refreshStmt);
+    document.getElementById('stmtCancel').addEventListener('click', closeStmt);
+    stmtConfirm.addEventListener('click', function () {
+      var msg = stmtText.value.trim();
+      if (STMT.busy || !msg) return;
+      STMT.busy = true; refreshStmt();
+      supabase.rpc('release_statement', { p_scope: STMT.scope, p_message: msg }).then(function (r) {
+        STMT.busy = false;
+        if (r.error) { ping(r.error.message || 'Couldn’t release the statement.'); refreshStmt(); return; }
+        if (r.data && r.data.funds != null) setTopbarFunds(myCurrency, r.data.funds);   // spent $10K
+        ping('Statement released' + (STMT.scope === 'international' ? ' worldwide.' : '.'));
+        closeStmt();
+        if (feedCtx) loadFeed(feedCtx.nationId, feedCtx.nation, feedCtx.gameDate);   // surface it in the home feed
+      }).catch(function () { STMT.busy = false; ping('Couldn’t release the statement.'); refreshStmt(); });
+    });
+  }
+
   // APPOINT — the head of government names the whole cabinet in one action. The modal lists
   // every portfolio with a dropdown of all the nation's prominent politicians (party, archetype,
   // stats, whether they lead their party); the four prestige posts grant the appointee +1 Image.
@@ -1154,13 +1244,13 @@
     ['Coalition', 'Build your governing coalition.'],
     ['Produce',   'Ensure the nation’s resources are generated.'],
     ['Direct',    'Direct a ministry’s work.'],
-    ['Whip',      'Whip the chamber for a vote.'],
+    ['Statement', 'Release a public statement.'],
     ['Appoint',   'Appoint a minister to the cabinet.'],
     ['Reshuffle', 'Reshuffle the cabinet.'],
     ['Elections', 'Call a general election.'],
     ['Resign',    'Resign the government.']
   ];
-  function renderPMBar(isPM) {
+  function renderPMBar(isPM, nocoLive) {
     var el = document.getElementById('pmbar');
     if (!isPM) { el.innerHTML = ''; produceBtn = null; return; }
     el.innerHTML = '<section class="panel leadbar">' +
@@ -1168,11 +1258,11 @@
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition (talks), Produce (economy) and Appoint (cabinet) are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : '';
-        // Most premiership actions spend the single weekly action (1 AP). Coalition is free
-        // on open (paid on invite/commit); Produce costs PRODUCE_COST and runs on a cooldown.
-        var cost = a[0] === 'Coalition' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : '';
+        // Coalition (talks), Produce (economy), Appoint (cabinet), Statement and Resign are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Resign' ? ' id="pm-resign"' : '';
+        // Most premiership actions spend the single weekly action (1 AP). Coalition and Statement
+        // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown.
+        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Resign' ? ' data-cost="1"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
@@ -1180,8 +1270,25 @@
     el.querySelectorAll('.lead').forEach(stampCost);
     var coalBtn = el.querySelector('#pm-coalition');
     if (coalBtn) coalBtn.addEventListener('click', openNegotiateModal);
+    // Statement: free of action, $10K funds. Override the "Free" pill to show the cash cost.
+    var stmtBtn = el.querySelector('#pm-statement');
+    if (stmtBtn) {
+      var sp = stmtBtn.querySelector('.lead__cost'); if (sp) sp.textContent = '$10K';
+      stmtBtn.addEventListener('click', function () { if (!acting) openStatement(); });
+    }
     var apptBtn = el.querySelector('#pm-appoint');
     if (apptBtn) apptBtn.addEventListener('click', openAppointModal);
+    // Resign opens a confirm modal; a live no-confidence motion greys it out until that resolves.
+    var resignBtn = el.querySelector('#pm-resign');
+    if (resignBtn) {
+      if (nocoLive) {
+        resignBtn.disabled = true;
+        resignBtn.title = 'A no-confidence motion is on the floor — it must be resolved before you can resign.';
+        var rp = resignBtn.querySelector('.lead__cost'); if (rp) { rp.textContent = 'Motion live'; rp.classList.add('lead__cost--soon'); }
+      } else {
+        resignBtn.addEventListener('click', function () { if (!acting) document.getElementById('resignModal').hidden = false; });
+      }
+    }
     // Produce: run a production cycle (PRODUCE_COST AP, 12-tick nation cooldown). Fires via
     // performAction so the AP budget + feed refresh; the returned `until` greys it out at once.
     produceBtn = el.querySelector('#pm-produce');
@@ -1221,10 +1328,14 @@
       '<p class="leadbar__sub">Your party holds the Trade portfolio. Import resources on the Economy page to cover a shortfall.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="trade-import" data-cost="2"><b>Import</b><span class="lead__lane">The Economy</span><span class="lead__desc">Buy resources from another nation.</span></button>' +
+        '<button class="lead" type="button" id="trade-sanction" data-cost="3"><b>Sanctions</b><span class="lead__lane">The Economy</span><span class="lead__desc">Embargo a nation — bars trade both ways; a stand against a regime rallies your government.</span></button>' +
+        '<button class="lead" type="button" disabled data-cost="3"><b>Trade Agreement</b><span class="lead__lane">The Economy</span><span class="lead__desc">Lock in a long-term supply deal.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var b = document.getElementById('trade-import');
     if (b) b.addEventListener('click', function () { window.location.href = '/play/economy/'; });
+    var s = document.getElementById('trade-sanction');
+    if (s) s.addEventListener('click', function () { window.location.href = '/play/economy/#sanctions'; });
   }
 
   (async () => {
@@ -1251,6 +1362,7 @@
 
       // Party funds in the topbar, just right of the Discord logo.
       var currency = (nation && nation.economy && nation.economy.currency) || '$';
+      myCurrency = currency;   // module-scope, for the Statement funds refresh
       setTopbarFunds(currency, party.funds);
 
       // Inactivity warning, escalating with idle days (party.last_active_at, stamped server-side).
@@ -1306,7 +1418,14 @@
         const { data: govt } = await supabase.from('governments')
           .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
-        renderPMBar(amPM);
+        // A live no-confidence motion (agenda or voting) greys out Resign until it resolves.
+        var nocoLive = false;
+        if (amPM) {
+          const { data: liveNoco } = await supabase.from('proposals').select('id')
+            .eq('nation_id', party.nation_id).eq('kind', 'no_confidence').in('status', ['agenda', 'voting']).limit(1);
+          nocoLive = !!(liveNoco && liveNoco.length);
+        }
+        renderPMBar(amPM, nocoLive);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
         const { data: tmin } = await supabase.rpc('is_trade_minister');   // my party holds Trade → show the Trade bar
         renderTradeBar(tmin === true);

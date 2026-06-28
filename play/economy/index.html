@@ -114,6 +114,18 @@
   .nact{display:flex;gap:7px;justify-content:flex-end;width:92px;flex:0 0 92px}
   .tbtn{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:9px 15px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
   .tbtn:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+  .sancbadge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:6px;padding:5px 8px;white-space:nowrap}
+  .sancbadge.by{color:var(--red);background:var(--red-soft)} .sancbadge.on{color:var(--amber);background:var(--amber-soft)}
+  /* Sanctions modal list */
+  .sancrow{display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
+  .sancrow:last-child{border-bottom:none}
+  .sancrow .sc-crest{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:#fff;font-family:'Space Mono',monospace;font-weight:700;font-size:10px;flex:none}
+  .sancrow .sc-id{flex:1;min-width:0} .sancrow .sc-nm{font-weight:800;font-size:13.5px;line-height:1.15} .sancrow .sc-rg{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--soft);margin-top:2px}
+  .sancrow .sc-rg.auth{color:var(--red)} .sancrow .sc-rg.dem{color:var(--soft)}
+  .enactbtn{border:1px solid var(--red);background:var(--red-soft);color:var(--red);border-radius:8px;padding:8px 12px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer;white-space:nowrap}
+  .enactbtn:hover{background:var(--red);color:#fff} .enactbtn:disabled{opacity:.45;cursor:not-allowed}
+  .liftbtn{border:1px solid var(--line2);background:var(--surface);color:var(--muted);border-radius:8px;padding:8px 12px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer;white-space:nowrap}
+  .liftbtn:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
   /* sortable column header — aligns to the same 6-col grid as the pills */
   .thead{display:flex;align-items:center;gap:16px;padding:2px 16px 8px}
   .thead .cols{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;flex:1;min-width:240px}
@@ -222,6 +234,16 @@
   </div>
 </div>
 
+<!-- SANCTIONS MODAL -->
+<div class="overlay" id="sancOverlay">
+  <div class="tmodal">
+    <div class="tm-h"><button class="tclose" id="sancClose">✕</button>
+      <div class="tm-mode">Trade sanctions</div><div class="tm-title">Embargo a nation</div>
+      <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 AP to enact.</div></div>
+    <div class="tm-body"><div id="sancList"></div></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -240,6 +262,12 @@
   function crestOf(name){ return (name || '··').replace(/[^A-Za-z ]/g,'').split(/\s+/).filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase() || '··'; }
   var palette = ['#2b3a7a','#C42B2B','#16915a','#E0820E','#1f86d6','#5546E8','#8d6e4a','#a01010'];
   function colorFor(id){ var h=0; (id||'').split('').forEach(function(c){h=(h*31+c.charCodeAt(0))>>>0;}); return palette[h % palette.length]; }
+  // Active embargoes touching my nation → {byMe:{id:true}, onMe:{id:true}} (I sanction them / they sanction me).
+  function sancSets(rows, myId){
+    var byMe = {}, onMe = {};
+    (rows || []).forEach(function(r){ if (!r.active) return; if (r.by_nation === myId) byMe[r.target_nation] = true; if (r.target_nation === myId) onMe[r.by_nation] = true; });
+    return { byMe: byMe, onMe: onMe };
+  }
 
   var RESLIST = [
     { k:'energy', label:'Energy' }, { k:'food', label:'Food' }, { k:'minerals', label:'Minerals' },
@@ -366,14 +394,17 @@
       '<div class="a-spacer"></div></div>';
     var rows = others.map(function(n){
       var pills = RESLIST.map(function(r){ return '<span class="rpill"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt((n.on_hand||{})[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
-      var btn = (STATE.isTradeMin && !STATE.trade.blocked) ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
+      var byMe = STATE.sanctions.byMe[n.id], onMe = STATE.sanctions.onMe[n.id], barred = byMe || onMe;
+      var badge = byMe ? '<span class="sancbadge by">Sanctioned</span>' : (onMe ? '<span class="sancbadge on">Embargoed you</span>' : '');
+      var btn = (STATE.isTradeMin && !STATE.trade.blocked && !barred) ? '<button class="tbtn" data-import="' + esc(n.id) + '">Import</button>' : '';
       return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div><div class="n-meta"><div class="n-name">' + esc(n.name) + '</div><div class="n-sub">on hand to sell</div></div></div>' +
-        '<div class="res">' + pills + '</div><div class="nact">' + btn + '</div></div>';
+        '<div class="res">' + pills + '</div><div class="nact">' + badge + btn + '</div></div>';
     }).join('');
     var tp = STATE.trade, mult = num(tp.importMult) || 1;
     var pol = ' · Trade policy: ' + esc(tp.name || 'Managed Trade') + (mult !== 1 ? ' ×' + mult : '') + (num(tp.tariff) > 0 ? ', ' + num(tp.tariff) + '% tariff' : '') + (tp.blocked ? ' (imports closed)' : '');
     var blockNote = (STATE.isTradeMin && tp.blocked) ? '<p class="note">Imports are closed under your nation’s <b>' + esc(tp.name || 'Autarky') + '</b> trade policy. Change it in the legislature to trade.</p>' : '';
-    return '<div class="rowlabel">Trading partners — import to cover a shortfall' + pol + '</div>' + blockNote + header + rows;
+    var sancBtn = STATE.isTradeMin ? '<button class="tbtn" id="sanctionsBtn">Sanctions</button>' : '';
+    return '<div class="rowlabel" style="display:flex;align-items:center;justify-content:space-between;gap:12px"><span>Trading partners — import to cover a shortfall' + pol + '</span>' + sancBtn + '</div>' + blockNote + header + rows;
   }
 
   // WORLD TRADE LEDGER — year-to-date bilateral flows (schema/116), derived here: per-nation
@@ -473,6 +504,7 @@
     document.querySelectorAll('[data-import]').forEach(function(b){ b.onclick = function(){ openImport(b.dataset.import); }; });
     document.querySelectorAll('[data-sort]').forEach(function(b){ b.onclick = function(){ STATE.sortKey = b.dataset.sort; render(); }; });
     document.querySelectorAll('[data-lsort]').forEach(function(b){ b.onclick = function(){ STATE.ledgerSort = b.dataset.lsort; render(); }; });
+    var sb = document.getElementById('sanctionsBtn'); if (sb) sb.onclick = openSanctions;
   }
 
   var toast = document.getElementById('toast'), tt;
@@ -492,6 +524,9 @@
       if (p) STATE.party.actions_remaining = p.actions_remaining;
       var { data: fl } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');
       if (fl) STATE.flows = fl;
+      var { data: sn } = await supabase.from('sanctions').select('by_nation, target_nation, active')
+        .or('by_nation.eq.' + STATE.nation.id + ',target_nation.eq.' + STATE.nation.id);
+      if (sn) STATE.sanctions = sancSets(sn, STATE.nation.id);
       var ec = STATE.nation.economy || {};
       document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
     } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
@@ -578,6 +613,50 @@
   document.getElementById('tclose').onclick = closeImport;
   document.getElementById('overlay').onclick = function(e){ if (e.target === this) closeImport(); };
 
+  /* ===== SANCTIONS MODAL ===== */
+  // Regime can be stored as a number (1–25) or a text label; pull the leading number, mirroring _to_num.
+  function regimeNum(reg){ var m = String(reg == null ? '' : reg).match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; }
+  function openSanctions(){ document.getElementById('sancOverlay').classList.add('show'); renderSanctionList(); }
+  function closeSanctions(){ document.getElementById('sancOverlay').classList.remove('show'); }
+  function renderSanctionList(){
+    var others = STATE.nations.filter(function(n){ return n.id !== STATE.nation.id; })
+      .slice().sort(function(a, b){ return (a.name || '').localeCompare(b.name || ''); });
+    var ap = num(STATE.party.actions_remaining);
+    document.getElementById('sancList').innerHTML = others.map(function(n){
+      var byMe = !!STATE.sanctions.byMe[n.id], onMe = !!STATE.sanctions.onMe[n.id];
+      var reg = regimeNum((n.economy || {}).regime), auth = reg != null && reg <= 4;
+      var hint = onMe ? 'Has sanctioned you — trade barred'
+        : byMe ? 'Under your sanction — trade barred both ways'
+        : auth ? 'Authoritarian regime — a stand rallies your government (+1 popularity, +2 Confidence)'
+        : reg != null ? 'Democracy — sanctioning costs −1 Image'
+        : 'Regime unknown';
+      var btn = byMe
+        ? '<button class="liftbtn" data-lift="' + esc(n.id) + '">Lift Sanctions</button>'
+        : '<button class="enactbtn" data-sanc="' + esc(n.id) + '"' + (ap < 3 ? ' disabled' : '') + '>' + (ap < 3 ? 'Need 3 AP' : 'Enact Sanctions') + '</button>';
+      return '<div class="sancrow"><div class="sc-crest" style="background:' + colorFor(n.id) + '">' + esc(crestOf(n.name)) + '</div>' +
+        '<div class="sc-id"><div class="sc-nm">' + esc(n.name) + '</div><div class="sc-rg ' + (auth ? 'auth' : 'dem') + '">' + esc(hint) + '</div></div>' + btn + '</div>';
+    }).join('') || '<div class="sc-rg" style="padding:14px">No other nations to sanction.</div>';
+    document.querySelectorAll('#sancList [data-sanc]').forEach(function(b){ b.onclick = function(){ if (!b.disabled) doSanction('place_sanction', b.dataset.sanc, b); }; });
+    document.querySelectorAll('#sancList [data-lift]').forEach(function(b){ b.onclick = function(){ doSanction('lift_sanction', b.dataset.lift, b); }; });
+  }
+  async function doSanction(rpc, target, btn){
+    btn.disabled = true;
+    var { data, error } = await supabase.rpc(rpc, { p_target: target });
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    if (rpc === 'place_sanction') {
+      var nm = (data && data.target) || 'the nation';
+      if (data && data.rewarded) ping('Sanctions on <b>' + esc(nm) + '</b> — <b class="green">+1 popularity, +2 Government Confidence</b>.');
+      else if (data && data.penalized) ping('Sanctions on <b>' + esc(nm) + '</b> — <b class="red">−1 Image</b> for embargoing a democracy.');
+      else ping('Sanctions imposed on <b>' + esc(nm) + '</b>.');
+    } else {
+      ping('Sanctions lifted on <b>' + esc((data && data.target) || 'the nation') + '</b>.');
+    }
+    await reload();              // refreshes STATE.sanctions, AP and the partner table behind the modal
+    renderSanctionList();        // the modal stays open — re-render its rows with the new state
+  }
+  document.getElementById('sancClose').onclick = closeSanctions;
+  document.getElementById('sancOverlay').onclick = function(e){ if (e.target === this) closeSanctions(); };
+
   (async () => {
     if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
     const user = await requireUser();
@@ -595,6 +674,8 @@
       const { data: tradeMin } = await supabase.rpc('is_trade_minister');   // does my party hold Trade?
       const { data: tp } = await supabase.rpc('nation_trade_policy', { p_nation: party.nation_id });   // in-force trade rung
       const { data: flows } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');   // World Trade ledger
+      const { data: sanc } = await supabase.from('sanctions').select('by_nation, target_nation, active')   // active embargoes touching this nation
+        .or('by_nation.eq.' + party.nation_id + ',target_nation.eq.' + party.nation_id);
 
       const nationName = nation.name || party.nation_id;
       document.getElementById('pname').textContent = party.name;
@@ -610,9 +691,11 @@
         isTradeMin: tradeMin === true,
         trade: tp || { importMult: 1, tariff: 0, blocked: false, name: 'Managed Trade' },
         flows: flows || [],
+        sanctions: sancSets(sanc, party.nation_id),
         period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name', ledgerSort: 'exp'
       };
       render();
+      if (location.hash === '#sanctions' && STATE.isTradeMin) openSanctions();   // deep-link from the home Trade bar
     } catch (e) {
       fail('Couldn’t load the economy right now. Refresh to try again.');
     }

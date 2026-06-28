@@ -398,6 +398,8 @@
         <label class="ep-lbl" for="epName">Party name</label>
         <input type="text" id="epName" class="ep-name" maxlength="60">
         <div class="ep-namehint" id="epNameHint">Renaming costs <b>−10% Party Popularity</b> and <b>−5% Ceiling</b> · 60-tick cooldown.</div>
+        <label class="ep-lbl" for="epAbbr" style="margin-top:14px">Abbreviation <span>2–4 letters, shown on your crest</span></label>
+        <input type="text" id="epAbbr" class="ep-name" maxlength="4" autocapitalize="characters" spellcheck="false">
         <label class="ep-lbl" for="epColor" style="margin-top:14px">Party colour</label>
         <input type="color" id="epColor" class="ep-color" value="#5546E8">
         <label class="ep-lbl" for="epFile" style="margin-top:14px">Party logo <span>PNG · JPG · WebP · GIF, max 2&nbsp;MB</span></label>
@@ -485,6 +487,7 @@
     var modal = document.getElementById('editModal');
     var colorIn = document.getElementById('epColor'), fileIn = document.getElementById('epFile');
     var nameIn = document.getElementById('epName'), nameHint = document.getElementById('epNameHint');
+    var abbrIn = document.getElementById('epAbbr');
     var clearBtn = document.getElementById('epClear'), preview = document.getElementById('epPreview');
     var note = document.getElementById('epNote'), saveBtn = document.getElementById('epSave'), cancelBtn = document.getElementById('epCancel');
     var MAX = 2 * 1024 * 1024, pendingFile = null, removeLogo = false, busy = false, objUrl = null;
@@ -497,7 +500,7 @@
       if (pendingFile) { freeObjUrl(); objUrl = URL.createObjectURL(pendingFile); preview.innerHTML = '<img alt="" src="' + objUrl + '">'; }
       else if (showLogo) { preview.innerHTML = '<img alt="" src="' + esc(ME.party.logo_url) + '">'; }
       else {
-        preview.textContent = (ME.party && (ME.party.abbreviation || ME.party.name.slice(0, 2).toUpperCase())) || '—';
+        preview.textContent = (abbrIn.value.trim() || (ME.party && ME.party.name.slice(0, 2).toUpperCase())) || '—';
         preview.style.background = 'color-mix(in srgb, ' + color + ' 14%, var(--surface))';
         preview.style.color = color; preview.style.borderColor = 'color-mix(in srgb, ' + color + ' 28%, transparent)';
       }
@@ -509,6 +512,7 @@
       pendingFile = null; removeLogo = false; setNote(''); fileIn.value = '';
       colorIn.value = ME.party.color || ACCENT;
       nameIn.value = ME.party.name || '';
+      abbrIn.value = ME.party.abbreviation || '';
       var until = ME.party.name_change_until_tick, left = (until || 0) - NOW_TICK, onCd = until != null && NOW_TICK > 0 && left > 0;
       nameIn.disabled = onCd;
       nameHint.innerHTML = onCd
@@ -523,6 +527,8 @@
     document.getElementById('epX').addEventListener('click', close);
     modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
     colorIn.addEventListener('input', drawPreview);
+    // Force the abbreviation to 2–4 capital letters as you type (mirrors party creation).
+    abbrIn.addEventListener('input', function () { abbrIn.value = abbrIn.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4); drawPreview(); });
     clearBtn.addEventListener('click', function () { pendingFile = null; removeLogo = true; fileIn.value = ''; drawPreview(); });
     fileIn.addEventListener('change', function () {
       var f = fileIn.files && fileIn.files[0];
@@ -535,6 +541,8 @@
       if (busy || !ME.party) return;
       var newName = nameIn.value.trim();
       var renaming = !nameIn.disabled && newName && newName !== ME.party.name;
+      var newAbbr = abbrIn.value.trim().toUpperCase();
+      if (!/^[A-Z]{2,4}$/.test(newAbbr)) { setNote('Abbreviation must be 2–4 letters.', 'error'); return; }
       if (renaming && !confirm('Rename your party to “' + newName + '”?\n\nThis costs −10% Party Popularity and −5% Popularity Ceiling, and locks renaming for 60 ticks.')) return;
       busy = true; saveBtn.disabled = true; cancelBtn.disabled = true; setNote('Saving…');
       try {
@@ -553,9 +561,10 @@
           if (up.error) throw new Error(up.error.message);
           logo = supabase.storage.from('party-logos').getPublicUrl(path).data.publicUrl;
         }
-        var res = await supabase.from('parties').update({ color: colorIn.value, logo_url: logo }).eq('id', ME.party.id);
-        if (res.error) throw new Error(res.error.message);
-        ME.party.color = colorIn.value; ME.party.logo_url = logo;
+        var res = await supabase.from('parties').update({ color: colorIn.value, logo_url: logo, abbreviation: newAbbr }).eq('id', ME.party.id);
+        if (res.error) throw new Error(res.error.code === '23505' ? 'That abbreviation is taken by another party in your nation.' : res.error.message);
+        ME.party.color = colorIn.value; ME.party.logo_url = logo; ME.party.abbreviation = newAbbr;
+        document.getElementById('pabbr').textContent = '(' + newAbbr + ')';   // header abbreviation tag
         applyAccent(colorIn.value); renderCrest(ME.party);
         close();
       } catch (e) {

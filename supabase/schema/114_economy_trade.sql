@@ -149,6 +149,10 @@ begin
     from public.nations where id = p_seller and not coalesce(dormant, false) for update;
   if not found then raise exception 'No such trading partner.'; end if;
 
+  -- Sanctions (schema/117) bar trade both ways, over any trade policy.
+  if public._trade_sanctioned(v_buyer, p_seller) then
+    raise exception 'Trade with % is barred by sanctions.', v_sname; end if;
+
   v_have := coalesce((select (on_hand->>p_resource)::numeric from public.nations where id = p_seller), 0);
   if v_have < p_qty then
     raise exception '% only has % % to sell.', v_sname, v_have, initcap(p_resource); end if;
