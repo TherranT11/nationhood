@@ -170,6 +170,7 @@ begin
   -- (_nation_budget_add) — imports are never blocked for lack of cash, they're debt-financed.
   perform public._nation_budget_add(v_buyer, v_duty - v_total);
   perform public._nation_stat_add(p_seller, 'economy', 'budget', v_net, 0, null);              -- seller receives net of duty
+  perform public._record_trade_flow(p_seller, v_buyer, p_resource, v_net);                      -- World Trade ledger (schema/116)
   update public.parties set actions_remaining = actions_remaining - 2 where id = v_p.id;        -- 2 AP on confirm
 
   insert into public.events (nation_id, party_id, kind, body, game_date)

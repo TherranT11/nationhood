@@ -505,6 +505,13 @@ begin
      where coalesce((n.economy->>'income')::numeric, 0) <> 0 and not coalesce(n.dormant, false);
   end if;
   exception when others then raise warning 'tick %: annual income failed — %', v_tick, sqlerrm; end;
+  -- World Trade ledger (schema/116): wipe the accumulated bilateral flows at the January tick
+  -- so the ledger resets each year (year-to-date totals start fresh).
+  begin
+  if (v_tick - 1) % 12 = 0 then
+    delete from public.trade_flows where exporter_id is not null;
+  end if;
+  exception when others then raise warning 'tick %: trade-ledger reset failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation
