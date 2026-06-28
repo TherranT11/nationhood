@@ -70,7 +70,8 @@
   @media(max-width:640px){.develop{grid-template-columns:1fr}}
   .actcard{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:15px 18px}
   .actcard.done{border-color:var(--green);background:var(--green-soft)}
-  .actcard .pt{font-weight:800;font-size:14px}
+  .actcard .pt{font-weight:800;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .hogtag{font-family:'Space Mono',monospace;font-size:8.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--indigo);background:var(--indigo-soft);border-radius:6px;padding:3px 7px;white-space:nowrap}
   .actcard .pd{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.5;flex:1}
   .actcard .pd b{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink)}
   .actcard .cost{font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:9px}
@@ -285,7 +286,7 @@
     var strip = RESLIST.map(function(r){ return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
     var canProduce = STATE.isHog && num(STATE.party.actions_remaining) >= 1;
     var prodBtn = STATE.isHog ? '<button class="actbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + (canProduce ? 'Produce · 1 action' : 'No actions left') + '</button>' : '';
-    var produce = '<div class="actcard"><div class="pt">Produce</div>' +
+    var produce = '<div class="actcard"><div class="pt">Produce <span class="hogtag">Head of Government action only</span></div>' +
       '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs 1 party action.<div class="onhand">' + strip + '</div></div>' +
       '<div class="cost">On-hand shown above</div>' + prodBtn + '</div>';
     // Advance Society
@@ -297,7 +298,7 @@
       advBtn = '<button class="actbtn" id="advanceBtn"' + (canAdv ? '' : ' disabled') + '>' +
         (advanced ? '✓ Advanced this year' : (goods < advCost ? 'Need ' + advCost + ' Goods' : 'Advance Society')) + '</button>';
     }
-    var advance = '<div class="actcard' + (advanced ? ' done' : '') + '"><div class="pt">Advance Society</div>' +
+    var advance = '<div class="actcard' + (advanced ? ' done' : '') + '"><div class="pt">Advance Society <span class="hogtag">Head of Government action only</span></div>' +
       '<div class="pd">Invest beyond upkeep to raise living standards: <b>Prosperity +1</b>. The richer you are, the dearer it gets. Once a year.</div>' +
       '<div class="cost">Cost: ' + advCost + ' Goods (Prosperity + 5) · have ' + fmt(goods) + '</div>' + advBtn + '</div>';
     return '<div class="develop">' + produce + advance + '</div>';
