@@ -2317,7 +2317,9 @@
       try{
         const { data, error } = await supabase.from('policies').select('id, definition').order('created_at', { ascending: true });
         if (error) throw error;
-        polCache = data || [];
+        // The Trade Policy is managed in its own tab (its rungs carry import/tariff modifiers the
+        // generic editor doesn't handle), so keep it out of this list to avoid clobbering them.
+        polCache = (data || []).filter(function (r) { return !(r.definition && r.definition.special === 'trade'); });
         renderPolList();
       }catch(e){ box.innerHTML='<p class="empty">Could not load policies.</p>'; }
     }
