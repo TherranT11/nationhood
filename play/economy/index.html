@@ -195,7 +195,7 @@
 
 <script type="module">
   import { supabase, isConfigured, requireUser } from '/supabase.js';
-  import { esc, economyPeriod, economyNeed, worldTier, worldPrice, TIER_MULT, TIER_LABEL, RESOURCE_BASE } from '/util.js';
+  import { esc, economyPeriod, economyNeed, worldTier, worldPrice, TIER_MULT, TIER_LABEL, RESOURCE_BASE, PRODUCE_COST, PRODUCE_COOLDOWN } from '/util.js';
   import { mountTopbar } from '/topbar.js';
   import { mountSidenav } from '/sidenav.js';
   import { ideologyLabel } from '/archetypes.js';
@@ -284,11 +284,14 @@
     // Produce
     var batch = RESLIST.filter(function(r){ return num(prod[r.k]) > 0; }).map(function(r){ return '+' + fmt(prod[r.k]) + ' ' + r.label; }).join(' · ') || 'no production set';
     var strip = RESLIST.map(function(r){ return '<span class="oh"><span class="rd" style="background:var(--' + r.k + ')"></span><b>' + fmt(on[r.k]) + '</b> <span class="rk">' + r.label + '</span></span>'; }).join('');
-    var canProduce = STATE.isHog && num(STATE.party.actions_remaining) >= 1;
-    var prodBtn = STATE.isHog ? '<button class="actbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + (canProduce ? 'Produce · 1 action' : 'No actions left') + '</button>' : '';
+    var cdLeft = num(n.produce_until_tick) - num(STATE.tick), onCd = cdLeft > 0;
+    var canProduce = STATE.isHog && !onCd && num(STATE.party.actions_remaining) >= PRODUCE_COST;
+    var prodLabel = onCd ? ('On cooldown · ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's'))
+      : (num(STATE.party.actions_remaining) < PRODUCE_COST ? ('Need ' + PRODUCE_COST + ' AP') : ('Produce · ' + PRODUCE_COST + ' AP'));
+    var prodBtn = STATE.isHog ? '<button class="actbtn" id="produceBtn"' + (canProduce ? '' : ' disabled') + '>' + prodLabel + '</button>' : '';
     var produce = '<div class="actcard"><div class="pt">Produce <span class="hogtag">Head of Government action only</span></div>' +
-      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs 1 party action.<div class="onhand">' + strip + '</div></div>' +
-      '<div class="cost">On-hand shown above</div>' + prodBtn + '</div>';
+      '<div class="pd">Run a production cycle to top up stockpiles: <b>' + batch + '</b>. Costs ' + PRODUCE_COST + ' AP · ' + PRODUCE_COOLDOWN + '-tick cooldown.<div class="onhand">' + strip + '</div></div>' +
+      '<div class="cost">' + (onCd ? 'Cooldown: ' + cdLeft + ' tick' + (cdLeft === 1 ? '' : 's') + ' left' : 'On-hand shown above') + '</div>' + prodBtn + '</div>';
     // Advance Society
     var pros = num((n.stats||{}).prosperity), advCost = pros + 5, goods = num(on.goods);
     var advanced = num(n.advanced_year) === STATE.period;
@@ -362,7 +365,7 @@
 
   async function reload(){
     var { data: ns } = await supabase.from('nations')
-      .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year')
+      .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
       .eq('dormant', false).order('name');
     if (ns) {
       STATE.nations = ns;
@@ -455,7 +458,7 @@
       const { data: party } = await supabase.from('parties').select('id, name, archetype, nation_id, actions_remaining').eq('user_id', user.id).single();
       if (!party) { window.location.replace('/nation-select/'); return; }
       const { data: nations } = await supabase.from('nations')
-        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year')
+        .select('id, name, flag, population, stats, economy, on_hand, production, demands, advanced_year, produce_until_tick')
         .eq('dormant', false).order('name');
       const nation = (nations || []).find(function(n){ return n.id === party.nation_id; }) || { id: party.nation_id };
       const { data: gov } = await supabase.from('governments')
@@ -473,7 +476,7 @@
       STATE = {
         nation: nation, party: party, nations: nations || [nation],
         isHog: !!(gov && gov.formateur_party_id && gov.formateur_party_id === party.id),
-        period: economyPeriod((gs && gs.current_tick) || 1), currency: cur, sortKey: 'name'
+        period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name'
       };
       render();
     } catch (e) {
