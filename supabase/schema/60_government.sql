@@ -968,6 +968,41 @@ alter table public.cabinet_appointments enable row level security;
 drop policy if exists "cabinet_appt_select_all" on public.cabinet_appointments;
 create policy "cabinet_appt_select_all" on public.cabinet_appointments for select using (true);
 
+-- _apply_cabinet_slate(gov, nation, set): validate a jsonb slate of { ministry, politician_id }
+-- and replace this government's cabinet with it (a ministry absent from the array is left vacant).
+-- ONE source for HOW a cabinet slate is written — both cabinet_appoint (formation, below) and
+-- cabinet_reshuffle (schema/120) call it, so the portfolio/nation validation and the
+-- clear-and-insert live in exactly one place. Consequence layers (prestige Image grants,
+-- popularity deltas) stay in the callers, computed from the OLD cabinet before this runs. INTERNAL.
+create or replace function public._apply_cabinet_slate(p_gov uuid, p_nation text, p_set jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  r record; v_pol_nation text;
+  -- Canonical portfolios (mirrors MINISTRIES in ministries.js). The server validates
+  -- independently so a crafted client can't seed junk rows / blow past the 11 real seats.
+  c_ministries constant text[] := array['Defence', 'Treasury', 'Interior', 'Foreign Affairs',
+    'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
+begin
+  -- Validate: each entry is a real portfolio + a politician from THIS nation.
+  for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
+             from jsonb_array_elements(coalesce(p_set, '[]'::jsonb)) loop
+    if r.ministry is null or r.pol is null then continue; end if;
+    if not (r.ministry = any(c_ministries)) then raise exception 'Unknown ministry: %', r.ministry; end if;
+    select p.nation_id into v_pol_nation from public.politicians pol join public.parties p on p.id = pol.party_id where pol.id = r.pol;
+    if v_pol_nation is distinct from p_nation then raise exception 'A chosen politician is not from your nation.'; end if;
+  end loop;
+
+  -- Replace the slate: clear, then insert the provided (non-null) appointments. Distinct on
+  -- ministry so a stray duplicate can't violate the per-portfolio primary key.
+  delete from public.cabinet_appointments where government_id = p_gov;
+  insert into public.cabinet_appointments (government_id, ministry, politician_id)
+    select distinct on (ministry) p_gov, ministry, pol from (
+      select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
+        from jsonb_array_elements(coalesce(p_set, '[]'::jsonb))
+    ) s where ministry is not null and pol is not null;
+end $$;
+revoke all on function public._apply_cabinet_slate(uuid, text, jsonb) from public, anon, authenticated;
+
 -- cabinet_appoint(set): the HoG sets the whole cabinet in ONE action. `set` is a jsonb array
 -- of { ministry, politician_id } — the new full slate (a ministry absent from the array is
 -- left vacant). Appointing a politician to a PRESTIGE portfolio (Economic Development /
@@ -976,26 +1011,13 @@ create policy "cabinet_appt_select_all" on public.cabinet_appointments for selec
 create or replace function public.cabinet_appoint(p_set jsonb)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
-  v_party public.parties%rowtype; v_gov public.governments%rowtype; r record; v_pol_nation text; v_grants int := 0;
+  v_party public.parties%rowtype; v_gov public.governments%rowtype; r record; v_grants int := 0;
   c_prestige constant text[] := array['Economic Development', 'Interior', 'Foreign Affairs', 'Trade'];
-  -- Canonical portfolios (mirrors MINISTRIES in ministries.js). The server validates
-  -- independently so a crafted client can't seed junk rows / blow past the 11 real seats.
-  c_ministries constant text[] := array['Defence', 'Treasury', 'Interior', 'Foreign Affairs',
-    'Trade', 'Labour', 'Justice', 'Health', 'Education', 'Energy', 'Economic Development'];
 begin
   v_party := public._begin_action(0);   -- requires >= 1 action
   select * into v_gov from public.governments where nation_id = v_party.nation_id and status = 'active';
   if not found then raise exception 'There is no sitting government.'; end if;
   if v_gov.formateur_party_id is distinct from v_party.id then raise exception 'Only the head of government appoints the cabinet.'; end if;
-
-  -- Validate: each entry is a real portfolio + a politician from THIS nation.
-  for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
-             from jsonb_array_elements(coalesce(p_set, '[]'::jsonb)) loop
-    if r.ministry is null or r.pol is null then continue; end if;
-    if not (r.ministry = any(c_ministries)) then raise exception 'Unknown ministry: %', r.ministry; end if;
-    select p.nation_id into v_pol_nation from public.politicians pol join public.parties p on p.id = pol.party_id where pol.id = r.pol;
-    if v_pol_nation is distinct from v_party.nation_id then raise exception 'A chosen politician is not from your nation.'; end if;
-  end loop;
 
   -- +1 Image for a genuine NEW appointment to a prestige portfolio (read BEFORE the replace).
   for r in select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
@@ -1007,14 +1029,7 @@ begin
     end if;
   end loop;
 
-  -- Replace the slate: clear, then insert the provided (non-null) appointments. Distinct on
-  -- ministry so a stray duplicate can't violate the per-portfolio primary key.
-  delete from public.cabinet_appointments where government_id = v_gov.id;
-  insert into public.cabinet_appointments (government_id, ministry, politician_id)
-    select distinct on (ministry) v_gov.id, ministry, pol from (
-      select value->>'ministry' as ministry, nullif(value->>'politician_id','')::uuid as pol
-        from jsonb_array_elements(coalesce(p_set, '[]'::jsonb))
-    ) s where ministry is not null and pol is not null;
+  perform public._apply_cabinet_slate(v_gov.id, v_party.nation_id, p_set);   -- one source for the slate write
 
   update public.parties set actions_remaining = actions_remaining - 1 where id = v_party.id;
   insert into public.events (nation_id, party_id, kind, body, game_date)

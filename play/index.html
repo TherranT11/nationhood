@@ -505,7 +505,7 @@
   // No-confidence is nation-wide cooldown-gated: while nocoUntilTick is in the future the
   // action stays disabled for everyone in the nation, on top of the usual AP gate.
   // Produce (the PM action) is nation-wide cooldown-gated the same way no-confidence is.
-  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null;
+  var NOW_TICK = 0, nocoUntilTick = 0, produceUntilTick = 0, produceBtn = null, reshuffleUntilTick = 0, reshuffleBtn = null;
   function setActions(n) {
     partyActions = n;
     setTopbarActions(n);
@@ -515,6 +515,7 @@
     actionBtns.forEach(function (b) { b.disabled = n < (parseInt(b.dataset.cost, 10) || 1); });
     if (nocoBtn && nocoUntilTick > NOW_TICK) nocoBtn.disabled = true;   // cooldown overrides the AP gate
     if (produceBtn && produceUntilTick > NOW_TICK) produceBtn.disabled = true;
+    if (reshuffleBtn && reshuffleUntilTick > NOW_TICK) reshuffleBtn.disabled = true;
   }
   var toastEl = document.getElementById('toast'), toastT;
   function ping(msg) { toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove('show'); }, 3600); }
@@ -960,8 +961,19 @@
   var appointModal = document.getElementById('appointModal');
   var closeAppoint = wireModalClose(appointModal, 'appointClose');
   var appointCancel = document.getElementById('appointCancel'); if (appointCancel) appointCancel.addEventListener('click', closeAppoint);
-  async function openAppointModal() {
+  // The same cabinet picker serves Appoint (formation, 1 AP) and Reshuffle (mid-term, 2 AP +
+  // popularity/Image consequences + a 6-tick cooldown). apMode tells the confirm which RPC to fire.
+  var apMode = 'appoint';
+  async function openAppointModal(mode) {
     if (acting || !feedCtx) return;
+    apMode = mode === 'reshuffle' ? 'reshuffle' : 'appoint';
+    var reshuffle = apMode === 'reshuffle';
+    appointModal.querySelector('.amodal__hd b').textContent = reshuffle ? 'Reshuffle the Cabinet' : 'Name the Cabinet';
+    var apPill = document.querySelector('#appointConfirm .appoint__ap'); if (apPill) apPill.textContent = reshuffle ? '2 AP' : '1 AP';
+    var foot = appointModal.querySelector('.appoint__note');
+    if (foot) foot.innerHTML = reshuffle
+      ? 'Parties gain <b>+0.2%</b> popularity per ministry gained, <b>−0.3%</b> per ministry lost. Prestige posts: incoming <b>+1 Image</b>, outgoing <b>−2</b>.'
+      : 'Economic Development, Interior, Foreign Affairs &amp; Trade grant the appointee <b>+1 Image</b>.';
     var body = document.getElementById('appointBody');
     body.innerHTML = '<p class="empty">Loading the bench…</p>';
     appointModal.hidden = false;
@@ -970,6 +982,11 @@
       var pmap = {}; (nparties || []).forEach(function (p) { pmap[p.id] = p; });
       var pids = (nparties || []).map(function (p) { return p.id; }), pols = [];
       if (pids.length) { const { data: pp } = await supabase.from('politicians').select('id, first_name, last_name, status, age, cha, acu, gui, res, com, party_id').in('party_id', pids).order('created_at'); pols = pp || []; }
+      if (reshuffle) {   // mayors aren't eligible for a ministry (the server enforces this too)
+        const { data: mc } = await supabase.from('mayoral_candidacies').select('politician_id');
+        var mayors = {}; (mc || []).forEach(function (m) { if (m.politician_id) mayors[m.politician_id] = 1; });
+        pols = pols.filter(function (p) { return !mayors[p.id]; });
+      }
       if (!pols.length) { body.innerHTML = '<p class="empty">No politicians to appoint yet.</p>'; return; }
       var cur = {};
       const { data: govt } = await supabase.from('governments').select('id').eq('nation_id', feedCtx.nationId).eq('status', 'active').maybeSingle();
@@ -993,9 +1010,19 @@
     var set = [];
     document.querySelectorAll('#appointBody .appoint__sel').forEach(function (s) { if (s.value) set.push({ ministry: s.dataset.m, politician_id: s.value }); });
     closeAppoint();
-    performAction(function () { return supabase.rpc('cabinet_appoint', { p_set: set }); }, function (d) {
-      return 'Cabinet named' + (d && d.image_grants ? ' — ' + d.image_grants + ' minister' + (d.image_grants === 1 ? '' : 's') + ' gained Image' : '') + '.';
-    });
+    if (apMode === 'reshuffle') {
+      performAction(function () { return supabase.rpc('cabinet_reshuffle', { p_set: set }); }, function (d) {
+        if (d && d.until != null) applyReshuffleCooldown(NOW_TICK, d.until);
+        var bits = [];
+        if (d && d.image_grants) bits.push('+' + d.image_grants + ' Image');
+        if (d && d.image_strips) bits.push('−' + d.image_strips + ' Image');
+        return 'Cabinet reshuffled' + (bits.length ? ' — ' + bits.join(', ') : '') + '.';
+      });
+    } else {
+      performAction(function () { return supabase.rpc('cabinet_appoint', { p_set: set }); }, function (d) {
+        return 'Cabinet named' + (d && d.image_grants ? ' — ' + d.image_grants + ' minister' + (d.image_grants === 1 ? '' : 's') + ' gained Image' : '') + '.';
+      });
+    }
   });
 
   // Stamp every action card with its AP cost. Standing actions (data-standing) take
@@ -1252,17 +1279,18 @@
   ];
   function renderPMBar(isPM, nocoLive) {
     var el = document.getElementById('pmbar');
-    if (!isPM) { el.innerHTML = ''; produceBtn = null; return; }
+    if (!isPM) { el.innerHTML = ''; produceBtn = null; reshuffleBtn = null; return; }
     el.innerHTML = '<section class="panel leadbar">' +
       '<div class="glance-hd"><span>Prime Minister &middot; This Week’s Action</span></div>' +
       '<p class="leadbar__sub">Your leader holds the premiership. One action only. Choose where to spend it.</p>' +
       '<div class="leadbar__grid">' +
       PM_ACTIONS.map(function (a) {
-        // Coalition (talks), Produce (economy), Appoint (cabinet), Statement and Resign are live; the rest stay dimmed scaffolds.
-        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Resign' ? ' id="pm-resign"' : '';
+        // Coalition, Produce, Appoint, Statement, Reshuffle and Resign are live; the rest stay dimmed scaffolds.
+        var id = a[0] === 'Coalition' ? ' id="pm-coalition"' : a[0] === 'Produce' ? ' id="pm-produce"' : a[0] === 'Appoint' ? ' id="pm-appoint"' : a[0] === 'Statement' ? ' id="pm-statement"' : a[0] === 'Reshuffle' ? ' id="pm-reshuffle"' : a[0] === 'Resign' ? ' id="pm-resign"' : '';
         // Most premiership actions spend the single weekly action (1 AP). Coalition and Statement
-        // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown.
-        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Resign' ? ' data-cost="1"' : '';
+        // cost no action (Statement is paid in $10K funds); Produce costs PRODUCE_COST on a cooldown;
+        // Reshuffle costs 2 AP on a 6-tick cooldown.
+        var cost = a[0] === 'Coalition' || a[0] === 'Statement' ? ' data-cost-free' : a[0] === 'Produce' ? ' data-cost="' + PRODUCE_COST + '"' : a[0] === 'Reshuffle' ? ' data-cost="2"' : a[0] === 'Resign' ? ' data-cost="1"' : '';
         return '<button class="lead" type="button"' + (id || ' disabled') + cost +
           '><b>' + a[0] + '</b><span class="lead__desc">' + a[1] + '</span></button>';
       }).join('') +
@@ -1301,6 +1329,23 @@
           return 'Production cycle run — the nation’s stockpiles were topped up.';
         });
       });
+    }
+    // Reshuffle: reopen the cabinet picker in reshuffle mode (2 AP, 6-tick cooldown).
+    reshuffleBtn = el.querySelector('#pm-reshuffle');
+    if (reshuffleBtn) {
+      actionBtns.push(reshuffleBtn);
+      reshuffleBtn.addEventListener('click', function () { if (!reshuffleBtn.disabled && !acting) openAppointModal('reshuffle'); });
+    }
+  }
+  // Mirror the reshuffle cooldown on the PM button (disabled + a "Cooldown" pill), like Produce.
+  function applyReshuffleCooldown(now, until) {
+    NOW_TICK = now; reshuffleUntilTick = until || 0;
+    if (!reshuffleBtn) return;
+    var left = reshuffleUntilTick - now, pill = reshuffleBtn.querySelector('.lead__cost');
+    if (left > 0) {
+      reshuffleBtn.disabled = true;
+      reshuffleBtn.title = 'The cabinet was reshuffled recently — ' + left + ' more tick' + (left === 1 ? '' : 's') + '.';
+      if (pill) { pill.textContent = 'Cooldown'; pill.classList.add('lead__cost--soon'); }
     }
   }
   // Mirror the nation-wide Produce cooldown on the PM button (disabled + a "Cooldown" pill
@@ -1416,7 +1461,7 @@
       // Prime Minister actions appear only for the party that holds the premiership.
       try {
         const { data: govt } = await supabase.from('governments')
-          .select('formateur_party_id').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
+          .select('formateur_party_id, reshuffle_until_tick').eq('nation_id', party.nation_id).eq('status', 'active').maybeSingle();
         amPM = !!(govt && govt.formateur_party_id === party.id);   // head of government — manages crises too
         // A live no-confidence motion (agenda or voting) greys out Resign until it resolves.
         var nocoLive = false;
@@ -1427,6 +1472,7 @@
         }
         renderPMBar(amPM, nocoLive);
         applyProduceCooldown(curTick, nation && nation.produce_until_tick);   // nation-wide Produce cooldown gate
+        applyReshuffleCooldown(curTick, govt && govt.reshuffle_until_tick);   // 6-tick reshuffle cooldown gate
         const { data: tmin } = await supabase.rpc('is_trade_minister');   // my party holds Trade → show the Trade bar
         renderTradeBar(tmin === true);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
