@@ -4,8 +4,10 @@
 -- Inactivity is wall-clock since parties.last_active_at, which _lock_party() (schema/40)
 -- stamps on every player action / vote / conviction adoption / proposal. It's DERIVED,
 -- never stored — no flag to drift, and any action revives a party automatically. The
--- design: an in-game dormancy warning at 6 days (client-side), eligible for removal at
--- 7. Deletion is ADMIN-REVIEWED here — nothing is removed on a timer.
+-- ladder (mirrors util.js): an early nudge at 6 days (client), INACTIVE at 7 (sits out
+-- elections — resolve_election, schema/60), and DELETED at 21 — the 8-hour tick calls
+-- _purge_inactive_parties() below, which removes the party and its politicians and frees
+-- the nation slot. The admin list/delete remain for manual review at any point.
 
 -- The review list: every party with its owner's email and last-active time, oldest
 -- first. Reads profiles (own-read RLS) via security definer, so the email is exposed
@@ -32,5 +34,26 @@ begin
   delete from public.parties where id = p_party;
 end $$;
 grant execute on function public.admin_delete_party(uuid) to authenticated;
+
+-- Auto-purge: delete every party idle past the deletion window (21 days — mirrors
+-- INACTIVE_DELETE_DAYS, util.js). The party's politicians/votes/convictions/etc. cascade and the
+-- government's formateur drops to null (same as admin_delete_party); seats empty to Vacant and the
+-- government re-resolves at the next election. A feed line in each freed nation marks the opening.
+-- Called once per tick from _advance_tick (schema/60). Internal — never a client entry point.
+create or replace function public._purge_inactive_parties()
+returns int language plpgsql security definer set search_path = public as $$
+declare v_p record; v_n int := 0;
+begin
+  for v_p in select id, name, nation_id from public.parties where last_active_at < now() - interval '21 days' loop
+    delete from public.parties where id = v_p.id;
+    insert into public.events (nation_id, party_id, kind, body, game_date, tone)
+      values (v_p.nation_id, null, 'party',
+              'The ' || v_p.name || ' has dissolved through inactivity — a place opens in the assembly.',
+              public.current_game_date(), 'warn');
+    v_n := v_n + 1;
+  end loop;
+  return v_n;
+end $$;
+revoke all on function public._purge_inactive_parties() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

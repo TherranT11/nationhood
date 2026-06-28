@@ -230,6 +230,7 @@ begin
          else 1.0 end) as w
     from public.parties
     where nation_id = p_nation and popularity >= v_threshold
+      and last_active_at >= now() - interval '7 days'   -- inactive parties sit out the election (mirrors INACTIVE_DAYS, util.js)
   ),
   tot as (select nullif(sum(w), 0) as tw from elig),
   ex as (select e.id, (e.w / t.tw) * v_seats as exact from elig e, tot t where t.tw is not null),
@@ -598,6 +599,10 @@ begin
   -- is the last word each tick. Isolated like every other step.
   begin perform public._apply_modifier_bounds();
   exception when others then raise warning 'tick %: modifier bounds failed — %', v_tick, sqlerrm; end;
+  -- Inactivity purge (schema/97): delete parties idle past the deletion window (their politicians
+  -- cascade, the nation slot frees up). Wall-clock, so it fires on whichever tick crosses 21 days.
+  begin perform public._purge_inactive_parties();
+  exception when others then raise warning 'tick %: inactive purge failed — %', v_tick, sqlerrm; end;
   return jsonb_build_object('tick', v_tick, 'elections_resolved', v_count);
 end $$;
 revoke all on function public._advance_tick() from public, anon, authenticated;
@@ -628,13 +633,24 @@ exception when others then
   raise notice 'pg_cron not configured (%): enable it, then run cron.schedule(''nationhood-tick'', ''0 */8 * * *'', ''select public._advance_tick();'').', sqlerrm;
 end $$;
 
+-- ONE source for the Government-Confidence gain from delivering an agenda item: a ministry
+-- hand-over is a small +0.5 nudge (a cabinet seat, not a headline win), every other promise
+-- +3. Read by both agenda_enact and agenda_fulfill_ministry so the rate can't drift.
+create or replace function public._agenda_confidence_delta(p_type text)
+returns numeric language sql immutable as $$
+  select (case when p_type = 'ministry' then 0.5 else 3 end)::numeric;
+$$;
+revoke all on function public._agenda_confidence_delta(text) from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- agenda_enact(item): the PM (the government's formateur) carries out one pending
 -- agenda item. Resolving resolves — the item is marked done and Government
--- Confidence rises a flat +3 (clamped at 100; no roll, no failure). Costs the
--- leading party 1 action. PM-only, gated server-side. v1 does NOT apply the
--- term's literal effect (e.g. changing the regime); it marks the promise
--- delivered and moves the public's standing.
+-- Confidence rises (clamped at 100; no roll, no failure). Costs the leading party
+-- 1 action. The gain is +3 for a promise, but only +0.5 for a ministry hand-over —
+-- the same small nudge agenda_fulfill_ministry gives, so handing a ministry over is
+-- worth the same whichever path does it (one source for the rate, by item type).
+-- PM-only, gated server-side. v1 does NOT apply the term's literal effect (e.g.
+-- changing the regime); it marks the promise delivered and moves the public's standing.
 -- ---------------------------------------------------------------------------
 create or replace function public.agenda_enact(p_item uuid)
 returns jsonb
@@ -644,12 +660,13 @@ set search_path = public
 as $$
 declare
   v_p public.parties%rowtype; v_item public.government_agenda%rowtype; v_gov public.governments%rowtype;
-  v_delta int := 3; v_newconf int; v_body text;
+  v_delta numeric := 3; v_newconf numeric; v_body text;
 begin
   v_p := public._begin_action(0);   -- locks the caller's party, requires >= 1 action
   select * into v_item from public.government_agenda where id = p_item;
   if not found then raise exception 'That agenda item is gone.'; end if;
   if v_item.status = 'done' then raise exception 'That item is already delivered.'; end if;
+  v_delta := public._agenda_confidence_delta(v_item.type);   -- a ministry hand-over is +0.5, like fulfilling it
   select * into v_gov from public.governments where id = v_item.government_id;
   if v_gov.status <> 'active' then raise exception 'That government is no longer in power.'; end if;
   if v_gov.formateur_party_id is distinct from v_p.id then
@@ -694,7 +711,7 @@ as $$
 declare
   v_p public.parties%rowtype; v_item public.government_agenda%rowtype; v_gov public.governments%rowtype;
   v_recipient uuid; v_pol public.politicians%rowtype; v_min text; v_name text; v_abbr text;
-  v_delta numeric := 0.5; v_newconf numeric;
+  v_delta numeric := public._agenda_confidence_delta('ministry'); v_newconf numeric;
 begin
   v_p := public._lock_party();   -- locks the caller's party (no action cost — staffing the cabinet is free)
   select * into v_item from public.government_agenda where id = p_item;

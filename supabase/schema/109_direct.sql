@@ -37,6 +37,7 @@ begin
     from public.politicians where id = p_member and party_id = v_p.id;
   if not found then raise exception 'That isn''t one of your members.'; end if;
   if public._politician_busy(p_member) then raise exception '%', v_mname || ' is already standing for office — wait until it resolves.'; end if;
+  if public._politician_is_minister(p_member) then raise exception '%', v_mname || ' holds a cabinet ministry — a sitting minister can''t run for Parliament.'; end if;
   select current_tick into v_tick from public.game_state where id;
   if v_until > v_tick then raise exception '%', v_mname || ' can''t stand for Parliament again yet (cooldown: ' || (v_until - v_tick) || ' ticks).'; end if;
 
@@ -78,6 +79,7 @@ begin
   perform 1 from public.politicians where id = p_member and party_id = v_p.id;   -- a member is directed, but the wing is the party's
   if not found then raise exception 'That isn''t one of your members.'; end if;
   if public._politician_busy(p_member) then raise exception 'That member is standing for office — they can''t be directed elsewhere yet.'; end if;
+  if public._politician_is_minister(p_member) then raise exception 'That member holds a cabinet ministry — a sitting minister can''t raise a paramilitary wing.'; end if;
 
   v_newceil := greatest(v_p.pop_floor, v_p.pop_ceiling - 3);                                  -- ceiling ≥ floor
   v_eff     := public._effective_ceiling(v_p.nation_id, v_p.archetype, v_newceil, v_p.pop_floor);

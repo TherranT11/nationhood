@@ -158,9 +158,18 @@
   function actionHtml(a, idx, stage, canManage) {
     var isLaw = a.type === 'law';
     var label = isLaw ? (a.lawName || 'Pass law') : (a.decision || 'Take action');
-    var sub = isLaw ? 'Emergency legislation'
-      : (a.ministry || 'Government') + (a.mech === 'roll' && a.stat ? ' · ' + a.stat + ' check' : '');
-    return '<button class="optx" type="button"' + (canManage ? '' : ' disabled') +
+    var costs = (a.cost || []).filter(function (c) { return (c.n || 0) > 0; });
+    var cost = costs.map(function (c) { return c.n + ' ' + (c.r ? c.r.charAt(0).toUpperCase() + c.r.slice(1) : ''); }).join(', ');
+    // Can the nation actually pay the on-hand cost? Mirrors the server gate in crisis_act so the
+    // head of government can't click into a guaranteed error. The short resource is named.
+    var short = costs.filter(function (c) { return (Number(STATE.onhand[c.r]) || 0) < c.n; })
+      .map(function (c) { return c.r ? c.r.charAt(0).toUpperCase() + c.r.slice(1) : ''; });
+    var afford = short.length === 0;
+    var sub = (isLaw ? 'Emergency legislation'
+      : (a.ministry || 'Government') + (a.mech === 'roll' && a.stat ? ' · ' + a.stat + ' check' : ''))
+      + (cost ? ' · costs ' + cost : '')
+      + (canManage && !afford ? ' · short on ' + short.join(', ') : '');
+    return '<button class="optx" type="button"' + (canManage && afford ? '' : ' disabled') +
       ' data-ai="' + idx + '" data-stg="' + stage + '">' +
       '<div class="optx__t">' + esc(label) + '</div>' +
       '<div class="optx__o">' + esc(sub) + '</div></button>';
@@ -272,7 +281,7 @@
 
     // The nation (brand + currency); the player's party (topbar funds/actions + the
     // head-of-government check that unlocks management).
-    const { data: nation } = await supabase.from('nations').select('name, flag, economy').eq('id', nc.nation_id).maybeSingle();
+    const { data: nation } = await supabase.from('nations').select('name, flag, economy, on_hand').eq('id', nc.nation_id).maybeSingle();
     const me = await currentParty();
     var amPM = false, myName = '', currency = (nation && nation.economy && nation.economy.currency) || '$';
     if (me && me.id) {
@@ -288,7 +297,7 @@
     document.getElementById('psub').textContent = nationName;
     if (nation && nation.flag) { var flag = document.getElementById('flag'); flag.onload = function () { flag.hidden = false; }; flag.src = nation.flag; }
 
-    STATE = { nc: nc, def: def, amPM: amPM, nationName: nationName };
+    STATE = { nc: nc, def: def, amPM: amPM, nationName: nationName, onhand: (nation && nation.on_hand) || {} };
     render();
     loadHistory();
   }
