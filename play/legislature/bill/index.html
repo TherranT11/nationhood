@@ -133,7 +133,7 @@
   import { mountSidenav } from '/sidenav.js';
   import { fetchProposals, fetchVotes, fetchPolicies, castVote, tallyVotes, proposalOutcome, proposalLocked } from '/proposals.js';
   import { ideologyLabel } from '/archetypes.js';
-  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta } from '/policies.js';
+  import { policyOptions, policyOptionIdx, effectText, fiscalFactor, fiscalDelta, isTradePolicy, tradeEffectText } from '/policies.js';
 
   mountTopbar(); // shared top bar (Discord/funds/actions/date/gear) into #topbar
   mountSidenav();  // left rail (desktop) / bottom bar (mobile) into #sidenav
@@ -209,10 +209,17 @@
     if (frows.length >= 2) frows.push(fiscalRow('Net annual change', '', d.Income + d.Budget - d.Debt, true, true));
     var fiscalHtml = frows.length ? frows.join('') : '<div class="inone">No change to the budget.</div>';
     var effs = (po.effects || []).filter(function(e){ return !fiscalFactor(e); });
-    var effHtml = effs.length ? effs.map(function(e){
+    var effHtml = '';
+    // Trade rungs carry their standing modifiers (import ×, tariff) outside the effects list — show current → proposed.
+    if (isTradePolicy(def)) {
+      effHtml += '<div class="effrow"><span class="ek flat">In force now · ' + esc(tradeEffectText(co || {})) + '</span><span class="ecad">now</span></div>';
+      effHtml += '<div class="effrow"><span class="ek flat">If enacted · ' + esc(tradeEffectText(po)) + '</span><span class="ecad">while in force</span></div>';
+    }
+    effHtml += effs.map(function(e){
       var tx = effectText(e, ST.pop, ST.pros), c = tx.cls === 'pos' ? 'up' : tx.cls === 'neg' ? 'dn' : 'flat';
       return '<div class="effrow"><span class="ek ' + c + '">' + esc(tx.text) + '</span><span class="ecad">' + esc(tx.cad) + '</span></div>';
-    }).join('') : '<div class="inone">No standing effects beyond the budget.</div>';
+    }).join('');
+    if (!effHtml) effHtml = '<div class="inone">No standing effects beyond the budget.</div>';
     var tags = (po.tags || []).map(function(t){ return '<span class="btag">' + esc(t) + '</span>'; }).join('');
     return '<div class="card"><div class="card-h">Projected Impact <span class="by">if enacted</span></div>' +
       '<div class="impact"><div><div class="impact__k">Fiscal</div>' + fiscalHtml + '</div>' +

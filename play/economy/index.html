@@ -114,6 +114,8 @@
   .nact{display:flex;gap:7px;justify-content:flex-end;width:92px;flex:0 0 92px}
   .tbtn{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:9px 15px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.04em;cursor:pointer;color:var(--muted)}
   .tbtn:hover{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+  .ta-mid{flex:1;display:flex;gap:14px;flex-wrap:wrap;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);align-items:center}
+  .ta-stat b{color:var(--ink);font-weight:700}
   .sancbadge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:6px;padding:5px 8px;white-space:nowrap}
   .sancbadge.by{color:var(--red);background:var(--red-soft)} .sancbadge.on{color:var(--amber);background:var(--amber-soft)}
   /* Sanctions modal list */
@@ -241,6 +243,19 @@
       <div class="tm-mode">Trade sanctions</div><div class="tm-title">Embargo a nation</div>
       <div class="tm-sub">Bars trade both ways. Sanctioning a regime ≤4 rallies your government (+1 popularity, +2 Confidence); a democracy costs −1 Image. 3 AP to enact.</div></div>
     <div class="tm-body"><div id="sancList"></div></div>
+  </div>
+</div>
+
+<!-- DRAW MODAL -->
+<div class="overlay" id="drawOverlay">
+  <div class="tmodal">
+    <div class="tm-h"><button class="tclose" id="drawClose">✕</button>
+      <div class="tm-mode">Draw on agreement</div><div class="tm-title" id="drawTitle">—</div><div class="tm-sub" id="drawSub"></div></div>
+    <div class="tm-body">
+      <div class="qty"><div class="stepper"><button id="dMinus">−</button><span class="v" id="dV">1</span><button id="dPlus">+</button></div><span class="avail" id="dAvail"></span></div>
+      <div class="deal" id="drawDeal"></div>
+      <button class="confirm" id="drawConfirm">Draw at locked price</button>
+    </div>
   </div>
 </div>
 
@@ -483,6 +498,32 @@
     return '<div class="ledger">' + head + heads + table + matrix + '</div>';
   }
 
+  // Active supply deals this nation BUYS under (schema/121-122). The Trade Minister draws units from
+  // each pool (qty/yr × years) at the locked price; the panel only shows when there are live deals.
+  function tradeAgreements(){
+    var act = STATE.agreements || [];
+    if (!act.length) return '';
+    var rows = act.map(function(a){
+      var seller = STATE.nations.find(function(x){ return x.id === a.seller_nation; });
+      var sname = (seller && seller.name) || a.seller_nation;
+      var pool = a.qty_per_year * a.term_years, remaining = pool - num(a.drawn_units);
+      var stock = num((seller && seller.on_hand || {})[a.resource]);
+      var endsIn = a.end_tick != null ? Math.max(0, a.end_tick - STATE.tick) : null;
+      var lowAp = num(STATE.party.actions_remaining) < 2;
+      var canDraw = STATE.isTradeMin && remaining > 0 && stock > 0 && !lowAp;
+      var why = remaining <= 0 ? 'Pool spent' : stock <= 0 ? 'No stock' : lowAp ? 'Need 2 AP' : 'Draw';
+      var btn = STATE.isTradeMin ? '<button class="tbtn" data-draw="' + esc(a.id) + '"' + (canDraw ? '' : ' disabled') + '>' + esc(why) + '</button>' : '';
+      return '<div class="nrow"><div class="n-id"><div class="n-crest" style="background:' + colorFor(a.seller_nation) + '">' + esc(crestOf(sname)) + '</div>' +
+        '<div class="n-meta"><div class="n-name">' + esc(sname) + '</div><div class="n-sub">' + a.qty_per_year + ' ' + esc(a.resource) + '/yr · ' + a.term_years + ' yr' + (a.term_years > 1 ? 's' : '') + ' · −' + a.discount_pct + '%</div></div></div>' +
+        '<div class="ta-mid"><span class="ta-stat"><b>' + STATE.currency + num(a.unit_price).toFixed(2) + 'B</b> locked/unit</span>' +
+        '<span class="ta-stat"><b>' + remaining + '</b>/' + pool + ' units left</span>' +
+        (endsIn != null ? '<span class="ta-stat"><b>' + endsIn + '</b> ticks left</span>' : '') + '</div>' +
+        '<div class="nact">' + btn + '</div></div>';
+    }).join('');
+    return '<div class="panel"><div class="panel-h"><div class="ph-t">Trade Agreements<span class="sub">draw units at the locked price · 2 AP</span></div></div>' +
+      '<div style="padding:6px 16px 12px">' + rows + '</div></div>';
+  }
+
   function render(){
     var n = STATE.nation;
     var notes = [];
@@ -496,9 +537,11 @@
       developCards() +
       worldMarkets() +
       partners() + gate +
+      tradeAgreements() +
       tradeLedger();
 
     document.querySelectorAll('[data-settle]').forEach(function(b){ b.onclick = function(){ settle(b.dataset.settle, b); }; });
+    document.querySelectorAll('[data-draw]').forEach(function(b){ b.onclick = function(){ if (!b.disabled) openDraw(b.dataset.draw); }; });
     var pb = document.getElementById('produceBtn'); if (pb) pb.onclick = function(){ produce(pb); };
     var ab = document.getElementById('advanceBtn'); if (ab) ab.onclick = function(){ advance(ab); };
     document.querySelectorAll('[data-import]').forEach(function(b){ b.onclick = function(){ openImport(b.dataset.import); }; });
@@ -527,6 +570,10 @@
       var { data: sn } = await supabase.from('sanctions').select('by_nation, target_nation, active')
         .or('by_nation.eq.' + STATE.nation.id + ',target_nation.eq.' + STATE.nation.id);
       if (sn) STATE.sanctions = sancSets(sn, STATE.nation.id);
+      var { data: ag } = await supabase.from('trade_agreements')
+        .select('id, seller_nation, resource, qty_per_year, term_years, discount_pct, unit_price, drawn_units, end_tick')
+        .eq('buyer_nation', STATE.nation.id).eq('status', 'active');
+      if (ag) STATE.agreements = ag;
       var ec = STATE.nation.economy || {};
       document.getElementById('treasury').textContent = ec.budget != null ? (STATE.currency + ec.budget + 'B') : '—';
     } catch (e) { /* a refresh failure leaves the action's result applied server-side; just re-render */ }
@@ -657,6 +704,48 @@
   document.getElementById('sancClose').onclick = closeSanctions;
   document.getElementById('sancOverlay').onclick = function(e){ if (e.target === this) closeSanctions(); };
 
+  /* ===== DRAW MODAL — spend an active agreement at its locked price ===== */
+  var D = { a:null, qty:1 };
+  function drawSeller(){ return STATE.nations.find(function(n){ return n.id === D.a.seller_nation; }); }
+  function drawMax(){ var s = drawSeller(), pool = D.a.qty_per_year * D.a.term_years; return Math.max(0, Math.min(pool - num(D.a.drawn_units), num((s && s.on_hand || {})[D.a.resource]))); }
+  function openDraw(id){
+    D.a = (STATE.agreements || []).find(function(a){ return a.id === id; }); if (!D.a) return; D.qty = 1;
+    var s = drawSeller();
+    document.getElementById('drawTitle').textContent = (s && s.name) || D.a.seller_nation;
+    document.getElementById('drawSub').textContent = D.a.resource + ' at ' + STATE.currency + num(D.a.unit_price).toFixed(2) + 'B/unit · price locked';
+    document.getElementById('drawOverlay').classList.add('show');
+    renderDrawDeal();
+  }
+  function closeDraw(){ document.getElementById('drawOverlay').classList.remove('show'); }
+  function renderDrawDeal(){
+    var mx = drawMax(); if (D.qty > mx) D.qty = Math.max(1, mx);
+    var total = Math.round(D.a.unit_price * D.qty * 10) / 10, budget = num((STATE.nation.economy || {}).budget), cur = STATE.currency;
+    document.getElementById('dV').textContent = D.qty;
+    document.getElementById('dAvail').textContent = mx + ' available to draw';
+    document.getElementById('dPlus').disabled = D.qty >= mx; document.getElementById('dMinus').disabled = D.qty <= 1;
+    document.getElementById('drawDeal').innerHTML =
+      '<div class="drow"><span>You draw</span><span class="dv">' + D.qty + ' ' + D.a.resource + '</span></div>' +
+      '<div class="drow"><span>Locked price</span><span class="dv">' + cur + num(D.a.unit_price).toFixed(2) + 'B / unit</span></div>' +
+      '<div class="drow total"><span>You pay</span><span class="dv">' + cur + total.toFixed(1) + 'B</span></div>' +
+      '<div class="relnote">Treasury ' + cur + fmt(budget) + 'B · spends 2 Actions on confirm.' + (total > budget ? ' The shortfall is added to national debt.' : '') + '</div>';
+    var lowAp = num(STATE.party.actions_remaining) < 2, btn = document.getElementById('drawConfirm');
+    btn.disabled = mx < 1 || lowAp;
+    btn.textContent = mx < 1 ? 'Nothing to draw' : (lowAp ? 'Need 2 Actions' : 'Draw ' + D.qty + ' ' + D.a.resource + ' · 2 AP');
+  }
+  async function confirmDraw(){
+    var btn = document.getElementById('drawConfirm'); btn.disabled = true;
+    var { error } = await supabase.rpc('draw_trade_agreement', { p_id: D.a.id, p_qty: D.qty });
+    if (error) { ping('<b class="red">' + esc(error.message) + '</b>'); btn.disabled = false; return; }
+    closeDraw();
+    ping('Drew <b class="green">' + D.qty + ' ' + esc(D.a.resource) + '</b> at the locked price.');
+    await reload();
+  }
+  document.getElementById('dPlus').onclick = function(){ if (D.qty < drawMax()) { D.qty++; renderDrawDeal(); } };
+  document.getElementById('dMinus').onclick = function(){ if (D.qty > 1) { D.qty--; renderDrawDeal(); } };
+  document.getElementById('drawConfirm').onclick = function(){ if (!this.disabled) confirmDraw(); };
+  document.getElementById('drawClose').onclick = closeDraw;
+  document.getElementById('drawOverlay').onclick = function(e){ if (e.target === this) closeDraw(); };
+
   (async () => {
     if (!isConfigured) { fail('Supabase isn’t configured.'); return; }
     const user = await requireUser();
@@ -676,6 +765,9 @@
       const { data: flows } = await supabase.from('trade_flows').select('exporter_id, importer_id, resource, value');   // World Trade ledger
       const { data: sanc } = await supabase.from('sanctions').select('by_nation, target_nation, active')   // active embargoes touching this nation
         .or('by_nation.eq.' + party.nation_id + ',target_nation.eq.' + party.nation_id);
+      const { data: agr } = await supabase.from('trade_agreements')   // active supply deals this nation buys under
+        .select('id, seller_nation, resource, qty_per_year, term_years, discount_pct, unit_price, drawn_units, end_tick')
+        .eq('buyer_nation', party.nation_id).eq('status', 'active');
 
       const nationName = nation.name || party.nation_id;
       document.getElementById('pname').textContent = party.name;
@@ -692,6 +784,7 @@
         trade: tp || { importMult: 1, tariff: 0, blocked: false, name: 'Managed Trade' },
         flows: flows || [],
         sanctions: sancSets(sanc, party.nation_id),
+        agreements: agr || [],
         period: economyPeriod((gs && gs.current_tick) || 1), tick: (gs && gs.current_tick) || 1, currency: cur, sortKey: 'name', ledgerSort: 'exp'
       };
       render();
