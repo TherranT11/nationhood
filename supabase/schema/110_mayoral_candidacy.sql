@@ -69,18 +69,17 @@ grant execute on function public.direct_mayor_announce(uuid, uuid, int) to authe
 -- Resolution — the deferred half, now built. Called from _advance_tick (schema/60) every
 -- tick for every city whose election has come due (mayor_election_tick <= the new tick).
 --
--- Each declared candidate scores 1D10 + campaign spend + the candidate's Charisma; the sitting
--- NPC mayor defends with 1D10 + an incumbency bonus, so a challenger must BEAT it (a tie holds
--- the incumbent — "no change"). Only the strongest challenger faces the incumbent (the rest
--- can't do better), so this is the same winner a full multi-way max would pick. A winning
--- party's candidate takes the chair and the party's popularity FLOOR rises by the city's prize
--- — 0.4% per 1M inhabitants — clamped to the invariant: floor never exceeds ceiling, and
--- popularity is pulled up to (never above) the new floor. The term then runs 12 ticks. Only a
--- CONTESTED race announces; an unopposed incumbent re-election is silent (no feed spam).
+-- The moment ONE candidate declares, the seat is theirs — the NPC incumbent keeps the chair only
+-- when nobody runs. Between rival challengers the strongest 1D10 + campaign spend + Charisma wins
+-- (the roll only ranks candidates against each other; a lone candidate wins regardless of the roll).
+-- A winning party's candidate takes the chair and the party's popularity FLOOR rises by the city's
+-- prize — 0.4% per 1M inhabitants — clamped to the invariant: floor never exceeds ceiling, and
+-- popularity is pulled up to (never above) the new floor. The term then runs 12 ticks. A win
+-- announces in the feed; an uncontested incumbent renewal is silent (no feed spam).
 -- ---------------------------------------------------------------------------
 create or replace function public._resolve_mayoral_elections(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_city record; v_best record; v_inc int; v_prize numeric;
+declare v_city record; v_best record; v_prize numeric;
 begin
   for v_city in
     select c.id, c.name, c.nation_id, c.mayor_name, coalesce(c.pop_pct, 0) as pop_pct, coalesce(n.population, 0) as population
@@ -96,9 +95,8 @@ begin
      where mc.city_id = v_city.id
      order by score desc, random() limit 1;
 
-    v_inc := floor(random() * 10)::int + 1 + 4;   -- incumbent: 1D10 + 4 incumbency advantage
-
-    if v_best.party_id is not null and v_best.score > v_inc then
+    if v_best.party_id is not null then
+      -- A declared candidate takes the chair (the NPC incumbent only holds an uncontested race).
       v_prize := round(0.4 * (v_city.population * v_city.pop_pct / 100.0), 1);   -- population is already in millions
       update public.cities set mayor_name = v_best.candidate_name, mayor_election_tick = p_tick + 12 where id = v_city.id;
       if v_prize > 0 then
@@ -113,13 +111,7 @@ begin
                 || case when v_prize > 0 then ' — popularity floor +' || trim(to_char(v_prize, 'FM990.0')) || '%.' else '.' end,
                 public.current_game_date());
     else
-      update public.cities set mayor_election_tick = p_tick + 12 where id = v_city.id;
-      if v_best.party_id is not null then   -- contested but the incumbent held
-        insert into public.events (nation_id, party_id, kind, body, game_date)
-          values (v_city.nation_id, null, 'party',
-                  coalesce(nullif(v_city.mayor_name, ''), 'The incumbent') || ' held the mayoralty of ' || v_city.name || ' against the challenge.',
-                  public.current_game_date());
-      end if;
+      update public.cities set mayor_election_tick = p_tick + 12 where id = v_city.id;   -- nobody ran; incumbent renews, silently
     end if;
 
     delete from public.mayoral_candidacies where city_id = v_city.id;   -- clear the resolved field
