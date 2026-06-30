@@ -5,8 +5,9 @@
 -- (_advance_tick), 110 (mayoral_candidacies — for the "busy" check). Run after 110.
 --
 -- Directing a member to Run for Parliament no longer resolves on the spot: it schedules
--- an election 1D3 ticks out (best case next tick, worst case 3 later). The rival party +
--- its leader are LOCKED at announcement. _resolve_parliamentary_runs (called from the tick)
+-- an election 1D3 ticks out (best case next tick, worst case 3 later). The rival party + a
+-- generated backbencher's name are LOCKED at announcement (never the rival's leader — a leader's
+-- own seat is never contested). _resolve_parliamentary_runs (called from the tick)
 -- rolls 1D6 + the candidate's Image + campaign spend vs the rival's 1D10, applies the seat
 -- steal + popularity swing, and puts the candidate on a 12-tick MP cooldown.
 --
@@ -24,7 +25,7 @@ create table if not exists public.mp_candidacies (
   candidate_name    text not null,
   candidate_image   int  not null default 0,        -- snapshot of the candidate's Image at announce
   opponent_party_id uuid references public.parties (id) on delete set null,  -- locked at announce
-  opponent_name     text,                           -- the rival leader's name, snapshot
+  opponent_name     text,                           -- a generated backbencher of the rival party (never its leader)
   spend             int  not null default 0,         -- campaign-spend increments (+1 to the roll each)
   resolve_tick      int  not null,                   -- current tick + 1D3
   created_at        timestamptz not null default now()
