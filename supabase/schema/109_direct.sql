@@ -41,14 +41,16 @@ begin
   select current_tick into v_tick from public.game_state where id;
   if v_until > v_tick then raise exception '%', v_mname || ' can''t stand for Parliament again yet (cooldown: ' || (v_until - v_tick) || ' ticks).'; end if;
 
-  -- Lock the rival now (a random seat-holder) + name its leader + the chamber's name.
+  -- Lock the rival party now (a random seat-holder) + the chamber's name. The NAMED opponent is a
+  -- GENERATED backbencher of that party — never its actual leader, whose own seat is never put up
+  -- for contest. The seat still comes off the rival party on a win; only the face of it is generic.
   select id, name into v_riv
     from public.parties where nation_id = v_p.nation_id and id <> v_p.id and seats >= 1
     order by random() limit 1;
   if not found then raise exception 'No rival party holds a seat to contest.'; end if;
-  select btrim(first_name || ' ' || last_name) into v_oppname
-    from public.politicians where party_id = v_riv.id and status = 'Party Leader' order by created_at limit 1;
-  v_oppname := coalesce(nullif(v_oppname, ''), 'their leader');
+  select nullif(btrim(concat_ws(' ', first_name, last_name)), '') into v_oppname
+    from public._random_name(v_p.nation_id);   -- a name drawn from the nation's own pool (schema/50)
+  v_oppname := coalesce(v_oppname, 'a backbencher');
   v_leg := coalesce(nullif(public.nation_declaration(v_p.nation_id, 'legislature_name'), ''), 'the legislature');
   v_resolve := v_tick + 1 + floor(random() * 3)::int;   -- 1D3 ticks out (1..3)
 
