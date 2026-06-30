@@ -561,6 +561,10 @@ begin
   -- tick's stat changes, so it rewards the month's net movement.
   begin perform public._apply_conviction_triggers(v_tick);
   exception when others then raise warning 'tick %: conviction triggers failed — %', v_tick, sqlerrm; end;
+  -- Yearly Conviction accrual (schema/94): +1 a year to every party, +2 to each Head of
+  -- Government. Self-filters to January, so it's a no-op the other eleven months.
+  begin perform public._accrue_conviction(v_tick);
+  exception when others then raise warning 'tick %: conviction accrual failed — %', v_tick, sqlerrm; end;
   -- Crises (schema/99): fire any whose triggers are now all true, then climb each active
   -- crisis's meter and escalate stages. Runs last, on this tick's settled stats; its own
   -- per-nation / per-crisis isolation lives inside _apply_crisis_tick.

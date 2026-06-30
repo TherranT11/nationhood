@@ -200,6 +200,23 @@ returns numeric language sql immutable as $$
     else null end;
 $$;
 
+-- Yearly Conviction accrual — the Manifesto currency parties earn over time. Called every tick
+-- from advance_tick (schema/60); self-filters to January (tick − 1 a multiple of 12), after the
+-- opening tick. Every party in a live nation earns +1 a year; the Head of Government's party earns
+-- +2. ONE source for the rule the Party page advertises. INTERNAL.
+create or replace function public._accrue_conviction(p_tick int)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_tick <= 1 or (p_tick - 1) % 12 <> 0 then return; end if;
+  update public.parties p
+     set conviction = conviction + case
+           when exists (select 1 from public.governments g
+                         where g.nation_id = p.nation_id and g.status = 'active' and g.formateur_party_id = p.id)
+                then 2 else 1 end
+   where exists (select 1 from public.nations n where n.id = p.nation_id and not coalesce(n.dormant, false));
+end $$;
+revoke all on function public._accrue_conviction(int) from public, anon, authenticated;
+
 -- Called once per tick by advance_tick (schema/60). For every adopted conviction's
 -- "while active" effects: a standing modifier applies its flat value each month; a
 -- trigger rewards the movement of its watched stat since last tick — proportional,
