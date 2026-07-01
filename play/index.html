@@ -815,17 +815,17 @@
       var nid = feedCtx.nationId;
       var res = await Promise.all([
         supabase.from('military_bases').select('id, host_nation_id, created_at').eq('nation_id', nid).order('created_at'),
-        supabase.from('nations').select('on_hand, economy').eq('id', nid).maybeSingle(),
-        supabase.from('military_builds').select('qty').eq('nation_id', nid),
-        supabase.from('nations').select('id, name')
+        supabase.from('nations').select('name, on_hand, economy').eq('id', nid).maybeSingle(),
+        supabase.from('military_builds').select('qty').eq('nation_id', nid)
       ]);
       EXP.bases = res[0].data || [];
-      EXP.names = {}; (res[3].data || []).forEach(function (n) { EXP.names[n.id] = n.name; });
-      var oh = (res[1].data && res[1].data.on_hand) || {};
+      var me = res[1].data || {};
+      EXP.names = {}; EXP.names[nid] = me.name || nid;   // home bases only sit in this nation; abroad hosts get added with that slice
+      var oh = me.on_hand || {};
       EXP.mil = Number(oh.military) || 0;
       EXP.energy = Number(oh.energy) || 0;
       EXP.minerals = Number(oh.minerals) || 0;
-      EXP.budget = Number((res[1].data && res[1].data.economy || {}).budget) || 0;
+      EXP.budget = Number((me.economy || {}).budget) || 0;
       EXP.pending = (res[2].data || []).reduce(function (a, r) { return a + (Number(r.qty) || 0); }, 0);
       EXP.cap = EXP.bases.length * 5;
       EXP.sel = 0; EXP.qty = 1;
