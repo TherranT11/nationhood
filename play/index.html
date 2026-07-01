@@ -983,7 +983,7 @@
       var abroad = bases.filter(function (b) { return b.host_nation_id !== nid; });
       var abroadSum = abroad.reduce(function (a, b) { return a + (Number(b.garrison) || 0); }, 0);
       var home = Math.max(0, Math.floor(total - abroadSum));
-      DEP.locs = [{ id: null, label: 'Home', avail: home, cap: Infinity, garrison: 0 }].concat(
+      DEP.locs = [{ id: null, label: 'Home', avail: home, cap: Infinity }].concat(
         abroad.map(function (b) { var g = Number(b.garrison) || 0; return { id: b.id, label: 'Base in ' + (names[b.host_nation_id] || b.host_nation_id), avail: g, cap: 5, garrison: g }; })
       );
       DEP.from = 0; DEP.to = DEP.locs.length > 1 ? 1 : 0; DEP.qty = 1;
