@@ -27,14 +27,22 @@ create policy "pconv_select_all" on public.party_convictions for select using (t
 -- engine (schema/91) — one source for the target→field mapping and clamps.
 create or replace function public._apply_conviction_effect(p_party uuid, p_nation text, p_eff jsonb)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_t text := p_eff->>'t'; v_v numeric := coalesce((p_eff->>'v')::numeric, 0); v_arch text; v_pop numeric; v_new numeric;
+declare v_t text := p_eff->>'t'; v_v numeric := coalesce((p_eff->>'v')::numeric, 0); v_arch text; v_pop numeric; v_ceil numeric; v_floor numeric; v_new numeric;
 begin
   if v_t is null or v_v = 0 then return; end if;
   if v_t = 'Party Popularity' then
-    select archetype, popularity into v_arch, v_pop from public.parties where id = p_party;
+    select archetype, popularity, pop_ceiling, pop_floor into v_arch, v_pop, v_ceil, v_floor from public.parties where id = p_party;
     if not found then return; end if;
-    if v_v >= 0 then v_new := public._mod_cap_raise(p_nation, v_arch, v_pop, v_pop + v_v);
-    else             v_new := public._mod_floor_drop(p_nation, v_arch, v_pop, v_pop + v_v); end if;
+    if v_v >= 0 then
+      -- A raise is capped at the party's OWN effective ceiling (pop_ceiling less crowding), then
+      -- the national archetype modifier — the same two-step clamp Rally / Ad Blitz use (schema/40).
+      -- Because adopt_conviction applies ceiling drops first, a same-conviction −ceiling has already
+      -- lowered pop_ceiling here, so the boost lands against the reduced ceiling.
+      v_new := least(v_pop + v_v, public._effective_ceiling(p_nation, v_arch, v_ceil, v_floor));
+      v_new := public._mod_cap_raise(p_nation, v_arch, v_pop, v_new);
+    else
+      v_new := public._mod_floor_drop(p_nation, v_arch, v_pop, v_pop + v_v);
+    end if;
     update public.parties set popularity = greatest(0, least(100, v_new)) where id = p_party;
   elsif v_t = 'Popularity Ceiling' then
     -- party-scoped (intercept before delegating, which would hit every party)
@@ -107,7 +115,12 @@ begin
   -- every reader see the up-to-date archetype.
   perform public._recompute_party_archetype(v_party.id);
 
-  for v_eff in select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb)) loop
+  -- Ceiling drops land BEFORE popularity boosts, so a boost is clamped to the reduced ceiling
+  -- (a +8% / −5% ceiling conviction can't push popularity past its new, lower reach).
+  for v_eff in
+    select value from jsonb_array_elements(coalesce(v_def->'onAdopt', '[]'::jsonb))
+    order by (value->>'t' = 'Popularity Ceiling') desc
+  loop
     perform public._apply_conviction_effect(v_party.id, v_party.nation_id, v_eff);
   end loop;
 
