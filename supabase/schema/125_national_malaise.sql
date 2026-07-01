@@ -9,6 +9,14 @@
 -- Depends on: 10 (nations), 91 (_apply_policy_effect), 40 (current_game_date). Run after 91.
 -- ===========================================================================
 
+-- One malaise line into a nation's feed. ONE place for the insert shape the five checks share.
+create or replace function public._malaise_event(p_nation text, p_body text)
+returns void language sql security definer set search_path = public as $$
+  insert into public.events (nation_id, kind, body, game_date)
+    values (p_nation, 'economy', p_body, public.current_game_date());
+$$;
+revoke all on function public._malaise_event(text, text) from public, anon, authenticated;
+
 create or replace function public._resolve_national_malaise(p_tick int)
 returns void language plpgsql security definer set search_path = public as $$
 declare
@@ -25,27 +33,23 @@ begin
 
     if v_pro < 9 then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Party Popularity', 'v', -3));
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.id, 'economy', 'Due to low Prosperity, party popularity has suffered (−3%).', public.current_game_date());
+      perform public._malaise_event(n.id, 'Due to low Prosperity, party popularity has suffered (−3%).');
     end if;
 
     if v_wel < 9 then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Government Confidence', 'v', -5));
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.id, 'economy', 'Due to low Welfare, government confidence has suffered (−5%).', public.current_game_date());
+      perform public._malaise_event(n.id, 'Due to low Welfare, government confidence has suffered (−5%).');
     end if;
 
     if v_ord < 9 then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Party Popularity', 'v', -3));
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Growth', 'v', -1));
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.id, 'economy', 'Due to low Order, party popularity has suffered (−3%) and growth has stalled (−1).', public.current_game_date());
+      perform public._malaise_event(n.id, 'Due to low Order, party popularity has suffered (−3%) and growth has stalled (−1).');
     end if;
 
     if v_gro < 9 then
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Prosperity', 'v', -1));
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.id, 'economy', 'Due to low Growth, prosperity has suffered (−1).', public.current_game_date());
+      perform public._malaise_event(n.id, 'Due to low Growth, prosperity has suffered (−1).');
     end if;
 
     if v_img < 9 then
@@ -53,8 +57,7 @@ begin
       v_inc := coalesce((n.economy->>'income')::numeric, 0);
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Budget', 'v', -round(v_bud * 0.05, 1)));   -- −5% of the treasury
       perform public._apply_policy_effect(n.id, jsonb_build_object('t', 'Income', 'v', -round(v_inc * 0.05, 1)));   -- −5% of annual income
-      insert into public.events (nation_id, kind, body, game_date)
-        values (n.id, 'economy', 'Due to low Global Image, the budget and income have suffered (−5% each).', public.current_game_date());
+      perform public._malaise_event(n.id, 'Due to low Global Image, the budget and income have suffered (−5% each).');
     end if;
   end loop;
 end $$;
