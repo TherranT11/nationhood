@@ -85,6 +85,9 @@
       '<div class="nstats">' +
         '<div class="nstat"><span class="nk">Military Bases</span><span class="nv">' + num(n.base_count) + '</span></div>' +
         '<div class="nstat"><span class="nk">Available Military</span><span class="nv">' + num((n.on_hand || {}).military) + '</span></div>' +
+        '<div class="nstat"><span class="nk">Armies</span><span class="nv">' + num(n.armies) + '</span></div>' +
+        '<div class="nstat"><span class="nk">Fleets</span><span class="nv">' + num(n.fleets) + '</span></div>' +
+        '<div class="nstat"><span class="nk">Air Wings</span><span class="nv">' + num(n.air_wings) + '</span></div>' +
       '</div></div>';
   }
 
@@ -127,11 +130,14 @@
         supabase.from('nations').select('id, name, flag, on_hand').eq('dormant', false).order('name'),
         supabase.from('continents').select('name').order('name'),         // the painted continents (the list)
         supabase.rpc('nation_continents'),                                 // which continent each nation sits on
-        supabase.from('military_bases').select('nation_id')                // base rows → count per nation (one source)
+        supabase.from('military_bases').select('nation_id, armies, fleets, air_wings')   // base rows → per-nation totals
       ]);
       var contOf = {}; (nc.data || []).forEach(function(r){ contOf[r.nation_id] = r.continent; });
-      var basesOf = {}; (mb.data || []).forEach(function(r){ basesOf[r.nation_id] = (basesOf[r.nation_id] || 0) + 1; });
-      (nat.data || []).forEach(function(n){ n.base_count = basesOf[n.id] || 0; });
+      var agg = {}; (mb.data || []).forEach(function(r){
+        var a = agg[r.nation_id] = agg[r.nation_id] || { bases: 0, armies: 0, fleets: 0, air_wings: 0 };
+        a.bases += 1; a.armies += num(r.armies); a.fleets += num(r.fleets); a.air_wings += num(r.air_wings);
+      });
+      (nat.data || []).forEach(function(n){ var a = agg[n.id] || {}; n.base_count = a.bases || 0; n.armies = a.armies || 0; n.fleets = a.fleets || 0; n.air_wings = a.air_wings || 0; });
       render(nat.data || [], contOf, (con.data || []).map(function(c){ return c.name; }), party.nation_id);
     } catch (e){ fail('Couldn’t load the world right now. Refresh to try again.'); }
   })();

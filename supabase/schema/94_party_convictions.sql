@@ -45,8 +45,12 @@ begin
     end if;
     update public.parties set popularity = greatest(0, least(100, v_new)) where id = p_party;
   elsif v_t = 'Popularity Ceiling' then
-    -- party-scoped (intercept before delegating, which would hit every party)
-    update public.parties set pop_ceiling = greatest(0, least(100, pop_ceiling + v_v)) where id = p_party;
+    -- Party-scoped and PERMANENT (schema/133). A conviction ceiling change moves the party's
+    -- cumulative drop first — never restored, even on renounce — which lowers its cap (regime
+    -- max − drop). Then pop_ceiling drops by the same amount immediately, clamped to that new
+    -- cap; national politics can regrow it toward the cap, but never back to the old maximum.
+    update public.parties set conv_ceiling_drop = greatest(0, conv_ceiling_drop - v_v) where id = p_party;
+    update public.parties set pop_ceiling = greatest(0, least(pop_ceiling + v_v, public._party_ceiling_cap(id))) where id = p_party;
   else
     perform public._apply_policy_effect(p_nation, p_eff);
   end if;
