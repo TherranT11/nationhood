@@ -118,6 +118,19 @@
   .stmt__count{text-align:right;font-family:'Space Mono',monospace;font-size:10px;color:var(--soft);margin-top:-2px}
   #stmtConfirm{background:var(--indigo);border-color:var(--indigo)}
   #stmtConfirm:disabled{opacity:.5;cursor:not-allowed}
+  /* Expand-military modal */
+  .exp-lab{display:block;font-family:'Space Mono',monospace;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);margin:12px 0 5px}
+  .exp-sel{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px}
+  .exp-cap{font-size:12.5px;color:var(--muted);margin-top:9px}
+  .exp-cap b{color:var(--ink)}
+  .exp-step{display:flex;align-items:center;gap:12px}
+  .exp-step button{width:34px;height:34px;border:1px solid var(--line);border-radius:9px;background:var(--field);font-size:19px;line-height:1;cursor:pointer;color:var(--ink)}
+  .exp-step button:disabled{opacity:.4;cursor:not-allowed}
+  .exp-step #expQty{font-size:19px;font-weight:800;min-width:34px;text-align:center}
+  .exp-step .exp-max{font-family:'Space Mono',monospace;font-size:10.5px;color:var(--soft)}
+  .exp-cost{font-size:13px;color:var(--muted);margin:12px 0 2px}
+  .exp-cost b{color:var(--ink)}
+  .exp-warn{font-size:12px;color:var(--red);margin-top:6px}
   /* Appoint-cabinet modal */
   .amodal__panel--wide{max-width:640px}
   .appoint__row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -357,6 +370,13 @@
       <p class="noco__warn">A new base in your own territory. Costs <b>$15B</b> from the Budget (a shortfall is financed by Debt) and <b>2 actions</b>. Building <b>Abroad</b> needs a mutual defence pact.</p>
       <div class="noco__btns"><button class="noco__btn noco__cancel" id="bbCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="bbConfirm" type="button">Build &middot; $15B</button></div>
     </div>
+  </div>
+</div>
+
+<div class="amodal" id="expandModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Expand the Military</b><button class="amodal__x" id="expandClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list" id="expandBody"><p class="empty">Loading…</p></div>
   </div>
 </div>
 
@@ -774,6 +794,77 @@
     performAction(function () { return supabase.rpc('build_military_base', { p_scope: 'home' }); },
       function () { return 'A new military base has been commissioned.'; });
   });
+
+  // EXPAND MILITARY — build military at one of your bases (1 AP; $5B + 1 Energy + 1 Minerals
+  // each, ready next turn). A picker: choose a base and how many. The amount is capped by your
+  // bases' spare capacity (bases × 5 − current − building) and by your Energy/Minerals.
+  var expandModal = document.getElementById('expandModal');
+  var closeExpand = wireModalClose(expandModal, 'expandClose');
+  var EXP = { bases: [], names: {}, mil: 0, cap: 0, pending: 0, energy: 0, minerals: 0, sel: 0, qty: 1 };
+  function openExpand() {
+    if (acting || !feedCtx) return;
+    document.getElementById('expandBody').innerHTML = '<p class="empty">Loading…</p>';
+    expandModal.hidden = false;
+    loadExpand();
+  }
+  async function loadExpand() {
+    try {
+      var nid = feedCtx.nationId;
+      var res = await Promise.all([
+        supabase.from('military_bases').select('id, host_nation_id, created_at').eq('nation_id', nid).order('created_at'),
+        supabase.from('nations').select('on_hand').eq('id', nid).maybeSingle(),
+        supabase.from('military_builds').select('qty').eq('nation_id', nid),
+        supabase.from('nations').select('id, name')
+      ]);
+      EXP.bases = res[0].data || [];
+      EXP.names = {}; (res[3].data || []).forEach(function (n) { EXP.names[n.id] = n.name; });
+      var oh = (res[1].data && res[1].data.on_hand) || {};
+      EXP.mil = Number(oh.military) || 0;
+      EXP.energy = Number(oh.energy) || 0;
+      EXP.minerals = Number(oh.minerals) || 0;
+      EXP.pending = (res[2].data || []).reduce(function (a, r) { return a + (Number(r.qty) || 0); }, 0);
+      EXP.cap = EXP.bases.length * 5;
+      EXP.sel = 0; EXP.qty = 1;
+      renderExpand();
+    } catch (e) { document.getElementById('expandBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
+  }
+  function expHeadroom() { return Math.max(0, EXP.cap - Math.floor(EXP.mil + EXP.pending)); }
+  function expMax() { return Math.max(0, Math.min(expHeadroom(), Math.floor(EXP.energy), Math.floor(EXP.minerals))); }
+  function renderExpand() {
+    var body = document.getElementById('expandBody');
+    if (!EXP.bases.length) { body.innerHTML = '<p class="empty">You have no bases yet — build one first.</p>'; return; }
+    var max = expMax();
+    EXP.qty = Math.max(max > 0 ? 1 : 0, Math.min(EXP.qty, max));
+    var opts = EXP.bases.map(function (b, i) {
+      var host = EXP.names[b.host_nation_id] || b.host_nation_id;
+      return '<option value="' + i + '"' + (i === EXP.sel ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(host) + '</option>';
+    }).join('');
+    var reason = expHeadroom() < 1 ? 'Your bases are at capacity — build another base first.'
+      : (Math.floor(EXP.energy) < 1 || Math.floor(EXP.minerals) < 1) ? 'You need Energy and Minerals on hand to build.' : '';
+    var canBuild = max > 0 && EXP.qty >= 1;
+    body.innerHTML =
+      '<label class="exp-lab">Base</label><select id="expBase" class="exp-sel">' + opts + '</select>' +
+      '<div class="exp-cap">Military <b>' + EXP.mil + '</b> / ' + EXP.cap + ' capacity' + (EXP.pending ? ' · ' + EXP.pending + ' building' : '') + '</div>' +
+      '<label class="exp-lab">How many to build</label>' +
+      '<div class="exp-step"><button type="button" id="expMinus"' + (EXP.qty <= 1 ? ' disabled' : '') + '>−</button>' +
+        '<span id="expQty">' + EXP.qty + '</span>' +
+        '<button type="button" id="expPlus"' + (EXP.qty >= max ? ' disabled' : '') + '>+</button>' +
+        '<span class="exp-max">max ' + max + '</span></div>' +
+      '<div class="exp-cost">Cost: <b>$' + (5 * EXP.qty) + 'B</b> · ' + EXP.qty + ' Energy · ' + EXP.qty + ' Minerals</div>' +
+      (reason ? '<p class="exp-warn">' + reason + '</p>' : '') +
+      '<div class="noco__btns"><button class="noco__btn noco__cancel" id="expCancel" type="button">Cancel</button>' +
+        '<button class="noco__btn noco__confirm" id="expGo" type="button"' + (canBuild ? '' : ' disabled') + '>Build ' + EXP.qty + ' · $' + (5 * EXP.qty) + 'B</button></div>';
+    document.getElementById('expBase').onchange = function () { EXP.sel = +this.value; };
+    document.getElementById('expMinus').onclick = function () { if (EXP.qty > 1) { EXP.qty--; renderExpand(); } };
+    document.getElementById('expPlus').onclick = function () { if (EXP.qty < expMax()) { EXP.qty++; renderExpand(); } };
+    document.getElementById('expCancel').onclick = closeExpand;
+    document.getElementById('expGo').onclick = function () {
+      var base = EXP.bases[EXP.sel]; if (!base) return;
+      var qty = EXP.qty; closeExpand();
+      performAction(function () { return supabase.rpc('expand_military', { p_base_id: base.id, p_qty: qty }); },
+        function (d) { return (d.ordered || qty) + ' military ordered — ready next turn.'; });
+    };
+  }
   // DIRECT opens a modal to assign a field action to a chosen party member: Run for
   // Parliament, Raise a Paramilitary Wing, or appoint a Deputy Leader. 1 AP per field
   // action (the appointment is free). Like Attack/Recruit, it's a picker that fires via
@@ -1463,13 +1554,15 @@
       '<p class="leadbar__sub">Your party holds the Defence portfolio. Build and command the nation’s military bases.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="def-base" data-cost="2"><b>Build Military Base</b><span class="lead__lane">The Forces</span><span class="lead__desc">Commission a new base at home. ($15B)</span></button>' +
-        '<button class="lead" type="button" id="def-expand" data-soon disabled><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build military at one of your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-expand" data-cost="1"><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build military at one of your bases.</span></button>' +
         '<button class="lead" type="button" id="def-deploy" data-soon disabled><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move military between your bases.</span></button>' +
         '<button class="lead" type="button" id="def-tech" data-soon disabled><b>Technology</b><span class="lead__lane">The Forces</span><span class="lead__desc">Research military technologies.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);
     var b = document.getElementById('def-base');
     if (b) { actionBtns.push(b); b.addEventListener('click', function () { if (!b.disabled) openBuildBase(); }); }
+    var ex = document.getElementById('def-expand');
+    if (ex) { actionBtns.push(ex); ex.addEventListener('click', function () { if (!ex.disabled) openExpand(); }); }
   }
 
   (async () => {
