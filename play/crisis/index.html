@@ -179,16 +179,16 @@
   }
 
   // The "end permanently" line: the crisis's own endIf resolvers (schema/99 _crisis_resolve_met),
-  // turned into readable text. Each is {target, op, value}; endMode 'all' joins them with " and ",
-  // else " or " (the default, matching the server). Ops accept ASCII or the builder's unicode forms.
-  // Returns null when the crisis has no endIf — then it can only be managed, never permanently ended.
-  var OP_SYM = { '>=': '≥', '<=': '≤', '>': '>', '<': '<', '==': '=', '!=': '≠', '≥': '≥', '≤': '≤' };
+  // turned into readable text. Each is {target, op, value} — the op is already stored as its display
+  // symbol by the crisis builder (adminsetup OPS: < ≤ > ≥ =), so it renders raw, exactly as the
+  // builder's own preview does. endMode 'all' joins with " and ", else " or " (the default, matching
+  // the server). Returns null when there's no endIf — then it can only be managed, never ended.
   function endCondText(def) {
     var conds = Array.isArray(def.endIf) ? def.endIf.filter(function (c) { return c && c.target; }) : [];
     if (!conds.length) return null;
     var join = (def.endMode === 'all') ? ' and ' : ' or ';
     return conds.map(function (c) {
-      return c.target + ' ' + (OP_SYM[c.op] || c.op || '≥') + ' ' + (c.value != null ? c.value : 0);
+      return c.target + ' ' + (c.op || '≥') + ' ' + (c.value != null ? c.value : 0);
     }).join(join);
   }
 
