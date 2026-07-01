@@ -516,6 +516,9 @@ begin
   -- Self-filters to January, so it's a no-op the other eleven months.
   begin perform public._resolve_national_malaise(v_tick);
   exception when others then raise warning 'tick %: national malaise failed — %', v_tick, sqlerrm; end;
+  -- Military builds (schema/129): every tick, matured Expand orders deliver into on_hand.military.
+  begin perform public._resolve_military_builds(v_tick);
+  exception when others then raise warning 'tick %: military builds failed — %', v_tick, sqlerrm; end;
   -- Military capacity (schema/128): each January, military over (bases × 5) stands down.
   -- Self-filters to January, so it's a no-op the other eleven months.
   begin perform public._resolve_military_capacity(v_tick);
