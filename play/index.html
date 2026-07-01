@@ -794,7 +794,7 @@
   // an allied nation — a Continent → Nation drilldown where nations you have no mutual defence
   // pact with are disabled. Fires through performAction so the AP budget + feed refresh.
   var buildBaseModal = document.getElementById('buildBaseModal');
-  var BB = { mode: 'home', byCont: {}, allies: {}, loaded: false };
+  var BB = { mode: 'home', byCont: {}, allies: {} };
   function openBuildBase() {
     if (acting || !feedCtx) return;
     BB.mode = 'home'; setBBMode();
