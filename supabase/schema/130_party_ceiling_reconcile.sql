@@ -15,6 +15,11 @@
 create or replace function public._reconcile_party_ceilings()
 returns void language plpgsql security definer set search_path = public as $$
 begin
+  -- First: pop_ceiling can never exceed the party's cap (regime max − permanent conviction
+  -- drops, schema/133) — so anything that raised it (national politics) is trimmed back.
+  update public.parties p set pop_ceiling = public._party_ceiling_cap(p.id)
+   where p.pop_ceiling > public._party_ceiling_cap(p.id);
+  -- Then: popularity can't sit above its (now-capped) effective ceiling, less crowding.
   update public.parties p
      set popularity = public._effective_ceiling(p.nation_id, p.archetype, p.pop_ceiling, p.pop_floor)
    where p.popularity > public._effective_ceiling(p.nation_id, p.archetype, p.pop_ceiling, p.pop_floor);
