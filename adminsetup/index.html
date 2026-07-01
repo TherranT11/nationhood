@@ -1723,43 +1723,48 @@
     // ---- Defence Pacts (admin seeding; defense_pacts table, is_admin RLS, schema/131) ----------
     // The player-facing signing flow isn't built yet, so pacts are created here. A pact is one
     // symmetric row; nations are stored canonically (a < b), which the insert mirrors.
-    function pactEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     async function loadPacts() {
       var note = document.getElementById('pactNote'); note.textContent = '';
       var list = document.getElementById('pactList'); list.innerHTML = '<p class="empty">Loading…</p>';
-      var res = await Promise.all([
-        supabase.from('nations').select('id, name').order('name'),
-        supabase.from('defense_pacts').select('id, nation_a, nation_b').order('created_at', { ascending: false })
-      ]);
-      if (res[0].error || res[1].error) { list.innerHTML = '<p class="empty">Couldn’t load pacts.</p>'; return; }
-      var nn = res[0].data || [], nameOf = {}; nn.forEach(function (n) { nameOf[n.id] = n.name; });
-      var opts = '<option value="">Select a nation…</option>' + nn.map(function (n) { return '<option value="' + pactEsc(n.id) + '">' + pactEsc(n.name) + '</option>'; }).join('');
-      document.getElementById('pactA').innerHTML = opts;
-      document.getElementById('pactB').innerHTML = opts;
-      var pacts = res[1].data || [];
-      list.innerHTML = pacts.length
-        ? pacts.map(function (p) {
-            return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">' +
-              '<span style="font-weight:600">' + pactEsc(nameOf[p.nation_a] || p.nation_a) + ' &harr; ' + pactEsc(nameOf[p.nation_b] || p.nation_b) + '</span>' +
-              '<button class="btn btn-ghost" data-del="' + pactEsc(p.id) + '" type="button">Remove</button></div>';
-          }).join('')
-        : '<p class="empty">No pacts yet.</p>';
-      list.querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { removePact(b.dataset.del); }; });
+      try {
+        var res = await Promise.all([
+          supabase.from('nations').select('id, name').order('name'),
+          supabase.from('defense_pacts').select('id, nation_a, nation_b').order('created_at', { ascending: false })
+        ]);
+        if (res[0].error || res[1].error) throw (res[0].error || res[1].error);
+        var nn = res[0].data || [], nameOf = {}; nn.forEach(function (n) { nameOf[n.id] = n.name; });
+        var opts = '<option value="">Select a nation…</option>' + nn.map(function (n) { return '<option value="' + esc(n.id) + '">' + esc(n.name) + '</option>'; }).join('');
+        document.getElementById('pactA').innerHTML = opts;
+        document.getElementById('pactB').innerHTML = opts;
+        var pacts = res[1].data || [];
+        list.innerHTML = pacts.length
+          ? pacts.map(function (p) {
+              return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">' +
+                '<span style="font-weight:600">' + esc(nameOf[p.nation_a] || p.nation_a) + ' &harr; ' + esc(nameOf[p.nation_b] || p.nation_b) + '</span>' +
+                '<button class="btn btn-ghost" data-del="' + esc(p.id) + '" type="button">Remove</button></div>';
+            }).join('')
+          : '<p class="empty">No pacts yet.</p>';
+        list.querySelectorAll('[data-del]').forEach(function (b) { b.onclick = function () { removePact(b.dataset.del); }; });
+      } catch (e) { list.innerHTML = '<p class="empty">Couldn’t load pacts.</p>'; }
     }
     async function addPact() {
       var a = document.getElementById('pactA').value, b = document.getElementById('pactB').value, note = document.getElementById('pactNote');
       if (!a || !b) { note.textContent = 'Pick two nations.'; return; }
       if (a === b) { note.textContent = 'A pact needs two different nations.'; return; }
       var lo = a < b ? a : b, hi = a < b ? b : a;   // canonical order, matching the table's check constraint
-      var { error } = await supabase.from('defense_pacts').insert({ nation_a: lo, nation_b: hi });
-      if (error) { note.textContent = /duplicate|unique/i.test(error.message || '') ? 'Those two nations already have a pact.' : (error.message || 'Couldn’t add the pact.'); return; }
-      note.textContent = 'Pact added.';
-      loadPacts();
+      try {
+        var { error } = await supabase.from('defense_pacts').insert({ nation_a: lo, nation_b: hi });
+        if (error) throw error;
+        note.textContent = 'Pact added.';
+        loadPacts();
+      } catch (e) { note.textContent = /duplicate|unique/i.test(e.message || '') ? 'Those two nations already have a pact.' : (e.message || 'Couldn’t add the pact.'); }
     }
     async function removePact(id) {
-      var { error } = await supabase.from('defense_pacts').delete().eq('id', id);
-      if (error) { document.getElementById('pactNote').textContent = error.message || 'Couldn’t remove the pact.'; return; }
-      loadPacts();
+      try {
+        var { error } = await supabase.from('defense_pacts').delete().eq('id', id);
+        if (error) throw error;
+        loadPacts();
+      } catch (e) { document.getElementById('pactNote').textContent = e.message || 'Couldn’t remove the pact.'; }
     }
     document.getElementById('pactAdd').addEventListener('click', addPact);
 
