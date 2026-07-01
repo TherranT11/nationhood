@@ -155,7 +155,7 @@ declare v_n record; v_year int; v_d jsonb; v_food boolean; v_goods boolean; v_se
 begin
   if ((p_tick - 1) % 12) + 1 <> 6 then return; end if;   -- June only
   v_year := 1980 + (p_tick - 1) / 12;
-  for v_n in select id, demands from public.nations where not coalesce(dormant, false) loop
+  for v_n in select id, demands, coalesce((stats->>'growth')::numeric, 0) as growth from public.nations where not coalesce(dormant, false) loop
     v_d := v_n.demands;
     if v_d is null or (v_d->>'year') is null or (v_d->>'year')::int is distinct from v_year then
       v_food := false; v_goods := false; v_serv := false; v_mil := false;
@@ -166,10 +166,13 @@ begin
       v_mil   := coalesce((v_d->>'military')::boolean, false);
     end if;
 
-    -- Food: met grows the population (+1M); unmet costs Order. Growth is the reward
-    -- for feeding the nation, so there is no growth in a shortfall year.
+    -- Food: a fed nation grows +1M — but only while Growth holds at 9+. A stalling economy
+    -- (Growth < 9) freezes population growth even in a well-fed year (paired with the GDP hit
+    -- in schema/125). Unmet food costs Order; either way there's no population growth otherwise.
     if v_food then
-      update public.nations set population = coalesce(population, 0) + 1 where id = v_n.id;
+      if v_n.growth >= 9 then
+        update public.nations set population = coalesce(population, 0) + 1 where id = v_n.id;
+      end if;
     else
       perform public._nation_stat_add(v_n.id, 'stats', 'order', -1, 1, 20);
     end if;
@@ -183,7 +186,9 @@ begin
      where id = v_n.id;
 
     v_msg := 'The ' || v_year || ' annual accounts are in. '
-          || (case when v_food  then 'The nation was fed — population +1M. ' else 'Food ran short — Order −1. ' end)
+          || (case when v_food and v_n.growth >= 9 then 'The nation was fed — population +1M. '
+                    when v_food then 'The nation was fed, but a stalling economy held the population flat. '
+                    else 'Food ran short — Order −1. ' end)
           || (case when v_goods then '' else 'Goods ran short — Prosperity −1. ' end)
           || (case when v_serv  then '' else 'Services ran short — Welfare −1. ' end)
           || (case when v_mil   then '' else 'Military upkeep went unpaid — the forces shrank. ' end);
