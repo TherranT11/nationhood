@@ -264,6 +264,7 @@
 
     <div id="pmbar"></div>
     <div id="tradebar"></div>
+    <div id="defencebar"></div>
 
     <section class="panel leadbar">
       <div class="glance-hd"><span>Party Leader &middot; This Week's Action</span></div>
@@ -341,6 +342,20 @@
     <div class="amodal__list">
       <button class="atarget" id="campRally" type="button"><span class="atarget__id"><b>Hold a Rally</b><span>Charisma &middot; The Base</span></span><span class="atarget__st" data-funds="$25K"></span></button>
       <button class="atarget" id="campBlitz" type="button"><span class="atarget__id"><b>Ad Blitz</b><span>Guile &middot; The Airwaves</span></span><span class="atarget__st" data-funds="$100K"></span></button>
+    </div>
+  </div>
+</div>
+
+<div class="amodal" id="buildBaseModal" hidden>
+  <div class="amodal__panel">
+    <div class="amodal__hd"><b>Build a Military Base</b><button class="amodal__x" id="buildBaseClose" type="button" aria-label="Close">&times;</button></div>
+    <div class="amodal__list">
+      <div class="stmt__scope">
+        <button class="stmt__opt is-on" id="bbHome" type="button">Home</button>
+        <button class="stmt__opt" id="bbAbroad" type="button" disabled>Abroad</button>
+      </div>
+      <p class="noco__warn">A new base in your own territory. Costs <b>$15B</b> from the Budget (a shortfall is financed by Debt) and <b>2 actions</b>. Building <b>Abroad</b> needs a mutual defence pact.</p>
+      <div class="noco__btns"><button class="noco__btn noco__cancel" id="bbCancel" type="button">Cancel</button><button class="noco__btn noco__confirm" id="bbConfirm" type="button">Build &middot; $15B</button></div>
     </div>
   </div>
 </div>
@@ -743,6 +758,21 @@
       ping(r.data && r.data.resigned ? 'You have resigned as Head of Government — fresh elections held.' : 'Your party has left the coalition.');
       setTimeout(function () { location.reload(); }, 900);
     }).catch(function () { ping('Action failed. Try again.'); acting = false; setActions(partyActions); });
+  });
+
+  // BUILD MILITARY BASE — the Minister of Defence commissions a base (2 AP, $15B from the
+  // Budget; a shortfall rolls into Debt). Home only this slice; Abroad is greyed pending a
+  // mutual defence pact. Fires through performAction so the AP budget + feed refresh; the
+  // base count updates on the Conflict page.
+  var buildBaseModal = document.getElementById('buildBaseModal');
+  function openBuildBase() { if (!acting) buildBaseModal.hidden = false; }
+  var closeBuildBase = wireModalClose(buildBaseModal, 'buildBaseClose');
+  var bbCancel = document.getElementById('bbCancel'); if (bbCancel) bbCancel.addEventListener('click', closeBuildBase);
+  var bbConfirm = document.getElementById('bbConfirm');
+  if (bbConfirm) bbConfirm.addEventListener('click', function () {
+    closeBuildBase();
+    performAction(function () { return supabase.rpc('build_military_base', { p_scope: 'home' }); },
+      function () { return 'A new military base has been commissioned.'; });
   });
   // DIRECT opens a modal to assign a field action to a chosen party member: Run for
   // Parliament, Raise a Paramilitary Wing, or appoint a Deputy Leader. 1 AP per field
@@ -1421,6 +1451,27 @@
     if (ta) ta.addEventListener('click', function () { window.location.href = '/play/trade-agreement/'; });
   }
 
+  // The Minister of Defence container — shown only to the party holding the Defence
+  // portfolio, above the Party Leader actions. Build Military Base is live (opens a modal);
+  // Expand, Deploy and Technology land in later slices (shown "Soon").
+  function renderDefenceBar(isDefenceMin) {
+    var el = document.getElementById('defencebar');
+    if (!el) return;
+    if (!isDefenceMin) { el.innerHTML = ''; return; }
+    el.innerHTML = '<section class="panel leadbar">' +
+      '<div class="glance-hd"><span>Minister of Defence &middot; This Week’s Action</span></div>' +
+      '<p class="leadbar__sub">Your party holds the Defence portfolio. Build and command the nation’s military bases.</p>' +
+      '<div class="leadbar__grid">' +
+        '<button class="lead" type="button" id="def-base" data-cost="2"><b>Build Military Base</b><span class="lead__lane">The Forces</span><span class="lead__desc">Commission a new base at home. ($15B)</span></button>' +
+        '<button class="lead" type="button" id="def-expand" data-soon disabled><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build military at one of your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-deploy" data-soon disabled><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move military between your bases.</span></button>' +
+        '<button class="lead" type="button" id="def-tech" data-soon disabled><b>Technology</b><span class="lead__lane">The Forces</span><span class="lead__desc">Research military technologies.</span></button>' +
+      '</div></section>';
+    el.querySelectorAll('.lead').forEach(stampCost);
+    var b = document.getElementById('def-base');
+    if (b) { actionBtns.push(b); b.addEventListener('click', function () { if (!b.disabled) openBuildBase(); }); }
+  }
+
   (async () => {
     if (!isConfigured) return; // local dev: leave placeholders
     const user = await requireUser();
@@ -1526,6 +1577,8 @@
         applyReshuffleCooldown(curTick, govt && govt.reshuffle_until_tick);   // 6-tick reshuffle cooldown gate
         const { data: tmin } = await supabase.rpc('is_trade_minister');   // my party holds Trade → show the Trade bar
         renderTradeBar(tmin === true);
+        const { data: dmin } = await supabase.rpc('is_defence_minister'); // my party holds Defence → show the Defence bar
+        renderDefenceBar(dmin === true);
       } catch (e) { /* leave the PM bar hidden if the government can't be read */ }
       await loadFeed(party.nation_id, nation, gameDate);
       loadWorldEventsPanel(party.nation_id);   // active world-event decisions for this nation (non-blocking)
