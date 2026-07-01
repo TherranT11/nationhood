@@ -623,6 +623,11 @@ begin
   -- is the last word each tick. Isolated like every other step.
   begin perform public._apply_modifier_bounds();
   exception when others then raise warning 'tick %: modifier bounds failed — %', v_tick, sqlerrm; end;
+  -- Party popularity vs its effective ceiling (schema/130): a party that climbed to its ceiling
+  -- and then had a same-archetype rival appear (crowding −2) would sit above the new ceiling —
+  -- clamp it back down, so popularity never displays above the reach it actually has.
+  begin perform public._reconcile_party_ceilings();
+  exception when others then raise warning 'tick %: party ceiling reconcile failed — %', v_tick, sqlerrm; end;
   -- Inactivity purge (schema/97): delete parties idle past the deletion window (their politicians
   -- cascade, the nation slot frees up). Wall-clock, so it fires on whichever tick crosses 21 days.
   begin perform public._purge_inactive_parties();
