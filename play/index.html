@@ -123,6 +123,9 @@
   .exp-sel{width:100%;box-sizing:border-box;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px}
   .exp-cap{font-size:12.5px;color:var(--muted);margin-top:9px}
   .exp-cap b{color:var(--ink)}
+  .exp-res{font-size:12.5px;color:var(--muted);margin-top:4px}
+  .exp-res b{color:var(--ink)}
+  .exp-res b.short{color:var(--red)}
   .exp-step{display:flex;align-items:center;gap:12px}
   .exp-step button{width:34px;height:34px;border:1px solid var(--line);border-radius:9px;background:var(--field);font-size:19px;line-height:1;cursor:pointer;color:var(--ink)}
   .exp-step button:disabled{opacity:.4;cursor:not-allowed}
@@ -800,7 +803,7 @@
   // bases' spare capacity (bases × 5 − current − building) and by your Energy/Minerals.
   var expandModal = document.getElementById('expandModal');
   var closeExpand = wireModalClose(expandModal, 'expandClose');
-  var EXP = { bases: [], names: {}, mil: 0, cap: 0, pending: 0, energy: 0, minerals: 0, sel: 0, qty: 1 };
+  var EXP = { bases: [], names: {}, mil: 0, cap: 0, pending: 0, budget: 0, energy: 0, minerals: 0, sel: 0, qty: 1 };
   function openExpand() {
     if (acting || !feedCtx) return;
     document.getElementById('expandBody').innerHTML = '<p class="empty">Loading…</p>';
@@ -812,7 +815,7 @@
       var nid = feedCtx.nationId;
       var res = await Promise.all([
         supabase.from('military_bases').select('id, host_nation_id, created_at').eq('nation_id', nid).order('created_at'),
-        supabase.from('nations').select('on_hand').eq('id', nid).maybeSingle(),
+        supabase.from('nations').select('on_hand, economy').eq('id', nid).maybeSingle(),
         supabase.from('military_builds').select('qty').eq('nation_id', nid),
         supabase.from('nations').select('id, name')
       ]);
@@ -822,6 +825,7 @@
       EXP.mil = Number(oh.military) || 0;
       EXP.energy = Number(oh.energy) || 0;
       EXP.minerals = Number(oh.minerals) || 0;
+      EXP.budget = Number((res[1].data && res[1].data.economy || {}).budget) || 0;
       EXP.pending = (res[2].data || []).reduce(function (a, r) { return a + (Number(r.qty) || 0); }, 0);
       EXP.cap = EXP.bases.length * 5;
       EXP.sel = 0; EXP.qty = 1;
@@ -845,6 +849,9 @@
     body.innerHTML =
       '<label class="exp-lab">Base</label><select id="expBase" class="exp-sel">' + opts + '</select>' +
       '<div class="exp-cap">Military <b>' + EXP.mil + '</b> / ' + EXP.cap + ' capacity' + (EXP.pending ? ' · ' + EXP.pending + ' building' : '') + '</div>' +
+      '<div class="exp-res">You have <b>$' + (Math.round(EXP.budget * 10) / 10) + 'B</b> Budget · ' +
+        '<b class="' + (Math.floor(EXP.energy) < EXP.qty ? 'short' : '') + '">' + Math.floor(EXP.energy) + '</b> Energy · ' +
+        '<b class="' + (Math.floor(EXP.minerals) < EXP.qty ? 'short' : '') + '">' + Math.floor(EXP.minerals) + '</b> Minerals</div>' +
       '<label class="exp-lab">How many to build</label>' +
       '<div class="exp-step"><button type="button" id="expMinus"' + (EXP.qty <= 1 ? ' disabled' : '') + '>−</button>' +
         '<span id="expQty">' + EXP.qty + '</span>' +
