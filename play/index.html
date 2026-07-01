@@ -134,6 +134,24 @@
   .exp-cost{font-size:13px;color:var(--muted);margin:12px 0 2px}
   .exp-cost b{color:var(--ink)}
   .exp-warn{font-size:12px;color:var(--red);margin-top:6px}
+  /* Expand-military unit picker */
+  .u-status{font-size:12.5px;color:var(--muted);margin-top:11px;line-height:1.6}
+  .u-status b{color:var(--ink)}
+  .u-status .mil{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;background:var(--chip);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--ink)}
+  .u-capbar{height:7px;border-radius:5px;background:var(--chip);border:1px solid var(--line);overflow:hidden;margin-top:9px;display:flex}
+  .u-capbar i{height:100%;display:block}
+  .u-capbar .fill{background:var(--indigo)} .u-capbar .add{background:var(--amber);opacity:.7}
+  .units{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:2px}
+  .ucard{border:1px solid var(--line);background:var(--field);border-radius:12px;padding:11px 8px;cursor:pointer;text-align:center}
+  .ucard:hover{border-color:var(--line2)}
+  .ucard.on{border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo)}
+  .uchip{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin:0 auto 8px}
+  .uchip svg{width:22px;height:16px}
+  .uname{font-weight:800;font-size:13px}
+  .ucost{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px}
+  .ubeats{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.03em;text-transform:uppercase;color:var(--soft);margin-top:5px}
+  .ucard.on .ubeats{color:var(--indigo)}
+  .udesc{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:10px;min-height:32px}
   /* Appoint-cabinet modal */
   .amodal__panel--wide{max-width:640px}
   .appoint__row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)}
@@ -884,12 +902,25 @@
       function (d) { return 'A new military base has been commissioned' + (d && d.abroad ? ' abroad.' : '.'); });
   });
 
-  // EXPAND MILITARY — build military at one of your bases (1 AP; $5B + 1 Energy + 1 Minerals
-  // each, ready next turn). A picker: choose a base and how many. The amount is capped by your
-  // bases' spare capacity (bases × 5 − current − building) and by your Energy/Minerals.
+  // EXPAND MILITARY — build typed units (Army / Fleet / Air Wing) at one of your bases (1 AP).
+  // Each unit is paid in Military (the on_hand pool): Army 1, Fleet 2, Air Wing 1, and takes its
+  // build time (1 / 3 / 2 ticks). A base holds at most 5 units (built + building). UNIT_SPEC
+  // mirrors schema/129; the server is authoritative.
+  var UNIT_ORDER = ['army', 'fleet', 'air_wing'];
+  var UNIT_SPEC = {
+    army:     { name: 'Army',     plural: 'Armies',    cost: 1, ticks: 1, beats: 'Air Wing', color: '#C42B2B', desc: 'Ground force — the only unit that takes and holds territory.' },
+    fleet:    { name: 'Fleet',    plural: 'Fleets',    cost: 2, ticks: 3, beats: 'Army',     color: '#2f6fb0', desc: 'Naval force — dominates coasts and sea lanes; cannot hold land.' },
+    air_wing: { name: 'Air Wing', plural: 'Air Wings', cost: 1, ticks: 2, beats: 'Fleet',    color: '#3f9fe0', desc: 'Air force — strikes anywhere and screens, but holds nothing.' }
+  };
+  function uplur(k, n) { return n === 1 ? UNIT_SPEC[k].name : UNIT_SPEC[k].plural; }
+  function unitIcon(k) {
+    if (k === 'air_wing') return '<svg viewBox="0 0 24 18"><polygon points="12,1 4,16 12,12 20,16" fill="#fff"/></svg>';
+    if (k === 'fleet') return '<svg viewBox="0 0 24 18"><polygon points="3,9 21,9 18,15 6,15" fill="#fff"/><rect x="9" y="4" width="6" height="4" fill="#fff"/></svg>';
+    return '<svg viewBox="0 0 24 18"><rect x="4" y="8" width="16" height="6" rx="1.6" fill="#fff"/><rect x="7" y="4" width="9" height="4" rx="1.2" fill="#fff"/><line x1="15" y1="6" x2="22" y2="6" stroke="#fff" stroke-width="1.8"/></svg>';
+  }
   var expandModal = document.getElementById('expandModal');
   var closeExpand = wireModalClose(expandModal, 'expandClose');
-  var EXP = { bases: [], names: {}, mil: 0, cap: 0, pending: 0, budget: 0, energy: 0, minerals: 0, sel: 0, qty: 1 };
+  var EXP = { bases: [], names: {}, mil: 0, pending: {}, type: 'army', sel: 0, qty: 1 };
   function openExpand() {
     if (acting || !feedCtx) return;
     document.getElementById('expandBody').innerHTML = '<p class="empty">Loading…</p>';
@@ -900,71 +931,68 @@
     try {
       var nid = feedCtx.nationId;
       var res = await Promise.all([
-        supabase.from('military_bases').select('id, host_nation_id, created_at').eq('nation_id', nid).order('created_at'),
-        supabase.from('nations').select('name, on_hand, economy').eq('id', nid).maybeSingle(),
-        supabase.from('military_builds').select('qty').eq('nation_id', nid)
+        supabase.from('military_bases').select('id, host_nation_id, armies, fleets, air_wings').eq('nation_id', nid).order('created_at'),
+        supabase.from('nations').select('id, name, on_hand'),
+        supabase.from('military_builds').select('base_id, qty').eq('nation_id', nid)
       ]);
       EXP.bases = res[0].data || [];
-      var me = res[1].data || {};
-      EXP.names = {}; EXP.names[nid] = me.name || nid;   // home bases only sit in this nation; abroad hosts get added with that slice
-      var oh = me.on_hand || {};
-      EXP.mil = Number(oh.military) || 0;
-      EXP.energy = Number(oh.energy) || 0;
-      EXP.minerals = Number(oh.minerals) || 0;
-      EXP.budget = Number((me.economy || {}).budget) || 0;
-      EXP.pending = (res[2].data || []).reduce(function (a, r) { return a + (Number(r.qty) || 0); }, 0);
-      EXP.cap = EXP.bases.length * 5;
-      EXP.sel = 0; EXP.qty = 1;
+      EXP.names = {}; var mine = null;
+      (res[1].data || []).forEach(function (n) { EXP.names[n.id] = n.name; if (n.id === nid) mine = n; });
+      EXP.mil = Number(((mine || {}).on_hand || {}).military) || 0;
+      EXP.pending = {}; (res[2].data || []).forEach(function (b) { EXP.pending[b.base_id] = (EXP.pending[b.base_id] || 0) + (Number(b.qty) || 0); });
+      EXP.sel = 0; EXP.type = 'army'; EXP.qty = 1;
       renderExpand();
     } catch (e) { document.getElementById('expandBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
   }
-  function expHeadroom() { return Math.max(0, EXP.cap - Math.floor(EXP.mil + EXP.pending)); }
-  function expMax() { return Math.max(0, Math.min(expHeadroom(), Math.floor(EXP.energy), Math.floor(EXP.minerals))); }
+  function expBase() { return EXP.bases[EXP.sel]; }
+  function baseUnits(b) { return (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0); }
+  function expCapLeft() { var b = expBase(); return b ? Math.max(0, 5 - (baseUnits(b) + (EXP.pending[b.id] || 0))) : 0; }
+  function expMax() { return Math.max(0, Math.min(expCapLeft(), Math.floor(EXP.mil / UNIT_SPEC[EXP.type].cost))); }
   function renderExpand() {
     var body = document.getElementById('expandBody');
     if (!EXP.bases.length) { body.innerHTML = '<p class="empty">You have no bases yet — build one first.</p>'; return; }
-    var max = expMax();
+    var b = expBase(), spec = UNIT_SPEC[EXP.type], max = expMax();
     EXP.qty = Math.max(max > 0 ? 1 : 0, Math.min(EXP.qty, max));
-    var opts = EXP.bases.map(function (b, i) {
-      var host = EXP.names[b.host_nation_id] || b.host_nation_id;
-      return '<option value="' + i + '"' + (i === EXP.sel ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(host) + '</option>';
-    }).join('');
-    var reason = expHeadroom() < 1 ? 'Your bases are at capacity — build another base first.'
-      : (Math.floor(EXP.energy) < 1 || Math.floor(EXP.minerals) < 1) ? 'You need Energy and Minerals on hand to build.' : '';
-    var canBuild = max > 0 && EXP.qty >= 1;
+    var host = EXP.names[b.host_nation_id] || b.host_nation_id, committed = baseUnits(b) + (EXP.pending[b.id] || 0);
+    var baseOpts = EXP.bases.map(function (x, i) { return '<option value="' + i + '"' + (i === EXP.sel ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(EXP.names[x.host_nation_id] || x.host_nation_id) + '</option>'; }).join('');
+    var cards = UNIT_ORDER.map(function (k) { var u = UNIT_SPEC[k];
+      return '<div class="ucard' + (EXP.type === k ? ' on' : '') + '" data-u="' + k + '"><div class="uchip" style="background:' + u.color + '">' + unitIcon(k) + '</div>' +
+        '<div class="uname">' + u.name + '</div><div class="ucost">' + u.cost + ' Mil · ' + u.ticks + 't</div><div class="ubeats">beats ' + u.beats + '</div></div>'; }).join('');
+    var costMil = spec.cost * EXP.qty;
+    var costLine = max < 1
+      ? '<p class="exp-warn">' + (expCapLeft() < 1 ? 'This base is full (5 units).' : 'Not enough Military — a ' + spec.name + ' costs ' + spec.cost + '.') + '</p>'
+      : '<div class="exp-cost">Cost: <b>' + costMil + ' Military</b> · leaves ' + (EXP.mil - costMil) + ' in reserve · ready in ' + spec.ticks + ' tick' + (spec.ticks === 1 ? '' : 's') + '</div>';
     body.innerHTML =
-      '<label class="exp-lab">Base</label><select id="expBase" class="exp-sel">' + opts + '</select>' +
-      '<div class="exp-cap">Military <b>' + EXP.mil + '</b> / ' + EXP.cap + ' capacity' + (EXP.pending ? ' · ' + EXP.pending + ' building' : '') + '</div>' +
-      '<div class="exp-res">You have <b>$' + (Math.round(EXP.budget * 10) / 10) + 'B</b> Budget · ' +
-        '<b class="' + (Math.floor(EXP.energy) < EXP.qty ? 'short' : '') + '">' + Math.floor(EXP.energy) + '</b> Energy · ' +
-        '<b class="' + (Math.floor(EXP.minerals) < EXP.qty ? 'short' : '') + '">' + Math.floor(EXP.minerals) + '</b> Minerals</div>' +
+      '<label class="exp-lab">Base</label><select id="expBase" class="exp-sel">' + baseOpts + '</select>' +
+      '<div class="u-status">You have <span class="mil">' + EXP.mil + ' Military</span> · ' + esc(host) + ' holds <b>' + committed + ' / 5</b> units</div>' +
+      '<div class="u-capbar"><i class="fill" style="width:' + (committed / 5 * 100) + '%"></i><i class="add" style="width:' + (Math.min(max > 0 ? EXP.qty : 0, expCapLeft()) / 5 * 100) + '%"></i></div>' +
+      '<label class="exp-lab">Choose a unit</label><div class="units">' + cards + '</div><div class="udesc">' + spec.desc + '</div>' +
       '<label class="exp-lab">How many to build</label>' +
-      '<div class="exp-step"><button type="button" id="expMinus"' + (EXP.qty <= 1 ? ' disabled' : '') + '>−</button>' +
-        '<span id="expQty">' + EXP.qty + '</span>' +
-        '<button type="button" id="expPlus"' + (EXP.qty >= max ? ' disabled' : '') + '>+</button>' +
-        '<span class="exp-max">max ' + max + '</span></div>' +
-      '<div class="exp-cost">Cost: <b>$' + (5 * EXP.qty) + 'B</b> · ' + EXP.qty + ' Energy · ' + EXP.qty + ' Minerals</div>' +
-      (reason ? '<p class="exp-warn">' + reason + '</p>' : '') +
+      '<div class="exp-step"><button type="button" id="expMinus"' + (EXP.qty <= 1 ? ' disabled' : '') + '>−</button><span id="expQty">' + EXP.qty + '</span>' +
+        '<button type="button" id="expPlus"' + (EXP.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
+      costLine +
       '<div class="noco__btns"><button class="noco__btn noco__cancel" id="expCancel" type="button">Cancel</button>' +
-        '<button class="noco__btn noco__confirm" id="expGo" type="button"' + (canBuild ? '' : ' disabled') + '>Build ' + EXP.qty + ' · $' + (5 * EXP.qty) + 'B</button></div>';
-    document.getElementById('expBase').onchange = function () { EXP.sel = +this.value; };
+        '<button class="noco__btn noco__confirm" id="expGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Build ' + EXP.qty + ' ' + uplur(EXP.type, EXP.qty) + '</button></div>';
+    document.getElementById('expBase').onchange = function () { EXP.sel = +this.value; if (EXP.qty > expMax()) EXP.qty = Math.max(1, expMax()); renderExpand(); };
+    document.querySelectorAll('#expandBody [data-u]').forEach(function (c) { c.onclick = function () { EXP.type = c.dataset.u; if (EXP.qty > expMax()) EXP.qty = Math.max(1, expMax()); renderExpand(); }; });
     document.getElementById('expMinus').onclick = function () { if (EXP.qty > 1) { EXP.qty--; renderExpand(); } };
     document.getElementById('expPlus').onclick = function () { if (EXP.qty < expMax()) { EXP.qty++; renderExpand(); } };
     document.getElementById('expCancel').onclick = closeExpand;
     document.getElementById('expGo').onclick = function () {
-      var base = EXP.bases[EXP.sel]; if (!base) return;
-      var qty = EXP.qty; closeExpand();
-      performAction(function () { return supabase.rpc('expand_military', { p_base_id: base.id, p_qty: qty }); },
-        function (d) { return (d.ordered || qty) + ' military ordered — ready next turn.'; });
+      var base = expBase(); if (!base || expMax() < 1) return;
+      var type = EXP.type, qty = EXP.qty; closeExpand();
+      performAction(function () { return supabase.rpc('expand_military', { p_base_id: base.id, p_unit_type: type, p_qty: qty }); },
+        function (d) { var t = d.ticks || UNIT_SPEC[type].ticks, n = d.ordered || qty; return n + ' ' + uplur(type, n) + ' ordered — ready in ' + t + ' tick' + (t === 1 ? '' : 's') + '.'; });
     };
   }
 
-  // DEPLOY MILITARY — reposition military between Home (the reserve) and your bases abroad
-  // (1 AP, instant). Home available = on_hand.military − everything already stationed abroad;
-  // an abroad base holds at most 5. Fires deploy_military through performAction.
+  // DEPLOY MILITARY — move built units between two of your bases (1 AP, instant). Pick a source
+  // base, a unit type there, and a destination; the destination can't exceed 5 units. Fires
+  // deploy_military through performAction. Uses UNIT_ORDER / UNIT_SPEC / unitIcon from Expand.
+  var UNIT_COL = { army: 'armies', fleet: 'fleets', air_wing: 'air_wings' };
   var deployModal = document.getElementById('deployModal');
   var closeDeploy = wireModalClose(deployModal, 'deployClose');
-  var DEP = { locs: [], from: 0, to: 1, qty: 1 };
+  var DEP = { bases: [], names: {}, pending: {}, from: 0, to: 1, type: 'army', qty: 1 };
   function openDeploy() {
     if (acting || !feedCtx) return;
     document.getElementById('deployBody').innerHTML = '<p class="empty">Loading…</p>';
@@ -975,61 +1003,60 @@
     try {
       var nid = feedCtx.nationId;
       var res = await Promise.all([
-        supabase.from('military_bases').select('id, host_nation_id, garrison').eq('nation_id', nid),
-        supabase.from('nations').select('id, name, on_hand')
+        supabase.from('military_bases').select('id, host_nation_id, armies, fleets, air_wings').eq('nation_id', nid).order('created_at'),
+        supabase.from('nations').select('id, name'),
+        supabase.from('military_builds').select('base_id, qty').eq('nation_id', nid)
       ]);
-      var bases = res[0].data || [], names = {}, total = 0;
-      (res[1].data || []).forEach(function (n) { names[n.id] = n.name; if (n.id === nid) total = Number((n.on_hand || {}).military) || 0; });
-      var abroad = bases.filter(function (b) { return b.host_nation_id !== nid; });
-      var abroadSum = abroad.reduce(function (a, b) { return a + (Number(b.garrison) || 0); }, 0);
-      var home = Math.max(0, Math.floor(total - abroadSum));
-      DEP.locs = [{ id: null, label: 'Home', avail: home, cap: Infinity }].concat(
-        abroad.map(function (b) { var g = Number(b.garrison) || 0; return { id: b.id, label: 'Base in ' + (names[b.host_nation_id] || b.host_nation_id), avail: g, cap: 5, garrison: g }; })
-      );
-      DEP.from = 0; DEP.to = DEP.locs.length > 1 ? 1 : 0; DEP.qty = 1;
+      DEP.bases = res[0].data || [];
+      DEP.names = {}; (res[1].data || []).forEach(function (n) { DEP.names[n.id] = n.name; });
+      DEP.pending = {}; (res[2].data || []).forEach(function (b) { DEP.pending[b.base_id] = (DEP.pending[b.base_id] || 0) + (Number(b.qty) || 0); });
+      DEP.from = 0; DEP.to = DEP.bases.length > 1 ? 1 : 0; DEP.type = 'army'; DEP.qty = 1;
       renderDeploy();
     } catch (e) { document.getElementById('deployBody').innerHTML = '<p class="empty">Couldn’t load. Try again.</p>'; }
   }
+  function depUnitsAt(b, k) { return Number(b[UNIT_COL[k]]) || 0; }
+  function depBaseCommitted(b) { return (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0) + (DEP.pending[b.id] || 0); }
   function depMax() {
-    var src = DEP.locs[DEP.from], dst = DEP.locs[DEP.to];
+    var src = DEP.bases[DEP.from], dst = DEP.bases[DEP.to];
     if (!src || !dst || DEP.from === DEP.to) return 0;
-    var dstHead = dst.cap === Infinity ? Infinity : Math.max(0, dst.cap - dst.garrison);
-    return Math.max(0, Math.min(src.avail, dstHead));
+    return Math.max(0, Math.min(depUnitsAt(src, DEP.type), 5 - depBaseCommitted(dst)));
   }
   function renderDeploy() {
     var body = document.getElementById('deployBody');
-    if (DEP.locs.length < 2) { body.innerHTML = '<p class="empty">You have no bases abroad yet. Build one (Build Base → Abroad) to deploy there.</p>'; return; }
-    if (DEP.to === DEP.from) DEP.to = (DEP.from + 1) % DEP.locs.length;
-    var max = depMax();
+    if (DEP.bases.length < 2) { body.innerHTML = '<p class="empty">You need at least two bases to deploy between them — build another base first.</p>'; return; }
+    if (DEP.to === DEP.from) DEP.to = (DEP.from + 1) % DEP.bases.length;
+    var src = DEP.bases[DEP.from], max = depMax();
     DEP.qty = Math.max(max > 0 ? 1 : 0, Math.min(DEP.qty, max));
-    function optsHtml(selIdx) {
-      return DEP.locs.map(function (l, i) {
-        var meta = l.id === null ? (l.avail + ' available') : (l.garrison + '/5');
-        return '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>' + esc(l.label) + ' · ' + meta + '</option>';
+    function baseOpts(selIdx) {
+      return DEP.bases.map(function (b, i) {
+        var units = (Number(b.armies) || 0) + (Number(b.fleets) || 0) + (Number(b.air_wings) || 0);
+        return '<option value="' + i + '"' + (i === selIdx ? ' selected' : '') + '>Base ' + (i + 1) + ' · ' + esc(DEP.names[b.host_nation_id] || b.host_nation_id) + ' · ' + units + '/5</option>';
       }).join('');
     }
+    var cards = UNIT_ORDER.map(function (k) { var u = UNIT_SPEC[k];
+      return '<div class="ucard' + (DEP.type === k ? ' on' : '') + '" data-du="' + k + '"><div class="uchip" style="background:' + u.color + '">' + unitIcon(k) + '</div>' +
+        '<div class="uname">' + u.name + '</div><div class="ucost">' + depUnitsAt(src, k) + ' here</div></div>'; }).join('');
     body.innerHTML =
-      '<label class="exp-lab">From</label><select id="depFrom" class="exp-sel">' + optsHtml(DEP.from) + '</select>' +
-      '<label class="exp-lab">To</label><select id="depTo" class="exp-sel">' + optsHtml(DEP.to) + '</select>' +
+      '<label class="exp-lab">From</label><select id="depFrom" class="exp-sel">' + baseOpts(DEP.from) + '</select>' +
+      '<label class="exp-lab">To</label><select id="depTo" class="exp-sel">' + baseOpts(DEP.to) + '</select>' +
+      '<label class="exp-lab">Unit</label><div class="units">' + cards + '</div>' +
       '<label class="exp-lab">How many</label>' +
-      '<div class="exp-step"><button type="button" id="depMinus"' + (DEP.qty <= 1 ? ' disabled' : '') + '>−</button>' +
-        '<span id="depQty">' + DEP.qty + '</span>' +
-        '<button type="button" id="depPlus"' + (DEP.qty >= max ? ' disabled' : '') + '>+</button>' +
-        '<span class="exp-max">max ' + max + '</span></div>' +
-      (max < 1 ? '<p class="exp-warn">Nothing can move between those two right now.</p>' : '') +
+      '<div class="exp-step"><button type="button" id="depMinus"' + (DEP.qty <= 1 ? ' disabled' : '') + '>−</button><span id="depQty">' + DEP.qty + '</span>' +
+        '<button type="button" id="depPlus"' + (DEP.qty >= max ? ' disabled' : '') + '>+</button><span class="exp-max">max ' + max + '</span></div>' +
+      (max < 1 ? '<p class="exp-warn">' + (depUnitsAt(src, DEP.type) < 1 ? 'No ' + UNIT_SPEC[DEP.type].plural + ' at the source base.' : 'The destination base is full.') + '</p>' : '') +
       '<div class="noco__btns"><button class="noco__btn noco__cancel" id="depCancel" type="button">Cancel</button>' +
-        '<button class="noco__btn noco__confirm" id="depGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Deploy ' + DEP.qty + '</button></div>';
-    document.getElementById('depFrom').onchange = function () { DEP.from = +this.value; if (DEP.from === DEP.to) DEP.to = (DEP.from + 1) % DEP.locs.length; renderDeploy(); };
-    document.getElementById('depTo').onchange = function () { DEP.to = +this.value; if (DEP.to === DEP.from) DEP.from = (DEP.to + 1) % DEP.locs.length; renderDeploy(); };
+        '<button class="noco__btn noco__confirm" id="depGo" type="button"' + (max > 0 ? '' : ' disabled') + '>Deploy ' + DEP.qty + ' ' + uplur(DEP.type, DEP.qty) + '</button></div>';
+    document.getElementById('depFrom').onchange = function () { DEP.from = +this.value; if (DEP.from === DEP.to) DEP.to = (DEP.from + 1) % DEP.bases.length; renderDeploy(); };
+    document.getElementById('depTo').onchange = function () { DEP.to = +this.value; if (DEP.to === DEP.from) DEP.from = (DEP.to + 1) % DEP.bases.length; renderDeploy(); };
+    document.querySelectorAll('#deployBody [data-du]').forEach(function (c) { c.onclick = function () { DEP.type = c.dataset.du; DEP.qty = 1; renderDeploy(); }; });
     document.getElementById('depMinus').onclick = function () { if (DEP.qty > 1) { DEP.qty--; renderDeploy(); } };
     document.getElementById('depPlus').onclick = function () { if (DEP.qty < depMax()) { DEP.qty++; renderDeploy(); } };
     document.getElementById('depCancel').onclick = closeDeploy;
     document.getElementById('depGo').onclick = function () {
-      var src = DEP.locs[DEP.from], dst = DEP.locs[DEP.to], qty = DEP.qty;
-      if (!src || !dst || DEP.from === DEP.to || qty < 1) return;
-      closeDeploy();
-      performAction(function () { return supabase.rpc('deploy_military', { p_from: src.id, p_to: dst.id, p_qty: qty }); },
-        function (d) { return (d.deployed || qty) + ' military deployed.'; });
+      var s = DEP.bases[DEP.from], d = DEP.bases[DEP.to]; if (!s || !d || DEP.from === DEP.to || depMax() < 1) return;
+      var type = DEP.type, qty = DEP.qty; closeDeploy();
+      performAction(function () { return supabase.rpc('deploy_military', { p_from: s.id, p_to: d.id, p_unit_type: type, p_qty: qty }); },
+        function (r) { var n = r.deployed || qty; return n + ' ' + uplur(type, n) + ' deployed.'; });
     };
   }
   // DIRECT opens a modal to assign a field action to a chosen party member: Run for
@@ -1721,8 +1748,8 @@
       '<p class="leadbar__sub">Your party holds the Defence portfolio. Build and command the nation’s military bases.</p>' +
       '<div class="leadbar__grid">' +
         '<button class="lead" type="button" id="def-base" data-cost="2"><b>Build Military Base</b><span class="lead__lane">The Forces</span><span class="lead__desc">Commission a new base at home. ($15B)</span></button>' +
-        '<button class="lead" type="button" id="def-expand" data-cost="1"><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build military at one of your bases.</span></button>' +
-        '<button class="lead" type="button" id="def-deploy" data-cost="1"><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move military between home and your bases abroad.</span></button>' +
+        '<button class="lead" type="button" id="def-expand" data-cost="1"><b>Expand Military</b><span class="lead__lane">The Forces</span><span class="lead__desc">Build units — armies, fleets, air wings.</span></button>' +
+        '<button class="lead" type="button" id="def-deploy" data-cost="1"><b>Deploy</b><span class="lead__lane">The Forces</span><span class="lead__desc">Move units between your bases.</span></button>' +
         '<button class="lead" type="button" id="def-tech" data-soon disabled><b>Technology</b><span class="lead__lane">The Forces</span><span class="lead__desc">Research military technologies.</span></button>' +
       '</div></section>';
     el.querySelectorAll('.lead').forEach(stampCost);

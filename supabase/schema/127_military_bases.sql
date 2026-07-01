@@ -21,11 +21,27 @@ create table if not exists public.military_bases (
   id             uuid primary key default gen_random_uuid(),
   nation_id      text not null references public.nations (id) on delete cascade,   -- owner
   host_nation_id text not null references public.nations (id) on delete cascade,   -- where it sits (= owner for home)
-  garrison       int  not null default 0,                                          -- military stationed here (Slice 2)
+  armies         int  not null default 0,   -- typed units stationed here; a base holds at most 5 units total
+  fleets         int  not null default 0,
+  air_wings      int  not null default 0,
   built_tick     int,
   created_at     timestamptz not null default now()
 );
 create index if not exists military_bases_nation_idx on public.military_bases (nation_id);
+-- Existing installs: add the typed-unit columns, fold the old undifferentiated garrison into
+-- armies (one army per stationed unit), then drop it. A base now holds typed units, not a
+-- single count. Guarded so re-applying is a no-op after the first pass.
+alter table public.military_bases add column if not exists armies    int not null default 0;
+alter table public.military_bases add column if not exists fleets     int not null default 0;
+alter table public.military_bases add column if not exists air_wings  int not null default 0;
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'military_bases' and column_name = 'garrison') then
+    update public.military_bases set armies = armies + garrison where coalesce(garrison, 0) > 0;
+    alter table public.military_bases drop column garrison;
+  end if;
+end $$;
 
 -- World-readable (base counts show on the Conflict page for every nation), like nations.
 -- No client write policy → all writes go through the security-definer RPCs below.
