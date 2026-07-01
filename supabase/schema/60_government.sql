@@ -512,6 +512,10 @@ begin
     delete from public.trade_flows where exporter_id is not null;
   end if;
   exception when others then raise warning 'tick %: trade-ledger reset failed — %', v_tick, sqlerrm; end;
+  -- National malaise (schema/125): each January, any headline stat under 9 costs the nation.
+  -- Self-filters to January, so it's a no-op the other eleven months.
+  begin perform public._resolve_national_malaise(v_tick);
+  exception when others then raise warning 'tick %: national malaise failed — %', v_tick, sqlerrm; end;
   -- Regime is the sole switch between one-party and multiparty. This tick's economics
   -- may have eroded a nation's regime to 1–4 or lifted it back to 5+, so reconcile every
   -- nation's ruling_party with its regime (schema/98) BEFORE elections read it — a nation

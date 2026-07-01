@@ -31,7 +31,8 @@ export function statName(key) {
 // other ladders just turn 'good' once they're in the upper half. '' = neutral.
 export function statBand(stat, value) {
   if (typeof value !== 'number') return '';
-  if (stat === 'growth') return value >= 13 ? 'good' : value >= 10 ? 'warn' : 'bad';
+  if (value < 9) return 'bad';   // below 9 is failing (red) — the same threshold the yearly malaise penalty (schema/125) uses
+  if (stat === 'growth') return value >= 13 ? 'good' : 'warn';
   return value >= 11 ? 'good' : '';
 }
 
